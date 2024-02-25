@@ -1,0 +1,27 @@
+.ds-card {
+    background-color: white;
+    border: 1px solid #0000000F;
+    width: 240px;
+}
+
+.ds-card .ant-card-body {
+    padding: 0px;
+}
+
+ .ds-card .cover-img {
+    height: 180px;
+    width: 90%;
+    text-align: center;
+    padding: 10px;
+    background-color: transparent;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+ }
+
+.ds-card-name {
+    width: 100%;
+    border-top: 1px solid #0000000F;
+    padding: 10px 0px;
+    background-color: #00000005;
+}

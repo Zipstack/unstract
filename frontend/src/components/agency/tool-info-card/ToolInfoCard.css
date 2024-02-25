@@ -1,0 +1,31 @@
+/* Styles for ToolInfoCard */
+
+.toolinfo-card {
+    margin-bottom: 5px;
+    padding: 10px;
+    padding-bottom: 0px;
+    border-color: #DFDFDF;
+}
+
+.toolinfo-card .ant-card-body {
+    padding: 2px;
+}
+
+.tool-info-typo-sec {
+    font-size: 12px;
+}
+
+.tool-info-header {
+    padding-left: 8px;
+}
+
+.tool-info-title {
+    display: grid;
+    grid-template-columns: auto 1fr;
+}
+
+.tool-info-add-btn {
+    display: grid;
+    grid-auto-flow: column;
+    justify-self: end;
+}

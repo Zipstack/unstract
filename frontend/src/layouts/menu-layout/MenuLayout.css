@@ -1,0 +1,54 @@
+.appHeader {
+  display: flex;
+  /* grid-template-columns: 1fr auto; */
+  justify-content: space-between;
+  align-items: center;
+  /* column-gap: 12px; */
+  height: min-content;
+  background-color: #F5F7F9;
+  padding-block: 8px;
+  padding-inline: 12px;
+}
+.navigationBtns {
+  display: grid;
+  grid-auto-flow: column;
+  width: min-content;
+  column-gap: 12px;
+}
+
+.appBody {
+  background-color: var(--page-bg-2);
+  overflow: hidden;
+  height: 100%;
+}
+
+.appBody2 {
+  height: 100%;
+}
+.btn_style {
+  margin: 0 5px;
+}
+
+.project_detail {
+  display: flex;
+  align-items: center;
+}
+.proj_name {
+  font-size: 18px;
+  margin-left: 5px;
+}
+.active_btn {
+  border-color: #1554ad;
+  color: white;
+  background-color: #1554ad;
+  margin: 0 5px;
+}
+.radio_btn {
+  border-radius: 6px;
+  margin: 0 5px;
+  border-inline-start-width: 1px;
+  position:  static!important;
+}
+.radio_btn:hover {
+  border-inline-start-width: 1px;
+}

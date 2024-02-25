@@ -1,0 +1,26 @@
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[project]
+name = "unstract-tool-registry"
+version = "0.0.1"
+description = "Unstract's registry of tools to be used in workflows."
+authors = [
+    {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
+]
+dependencies = [
+    "unstract-adapters~=0.2.1",
+    "unstract-tool-sandbox @ file:///${PROJECT_ROOT}/../tool-sandbox",
+    "docker~=6.1.3",
+    "PyYAML~=6.0.1",
+    "jsonschema~=4.18.2",
+]
+requires-python = ">=3.9,<3.11.1"
+readme = "README.md"
+# license = {text = "MIT"}
+
+[tool.pdm.build]
+includes = ["src"]
+package-dir = "src"
+# source-includes = ["tests"]

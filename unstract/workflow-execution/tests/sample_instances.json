@@ -1,0 +1,94 @@
+[
+    {
+        "id": "bec093f7-a97d-430a-92d5-936b3b40e57e",
+        "tool_id": "resume_parser",
+        "workflow": "ac45e306-75ba-4e31-ac5e-e2bc54cafcb1",
+        "input": {"input_file": "<file_list>"},
+        "output": {"output": "<parsed_resume>"},
+        "metadata": {
+            "maxFiles": 100,
+            "useCache": true,
+            "processor": "Azure OpenAI",
+            "tenant_id": "mock_org",
+            "rootFolder": "input/test/",
+            "outputFolder": "output/output/output",
+            "fileExtensions": [],
+            "tool_instance_id": "bec093f7-a97d-430a-92d5-936b3b40e57e",
+            "createOutputFolder": true,
+            "inputFileConnector": "Pandora's S3/Minio",
+            "outputFileConnector": "Pandora's S3/Minio",
+            "createOutputDocument": true,
+            "processSubDirectories": true
+        },
+        "input_file_connector": {
+            "connector_id": "7d1bbe99-5539-4607-99a9-99ad81bd59fd",
+            "connector_name": "Your Connector Name",
+            "connector_type": "File",
+            "connector_mode": "Read",
+            "connector_metadata": {}
+        },
+        "output_file_connector": {
+            "connector_id": "356ee8f3-7709-4e35-bc1e-2acf932ed6e1",
+            "connector_name": "Your Connector Name",
+            "connector_type": "File",
+            "connector_mode": "Write",
+            "connector_metadata": {}
+        },
+        "input_db_connector": null,
+        "output_db_connector": null,
+        "tool_settings": {
+            "id": "758555e6-0ad2-43a1-95b3-0d10c3f2c666",
+            "tool_uid": "Your Tool UID",
+            "spec": {},
+            "properties": {},
+            "runtime_variables": {},
+            "is_active": true
+        }
+    },
+    {
+        "id": "another-tool-instance-id",
+        "tool_id": "another_tool",
+        "workflow": "ac45e306-75ba-4e31-ac5e-e2bc54cafcb1",
+        "input": {"input_data": "<data>"},
+        "output": {"output_data": "<result>"},
+        "metadata": {
+            "maxFiles": 50,
+            "useCache": false,
+            "processor": "Sample Processor",
+            "tenant_id": "another_org",
+            "rootFolder": "input/another/",
+            "outputFolder": "output/another/output",
+            "fileExtensions": ["txt", "pdf"],
+            "tool_instance_id": "another-tool-instance-id",
+            "createOutputFolder": false,
+            "inputFileConnector": "Connector X",
+            "outputFileConnector": "Connector Y",
+            "createOutputDocument": false,
+            "processSubDirectories": false
+        },
+        "input_file_connector": {
+            "connector_id": "connector-id-2",
+            "connector_name": "Connector 2",
+            "connector_type": "File",
+            "connector_mode": "Read",
+            "connector_metadata": {}
+        },
+        "output_file_connector": {
+            "connector_id": "connector-id-3",
+            "connector_name": "Connector 3",
+            "connector_type": "File",
+            "connector_mode": "Write",
+            "connector_metadata": {}
+        },
+        "input_db_connector": null,
+        "output_db_connector": null,
+        "tool_settings": {
+            "id": "another-tool-settings-id",
+            "tool_uid": "Another Tool UID",
+            "spec": {},
+            "properties": {},
+            "runtime_variables": {},
+            "is_active": false
+        }
+    }
+]

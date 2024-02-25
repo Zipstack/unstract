@@ -1,0 +1,34 @@
+.invite-user-container{
+  width: 500px;
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-direction: column;
+  padding: 16px;
+}
+
+.admin-toggle-container{
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.invite-button-container{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.loader-container{
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, 0);
+}
+
+.role-select{
+  width:250px
+}
+
+.form-select{
+  margin: 0;
+}

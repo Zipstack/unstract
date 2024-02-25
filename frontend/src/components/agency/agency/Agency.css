@@ -1,0 +1,59 @@
+/* Styles for Agency */
+
+.agency-layout {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.agency-sider-layout {
+  height: 100%;
+  background-color: transparent !important;
+}
+
+.agency-layout2 {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.agency-main {
+  flex: 1;
+}
+
+.agency-sider-content {
+  height: 100%;
+  padding: 12px 12px 12px 0px;
+}
+
+.agency-sider-content > div {
+  height: 100%;
+  background-color: var(--white);
+  /* background-color: #DAE3EC; */
+}
+
+.agency-actions {
+  padding: 0px 12px;
+}
+
+.agency-footer {
+  padding: 12px;
+}
+
+.agency-ide-logs {
+  height: 10vh;
+}
+
+.agency-ide-collapse-panel {
+  background-color: var(--white);
+  border: none;
+  border-radius: 0px;
+}
+
+.agency-ide-log-modal .ant-modal-content{
+  height: 80vh;
+}
+
+.agency-ide-log-modal .agency-ide-logs{
+  height: 70vh !important;
+}

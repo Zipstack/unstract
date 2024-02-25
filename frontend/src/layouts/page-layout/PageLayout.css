@@ -1,0 +1,24 @@
+.landingPage {
+  display: grid;
+  height: 100%;
+  width: 100%;
+  grid-template-rows: auto 1fr;
+}
+
+.topNav {
+  background-color: var(--primary);
+  padding-block: 14px;
+  padding-inline-start: 20px;
+  padding-inline-end: 12px;
+}
+.logoNoMargin {
+  margin-inline-end: 12px;
+}
+
+.collapse_btn {
+  width: 32px;
+  height: 32px;
+  position: absolute;
+  margin-left: -10px;
+  margin-top: -10px;
+}

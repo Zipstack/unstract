@@ -1,0 +1,22 @@
+{
+    "title": "Local File Storage",
+    "description": "Local storage of the user`s machine, and enabling read/write to the specified file path.",
+    "type": "object",
+    "required": [
+      "connectorName",
+      "path"
+    ],
+    "properties": {
+      "connectorName": {
+        "type": "string",
+        "title": "Name of the connector",
+        "default": "Pandora's Local file connector"
+      },
+      "path": {
+        "type": "string",
+        "title": "Path",
+        "default": "",
+        "description": "Path to restrict to. (example /path/to/restrict/to)"
+      }
+    }
+  }

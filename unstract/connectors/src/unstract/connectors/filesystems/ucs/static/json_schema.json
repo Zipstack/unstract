@@ -1,0 +1,46 @@
+{
+  "title": "Unstract Cloud Storage",
+  "description": "Unstract Cloud Storage is a scalable and durable object storage service provided by Google Cloud Platform. This connector allows you to store and retrieve data on Unstract Cloud Storage.",
+  "type": "object",
+  "required": [
+    "connectorName",
+    "key",
+    "secret",
+    "bucket",
+    "path"
+  ],
+  "properties": {
+    "connectorName": {
+      "type": "string",
+      "title": "Name of the connector",
+      "default": "Unstract's Unstract Cloud Storage"
+    },
+    "key": {
+      "type": "string",
+      "title": "Key",
+      "default": ""
+    },
+    "secret": {
+      "type": "string",
+      "title": "Secret",
+      "format": "password"
+    },
+    "bucket": {
+      "type": "string",
+      "title": "Bucket Name",
+      "description": "Name of the bucket to be restricted to."
+    },
+    "path": {
+      "type": "string",
+      "title": "Path",
+      "default": "",
+      "description": "Path to restrict to. (example /path/to/restrict/to)"
+    },
+    "endpointURL": {
+      "type": "string",
+      "title": "Endpoint URL",
+      "default": "https://storage.googleapis.com",
+      "description": "Endpoint URL to connect to. (example https://storage.googleapis.com)"
+    }
+  }
+}

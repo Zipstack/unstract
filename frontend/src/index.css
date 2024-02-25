@@ -1,0 +1,111 @@
+@import "variables.css";
+
+html, #root {
+  height: 100%;
+}
+body {
+  font-family: var(--font-family) !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  height: 100%;
+  background-color: var(--page-bg-2);
+  min-width: 1024px;
+}
+
+.center {
+  display: grid;
+  width: inherit;
+  height: inherit;
+  align-items: center;
+  justify-content: center;
+}
+/* Custom scroll bar css starts */
+::-webkit-scrollbar {
+  width: 3px;
+  height: 5px;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+  border-radius: 6px;
+  background: none;
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: #e2e2e2;
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+  background: #b3b3b3;
+}
+
+/* Corner where both X and Y scroll bar meets */
+::-webkit-scrollbar-corner {
+  background: none;
+}
+/* Custom scroll bar css ends */
+
+/* Justify content to the right */
+.display-flex-right {
+  display: flex;
+  justify-content: right;
+}
+
+/* Justify content to the center */
+.display-flex-center {
+  display: flex;
+  justify-content: center;
+}
+
+/* Align content to the center */
+.display-flex-align-center {
+  display: flex;
+  align-items: center;
+}
+
+.font-size-12 {
+  font-size: 12px;
+}
+
+.display-flex-center-h-and-v {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.display-flex-space-between {
+  display: flex;
+  justify-content: space-between;
+}
+
+/* RJSF style */
+.rjsf fieldset {
+  border: unset !important;
+  padding: 0;
+}
+
+/* Sets the position of the loader in the center */
+.loader-position {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.width-100 {
+  width: 100%;
+}
+
+.cur-pointer {
+  cursor: pointer;
+}
+
+.modal-header {
+  font-size: 16px;
+  font-weight: bold;
+}

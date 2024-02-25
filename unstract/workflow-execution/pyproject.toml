@@ -1,0 +1,33 @@
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[project]
+name = "unstract-workflow-execution"
+version = "0.0.1"
+description = "Unstract workflow execution package"
+authors = [
+    {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
+]
+dependencies = [
+    # ! IMPORTANT!
+    # Local dependencies usually need to be added as:
+    # https://pdm-project.org/latest/usage/dependency/#local-dependencies
+    #
+    # However, local dependencies which are not direct depedency of main project
+    # appear as absolute paths in pdm.lock of main project, making it impossible
+    # to check in the lock file.
+    #
+    # Hence instead, add the dependencies without version constraints where the
+    # assumption is they are added as direct dependencies in main project itself.
+    "unstract-tool-registry",
+    "unstract-tool-sandbox",
+]
+requires-python = ">=3.9"
+readme = "README.md"
+# license = {text = "MIT"}
+
+
+[tool.pdm.build]
+includes = ["src"]
+package-dir = "src"

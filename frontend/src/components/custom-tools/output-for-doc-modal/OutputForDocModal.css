@@ -1,0 +1,18 @@
+/* Styles for OutputForDocModal */
+
+.output-doc-layout {
+    height: 600px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.output-doc-table {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.output-doc-gap {
+    margin-bottom: 8px;
+}
+

@@ -1,0 +1,51 @@
+{
+  "title": "Redshift database",
+  "description": "Designed with a patented new architecture to handle all aspects of data and analytics",
+  "type": "object",
+  "required": [
+    "connectorName",
+    "host",
+    "port",
+    "database",
+    "user",
+    "password"
+  ],
+  "properties": {
+    "connectorName": {
+      "type": "string",
+      "title": "Name of the connector",
+      "default": "Unstract's Redshift connector"
+    },
+    "host": {
+      "type": "string",
+      "title": "Host",
+      "default": ""
+    },
+    "port": {
+      "type": "string",
+      "title": "Port",
+      "default": ""
+    },
+    "database": {
+      "type": "string",
+      "title": "Database",
+      "default": ""
+    },
+    "schema": {
+      "type": "string",
+      "title": "Schema",
+      "description": "Default schema: public (Optional)"
+    },
+    "user": {
+      "type": "string",
+      "title": "User",
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "title": "Password",
+      "format": "password",
+      "default": ""
+    }
+  }
+}

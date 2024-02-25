@@ -1,0 +1,88 @@
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[project]
+name = "unstract-backend"
+version = "0.0.1"
+description = "Unstract backend built with Django to build and schedule ETL pipelines around unstructured data."
+authors = [
+	{name = "Zipstack Inc.", email = "devsupport@zipstack.com"}
+]
+dependencies = [
+    "Authlib==1.2.1", # For Auth plugins
+    "boto3~=1.28.17", # For Unstract-cloud-storage
+    "celery>=5.3.4", # For Celery
+    "flower>=2.0.1", # Celery Monitoring
+    "cron-descriptor==1.4.0", # For cron string description
+    "cryptography>=41.0.7",
+    "django==4.2.1",
+    "djangorestframework==3.14.0",
+    "django-cors-headers==4.3.1",
+    "django-celery-beat>=2.5.0",
+    "django-redis==5.4.0",
+    "django-tenants==3.5.0",
+    "drf-standardized-errors>=0.12.6",
+    "drf-yasg==1.21.7", # For API docs
+    "psycopg2-binary==2.9.9",
+    "python-dotenv==1.0.0",
+    "python-magic==0.4.27", # For file upload/download
+    "python-socketio==5.9.0", # For log_events
+    "social-auth-app-django==5.3.0", # For OAuth
+    "social-auth-core==4.4.2", # For OAuth
+    "unstract-sdk~=0.11.1",
+    "unstract-adapters~=0.2.1",
+    # ! IMPORTANT!
+    # Indirect local dependencies usually need to be added in their own projects
+    # as: https://pdm-project.org/latest/usage/dependency/#local-dependencies.
+    #
+    # However, such indirect local dependencies which are not direct depedency of
+    # main project appear as absolute paths in pdm.lock of main project, making it
+    # impossible to check in the lock file.
+    #
+    # Hence required to add all indirect local dependencies too here.
+    "unstract-connectors @ file:///${PROJECT_ROOT}/../unstract/connectors",
+    "unstract-core @ file:///${PROJECT_ROOT}/../unstract/core",
+    "unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
+    "unstract-tool-registry @ file:///${PROJECT_ROOT}/../unstract/tool-registry",
+    "unstract-tool-sandbox @ file:///${PROJECT_ROOT}/../unstract/tool-sandbox",
+    "unstract-workflow-execution @ file:///${PROJECT_ROOT}/../unstract/workflow-execution",
+]
+# <3.11.1 due to resolution error from Unstract SDK
+requires-python = ">=3.9,<3.11.1"
+readme = "README.md"
+classifiers = [
+	"Private :: Do Not Upload",
+	"Framework :: Django",
+	"Programming Language :: Python"
+]
+
+[tool.pdm.dev-dependencies]
+deploy = [
+    "gunicorn>=21.2.0",
+]
+test = [
+    "pytest>=8.0.1",
+]
+
+[tool.pdm.scripts]
+# Commands for backend
+backend.cmd = "./entrypoint.sh"
+backend.env_file = ".env"
+backend.help = "Runs the Unstract backend"
+# Commands for backend db migration
+migrate_db.cmd = "python manage.py migrate"
+migrate_db.env_file = ".env"
+migrate_db.help = "Performs DB migrations for Unstract backend"
+# Commands for backend execution
+consumer.cmd = "celery -A backend worker --loglevel=info"
+consumer.env_file = ".env"
+consumer.help = "Runs the Unstract consumer"
+# Celery Flower
+flower.cmd = "celery -A backend flower --port=5555"
+flower.env_file = ".env"
+flower.help = "Runs the Unstract Celery Monitoring Tool"
+# Celery Beat
+beat.cmd = "celery -A backend beat --loglevel=info"
+beat.env_file = ".env"
+beat.help = "Runs the Unstract Celery Beat service"

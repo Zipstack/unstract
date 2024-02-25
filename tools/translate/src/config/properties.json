@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "0.0.1",
+  "displayName": "Translate",
+  "functionName": "translate",
+  "toolVersion": "0.0.1",
+  "description": "This is a tool which can translate the given text into a target language.",
+  "input": {
+    "description": "File to be translated"
+  },
+  "output": {
+    "description": "Creates a file with the translated text"
+  },
+  "result": {
+    "type": "TXT",
+    "description": "Response containing the translated text"
+  },
+  "ioCompatibility": {
+    "api": {
+      "sourceSupport": true,
+      "destinationSupport": true,
+      "additionalArgs": {
+        "sync": true
+      }
+    },
+    "file": {
+      "sourceSupport": true,
+      "destinationSupport": true,
+      "additionalArgs": {}
+    },
+    "db": {
+      "destinationSupport": false,
+      "additionalArgs": {}
+    }
+  },
+  "restrictions": {
+    "maxFileSize": "10MB",
+    "allowedFileTypes": [
+      "*"
+    ]
+  }
+}

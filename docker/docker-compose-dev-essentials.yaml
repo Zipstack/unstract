@@ -1,0 +1,121 @@
+version: '3.7'
+
+services:
+  db:
+    # Supports pgvector for doc indexer
+    image: 'ankane/pgvector:v0.5.1'
+    container_name: unstract-db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+      - ../backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+    env_file:
+      - ./essentials.env
+    labels:
+      - traefik.enable=false
+
+  redis:
+    image: 'bitnami/redis:7.0.14'
+    container_name: unstract-redis
+    ports:
+      - "6379:6379"
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    volumes:
+      - redis_data:/var/lib/redis/data/
+    labels:
+      - traefik.enable=false
+
+  minio:
+    image: 'minio/minio:latest'
+    container_name: unstract-minio
+    hostname: minio
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio_data:/data
+    env_file:
+      - ./essentials.env
+    command: server /data --console-address ":9001"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.minio.rule=Host(`minio.unstract.localhost`)
+      - traefik.http.services.minio.loadbalancer.server.port=9001
+
+  reverse-proxy:
+    # The official v2 Traefik docker image
+    image: traefik:v2.10
+    container_name: unstract-proxy
+    # - Enables the web UI.
+    # - Tells Traefik to use docker and file providers.
+    # - Direct Traefik to the correct network for docker provider.
+    #   This is required because Traefik by default tries available networks in a
+    #   round-robin fashion. With multiple providers, services can be on multiple
+    #   networks causing 504 Gateway Timeout.
+    command:
+      --api.insecure=true
+      --accesslog=true --log.level=INFO
+      --providers.docker=true --providers.docker.network=unstract-network
+      --providers.file.filename=/proxy_overrides.yaml --providers.file.watch=true
+    ports:
+      # The HTTP port
+      - "80:80"
+      # The Web UI (enabled by --api.insecure=true)
+      - "8080:8080"
+    volumes:
+      # So that Traefik can listen to the Docker events
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Proxy overrides for components run directly in Docker host
+      - ./proxy_overrides.yaml:/proxy_overrides.yaml
+    # Since any proxy overrides need to point to Docker host for relevant routes.
+    extra_hosts:
+      # "host-gateway" is a special string that translates to host docker0 i/f IP.
+      - "host.docker.internal:host-gateway"
+
+  feature-flag:
+    image: flipt/flipt:v1.34.0 # Dated(05/01/2024) Latest stable version. Ref:https://github.com/flipt-io/flipt/releases
+    container_name: unstract-flipt
+    restart: always
+    ports: # Forwarded to available host ports
+      - "8082:8080"  # REST API port
+      - "9005:9000"  # gRPC port
+    # https://www.flipt.io/docs/configuration/overview#environment-variables)
+    # https://www.flipt.io/docs/configuration/overview#configuration-parameters
+    env_file:
+      - ./essentials.env
+    environment:
+      FLIPT_CACHE_ENABLED: true
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.feature-flag.rule=Host(`feature-flag.unstract.localhost`)
+      - traefik.http.services.feature-flag.loadbalancer.server.port=8080
+
+  unstract-io:
+    image: downloads.unstructured.io/unstructured-io/unstructured-api:0.0.61
+    container_name: unstract-unstructured-io
+    ports: # Forwarded to available host ports
+      - "8083:8000"
+    labels:
+      - traefik.enable=false
+
+  qdrant:
+    # Supports pgvector for doc indexer
+    image: 'qdrant/qdrant'
+    container_name: unstract-vector-db
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/var/lib/qdrant/data/
+    labels:
+      - traefik.enable=false
+    env_file:
+      - ./essentials.env
+
+volumes:
+  flipt_data:
+  minio_data:
+  postgres_data:
+  qdrant_data:
+  redis_data:

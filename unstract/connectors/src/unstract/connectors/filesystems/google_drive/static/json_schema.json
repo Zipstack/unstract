@@ -1,0 +1,15 @@
+{
+  "title": "Google Drive",
+  "description": "Access files in your Google Drive with this connector",
+  "type": "object",
+  "required": [
+    "connectorName"
+  ],
+  "properties": {
+    "connectorName": {
+      "type": "string",
+      "title": "Name of the connector",
+      "default": "Unstract's google drive"
+    }
+  }
+}

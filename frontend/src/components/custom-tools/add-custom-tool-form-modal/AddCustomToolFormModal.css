@@ -1,0 +1,10 @@
+/* Styles for AddCustomToolForm */
+
+.add-cus-tool-header {
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.add-cus-tool-gap {
+    margin-bottom: 16px;
+}

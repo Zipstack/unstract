@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "0.0.1",
+  "displayName": "Structure Tool",
+  "functionName": "structure_tool",
+  "toolVersion": "0.0.1",
+  "description": "This is a template tool which can answer set of input prompts designed in the Prompt Studio",
+  "input": {
+    "description": "File that needs to be indexed and parsed for answers"
+  },
+  "output": {
+    "description": "A JSON file containing the parsed answers for the prompts"
+  },
+  "result": {
+    "type": "JSON",
+    "description": "A JSON containing the parsed answers for the prompts",
+    "schema": {}
+  },
+  "ioCompatibility": {
+    "api": {
+      "sourceSupport": true,
+      "destinationSupport": true,
+      "additionalArgs": {
+        "sync": true
+      }
+    },
+    "file": {
+      "sourceSupport": true,
+      "destinationSupport": true,
+      "additionalArgs": {}
+    },
+    "db": {
+      "destinationSupport": true,
+      "additionalArgs": {}
+    }
+  },
+  "restrictions": {
+    "maxFileSize": "50MB",
+    "allowedFileTypes": [
+      "txt",
+      "pdf",
+      "doc",
+      "docx",
+      "odt"
+    ]
+  }
+}

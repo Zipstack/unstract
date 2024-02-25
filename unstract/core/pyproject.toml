@@ -1,0 +1,30 @@
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[project]
+name = "unstract-core"
+version = "0.0.1"
+description = "Core library that helps with executing workflows."
+authors = [
+    {name = "Zipstack Inc.", email = "devsupport@zipstack.com"}
+]
+dependencies = [
+    "boto3~=1.28.17",
+    "botocore~=1.31.17",
+    "llama-index==0.9.28",
+    "redis~=5.0.1",
+    "requests==2.31.0",
+]
+# <3.11.1 due to resolution error from Unstract SDK
+requires-python = ">=3.9,<3.11.1"
+readme = "README.md"
+classifiers = [
+  "Programming Language :: Python"
+]
+# license = {text = "MIT"}
+
+[tool.pdm.build]
+includes = ["src"]
+package-dir = "src"
+# source-includes = ["tests"]

@@ -1,0 +1,22 @@
+{
+    "title": "Dropbox",
+    "description": "A connector that allows for fetching data from your Dropbox storage. Please note that this connector is in aplha and may not function as expected.",
+    "type": "object",
+    "required": [
+      "connectorName",
+      "token"
+    ],
+    "properties": {
+      "connectorName": {
+        "type": "string",
+        "title": "Name of the connector",
+        "default": "Unstract's Dropbox connector"
+      },
+      "token": {
+        "type": "string",
+        "title": "Access Token",
+        "format": "password",
+        "description": "The generated access token from your Dropbox App Console"
+      }
+    }
+  }

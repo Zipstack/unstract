@@ -1,0 +1,61 @@
+import logging
+
+from django.utils import timezone
+from pipeline.exceptions import InactivePipelineError, PipelineSaveError
+from pipeline.models import Pipeline
+
+logger = logging.getLogger(__name__)
+
+
+class PipelineProcessor:
+    @staticmethod
+    def initialize_pipeline_sync(pipeline_id: str) -> Pipeline:
+        """Fetches and initializes the sync for a pipeline.
+
+        Args:
+            pipeline_id (str): UUID of the pipeline to sync
+        """
+        pipeline: Pipeline = PipelineProcessor.fetch_pipeline(pipeline_id)
+        pipeline.run_count = pipeline.run_count + 1
+        return PipelineProcessor.update_pipeline_status(
+            pipeline=pipeline,
+            status=Pipeline.PipelineStatus.RESTARTING,
+            is_end=False,
+        )
+
+    @staticmethod
+    def fetch_pipeline(pipeline_id: str, check_active: bool = True) -> Pipeline:
+        """Retrieves and checks for an active pipeline.
+
+        Raises:
+            InactivePipelineError: If an active pipeline is not found
+        """
+        pipeline: Pipeline = Pipeline.objects.get(pk=pipeline_id)
+        if check_active and not pipeline.is_active():
+            logger.error(f"Inactive pipeline fetched: {pipeline_id}")
+            raise InactivePipelineError
+        return pipeline
+
+    @staticmethod
+    def update_pipeline_status(
+        pipeline: Pipeline, status: tuple[str, str], is_end: bool
+    ) -> Pipeline:
+        """Updates pipeline status during execution.
+
+        Raises:
+            PipelineSaveError: Exception while saving a pipeline
+
+        Returns:
+            Pipeline: Updated pipeline
+        """
+        if is_end:
+            pipeline.last_run_time = timezone.now()
+        if status:
+            pipeline.last_run_status = status
+
+        try:
+            pipeline.save()
+        except Exception as exc:
+            logger.error(f"Error occured while saving pipeline : {exc}")
+            raise PipelineSaveError()
+        return pipeline
