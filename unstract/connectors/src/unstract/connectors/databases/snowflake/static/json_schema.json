@@ -1,0 +1,58 @@
+{
+  "title": "Snowflake data warehouse",
+  "description": "Designed with a patented new architecture to handle all aspects of data and analytics, it combines high performance, high concurrency, simplicity, and affordability at levels not possible with other data warehouses.",
+  "type": "object",
+  "required": [
+    "connectorName",
+    "user",
+    "password",
+    "account",
+    "database",
+    "schema",
+    "warehouse"
+  ],
+  "properties": {
+    "connectorName": {
+      "type": "string",
+      "title": "Name of the connector",
+      "default": "Unstract's Snowflake connector"
+    },
+    "user": {
+      "type": "string",
+      "title": "User",
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "title": "Password",
+      "format": "password",
+      "default": ""
+    },
+    "account": {
+      "type": "string",
+      "title": "Account",
+      "default": "",
+      "description": "Do not include the snowflakecomputing.com domain name as part of your account identifier. Snowflake automatically appends the domain name to your account identifier to create the required connection."
+    },
+    "database": {
+      "type": "string",
+      "title": "Database",
+      "default": ""
+    },
+    "schema": {
+      "type": "string",
+      "title": "Schema",
+      "default": ""
+    },
+    "warehouse": {
+      "type": "string",
+      "title": "Warehouse",
+      "default": ""
+    },
+    "role": {
+      "type": "string",
+      "title": "Role",
+      "default": ""
+    }
+  }
+}

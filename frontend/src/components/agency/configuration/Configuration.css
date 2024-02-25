@@ -1,0 +1,10 @@
+/* Styles for Configuration */
+
+.config-head {
+    padding-bottom: 10px;
+}
+
+.config-head-typo {
+    font-size: 18px;
+    font-weight: 600;
+}

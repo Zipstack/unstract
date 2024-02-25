@@ -1,0 +1,17 @@
+.user-bg-col {
+  background-color: var(--page-bg-2);
+  height: 100%;
+}
+
+.user-table{
+  padding: 15px;
+  overflow-y: auto;
+}
+
+.user-reload-button{
+  font-size: 16px;
+}
+
+.delete-user-modal{
+  width: 400px;
+}

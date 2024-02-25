@@ -1,0 +1,53 @@
+{
+  "title": "S3/Minio Compatible Data Source",
+  "description": "Amazon S3 or Amazon Simple Storage Service is a service offered by Amazon Web Services that provides object storage through a web service interface. This connector allows all S3 compatible services to be configured.",
+  "type": "object",
+  "required": [
+    "connectorName",
+    "key",
+    "secret",
+    "bucket",
+    "endpoint_url"
+  ],
+  "properties": {
+    "connectorName": {
+      "type": "string",
+      "title": "Name of the connector",
+      "default": "Unstract's S3/Minio"
+    },
+    "key": {
+      "type": "string",
+      "title": "Key",
+      "default": "",
+      "description": "Access Key ID"
+    },
+    "secret": {
+      "type": "string",
+      "title": "Secret",
+      "format": "password",
+      "description": "Secret Access Key"
+    },
+    "bucket": {
+      "type": "string",
+      "title": "Bucket Name",
+      "description": "Name of the bucket to be restricted to."
+    },
+    "path": {
+      "type": "string",
+      "title": "Path",
+      "default": "",
+      "description": "Path to restrict to. (example /path/to/restrict/to)"
+    },
+    "endpoint_url": {
+      "type": "string",
+      "title": "Endpoint URL",
+      "default": "https://s3.amazonaws.com",
+      "description": "Endpoint URL to connect to. (example https://s3.amazonaws.com)"
+    },
+    "region_name": {
+      "type": "string",
+      "title": "Region Name",
+      "description": "Region name of AWS S3 account."
+    }
+  }
+}

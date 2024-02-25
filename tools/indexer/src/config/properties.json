@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "0.0.1",
+  "displayName": "Document Indexer",
+  "functionName": "document_indexer",
+  "toolVersion": "0.0.1",
+  "description": "Used to index documents in the specified vector DB / embedding.",
+  "input": {
+    "description": "Document that needs to be indexed"
+  },
+  "output": {
+    "description": "No files written"
+  },
+  "result": {
+    "type": "TXT",
+    "description": "Result of the indexing process"
+  },
+  "adapter": {
+    "languageModels": [
+      {
+        "isEnabled": false
+      }
+    ],
+    "embeddingServices": [
+      {
+        "adapterId": "embeddingAdapterId",
+        "isEnabled": true,
+        "title": "Embedding to use",
+        "isRequired": true,
+        "description": "Embedding service to use for indexing"
+      }
+    ],
+    "vectorStores": [
+      {
+        "adapterId": "vectorDbAdapterId",
+        "isEnabled": true,
+        "title": "Vector DB to use",
+        "isRequired": true,
+        "description": "Vector DB to use for indexing"
+      }
+    ],
+    "textExtractors": [
+      {
+        "adapterId": "x2TextAdapterId",
+        "isEnabled": true,
+        "title": "Text extractor to use",
+        "isRequired": true,
+        "description": "Text extractor to use for indexing"
+      }
+    ]
+  },
+  "ioCompatibility": {
+    "api": {
+      "sourceSupport": true,
+      "destinationSupport": false,
+      "additionalArgs": {
+        "sync": true
+      }
+    },
+    "file": {
+      "sourceSupport": true,
+      "destinationSupport": false,
+      "additionalArgs": {}
+    },
+    "db": {
+      "destinationSupport": false,
+      "additionalArgs": {}
+    }
+  },
+  "restrictions": {
+    "maxFileSize": "50 MB",
+    "allowedFileTypes": [
+      "txt",
+      "pdf",
+      "doc",
+      "docx",
+      "odt"
+    ]
+  }
+}

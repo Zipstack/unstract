@@ -1,0 +1,23 @@
+/* Styles for PreAndPostAmbleModal */
+
+.pre-post-amble-modal .ant-modal-content {
+    padding: 0px;
+}
+
+.pre-post-amble-body {
+    padding: 20px;
+}
+
+.pre-post-amble-body-space {
+    width: 100%;
+}
+
+.pre-post-amble-title {
+    font-size: 16px;
+}
+
+.pre-post-amble-footer {
+    background-color: #F6F8FB;
+    border-radius: 0px 0px 10px 10px;
+    padding: 16px;
+}

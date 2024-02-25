@@ -1,0 +1,17 @@
+/* Styles for EditableText */
+
+.editable-text {
+    width: 100%;
+}
+
+.edit-text-display {
+    width: 100%;
+    padding: 0px 6px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+}
+
+.edit-text-display-hover:hover {
+    border: 1px solid #bdbdbd;
+    border-radius: 4px;
+}

@@ -1,0 +1,40 @@
+{
+  "title": "Runtime Variables",
+  "description": "Runtime Variables for classifier",
+  "type": "object",
+  "required": [
+    "OPENAI_API_KEY",
+    "OPENAI_API_BASE",
+    "OPENAI_API_MODEL",
+    "OPENAI_API_ENGINE",
+    "OPENAI_API_VERSION"
+  ],
+  "properties": {
+    "OPENAI_API_KEY": {
+      "type": "string",
+      "title": "OpenAI API Key",
+      "description": "Your OpenAI API key"
+    },
+    "OPENAI_API_BASE": {
+      "type": "string",
+      "title": "OpenAI API Base URL",
+      "description": "The base URL for the OpenAI API"
+    },
+    "OPENAI_API_MODEL": {
+      "type": "string",
+      "title": "OpenAI API Model",
+      "description": "The OpenAI model to use"
+    },
+    "OPENAI_API_ENGINE": {
+      "type": "string",
+      "title": "OpenAI API Engine",
+      "description": "The OpenAI engine to use"
+    },
+    "OPENAI_API_VERSION": {
+      "type": "string",
+      "title": "OpenAI API Version",
+      "description": "The OpenAI API version to use",
+      "default": "2023-05-15"
+    }
+  }
+}

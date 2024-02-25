@@ -1,0 +1,19 @@
+.grey-body {
+  background-color: var(--page-bg-2);
+  height: 100%;
+  padding: 14px;
+}
+
+.paper-layout {
+  background-color: var(--white);
+  height: 100%;
+  padding: 14px;
+}
+
+.header-text {
+     margin-bottom: 20px;
+}
+
+.header-text .typo-text {
+    font-size: 18px;
+}

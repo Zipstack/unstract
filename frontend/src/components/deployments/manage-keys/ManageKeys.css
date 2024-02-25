@@ -1,0 +1,17 @@
+.keys-table {
+    height: 350px;
+    overflow-y: auto;
+}
+
+.new-key-btn {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.cursorPointer {
+    cursor: pointer;
+}
+
+.actions {
+    margin-right: 10px;
+}

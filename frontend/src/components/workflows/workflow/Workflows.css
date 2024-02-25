@@ -1,0 +1,84 @@
+.header {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  margin-inline: 16px;
+  padding-block: 12px;
+}
+
+.headerPart {
+  display: grid;
+  grid-auto-flow: column;
+  column-gap: 10px;
+  justify-self: end;
+}
+
+.workflows-pg-layout {
+  background-color: var(--page-bg-2);
+  padding: 12px;
+  height: 100%;
+}
+
+.workflows-pg-body {
+  background-color: var(--white);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.cardsListWrapper {
+  height: 92%;
+  overflow: hidden auto;
+  margin-block-start: 8px;
+  padding-block: 8px;
+  padding-inline: 20px;
+}
+
+.cardsListWrapper::-webkit-scrollbar {
+  width: 10px;
+}
+
+.cardsListWrapper::-webkit-scrollbar-thumb {
+  background: #E0E5EB ;
+}
+
+.cardsList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-auto-flow: dense;
+  justify-items: center;
+  gap: 20px;
+}
+
+.cardContent {
+  height: 100px;
+  min-width: 210px;
+  display: grid;
+  grid-template-rows: 1fr auto;
+}
+
+.userDetails {
+  display: grid;
+  grid-auto-flow: column;
+  column-gap: 4px;
+  width: fit-content;
+}
+
+.listWrapper {
+  height: 92%;
+  overflow: hidden auto;
+  margin-block-start: 12px;
+  margin-inline: 16px;
+}
+
+.listItem {
+  display: grid;
+  grid-auto-flow: row;
+  row-gap: 2px;
+  cursor: pointer;
+}
+
+.list-of-workflows-body {
+    flex: 1;
+    overflow-y: auto;
+}

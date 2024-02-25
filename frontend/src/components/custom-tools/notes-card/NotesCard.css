@@ -1,0 +1,15 @@
+/* Styles for NotesCard */
+
+.tool-ide-notes-card {
+    border: 1px solid #D9D9D9;
+    background-color: #E0E5EB;
+}
+
+.tool-ide-notes-card .ant-card-body {
+    padding: 14px !important;
+}
+
+.tool-ide-notes-card .delete-icon {
+    font-size: 12px;
+    color: #575859;
+}

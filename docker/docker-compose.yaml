@@ -1,0 +1,165 @@
+version: '3.7'
+include:
+  - docker-compose-dev-essentials.yaml
+
+services:
+  # Backend service
+  backend:
+    image: unstract/backend:${VERSION}
+    container_name: unstract-backend
+    command: migrate  
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../backend/.env
+    depends_on:
+      - db
+      - redis
+      - reverse-proxy
+      - minio
+    volumes:  
+      - ./workflow_data:/data
+    environment:
+      - ENVIRONMENT=development
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && PathPrefix(`/api/v1`, `/deployment`)
+
+  # Celery execution consumer
+  execution-consumer:
+    image: unstract/backend:${VERSION}
+    container_name: unstract-execution-consumer    
+    entrypoint: /app/.venv/bin/celery   
+    command: "-A backend worker --loglevel=info"
+    env_file:
+      - ../backend/.env
+    depends_on:
+      - redis
+    environment:
+      - ENVIRONMENT=development
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+
+  # Celery Flower
+  celery-flower:
+    image: unstract/backend:${VERSION}
+    container_name: unstract-celery-flower
+    entrypoint: /app/.venv/bin/celery
+    command: "-A backend flower --port=5555"
+    env_file:
+      - ../backend/.env
+    depends_on:
+      - execution-consumer
+      - redis
+    labels:
+      - traefik.enable=false
+    ports:
+      - "5555:5555"
+    environment:
+      - ENVIRONMENT=development
+    volumes:
+      - unstract_data:/data
+
+  # Celery Beat
+  celery-beat:
+    image: unstract/backend:${VERSION}
+    container_name: unstract-celery-beat
+    entrypoint: /app/.venv/bin/celery
+    command: "-A backend beat --scheduler django_celery_beat.schedulers:DatabaseScheduler -l INFO"
+    env_file:
+      - ../backend/.env
+      - ./essentials.env
+    restart: on-failure
+    depends_on:
+        - db
+        - redis
+
+  # Frontend React app
+  frontend:
+    image: unstract/frontend:${VERSION}
+    container_name: unstract-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+      - reverse-proxy
+    environment:
+      - ENVIRONMENT=development
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`)
+
+  platform-service:
+    image: unstract/platform-service:${VERSION}
+    container_name: unstract-platform-service
+    ports:
+      - "3001:3001"
+    env_file:
+      - ../platform-service/.env
+    depends_on:
+      - redis
+      - db
+    labels:
+      - traefik.enable=false
+
+  prompt-service:
+    image: unstract/prompt-service:${VERSION}
+    container_name: unstract-prompt-service
+    ports:
+      - "3003:3003"
+    env_file:
+      - ../prompt-service/.env
+    labels:
+      - traefik.enable=false
+
+  x2text-service:
+    image: unstract/x2text-service:${VERSION}
+    container_name: unstract-x2text-service
+    ports:
+      - "3004:3004"
+    env_file:
+      - ../x2text-service/.env
+    depends_on:
+      - db
+    labels:
+      - traefik.enable=false
+
+  worker:
+    image: unstract/worker:${VERSION}
+    container_name: unstract-worker
+    ports:
+      - 5002:5002
+    env_file:
+      - ../worker/.env
+    volumes:
+      - ./workflow_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - redis
+    labels:
+      - traefik.enable=false
+
+  document:
+    image: unstract/document-service:${VERSION}
+    container_name: unstract-document-service
+    ports:
+      - 3002:3002
+    depends_on:
+      - redis
+    env_file:
+      - ../document-service/.env
+    environment:
+      - ENVIRONMENT=development
+    labels:
+      - traefik.enable=false
+
+volumes:   
+  unstract_data:
+
+networks:
+  default:
+    # NOTE:
+    # Any changes need to be reflected in proxy service too.
+    name: unstract-network

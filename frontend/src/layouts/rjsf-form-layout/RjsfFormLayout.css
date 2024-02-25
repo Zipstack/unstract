@@ -1,0 +1,21 @@
+/* Styles for RjsfFormLayout */
+
+.rjsf-form-layout-spin {
+    padding: 10px 0px;
+}
+
+.my-rjsf-form .ant-form-item {
+  margin-bottom: 10px;
+}
+
+.my-rjsf-form .ant-form-item-control-input-content .ant-row {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.my-rjsf-form .ant-form-item-control-input-content .ant-row .ant-col {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  padding-bottom: 0 !important;
+}

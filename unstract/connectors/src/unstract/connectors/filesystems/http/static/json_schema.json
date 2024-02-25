@@ -1,0 +1,32 @@
+{
+    "title": "HTTP(S) File Server",
+    "description": "A connector that allows for fetching data via HTTP(S) which also supports Basic authentication",
+    "type": "object",
+    "required": [
+      "connectorName",
+      "base_url"
+    ],
+    "properties": {
+      "connectorName": {
+        "type": "string",
+        "title": "Name of the connector",
+        "default": "Unstract's HTTP(S) connector"
+      },
+      "base_url": {
+        "type": "string",
+        "title": "Base URL",
+        "description": "Base URL of the file server to connect to (for example: https://demo.unstract.connectors.com/)"
+      },
+      "username": {
+        "type": "string",
+        "title": "Username",
+        "description": "Username for Basic authentication"
+      },
+      "password": {
+        "type": "string",
+        "title": "Password",
+        "description": "Password for Basic authentication",
+        "format": "password"
+      }
+    }
+  }

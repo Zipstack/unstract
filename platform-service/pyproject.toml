@@ -1,0 +1,40 @@
+[project]
+name = "unstract-platform-service"
+version = "0.0.1"
+description = "Helps tools interact and retrieve details from the Unstract platform through the Unstract SDK"
+authors = [
+    {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
+]
+dependencies = [
+    "flask~=3.0.0",
+    "peewee~=3.16",
+    "psycopg2-binary~=2.9",
+    "python-dotenv~=1.0",
+    "redis~=5.0.1",
+    "cryptography>=41.0.7",
+]
+requires-python = ">=3.9,<3.11.1"
+readme = "README.md"
+license = {text = "MIT"}
+
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm.build]
+includes = ["src"]
+package-dir = "src"
+
+[tool.pdm.dev-dependencies]
+test = [
+    "pytest>=8.0.1",
+]
+deploy = [
+    "gunicorn>=21.2.0",
+]
+
+[tool.pdm.scripts]
+platform_service.cmd = "flask --app src/unstract/platform_service/main.py run --port 3001"
+platform_service.env_file = ".env"
+platform_service.help = "Runs the Unstract platform service"

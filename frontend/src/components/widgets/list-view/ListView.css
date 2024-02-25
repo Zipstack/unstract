@@ -1,0 +1,13 @@
+/* Styles for ListView */
+
+.list-view-wrapper {
+    height: 100%;
+    overflow: hidden auto;
+}
+
+.list-view-item {
+    display: grid;
+    grid-auto-flow: row;
+    row-gap: 2px;
+    cursor: pointer;
+}

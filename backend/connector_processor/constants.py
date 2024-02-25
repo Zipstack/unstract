@@ -1,0 +1,27 @@
+class ConnectorKeys:
+    CLASS = "class"
+    MODULE = "module"
+    PATH = "path"
+    IS_VALID = "is_valid"
+    ID = "id"
+    OAUTH = "oauth"
+    SOCIAL_AUTH_URL = "python_social_auth_backend"
+    JSON_SCHEMA = "json_schema"
+    INPUT = "INPUT"
+    OUTPUT = "OUTPUT"
+    CAN_READ = "can_read"
+    CAN_WRITE = "can_write"
+    NAME = "name"
+    DESCRIPTION = "description"
+    ICON = "icon"
+    EXTRA_DATA = "extra_data"
+    REQUIRED = "required"
+    CONNECTOR_METADATA = "connector_metadata"
+    CONNECTOR_ID = "connector_id"
+    TYPE = "type"
+    PROJECT = "project"
+    CONNECTOR_MODE = "connector_mode"
+
+
+class Connector:
+    API_STORAGE = "api|6d102906-9f17-4faa-92f0-bdc6bb07e4e1"

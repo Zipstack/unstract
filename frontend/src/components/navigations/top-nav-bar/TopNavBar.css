@@ -1,0 +1,43 @@
+/* Styles for TopNavBar */
+
+.top-navbar-dp {
+    height: 25px;
+    width: 25px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #184772;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.top-navbar-dp .navbar-img {
+    border-radius: 5px;
+}
+
+.top-navbar-dp .initials {
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
+}
+
+.topbar-logo {
+    width: 120px;
+    height: auto;
+    margin-inline-end: 12px;
+}
+.logout-button{
+    color: inherit;
+    background: inherit;
+    box-shadow: none;
+    text-align: left;
+    padding: 0;
+    height: auto;
+    border-radius: 0;
+    border-color: transparent;
+}
+
+.logout-button:active{
+    color: inherit !important;
+    border-color: transparent !important;
+}

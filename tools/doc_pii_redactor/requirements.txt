@@ -1,0 +1,8 @@
+# Add your dependencies here
+boto3==1.26.161
+nanoid==2.0.0
+requests==2.31.0
+unstructured[all-docs]==0.10.10
+
+# Required for all unstract tools
+unstract-sdk~=0.10.0

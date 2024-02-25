@@ -1,0 +1,86 @@
+name: Container Image Build Test for PRs
+
+env:
+  VERSION: ci-test # Used for docker tag
+
+on:
+  push:
+    branches:
+      - main
+      - development
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'unstract/**'
+      - 'document-service/**'
+      - 'platform-service/**'
+      - 'x2text-service/**'
+      - 'worker/**'
+      - 'docker/dockerfiles/**'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - main
+      - development
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'unstract/**'
+      - 'document-service/**'
+      - 'platform-service/**'
+      - 'x2text-service/**'
+      - 'worker/**'
+      - 'docker/dockerfiles/**'
+
+jobs:
+  build:
+    if: github.event.pull_request.draft == false
+    runs-on: custom-k8s-runner
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Container Build
+        working-directory: ./docker
+        run: |
+          docker compose -f docker-compose.build.yaml build
+      - name: Container Run
+        working-directory: ./docker
+        run: |
+          cp ../backend/sample.env ../backend/.env
+          cp ../document-service/sample.env ../document-service/.env
+          cp ../platform-service/sample.env ../platform-service/.env
+          cp ../prompt-service/sample.env ../prompt-service/.env
+          cp ../worker/sample.env ../worker/.env
+          cp ../x2text-service/sample.env ../x2text-service/.env
+          cp sample.essentials.env essentials.env
+
+          docker compose -f docker-compose.yaml up -d
+          sleep 10
+          docker compose -f docker-compose.yaml ps -a
+          # Get the names of exited containers
+          custom_format="{{.Name}}\t{{.Image}}\t{{.Service}}"
+          EXITED_CONTAINERS=$(docker compose -f docker-compose.yaml ps -a --filter status=exited --format "$custom_format")
+
+          line_count=$(echo "$EXITED_CONTAINERS" | wc -l)
+
+          if [ "$line_count" -gt 1 ]; then
+            echo "Exited Containers: $EXITED_CONTAINERS"
+
+            SERVICE=$(echo "$EXITED_CONTAINERS" | awk 'NR>0 {print $3}')
+            echo "Exited Services:"
+            echo "$SERVICE"
+            echo "There are exited containers."
+            # Print logs of exited containers
+            IFS=$'\n'
+            for SERVICE in $SERVICE; do
+              docker compose -f docker-compose.yaml logs "$SERVICE"
+            done
+            docker compose -f docker-compose.yaml down -v
+            exit 1
+          fi
+          docker compose -f docker-compose.yaml down -v

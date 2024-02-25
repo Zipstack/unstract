@@ -1,0 +1,24 @@
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[project]
+name = "unstract-flags"
+version = "0.0.1"
+description = "Unstract's feature flags package."
+authors = [
+    {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
+]
+
+dependencies = [
+    "grpcio-tools<=1.58.0",
+    "grpcio<=1.58.0",
+]
+requires-python = ">=3.9"
+readme = "README.md"
+#license = {text = "MIT"}
+
+[tool.pdm.build]
+includes = ["src"]
+package-dir = "src"
+# source-includes = ["tests"]

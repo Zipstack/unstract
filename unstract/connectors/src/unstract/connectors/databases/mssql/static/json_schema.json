@@ -1,0 +1,46 @@
+{
+  "title": "MSSQL database",
+  "description": "Designed with a patented new architecture to handle all aspects of data and analytics",
+  "type": "object",
+  "required": [
+    "connectorName",
+    "server",
+    "database",
+    "user",
+    "password"
+  ],
+  "properties": {
+    "connectorName": {
+      "type": "string",
+      "title": "Name of the connector",
+      "default": "Unstract's MSSQL connector"
+    },
+    "server": {
+      "type": "string",
+      "title": "Server",
+      "default": "mydbserver.mycompany.com"
+    },
+    "port": {
+      "type": "string",
+      "title": "Port",
+      "default": "",
+      "description": "default port: 1433"
+    },
+    "database": {
+      "type": "string",
+      "title": "Database",
+      "default": ""
+    },
+    "user": {
+      "type": "string",
+      "title": "User",
+      "default": "sa"
+    },
+    "password": {
+      "type": "string",
+      "title": "Password",
+      "format": "password",
+      "default": ""
+    }
+  }
+}

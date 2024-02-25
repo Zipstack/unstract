@@ -1,0 +1,40 @@
+{
+  "title": "Runtime Variables",
+  "description": "Runtime Variables for doc pii redactor",
+  "type": "object",
+  "required": [
+    "PII_REDACT_AWS_REGION",
+    "PII_REDACT_AWS_ACCESS_KEY_ID",
+    "PII_REDACT_AWS_SECRET_ACCESS_KEY",
+    "DOCUMENT_PROCESSOR_URL",
+    "DOCUMENT_PROCESSOR_API_KEY"
+  ],
+  "properties": {
+    "PII_REDACT_AWS_REGION": {
+      "type": "string",
+      "title": "AWS Comprehend's Region",
+      "description": "AWS Comprehend's region used in Document PII Redactor"
+    },
+    "PII_REDACT_AWS_ACCESS_KEY_ID": {
+      "type": "string",
+      "title": "AWS Comprehend's Access Key ID",
+      "description": "AWS Comprehend's access key ID used in Document PII Redactor"
+    },
+    "PII_REDACT_AWS_SECRET_ACCESS_KEY": {
+      "type": "string",
+      "title": "AWS Comprehend's Secret Access Key",
+      "format": "password",
+      "description": "AWS Comprehend's secret access key used in Document PII Redactor"
+    },
+    "DOCUMENT_PROCESSOR_URL": {
+      "type": "string",
+      "title": "Document Processor URL",
+      "description": "Document processor service URL"
+    },
+    "DOCUMENT_PROCESSOR_API_KEY": {
+      "type": "string",
+      "title": "Document Processor API key",
+      "description": "Document processor service API key"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+.search-nav {
+  background-color: #f5f7f9;
+  padding-block: 14px;
+  padding-inline-start: 20px;
+  padding-inline-end: 12px;
+  height: 60px;
+}
+
+.invite-user-search{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar-title{
+  font-weight: 600;
+  font-size: 18px;
+  display: inline;
+  line-height: 24px;
+  padding-left: 10px;
+}

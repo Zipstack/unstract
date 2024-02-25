@@ -1,0 +1,22 @@
+{
+  "title": "BigQuery database",
+  "description": "Designed with a patented new architecture to handle all aspects of data and analytics",
+  "type": "object",
+  "required": [
+    "connectorName",
+    "json_credentials"
+  ],
+  "properties": {
+    "connectorName": {
+      "type": "string",
+      "title": "Name of the connector",
+      "default": "Unstract's BigQuery connector"
+    },
+    "json_credentials": {
+      "type": "string",
+      "title": "Credentials",
+      "default": "",
+      "description": "You can download credentials from Google Clouds's iam-admin/serviceaccounts/Keys. Click on Add keys."
+    }
+  }
+}

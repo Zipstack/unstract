@@ -1,0 +1,23 @@
+[project]
+name = "unstract-x2text-service"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "Zipstack inc", email = "devsupport@zipstack.com"},
+]
+dependencies = [
+    "Flask>=3.0.1",
+    "flask-sqlalchemy>=3.1.1",
+    "python-dotenv~=1.0.0",
+    "requests>=2.31.0",
+    "peewee>=3.17.0",
+    "psycopg2-binary~=2.9",
+]
+requires-python = ">=3.9,<3.11.1"
+readme = "README.md"
+license = {text = "MIT"}
+
+[tool.pdm.dev-dependencies]
+deploy = [
+    "gunicorn>=21.2.0",
+]

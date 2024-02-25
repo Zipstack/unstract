@@ -1,0 +1,60 @@
+{
+  "title": "PostgreSQL database",
+  "description": "Designed with a patented new architecture to handle all aspects of data and analytics",
+  "type": "object",
+  "required": [
+    "connectorName",
+    "connection_url"
+  ],
+  "properties": {
+    "connectorName": {
+      "type": "string",
+      "title": "Name of the connector",
+      "default": "Unstract's PostgreSQL connector"
+    },
+    "connection_url": {
+      "type": "string",
+      "title": "ConnectionURL",
+      "description": "postgresql://username:password@localhost:5432/mydatabase",
+      "default": ""
+    },
+    "host": {
+      "type": "string",
+      "title": "Host"
+    }
+  },
+  "dependencies": {
+    "host":{
+      "properties":{
+        "port": {
+          "type": "string",
+          "title": "Port",
+          "default": "5432"
+        },
+        "database": {
+          "type": "string",
+          "title": "Database",
+          "default": "postgres"
+        },
+        "schema": {
+          "type": "string",
+          "title": "Schema",
+          "description": "Default schema: public (Optional)",
+          "placeholder": "Enter schema (optional)"
+        },
+        "user": {
+          "type": "string",
+          "title": "User",
+          "default": "postgres"
+        },
+        "password": {
+          "type": "string",
+          "title": "Password",
+          "format": "password",
+          "default": ""
+        }
+      },
+      "required": ["port", "database", "user", "password"]
+    }
+  }
+}

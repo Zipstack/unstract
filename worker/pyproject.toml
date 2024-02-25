@@ -1,0 +1,34 @@
+[project]
+name = "unstract-worker"
+version = "0.1.0"
+description = "Platform to interact with tools [Tool's Docker lifecycle management]"
+authors = [
+    {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
+]
+dependencies = [
+    "docker==6.1.3",
+    "flask~=3.0.0",
+    "python-dotenv==1.0.0",
+    "redis==5.0.1",
+]
+requires-python = ">=3.9"
+readme = "README.md"
+license = {text = "MIT"}
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm.build]
+includes = ["src"]
+package-dir = "src"
+
+[tool.pdm.dev-dependencies]
+deploy = [
+    "gunicorn>=21.2.0",
+]
+
+[tool.pdm.scripts]
+worker.cmd = "flask --app src/unstract/worker/main.py run --port 5002"
+worker.env_file = ".env"
+worker.help = "Runs the Unstract worker"

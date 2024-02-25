@@ -1,0 +1,65 @@
+name: Unstract Tools Docker Image Build and Push (Development)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Docker image tag"
+        required: true
+        default: "latest"
+      service_name:
+        description: "Tool to build"
+        required: true
+        default: "tool-classifier" # Provide a default value
+        type: choice
+        options: # Define available options
+          - tool-classifier
+          - tool-doc-pii-redactor
+          - tool-indexer
+          - tool-ocr
+          - tool-translate
+          - tool-structure
+          - tool-text-extractor
+
+run-name: "[${{ inputs.service_name }}] Docker Image Build and Push (Development)"
+
+jobs:
+    build-and-push:
+      runs-on: custom-k8s-runner
+      steps:
+        - name: Output Inputs
+          run: echo "${{ toJSON(github.event.inputs) }}"
+
+        - name: Checkout code
+          uses: actions/checkout@v2
+
+        - name: Login to Docker Hub
+          uses: docker/login-action@v1
+          with:
+            username: ${{ secrets.DOCKERHUB_USERNAME }}
+            password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+        - name: Build tool-classifier
+          if: github.event.inputs.service_name=='tool-classifier'
+          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/classifier
+        - name: Build tool-doc-pii-redactor
+          if: github.event.inputs.service_name=='tool-doc-pii-redactor'
+          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/doc_pii_redactor
+        - name: Build tool-indexer
+          if: github.event.inputs.service_name=='tool-indexer'
+          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/indexer
+        - name: Build tool-ocr
+          if: github.event.inputs.service_name=='tool-ocr'
+          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/ocr
+        - name: Build tool-translate
+          if: github.event.inputs.service_name=='tool-translate'
+          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/translate
+        - name: Build tool-structure
+          if: github.event.inputs.service_name=='tool-structure'
+          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/structure
+        - name: Build tool-text-extractor
+          if: github.event.inputs.service_name=='tool-text-extractor'
+          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/text_extractor
+
+        - name: Push Docker image to Docker Hub
+          run: docker push unstract/${{ github.event.inputs.service_name }}:${{ github.event.inputs.tag }}

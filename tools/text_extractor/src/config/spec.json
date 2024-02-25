@@ -1,0 +1,7 @@
+{
+  "title": "Text Extractor tool settings",
+  "description": "Text extraction from documents",
+  "type": "object",
+  "required": [],
+  "properties": {}
+}

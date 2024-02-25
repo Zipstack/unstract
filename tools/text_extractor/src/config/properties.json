@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "0.0.1",
+  "displayName": "Text Extractor",
+  "functionName": "text_extractor",
+  "toolVersion": "0.0.2-v2",
+  "description": "The Text Extractor is a powerful tool designed to convert documents to its text form or Extract texts from documents",
+  "input": {
+    "description": "Document"
+  },
+  "output": {
+    "description": "structured json output"
+  },
+  "result": {
+    "type": "TXT",
+    "description": "Text format of input",
+    "schema": {}
+  },
+  "adapter": {
+    "textExtractors": [
+      {
+        "isEnabled": true,
+        "adapterId": "extractorId",
+        "title": "Text Extraction Adapter",
+        "isRequired": true,
+        "description": "Adapter to extract"
+      }
+    ]
+  },
+  "ioCompatibility": {
+    "api": {
+      "sourceSupport": true,
+      "destinationSupport": true,
+      "additionalArgs": {
+        "sync": true
+      }
+    },
+    "file": {
+      "sourceSupport": true,
+      "destinationSupport": true,
+      "additionalArgs": {}
+    },
+    "db": {
+      "destinationSupport": true,
+      "additionalArgs": {}
+    }
+  },
+  "restrictions": {
+    "maxFileSize": "10MB",
+    "allowedFileTypes": [
+      "*"
+    ]
+  }
+}

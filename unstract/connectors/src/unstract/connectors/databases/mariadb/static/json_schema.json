@@ -1,0 +1,46 @@
+{
+  "title": "MariaDB database",
+  "description": "Designed with a patented new architecture to handle all aspects of data and analytics",
+  "type": "object",
+  "required": [
+    "connectorName",
+    "host",
+    "port",
+    "database",
+    "user",
+    "password"
+  ],
+  "properties": {
+    "connectorName": {
+      "type": "string",
+      "title": "Name of the connector",
+      "default": "Unstract's MariaDB connector"
+    },
+    "host": {
+      "type": "string",
+      "title": "Host",
+      "default": "localhost"
+    },
+    "port": {
+      "type": "string",
+      "title": "Port",
+      "default": "3306"
+    },
+    "database": {
+      "type": "string",
+      "title": "Database",
+      "default": ""
+    },
+    "user": {
+      "type": "string",
+      "title": "User",
+      "default": "root"
+    },
+    "password": {
+      "type": "string",
+      "title": "Password",
+      "format": "password",
+      "default": ""
+    }
+  }
+}

@@ -1,0 +1,15 @@
+/* Styles for ArrayField */
+
+.array-field-layout {
+    margin-bottom: 10px;
+    width: 100%;
+}
+
+.array-field-icon {
+    margin-left: 8px;
+    color: #5A5A5A;
+}
+
+.array-field-select {
+    width: 100%;
+}
