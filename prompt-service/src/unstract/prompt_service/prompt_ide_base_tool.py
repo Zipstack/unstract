@@ -30,6 +30,7 @@ class PromptServiceBaseTool(StreamMixin):
         Returns:
             str: Value of the env
         """
+        # HACK: Adding platform key for multitenancy
         if env_key == PromptServiceContants.PLATFORM_SERVICE_API_KEY:
             if not self.platform_key:
                 current_app.logger.error(f"{env_key} is required")

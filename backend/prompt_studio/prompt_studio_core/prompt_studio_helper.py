@@ -4,8 +4,6 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-from account.models import Organization
-from account.organization import OrganizationService
 from django.conf import settings
 from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.prompt_profile_manager.models import ProfileManager
@@ -218,14 +216,8 @@ class PromptStudioHelper:
                 ),
             )
             logger.info(f"Invoking prompt service for prompt id {id}")
-            org: Optional[
-                Organization
-            ] = OrganizationService.get_organization_by_org_id(org_id=org_id)
             response = PromptStudioHelper._fetch_response(
-                path=file_path,
-                tool=tool,
-                prompts=prompts,
-                org_id=org.id,  # type:ignore
+                path=file_path, tool=tool, prompts=prompts, org_id=org_id
             )
             stream_log.publish(
                 tool.tool_id,
