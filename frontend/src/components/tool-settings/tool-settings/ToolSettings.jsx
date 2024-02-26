@@ -21,7 +21,6 @@ const titles = {
   vector_db: "Vector DBs",
   embedding: "Embeddings",
   x2text: "Text Extractor",
-  ocr: "OCR",
 };
 
 const btnText = {
@@ -29,7 +28,6 @@ const btnText = {
   vector_db: "New Vector DB Profile",
   embedding: "New Embedding Profile",
   x2text: "New Text Extractor",
-  ocr: "New OCR",
 };
 
 function ToolSettings({ type }) {

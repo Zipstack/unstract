@@ -4,7 +4,6 @@ class AdapterKeys:
     IS_DEFAULT = "is_default"
     LLM = "LLM"
     X2TEXT = "X2TEXT"
-    OCR = "OCR"
     VECTOR_DB = "VECTOR_DB"
     EMBEDDING = "EMBEDDING"
     NAME = "name"
