@@ -45,6 +45,20 @@ class CustomTool(BaseModel):
         null=True,
         blank=True,
     )
+    summarize_llm_profile = models.ForeignKey(
+        ProfileManager,
+        on_delete=models.SET_NULL,
+        related_name="summarize_llm_profile",
+        null=True,
+        blank=True,
+    )
+    summarize_context = models.BooleanField(default=True)
+    summarize_as_source = models.BooleanField(default=True)
+    summarize_prompt = models.TextField(
+        blank=True,
+        db_comment="Field to store the summarize prompt",
+        unique=False,
+    )
     prompt_grammer = models.JSONField(
         null=True, blank=True, db_comment="Synonymous words used in prompt"
     )
