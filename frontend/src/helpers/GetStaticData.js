@@ -263,6 +263,28 @@ const handleException = (err, errMessage) => {
   }
 };
 
+const base64toBlob = (data) => {
+  const bytes = atob(data);
+  let length = bytes.length;
+  const out = new Uint8Array(length);
+
+  while (length--) {
+    out[length] = bytes.charCodeAt(length);
+  }
+
+  return new Blob([out], { type: "application/pdf" });
+};
+
+const removeFileExtension = (fileName) => {
+  if (!fileName) {
+    return "";
+  }
+  const fileNameSplit = fileName.split(".");
+  const fileNameSplitLength = fileNameSplit.length;
+  const modFileName = fileNameSplit.slice(0, fileNameSplitLength - 1);
+  return modFileName.join(".");
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -287,4 +309,6 @@ export {
   toolIdeOutput,
   wfExecutionTypes,
   workflowStatus,
+  base64toBlob,
+  removeFileExtension,
 };

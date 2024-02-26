@@ -1,4 +1,4 @@
-import { Button, Segmented, Space } from "antd";
+import { Segmented } from "antd";
 import jsYaml from "js-yaml";
 import Prism from "prismjs";
 import "prismjs/components/prism-json";
@@ -6,6 +6,7 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.css";
 import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 import "prismjs/themes/prism.css";
 import { useEffect, useState } from "react";
+import PropTypes from "prop-types";
 
 import { handleException, promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -20,27 +21,31 @@ const outputTypes = {
   yaml: "YAML",
 };
 
-function CombinedOutput() {
+function CombinedOutput({ doc, setFilledFields }) {
   const [combinedOutput, setCombinedOutput] = useState({});
   const [yamlData, setYamlData] = useState(null);
   const [selectedOutputType, setSelectedOutputType] = useState(
     outputTypes.json
   );
   const [isOutputLoading, setIsOutputLoading] = useState(false);
-  const { details, selectedDoc } = useCustomToolStore();
+  const { details } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
 
   useEffect(() => {
-    if (!selectedDoc) {
+    if (!doc) {
       return;
     }
 
+    let filledFields = 0;
     setIsOutputLoading(true);
     handleOutputApiRequest()
       .then((res) => {
         const data = res?.data || [];
+        data.sort((a, b) => {
+          return new Date(b.modified_at) - new Date(a.modified_at);
+        });
         const prompts = details?.prompts;
         const output = {};
         prompts.forEach((item) => {
@@ -60,8 +65,16 @@ function CombinedOutput() {
           }
 
           output[item?.prompt_key] = outputDetails?.output || "";
+
+          if (outputDetails?.output?.length > 0) {
+            filledFields++;
+          }
         });
         setCombinedOutput(output);
+
+        if (setFilledFields) {
+          setFilledFields(filledFields);
+        }
 
         const yamlDump = jsYaml.dump(output);
         setYamlData(yamlDump);
@@ -74,7 +87,7 @@ function CombinedOutput() {
       .finally(() => {
         setIsOutputLoading(false);
       });
-  }, [selectedDoc]);
+  }, [doc]);
 
   useEffect(() => {
     Prism.highlightAll();
@@ -87,7 +100,7 @@ function CombinedOutput() {
   const handleOutputApiRequest = async () => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&doc_name=${selectedDoc}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&doc_name=${doc}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -107,11 +120,6 @@ function CombinedOutput() {
   return (
     <div className="combined-op-layout">
       <div className="combined-op-header">
-        <Space>
-          <div>
-            <Button disabled>Compare</Button>
-          </div>
-        </Space>
         <div className="combined-op-segment">
           <Segmented
             size="small"
@@ -137,5 +145,10 @@ function CombinedOutput() {
     </div>
   );
 }
+
+CombinedOutput.propTypes = {
+  doc: PropTypes.string,
+  setFilledFields: PropTypes.func,
+};
 
 export { CombinedOutput };
