@@ -1,5 +1,4 @@
 import fnmatch
-import json
 import logging
 import os
 import shutil
@@ -8,10 +7,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 import fsspec
-from account.models import EncryptionSecret
 from connector.models import ConnectorInstance
 from connector_processor.constants import ConnectorKeys
-from cryptography.fernet import Fernet
 from django.core.files.uploadedfile import UploadedFile
 from django.db import connection
 from unstract.workflow_execution.enums import LogState
@@ -92,18 +89,6 @@ class SourceConnector(BaseConnector):
             workflow=workflow,
             endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
         )
-        if endpoint.connector_instance:
-            encryption_secret: EncryptionSecret = EncryptionSecret.objects.get()
-            f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
-            endpoint.connector_instance.connector_metadata = json.loads(
-                f.decrypt(
-                    bytes(endpoint.connector_instance.connector_metadata_b
-                          ).decode(
-                        "utf-8"
-                    )
-                )
-            )
-
         return endpoint
 
     def validate(self) -> None:
@@ -173,7 +158,10 @@ class SourceConnector(BaseConnector):
         input_directory = str(
             source_configurations.get(SourceKey.ROOT_FOLDER, "")
         )
-        input_directory = str(Path(root_dir_path, input_directory.lstrip("/")))
+        if root_dir_path:  # user needs to manually type the optional file path
+            input_directory = str(
+                Path(root_dir_path, input_directory.lstrip("/"))
+            )
         if not isinstance(required_patterns, list):
             required_patterns = [required_patterns]
 

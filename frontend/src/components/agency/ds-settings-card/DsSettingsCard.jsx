@@ -267,7 +267,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
               </Tooltip>
             </Space>
             <div className="display-flex-align-center">
-              {connDetails?.icon ? (
+              {connDetails?.connector_name ? (
                 <Space>
                   <Image
                     src={connDetails?.icon}
@@ -322,6 +322,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         formDataConfig={formDataConfig}
         setFormDataConfig={setFormDataConfig}
         isSpecConfigLoading={isSpecConfigLoading}
+        connType={connType}
       />
     </>
   );
