@@ -63,6 +63,7 @@ class AdapterViewSet(GenericViewSet):
                 or adapter_type == AdapterKeys.EMBEDDING
                 or adapter_type == AdapterKeys.VECTOR_DB
                 or adapter_type == AdapterKeys.X2TEXT
+                or adapter_type == AdapterKeys.OCR
             ):
                 json_schema = AdapterProcessor.get_all_supported_adapters(
                     type=adapter_type
