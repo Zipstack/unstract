@@ -195,7 +195,7 @@ class FileManagerHelper:
         elif file_content_type == "text/plain":
             with fs.open(file_path, "r") as file:
                 FileManagerHelper.logger.info(f"Reading text file: {file_path}")
-                encoded_string = base64.b64encode(file.read())
+                encoded_string = file.read()
                 return encoded_string
         else:
             raise InvalidFileType
@@ -249,6 +249,8 @@ class FileManagerHelper:
         if is_create:
             try:
                 os.makedirs(file_path, exist_ok=True)
+                os.makedirs(f"{file_path}/extract", exist_ok=True)
+                os.makedirs(f"{file_path}/summarize", exist_ok=True)
             except OSError as e:
                 FileManagerHelper.logger.error(
                     f"Error while creating {file_path}: {e}"
