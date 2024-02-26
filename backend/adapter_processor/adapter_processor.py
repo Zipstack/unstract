@@ -13,7 +13,7 @@ from adapter_processor.exceptions import (
 )
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
-from platform_settings.exceptions import ActiveKeyNotFound
+from platform_settings.exceptions import ActiveKeyNotFound, InvalidRequest
 from platform_settings.platform_auth_service import (
     PlatformAuthenticationService,
 )
@@ -120,7 +120,9 @@ class AdapterProcessor:
             logger.info(f"{adapter_id} test result: {test_result}")
             return test_result
         except ActiveKeyNotFound:
-            raise
+            raise ActiveKeyNotFound()
+        except InvalidRequest as e:
+            raise InvalidRequest(str(e.detail))
         except Exception as e:
             logger.error(f"Error while testing {adapter_id}: {e}")
             if isinstance(e, AdapterError):

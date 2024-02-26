@@ -96,14 +96,24 @@ class AdapterViewSet(GenericViewSet):
         adapter_metadata[
             AdapterKeys.ADAPTER_TYPE
         ] = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
-        test_result = AdapterProcessor.test_adapter(
-            adapter_id=adapter_id, adapter_metadata=adapter_metadata
-        )
-        return Response(
-            {AdapterKeys.IS_VALID: test_result},
-            status=status.HTTP_200_OK,
-        )
-
+        try:
+            test_result = AdapterProcessor.test_adapter(
+                adapter_id=adapter_id, adapter_metadata=adapter_metadata
+            )
+            return Response(
+                {AdapterKeys.IS_VALID: test_result},
+                status=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            if str(e).find("invalid_api_key") != -1:
+                return Response(
+                    {"message": "Incorrect API key provided."},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+            return Response(
+                {AdapterKeys.IS_VALID: False},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 class AdapterInstanceViewSet(ModelViewSet):
     queryset = AdapterInstance.objects.all()
