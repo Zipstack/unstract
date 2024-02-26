@@ -4,7 +4,7 @@ import json
 
 import django.db.models.deletion
 from cryptography.fernet import Fernet
-from django.db import migrations, models
+from django.db import connection, migrations, models
 
 
 def fill_with_default_x2text(apps, schema):
@@ -35,6 +35,13 @@ def reversal_x2text(*args):
     """Reversal is NOOP since x2text is simply dropped during reverse."""
 
 
+def disable_triggers(apps, schema_editor):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "ALTER TABLE adapter_adapterinstance DISABLE TRIGGER ALL;"
+        )
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("account", "0005_encryptionsecret"),
@@ -49,6 +56,9 @@ class Migration(migrations.Migration):
         migrations.RemoveField(
             model_name="profilemanager",
             name="pdf_to_text_converters",
+        ),
+        migrations.RunPython(
+            disable_triggers, reverse_code=migrations.RunPython.noop
         ),
         migrations.AddField(
             model_name="profilemanager",
