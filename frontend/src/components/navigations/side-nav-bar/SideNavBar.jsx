@@ -132,16 +132,6 @@ const SideNavBar = ({ collapsed }) => {
         },
         {
           id: 3.5,
-          title: "OCR",
-          description: "Setup platform wide access to OCR services",
-          image: EmbeddingIcon,
-          path: `/${orgName}/settings/ocr`,
-          active: window.location.pathname.startsWith(
-            `/${orgName}/settings/ocr`
-          ),
-        },
-        {
-          id: 3.6,
           title: "Platform",
           description: "Settings for the platform",
           image: PlatformSettingsIcon,

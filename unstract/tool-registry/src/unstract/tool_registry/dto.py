@@ -91,9 +91,6 @@ class Spec:
     def get_text_extractor_adapter_properties_keys(self) -> set[str]:
         return self.get_adapter_properties_keys(AdapterTypes.X2TEXT)
 
-    def get_ocr_adapter_properties_keys(self) -> set[str]:
-        return self.get_adapter_properties_keys(AdapterTypes.OCR)
-
     def get_adapter_properties(
         self, adapter_type: AdapterTypes
     ) -> dict[str, dict[str, Any]]:
@@ -120,11 +117,6 @@ class Spec:
         self,
     ) -> dict[str, dict[str, Any]]:
         return self.get_adapter_properties(AdapterTypes.X2TEXT)
-
-    def get_ocr_adapter_properties(
-            self,
-    ) -> dict[str, dict[str, Any]]:
-        return self.get_adapter_properties(AdapterTypes.OCR)
 
     @classmethod
     def from_dict(cls, data_dict: dict[str, Any]) -> "Spec":
@@ -222,7 +214,6 @@ class Adapter:
         EMBEDDING_SERVICES_KEY (str): Constant for the key "embeddingServices".
         VECTOR_STORES_KEY (str): Constant for the key "vectorStores".
         TEXT_EXTRACTORS_KEY (str): Constant for the key "textExtractors".
-        OCR_KEY (str): Constant for the key "ocr".
 
         language_model (AdapterProperties): The properties of the language model
         adapter.
@@ -241,8 +232,6 @@ class Adapter:
     EMBEDDING_SERVICES_KEY = "embeddingServices"
     VECTOR_STORES_KEY = "vectorStores"
     TEXT_EXTRACTORS_KEY = "textExtractors"
-    OCRS_KEY = "ocrs"
-
 
     language_models: list[AdapterProperties] = field(
         default_factory=list[AdapterProperties]
@@ -256,9 +245,6 @@ class Adapter:
     text_extractors: list[AdapterProperties] = field(
         default_factory=list[AdapterProperties]
     )
-    ocrs: list[AdapterProperties] = field(
-        default_factory=list[AdapterProperties]
-    )
 
     @classmethod
     def from_dict(cls, data_dict: dict[str, Any]) -> "Adapter":
@@ -266,7 +252,6 @@ class Adapter:
         embedding_services_list = data_dict.get(cls.EMBEDDING_SERVICES_KEY, [])
         vector_stores_list = data_dict.get(cls.VECTOR_STORES_KEY, [])
         text_extractors_list = data_dict.get(cls.TEXT_EXTRACTORS_KEY, [])
-        ocrs_list = data_dict.get(cls.OCRS_KEY, [])
 
         language_models = [
             AdapterProperties.from_dict(language_model_dict)
@@ -281,12 +266,8 @@ class Adapter:
             for vector_store_dict in vector_stores_list
         ]
         text_extractors = [
-            AdapterProperties.from_dict(text_extractor_dict)
-            for text_extractor_dict in text_extractors_list
-        ]
-        ocrs = [
-            AdapterProperties.from_dict(ocr_dict)
-            for ocr_dict in ocrs_list
+            AdapterProperties.from_dict(vector_store_dict)
+            for vector_store_dict in text_extractors_list
         ]
 
         return cls(
@@ -294,7 +275,6 @@ class Adapter:
             embedding_services=embedding_services,
             vector_stores=vector_stores,
             text_extractors=text_extractors,
-            ocrs=ocrs,
         )
 
     def to_dict(self) -> dict[str, Any]:
