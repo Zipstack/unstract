@@ -64,7 +64,7 @@ function CombinedOutput({ doc, setFilledFields }) {
             return;
           }
 
-          output[item?.prompt_key] = outputDetails?.output || "";
+          output[item?.prompt_key] = JSON.parse(outputDetails?.output || "");
 
           if (outputDetails?.output?.length > 0) {
             filledFields++;

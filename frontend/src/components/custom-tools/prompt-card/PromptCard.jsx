@@ -31,6 +31,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AssertionIcon } from "../../../assets";
 import {
+  displayPromptResult,
   handleException,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
@@ -174,10 +175,6 @@ function PromptCard({
     }, 1000),
     []
   );
-
-  const isJson = (text) => {
-    return typeof text === "object";
-  };
 
   const handlePageLeft = () => {
     if (page <= 1) {
@@ -361,7 +358,7 @@ function PromptCard({
     url
   ) => {
     const body = {
-      output: outputValue !== null ? String(outputValue) : null,
+      output: outputValue !== null ? JSON.stringify(outputValue) : null,
       tool_id: details?.tool_id,
       prompt_id: promptDetails?.prompt_id,
       profile_manager: promptDetails?.profile_manager,
@@ -812,11 +809,7 @@ function PromptCard({
                 <Spin indicator={<SpinnerLoader size="small" />} />
               ) : (
                 <Typography.Paragraph className="prompt-card-res font-size-12">
-                  <div>
-                    {isJson(result?.output)
-                      ? JSON.stringify(result?.output, null, 4)
-                      : result?.output}
-                  </div>
+                  <div>{displayPromptResult(result?.output)}</div>
                 </Typography.Paragraph>
               )}
             </div>
