@@ -244,9 +244,13 @@ const getTimeForLogs = () => {
 const handleException = (err, errMessage) => {
   if (err?.response?.data?.type === "validation_error") {
     // Handle validation errors
-  } else if (
-    ["client_error", "server_error"].includes(err?.response?.data?.type)
-  ) {
+    return {
+      type: "error",
+      content: errMessage || "Something went wrong",
+    };
+  }
+
+  if (["client_error", "server_error"].includes(err?.response?.data?.type)) {
     // Handle client_error, server_error
     return {
       type: "error",
@@ -255,12 +259,12 @@ const handleException = (err, errMessage) => {
         errMessage ||
         "Something went wrong",
     };
-  } else {
-    return {
-      type: "error",
-      content: err?.message,
-    };
   }
+
+  return {
+    type: "error",
+    content: err?.message || errMessage,
+  };
 };
 
 const base64toBlob = (data) => {
