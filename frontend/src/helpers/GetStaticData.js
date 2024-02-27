@@ -263,6 +263,18 @@ const handleException = (err, errMessage) => {
   }
 };
 
+const onboardCompleted = (adaptersList) => {
+  if (!Array.isArray(adaptersList)) {
+    return false;
+  }
+  const MANDATORY_ADAPTERS = ["llm", "vector_db", "embedding"];
+  if (MANDATORY_ADAPTERS.length !== adaptersList.length) {
+    return false;
+  }
+  adaptersList = adaptersList.map((element) => element.toLowerCase());
+  return MANDATORY_ADAPTERS.every((value) => adaptersList.includes(value));
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -278,6 +290,7 @@ export {
   getTimeForLogs,
   handleException,
   listOfAppDeployments,
+  onboardCompleted,
   promptStudioUpdateStatus,
   promptType,
   publicRoutes,
