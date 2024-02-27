@@ -91,7 +91,7 @@ function OutputAnalyzerCard({ doc, totalFields }) {
                 </DocumentViewer>
               </div>
             </Col>
-            <Col span={12}>
+            <Col span={12} className="height-100">
               <div className="output-analyzer-right-box">
                 <CombinedOutput doc={doc} setFilledFields={setFilledFields} />
               </div>
