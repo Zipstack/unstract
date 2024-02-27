@@ -285,6 +285,35 @@ const removeFileExtension = (fileName) => {
   return modFileName.join(".");
 };
 
+const isJson = (text) => {
+  try {
+    if (typeof text === "object") {
+      return true;
+    }
+
+    if (typeof text === "string") {
+      const json = JSON.parse(text);
+      return typeof json === "object";
+    }
+    return false;
+  } catch (err) {
+    return false;
+  }
+};
+
+const displayPromptResult = (output) => {
+  try {
+    if (isJson(output)) {
+      return JSON.stringify(JSON.parse(output), null, 4);
+    }
+
+    const outputParsed = JSON.parse(output);
+    return outputParsed;
+  } catch (err) {
+    return output;
+  }
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -311,4 +340,6 @@ export {
   workflowStatus,
   base64toBlob,
   removeFileExtension,
+  isJson,
+  displayPromptResult,
 };
