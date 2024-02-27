@@ -8,6 +8,7 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import "./OutputForDocModal.css";
 import { CheckCircleFilled, CloseCircleFilled } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
+import { displayPromptResult } from "../../../helpers/GetStaticData";
 
 const columns = [
   {
@@ -83,7 +84,7 @@ function OutputForDocModal({
                 <CloseCircleFilled style={{ color: "#FF4D4F" }} />
               )}
             </span>{" "}
-            {isSuccess ? output?.output : "Failed"}
+            {isSuccess ? displayPromptResult(output?.output) : "Failed"}
           </Typography.Text>
         ),
       };

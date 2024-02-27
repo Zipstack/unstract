@@ -54,6 +54,9 @@ function SelectLlmProfileModal({
     };
     handleUpdateTool(body)
       .then(() => {
+        if (fieldName === "summarize_llm_profile") {
+          setBtnText(value);
+        }
         setAlertDetails({
           type: "success",
           content: "Successfully updated the LLM profile",
