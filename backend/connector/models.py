@@ -1,10 +1,12 @@
+import json
 import uuid
+from typing import Any
 
-from account.models import User
-from connector.fields import ConnectorAuthJSONField
+from account.models import EncryptionSecret, User
 from connector_auth.models import ConnectorAuth
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
+from cryptography.fernet import Fernet
 from django.db import models
 from project.models import Project
 from utils.models.base_model import BaseModel
@@ -14,6 +16,33 @@ from backend.constants import FieldLengthConstants as FLC
 
 CONNECTOR_NAME_SIZE = 128
 VERSION_NAME_SIZE = 64
+
+encryption_secret: EncryptionSecret = EncryptionSecret.objects.get()
+cipher_suite: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
+
+
+class EncryptedField(models.Field):
+    def from_db_value(self, value) -> Any:  # type: ignore
+        print("********** 1 *** ", value)
+        if value is not None:
+            decrypted_value = cipher_suite.decrypt(value.encode()).decode()
+            return json.loads(decrypted_value)
+        return value
+
+    def to_python(self, value) -> Any:  # type: ignore
+        if isinstance(value, str):
+            decrypted_value = cipher_suite.decrypt(value.encode()).decode()
+            return json.loads(decrypted_value)
+        return value
+
+    def get_prep_value(self, value) -> Any:  # type: ignore
+        if value is not None:
+            serialized_value = json.dumps(value)
+            encrypted_value = cipher_suite.encrypt(
+                serialized_value.encode()
+            ).decode()
+            return encrypted_value
+        return value
 
 
 class ConnectorInstance(BaseModel):
@@ -48,9 +77,10 @@ class ConnectorInstance(BaseModel):
         max_length=FLC.CONNECTOR_ID_LENGTH, default=""
     )
     # TODO Required to be removed
-    connector_metadata = ConnectorAuthJSONField(
-        db_column="connector_metadata", null=False, blank=False, default=dict
-    )
+    # connector_metadata = ConnectorAuthJSONField(
+    #     db_column="connector_metadata", null=False, blank=False, default=dict
+    # )
+    connector_metadata = EncryptedField(null=True)
     connector_metadata_b = models.BinaryField(null=True)
     connector_version = models.CharField(
         max_length=VERSION_NAME_SIZE, default=""
