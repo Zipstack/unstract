@@ -1,6 +1,8 @@
 import os
 
-from account.models import PlatformKey
+from platform_settings.platform_auth_service import (
+    PlatformAuthenticationService,
+)
 from prompt_studio.prompt_studio_core.constants import LogLevel, ToolStudioKeys
 from unstract.sdk.tool.stream import StreamMixin
 
@@ -32,7 +34,11 @@ class PromptIdeBaseTool(StreamMixin):
         """
         # HACK: Adding platform key for multitenancy
         if env_key == ToolStudioKeys.PLATFORM_SERVICE_API_KEY:
-            platform_key = PlatformKey.objects.get(organization=self.org_id)
+            platform_key = (
+                PlatformAuthenticationService.get_active_platform_key(
+                    self.org_id
+                )
+            )
             key: str = str(platform_key.key)
             return key
         else:
