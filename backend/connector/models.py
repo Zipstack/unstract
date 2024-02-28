@@ -23,7 +23,6 @@ cipher_suite: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
 
 class EncryptedField(models.Field):
     def from_db_value(self, value) -> Any:  # type: ignore
-        print("********** 1 *** ", value)
         if value is not None:
             decrypted_value = cipher_suite.decrypt(value.encode()).decode()
             return json.loads(decrypted_value)

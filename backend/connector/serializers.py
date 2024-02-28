@@ -51,17 +51,6 @@ class ConnectorInstanceSerializer(AuditSerializer):
             connector_id, CIKey.CONNECTOR_MODE
         )
         kwargs[CIKey.CONNECTOR_MODE] = connector_mode.value
-
-        # encryption_secret: EncryptionSecret = EncryptionSecret.objects.get()
-        # f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
-        # json_string: str = json.dumps(kwargs.pop(CIKey.CONNECTOR_METADATA))
-        # if self.validated_data:
-        #     self.validated_data.pop(CIKey.CONNECTOR_METADATA)
-
-        # kwargs[CIKey.CONNECTOR_METADATA_B] = f.encrypt(
-        #     json_string.encode("utf-8")
-        # )
-
         instance = super().save(**kwargs)
         return instance
 
@@ -78,13 +67,5 @@ class ConnectorInstanceSerializer(AuditSerializer):
             ] = ConnectorProcessor.get_connector_data_with_key(
                 instance.connector_id, ConnectorKeys.ICON
             )
-        # encryption_secret: EncryptionSecret = EncryptionSecret.objects.get()
-        # f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
-
-        # rep.pop(CIKey.CONNECTOR_METADATA_B)
-        # if instance.connector_metadata_b:
-        #     adapter_metadata = json.loads(
-        #         f.decrypt(bytes(instance.connector_metadata_b).decode("utf-8"))
-        #     )
-        #     rep[CIKey.CONNECTOR_METADATA] = adapter_metadata
+            rep[CIKey.CONNECTOR_METADATA] = instance.connector_metadata
         return rep
