@@ -78,6 +78,7 @@ class ToolProcessor:
         embedding_keys = schema.get_embedding_adapter_properties_keys()
         vector_db_keys = schema.get_vector_db_adapter_properties_keys()
         x2text_keys = schema.get_text_extractor_adapter_properties_keys()
+        ocr_keys = schema.get_ocr_adapter_properties_keys()
 
         if llm_keys:
             adapters = AdapterProcessor.get_adapters_by_type(
@@ -114,6 +115,16 @@ class ToolProcessor:
                 AdapterTypes.X2TEXT, user=user
             )
             for key in x2text_keys:
+                adapter_names = map(
+                    lambda adapter: str(adapter.adapter_name), adapters
+                )
+                schema.properties[key]["enum"] = list(adapter_names)
+
+        if ocr_keys:
+            adapters = AdapterProcessor.get_adapters_by_type(
+                AdapterTypes.OCR, user=user
+            )
+            for key in ocr_keys:
                 adapter_names = map(
                     lambda adapter: str(adapter.adapter_name), adapters
                 )
