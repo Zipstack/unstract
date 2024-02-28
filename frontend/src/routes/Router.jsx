@@ -90,6 +90,10 @@ function Router() {
               path="settings/textExtractor"
               element={<ToolsSettingsPage type="x2text" />}
             />
+            <Route
+              path="settings/ocr"
+              element={<ToolsSettingsPage type="ocr" />}
+            />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="settings/platform" element={<PlatformSettings />} />
             <Route path="settings/triad" element={<DefaultTriad />} />
