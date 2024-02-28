@@ -26,6 +26,7 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance.models import ToolInstance
 from utils.filtering import FilterHelper
+from prompt_studio.prompt_studio_registry.models import PromptStudioRegistry
 
 from .models import CustomTool
 from .serializers import CustomToolSerializer, PromptStudioIndexSerializer
@@ -74,22 +75,23 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
         instance: CustomTool = self.get_object()
-        exported_tool_instances_in_use = ToolInstance.objects.filter(
-            tool_id__exact=instance.prompt_studio_registry.pk
-        )
-        dependent_wfs = set()
-        for tool_instance in exported_tool_instances_in_use:
-            dependent_wfs.add(tool_instance.workflow_id)
-        if len(dependent_wfs) > 0:
-            logger.info(
-                f"Cannot destroy custom tool {instance.tool_id},"
-                f" depended by workflows {dependent_wfs}"
+        # Checks if tool is exported
+        if hasattr(instance, "prompt_studio_registry"):
+            exported_tool_instances_in_use = ToolInstance.objects.filter(
+                tool_id__exact=instance.prompt_studio_registry.pk
             )
-            raise ToolDeleteError(
-                "Failed to delete tool, its used in other workflows. "
-                "Delete its usages first"
-            )
-
+            dependent_wfs = set()
+            for tool_instance in exported_tool_instances_in_use:
+                dependent_wfs.add(tool_instance.workflow_id)
+            if len(dependent_wfs) > 0:
+                logger.info(
+                    f"Cannot destroy custom tool {instance.tool_id},"
+                    f" depended by workflows {dependent_wfs}"
+                )
+                raise ToolDeleteError(
+                    "Failed to delete tool, its used in other workflows. "
+                    "Delete its usages first"
+                )
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=["get"])
