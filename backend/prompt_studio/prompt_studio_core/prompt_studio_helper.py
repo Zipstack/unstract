@@ -81,30 +81,37 @@ class PromptStudioHelper:
 
     @staticmethod
     def index_document(
-        tool_id: str, file_name: str, org_id: str, user_id: str, is_summary: bool = False
+        tool_id: str,
+        file_name: str,
+        org_id: str,
+        user_id: str,
+        is_summary: bool = False,
     ) -> Any:
         """Method to index a document.
 
         Args:
-            tool_id (str):Id of the tool
+            tool_id (str): Id of the tool
             file_name (str): File to parse
+            org_id (str): The ID of the organization to which the user belongs.
+            user_id (str): The ID of the user who uploaded the document.
+            is_summary (bool, optional): Whether the document is a summary
+                or not. Defaults to False.
 
         Raises:
             ToolNotValid
             IndexingError
         """
         tool: CustomTool = CustomTool.objects.get(pk=tool_id)
-        
         if is_summary:
-            default_profile: ProfileManager = tool.summarize_llm_profile
+            default_profile = tool.summarize_llm_profile
             file_path = file_name
         else:
-            default_profile: ProfileManager = tool.default_profile
+            default_profile = tool.default_profile
             file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                 org_id, is_create=False, user_id=user_id, tool_id=tool_id
             )
             file_path = str(Path(file_path) / file_name)
-            
+
         if not default_profile:
             raise DefaultProfileError()
         stream_log.publish(
@@ -185,16 +192,15 @@ class PromptStudioHelper:
                 prompts: list[ToolStudioPrompt] = []
                 prompts.append(prompt_instance)
                 tool: CustomTool = prompt_instance.tool_id
-                
-                
+
                 if tool.summarize_as_source:
                     directory, filename = os.path.split(file_path)
-                    file_path: str = os.path.join(
+                    file_path = os.path.join(
                         directory,
                         TSPKeys.SUMMARIZE,
                         os.path.splitext(filename)[0] + ".txt",
                     )
-                    
+
                 stream_log.publish(
                     tool.tool_id,
                     stream_log.log(
@@ -290,7 +296,7 @@ class PromptStudioHelper:
                 file_name=path,
                 tool_id=str(tool.tool_id),
                 org_id=org_id,
-                is_summary=tool.summarize_as_source
+                is_summary=tool.summarize_as_source,
             )
 
             output: dict[str, Any] = {}

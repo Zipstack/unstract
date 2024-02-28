@@ -44,6 +44,7 @@ class CustomTool(BaseModel):
         related_name="default_profile",
         null=True,
         blank=True,
+        db_comment="Default LLM Profile used in prompt",
     )
     summarize_llm_profile = models.ForeignKey(
         ProfileManager,
@@ -51,9 +52,14 @@ class CustomTool(BaseModel):
         related_name="summarize_llm_profile",
         null=True,
         blank=True,
+        db_comment="LLM Profile used for summarize",
     )
-    summarize_context = models.BooleanField(default=True)
-    summarize_as_source = models.BooleanField(default=True)
+    summarize_context = models.BooleanField(
+        default=True, db_comment="Flag to summarize content"
+    )
+    summarize_as_source = models.BooleanField(
+        default=True, db_comment="Flag to use summarized content as source"
+    )
     summarize_prompt = models.TextField(
         blank=True,
         db_comment="Field to store the summarize prompt",
