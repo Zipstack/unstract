@@ -248,6 +248,9 @@ class ToolUtils:
         text_extractors = ToolUtils.get_enabled_adapters(
             adapter.text_extractors
         )
+        ocrs = ToolUtils.get_enabled_adapters(
+            adapter.ocrs
+        )
 
         ToolUtils.process_adapter_models(
             models=language_models,
@@ -270,6 +273,11 @@ class ToolUtils:
         ToolUtils.process_adapter_models(
             models=text_extractors,
             adapter_type=AdapterTypes.X2TEXT,
+            schema=schema,
+        )
+        ToolUtils.process_adapter_models(
+            models=ocrs,
+            adapter_type=AdapterTypes.OCR,
             schema=schema,
         )
         return schema
