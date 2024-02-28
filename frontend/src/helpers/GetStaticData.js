@@ -258,7 +258,7 @@ const handleException = (err, errMessage) => {
   } else {
     return {
       type: "error",
-      content: err?.message,
+      content: errMessage || err?.message,
     };
   }
 };

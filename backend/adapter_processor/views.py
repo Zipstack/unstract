@@ -105,15 +105,12 @@ class AdapterViewSet(GenericViewSet):
                 status=status.HTTP_200_OK,
             )
         except Exception as e:
-            if str(e).find("invalid_api_key") != -1:
-                return Response(
-                    {"message": "Incorrect API key provided."},
-                    status=status.HTTP_401_UNAUTHORIZED,
-                )
+            logger.error(f"Error testing adapter: {str(e)}")
             return Response(
-                {AdapterKeys.IS_VALID: False},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                {"message": str(e)},
+                status=status.HTTP_401_UNAUTHORIZED,
             )
+
 
 class AdapterInstanceViewSet(ModelViewSet):
     queryset = AdapterInstance.objects.all()

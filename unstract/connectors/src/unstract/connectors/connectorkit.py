@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Optional
 
-from unstract.connectors import ConnectorDict
+from unstract.connectors import ConnectorDict  # type: ignore
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.constants import Common
 from unstract.connectors.databases import connectors as db_connectors
