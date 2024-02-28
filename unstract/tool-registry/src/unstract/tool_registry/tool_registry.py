@@ -333,15 +333,6 @@ class ToolRegistry:
         is_ready: bool = self.helper.is_image_ready(image_name=image_name)
         return is_ready
 
-    def get_project_settings_schema(self) -> dict[str, Any]:
-        """Project tool's environmental settings schema.
-
-        Returns:
-            dict[str, Any]: schema
-        """
-        schema: dict[str, Any] = ToolUtils.get_tool_project_schema()
-        return schema
-
     def validate_schema_with_data(
         self, schema: dict[str, Any], data: dict[str, Any]
     ) -> None:
