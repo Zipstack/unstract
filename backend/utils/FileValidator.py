@@ -55,7 +55,8 @@ class FileValidator(object):
 
             # Check the content type
             mimetype = magic.from_buffer(file.read(2048), mime=True)
-            if self.allowed_mimetypes and not mimetype in self.allowed_mimetypes:
+            if (self.allowed_mimetypes and
+                    not mimetype in self.allowed_mimetypes):
                 message = self.mime_message % {
                     'mimetype': mimetype,
                     'allowed_mimetypes': ', '.join(self.allowed_mimetypes)
