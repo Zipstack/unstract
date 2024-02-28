@@ -39,11 +39,12 @@ function DocumentParser({
     }
   }, [scrollToBottom]);
 
-  const handleChange = (
+  const handleChange = async (
     event,
     promptId,
     dropdownItem,
-    isUpdateStatus = false
+    isUpdateStatus = false,
+    isPromptUpdate = false
   ) => {
     const promptsAndNotes = details?.prompts || [];
     let name = "";
@@ -93,21 +94,23 @@ function DocumentParser({
       promptId,
       promptStudioUpdateStatus.isUpdating
     );
-    axiosPrivate(requestOptions)
+
+    return axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data;
         const modifiedDetails = { ...details };
         const modifiedPrompts = [...(modifiedDetails?.prompts || [])].map(
           (item) => {
             if (item?.prompt_id === data?.prompt_id) {
-              data.evalMetrics = item?.evalMetrics || [];
               return data;
             }
             return item;
           }
         );
         modifiedDetails["prompts"] = modifiedPrompts;
-        updateCustomTool({ details: modifiedDetails });
+        if (!isPromptUpdate) {
+          updateCustomTool({ details: modifiedDetails });
+        }
         handleUpdateStatus(
           isUpdateStatus,
           promptId,
