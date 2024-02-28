@@ -388,6 +388,12 @@ class PromptStudioHelper:
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
         file_hash = ToolUtils.get_hash_from_file(file_path=file_name)
+        extract_file_path = None
+        if not is_summary:
+            directory, filename = os.path.split(file_name)
+            extract_file_path: str = os.path.join(
+                directory, "extract", os.path.splitext(filename)[0] + ".txt"
+            )
         return str(
             tool_index.index_file(
                 tool_id=tool_id,
@@ -399,6 +405,6 @@ class PromptStudioHelper:
                 chunk_size=profile_manager.chunk_size,
                 chunk_overlap=profile_manager.chunk_overlap,
                 reindex=profile_manager.reindex,
-                is_summary=is_summary,
+                output_file_path=extract_file_path,
             )
         )

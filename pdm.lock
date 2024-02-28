@@ -5,7 +5,7 @@
 groups = ["default", "hook-check-django-migrations", "lint"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:32fcfebc305b03ed156f6a208a4edcf40cd407f555fb695d3cb932aaa43ece4f"
+content_hash = "sha256:7b566c4c5f996943e1437b7c15b44c44f6d4e2c6c30374202688b21f945afb63"
 
 [[package]]
 name = "absolufy-imports"
@@ -4836,7 +4836,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.12.0"
+version = "0.12.1"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["hook-check-django-migrations"]
@@ -4853,8 +4853,8 @@ dependencies = [
     "unstract-adapters~=0.2.2",
 ]
 files = [
-    {file = "unstract_sdk-0.12.0-py3-none-any.whl", hash = "sha256:3e7b57a94df8cbdebe13998fface9eaf4b9eba667cd9f323d555b785599b51a6"},
-    {file = "unstract_sdk-0.12.0.tar.gz", hash = "sha256:0208a653a59600fcbfaa9606341a11bb7e4381f64435754389fc46b735684395"},
+    {file = "unstract_sdk-0.12.1-py3-none-any.whl", hash = "sha256:960d8a7b92a1ad32894650edd9254aaf7c3f7555053991b3860e55ab684624a8"},
+    {file = "unstract_sdk-0.12.1.tar.gz", hash = "sha256:06b1a7bf17948d548137502127458d83046c2e0b596ff326a292dbe94041a13a"},
 ]
 
 [[package]]
