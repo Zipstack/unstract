@@ -140,6 +140,7 @@ class ToolInstanceHelper:
         embedding_properties = schema.get_embedding_adapter_properties()
         vector_db_properties = schema.get_vector_db_adapter_properties()
         x2text_properties = schema.get_text_extractor_adapter_properties()
+        ocr_properties = schema.get_ocr_adapter_properties()
 
         for adapter_key, adapter_property in llm_properties.items():
             ToolInstanceHelper.update_metadata_with_adapter_properties(
@@ -173,6 +174,13 @@ class ToolInstanceHelper:
                 adapter_type=AdapterTypes.X2TEXT,
             )
 
+        for adapter_key, adapter_property in ocr_properties.items():
+            ToolInstanceHelper.update_metadata_with_adapter_properties(
+                metadata=metadata,
+                adapter_key=adapter_key,
+                adapter_property=adapter_property,
+                adapter_type=AdapterTypes.OCR,
+            )
     @staticmethod
     def get_altered_metadata(
         tool_instance: ToolInstance,
@@ -257,6 +265,8 @@ class ToolInstanceHelper:
             properties = schema_spec.get_vector_db_adapter_properties()
         if adapter_type == AdapterTypes.X2TEXT:
             properties = schema_spec.get_text_extractor_adapter_properties()
+        if adapter_type == AdapterTypes.OCR:
+            properties = schema_spec.get_ocr_adapter_properties()
         for adapter_key, adapter_property in properties.items():
             metadata_key_for_id = adapter_property.get(
                 AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
