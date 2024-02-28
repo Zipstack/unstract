@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from utils.FileValidator import FileValidator
+
 
 class FileInfoSerializer(serializers.Serializer):
     name = serializers.CharField()
@@ -15,13 +17,23 @@ class FileListRequestSerializer(serializers.Serializer):
 
 
 class FileUploadSerializer(serializers.Serializer):
-    file = serializers.ListField(child=serializers.FileField(), required=True)
+    file = serializers.ListField(
+        child=serializers.FileField(), required=True,
+        validators=[FileValidator(allowed_extensions=['pdf'],
+                                  allowed_mimetypes=['application/pdf'],
+                                  min_size=0,
+                                  max_size=(10*1024*1024*1024))])
+    # FileExtensionValidator(allowed_extensions=['pdf'])
     connector_id = serializers.UUIDField()
     path = serializers.CharField()
 
 
 class FileUploadIdeSerializer(serializers.Serializer):
-    file = serializers.ListField(child=serializers.FileField(), required=True)
+    file = serializers.ListField(child=serializers.FileField(), required=True,
+        validators=[FileValidator(allowed_extensions=['pdf'],
+                                  allowed_mimetypes=['application/pdf'],
+                                  min_size=0,
+                                  max_size=(10*1024*1024*1024))])
 
 
 class FileInfoIdeSerializer(serializers.Serializer):
