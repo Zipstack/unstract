@@ -5,7 +5,7 @@
 groups = ["default", "test", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:73a791002f5f7bab1afe9eaee07e8fc946774da3448f9daabedbccfc9be4f202"
+content_hash = "sha256:51e64bf1cd4ccd937aea09639902c55251bef3948ef2f52daafcd4b8870ee3c4"
 
 [[package]]
 name = "aiobotocore"
@@ -319,7 +319,6 @@ version = "4.0.3"
 requires_python = ">=3.7"
 summary = "Timeout context manager for asyncio programs"
 groups = ["default"]
-marker = "python_version < \"3.12.0\""
 files = [
     {file = "async-timeout-4.0.3.tar.gz", hash = "sha256:4640d96be84d82d02ed59ea2b7105a0f7b33abe8703703cd0ab0bf87c427522f"},
     {file = "async_timeout-4.0.3-py3-none-any.whl", hash = "sha256:7405140ff1230c310e51dc27b3145b9092d659ce68ff733fb0cefe3ee42be028"},
@@ -865,6 +864,20 @@ files = [
 ]
 
 [[package]]
+name = "django-appconf"
+version = "1.0.6"
+requires_python = ">=3.7"
+summary = "A helper class for handling configuration defaults of packaged apps gracefully."
+groups = ["default"]
+dependencies = [
+    "django",
+]
+files = [
+    {file = "django-appconf-1.0.6.tar.gz", hash = "sha256:cfe87ea827c4ee04b9a70fab90b86d704cb02f2981f89da8423cb0fabf88efbf"},
+    {file = "django_appconf-1.0.6-py3-none-any.whl", hash = "sha256:c3ae442fba1ff7ec830412c5184b17169a7a1e71cf0864a4c3f93cf4c98a1993"},
+]
+
+[[package]]
 name = "django-celery-beat"
 version = "2.5.0"
 summary = "Database-backed Periodic Tasks."
@@ -895,6 +908,21 @@ dependencies = [
 files = [
     {file = "django-cors-headers-4.3.1.tar.gz", hash = "sha256:0bf65ef45e606aff1994d35503e6b677c0b26cafff6506f8fd7187f3be840207"},
     {file = "django_cors_headers-4.3.1-py3-none-any.whl", hash = "sha256:0b1fd19297e37417fc9f835d39e45c8c642938ddba1acce0c1753d3edef04f36"},
+]
+
+[[package]]
+name = "django-cryptography"
+version = "1.1"
+requires_python = ">=3.6"
+summary = "Easily encrypt data in Django"
+groups = ["default"]
+dependencies = [
+    "Django",
+    "cryptography",
+    "django-appconf",
+]
+files = [
+    {file = "django_cryptography-1.1-py2.py3-none-any.whl", hash = "sha256:93702fcf0d75865d55362f20ecd95274c4eef60ccdce46cbdade0420acee07cb"},
 ]
 
 [[package]]
@@ -1593,7 +1621,7 @@ files = [
 
 [[package]]
 name = "gotrue"
-version = "2.1.0"
+version = "2.4.1"
 requires_python = ">=3.8,<4.0"
 summary = "Python Client Library for GoTrue"
 groups = ["default"]
@@ -1602,8 +1630,8 @@ dependencies = [
     "pydantic<3,>=1.10",
 ]
 files = [
-    {file = "gotrue-2.1.0-py3-none-any.whl", hash = "sha256:6483d9a3ac9be1d1ad510be24171e133aa1cec702cc10a8f323b9e7519642447"},
-    {file = "gotrue-2.1.0.tar.gz", hash = "sha256:b21d48ee64f0f6a1ed111efe4871a83e542529f1a75a264833b50e6433cd3c98"},
+    {file = "gotrue-2.4.1-py3-none-any.whl", hash = "sha256:9647bb7a585c969d26667df21168fa20b18f91c5d6afe286af08d7a0610fd2cc"},
+    {file = "gotrue-2.4.1.tar.gz", hash = "sha256:8b260ef285f45a3a2f9b5a006f12afb9fad7a36a28fa277f19e733f22eb88584"},
 ]
 
 [[package]]
@@ -3441,16 +3469,16 @@ files = [
 
 [[package]]
 name = "redis"
-version = "5.0.1"
+version = "5.0.2"
 requires_python = ">=3.7"
 summary = "Python client for Redis database and key-value store"
 groups = ["default"]
 dependencies = [
-    "async-timeout>=4.0.2; python_full_version <= \"3.11.2\"",
+    "async-timeout>=4.0.3",
 ]
 files = [
-    {file = "redis-5.0.1-py3-none-any.whl", hash = "sha256:ed4802971884ae19d640775ba3b03aa2e7bd5e8fb8dfaed2decce4d0fc48391f"},
-    {file = "redis-5.0.1.tar.gz", hash = "sha256:0dab495cd5753069d3bc650a0dde8a8f9edde16fc5691b689a566eda58100d0f"},
+    {file = "redis-5.0.2-py3-none-any.whl", hash = "sha256:4caa8e1fcb6f3c0ef28dba99535101d80934b7d4cd541bbb47f4a3826ee472d1"},
+    {file = "redis-5.0.2.tar.gz", hash = "sha256:3f82cc80d350e93042c8e6e7a5d0596e4dd68715babffba79492733e1f367037"},
 ]
 
 [[package]]
@@ -4700,7 +4728,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
     "unstract-adapters~=0.2.1",
-    "unstract-tool-sandbox @ file:///home/gayathrivijayakumar/code/Unstract/unstract/unstract/tool-registry/../tool-sandbox",
+    "unstract-tool-sandbox @ file:///home/kirtimanmishra/Zipstack/Repositories/unstract/unstract/tool-registry/../tool-sandbox",
 ]
 
 [[package]]

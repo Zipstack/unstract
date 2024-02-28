@@ -6,9 +6,7 @@ from typing import Any, Optional
 
 import fsspec
 import magic
-from account.models import EncryptionSecret
 from connector.models import ConnectorInstance
-from cryptography.fernet import Fernet
 from django.db import connection
 from fsspec.implementations.local import LocalFileSystem
 from unstract.sdk.constants import ToolExecKey
@@ -77,17 +75,6 @@ class DestinationConnector(BaseConnector):
             workflow=workflow,
             endpoint_type=WorkflowEndpoint.EndpointType.DESTINATION,
         )
-        if endpoint.connector_instance:
-            encryption_secret: EncryptionSecret = EncryptionSecret.objects.get()
-            f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
-            endpoint.connector_instance.connector_metadata = json.loads(
-                f.decrypt(
-                    bytes(endpoint.connector_instance.connector_metadata_b
-                          ).decode(
-                        "utf-8"
-                    )
-                )
-            )
         return endpoint
 
     def validate(self) -> None:

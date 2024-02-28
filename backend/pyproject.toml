@@ -32,6 +32,7 @@ dependencies = [
     "social-auth-core==4.4.2", # For OAuth
     "unstract-sdk~=0.11.2",
     "unstract-adapters~=0.2.2",
+    "django-cryptography==1.1",
     # ! IMPORTANT!
     # Indirect local dependencies usually need to be added in their own projects
     # as: https://pdm-project.org/latest/usage/dependency/#local-dependencies.
