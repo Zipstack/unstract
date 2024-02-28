@@ -217,7 +217,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data;
-        data["connector_metadata"] = JSON.parse(data["connector_metadata"]);
         data["connector_metadata"]["connectorName"] =
           data?.connector_name || "";
         setConnDetails(data);
