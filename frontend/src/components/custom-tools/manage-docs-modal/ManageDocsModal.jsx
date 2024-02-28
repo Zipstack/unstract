@@ -94,7 +94,27 @@ function ManageDocsModal({
     setRows(newRows);
   }, [listOfDocs, selectedDoc, disableLlmOrDocChange]);
 
-  const handleUploadChange = (info) => {
+  const beforeUpload = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const fileName = file.name;
+        const fileAlreadyExists = [...listOfDocs].includes(fileName);
+        if (!fileAlreadyExists) {
+          resolve(file);
+        } else {
+          setAlertDetails({
+            type: "error",
+            content: "File name already exists",
+          });
+          reject(new Error("File name already exists"));
+        }
+      };
+    });
+  };
+
+  const handleUploadChange = async (info) => {
     if (info.file.status === "uploading") {
       setIsUploading(true);
     }
@@ -109,14 +129,14 @@ function ManageDocsModal({
       const docName = info?.file?.name;
       const newListOfDocs = [...listOfDocs];
       newListOfDocs.push(docName);
+      setOpen(false);
+      await generateIndex(info?.file?.name);
       const body = {
         selectedDoc: docName,
         listOfDocs: newListOfDocs,
       };
       updateCustomTool(body);
       handleUpdateTool({ output: docName });
-      setOpen(false);
-      generateIndex(info?.file?.name);
     } else if (info.file.status === "error") {
       setIsUploading(false);
       setAlertDetails({
@@ -175,6 +195,8 @@ function ManageDocsModal({
               onChange={handleUploadChange}
               disabled={isUploading || !defaultLlmProfile}
               showUploadList={false}
+              accept=".pdf"
+              beforeUpload={beforeUpload}
             >
               <Tooltip
                 title={
