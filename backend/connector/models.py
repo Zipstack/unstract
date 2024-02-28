@@ -6,6 +6,7 @@ from connector_auth.models import ConnectorAuth
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from django.db import models
+from django_cryptography.fields import encrypt
 from project.models import Project
 from utils.models.base_model import BaseModel
 from workflow_manager.workflow.models import Workflow
@@ -47,11 +48,14 @@ class ConnectorInstance(BaseModel):
     connector_id = models.CharField(
         max_length=FLC.CONNECTOR_ID_LENGTH, default=""
     )
-    # TODO Required to be removed
-    connector_metadata = ConnectorAuthJSONField(
-        db_column="connector_metadata", null=False, blank=False, default=dict
+    connector_metadata = encrypt(
+        ConnectorAuthJSONField(
+            db_column="connector_metadata",
+            null=False,
+            blank=False,
+            default=dict,
+        )
     )
-    connector_metadata_b = models.BinaryField(null=True)
     connector_version = models.CharField(
         max_length=VERSION_NAME_SIZE, default=""
     )

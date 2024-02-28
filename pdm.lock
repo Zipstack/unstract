@@ -5,7 +5,7 @@
 groups = ["default", "hook-check-django-migrations", "lint"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:34bd617283cb8620b48d2ff82e83a4721d9464962bb6ccebd4d9f860efaed221"
+content_hash = "sha256:ca55c6346c89085c84b9b0d2303ef8034868e701652d8e1c8fcac140ed92a865"
 
 [[package]]
 name = "absolufy-imports"
@@ -937,6 +937,20 @@ files = [
 ]
 
 [[package]]
+name = "django-appconf"
+version = "1.0.6"
+requires_python = ">=3.7"
+summary = "A helper class for handling configuration defaults of packaged apps gracefully."
+groups = ["hook-check-django-migrations"]
+dependencies = [
+    "django",
+]
+files = [
+    {file = "django-appconf-1.0.6.tar.gz", hash = "sha256:cfe87ea827c4ee04b9a70fab90b86d704cb02f2981f89da8423cb0fabf88efbf"},
+    {file = "django_appconf-1.0.6-py3-none-any.whl", hash = "sha256:c3ae442fba1ff7ec830412c5184b17169a7a1e71cf0864a4c3f93cf4c98a1993"},
+]
+
+[[package]]
 name = "django-celery-beat"
 version = "2.5.0"
 summary = "Database-backed Periodic Tasks."
@@ -967,6 +981,21 @@ dependencies = [
 files = [
     {file = "django-cors-headers-4.3.1.tar.gz", hash = "sha256:0bf65ef45e606aff1994d35503e6b677c0b26cafff6506f8fd7187f3be840207"},
     {file = "django_cors_headers-4.3.1-py3-none-any.whl", hash = "sha256:0b1fd19297e37417fc9f835d39e45c8c642938ddba1acce0c1753d3edef04f36"},
+]
+
+[[package]]
+name = "django-cryptography"
+version = "1.1"
+requires_python = ">=3.6"
+summary = "Easily encrypt data in Django"
+groups = ["hook-check-django-migrations"]
+dependencies = [
+    "Django",
+    "cryptography",
+    "django-appconf",
+]
+files = [
+    {file = "django_cryptography-1.1-py2.py3-none-any.whl", hash = "sha256:93702fcf0d75865d55362f20ecd95274c4eef60ccdce46cbdade0420acee07cb"},
 ]
 
 [[package]]
