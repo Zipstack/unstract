@@ -1,5 +1,6 @@
-from backend.exceptions import UnstractBaseException
 from rest_framework.exceptions import APIException
+
+from backend.exceptions import UnstractBaseException
 
 
 class IdIsMandatory(APIException):
@@ -41,7 +42,7 @@ class UniqueConstraintViolation(APIException):
 
 
 class TestAdapterException(APIException):
-    status_code = 500
+    status_code = 401
     default_detail = "Error while testing adapter."
 
 
