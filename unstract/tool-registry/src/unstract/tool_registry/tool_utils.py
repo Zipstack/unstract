@@ -248,9 +248,7 @@ class ToolUtils:
         text_extractors = ToolUtils.get_enabled_adapters(
             adapter.text_extractors
         )
-        ocrs = ToolUtils.get_enabled_adapters(
-            adapter.ocrs
-        )
+        ocrs = ToolUtils.get_enabled_adapters(adapter.ocrs)
 
         ToolUtils.process_adapter_models(
             models=language_models,
@@ -281,43 +279,3 @@ class ToolUtils:
             schema=schema,
         )
         return schema
-
-    @staticmethod
-    def get_tool_project_schema() -> dict[str, Any]:
-        return {
-            "title": "Project Settings",
-            "description": "Project Settings for tools",
-            "type": "object",
-            "properties": {
-                "GOOGLE_SERVICE_ACCOUNT": {
-                    "type": "string",
-                    "title": "Google Service Account",
-                    "format": "password",
-                    "description": (
-                        "Google Service account for OCR and Translate tools"
-                    ),
-                },
-                "GOOGLE_DOCUMENT_AI_ENDPOINT": {
-                    "type": "string",
-                    "title": "Google Document API Base URL",
-                    "description": "The base URL for the Google Document service used for OCR",  # noqa: E501
-                },
-                # Used by the PII redactor tool
-                "PII_REDACT_AWS_REGION": {
-                    "type": "string",
-                    "title": "AWS Comprehend's Region",
-                    "description": "AWS Comprehend's region used in Document PII Redactor",  # noqa: E501
-                },
-                "PII_REDACT_AWS_ACCESS_KEY_ID": {
-                    "type": "string",
-                    "title": "AWS Comprehend's Access Key ID",
-                    "description": "AWS Comprehend's access key ID used in Document PII Redactor",  # noqa: E501
-                },
-                "PII_REDACT_AWS_SECRET_ACCESS_KEY": {
-                    "type": "string",
-                    "title": "AWS Comprehend's Secret Access Key",
-                    "format": "password",
-                    "description": "AWS Comprehend's secret access key used in Document PII Redactor",  # noqa: E501
-                },
-            },
-        }

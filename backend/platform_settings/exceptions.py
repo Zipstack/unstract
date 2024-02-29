@@ -32,6 +32,10 @@ class ActiveKeyNotFound(APIException):
     default_detail = "At least one active platform key should be available"
 
 
+class InvalidRequest(APIException):
+    status_code = 401
+    default_detail = "Invalid Request"
+
 class DuplicateData(APIException):
     status_code = 400
     default_detail = "Duplicate Data"
