@@ -121,7 +121,6 @@ class FileManagementViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def upload_for_ide(self, request: HttpRequest) -> Response:
-        print(request.data)
         serializer = FileUploadIdeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         uploaded_files: Any = serializer.validated_data.get("file")

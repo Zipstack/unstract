@@ -4,18 +4,16 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    padding: 14px;
     overflow-y: hidden;
 }
 
 .doc-manager-header {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 14px;
 }
 
 .doc-manager-btn {
-    max-width: 200px;
+    max-width: 250px;
 }
 
 .doc-manager-body {
@@ -25,6 +23,11 @@
 
 .doc-manager-paginate-icon {
     font-size: 12px;
+}
+
+.text-viewer-layout {
+    padding: 0px 12px;
+    overflow-y: auto;
 }
 
 .rpv-default-layout__sidebar-headers {
