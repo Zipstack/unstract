@@ -128,7 +128,9 @@ function ConfigureDs({
         }
       })
       .catch((err) => {
-        setAlertDetails(handleException(err, "Test connection failed"));
+        const TestErrorMessage =
+          err?.response?.data?.message || "Test connection failed";
+        setAlertDetails(handleException(err, TestErrorMessage));
       })
       .finally(() => {
         setIsTcLoading(false);
