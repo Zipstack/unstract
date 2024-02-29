@@ -157,11 +157,9 @@ services:
       - traefik.enable=false
   
   # app template react app
-  app-template:
-    image: unstract/app-template:${VERSION}
-    volumes:
-     - ./nginx.conf:/etc/nginx/nginx.conf
-    container_name: unstract-app-template
+  app-deployment:
+    image: unstract/app-deployment:${VERSION}
+    container_name: unstract-app-deployment
     # network_mode: host
     ports:
       - "3005:80"
@@ -171,7 +169,7 @@ services:
       - ENVIRONMENT=development
     labels:
       - traefik.enable=true
-      - traefik.http.services.app-template.loadbalancer.server.port=80
+      - traefik.http.services.app-deployment.loadbalancer.server.port=80
 
 volumes:   
   unstract_data:
