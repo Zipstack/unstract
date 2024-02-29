@@ -142,7 +142,7 @@ services:
     labels:
       - traefik.enable=false
 
-  document:
+  document-service:
     image: unstract/document-service:${VERSION}
     container_name: unstract-document-service
     ports:
