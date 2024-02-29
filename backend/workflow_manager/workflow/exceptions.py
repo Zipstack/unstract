@@ -37,6 +37,10 @@ class InvalidRequest(APIException):
     status_code = 400
     default_detail = "Invalid Request"
 
+class MissingEnvException(APIException):
+    status_code = 500
+    default_detail = "At least one active platform key should be available."
+
 
 class InternalException(APIException):
     """Internal Error.

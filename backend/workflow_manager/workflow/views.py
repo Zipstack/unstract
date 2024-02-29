@@ -31,6 +31,7 @@ from workflow_manager.workflow.exceptions import (
     WorkflowExecutionError,
     WorkflowGenerationError,
     WorkflowRegenerationError,
+    MissingEnvException,
 )
 from workflow_manager.workflow.generator import WorkflowGenerator
 from workflow_manager.workflow.models.workflow import Workflow
@@ -241,8 +242,18 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK,
             )
         except (InvalidRequest, WorkflowExecutionError) as exception:
+            logger.error(f"Error while executing workflow: {exception}")
             update_pipeline(pipeline_guid, Pipeline.PipelineStatus.FAILURE)
             raise exception
+        except MissingEnvException as exception:
+            update_pipeline(pipeline_guid, Pipeline.PipelineStatus.FAILURE)
+            logger.error(f"Error while executing workflow: {exception}")
+            return Response(
+                {
+                    "error": "Please check the logs for more details: " + str(exception)
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as exception:
             logger.error(f"Error while executing workflow: {exception}")
             update_pipeline(pipeline_guid, Pipeline.PipelineStatus.FAILURE)

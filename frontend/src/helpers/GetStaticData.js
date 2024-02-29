@@ -263,7 +263,7 @@ const handleException = (err, errMessage) => {
 
   return {
     type: "error",
-    content: err?.message || errMessage,
+    content: errMessage || err?.message,
   };
 };
 
