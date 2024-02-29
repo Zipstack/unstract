@@ -33,7 +33,6 @@ class ToolsUtils:
         self.organization_id = organization_id
         self.platform_service_api_key = platform_service_api_key
         self.workflow_id = workflow.id
-        self.project_settings = workflow.settings
         self.ignore_processed_entities = ignore_processed_entities
         self.messaging_channel: Optional[str] = None
         self.platform_service_host = ToolsUtils.get_env(
@@ -117,9 +116,7 @@ class ToolsUtils:
                 ),
             )
 
-            tool_envs = self.get_tool_environment_variables(
-                self.project_settings
-            )
+            tool_envs = self.get_tool_environment_variables()
             logger.info(f"Tool Environments are collected for tool {tool_uid}")
             image_name = tool_instance.image_name
             image_tag = tool_instance.image_tag
@@ -203,7 +200,7 @@ class ToolsUtils:
         return None
 
     def get_tool_environment_variables(
-        self, project_settings: Optional[dict[str, Any]]
+        self, project_settings: Optional[dict[str, Any]] = None
     ) -> dict[str, Any]:
         """Obtain a dictionary of env variables required by a tool.
 
