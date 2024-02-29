@@ -1,7 +1,7 @@
 # Use an official Node.js runtime as the base image
-FROM node:16 AS build-stage
+FROM node:16 AS builder
 
-ENV APP_TEMPLATE_PATH unstract-app-deployment-templates/chat-templates
+ENV APP_TEMPLATE_PATH app-deployment
 # Set the working directory inside the container
 WORKDIR /app
 
@@ -23,7 +23,8 @@ RUN npm run build
 FROM nginx:1.25 AS production-stage
 
 # Copy the build files from the build-stage
-COPY --from=build-stage /app/build /usr/share/nginx/html
+COPY --from=builder /app/build /usr/share/nginx/html
+COPY --from=builder /app/nginx.conf /etc/nginx/nginx.conf
 
 # Expose port 80 for NGINX
 EXPOSE 80

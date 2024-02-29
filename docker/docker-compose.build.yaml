@@ -36,9 +36,9 @@ services:
     build:
       dockerfile: docker/dockerfiles/x2text.Dockerfile
       context: ..
-  app-template:
-    image: unstract/app-template:${VERSION}
+  app-deployment:
+    image: unstract/app-deployment:${VERSION}
     build:
-      dockerfile: utils/dockerfiles/app-template.Dockerfile
+      dockerfile: docker/dockerfiles/app-deployment.Dockerfile
       context: ..
   
