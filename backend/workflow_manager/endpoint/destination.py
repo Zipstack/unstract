@@ -75,6 +75,10 @@ class DestinationConnector(BaseConnector):
             workflow=workflow,
             endpoint_type=WorkflowEndpoint.EndpointType.DESTINATION,
         )
+        if endpoint.connector_instance:
+            endpoint.connector_instance.connector_metadata = (
+                endpoint.connector_instance.metadata
+            )
         return endpoint
 
     def validate(self) -> None:
@@ -178,9 +182,7 @@ class DestinationConnector(BaseConnector):
     def insert_into_db(self, file_history: Optional[FileHistory]) -> None:
         """Insert data into the database."""
         connector_instance: ConnectorInstance = self.endpoint.connector_instance
-        connector_settings: dict[str, Any] = (
-            connector_instance.connector_metadata
-        )
+        connector_settings: dict[str, Any] = connector_instance.metadata
         destination_configurations: dict[str, Any] = self.endpoint.configuration
         table_name: str = str(
             destination_configurations.get(DestinationKey.TABLE)

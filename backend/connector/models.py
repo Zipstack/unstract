@@ -1,10 +1,13 @@
+import json
 import uuid
+from typing import Any
 
-from account.models import User
+from account.models import EncryptionSecret, User
 from connector.fields import ConnectorAuthJSONField
 from connector_auth.models import ConnectorAuth
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
+from cryptography.fernet import Fernet
 from django.db import models
 from project.models import Project
 from utils.models.base_model import BaseModel
@@ -106,6 +109,15 @@ class ConnectorInstance(BaseModel):
             f"Connector({self.id}, type{self.connector_type},"
             f" workflow: {self.workflow})"
         )
+
+    @property
+    def metadata(self) -> Any:
+        encryption_secret: EncryptionSecret = EncryptionSecret.objects.get()
+        cipher_suite: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
+        decrypted_value = cipher_suite.decrypt(
+            bytes(self.connector_metadata_b).decode("utf-8")
+        )
+        return json.loads(decrypted_value)
 
     class Meta:
         constraints = [

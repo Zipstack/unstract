@@ -63,6 +63,7 @@ class AdapterViewSet(GenericViewSet):
                 or adapter_type == AdapterKeys.EMBEDDING
                 or adapter_type == AdapterKeys.VECTOR_DB
                 or adapter_type == AdapterKeys.X2TEXT
+                or adapter_type == AdapterKeys.OCR
             ):
                 json_schema = AdapterProcessor.get_all_supported_adapters(
                     type=adapter_type
@@ -96,13 +97,20 @@ class AdapterViewSet(GenericViewSet):
         adapter_metadata[
             AdapterKeys.ADAPTER_TYPE
         ] = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
-        test_result = AdapterProcessor.test_adapter(
-            adapter_id=adapter_id, adapter_metadata=adapter_metadata
-        )
-        return Response(
-            {AdapterKeys.IS_VALID: test_result},
-            status=status.HTTP_200_OK,
-        )
+        try:
+            test_result = AdapterProcessor.test_adapter(
+                adapter_id=adapter_id, adapter_metadata=adapter_metadata
+            )
+            return Response(
+                {AdapterKeys.IS_VALID: test_result},
+                status=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            logger.error(f"Error testing adapter : {str(e)}")
+            return Response(
+                {"message": str(e)},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
 
 
 class AdapterInstanceViewSet(ModelViewSet):
