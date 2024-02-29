@@ -2,23 +2,17 @@ import { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
 import { Button, Space, Typography } from "antd";
-import {
-  ArrowLeftOutlined,
-  ToolOutlined,
-  QuestionCircleOutlined,
-} from "@ant-design/icons";
+import { ArrowLeftOutlined, QuestionCircleOutlined } from "@ant-design/icons";
 
 import "./MenuLayout.css";
 import { useSessionStore } from "../../store/session-store";
 import { useWorkflowStore } from "../../store/workflow-store";
-import { ConfigurationModal } from "../../components/agency/configuration-modal/ConfigurationModal";
 
 function MenuLayout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const currentMenu = useRef();
   const [activeTab, setActiveTab] = useState("");
-  const [openConfigModal, setOpenConfigModal] = useState(false);
   const { sessionDetails } = useSessionStore();
   const { projectName } = useWorkflowStore();
 
@@ -52,14 +46,6 @@ function MenuLayout({ children }) {
         <div>
           <Space>
             <Button
-              onClick={() => setOpenConfigModal((prev) => !prev)}
-              key="configuration"
-              icon={<ToolOutlined />}
-              disabled={false}
-            >
-              Configuration
-            </Button>
-            <Button
               key="help"
               icon={<QuestionCircleOutlined />}
               disabled={true}
@@ -73,10 +59,6 @@ function MenuLayout({ children }) {
       <div className="appBody">
         <div className="appBody2">{children}</div>
       </div>
-      <ConfigurationModal
-        isOpen={openConfigModal}
-        setOpen={setOpenConfigModal}
-      />
     </>
   );
 }

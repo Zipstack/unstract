@@ -1,0 +1,14 @@
+{
+  "title": "OCR Tool",
+  "description": "Setup the OCR tool",
+  "type": "object",
+  "required": [],
+  "properties": {
+    "useCache": {
+      "type": "boolean",
+      "title": "Cache and use cached results",
+      "default": true,
+      "description": "Use cached results"
+    }
+  }
+}
