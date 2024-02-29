@@ -5,7 +5,7 @@ from rest_framework.serializers import (
     Serializer,
     SerializerMethodField,
 )
-from unstract_backend.serializers import AuditSerializer
+from backend.serializers import AuditSerializer
 
 
 class AppDeploymentListSerializer(ModelSerializer):
