@@ -38,4 +38,3 @@ class ToolInstance:
 @dataclass
 class WorkflowDto:
     id: str
-    settings: dict[str, Any]
