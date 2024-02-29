@@ -12,17 +12,7 @@ ENV BUILD_CONTEXT_PATH platform-service
 ENV BUILD_PACKAGES_PATH unstract
 ENV PDM_VERSION 2.12.3
 
-RUN apt-get update; \
-    apt-get --no-install-recommends install -y \
-        ffmpeg \
-        git \
-        libmagic-dev libsm6 libxext6 \
-        pandoc poppler-utils \
-        tesseract-ocr \
-        libreoffice; \
-    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
-    \
-    pip install --no-cache-dir -U pip pdm~=${PDM_VERSION};
+RUN pip install --no-cache-dir -U pip pdm~=${PDM_VERSION};
 
 WORKDIR /app
 
@@ -47,8 +37,7 @@ EXPOSE 3001
 
 # Creates a non-root user with an explicit UID and adds permission to access the /app folder
 # For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-RUN adduser -u 5678 --disabled-password --gecos "" unstract; \
-    chown -R unstract /app /unstract;
+RUN adduser -u 5678 --disabled-password --gecos "" --no-create-home unstract;
 
 USER unstract
 

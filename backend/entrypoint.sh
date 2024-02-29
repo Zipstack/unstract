@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
-chown -R unstract /data
-
-su unstract
+# NOTE: Needed if running as unstract user
+# chown -R unstract /data
+#
+# su unstract
 
 cmd=$1
 if [ "$cmd" = "migrate" ]; then

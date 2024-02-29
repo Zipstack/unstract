@@ -15,17 +15,10 @@ ENV PDM_VERSION 2.12.3
 
 RUN apt-get update; \
     apt-get --no-install-recommends install -y \
-        build-essential \
-        ca-certificates \
-        freetds-bin freetds-dev \
-        gcc g++ \
-        git \
-        libffi-dev libmagic-dev libpoppler-cpp-dev libpq-dev \
-        musl-dev \
-        pkg-config poppler-utils \
-        python3-dev \
-        tesseract-ocr \
-        libkrb5-dev; \
+        # unstract sdk
+        build-essential libmagic-dev pandoc pkg-config tesseract-ocr \
+        # git url
+        git; \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
     \
     pip install --no-cache-dir -U pip pdm~=${PDM_VERSION};
@@ -50,10 +43,5 @@ RUN set -e; \
     pip install --no-cache-dir gunicorn;
 
 EXPOSE 8000
-
-# Creates a non-root user with an explicit UID and adds permission to access the /app folder
-# For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-RUN adduser -u 5678 --disabled-password --gecos "" unstract; \
-    chown -R unstract /app /unstract;
 
 ENTRYPOINT [ "./entrypoint.sh" ]
