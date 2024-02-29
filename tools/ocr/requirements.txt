@@ -1,0 +1,9 @@
+# Add your dependencies here
+pypdf~=3.11.1
+argparse==1.4.0
+filetype==1.2.0
+requests==2.31.0
+pillow~=10.2.0
+
+# Required for all unstract tools
+unstract-sdk~=0.12.1
