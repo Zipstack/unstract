@@ -26,7 +26,13 @@ class PromptStudioOutputManager(BaseModel):
         db_comment="Field to store the document name",
         editable=True,
     )
-
+    eval_metrics = models.JSONField(
+        db_column="eval_metrics",
+        null=False,
+        blank=False,
+        default=list,
+        db_comment="Field to store the evaluation metrics",
+    )
     tool_id = models.ForeignKey(
         CustomTool,
         on_delete=models.SET_NULL,
