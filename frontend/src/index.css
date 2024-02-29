@@ -1,8 +1,10 @@
 @import "variables.css";
 
-html, #root {
+html,
+#root {
   height: 100%;
 }
+
 body {
   font-family: var(--font-family) !important;
   -webkit-font-smoothing: antialiased;
@@ -20,6 +22,7 @@ body {
   align-items: center;
   justify-content: center;
 }
+
 /* Custom scroll bar css starts */
 ::-webkit-scrollbar {
   width: 3px;
@@ -47,6 +50,7 @@ body {
 ::-webkit-scrollbar-corner {
   background: none;
 }
+
 /* Custom scroll bar css ends */
 
 /* Justify content to the right */
@@ -69,6 +73,14 @@ body {
 
 .font-size-12 {
   font-size: 12px;
+}
+
+.font-size-16 {
+  font-size: 16px;
+}
+
+.font-weight-600 {
+  font-weight: 600px;
 }
 
 .display-flex-center-h-and-v {
@@ -99,6 +111,10 @@ body {
 
 .width-100 {
   width: 100%;
+}
+
+.height-100 {
+  height: 100%;
 }
 
 .cur-pointer {

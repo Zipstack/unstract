@@ -124,7 +124,7 @@ class AdapterProcessor:
         except InvalidRequest as e:
             raise InvalidRequest(str(e.detail))
         except Exception as e:
-            logger.error(f"Error while testing {adapter_id}: {e}")
+            logger.error(f"Error while testing : {adapter_id}: {e}")
             if isinstance(e, AdapterError):
                 raise TestAdapterInputException(e)
             elif isinstance(e, ActiveKeyNotFound):
