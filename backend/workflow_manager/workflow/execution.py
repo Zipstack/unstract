@@ -449,7 +449,4 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     def convert_workflow_model_to_data_class(
         workflow: Workflow,
     ) -> WorkflowDto:
-        return WorkflowDto(
-            id=workflow.id,
-            settings=workflow.settings,
-        )
+        return WorkflowDto(id=workflow.id)

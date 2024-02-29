@@ -5,7 +5,7 @@
 groups = ["default", "test", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:73a791002f5f7bab1afe9eaee07e8fc946774da3448f9daabedbccfc9be4f202"
+content_hash = "sha256:27911cc8da87345bc67ffc964493ec9434a770ed2e380403ef87094e8a55e409"
 
 [[package]]
 name = "aiobotocore"
@@ -4667,7 +4667,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.11.2"
+version = "0.12.1"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -4684,8 +4684,8 @@ dependencies = [
     "unstract-adapters~=0.2.2",
 ]
 files = [
-    {file = "unstract_sdk-0.11.2-py3-none-any.whl", hash = "sha256:bcab064d87dc2985e5a4340e438a8ef71ef165b3e5078aba0ed2da3bda77f9e0"},
-    {file = "unstract_sdk-0.11.2.tar.gz", hash = "sha256:0d6e3e00c9bbc6e569cc79922a2a45a54870c482cfa61287ea89a22ebd7fc606"},
+    {file = "unstract_sdk-0.12.1-py3-none-any.whl", hash = "sha256:960d8a7b92a1ad32894650edd9254aaf7c3f7555053991b3860e55ab684624a8"},
+    {file = "unstract_sdk-0.12.1.tar.gz", hash = "sha256:06b1a7bf17948d548137502127458d83046c2e0b596ff326a292dbe94041a13a"},
 ]
 
 [[package]]
@@ -4700,7 +4700,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
     "unstract-adapters~=0.2.1",
-    "unstract-tool-sandbox @ file:///home/gayathrivijayakumar/code/Unstract/unstract/unstract/tool-registry/../tool-sandbox",
+    "unstract-tool-sandbox @ file:///home/ghost/Documents/zipstack/unstract-oss/unstract/tool-registry/../tool-sandbox",
 ]
 
 [[package]]
