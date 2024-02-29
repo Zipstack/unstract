@@ -8,7 +8,7 @@
       "description": "The file on which OCR operation is to be performed"
   },
   "output": {
-      "description": "Places the file into a folder (bin) that its OCR opertation performed into."
+      "description": "Places the file into a folder (bin) that its OCR operation performed into."
   },
   "result": {
       "type": "JSON",

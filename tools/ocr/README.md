@@ -72,15 +72,14 @@ python main.py --command VARIABLES
 
 #### Run RUN command
 
-The format of the jsons required for settings and params can be found by running the SPEC command and the PROPERTIES
-command respectively. Alternatively if you have access to the code base, it is located in the `config` folder
-as `spec.json` and `properties.json`.
+The schema of the JSON required for settings can be found by running the [SPEC](#run-spec-command) command. Alternatively if you have access to the code base, it is located in the `config` folder as `spec.json`.
 
 
 ```commandline
 python main.py \
     --command RUN \
     --settings '{
+        "ocrAdapterId": "<ocr_adapter_id of adapter>"
         }' \
     --workflow-id '00000000-0000-0000-0000-000000000000' \
     --log-level DEBUG
@@ -90,7 +89,7 @@ python main.py \
 
 Build the tool docker image from the folder containing the `Dockerfile` with
 ```commandline
-docker build -t unstract/tool-example:0.0.1 .
+docker build -t unstract/tool-ocr:0.0.1 .
 ```
 
 Make sure the directory pointed by `TOOL_DATA_DIR` has the required information for the tool to run and 
@@ -102,9 +101,10 @@ docker run -it \
     --network unstract-network \
     --env-file .env \
     -v "$(pwd)"/data_dir:/app/data_dir \
-    unstract/tool-example:0.0.1 \
+    unstract/tool-ocr:0.0.1 \
     --command RUN \
     --settings '{
+        "ocrAdapterId": "<ocr_adapter_id of adapter>"
         }' \
     --workflow-id '00000000-0000-0000-0000-000000000000' \
     --log-level DEBUG

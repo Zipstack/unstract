@@ -85,11 +85,7 @@ class UnstractOCR(BaseTool):
         self.stream_log("Writing tool output")
         source_name = self.get_exec_metadata.get(MetadataKey.SOURCE_NAME)
         output_path = Path(output_dir) / f"{Path(source_name).stem}.txt"
-        try:
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(result_text)
-        except Exception as e:
-            self.stream_error_and_exit(f"Error creating output file: {e}")
+        ocr_adapter.process(input_file_path=input_file, output_file_path=output_path)
 
         # Log output
         if len(result_text) > 1000:
