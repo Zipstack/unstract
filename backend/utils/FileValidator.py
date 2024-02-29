@@ -58,6 +58,7 @@ class FileValidator:
 
             # Check the content type
             mimetype = magic.from_buffer(file.read(2048), mime=True)
+            file.seek(0)  # Reset the file pointer to the start
             if (
                 self.allowed_mimetypes
                 and mimetype not in self.allowed_mimetypes
