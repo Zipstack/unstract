@@ -73,6 +73,8 @@ class ToolStudioPromptKeys:
     EVAL_SETTINGS_EVALUATE = "evaluate"
     EVAL_SETTINGS_MONITOR_LLM = "monitor_llm"
     EVAL_SETTINGS_EXCLUDE_FAILED = "exclude_failed"
+    SUMMARIZE = "summarize"
+    SUMMARIZED_RESULT = "summarized_result"
 
 
 class LogLevels:

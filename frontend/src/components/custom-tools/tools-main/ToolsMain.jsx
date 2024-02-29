@@ -20,6 +20,7 @@ function ToolsMain({ setOpenAddLlmModal }) {
   const {
     details,
     defaultLlmProfile,
+    selectedDoc,
     updateCustomTool,
     disableLlmOrDocChange,
   } = useCustomToolStore();
@@ -135,7 +136,7 @@ function ToolsMain({ setOpenAddLlmModal }) {
             setScrollToBottom={setScrollToBottom}
           />
         )}
-        {activeKey === "2" && <CombinedOutput />}
+        {activeKey === "2" && <CombinedOutput doc={selectedDoc} />}
       </div>
       <div className="tools-main-footer">
         <Footer activeKey={activeKey} addPromptInstance={addPromptInstance} />

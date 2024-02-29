@@ -106,7 +106,7 @@ class AdapterViewSet(GenericViewSet):
                 status=status.HTTP_200_OK,
             )
         except Exception as e:
-            logger.error(f"Error testing adapter: {str(e)}")
+            logger.error(f"Error testing adapter : {str(e)}")
             return Response(
                 {"message": str(e)},
                 status=status.HTTP_401_UNAUTHORIZED,
