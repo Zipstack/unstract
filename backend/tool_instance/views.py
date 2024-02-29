@@ -51,7 +51,7 @@ def get_tool_list(request: Request) -> Response:
         try:
             logger.info("Fetching tools from the tool registry...")
             return Response(
-                data=ToolProcessor.get_tool_list(), status=status.HTTP_200_OK
+                data=ToolProcessor.get_tool_list(request.user), status=status.HTTP_200_OK
             )
         except Exception as exc:
             logger.error(f"Failed to fetch tools: {exc}")
