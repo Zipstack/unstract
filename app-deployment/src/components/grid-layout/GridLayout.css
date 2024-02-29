@@ -1,0 +1,23 @@
+.grid-layout {
+    height: calc(100vh - 65px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+.grid-layout-title {
+    padding: 12px 0px  0px 12px;
+}
+
+.grid-layout-main {
+    flex: 1;
+    overflow-y: hidden;
+    padding-bottom: 8px;
+    background-color: white;
+}
+
+.grid-layout-main > div {
+    height: 100%;
+    overflow: hidden;
+}

@@ -1,0 +1,20 @@
+.title-layout {
+    background: #F5F7F9;
+    box-shadow: 0px 1px 3px 0px rgba(24, 50, 71, 0.08);
+    padding-block: 14px;
+    padding-inline-start: 20px;
+    padding-inline-end: 12px;
+}
+
+.title-text {
+    color: var(--colorText, rgba(0, 0, 0, 0.88));
+    font-family: SF Pro Text;
+    font-size: 18px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 24px; /* 133.333% */
+}
+
+.title-text-typo {
+    color: var(--colorText, rgba(0, 0, 0, 0.88));
+}

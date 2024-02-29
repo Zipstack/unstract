@@ -1,0 +1,47 @@
+/* Styles for AppDeployments */
+
+.p-or-d-layout {
+    background-color: var(--page-bg-2);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.p-or-d-body1 {
+    flex: 1;
+    padding: 14px;
+    overflow-y: auto;
+}
+
+.p-or-d-body2 {
+    background-color: var(--white);
+    height: 100%;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+}
+
+.p-or-d-table {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.appTable .ant-table-thead > tr > th {
+    background: linear-gradient(0deg, rgba(0, 0, 0, 0.02), rgba(0, 0, 0, 0.02)),
+    linear-gradient(0deg, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.06));
+    border-start-start-radius: 0px !important;
+    border-start-end-radius: 0px !important;
+}
+
+.appTable tr:nth-child(even) {
+    background: #0000000F;
+}
+
+.appTable .workflowName {
+    color: #1890ff;
+    cursor: pointer;
+}
+
+.cursorPointer {
+    cursor: pointer;
+}

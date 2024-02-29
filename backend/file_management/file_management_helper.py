@@ -8,7 +8,7 @@ from typing import Any
 import magic
 from connector.models import ConnectorInstance
 from django.conf import settings
-from django.http import StreamingHttpResponse
+from django.http import HttpResponse, StreamingHttpResponse
 from file_management.exceptions import (
     ConnectorApiRequestError,
     ConnectorClassNotFound,
@@ -48,11 +48,9 @@ class FileManagerHelper:
                 f"Class not Found for {connector.connector_id}"
             )
             raise ConnectorClassNotFound
-
+        
     @staticmethod
-    def list_files(
-        file_system: UnstractFileSystem, path: str
-    ) -> list[FileInformation]:
+    def get_file_path(file_system: UnstractFileSystem, path: str) -> Any:
         fs = file_system.get_fsspec_fs()
         file_path = f"{path}"
         # TODO: Add below logic by checking each connector?
@@ -65,7 +63,15 @@ class FileManagerHelper:
         except Exception:
             FileManagerHelper.logger.error(f"Missing path Atribute in {fs}")
             raise MissingConnectorParams()
-
+        return [fs, file_path]
+    
+    @staticmethod
+    def list_files(
+        file_system: UnstractFileSystem, path: str
+    ) -> list[FileInformation]:
+        fs, file_path = FileManagerHelper.get_file_path(
+            file_system=file_system, path=path
+        )
         try:
             return FileManagerHelper.get_files(fs, file_path)
         except Exception as e:
@@ -102,9 +108,46 @@ class FileManagerHelper:
         return file_list
 
     @staticmethod
+    def list_directories(
+        file_system: UnstractFileSystem, path: str
+    ) -> list[FileInformation]:
+        fs, file_path = FileManagerHelper.get_file_path(
+            file_system=file_system, path=path
+        )
+        try:
+            return FileManagerHelper.get_directories(fs, file_path)
+        except Exception as e:
+            FileManagerHelper.logger.error(f"Error listing files: {e}")
+            raise FileListError()
+
+    @staticmethod
+    def get_directories(
+        fs: AbstractFileSystem, file_path: str
+    ) -> list[FileInformation]:
+        """Iterate through to return the directories list."""
+        if not file_path.endswith("/"):
+            file_path += "/"
+
+        files = fs.ls(file_path, detail=True)
+        file_list = []
+        for file_info in files:
+            file_name = file_info.get("name")
+            if os.path.normpath(file_path) == os.path.normpath(file_name):
+                continue
+
+            if file_info.get("type") == "directory":
+                file_content_type = file_info.get("ContentType")
+                if not file_content_type:
+                    file_content_type, _ = mimetypes.guess_type(file_name)
+                    file_list.append(
+                        FileInformation(file_info, file_content_type)
+                    )
+        return file_list
+    
+    @staticmethod
     def download_file(
-        file_system: UnstractFileSystem, file_path: str
-    ) -> StreamingHttpResponse:
+        file_system: UnstractFileSystem, file_path: str, only_view: bool
+    ) -> Any:
         fs = file_system.get_fsspec_fs()
         file_info = fs.info(file_path)
         file_name = file_info.get("name")
@@ -123,12 +166,20 @@ class FileManagerHelper:
                 file.close()
 
             file = fs.open(file_path, "rb")
-            response = StreamingHttpResponse(
-                file, content_type=file_content_type
-            )
-            response[
-                "Content-Disposition"
-            ] = f"attachment; filename={base_name}"
+            if only_view:
+                response = HttpResponse(content_type="application/octet-stream")
+                response[
+                    "Content-Disposition"
+                ] = f"attachment; filename={base_name}"
+                response.write(file.read())
+            else:
+                response = StreamingHttpResponse(
+                    file, content_type=file_content_type
+                )
+                response[
+                    "Content-Disposition"
+                ] = f"attachment; filename={base_name}"
+            file.close()
             return response
         except ApiRequestError as exception:
             FileManagerHelper.logger.error(

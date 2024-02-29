@@ -29,7 +29,6 @@ urlpatterns = [
     path("", include("tool_instance.urls")),
     path("", include("cron_expression_generator.urls")),
     path("", include("pipeline.urls")),
-    path("", include("apps.urls")),
     path("workflow/", include("workflow_manager.urls")),
     path("platform/", include("platform_settings.urls")),
     path("api/", include("api.urls")),
@@ -50,4 +49,9 @@ urlpatterns = [
         UrlPathConstants.PROMPT_STUDIO,
         include("prompt_studio.prompt_studio_output_manager.urls"),
     ),
+    path("", include("apps.canned_question.urls")),
+    path("", include("apps.app_deployment.urls")),
+    path("", include("apps.chat_history.urls")),
+    path("", include("apps.chat_transcript.urls")),
+    path("", include("apps.document_management.urls")),
 ]

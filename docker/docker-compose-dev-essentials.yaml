@@ -59,6 +59,8 @@ services:
       --accesslog=true --log.level=INFO
       --providers.docker=true --providers.docker.network=unstract-network
       --providers.file.filename=/proxy_overrides.yaml --providers.file.watch=true
+      --providers.http.endpoint=http://unstract-backend:8000/internal/apps/traffic_rules/
+      --providers.http.pollinterval=30
     ports:
       # The HTTP port
       - "80:80"

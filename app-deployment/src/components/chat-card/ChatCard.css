@@ -1,0 +1,10 @@
+.chat-user-name {
+    line-height: 0px;
+    padding-left: 10px;
+}
+.chat-response-content{
+    padding-top: 10px;
+}
+.chat-card {
+    margin-bottom: 10px;
+}

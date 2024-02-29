@@ -1,0 +1,5 @@
+/* Styles for Documents */
+
+.documents-card .ant-card-body {
+    padding: 12px !important;
+}

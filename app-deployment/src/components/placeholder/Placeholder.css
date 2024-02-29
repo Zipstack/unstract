@@ -1,0 +1,12 @@
+/* Styles for Placeholder */
+
+.content-center-body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.content-center-body-2 {
+    text-align: center;
+}

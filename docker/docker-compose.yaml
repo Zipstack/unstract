@@ -24,7 +24,8 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && PathPrefix(`/api/v1`, `/deployment`)
-
+      - traefik.http.routers.app_deployment_backend.rule=HostRegexp(`{subdomain:[a-zA-Z0-9.-]+}.unstractapp.localhost`) && PathPrefix(`/api/v1`)
+  
   # Celery execution consumer
   execution-consumer:
     image: unstract/backend:${VERSION}
@@ -81,7 +82,7 @@ services:
     image: unstract/frontend:${VERSION}
     container_name: unstract-frontend
     ports:
-      - "3000:3000"
+      - "3000:80"
     depends_on:
       - backend
       - reverse-proxy
@@ -154,6 +155,23 @@ services:
       - ENVIRONMENT=development
     labels:
       - traefik.enable=false
+  
+  # app template react app
+  app-template:
+    image: unstract/app-template:${VERSION}
+    volumes:
+     - ./nginx.conf:/etc/nginx/nginx.conf
+    container_name: unstract-app-template
+    # network_mode: host
+    ports:
+      - "3005:80"
+    depends_on:
+      - backend
+    environment:
+      - ENVIRONMENT=development
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.app-template.loadbalancer.server.port=80
 
 volumes:   
   unstract_data:

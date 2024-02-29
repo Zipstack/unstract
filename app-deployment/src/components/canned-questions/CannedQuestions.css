@@ -1,0 +1,12 @@
+.curated-qa-card .ant-card-body {
+    padding: 8px !important;
+    background-color: #F8FBFF;
+}
+.context-icon {
+    margin-left: 10px;
+}
+.add-question-button{
+  position: absolute;
+  right: 0;
+  top: -55px;
+}

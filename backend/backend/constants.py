@@ -7,6 +7,9 @@ class RequestKey:
     CREATED_BY = "created_by"
     MODIFIED_BY = "modified_by"
     MODIFIED_AT = "modified_at"
+    IS_ACTIVE = "is_active"
+    APP_DEPLOYMENT = "app_deployment"
+    CHAT_HISTORY = "chat_history"
 
 
 class FieldLengthConstants:

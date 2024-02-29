@@ -37,4 +37,14 @@ urlpatterns = [
     path(f"{api_path_prefix}/", include("api.urls")),
     # Feature flags
     path(f"{path_prefix}/flags/", include("feature_flag.urls")),
+    # To load details of an app deployment
+    path(
+        f"{path_prefix}/apps/",
+        include("apps.traffic_routing.public_urls"),
+    ),
+    # This shouldn't be exposed outside
+    path(
+        f"{internal_path_prefix}/apps/",
+        include("apps.traffic_routing.internal_urls"),
+    ),
 ]

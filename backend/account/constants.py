@@ -39,6 +39,7 @@ class Cookie:
     ORG_ID = "org_id"
     Z_CODE = "z_code"
     CSRFTOKEN = "csrftoken"
+    APP_ID = "app_id"
 
 
 class ErrorMessage:

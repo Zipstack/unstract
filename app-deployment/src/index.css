@@ -1,0 +1,56 @@
+html,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-family) !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  height: 100%;
+  background-color: var(--page-bg-2);
+}
+
+
+/* Custom scroll bar css starts */
+::-webkit-scrollbar {
+  width: 3px;
+  height: 5px;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+  border-radius: 6px;
+  background: none;
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: #c9c9c9;
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+  background: #b3b3b3;
+}
+
+/* Corner where both X and Y scroll bar meets */
+::-webkit-scrollbar-corner {
+  background: none;
+}
+
+/* Custom scroll bar css ends */
+
+/* Justify content to the right */
+.display-flex-right {
+  display: flex;
+  justify-content: right;
+}
+
+/* Justify content to the center */
+.display-flex-center {
+  display: flex;
+  justify-content: center;
+}

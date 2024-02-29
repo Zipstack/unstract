@@ -92,7 +92,7 @@ class FileManagementViewSet(viewsets.ModelViewSet):
             pk=id
         )
         file_system = FileManagerHelper.get_file_system(connector_instance)
-        return FileManagerHelper.download_file(file_system, path)
+        return FileManagerHelper.download_file(file_system, path, False)
 
     @action(detail=True, methods=["post"])
     def upload(self, request: HttpRequest) -> Response:

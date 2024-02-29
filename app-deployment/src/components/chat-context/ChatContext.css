@@ -1,0 +1,22 @@
+.chat-context > .ant-card-body {
+    padding: 10px;
+    cursor: pointer;
+}
+.context-text {
+    margin-left: 5px;
+}
+.context-edit-icon {
+    position: relative;
+    top: 5px;
+    float: right;
+    margin-left: 10px;
+}
+.context-edit-icon:hover{
+    color: blue;
+}
+.chat-history-box{
+    flex-direction: column-reverse;
+    display: flex;
+    height: 90%;
+    overflow: scroll;
+}

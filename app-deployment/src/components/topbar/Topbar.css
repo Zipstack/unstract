@@ -1,0 +1,26 @@
+.topbar-layout {
+    background-color: #092C4C;
+    padding-block: 14px;
+    padding-inline-start: 20px;
+    padding-inline-end: 12px;
+}
+
+.topbar-logo {
+    width: 120px;
+    height: auto;
+    margin-inline-end: 12px;
+}
+
+.topbar-text {
+    width: 100%;
+    text-align: center;
+}
+
+.topbar-text-typo {
+    color: rgb(255, 255, 255);
+}
+.topbar-logout {
+    text-align: right;
+  color: white;
+  cursor: pointer;
+}

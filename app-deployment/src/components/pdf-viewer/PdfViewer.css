@@ -1,0 +1,21 @@
+/* Styles for PdfViewer */
+
+.pdf-viewer-layout {
+    height: 100%;
+}
+
+.rpv-default-layout__sidebar-headers {
+    background-color: #F8FBFF;
+}
+
+.rpv-default-layout__toolbar {
+    background-color: #F8FBFF;
+}
+.pdf-selection-section{
+    padding: 10px;
+}
+.pdf-viewer{
+    height: calc(100vh - 175px);
+    width: 100%;
+    overflow: scroll;
+}

@@ -47,6 +47,8 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from tenant_account.models import OrganizationMember as OrganizationMember
 from tenant_account.organization_member_service import OrganizationMemberService
+from api.exceptions import APINotFound
+from apps.traffic_routing.models import TrafficRule
 
 Logger = logging.getLogger(__name__)
 
@@ -187,6 +189,7 @@ class AuthenticationController:
         self, request: Request, organization_id: str
     ) -> Response:
         user: User = request.user
+        app_id = self.get_app_id(request)
         organization_ids = CacheService.get_user_organizations(user.user_id)
         if not organization_ids:
             z_organizations: list[OrganizationData] = (
@@ -235,13 +238,52 @@ class AuthenticationController:
                 CacheService.get_user_session_info(user.email)
             )
             user_session_info["current_org"] = organization_id
+            user_session_info["app_id"] = app_id
             CacheService.set_user_session_info(user_session_info)
             response.set_cookie(Cookie.ORG_ID, organization_id)
+            response.set_cookie(Cookie.APP_ID, app_id)
             return response
         return Response(status=status.HTTP_403_FORBIDDEN)
 
     def get_user_info(self, request: Request) -> Optional[UserInfo]:
         return self.auth_service.get_user_info(request)
+    
+    def get_app_id(self, request: Request) -> str:
+        app_id = ""
+        if not request.data or not request.data["app_id"]:
+            return app_id
+        app_id = request.data["app_id"]
+        host = request.get_host()
+        if not host:
+            Logger.error("App not found for host %s.", host)
+            raise APINotFound("App not found.")
+        try:
+            routing_detail = TrafficRule.objects.get(fqdn=host)
+            if app_id != str(routing_detail.app_deployment_id):
+                raise APINotFound("App not found")
+            app_organization = routing_detail.organization
+            organizations: list[
+                OrganizationData
+            ] = self.auth_service.get_organizations_by_user_id(
+                request.user.user_id
+            )
+            app_organization_access = False
+            for organization in organizations:
+                if app_organization.organization_id == organization.id:
+                    app_organization_access = True
+                    break
+            if not app_organization_access:
+                Logger.error(
+                    "Access forbidden: %s tried accessing %s using %s",
+                    request.user,
+                    app_id,
+                    host,
+                )
+                raise Forbidden("Access denied.")
+        except TrafficRule.DoesNotExist as e:
+            Logger.error("App not found for host %s. Error: %s", host, e)
+            raise APINotFound("App not found.")
+        return app_id
 
     def is_admin_by_role(self, role: str) -> bool:
         """Check the role is act as admin in the context of authentication

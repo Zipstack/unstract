@@ -1,0 +1,28 @@
+html {
+  background-color: #e9e9e9;
+}
+
+.grid-main-layout {
+  overflow-y: auto;
+  padding: 12px;
+  height: 100%;
+  background: #F8F9FB;
+}
+
+.rpv-default-layout__container {
+  border: 0 !important;
+}
+
+/* Sets the position of the element in the center */
+.center-position {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.app-loading {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

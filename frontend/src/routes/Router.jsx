@@ -28,6 +28,7 @@ import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
 import { UsersPage } from "../pages/UsersPage.jsx";
 import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
+import { AppDeployments } from "../components/pipelines-or-deployments/app-deployments/AppDeployments.jsx";
 
 function Router() {
   return (
@@ -58,10 +59,7 @@ function Router() {
               path="task"
               element={<DeploymentsPage type={deploymentTypes.task} />}
             />
-            <Route
-              path="app"
-              element={<PipelinesOrDeploymentsPage type="app" />}
-            />
+            <Route path="app" element={<AppDeployments type="app" />} />
             <Route path="workflows" element={<WorkflowsPage />} />
             <Route path="workflows/:id" element={<ProjectHelper />}>
               <Route path="" element={<AgencyPage />} />

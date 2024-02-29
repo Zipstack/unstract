@@ -83,6 +83,11 @@ WEB_APP_ORIGIN_URL = os.environ.get(
     "WEB_APP_ORIGIN_URL", "http://localhost:3000"
 )
 
+WEB_APP_TEMPLATE_ORIGIN_URL = os.environ.get(
+    "WEB_APP_TEMPLATE_ORIGIN_URL", "http://localhost:3000"
+)
+WEB_APP_ALLOWED_ORIGIN_URLS = [WEB_APP_ORIGIN_URL, "http://localhost:3004"]
+
 LOGIN_NEXT_URL = os.environ.get("LOGIN_NEXT_URL", "http://localhost:3000/org")
 LANDING_URL = os.environ.get("LANDING_URL", "http://localhost:3000/landing")
 ERROR_URL = os.environ.get("ERROR_URL", "http://localhost:3000/error")
@@ -113,6 +118,8 @@ PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
 API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
     "API_DEPLOYMENT_PATH_PREFIX", "deployment"
 ).strip("/")
+
+INTERNAL_PATH_PREFIX = os.environ.get("INTERNAL_PATH_PREFIX", "internal")
 
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")
@@ -146,7 +153,7 @@ SECRET_KEY = get_required_setting("DJANGO_SECRET_KEY")
 DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
-CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL]
+CSRF_TRUSTED_ORIGINS = WEB_APP_ALLOWED_ORIGIN_URLS
 CORS_ALLOW_ALL_ORIGINS = False
 SESSION_COOKIE_AGE = 86400
 
@@ -179,6 +186,7 @@ SHARED_APPS = (
     "log_events",
     "feature_flag",
     "django_celery_beat",
+    "apps.traffic_routing",
 )
 
 TENANT_APPS = (
@@ -207,6 +215,11 @@ TENANT_APPS = (
     "prompt_studio.prompt_studio_core",
     "prompt_studio.prompt_studio_registry",
     "prompt_studio.prompt_studio_output_manager",
+    "apps.app_deployment",
+    "apps.canned_question",
+    "apps.chat_history",
+    "apps.chat_transcript",
+    "apps.document_management",
 )
 
 INSTALLED_APPS = list(SHARED_APPS) + [
@@ -392,7 +405,12 @@ WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
 WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
 
 # White list paths under tenant paths
-TENANT_ACCESSIBLE_PUBLIC_PATHS_LIST = ["/oauth", "/organization", "/doc"]
+TENANT_ACCESSIBLE_PUBLIC_PATHS_LIST = [
+    "/oauth",
+    "/organization",
+    "/doc",
+    "/apps/load/",
+]
 TENANT_ACCESSIBLE_PUBLIC_PATHS = [
     f"/{PATH_PREFIX}{PATH}" for PATH in TENANT_ACCESSIBLE_PUBLIC_PATHS_LIST
 ]
@@ -449,6 +467,10 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_AUTH_EXTRA_ARGUMENTS = {
 }
 SOCIAL_AUTH_GOOGLE_OAUTH2_USE_UNIQUE_USER_ID = True
 
+APP_TEMPLATE_DOMAIN = get_required_setting("APP_TEMPLATE_DOMAIN")
+APP_TEMPLATE_SERVICE = get_required_setting("APP_TEMPLATE_SERVICE")
+DNS_PROVIDER = get_required_setting("DNS_PROVIDER")
+DNS_PROVIDER_CONFIG = get_required_setting("DNS_PROVIDER_CONFIG")
 
 # Always keep this line at the bottom of the file.
 if missing_settings:
