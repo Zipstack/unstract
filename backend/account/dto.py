@@ -105,7 +105,7 @@ class UserRoleData:
 
 @dataclass
 class MemberInvitation:
-    """Represents an invitation to join an organization in Auth0.
+    """Represents an invitation to join an organization.
 
     Attributes:
         id (str): The unique identifier for the invitation.
