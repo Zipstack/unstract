@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from file_management.constants import FileInformationKey
 from utils.FileValidator import FileValidator
 
 
@@ -18,22 +19,35 @@ class FileListRequestSerializer(serializers.Serializer):
 
 class FileUploadSerializer(serializers.Serializer):
     file = serializers.ListField(
-        child=serializers.FileField(), required=True,
-        validators=[FileValidator(allowed_extensions=['pdf'],
-                                  allowed_mimetypes=['application/pdf'],
-                                  min_size=0,
-                                  max_size=(10*1024*1024*1024))])
+        child=serializers.FileField(),
+        required=True,
+        validators=[
+            FileValidator(
+                allowed_extensions=FileInformationKey.FILE_UPLOAD_ALLOWED_EXTENSIONS,
+                allowed_mimetypes=FileInformationKey.FILE_UPLOAD_ALLOWED_MIMETYPES,
+                min_size=0,
+                max_size=FileInformationKey.FILE_UPLOAD_MAX_SIZE,
+            )
+        ],
+    )
     # FileExtensionValidator(allowed_extensions=['pdf'])
     connector_id = serializers.UUIDField()
     path = serializers.CharField()
 
 
 class FileUploadIdeSerializer(serializers.Serializer):
-    file = serializers.ListField(child=serializers.FileField(), required=True,
-        validators=[FileValidator(allowed_extensions=['pdf'],
-                                  allowed_mimetypes=['application/pdf'],
-                                  min_size=0,
-                                  max_size=(10*1024*1024*1024))])
+    file = serializers.ListField(
+        child=serializers.FileField(),
+        required=True,
+        validators=[
+            FileValidator(
+                allowed_extensions=FileInformationKey.FILE_UPLOAD_ALLOWED_EXTENSIONS,
+                allowed_mimetypes=FileInformationKey.FILE_UPLOAD_ALLOWED_MIMETYPES,
+                min_size=0,
+                max_size=FileInformationKey.FILE_UPLOAD_MAX_SIZE,
+            )
+        ],
+    )
 
 
 class FileInfoIdeSerializer(serializers.Serializer):
