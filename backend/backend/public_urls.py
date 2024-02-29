@@ -21,6 +21,7 @@ from django.urls import include, path
 
 path_prefix = settings.PATH_PREFIX
 api_path_prefix = settings.API_DEPLOYMENT_PATH_PREFIX
+internal_path_prefix = settings.INTERNAL_PATH_PREFIX
 
 urlpatterns = [
     path(f"{path_prefix}/", include("account.urls")),

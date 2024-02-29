@@ -5,7 +5,7 @@
 groups = ["default", "test", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:27911cc8da87345bc67ffc964493ec9434a770ed2e380403ef87094e8a55e409"
+content_hash = "sha256:898940aeb135f2e302e185692d4545982183e9f6be3b825c274f72b232685964"
 
 [[package]]
 name = "aiobotocore"
@@ -713,6 +713,20 @@ dependencies = [
 files = [
     {file = "click-repl-0.3.0.tar.gz", hash = "sha256:17849c23dba3d667247dc4defe1757fff98694e90fe37474f3feebb69ced26a9"},
     {file = "click_repl-0.3.0-py3-none-any.whl", hash = "sha256:fb7e06deb8da8de86180a33a9da97ac316751c094c6899382da7feeeeb51b812"},
+]
+
+[[package]]
+name = "cloudflare"
+version = "2.16.0"
+summary = "Python wrapper for the Cloudflare v4 API"
+groups = ["default"]
+dependencies = [
+    "jsonlines",
+    "pyyaml",
+    "requests",
+]
+files = [
+    {file = "cloudflare-2.16.0.tar.gz", hash = "sha256:42ddf55d15152696ff1b6f99ef84f68fa3dd5aac2d94b6ccb365d860e651977d"},
 ]
 
 [[package]]
@@ -2006,6 +2020,20 @@ groups = ["default"]
 files = [
     {file = "joblib-1.3.2-py3-none-any.whl", hash = "sha256:ef4331c65f239985f3f2220ecc87db222f08fd22097a3dd5698f693875f8cbb9"},
     {file = "joblib-1.3.2.tar.gz", hash = "sha256:92f865e621e17784e7955080b6d042489e3b8e294949cc44c6eac304f59772b1"},
+]
+
+[[package]]
+name = "jsonlines"
+version = "4.0.0"
+requires_python = ">=3.8"
+summary = "Library with helpers for the jsonlines file format"
+groups = ["default"]
+dependencies = [
+    "attrs>=19.2.0",
+]
+files = [
+    {file = "jsonlines-4.0.0-py3-none-any.whl", hash = "sha256:185b334ff2ca5a91362993f42e83588a360cf95ce4b71a73548502bda52a7c55"},
+    {file = "jsonlines-4.0.0.tar.gz", hash = "sha256:0c6d2c09117550c089995247f605ae4cf77dd1533041d366351f6f298822ea74"},
 ]
 
 [[package]]
@@ -4700,7 +4728,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
     "unstract-adapters~=0.2.1",
-    "unstract-tool-sandbox @ file:///home/ghost/Documents/zipstack/unstract-oss/unstract/tool-registry/../tool-sandbox",
+    "unstract-tool-sandbox,
 ]
 
 [[package]]

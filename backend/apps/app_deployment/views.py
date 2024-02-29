@@ -153,7 +153,7 @@ class AppDeploymentView(viewsets.ModelViewSet):
         TrafficRule(
             fqdn=dns_fqdn,
             rule={
-                "service": settings.APP_TEMPLATE_SERVICE,
+                "service": settings.APP_DEPLOYMENT_SERVICE,
                 "rule": f"Host(`{dns_fqdn}`)",
             },
             app_deployment_id=saved_app.id,

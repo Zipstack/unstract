@@ -5,7 +5,7 @@ from llama_index.vector_stores.types import ExactMatchFilter, MetadataFilters
 from unstract.sdk.embedding import ToolEmbedding
 from unstract.sdk.llm import ToolLLM
 from unstract.sdk.tool.stream import StreamMixin
-from unstract.sdk.utils.service_context import UNServiceContext
+from unstract.sdk.utils.service_context import ServiceContext
 from unstract.sdk.vector_db import ToolVectorDB
 
 
@@ -38,7 +38,7 @@ class ChatEngine:
         self._llm = self._llm_tool.get_llm(adapter_instance_id=llm_adapter_id)
 
         # self._llama_debug = LlamaDebugHandler(print_trace_on_end=True)
-        self._service_context = UNServiceContext.get_service_context(
+        self._service_context = ServiceContext.get_service_context(
             llm=self._llm,
             embed_model=self._embedding_model,
             # additional_callbacks=[
