@@ -6,4 +6,4 @@ requests==2.31.0
 pillow~=10.2.0
 
 # Required for all unstract tools
-unstract-sdk==0.12.0
+unstract-sdk~=0.12.1
