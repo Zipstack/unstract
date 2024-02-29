@@ -27,6 +27,7 @@ import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
 import { UsersPage } from "../pages/UsersPage.jsx";
 import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
+import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 
 function Router() {
   return (
@@ -68,6 +69,10 @@ function Router() {
             <Route path="tools" element={<CustomTools />} />
             <Route path="" element={<CustomToolsHelper />}>
               <Route path="tools/:id" element={<ToolIdePage />} />
+              <Route
+                path="tools/:id/outputAnalyzer"
+                element={<OutputAnalyzerPage />}
+              />
             </Route>
             <Route
               path="settings/llms"

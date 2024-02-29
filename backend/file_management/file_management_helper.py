@@ -195,8 +195,8 @@ class FileManagerHelper:
         elif file_content_type == "text/plain":
             with fs.open(file_path, "r") as file:
                 FileManagerHelper.logger.info(f"Reading text file: {file_path}")
-                encoded_string = base64.b64encode(file.read())
-                return encoded_string
+                text_content = file.read()
+                return text_content
         else:
             raise InvalidFileType
 
@@ -246,9 +246,13 @@ class FileManagerHelper:
             raise OrgIdNotValid()
         base_path = Path(settings.PROMPT_STUDIO_FILE_PATH)
         file_path: Path = base_path / org_id / user_id / tool_id
+        extract_file_path: Path = Path(file_path, "extract")
+        summarize_file_path: Path = Path(file_path, "summarize")
         if is_create:
             try:
                 os.makedirs(file_path, exist_ok=True)
+                os.makedirs(extract_file_path, exist_ok=True)
+                os.makedirs(summarize_file_path, exist_ok=True)
             except OSError as e:
                 FileManagerHelper.logger.error(
                     f"Error while creating {file_path}: {e}"

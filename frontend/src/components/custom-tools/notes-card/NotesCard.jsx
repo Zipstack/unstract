@@ -1,13 +1,19 @@
-import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
-import { Button, Card, Col, Row, Space, Tooltip } from "antd";
+import {
+  CheckCircleOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  SyncOutlined,
+} from "@ant-design/icons";
+import { Button, Card, Col, Row, Space, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 
 import "./NotesCard.css";
 import { EditableText } from "../editable-text/EditableText";
 import { useState } from "react";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
+import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";
 
-function NotesCard({ details, handleChange, handleDelete }) {
+function NotesCard({ details, handleChange, handleDelete, updateStatus }) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
 
@@ -31,6 +37,29 @@ function NotesCard({ details, handleChange, handleDelete }) {
             />
           </Col>
           <Col span={6} className="display-flex-right">
+            {updateStatus?.promptId === details?.prompt_id && (
+              <>
+                {updateStatus?.status ===
+                  promptStudioUpdateStatus.isUpdating && (
+                  <Tag
+                    icon={<SyncOutlined spin />}
+                    color="processing"
+                    className="display-flex-align-center"
+                  >
+                    Updating
+                  </Tag>
+                )}
+                {updateStatus?.status === promptStudioUpdateStatus.done && (
+                  <Tag
+                    icon={<CheckCircleOutlined />}
+                    color="success"
+                    className="display-flex-align-center"
+                  >
+                    Done
+                  </Tag>
+                )}
+              </>
+            )}
             <Tooltip title="Edit">
               <Button
                 size="small"
@@ -70,6 +99,7 @@ NotesCard.propTypes = {
   details: PropTypes.object.isRequired,
   handleChange: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
+  updateStatus: PropTypes.object.isRequired,
 };
 
 export { NotesCard };
