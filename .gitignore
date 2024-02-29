@@ -607,6 +607,9 @@ $RECYCLE.BIN/
 backend/plugins/authentication/*
 !backend/plugins/authentication/auth_sample
 
+# Processor Plugins
+backend/plugins/processor/*
+
 # Tool registry
 unstract/tool-registry/src/unstract/tool_registry/*.json
 unstract/tool-registry/tests/*.yaml
@@ -627,5 +630,3 @@ tools/*/sdks/
 tools/*/data_dir/
 
 docker/workflow_data/
-
-

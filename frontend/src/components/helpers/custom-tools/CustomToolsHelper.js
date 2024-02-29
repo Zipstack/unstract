@@ -14,7 +14,7 @@ function CustomToolsHelper() {
   const [logId, setLogId] = useState(null);
   const { id } = useParams();
   const { sessionDetails } = useSessionStore();
-  const { updateCustomTool } = useCustomToolStore();
+  const { updateCustomTool, setDefaultCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const navigate = useNavigate();
   const axiosPrivate = useAxiosPrivate();
@@ -49,7 +49,11 @@ function CustomToolsHelper() {
         return handleApiRequest(reqOpsDocs);
       })
       .then((res) => {
-        const data = res?.data?.map((item) => item?.name);
+        const data = (res?.data || [])
+          ?.filter(
+            (item) => item?.name !== "extract" && item?.name !== "summarize"
+          )
+          ?.map((item) => item?.name);
         updatedCusTool["listOfDocs"] = data;
 
         const reqOpsDropdownItems = {
@@ -82,6 +86,12 @@ function CustomToolsHelper() {
         setIsLoading(false);
       });
   }, [id]);
+
+  useEffect(() => {
+    return () => {
+      setDefaultCustomTool();
+    };
+  }, []);
 
   const handleApiRequest = async (requestOptions) => {
     return axiosPrivate(requestOptions)

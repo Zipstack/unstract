@@ -7,6 +7,8 @@ import { useSessionStore } from "../../../store/session-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import "./OutputForDocModal.css";
 import { CheckCircleFilled, CloseCircleFilled } from "@ant-design/icons";
+import { useNavigate } from "react-router-dom";
+import { displayPromptResult } from "../../../helpers/GetStaticData";
 
 const columns = [
   {
@@ -32,6 +34,8 @@ function OutputForDocModal({
   const { details, listOfDocs } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
+  const navigate = useNavigate();
+
   useEffect(() => {
     handleGetOutputForDocs();
   }, [open]);
@@ -53,7 +57,7 @@ function OutputForDocModal({
       .then((res) => {
         const data = res?.data || [];
         data.sort((a, b) => {
-          return new Date(b.created_at) - new Date(a.created_at);
+          return new Date(b.modified_at) - new Date(a.modified_at);
         });
         handleRowsGeneration(data);
       })
@@ -67,7 +71,6 @@ function OutputForDocModal({
     [...listOfDocs].forEach((item) => {
       const output = data.find((outputValue) => outputValue?.doc_name === item);
       const isSuccess = output?.output?.length > 0;
-      const content = isSuccess ? output?.output : "Failed";
 
       const result = {
         key: item,
@@ -81,7 +84,7 @@ function OutputForDocModal({
                 <CloseCircleFilled style={{ color: "#FF4D4F" }} />
               )}
             </span>{" "}
-            {content}
+            {isSuccess ? displayPromptResult(output?.output) : "Failed"}
           </Typography.Text>
         ),
       };
@@ -108,7 +111,9 @@ function OutputForDocModal({
         </div>
         <div className="output-doc-gap" />
         <div className="display-flex-right">
-          <Button size="small">View in Output Analyzer</Button>
+          <Button size="small" onClick={() => navigate("outputAnalyzer")}>
+            View in Output Analyzer
+          </Button>
         </div>
         <div className="output-doc-gap" />
         <div className="output-doc-table">
