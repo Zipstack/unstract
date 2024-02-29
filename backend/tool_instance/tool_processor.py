@@ -131,12 +131,12 @@ class ToolProcessor:
                 schema.properties[key]["enum"] = list(adapter_names)
 
     @staticmethod
-    def get_tool_list() -> list[dict[str, Any]]:
+    def get_tool_list(user: User) -> list[dict[str, Any]]:
         """Function to get a list of tools."""
         tool_registry = ToolRegistry()
         prompt_studio_tools: list[
             dict[str, Any]
-        ] = PromptStudioRegistryHelper.fetch_json_for_registry()
+        ] = PromptStudioRegistryHelper.fetch_json_for_registry(user)
         tool_list: list[
             dict[str, Any]
         ] = tool_registry.fetch_tools_descriptions()
