@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from account.custom_exceptions import DuplicateData
 from cron_expression_generator.constants import CronKeys
@@ -118,3 +118,33 @@ class PipelineViewSet(viewsets.ModelViewSet):
         pipeline_to_remove = str(instance.pk)
         super().perform_destroy(instance)
         return SchedulerHelper.remove_job(pipeline_to_remove)
+
+    def partial_update(self, request: Request, pk: Any = None) -> Response:
+        pipeline_id = request.data.get("pipeline_id")
+        active = request.data.get("active")
+
+        if not pipeline_id:
+            return Response(
+                {"error": "pipeline_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            if active:
+                SchedulerHelper.resume_job(pipeline_id)
+            else:
+                SchedulerHelper.pause_job(pipeline_id)
+        except Exception as e:
+            logger.error(f"Failed to update pipeline status: {e}")
+            return Response(
+                {"error": "Failed to update pipeline status"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            {
+                "status": "success",
+                "message": f"Pipeline {pipeline_id} status updated",
+            },
+            status=status.HTTP_200_OK,
+        )
