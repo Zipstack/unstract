@@ -11,8 +11,6 @@ ENV BUILD_CONTEXT_PATH prompt-service
 ENV TARGET_PLUGINS_PATH src/unstract/prompt_service/plugins
 ENV PDM_VERSION 2.12.3
 
-ENV HF_HOME /tmp/huggingface/hub
-
 RUN apt-get update; \
     apt-get --no-install-recommends install -y \
         # unstract sdk
@@ -72,7 +70,7 @@ EXPOSE 3003
 
 # Creates a non-root user with an explicit UID and adds permission to access the /app folder
 # For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-RUN adduser -u 5678 --disabled-password --gecos "" --no-create-home unstract;
+RUN adduser -u 5678 --disabled-password --gecos "" unstract;
 
 USER unstract
 
