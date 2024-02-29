@@ -4,11 +4,29 @@
   margin-top: 50px;
 }
 
+@media screen and (max-height: 900px) {
+  .onboard-content {
+    margin-top: 30px;
+  }
+}
+
 .uppercase-text {
   text-transform: uppercase;
   color: #0C355A;
   font-family: 'SF Pro Text', sans-serif;
   margin-bottom: 50px;
+}
+
+@media screen and (max-height: 900px) {
+  .uppercase-text {
+    margin-bottom: 10px;
+  }
+}
+
+@media screen and (max-height: 900px) {
+  h1 {
+    font-size: 1.2rem;
+  }
 }
 
 .text-title-style {
@@ -44,6 +62,13 @@
     margin-bottom: 50px;
 }
 
+@media screen and (max-height: 900px) {
+  .landing-logo {
+    height: 30px;
+    margin-bottom: 10px;
+  }
+}
+
 .circle {
   position: absolute;
   left: 0%;
@@ -68,6 +93,12 @@
   display: flex;
   justify-content: right;
   margin-top: 25px;
+}
+
+@media screen and (max-height: 900px) {
+  .later-div-style {
+    margin-top: 10px;
+  }
 }
 
 .svg-container {
@@ -99,4 +130,37 @@
 .configured-text {
   margin-left: 8px;
   vertical-align: middle;
+}
+
+@media screen and (max-height: 900px) {
+  .ant-space .ant-space-item .ant-card {
+    padding: 6px;
+  }
+}
+
+@media screen and (max-height: 900px) {
+  .card-style {
+    width: 940px;
+    margin-bottom: 5px;
+  }
+}
+
+@media screen and (max-height: 720px) and (max-width: 1280px){
+  .card-style {
+    width: 1200px;
+    margin-bottom: 5px;
+  }
+}
+
+@media screen and (max-height: 780px) and (max-width: 1024px){
+  .card-style {
+    width: 940px;
+    margin-bottom: 5px;
+  }
+}
+
+@media screen and (max-height: 800px) {
+  .ant-space .ant-space-item .ant-card .ant-card-body {
+    padding: 10px;
+  }
 }
