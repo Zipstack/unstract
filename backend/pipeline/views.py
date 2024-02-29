@@ -22,6 +22,7 @@ from pipeline.serializers.crud import PipelineSerializer
 from pipeline.serializers.execute import (
     PipelineExecuteSerializer as ExecuteSerializer,
 )
+from pipeline.serializers.update import PipelineUpdateSerializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -120,31 +121,30 @@ class PipelineViewSet(viewsets.ModelViewSet):
         return SchedulerHelper.remove_job(pipeline_to_remove)
 
     def partial_update(self, request: Request, pk: Any = None) -> Response:
-        pipeline_id = request.data.get("pipeline_id")
-        active = request.data.get("active")
+        serializer = PipelineUpdateSerializer(data=request.data)
+        if serializer.is_valid():
+            pipeline_id = serializer.validated_data.get("pipeline_id")
+            active = serializer.validated_data.get("active")
+            try:
+                if active:
+                    SchedulerHelper.resume_job(pipeline_id)
+                else:
+                    SchedulerHelper.pause_job(pipeline_id)
+            except Exception as e:
+                logger.error(f"Failed to update pipeline status: {e}")
+                return Response(
+                    {"error": "Failed to update pipeline status"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
-        if not pipeline_id:
             return Response(
-                {"error": "pipeline_id is required"},
-                status=status.HTTP_400_BAD_REQUEST,
+                {
+                    "status": "success",
+                    "message": f"Pipeline {pipeline_id} status updated",
+                },
+                status=status.HTTP_200_OK,
             )
-
-        try:
-            if active:
-                SchedulerHelper.resume_job(pipeline_id)
-            else:
-                SchedulerHelper.pause_job(pipeline_id)
-        except Exception as e:
-            logger.error(f"Failed to update pipeline status: {e}")
+        else:
             return Response(
-                {"error": "Failed to update pipeline status"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                serializer.errors, status=status.HTTP_400_BAD_REQUEST
             )
-
-        return Response(
-            {
-                "status": "success",
-                "message": f"Pipeline {pipeline_id} status updated",
-            },
-            status=status.HTTP_200_OK,
-        )
