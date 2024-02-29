@@ -9,6 +9,34 @@ TODO: Write few lines about the project.
 - docker
 - git
 
+## Setup & launch Unstract 
+
+Install Docker Engine and the Docker Compose plugin on your workstation  (see [instructions](https://docs.docker.com/engine/install/)).
+After Docker is installed, you can immediately get started locally by running:
+
+The script performs various actions based on the command-line options provided. It can create environment files, run Docker Compose up, build Docker images, and stop Docker Compose.
+
+Usage example
+```
+# Run Docker Compose up with a specific version tag
+./run-platform.sh -v v0.1.0
+
+# Display the help information
+./run-platform.sh -h
+
+# Copy environment files from sample.env
+./run-platform.sh -c
+
+# Build Docker images with a specific version tag
+./run-platform.sh -b v0.1.0
+
+### Run Docker Compose up in detached mode with a specific version tag
+./run-platform.sh -d v0.1.0
+
+# build and run entire platform and setting up default Envs.
+./run-platform.sh
+
+```
 ## Running with docker compose
 
 - All services needed by the backend can be run with
