@@ -70,7 +70,7 @@ function AddSourceModal({
         const data = res?.data;
         if (isConnector) {
           setSelectedSourceId(data?.connector_id);
-          const connectorMetadata = data?.connector_metadata;
+          const connectorMetadata = data?.metadata;
           connectorMetadata["connectorName"] = data?.connector_name;
           setMetadata(connectorMetadata);
         } else {

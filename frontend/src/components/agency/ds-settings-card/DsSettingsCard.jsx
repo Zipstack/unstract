@@ -316,7 +316,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         setSelectedId={setSelectedId}
         handleUpdate={handleUpdate}
         filteredList={filteredList}
-        connectorMetadata={connDetails?.connector_metadata}
+        connectorMetadata={connDetails?.metadata}
         connectorId={connDetails?.id}
         specConfig={specConfig}
         formDataConfig={formDataConfig}

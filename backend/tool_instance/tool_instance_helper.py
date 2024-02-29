@@ -59,12 +59,9 @@ class ToolInstanceHelper:
             output_connector = ConnectorInstanceHelper.get_output_connector_instance_by_name_for_workflow(  # noqa
                 tool_instance.workflow_id, output_connector_name
             )
-            if (
-                output_connector
-                and "path" in output_connector.connector_metadata
-            ):
+            if output_connector and "path" in output_connector.metadata:
                 metadata[JsonSchemaKey.OUTPUT_FOLDER] = os.path.join(
-                    output_connector.connector_metadata["path"],
+                    output_connector.metadata["path"],
                     *(metadata[JsonSchemaKey.OUTPUT_FOLDER].split("/")),
                 )
         if (
@@ -76,9 +73,9 @@ class ToolInstanceHelper:
                 tool_instance.workflow_id, input_connector_name
             )
 
-            if input_connector and "path" in input_connector.connector_metadata:
+            if input_connector and "path" in input_connector.metadata:
                 metadata[JsonSchemaKey.ROOT_FOLDER] = os.path.join(
-                    input_connector.connector_metadata["path"],
+                    input_connector.metadata["path"],
                     *(metadata[JsonSchemaKey.ROOT_FOLDER].split("/")),
                 )
         ToolInstanceHelper.update_metadata_with_adapter_instances(
@@ -181,6 +178,7 @@ class ToolInstanceHelper:
                 adapter_property=adapter_property,
                 adapter_type=AdapterTypes.OCR,
             )
+
     @staticmethod
     def get_altered_metadata(
         tool_instance: ToolInstance,
@@ -210,13 +208,10 @@ class ToolInstanceHelper:
             output_connector = ConnectorInstanceHelper.get_output_connector_instance_by_name_for_workflow(  # noqa
                 tool_instance.workflow_id, output_connector_name
             )
-            if (
-                output_connector
-                and "path" in output_connector.connector_metadata
-            ):
+            if output_connector and "path" in output_connector.metadata:
                 relative_path = ToolInstanceHelper.get_relative_path(
                     metadata[JsonSchemaKey.OUTPUT_FOLDER],
-                    output_connector.connector_metadata["path"],
+                    output_connector.metadata["path"],
                 )
                 metadata[JsonSchemaKey.OUTPUT_FOLDER] = relative_path
         if (
@@ -227,10 +222,10 @@ class ToolInstanceHelper:
             input_connector = ConnectorInstanceHelper.get_input_connector_instance_by_name_for_workflow(  # noqa
                 tool_instance.workflow_id, input_connector_name
             )
-            if input_connector and "path" in input_connector.connector_metadata:
+            if input_connector and "path" in input_connector.metadata:
                 relative_path = ToolInstanceHelper.get_relative_path(
                     metadata[JsonSchemaKey.ROOT_FOLDER],
-                    input_connector.connector_metadata["path"],
+                    input_connector.metadata["path"],
                 )
                 metadata[JsonSchemaKey.ROOT_FOLDER] = relative_path
         return metadata
