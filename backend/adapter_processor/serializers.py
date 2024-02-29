@@ -7,7 +7,6 @@ from adapter_processor.constants import AdapterKeys
 from cryptography.fernet import Fernet
 from rest_framework import serializers
 from unstract.adapters.constants import Common as common
-from utils.serializer_utils import SerializerUtils
 
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
@@ -83,10 +82,8 @@ class AdapterListSerializer(BaseAdapterSerializer):
 
     def to_representation(self, instance: AdapterInstance) -> dict[str, str]:
         rep: dict[str, str] = super().to_representation(instance)
-
-        if SerializerUtils.check_context_for_GET_or_POST(context=self.context):
-            rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
-                instance.adapter_id, common.ICON
-            )
+        rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
+            instance.adapter_id, common.ICON
+        )
 
         return rep
