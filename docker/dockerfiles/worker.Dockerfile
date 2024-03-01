@@ -31,7 +31,7 @@ RUN set -e; \
     pdm sync --prod --no-editable; \
     \
     # REF: https://docs.gunicorn.org/en/stable/deploy.html#using-virtualenv
-    pip install --no-cache-dir gunicorn gunicorn[gthread];
+    pip install --no-cache-dir gunicorn gevent;
 
 
 EXPOSE 5002
