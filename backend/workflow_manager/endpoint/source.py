@@ -1,5 +1,4 @@
 import fnmatch
-import json
 import logging
 import os
 import shutil
@@ -8,10 +7,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 import fsspec
-from account.models import EncryptionSecret
 from connector.models import ConnectorInstance
 from connector_processor.constants import ConnectorKeys
-from cryptography.fernet import Fernet
 from django.core.files.uploadedfile import UploadedFile
 from django.db import connection
 from unstract.workflow_execution.enums import LogState
@@ -93,17 +90,9 @@ class SourceConnector(BaseConnector):
             endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
         )
         if endpoint.connector_instance:
-            encryption_secret: EncryptionSecret = EncryptionSecret.objects.get()
-            f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
-            endpoint.connector_instance.connector_metadata = json.loads(
-                f.decrypt(
-                    bytes(endpoint.connector_instance.connector_metadata_b
-                          ).decode(
-                        "utf-8"
-                    )
-                )
+            endpoint.connector_instance.connector_metadata = (
+                endpoint.connector_instance.metadata
             )
-
         return endpoint
 
     def validate(self) -> None:
