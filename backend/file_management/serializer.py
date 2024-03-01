@@ -1,6 +1,5 @@
-from rest_framework import serializers
-
 from file_management.constants import FileInformationKey
+from rest_framework import serializers
 from utils.FileValidator import FileValidator
 
 
@@ -27,7 +26,7 @@ class FileUploadSerializer(serializers.Serializer):
                 allowed_mimetypes=FileInformationKey.FILE_UPLOAD_ALLOWED_MIMETYPES,
                 min_size=0,
                 max_size=FileInformationKey.FILE_UPLOAD_MAX_SIZE,
-            )
+            )  # type: ignore
         ],
     )
     # FileExtensionValidator(allowed_extensions=['pdf'])
@@ -45,7 +44,7 @@ class FileUploadIdeSerializer(serializers.Serializer):
                 allowed_mimetypes=FileInformationKey.FILE_UPLOAD_ALLOWED_MIMETYPES,
                 min_size=0,
                 max_size=FileInformationKey.FILE_UPLOAD_MAX_SIZE,
-            )
+            )  # type: ignore
         ],
     )
 
