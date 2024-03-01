@@ -22,6 +22,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import "./Pipelines.css";
+import { formattedDateTime } from "../../../helpers/GetStaticData";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -310,7 +311,7 @@ function Pipelines({ type }) {
       render: (_, record) => (
         <div>
           <Typography.Text className="p-or-d-typography" strong>
-            {record?.last_run_time}
+            {formattedDateTime(record?.last_run_time)}
           </Typography.Text>
         </div>
       ),

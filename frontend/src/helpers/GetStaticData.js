@@ -1,3 +1,6 @@
+import moment from "moment";
+import momentTz from "moment-timezone";
+
 const THEME = {
   DARK: "dark",
   LIGHT: "light",
@@ -327,6 +330,19 @@ const onboardCompleted = (adaptersList) => {
   return MANDATORY_ADAPTERS.every((value) => adaptersList.includes(value));
 };
 
+// Input: ISOdateTime format
+// Output: Mar 10, 2023 7:33 PM IST
+const formattedDateTime = (ISOdateTime) => {
+  if (ISOdateTime) {
+    const validIsoDate = moment.utc(ISOdateTime).toISOString();
+    // eslint-disable-next-line new-cap
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return momentTz.tz(validIsoDate, zone).format("lll z");
+  } else {
+    return "";
+  }
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -336,6 +352,7 @@ export {
   deploymentsStaticContent,
   endpointType,
   formatBytes,
+  formattedDateTime,
   getBaseUrl,
   getOrgNameFromPathname,
   getReadableDateAndTime,
