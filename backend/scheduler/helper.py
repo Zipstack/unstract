@@ -6,9 +6,10 @@ from scheduler import views
 from scheduler.constants import SchedulerConstants as SC
 from scheduler.exceptions import JobDeletionError, JobSchedulingError
 from scheduler.serializer import AddJobSerializer
-from scheduler.tasks import delete_periodic_task
+from scheduler.tasks import delete_periodic_task, disable_task, enable_task
 
 logger = logging.getLogger(__name__)
+
 
 class SchedulerHelper:
     @staticmethod
@@ -51,3 +52,23 @@ class SchedulerHelper:
         except Exception as e:
             logger.error(f"Exception while removing job: {e}")
             raise JobDeletionError
+
+    @staticmethod
+    def pause_job(pipeline_id: str) -> None:
+        logger.info(f"Pausing job for {pipeline_id}")
+        try:
+            logger.info("Celery scheduler - pausing job")
+            disable_task(pipeline_id)
+        except Exception as e:
+            logger.error(f"Exception while pausing job: {e}")
+            raise JobSchedulingError
+
+    @staticmethod
+    def resume_job(pipeline_id: str) -> None:
+        logger.info(f"Resuming job for {pipeline_id}")
+        try:
+            logger.info("Celery scheduler - resuming job")
+            enable_task(pipeline_id)
+        except Exception as e:
+            logger.error(f"Exception while resuming job: {e}")
+            raise JobSchedulingError

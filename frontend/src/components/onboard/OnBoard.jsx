@@ -8,12 +8,13 @@ import BgShape from "../../assets/bg_shape.svg";
 import ConnectEmbedding from "../../assets/connect_embedding.svg";
 import ConnectLLM from "../../assets/connect_llm.svg";
 import ConnectVectorDb from "../../assets/connect_vector_db.svg";
+import { onboardCompleted } from "../../helpers/GetStaticData.js";
 import { useSessionStore } from "../../store/session-store.js";
 import { AddSourceModal } from "../input-output/add-source-modal/AddSourceModal.jsx";
 import { CustomButton } from "../widgets/custom-button/CustomButton.jsx";
+import "./onBoard.css";
 const { Content } = Layout;
 
-import "./onBoard.css";
 function OnBoard() {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
@@ -22,12 +23,12 @@ function OnBoard() {
   const [editItemId, setEditItemId] = useState(null);
   const [type, setType] = useState(null);
   const homePageUrl = `/${orgName}/etl`;
-
+  const [adaptersList, setAdaptersList] = useState(adapters || []);
   useEffect(() => {
-    if (adapters?.length >= 3) {
+    if (onboardCompleted(adaptersList)) {
       navigate(homePageUrl);
     }
-  }, []);
+  }, [adaptersList]);
 
   const steps = [
     {
@@ -62,7 +63,8 @@ function OnBoard() {
   };
 
   const addNewItem = (row, isEdit) => {
-    navigate(0);
+    const newAdapter = row?.adapter_type.toLowerCase();
+    setAdaptersList([...adaptersList, newAdapter]);
   };
 
   return (
@@ -101,7 +103,7 @@ function OnBoard() {
                     </Space>
                   </Col>
                   <Col span={4} align="center" justify="center">
-                    {adapters?.includes(step.type) ? (
+                    {adaptersList?.includes(step.type) ? (
                       <div>
                         <CheckCircleFilled className="configured-icon" />
                         <span className="configured-text">Configured</span>

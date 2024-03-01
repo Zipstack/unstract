@@ -41,3 +41,16 @@
     color: inherit !important;
     border-color: transparent !important;
 }
+
+.top-nav-alert-col {
+    display: flex;
+    justify-content: center;
+}
+
+.top-nav-alert-col .top-nav-alert-msg {
+    margin-right: 6px;
+}
+
+.top-nav-alert-col .top-nav-alert-link {
+    text-decoration: underline;
+}

@@ -15,6 +15,8 @@ function EditableText({
   isTextarea,
 }) {
   const [text, setText] = useState("");
+  const name = isTextarea ? "prompt" : "prompt_key";
+  const [triggerHandleChange, setTriggerHandleChange] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const divRef = useRef(null);
   const { disableLlmOrDocChange } = useCustomToolStore();
@@ -45,10 +47,18 @@ function EditableText({
 
   const onSearchDebounce = useCallback(
     debounce((event) => {
-      handleChange(event, promptId, false, true);
+      setTriggerHandleChange(true);
     }, 1000),
     []
   );
+
+  useEffect(() => {
+    if (!triggerHandleChange) {
+      return;
+    }
+    handleChange(text, promptId, name, true, true);
+    setTriggerHandleChange(false);
+  }, [triggerHandleChange]);
 
   const handleClickOutside = (event) => {
     if (divRef.current && !divRef.current.contains(event.target)) {
@@ -64,7 +74,7 @@ function EditableText({
         value={text}
         onChange={handleTextChange}
         placeholder="Enter Prompt"
-        name="prompt"
+        name={name}
         size="small"
         style={{ backgroundColor: "transparent" }}
         variant={`${!isEditing && !isHovered ? "borderless" : "outlined"}`}
@@ -84,7 +94,7 @@ function EditableText({
       value={text}
       onChange={handleTextChange}
       placeholder="Enter Key"
-      name="prompt_key"
+      name={name}
       size="small"
       style={{ backgroundColor: "transparent" }}
       variant={`${!isEditing && !isHovered ? "borderless" : "outlined"}`}

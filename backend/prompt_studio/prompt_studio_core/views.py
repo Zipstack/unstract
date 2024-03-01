@@ -6,6 +6,7 @@ from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest
 from permissions.permission import IsOwner
+from prompt_studio.processor_loader import ProcessorConfig, load_plugins
 from prompt_studio.prompt_studio.exceptions import FilenameMissingError
 from prompt_studio.prompt_studio_core.constants import (
     ToolStudioErrors,
@@ -26,6 +27,7 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance.models import ToolInstance
 from utils.filtering import FilterHelper
+from prompt_studio.prompt_studio_registry.models import PromptStudioRegistry
 
 from .models import CustomTool
 from .serializers import CustomToolSerializer, PromptStudioIndexSerializer
@@ -40,6 +42,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
     permission_classes = [IsOwner]
     serializer_class = CustomToolSerializer
+
+    processor_plugins = load_plugins()
 
     def get_queryset(self) -> Optional[QuerySet]:
         filter_args = FilterHelper.build_filter_args(
@@ -74,22 +78,23 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
         instance: CustomTool = self.get_object()
-        exported_tool_instances_in_use = ToolInstance.objects.filter(
-            tool_id__exact=instance.prompt_studio_registry.pk
-        )
-        dependent_wfs = set()
-        for tool_instance in exported_tool_instances_in_use:
-            dependent_wfs.add(tool_instance.workflow_id)
-        if len(dependent_wfs) > 0:
-            logger.info(
-                f"Cannot destroy custom tool {instance.tool_id},"
-                f" depended by workflows {dependent_wfs}"
+        # Checks if tool is exported
+        if hasattr(instance, "prompt_studio_registry"):
+            exported_tool_instances_in_use = ToolInstance.objects.filter(
+                tool_id__exact=instance.prompt_studio_registry.pk
             )
-            raise ToolDeleteError(
-                "Failed to delete tool, its used in other workflows. "
-                "Delete its usages first"
-            )
-
+            dependent_wfs = set()
+            for tool_instance in exported_tool_instances_in_use:
+                dependent_wfs.add(tool_instance.workflow_id)
+            if len(dependent_wfs) > 0:
+                logger.info(
+                    f"Cannot destroy custom tool {instance.tool_id},"
+                    f" depended by workflows {dependent_wfs}"
+                )
+                raise ToolDeleteError(
+                    "Failed to delete tool, its used in other workflows. "
+                    "Delete its usages first"
+                )
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=["get"])
@@ -139,6 +144,18 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 org_id=request.org_id,
                 user_id=request.user.user_id,
             )
+
+            for processor_plugin in self.processor_plugins:
+                cls = processor_plugin[ProcessorConfig.METADATA][
+                    ProcessorConfig.METADATA_SERVICE_CLASS
+                ]
+                cls.process(
+                    tool_id=tool_id,
+                    file_name=file_name,
+                    org_id=request.org_id,
+                    user_id=request.user.user_id,
+                )
+
             if unique_id:
                 return Response(
                     {"message": "Document indexed successfully."},
