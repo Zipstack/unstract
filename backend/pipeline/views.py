@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from account.custom_exceptions import DuplicateData
 from cron_expression_generator.constants import CronKeys
@@ -22,6 +22,7 @@ from pipeline.serializers.crud import PipelineSerializer
 from pipeline.serializers.execute import (
     PipelineExecuteSerializer as ExecuteSerializer,
 )
+from pipeline.serializers.update import PipelineUpdateSerializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -118,3 +119,32 @@ class PipelineViewSet(viewsets.ModelViewSet):
         pipeline_to_remove = str(instance.pk)
         super().perform_destroy(instance)
         return SchedulerHelper.remove_job(pipeline_to_remove)
+
+    def partial_update(self, request: Request, pk: Any = None) -> Response:
+        serializer = PipelineUpdateSerializer(data=request.data)
+        if serializer.is_valid():
+            pipeline_id = serializer.validated_data.get("pipeline_id")
+            active = serializer.validated_data.get("active")
+            try:
+                if active:
+                    SchedulerHelper.resume_job(pipeline_id)
+                else:
+                    SchedulerHelper.pause_job(pipeline_id)
+            except Exception as e:
+                logger.error(f"Failed to update pipeline status: {e}")
+                return Response(
+                    {"error": "Failed to update pipeline status"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            return Response(
+                {
+                    "status": "success",
+                    "message": f"Pipeline {pipeline_id} status updated",
+                },
+                status=status.HTTP_200_OK,
+            )
+        else:
+            return Response(
+                serializer.errors, status=status.HTTP_400_BAD_REQUEST
+            )

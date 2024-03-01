@@ -7,7 +7,6 @@ const defaultState = {
   listOfDocs: [],
   defaultLlmProfile: "",
   llmProfiles: [],
-  evalMetrics: {},
   details: {},
   disableLlmOrDocChange: [],
 };

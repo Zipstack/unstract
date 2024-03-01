@@ -6,7 +6,7 @@ from typing import Any
 
 from constants import EnvKey, GoogleTranslateKey, StaticData
 from google.auth.transport import requests as google_requests
-from google.cloud import translate_v2 as translate  # type: ignore
+from google.cloud import translate_v2 as translate
 from google.oauth2.service_account import Credentials
 from unstract.sdk.cache import ToolCache
 from unstract.sdk.constants import LogState, MetadataKey, ToolEnv

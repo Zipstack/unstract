@@ -244,9 +244,13 @@ const getTimeForLogs = () => {
 const handleException = (err, errMessage) => {
   if (err?.response?.data?.type === "validation_error") {
     // Handle validation errors
-  } else if (
-    ["client_error", "server_error"].includes(err?.response?.data?.type)
-  ) {
+    return {
+      type: "error",
+      content: errMessage || "Something went wrong",
+    };
+  }
+
+  if (["client_error", "server_error"].includes(err?.response?.data?.type)) {
     // Handle client_error, server_error
     return {
       type: "error",
@@ -255,12 +259,72 @@ const handleException = (err, errMessage) => {
         errMessage ||
         "Something went wrong",
     };
-  } else {
-    return {
-      type: "error",
-      content: err?.message,
-    };
   }
+
+  return {
+    type: "error",
+    content: errMessage || err?.message,
+  };
+};
+
+const base64toBlob = (data) => {
+  const bytes = atob(data);
+  let length = bytes.length;
+  const out = new Uint8Array(length);
+
+  while (length--) {
+    out[length] = bytes.charCodeAt(length);
+  }
+
+  return new Blob([out], { type: "application/pdf" });
+};
+
+const removeFileExtension = (fileName) => {
+  if (!fileName) {
+    return "";
+  }
+  const fileNameSplit = fileName.split(".");
+  const fileNameSplitLength = fileNameSplit.length;
+  const modFileName = fileNameSplit.slice(0, fileNameSplitLength - 1);
+  return modFileName.join(".");
+};
+
+const isJson = (text) => {
+  try {
+    if (typeof text === "object") {
+      return true;
+    }
+
+    if (typeof text === "string") {
+      const json = JSON.parse(text);
+      return typeof json === "object";
+    }
+    return false;
+  } catch (err) {
+    return false;
+  }
+};
+
+const displayPromptResult = (output) => {
+  try {
+    if (isJson(output)) {
+      return JSON.stringify(JSON.parse(output), null, 4);
+    }
+
+    const outputParsed = JSON.parse(output);
+    return outputParsed;
+  } catch (err) {
+    return output;
+  }
+};
+
+const onboardCompleted = (adaptersList) => {
+  if (!Array.isArray(adaptersList)) {
+    return false;
+  }
+  const MANDATORY_ADAPTERS = ["llm", "vector_db", "embedding"];
+  adaptersList = adaptersList.map((element) => element.toLowerCase());
+  return MANDATORY_ADAPTERS.every((value) => adaptersList.includes(value));
 };
 
 export {
@@ -278,6 +342,7 @@ export {
   getTimeForLogs,
   handleException,
   listOfAppDeployments,
+  onboardCompleted,
   promptStudioUpdateStatus,
   promptType,
   publicRoutes,
@@ -287,4 +352,8 @@ export {
   toolIdeOutput,
   wfExecutionTypes,
   workflowStatus,
+  base64toBlob,
+  removeFileExtension,
+  isJson,
+  displayPromptResult,
 };
