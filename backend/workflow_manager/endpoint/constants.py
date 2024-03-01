@@ -84,3 +84,7 @@ class SourceConstant:
 class ApiDeploymentResultStatus:
     SUCCESS = "Success"
     FAILED = "Failed"
+
+
+class BigQuery:
+    TABLE_SIZE = 3

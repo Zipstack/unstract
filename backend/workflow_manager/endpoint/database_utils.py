@@ -3,15 +3,17 @@ import json
 import logging
 from typing import Any, Optional
 
-from unstract.connectors.databases import connectors as db_connectors
-from unstract.connectors.databases.unstract_db import UnstractDB
 from utils.constants import Common
 from workflow_manager.endpoint.constants import (
+    BigQuery,
     DBConnectionClass,
     Snowflake,
     TableColumns,
 )
 from workflow_manager.workflow.enums import AgentName, ColumnModes
+
+from unstract.connectors.databases import connectors as db_connectors
+from unstract.connectors.databases.unstract_db import UnstractDB
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,14 @@ class DatabaseUtils:
 
     @staticmethod
     def get_column_types_util(columns_with_types: Any) -> dict[str, str]:
+        """Converts db results columns_with_types to dict.
+
+        Args:
+            columns_with_types (Any): _description_
+
+        Returns:
+            dict[str, str]: _description_
+        """
         column_types: dict[str, str] = {}
         for column_name, data_type in columns_with_types:
             column_types[column_name] = data_type
@@ -73,6 +83,21 @@ class DatabaseUtils:
         connector_id: str,
         connector_settings: dict[str, Any],
     ) -> Any:
+        """Get db column name and types.
+
+        Args:
+            cls (Any): _description_
+            table_name (str): _description_
+            connector_id (str): _description_
+            connector_settings (dict[str, Any]): _description_
+
+        Raises:
+            ValueError: _description_
+            e: _description_
+
+        Returns:
+            Any: _description_
+        """
         column_types: dict[str, str] = {}
         try:
             if cls == DBConnectionClass.SNOWFLAKE:
@@ -85,20 +110,18 @@ class DatabaseUtils:
                 for column in results:
                     column_types[column[0].lower()] = column[1].split("(")[0]
             elif cls == DBConnectionClass.BIGQUERY:
-                table_name = str.lower(table_name)
-                table_list = table_name.split(".")
-                table_size = 3
-                if len(table_list) != table_size:
+                bigquery_table_name = str.lower(table_name).split(".")
+                if len(bigquery_table_name) != BigQuery.TABLE_SIZE:
                     raise ValueError(
                         "Please enter project_name, dataset and table_name"
                     )
-                project_id = table_list[0]
-                dataset = table_list[1]
-                table_val = table_list[2]
+                database = bigquery_table_name[0]
+                schema = bigquery_table_name[1]
+                table = bigquery_table_name[2]
                 query = (
                     "SELECT column_name, data_type FROM "
-                    f"{project_id}.{dataset}.INFORMATION_SCHEMA.COLUMNS WHERE "
-                    f"table_name = '{table_val}'"
+                    f"{database}.{schema}.INFORMATION_SCHEMA.COLUMNS WHERE "
+                    f"table_name = '{table}'"
                 )
                 results = DatabaseUtils.execute_and_fetch_data(
                     connector_id=connector_id,
