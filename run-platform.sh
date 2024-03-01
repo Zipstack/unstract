@@ -71,10 +71,17 @@ copy_envs()
     for service in "${services_to_process[@]}"; do
         sample_env_path="$this_file_directory/$service/sample.env"
         env_path="$this_file_directory/$service/.env"
-
+        # Generate Fernet Key Refer https://pypi.org/project/cryptography/
+        ENCRYPTION_KEY=$(python -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
         if [ -e "$sample_env_path" ] && [ ! -e "$env_path" ]; then
             cp "$sample_env_path" "$env_path"
+             # Need to add encryption secret to env of platform-service and backend
+            if [[ "$service" == "backend" || "$service" == "platform-service" ]]; then
+              echo "Adding encryption secret to  $service"
+              echo "ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"" >> $env_path
+            fi
             echo "Copied contents from sample.env to .env in $service"
+
         else
          echo "$env_path already exists.."
         fi
@@ -87,10 +94,10 @@ copy_envs()
     fi
     if [ ! -e "$this_file_directory/docker/proxy_overrides.yaml" ]; then
         cp "$this_file_directory/docker/sample.proxy_overrides.yaml" "$this_file_directory/docker/proxy_overrides.yaml"
-        echo "Copied contents from sample.proxy_overrides.yaml to proxy_overrides.yaml in docker" 
+        echo "Copied contents from sample.proxy_overrides.yaml to proxy_overrides.yaml in docker"
     else
         echo "$this_file_directory/docker/proxy_overrides.yaml already exists.."
-    fi   
+    fi
 }
 
 run_all_services() {
@@ -103,7 +110,7 @@ run_all_services() {
 
 build_all_services() {
     pushd ${this_file_directory}/docker
-   
+
     # Define your Docker compose file
     DOCKER_COMPOSE_FILE="docker-compose.build.yaml"
 
@@ -132,7 +139,7 @@ build_all_services() {
 
     echo "All services built or already exist."
     popd
-}  
+}
 
 while [[ $# -gt 0 ]]; do
         arg="$1"
@@ -143,18 +150,19 @@ while [[ $# -gt 0 ]]; do
               ;;
             -v | --version)
               opt_version="$2"
-              build_all_services  
+              copy_envs
+              build_all_services
               run_all_services
               ;;
             -c | --copy)
               copy_envs
               exit
-              ;; 
+              ;;
             -b | --build)
               opt_version="$2"
               build_all_services
               exit
-              ;;     
+              ;;
             -x | debug)
               set -o xtrace  # -x display every line before execution; enables PS4
               ;;
@@ -183,7 +191,7 @@ if ! docker compose version >/dev/null 2>/dev/null; then
   exit 1
 fi
 
-   
+
 # $? is the exit code of the last command. So here: docker compose up
 if test $? -ne 0; then
   echo -e "$red_text""Docker compose failed.  If you are seeing container conflicts""$default_text"
@@ -200,5 +208,3 @@ if [ -z "$dockerDetachedMode" ]; then
 else
   echo -e "$blue_text""Unstract containers are running!""$default_text"
 fi
-    
-   
