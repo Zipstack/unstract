@@ -603,7 +603,7 @@ $RECYCLE.BIN/
 
 ### Unstract ###
 
-# Plugins
+# Authentication Plugins
 backend/plugins/authentication/*
 !backend/plugins/authentication/auth_sample
 
@@ -624,9 +624,14 @@ docker/*.env
 !docker/sample.*.env
 docker/public_tools.json
 docker/proxy_overrides.yaml
+docker/workflow_data/
 
 # Tool development
-tools/*/sdks/
+tools/*/unstract-sdk/
 tools/*/data_dir/
 
-docker/workflow_data/
+# Backend settings ignore (allows user overrides)
+backend/backend/settings/*
+!backend/backend/settings/__init__.py
+!backend/backend/settings/base.py
+!backend/backend/settings/dev.py
