@@ -2,10 +2,15 @@ import logging
 import uuid
 from typing import Any
 
-from backend.constants import RequestKey
-from backend.serializers import AuditSerializer
-from prompt_studio.prompt_studio_registry.constants import PromptStudioRegistryKeys
-from rest_framework.serializers import ListField, Serializer, UUIDField, ValidationError
+from prompt_studio.prompt_studio_registry.constants import (
+    PromptStudioRegistryKeys,
+)
+from rest_framework.serializers import (
+    ListField,
+    Serializer,
+    UUIDField,
+    ValidationError,
+)
 from tool_instance.constants import ToolInstanceKey as TIKey
 from tool_instance.constants import ToolKey
 from tool_instance.exceptions import ToolDoesNotExist
@@ -15,6 +20,9 @@ from tool_instance.tool_processor import ToolProcessor
 from unstract.tool_registry.dto import Tool
 from workflow_manager.workflow.constants import WorkflowKey
 from workflow_manager.workflow.models.workflow import Workflow
+
+from backend.constants import RequestKey
+from backend.serializers import AuditSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +54,10 @@ class ToolInstanceSerializer(AuditSerializer):
 
         if tool_function is None:
             raise ToolDoesNotExist()
-
-        tool: Tool = ToolProcessor.get_tool_by_uid(tool_function)
+        try:
+            tool: Tool = ToolProcessor.get_tool_by_uid(tool_function)
+        except ToolDoesNotExist:
+            return rep
         rep[ToolKey.ICON] = tool.icon
         rep[ToolKey.NAME] = tool.properties.display_name
         # Need to Change it into better method
