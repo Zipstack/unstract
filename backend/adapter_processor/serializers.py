@@ -1,10 +1,10 @@
 import json
 from typing import Any
 
-from account.models import EncryptionSecret
 from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.constants import AdapterKeys
 from cryptography.fernet import Fernet
+from django.conf import settings
 from rest_framework import serializers
 from unstract.adapters.constants import Common as common
 
@@ -45,8 +45,8 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
     """
 
     def to_internal_value(self, data: dict[str, Any]) -> dict[str, Any]:
-        encryption_secret: EncryptionSecret = EncryptionSecret.objects.get()
-        f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
+        encryption_secret: str = settings.ENCRYPTION_KEY
+        f: Fernet = Fernet(encryption_secret.encode("utf-8"))
         json_string: str = json.dumps(data.pop(AdapterKeys.ADAPTER_METADATA))
 
         data[AdapterKeys.ADAPTER_METADATA_B] = f.encrypt(
@@ -58,8 +58,8 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
     def to_representation(self, instance: AdapterInstance) -> dict[str, str]:
         rep: dict[str, str] = super().to_representation(instance)
 
-        encryption_secret: EncryptionSecret = EncryptionSecret.objects.get()
-        f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
+        encryption_secret: str = settings.ENCRYPTION_KEY
+        f: Fernet = Fernet(encryption_secret.encode("utf-8"))
 
         rep.pop(AdapterKeys.ADAPTER_METADATA_B)
         adapter_metadata = json.loads(

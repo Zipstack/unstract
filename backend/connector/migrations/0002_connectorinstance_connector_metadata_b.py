@@ -3,9 +3,9 @@
 import json
 from typing import Any
 
-from account.models import EncryptionSecret
 from connector.models import ConnectorInstance
 from cryptography.fernet import Fernet
+from django.conf import settings
 from django.db import migrations, models
 
 
@@ -16,8 +16,8 @@ class Migration(migrations.Migration):
     ]
 
     def EncryptCredentials(apps: Any, schema_editor: Any) -> None:
-        encryption_secret: EncryptionSecret = EncryptionSecret.objects.get()
-        f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
+        encryption_secret: str = settings.ENCRYPTION_KEY
+        f: Fernet = Fernet(encryption_secret.encode("utf-8"))
         queryset = ConnectorInstance.objects.all()
 
         for obj in queryset:  # type: ignore

@@ -108,8 +108,8 @@ REDIS_DB = os.environ.get("REDIS_DB", "")
 SESSION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "SESSION_EXPIRATION_TIME_IN_SECOND", 3600
 )
-SESSION_COOKIE_SECURE=True
-CSRF_COOKIE_SECURE=True
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
 
 PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
 API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
@@ -143,6 +143,7 @@ API_STORAGE_DIR = os.environ.get("API_STORAGE_DIR")
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = get_required_setting("DJANGO_SECRET_KEY")
+ENCRYPTION_KEY = get_required_setting("ENCRYPTION_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
