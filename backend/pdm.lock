@@ -2,7 +2,7 @@
 # It is not intended for manual editing.
 
 [metadata]
-groups = ["default", "test", "deploy"]
+groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
 content_hash = "sha256:27911cc8da87345bc67ffc964493ec9434a770ed2e380403ef87094e8a55e409"
@@ -4893,7 +4893,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
     "unstract-adapters~=0.2.1",
-    "unstract-tool-sandbox @ file:///home/kirtimanmishra/Zipstack/Repositories/unstract/unstract/tool-registry/../tool-sandbox",
+    "unstract-tool-sandbox",
 ]
 
 [[package]]
