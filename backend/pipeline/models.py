@@ -1,10 +1,11 @@
 import uuid
 
 from account.models import User
-from backend.constants import FieldLengthConstants as FieldLength
 from django.db import models
 from utils.models.base_model import BaseModel
 from workflow_manager.workflow.models.workflow import Workflow
+
+from backend.constants import FieldLengthConstants as FieldLength
 
 APP_ID_LENGTH = 32
 PIPELINE_NAME_LENGTH = 32
@@ -25,6 +26,7 @@ class Pipeline(BaseModel):
         INPROGRESS = "INPROGRESS", "Inprogress"
         YET_TO_START = "YET_TO_START", "Yet to start"
         RESTARTING = "RESTARTING", "Restarting"
+        PAUSED = "PAUSED", "Paused"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     pipeline_name = models.CharField(
