@@ -37,6 +37,9 @@ Usage example
 ./run-platform.sh
 
 ```
+
+You're done!, In your browser, visit http://frontend.unstract.localhost
+
 ## Running with docker compose
 
 - All services needed by the backend can be run with
