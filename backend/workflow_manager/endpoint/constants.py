@@ -87,4 +87,10 @@ class ApiDeploymentResultStatus:
 
 
 class BigQuery:
+    """In big query, table name has to be in the format {db}.{schema}.{table}
+    Throws error if any of the params not set.
+
+    When converted to list table size should be 3
+    """
+
     TABLE_SIZE = 3
