@@ -33,9 +33,17 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   const [wfExecutionParams, setWfExecutionParams] = useState([]);
   const [openAddApiModal, setOpenAddApiModal] = useState(false);
   const [apiOpsPresent, setApiOpsPresent] = useState(false);
+  const [canAddTaskPipeline, setCanAddTaskPipeline] = useState(false);
+  const [canAddETLPipeline, setCanAddETAPipeline] = useState(false);
 
-  const { details, isLoading, loadingType, updateWorkflow, source } =
-    useWorkflowStore();
+  const {
+    details,
+    isLoading,
+    loadingType,
+    updateWorkflow,
+    source,
+    destination,
+  } = useWorkflowStore();
   const { setAlertDetails } = useAlertStore();
   const { sessionDetails } = useSessionStore();
 
@@ -44,6 +52,11 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   useEffect(() => {
     setApiOpsPresent(source?.connection_type === "API");
   }, [source]);
+
+  useEffect(() => {
+    setCanAddTaskPipeline(destination?.connection_type === "FILESYSTEM");
+    setCanAddETAPipeline(destination?.connection_type === "DATABASE");
+  }, [destination]);
 
   useEffect(() => {
     if (stepExecType === wfExecutionTypes[1]) {
@@ -382,7 +395,12 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           </Tooltip>
           <Divider type="vertical" />
           <Tooltip title="Deploy as ETL Pipeline">
-            <Button disabled={true}>
+            <Button disabled={!canAddETLPipeline}>
+              <DeploymentUnitOutlined />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Deploy as Task Pipeline">
+            <Button disabled={!canAddTaskPipeline}>
               <DeploymentUnitOutlined />
             </Button>
           </Tooltip>

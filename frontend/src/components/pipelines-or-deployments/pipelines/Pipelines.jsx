@@ -1,12 +1,8 @@
 import {
-  ArrowRightOutlined,
-  ClearOutlined,
   DeleteOutlined,
   EditOutlined,
   EllipsisOutlined,
   EyeOutlined,
-  HighlightOutlined,
-  InfoCircleOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
 import { Dropdown, Image, Space, Switch, Typography } from "antd";
@@ -177,48 +173,6 @@ function Pipelines({ type }) {
       });
   };
 
-  const clearCache = () => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${selectedPorD.workflow_id}/clear-cache/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-    };
-    axiosPrivate(requestOptions)
-      .then(() => {
-        setOpenDeleteModal(false);
-        setAlertDetails({
-          type: "success",
-          content: "Pipeline Cache Cleared Successfully",
-        });
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      });
-  };
-
-  const clearFileMarkers = () => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${selectedPorD.workflow_id}/clear-file-marker/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-    };
-    axiosPrivate(requestOptions)
-      .then(() => {
-        setOpenDeleteModal(false);
-        setAlertDetails({
-          type: "success",
-          content: "Pipeline File History Cleared Successfully",
-        });
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      });
-  };
-
   const actionItems = [
     {
       key: "1",
@@ -266,53 +220,6 @@ function Pipelines({ type }) {
     {
       key: "4",
       label: (
-        <Space direction="horizontal" className="action-items">
-          <div>
-            <InfoCircleOutlined />
-          </div>
-          <div>
-            <Typography.Text>View Information</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "5",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => clearCache()}
-        >
-          <div>
-            <ClearOutlined />
-          </div>
-          <div>
-            <Typography.Text>Clear Cache</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "6",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => clearFileMarkers()}
-        >
-          <div>
-            <HighlightOutlined />
-          </div>
-          <div>
-            <Typography.Text>Clear File Marker</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "7",
-      label: (
         <Space
           direction="horizontal"
           className="action-items"
@@ -330,26 +237,6 @@ function Pipelines({ type }) {
           </div>
         </Space>
       ),
-    },
-    {
-      key: "8",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => window.open(selectedPorD?.goto, "_blank")}
-        >
-          <div>
-            <ArrowRightOutlined />
-          </div>
-          <div>
-            <Typography.Text disabled={type !== "app"}>
-              Go to App
-            </Typography.Text>
-          </div>
-        </Space>
-      ),
-      disabled: type !== "app",
     },
   ];
 
@@ -399,7 +286,7 @@ function Pipelines({ type }) {
       align: "center",
     },
     {
-      title: "Status",
+      title: "Status of Previous Run",
       dataIndex: "last_run_status",
       key: "last_run_status",
       align: "center",
@@ -416,7 +303,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      title: "Last Run",
+      title: "Previous Run At",
       key: "last_run_time",
       dataIndex: "last_run_time",
       align: "center",
@@ -424,6 +311,19 @@ function Pipelines({ type }) {
         <div>
           <Typography.Text className="p-or-d-typography" strong>
             {record?.last_run_time}
+          </Typography.Text>
+        </div>
+      ),
+    },
+    {
+      title: "Frequency",
+      key: "last_run_time",
+      dataIndex: "last_run_time",
+      align: "center",
+      render: (_, record) => (
+        <div>
+          <Typography.Text className="p-or-d-typography" strong>
+            {record?.cron_data?.cron_summary}
           </Typography.Text>
         </div>
       ),

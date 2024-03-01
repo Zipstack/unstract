@@ -41,7 +41,7 @@ const inputOptions = [
   },
 ];
 
-function DsSettingsCard({ type, endpointDetails, message }) {
+function DsSettingsCard({ type, endpointDetails, message, dependent }) {
   const [options, setOptions] = useState([...inputOptions]);
   const [openModal, setOpenModal] = useState(false);
 
@@ -331,6 +331,7 @@ DsSettingsCard.propTypes = {
   type: PropTypes.string.isRequired,
   endpointDetails: PropTypes.object.isRequired,
   message: PropTypes.string,
+  dependent: PropTypes.object.isRequired,
 };
 
 export { DsSettingsCard };
