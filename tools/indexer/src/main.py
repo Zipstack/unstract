@@ -1,7 +1,7 @@
 import sys
 from typing import Any
 
-from constants import SettingsKeys  # type: ignore[attr-defined]
+from indexer.src.constants import SettingsKeys
 from unstract.sdk.constants import LogState, MetadataKey, ToolSettingsKey
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.tool.base import BaseTool
