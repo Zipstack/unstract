@@ -4728,7 +4728,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
     "unstract-adapters~=0.2.1",
-    "unstract-tool-sandbox,
+    "unstract-tool-sandbox",
 ]
 
 [[package]]
