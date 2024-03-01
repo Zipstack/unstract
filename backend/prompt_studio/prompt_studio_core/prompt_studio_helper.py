@@ -391,7 +391,7 @@ class PromptStudioHelper:
         extract_file_path = None
         if not is_summary:
             directory, filename = os.path.split(file_name)
-            extract_file_path: str = os.path.join(
+            extract_file_path = os.path.join(
                 directory, "extract", os.path.splitext(filename)[0] + ".txt"
             )
         return str(

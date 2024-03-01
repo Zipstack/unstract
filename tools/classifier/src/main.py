@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from helper import ClassifierHelper
+from helper import ClassifierHelper  # type: ignore[attr-defined]
 from llama_index import set_global_service_context
 from unstract.sdk.cache import ToolCache
 from unstract.sdk.constants import LogLevel, LogState, MetadataKey, ToolEnv

@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from constants import SettingsKeys
+from constants import SettingsKeys  # type: ignore[attr-defined]
 from unstract.sdk.constants import LogState, MetadataKey
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.prompt import PromptTool
