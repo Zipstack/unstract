@@ -1,5 +1,4 @@
 from adapter_processor.views import (
-    AdapterDetailViewSet,
     AdapterInstanceViewSet,
     AdapterViewSet,
     DefaultAdapterViewSet,
@@ -7,13 +6,14 @@ from adapter_processor.views import (
 from django.urls import path
 from rest_framework.urlpatterns import format_suffix_patterns
 
-adapter = AdapterViewSet.as_view({"get": "list"})
 default_triad = DefaultAdapterViewSet.as_view(
     {"post": "configure_default_triad"}
 )
+adapter = AdapterViewSet.as_view({"get": "list"})
 adapter_schema = AdapterViewSet.as_view({"get": "get_adapter_schema"})
+adapter_test = AdapterViewSet.as_view({"post": "test"})
 adapter_list = AdapterInstanceViewSet.as_view({"post": "create", "get": "list"})
-adapter_detail = AdapterDetailViewSet.as_view(
+adapter_detail = AdapterInstanceViewSet.as_view(
     {
         "get": "retrieve",
         "put": "update",
@@ -21,7 +21,6 @@ adapter_detail = AdapterDetailViewSet.as_view(
         "delete": "destroy",
     }
 )
-adapter_test = AdapterViewSet.as_view({"post": "test"})
 urlpatterns = format_suffix_patterns(
     [
         path("adapter_schema/", adapter_schema, name="get_adapter_schema"),
