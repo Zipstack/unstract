@@ -9,12 +9,13 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 function EditableText({
   isEditing,
   setIsEditing,
+  text,
+  setText,
   promptId,
   defaultText,
   handleChange,
   isTextarea,
 }) {
-  const [text, setText] = useState("");
   const name = isTextarea ? "prompt" : "prompt_key";
   const [triggerHandleChange, setTriggerHandleChange] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -111,6 +112,8 @@ function EditableText({
 EditableText.propTypes = {
   isEditing: PropTypes.bool.isRequired,
   setIsEditing: PropTypes.func.isRequired,
+  text: PropTypes.string,
+  setText: PropTypes.func.isRequired,
   promptId: PropTypes.string.isRequired,
   defaultText: PropTypes.string.isRequired,
   handleChange: PropTypes.func.isRequired,
