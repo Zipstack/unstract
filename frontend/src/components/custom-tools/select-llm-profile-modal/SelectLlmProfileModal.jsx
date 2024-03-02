@@ -1,4 +1,5 @@
 import {
+  Button,
   Checkbox,
   Form,
   Input,
@@ -15,6 +16,7 @@ import debounce from "lodash/debounce";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { handleException } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
+import { CustomButton } from "../../widgets/custom-button/CustomButton";
 
 const fieldNames = {
   SUMMARIZE_LLM_PROFILE: "summarize_llm_profile",
@@ -33,10 +35,12 @@ function SelectLlmProfileModal({
   const [prompt, setPrompt] = useState("");
   const [isContext, setIsContext] = useState(false);
   const [isSource, setIsSource] = useState(false);
+  const [isModified, setIsModified] = useState(false);
   const { details } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
 
   useEffect(() => {
+    setPrompt(details?.summarize_prompt);
     setIsContext(details?.summarize_context);
     setIsSource(details?.summarize_as_source);
   }, []);
@@ -44,23 +48,20 @@ function SelectLlmProfileModal({
   useEffect(() => {
     if (!selectedLlm) {
       setBtnText("");
-
-      // If the LLM is not selected, the context needs to be set to false and disabled in the UI
-      if (isContext) {
-        handleLlmProfileChange(fieldNames.SUMMARIZE_CONTEXT, false);
-      }
-      return;
     }
-
-    const llmItem = [...llmItems].find((item) => item?.value === selectedLlm);
-    setBtnText(llmItem?.label || "");
   }, [selectedLlm]);
 
   useEffect(() => {
     if (llmItems?.length) {
       setSelectedLlm(details?.summarize_llm_profile);
+      handleBtnText(details?.summarize_llm_profile);
     }
   }, [llmItems]);
+
+  const handleBtnText = (llm) => {
+    const llmItem = [...llmItems].find((item) => item?.value === llm);
+    setBtnText(llmItem?.label || "");
+  };
 
   const handleStateUpdate = (fieldName, value) => {
     if (fieldName === fieldNames.SUMMARIZE_LLM_PROFILE) {
@@ -73,30 +74,34 @@ function SelectLlmProfileModal({
 
     if (fieldName === fieldNames.SUMMARIZE_CONTEXT) {
       setIsContext(value);
+      setIsSource(value ? isSource : false);
     }
 
     if (fieldName === fieldNames.SUMMARIZE_AS_SOURCE) {
       setIsSource(value);
     }
+
+    if (!isModified) {
+      setIsModified(true);
+    }
   };
 
-  const handleLlmProfileChange = (fieldName, value) => {
-    handleStateUpdate(fieldName, value);
+  const handleSave = () => {
     const body = {
-      [fieldName]: value,
+      [fieldNames.SUMMARIZE_LLM_PROFILE]: selectedLlm,
+      [fieldNames.SUMMARIZE_PROMPT]: prompt,
+      [fieldNames.SUMMARIZE_CONTEXT]: isContext,
+      [fieldNames.SUMMARIZE_AS_SOURCE]: isSource,
     };
-
-    if (fieldName === fieldNames.SUMMARIZE_CONTEXT && !value) {
-      body[fieldNames.SUMMARIZE_AS_SOURCE] = false;
-      handleStateUpdate(fieldNames.SUMMARIZE_AS_SOURCE, false);
-    }
 
     handleUpdateTool(body)
       .then(() => {
+        handleBtnText(selectedLlm);
         setAlertDetails({
           type: "success",
           content: "Successfully updated the LLM profile",
         });
+        setIsModified(false);
       })
       .catch((err) => {
         setAlertDetails(
@@ -107,7 +112,7 @@ function SelectLlmProfileModal({
 
   const onSearchDebounce = useCallback(
     debounce((event) => {
-      handleLlmProfileChange(event.target.name, event.target.value);
+      handleStateUpdate(event.target.name, event.target.value);
     }, 1000),
     []
   );
@@ -121,62 +126,77 @@ function SelectLlmProfileModal({
       centered
       footer={null}
     >
-      <div className="pre-post-amble-body">
-        <div>
+      <div>
+        <div className="select-llm-pro-header">
           <Typography.Text strong className="pre-post-amble-title">
             Summarize Manager
           </Typography.Text>
         </div>
-        <Form layout="vertical" size="small">
-          <Form.Item label="Select LLM Profile">
-            <Select
-              placeholder="Select Eval LLM"
-              defaultValue={selectedLlm}
-              options={llmItems}
-              onChange={(value) =>
-                handleLlmProfileChange(fieldNames.SUMMARIZE_LLM_PROFILE, value)
-              }
-            />
-          </Form.Item>
-          <Form.Item label="Prompt">
-            <Input.TextArea
-              rows={3}
-              placeholder="Enter Prompt"
-              name={fieldNames.SUMMARIZE_PROMPT}
-              defaultValue={prompt}
-              onChange={onSearchDebounce}
-            />
-          </Form.Item>
-          <Form.Item>
-            <Space>
-              <Switch
-                defaultValue={isContext}
-                disabled={!selectedLlm}
-                size="small"
+        <Form layout="vertical">
+          <div className="pre-post-amble-body">
+            <Form.Item label="Select LLM Profile">
+              <Select
+                placeholder="Select Eval LLM"
+                defaultValue={selectedLlm}
+                options={llmItems}
                 onChange={(value) =>
-                  handleLlmProfileChange(fieldNames.SUMMARIZE_CONTEXT, value)
+                  handleStateUpdate(fieldNames.SUMMARIZE_LLM_PROFILE, value)
                 }
               />
-              <Typography.Text>Summarize Context</Typography.Text>
-            </Space>
-          </Form.Item>
-          <div style={{ margin: "10px 0px" }} />
-          <Form.Item>
+            </Form.Item>
+            <Form.Item label="Prompt">
+              <Input.TextArea
+                rows={3}
+                placeholder="Enter Prompt"
+                name={fieldNames.SUMMARIZE_PROMPT}
+                defaultValue={prompt}
+                onChange={onSearchDebounce}
+              />
+            </Form.Item>
+            <Form.Item>
+              <Space>
+                <Switch
+                  defaultValue={isContext}
+                  disabled={!selectedLlm}
+                  size="small"
+                  onChange={(value) =>
+                    handleStateUpdate(fieldNames.SUMMARIZE_CONTEXT, value)
+                  }
+                />
+                <Typography.Text>Summarize Context</Typography.Text>
+              </Space>
+            </Form.Item>
+            <Form.Item>
+              <Space>
+                <Checkbox
+                  checked={isSource}
+                  disabled={!isContext || !selectedLlm}
+                  size="small"
+                  onChange={(e) =>
+                    handleStateUpdate(
+                      fieldNames.SUMMARIZE_AS_SOURCE,
+                      e.target.checked
+                    )
+                  }
+                />
+                <Typography.Text>
+                  Use summarize context as source
+                </Typography.Text>
+              </Space>
+            </Form.Item>
+          </div>
+          <div className="pre-post-amble-footer display-flex-right">
             <Space>
-              <Checkbox
-                checked={isSource}
-                disabled={!isContext || !selectedLlm}
-                size="small"
-                onChange={(e) =>
-                  handleLlmProfileChange(
-                    fieldNames.SUMMARIZE_AS_SOURCE,
-                    e.target.checked
-                  )
-                }
-              />
-              <Typography.Text>Use summarize context as source</Typography.Text>
+              <Button onClick={() => setOpen(null)}>Cancel</Button>
+              <CustomButton
+                type="primary"
+                onClick={handleSave}
+                disabled={!isModified}
+              >
+                Save
+              </CustomButton>
             </Space>
-          </Form.Item>
+          </div>
         </Form>
       </div>
     </Modal>
