@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:27911cc8da87345bc67ffc964493ec9434a770ed2e380403ef87094e8a55e409"
+content_hash = "sha256:e78a3068766ec116281b2ad59a89ffab883c035e32bd00ef919f30595eb38626"
 
 [[package]]
 name = "adlfs"
@@ -1427,7 +1427,7 @@ files = [
 
 [[package]]
 name = "google-api-python-client"
-version = "2.119.0"
+version = "2.120.0"
 requires_python = ">=3.7"
 summary = "Google API Client Library for Python"
 groups = ["default"]
@@ -1439,8 +1439,8 @@ dependencies = [
     "uritemplate<5,>=3.0.1",
 ]
 files = [
-    {file = "google-api-python-client-2.119.0.tar.gz", hash = "sha256:ff9ef7539eaf7e088a481b25d1af4704210b07863e1d51b5ee498b910a3a46a3"},
-    {file = "google_api_python_client-2.119.0-py2.py3-none-any.whl", hash = "sha256:84e43bdb58dd8d2301669513863996378ffe9a3bf6d23b5ccd4f1e021323dbeb"},
+    {file = "google-api-python-client-2.120.0.tar.gz", hash = "sha256:a0c8769cad9576768bcb3191cb1f550f6ab3290cba042badb0fb17bba03f70cc"},
+    {file = "google_api_python_client-2.120.0-py2.py3-none-any.whl", hash = "sha256:e2cdf4497bfc758fb44a4b487920cc1ca0571c2428187697a8e43e3b9feba1c9"},
 ]
 
 [[package]]
@@ -3458,7 +3458,7 @@ files = [
 
 [[package]]
 name = "python-dateutil"
-version = "2.8.2"
+version = "2.9.0"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
 summary = "Extensions to the standard Python datetime module"
 groups = ["default"]
@@ -3466,8 +3466,8 @@ dependencies = [
     "six>=1.5",
 ]
 files = [
-    {file = "python-dateutil-2.8.2.tar.gz", hash = "sha256:0123cacc1627ae19ddf3c27a5de5bd67ee4586fbdd6440d9748f8abb483d3e86"},
-    {file = "python_dateutil-2.8.2-py2.py3-none-any.whl", hash = "sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9"},
+    {file = "python-dateutil-2.9.0.tar.gz", hash = "sha256:78e73e19c63f5b20ffa567001531680d939dc042bf7850431877645523c66709"},
+    {file = "python_dateutil-2.9.0-py2.py3-none-any.whl", hash = "sha256:cbf2f1da5e6083ac2fbfd4da39a25f34312230110440f424a14c7558bb85d82e"},
 ]
 
 [[package]]
@@ -4774,7 +4774,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.2.2"
+version = "0.3.0"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract Adapters"
 groups = ["default"]
@@ -4802,8 +4802,8 @@ dependencies = [
     "weaviate-client==3.25.3",
 ]
 files = [
-    {file = "unstract_adapters-0.2.2-py3-none-any.whl", hash = "sha256:aaf48036f844f4e0295c36596b1772111ab18229246b8677227b983b3c4226e4"},
-    {file = "unstract_adapters-0.2.2.tar.gz", hash = "sha256:465d7859a0eb7a905d2c626939f2fed3a501600f832c93160b3e27a559e5ab22"},
+    {file = "unstract_adapters-0.3.0-py3-none-any.whl", hash = "sha256:ac2e6d6902bb54c0ef4d223b68365d4f044fb92b83c05bcd92208155e548253c"},
+    {file = "unstract_adapters-0.3.0.tar.gz", hash = "sha256:3c4662a73dfaa0b9c0b947da8e3e351221b876c6dd505d054c70a3067fe8d9dc"},
 ]
 
 [[package]]
@@ -4860,7 +4860,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.12.1"
+version = "0.13.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -4874,11 +4874,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.2.2",
+    "unstract-adapters~=0.3.0",
 ]
 files = [
-    {file = "unstract_sdk-0.12.1-py3-none-any.whl", hash = "sha256:960d8a7b92a1ad32894650edd9254aaf7c3f7555053991b3860e55ab684624a8"},
-    {file = "unstract_sdk-0.12.1.tar.gz", hash = "sha256:06b1a7bf17948d548137502127458d83046c2e0b596ff326a292dbe94041a13a"},
+    {file = "unstract_sdk-0.13.0-py3-none-any.whl", hash = "sha256:15c2aa60a93654fa9eab8b90024ca11b7fc5c9e3e6b8cdde97e11279dde0b2a3"},
+    {file = "unstract_sdk-0.13.0.tar.gz", hash = "sha256:64e97366dd742964620201ed4a3aeb6495c74efd4ba482266f0308bafa08e70d"},
 ]
 
 [[package]]
@@ -4892,7 +4892,7 @@ dependencies = [
     "PyYAML~=6.0.1",
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
-    "unstract-adapters~=0.2.1",
+    "unstract-adapters~=0.3.0",
     "unstract-tool-sandbox",
 ]
 
