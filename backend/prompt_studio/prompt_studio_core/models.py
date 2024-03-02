@@ -55,10 +55,10 @@ class CustomTool(BaseModel):
         db_comment="LLM Profile used for summarize",
     )
     summarize_context = models.BooleanField(
-        default=True, db_comment="Flag to summarize content"
+        default=False, db_comment="Flag to summarize content"
     )
     summarize_as_source = models.BooleanField(
-        default=True, db_comment="Flag to use summarized content as source"
+        default=False, db_comment="Flag to use summarized content as source"
     )
     summarize_prompt = models.TextField(
         blank=True,
