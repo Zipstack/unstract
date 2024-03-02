@@ -3,12 +3,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from structure.src.constants import SettingsKeys
 from unstract.sdk.constants import LogState, MetadataKey
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
+
+from .constants import SettingsKeys
 
 
 class StructureTool(BaseTool):
