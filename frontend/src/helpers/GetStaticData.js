@@ -341,6 +341,14 @@ const formattedDateTime = (ISOdateTime) => {
   } else {
     return "";
   }
+}
+
+const getBackendErrorDetail = (attr, backendErrors) => {
+  if (backendErrors) {
+    const error = backendErrors?.errors.find((error) => error?.attr === attr);
+    return error ? error?.detail : null;
+  }
+  return null;
 };
 
 export {
@@ -373,4 +381,5 @@ export {
   removeFileExtension,
   isJson,
   displayPromptResult,
+  getBackendErrorDetail,
 };

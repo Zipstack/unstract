@@ -38,6 +38,10 @@
     margin: 0px 0px;
 }
 
+.prompt-card-paginate-div {
+    min-width: 80px;
+}
+
 .prompt-card-paginate {
     font-size: 12px;
 }
