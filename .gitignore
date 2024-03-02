@@ -635,3 +635,4 @@ backend/backend/settings/*
 !backend/backend/settings/__init__.py
 !backend/backend/settings/base.py
 !backend/backend/settings/dev.py
+!backend/backend/settings/test.py
