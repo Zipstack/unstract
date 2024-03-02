@@ -35,6 +35,11 @@ const columns = [
     key: "vector_db",
   },
   {
+    title: "Text Extractor",
+    dataIndex: "text_extractor",
+    key: "text_extractor",
+  },
+  {
     title: "",
     dataIndex: "delete",
     key: "delete",
@@ -101,6 +106,7 @@ function ManageLlmProfiles({ setOpen, setOpenLlm, setEditLlmProfileId }) {
         llm: item?.llm || "",
         embedding_model: item?.embedding_model || "",
         vector_db: item?.vector_store || "",
+        text_extractor: item?.x2text || "",
         delete: (
           <ConfirmModal
             handleConfirm={() => handleDelete(item?.profile_id)}

@@ -327,6 +327,14 @@ const onboardCompleted = (adaptersList) => {
   return MANDATORY_ADAPTERS.every((value) => adaptersList.includes(value));
 };
 
+const getBackendErrorDetail = (attr, backendErrors) => {
+  if (backendErrors) {
+    const error = backendErrors?.errors.find((error) => error?.attr === attr);
+    return error ? error?.detail : null;
+  }
+  return null;
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -356,4 +364,5 @@ export {
   removeFileExtension,
   isJson,
   displayPromptResult,
+  getBackendErrorDetail,
 };

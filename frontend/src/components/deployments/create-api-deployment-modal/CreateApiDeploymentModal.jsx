@@ -2,7 +2,10 @@ import { Form, Input, Modal, Select } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData.js";
+import {
+  getBackendErrorDetail,
+  handleException,
+} from "../../../helpers/GetStaticData.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
 
@@ -35,14 +38,6 @@ const CreateApiDeploymentModal = ({
   const [form] = Form.useForm();
   const [backendErrors, setBackendErrors] = useState(null);
   const [isFormChanged, setIsFormChanged] = useState(false);
-
-  const getBackendErrorDetail = (attr) => {
-    if (backendErrors) {
-      const error = backendErrors?.errors.find((error) => error?.attr === attr);
-      return error ? error?.detail : null;
-    }
-    return null;
-  };
 
   const handleInputChange = (changedValues, allValues) => {
     setIsFormChanged(true);
@@ -171,8 +166,10 @@ const CreateApiDeploymentModal = ({
           label="Display Name"
           name="display_name"
           rules={[{ required: true, message: "Please enter display name" }]}
-          validateStatus={getBackendErrorDetail("display_name") ? "error" : ""}
-          help={getBackendErrorDetail("display_name")}
+          validateStatus={
+            getBackendErrorDetail("display_name", backendErrors) ? "error" : ""
+          }
+          help={getBackendErrorDetail("display_name", backendErrors)}
         >
           <Input />
         </Form.Item>
@@ -181,8 +178,10 @@ const CreateApiDeploymentModal = ({
           label="Description"
           name="description"
           rules={[{ required: true, message: "Please enter description" }]}
-          validateStatus={getBackendErrorDetail("description") ? "error" : ""}
-          help={getBackendErrorDetail("description")}
+          validateStatus={
+            getBackendErrorDetail("description", backendErrors) ? "error" : ""
+          }
+          help={getBackendErrorDetail("description", backendErrors)}
         >
           <Input />
         </Form.Item>
@@ -202,8 +201,10 @@ const CreateApiDeploymentModal = ({
               message: "Maximum 30 characters only allowed",
             },
           ]}
-          validateStatus={getBackendErrorDetail("api_name") ? "error" : ""}
-          help={getBackendErrorDetail("api_name")}
+          validateStatus={
+            getBackendErrorDetail("api_name", backendErrors) ? "error" : ""
+          }
+          help={getBackendErrorDetail("api_name", backendErrors)}
         >
           <Input />
         </Form.Item>
@@ -213,8 +214,10 @@ const CreateApiDeploymentModal = ({
             label="Workflow"
             name="workflow"
             rules={[{ required: true, message: "Please select an workflow" }]}
-            validateStatus={getBackendErrorDetail("workflow") ? "error" : ""}
-            help={getBackendErrorDetail("workflow")}
+            validateStatus={
+              getBackendErrorDetail("workflow", backendErrors) ? "error" : ""
+            }
+            help={getBackendErrorDetail("workflow", backendErrors)}
           >
             <Select>
               {workflowEndpointList.map((endpoint) => {

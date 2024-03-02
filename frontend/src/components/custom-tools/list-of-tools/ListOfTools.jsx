@@ -210,6 +210,7 @@ function ListOfTools() {
               <ViewTools
                 isLoading={isListLoading}
                 viewType={viewType}
+                isEmpty={!listOfTools?.length}
                 listOfTools={filteredListOfTools}
                 setOpenAddTool={setOpenAddTool}
                 handleEdit={handleEdit}
