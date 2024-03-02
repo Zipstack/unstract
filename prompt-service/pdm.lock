@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:6877a7e5b2b53d33a6f17b473de66b9d607119780e13c420f9216f7fcadd1186"
+content_hash = "sha256:f70592e5a8efe531f8e1b05ab6be734d0e13fe53818c9ee1bd38a51e53a729a3"
 
 [[package]]
 name = "aiohttp"
@@ -330,23 +330,23 @@ files = [
 
 [[package]]
 name = "boto3"
-version = "1.34.51"
+version = "1.34.53"
 requires_python = ">= 3.8"
 summary = "The AWS SDK for Python"
 groups = ["default"]
 dependencies = [
-    "botocore<1.35.0,>=1.34.51",
+    "botocore<1.35.0,>=1.34.53",
     "jmespath<2.0.0,>=0.7.1",
     "s3transfer<0.11.0,>=0.10.0",
 ]
 files = [
-    {file = "boto3-1.34.51-py3-none-any.whl", hash = "sha256:67732634dc7d0afda879bd9a5e2d0818a2c14a98bef766b95a3e253ea5104cb9"},
-    {file = "boto3-1.34.51.tar.gz", hash = "sha256:2cd9463e738a184cbce8a6824027c22163c5f73e277a35ff5aa0fb0e845b4301"},
+    {file = "boto3-1.34.53-py3-none-any.whl", hash = "sha256:340c73f57fcca6f503403e2e13a0a4ad44bec218feee2e0896be612324394afd"},
+    {file = "boto3-1.34.53.tar.gz", hash = "sha256:cd30261a782824ce543a628ae524480abb4ca6ab4e4a2631477e48baed43b5f2"},
 ]
 
 [[package]]
 name = "botocore"
-version = "1.34.51"
+version = "1.34.53"
 requires_python = ">= 3.8"
 summary = "Low-level, data-driven core of boto 3."
 groups = ["default"]
@@ -357,8 +357,8 @@ dependencies = [
     "urllib3<2.1,>=1.25.4; python_version >= \"3.10\"",
 ]
 files = [
-    {file = "botocore-1.34.51-py3-none-any.whl", hash = "sha256:01d5156247f991b3466a8404e3d7460a9ecbd9b214f9992d6ba797d9ddc6f120"},
-    {file = "botocore-1.34.51.tar.gz", hash = "sha256:5086217442e67dd9de36ec7e87a0c663f76b7790d5fb6a12de565af95e87e319"},
+    {file = "botocore-1.34.53-py3-none-any.whl", hash = "sha256:cbbcaddc35738d32df55d26ed5561cf3fa32751a6b22e7e342be87b5e3f55eec"},
+    {file = "botocore-1.34.53.tar.gz", hash = "sha256:3d243781e994dfc5b20036d9fb92672bfaef4dbe388eaa79dae6440ea56c53eb"},
 ]
 
 [[package]]
@@ -1114,7 +1114,7 @@ files = [
 
 [[package]]
 name = "gotrue"
-version = "2.1.0"
+version = "2.4.1"
 requires_python = ">=3.8,<4.0"
 summary = "Python Client Library for GoTrue"
 groups = ["default"]
@@ -1123,8 +1123,8 @@ dependencies = [
     "pydantic<3,>=1.10",
 ]
 files = [
-    {file = "gotrue-2.1.0-py3-none-any.whl", hash = "sha256:6483d9a3ac9be1d1ad510be24171e133aa1cec702cc10a8f323b9e7519642447"},
-    {file = "gotrue-2.1.0.tar.gz", hash = "sha256:b21d48ee64f0f6a1ed111efe4871a83e542529f1a75a264833b50e6433cd3c98"},
+    {file = "gotrue-2.4.1-py3-none-any.whl", hash = "sha256:9647bb7a585c969d26667df21168fa20b18f91c5d6afe286af08d7a0610fd2cc"},
+    {file = "gotrue-2.4.1.tar.gz", hash = "sha256:8b260ef285f45a3a2f9b5a006f12afb9fad7a36a28fa277f19e733f22eb88584"},
 ]
 
 [[package]]
@@ -2646,7 +2646,7 @@ files = [
 
 [[package]]
 name = "python-dateutil"
-version = "2.8.2"
+version = "2.9.0"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
 summary = "Extensions to the standard Python datetime module"
 groups = ["default"]
@@ -2654,8 +2654,8 @@ dependencies = [
     "six>=1.5",
 ]
 files = [
-    {file = "python-dateutil-2.8.2.tar.gz", hash = "sha256:0123cacc1627ae19ddf3c27a5de5bd67ee4586fbdd6440d9748f8abb483d3e86"},
-    {file = "python_dateutil-2.8.2-py2.py3-none-any.whl", hash = "sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9"},
+    {file = "python-dateutil-2.9.0.tar.gz", hash = "sha256:78e73e19c63f5b20ffa567001531680d939dc042bf7850431877645523c66709"},
+    {file = "python_dateutil-2.9.0-py2.py3-none-any.whl", hash = "sha256:cbf2f1da5e6083ac2fbfd4da39a25f34312230110440f424a14c7558bb85d82e"},
 ]
 
 [[package]]
@@ -2884,7 +2884,7 @@ files = [
 
 [[package]]
 name = "rich"
-version = "13.7.0"
+version = "13.7.1"
 requires_python = ">=3.7.0"
 summary = "Render rich text, tables, progress bars, syntax highlighting, markdown and more to the terminal"
 groups = ["default"]
@@ -2893,8 +2893,8 @@ dependencies = [
     "pygments<3.0.0,>=2.13.0",
 ]
 files = [
-    {file = "rich-13.7.0-py3-none-any.whl", hash = "sha256:6da14c108c4866ee9520bbffa71f6fe3962e193b7da68720583850cd4548e235"},
-    {file = "rich-13.7.0.tar.gz", hash = "sha256:5cb5123b5cf9ee70584244246816e9114227e0b98ad9176eede6ad54bf5403fa"},
+    {file = "rich-13.7.1-py3-none-any.whl", hash = "sha256:4edbae314f59eb482f54e9e30bf00d33350aaa94f4bfcd4e9e3110e64d0d7222"},
+    {file = "rich-13.7.1.tar.gz", hash = "sha256:9be308cb1fe2f1f57d67ce99e95af38a1e2bc71ad9813b0e247cf7ffbcc3a432"},
 ]
 
 [[package]]
@@ -3643,7 +3643,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.2.2"
+version = "0.3.0"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract Adapters"
 groups = ["default"]
@@ -3671,13 +3671,13 @@ dependencies = [
     "weaviate-client==3.25.3",
 ]
 files = [
-    {file = "unstract_adapters-0.2.2-py3-none-any.whl", hash = "sha256:aaf48036f844f4e0295c36596b1772111ab18229246b8677227b983b3c4226e4"},
-    {file = "unstract_adapters-0.2.2.tar.gz", hash = "sha256:465d7859a0eb7a905d2c626939f2fed3a501600f832c93160b3e27a559e5ab22"},
+    {file = "unstract_adapters-0.3.0-py3-none-any.whl", hash = "sha256:ac2e6d6902bb54c0ef4d223b68365d4f044fb92b83c05bcd92208155e548253c"},
+    {file = "unstract_adapters-0.3.0.tar.gz", hash = "sha256:3c4662a73dfaa0b9c0b947da8e3e351221b876c6dd505d054c70a3067fe8d9dc"},
 ]
 
 [[package]]
 name = "unstract-sdk"
-version = "0.12.1"
+version = "0.13.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3691,11 +3691,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.2.2",
+    "unstract-adapters~=0.3.0",
 ]
 files = [
-    {file = "unstract_sdk-0.12.1-py3-none-any.whl", hash = "sha256:960d8a7b92a1ad32894650edd9254aaf7c3f7555053991b3860e55ab684624a8"},
-    {file = "unstract_sdk-0.12.1.tar.gz", hash = "sha256:06b1a7bf17948d548137502127458d83046c2e0b596ff326a292dbe94041a13a"},
+    {file = "unstract_sdk-0.13.0-py3-none-any.whl", hash = "sha256:15c2aa60a93654fa9eab8b90024ca11b7fc5c9e3e6b8cdde97e11279dde0b2a3"},
+    {file = "unstract_sdk-0.13.0.tar.gz", hash = "sha256:64e97366dd742964620201ed4a3aeb6495c74efd4ba482266f0308bafa08e70d"},
 ]
 
 [[package]]

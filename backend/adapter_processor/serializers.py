@@ -78,7 +78,12 @@ class AdapterListSerializer(BaseAdapterSerializer):
 
     class Meta(BaseAdapterSerializer.Meta):
         model = AdapterInstance
-        fields = ("id", "adapter_id", "adapter_name")  # type: ignore
+        fields = (
+            "id",
+            "adapter_id",
+            "adapter_name",
+            "adapter_type",
+        )  # type: ignore
 
     def to_representation(self, instance: AdapterInstance) -> dict[str, str]:
         rep: dict[str, str] = super().to_representation(instance)
