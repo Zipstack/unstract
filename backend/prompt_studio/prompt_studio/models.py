@@ -41,6 +41,7 @@ class ToolStudioPrompt(BaseModel):
         db_comment="Field to store the type in \
             which the response to be returned.",
         choices=EnforceType.choices,
+        default=EnforceType.TEXT,
     )
     prompt = models.TextField(
         blank=True, db_comment="Field to store the prompt", unique=False
