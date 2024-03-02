@@ -59,20 +59,13 @@ class DocumentView(viewsets.ModelViewSet):
                     id=app_id, is_active=True
                 )
                 if queryset:
-                    tool_instances: ToolInstance = ToolInstance.objects.filter(
-                        workflow=queryset.workflow
+                    files = DocumentView.fetch_files(
+                        queryset.workflow, path, dir_only
                     )
-                    if tool_instances:
-                        input_file_connector_id = (
-                            tool_instances.first().input_file_connector_id
-                        )
-                        files = DocumentView.fetch_files(
-                            input_file_connector_id, path, dir_only
-                        )
-                        serializer = FileInfoSerializer(
-                            files[:limit], many=True
-                        )
-                        return Response(serializer.data)
+                    serializer = FileInfoSerializer(
+                        files[:limit], many=True
+                    )
+                    return Response(serializer.data)
             except AppDeployment.DoesNotExist:
                 raise AppNotFound()
         else:
@@ -80,12 +73,12 @@ class DocumentView(viewsets.ModelViewSet):
 
     @staticmethod
     def fetch_files(
-        connector_id: str, path: str, dir_only: bool
+        workflow_id: str, path: str, dir_only: bool
     ) -> list[FileInformation]:
         """_summary_
 
         Args:
-            connector_id (str): _description_
+            workflow_id (str): _description_
             path (str): _description_
 
         Raises:
@@ -99,7 +92,7 @@ class DocumentView(viewsets.ModelViewSet):
         """
         try:
             connector_instance: ConnectorInstance = (
-                ConnectorInstance.objects.get(pk=connector_id)
+                ConnectorInstance.objects.get(workflow=workflow_id, connector_type="INPUT")
             )
             file_system: FileManagerHelper = FileManagerHelper.get_file_system(
                 connector_instance
@@ -126,27 +119,20 @@ class DocumentView(viewsets.ModelViewSet):
                     id=app_id, is_active=True
                 )
                 if queryset:
-                    tool_instances: ToolInstance = ToolInstance.objects.filter(
-                        workflow=queryset.workflow
+                    response: HttpResponse = DocumentView.get_file_content(
+                        queryset.workflow, file_name
                     )
-                    if tool_instances:
-                        input_file_connector_id = (
-                            tool_instances.first().input_file_connector_id
-                        )
-                        response: HttpResponse = DocumentView.get_file_content(
-                            input_file_connector_id, file_name
-                        )
-                        return response
+                    return response
             except AppDeployment.DoesNotExist:
                 raise AppNotFound()
         else:
             raise ValidationError(serializer.errors)
 
     @staticmethod
-    def get_file_content(connector_id: str, file_name: str) -> HttpResponse:
+    def get_file_content(workflow_id: str, file_name: str) -> HttpResponse:
         try:
             connector_instance: ConnectorInstance = (
-                ConnectorInstance.objects.get(pk=connector_id)
+                ConnectorInstance.objects.get(workflow=workflow_id, connector_type="INPUT")
             )
             file_system: FileManagerHelper = FileManagerHelper.get_file_system(
                 connector_instance
