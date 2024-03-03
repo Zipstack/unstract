@@ -19,11 +19,37 @@ import {
 import { DocumentViewer } from "../document-viewer/DocumentViewer";
 import { TextViewer } from "../text-viewer/TextViewer";
 
+const items = [
+  {
+    key: "1",
+    label: "Doc View",
+  },
+  {
+    key: "2",
+    label: "Raw View",
+  },
+];
+
 const viewTypes = {
   pdf: "PDF",
   extract: "EXTRACT",
-  summarize: "SUMMARIZE",
 };
+
+let SummarizeView = null;
+try {
+  SummarizeView =
+    require("../../../plugins/summarize-view/SummarizeView").SummarizeView;
+  const tabLabel =
+    require("../../../plugins/summarize-tab/SummarizeTab").tabLabel;
+  if (tabLabel) {
+    items.push({
+      key: 3,
+      label: tabLabel,
+    });
+  }
+} catch (err) {
+  console.log(err);
+}
 
 function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [openManageDocsModal, setOpenManageDocsModal] = useState(false);
@@ -31,29 +57,12 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [activeKey, setActiveKey] = useState("1");
   const [fileUrl, setFileUrl] = useState("");
   const [extractTxt, setExtractTxt] = useState("");
-  const [summaryTxt, setSummaryTxt] = useState("");
   const [isDocLoading, setIsDocLoading] = useState(false);
   const [isExtractLoading, setIsExtractLoading] = useState(false);
-  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   const { selectedDoc, listOfDocs, disableLlmOrDocChange, details } =
     useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
-
-  const items = [
-    {
-      key: "1",
-      label: "Doc View",
-    },
-    {
-      key: "2",
-      label: "Raw View",
-    },
-    {
-      key: "3",
-      label: "Summarize View",
-    },
-  ];
 
   useEffect(() => {
     const fileNameTxt = removeFileExtension(selectedDoc);
@@ -66,15 +75,10 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
         fileName: `extract/${fileNameTxt}.txt`,
         viewType: viewTypes.extract,
       },
-      {
-        fileName: `summarize/${fileNameTxt}.txt`,
-        viewType: viewTypes.summarize,
-      },
     ];
 
     setFileUrl("");
     setExtractTxt("");
-    setSummaryTxt("");
     files.forEach((item) => {
       handleFetchContent(item);
     });
@@ -84,7 +88,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     if (!selectedDoc) {
       setFileUrl("");
       setExtractTxt("");
-      setSummaryTxt("");
       return;
     }
 
@@ -107,10 +110,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
         if (fileDetails?.viewType === viewTypes?.extract) {
           setExtractTxt(data);
         }
-
-        if (fileDetails?.viewType === viewTypes.summarize) {
-          setSummaryTxt(data);
-        }
       })
       .catch((err) => {})
       .finally(() => {
@@ -125,10 +124,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
     if (viewType === viewTypes.extract) {
       setIsExtractLoading(value);
-    }
-
-    if (viewType === viewTypes.summarize) {
-      setIsSummaryLoading(value);
     }
   };
 
@@ -234,15 +229,8 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           <TextViewer text={extractTxt} />
         </DocumentViewer>
       )}
-      {activeKey === "3" && (
-        <DocumentViewer
-          doc={selectedDoc}
-          isLoading={isSummaryLoading}
-          isContentAvailable={summaryTxt?.length > 0}
-          setOpenManageDocsModal={setOpenManageDocsModal}
-        >
-          <TextViewer text={summaryTxt} />
-        </DocumentViewer>
+      {SummarizeView && activeKey === 3 && (
+        <SummarizeView setOpenManageDocsModal={setOpenManageDocsModal} />
       )}
       <ManageDocsModal
         open={openManageDocsModal}

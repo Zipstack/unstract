@@ -43,10 +43,21 @@ import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
-import { EvalMetricTag } from "../eval-metric-tag/EvalMetricTag";
-import { EvalModal } from "../eval-modal/EvalModal";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
+
+let EvalBtn = null;
+let EvalMetrics = null;
+let EvalModal = null;
+
+try {
+  EvalBtn = require("../../../plugins/eval-btn/EvalBtn").EvalBtn;
+  EvalMetrics =
+    require("../../../plugins/eval-metrics/EvalMetrics").EvalMetrics;
+  EvalModal = require("../../../plugins/eval-modal/EvalModal").EvalModal;
+} catch {
+  console.log("Component failed to render");
+}
 
 function PromptCard({
   promptDetails,
@@ -726,21 +737,13 @@ function PromptCard({
           >
             <div className="prompt-card-llm-profiles">
               <Space direction="horizontal">
-                <div>
-                  <Button
-                    size="small"
-                    onClick={() => setOpenEval(true)}
-                    disabled={disableLlmOrDocChange.includes(
-                      promptDetails?.prompt_id
-                    )}
-                  >
-                    <Space>
-                      <Typography.Text className="font-size-12">
-                        Eval: {promptDetails?.evaluate ? "On" : "Off"}
-                      </Typography.Text>
-                    </Space>
-                  </Button>
-                </div>
+                {EvalBtn && (
+                  <EvalBtn
+                    btnText={promptDetails?.evaluate ? "On" : "Off"}
+                    promptId={promptDetails.prompt_id}
+                    setOpenEval={setOpenEval}
+                  />
+                )}
                 <Button
                   size="small"
                   type="link"
@@ -816,13 +819,7 @@ function PromptCard({
                 </Button>
               </div>
             </div>
-            {result?.evalMetrics?.length > 0 && (
-              <div>
-                {result?.evalMetrics.map((evalMetric) => (
-                  <EvalMetricTag key={evalMetric.id} metric={evalMetric} />
-                ))}
-              </div>
-            )}
+            {EvalMetrics && <EvalMetrics result={result} />}
           </Space>
         </>
         {(isRunLoading ||
@@ -841,12 +838,14 @@ function PromptCard({
           </>
         )}
       </Card>
-      <EvalModal
-        open={openEval}
-        setOpen={setOpenEval}
-        promptDetails={promptDetails}
-        handleChange={handleChange}
-      />
+      {EvalModal && (
+        <EvalModal
+          open={openEval}
+          setOpen={setOpenEval}
+          promptDetails={promptDetails}
+          handleChange={handleChange}
+        />
+      )}
       <OutputForDocModal
         open={openOutputForDoc}
         setOpen={setOpenOutputForDoc}

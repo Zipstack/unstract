@@ -22,6 +22,14 @@ import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
 import { SelectLlmProfileModal } from "../select-llm-profile-modal/SelectLlmProfileModal";
 
+let SummarizeHeader = null;
+
+try {
+  SummarizeHeader =
+    require("../../../plugins/summarize-header/SummarizeHeader").SummarizeHeader;
+} catch (err) {
+  console.log(err);
+}
 function Header({
   setOpenCusSynonymsModal,
   setOpenManageLlmModal,
@@ -105,17 +113,12 @@ function Header({
         </Button>
       </div>
       <div className="custom-tools-header-btns">
-        <div>
-          <Button
-            className="doc-manager-btn"
-            onClick={() => setOpenSummLlmProfileModal(true)}
-            icon={<FileTextOutlined />}
-          >
-            <Typography.Text ellipsis>
-              Summarize: {summarizeLlmBtnText || "Select LLM"}
-            </Typography.Text>
-          </Button>
-        </div>
+        {SummarizeHeader && (
+          <SummarizeHeader
+            setOpen={setOpenSummLlmProfileModal}
+            btnText={summarizeLlmBtnText}
+          />
+        )}
         <div>
           <Button
             onClick={() => setOpenCusSynonymsModal(true)}
