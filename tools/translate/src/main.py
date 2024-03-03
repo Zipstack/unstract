@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from constants import EnvKey, GoogleTranslateKey, StaticData
 from google.auth.transport import requests as google_requests
 from google.cloud import translate_v2 as translate
 from google.oauth2.service_account import Credentials
@@ -14,6 +13,8 @@ from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
 from unstract.sdk.utils import ToolUtils
 from unstructured.partition.auto import partition
+
+from .constants import EnvKey, GoogleTranslateKey, StaticData
 
 
 class UnstractTranslate(BaseTool):
