@@ -68,7 +68,7 @@ function AddLlmProfileModal({
   }, []);
 
   useEffect(() => {
-    if (!open) {
+    if (open && editLlmProfileId) {
       return;
     }
 
@@ -356,7 +356,8 @@ function AddLlmProfileModal({
           <SpaceWrapper>
             <div>
               <Typography.Text className="add-cus-tool-header">
-                Add New LLM Profile
+                {editLlmProfileId?.length > 0 ? "Update" : "Add"} New LLM
+                Profile
               </Typography.Text>
             </div>
             <div>
