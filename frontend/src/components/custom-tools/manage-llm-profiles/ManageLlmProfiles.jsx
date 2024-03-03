@@ -164,6 +164,12 @@ function ManageLlmProfiles({ setOpen, setOpenLlm, setEditLlmProfileId }) {
         const body = {
           llmProfiles: modifiedLlmProfiles,
         };
+
+        // Reset the default LLM profile if it got deleted.
+        if (id === defaultLlmProfile) {
+          body["defaultLlmProfile"] = "";
+        }
+
         updateCustomTool(body);
       })
       .catch((err) => {
