@@ -2,9 +2,10 @@ version: '3.7'
 
 services:
   db:
-    # Supports pgvector for doc indexer
-    image: 'ankane/pgvector:v0.5.1'
+    image: 'postgres:15.6'
     container_name: unstract-db
+    # set shared memory limit when using docker-compose
+    shm_size: 128mb
     ports:
       - "5432:5432"
     volumes:
@@ -14,6 +15,7 @@ services:
       - ./essentials.env
     labels:
       - traefik.enable=false
+    restart: always 
 
   redis:
     image: 'bitnami/redis:7.0.14'
@@ -58,7 +60,7 @@ services:
       --api.insecure=true
       --accesslog=true --log.level=INFO
       --providers.docker=true --providers.docker.network=unstract-network
-      --providers.file.filename=/proxy_overrides.yaml --providers.file.watch=true
+      # --providers.file.filename=/proxy_overrides.yaml --providers.file.watch=true
     ports:
       # The HTTP port
       - "80:80"
@@ -103,7 +105,7 @@ services:
       - traefik.enable=false
 
   qdrant:
-    # Supports pgvector for doc indexer
+    # Vector DB for doc indexer
     image: 'qdrant/qdrant'
     container_name: unstract-vector-db
     ports:
