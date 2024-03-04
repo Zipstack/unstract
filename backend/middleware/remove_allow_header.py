@@ -10,12 +10,3 @@ class RemoveAllowHeaderMiddleware:
         if 'Allow' in response:
             del response['Allow']
         return response
-
-    def remove_allow_header(self):
-        @wraps(self)
-        def wrapper(*args, **kwargs):
-            response = self(*args, **kwargs)
-            if 'Allow' in response:
-                del response['Allow']
-            return response
-        return wrapper
