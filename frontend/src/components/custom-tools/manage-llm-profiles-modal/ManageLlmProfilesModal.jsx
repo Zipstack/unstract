@@ -7,6 +7,7 @@ function ManageLlmProfilesModal({
   setOpen,
   setOpenLlm,
   setEditLlmProfileId,
+  setModalTitle,
 }) {
   return (
     <Modal
@@ -22,6 +23,7 @@ function ManageLlmProfilesModal({
         setOpen={setOpen}
         setOpenLlm={setOpenLlm}
         setEditLlmProfileId={setEditLlmProfileId}
+        setModalTitle={setModalTitle}
       />
     </Modal>
   );
@@ -32,6 +34,7 @@ ManageLlmProfilesModal.propTypes = {
   setOpen: PropTypes.func.isRequired,
   setOpenLlm: PropTypes.func.isRequired,
   setEditLlmProfileId: PropTypes.func.isRequired,
+  setModalTitle: PropTypes.func.isRequired,
 };
 
 export { ManageLlmProfilesModal };

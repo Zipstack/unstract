@@ -29,6 +29,8 @@ function AddLlmProfileModal({
   setOpen,
   editLlmProfileId,
   setEditLlmProfileId,
+  modalTitle,
+  setModalTitle,
 }) {
   const [name, setName] = useState("");
   const [llm, setLlm] = useState("");
@@ -88,6 +90,7 @@ function AddLlmProfileModal({
     setSection("Default");
     setReIndex(false);
     setEditLlmProfileId(null);
+    setModalTitle("Add new LLM Profile");
     setActiveKey(false);
   }, [open]);
 
@@ -317,7 +320,8 @@ function AddLlmProfileModal({
           <SpaceWrapper>
             <div>
               <Typography.Text className="add-cus-tool-header">
-                Add New LLM Profile
+                {/* Add New LLM Profile */}
+                {modalTitle}
               </Typography.Text>
             </div>
             <div>
@@ -411,6 +415,8 @@ AddLlmProfileModal.propTypes = {
   setOpen: PropTypes.func.isRequired,
   editLlmProfileId: PropTypes.string,
   setEditLlmProfileId: PropTypes.func.isRequired,
+  modalTitle: PropTypes.string,
+  setModalTitle: PropTypes.func.isRequired,
 };
 
 export { AddLlmProfileModal };
