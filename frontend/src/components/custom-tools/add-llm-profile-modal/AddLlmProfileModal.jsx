@@ -237,6 +237,7 @@ function AddLlmProfileModal({
     {
       key: "1",
       label: "Advanced Settings",
+      style: panelStyle,
       children: (
         <div>
           <Form.Item
@@ -273,16 +274,19 @@ function AddLlmProfileModal({
           >
             <Select options={[{ value: "Default" }]} />
           </Form.Item>
-          <Row className="add-llm-profile-row">
-            <Col span={5}>
-              <Form.Item label="Re-Index">
-                <Checkbox />
-              </Form.Item>
-            </Col>
-          </Row>
+          <Form.Item
+            label="Re-Index"
+            valuePropName="checked"
+            name="reindex"
+            validateStatus={
+              getBackendErrorDetail("reindex", backendErrors) ? "error" : ""
+            }
+            help={getBackendErrorDetail("reindex", backendErrors)}
+          >
+            <Checkbox />
+          </Form.Item>
         </div>
       ),
-      style: panelStyle,
     },
   ];
 
