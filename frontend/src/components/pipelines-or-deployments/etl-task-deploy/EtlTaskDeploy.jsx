@@ -54,7 +54,7 @@ const EtlTaskDeploy = ({
   const [isCronStringValid, setCronStringValid] = useState(true);
   const [isLoading, setLoading] = useState(false);
 
-  const getWorkflows = () => {
+  const getWorkflowList = () => {
     workflowApiService
       .getWorkflowList()
       .then((res) => {
@@ -64,10 +64,29 @@ const EtlTaskDeploy = ({
         console.error("Unable to get workflow list");
       });
   };
+  const getWorkflows = () => {
+    const connectorType = type === "task" ? "FILESYSTEM" : "DATABASE";
+    workflowApiService
+      .getWorkflowEndpointList("DESTINATION", connectorType)
+      .then((res) => {
+        const updatedData = res?.data.map((record) => ({
+          ...record,
+          id: record.workflow,
+        }));
+        setWorkflowList(updatedData);
+      })
+      .catch(() => {
+        console.error("Unable to get workflow list");
+      });
+  };
 
   useEffect(() => {
-    getWorkflows();
-  }, []);
+    if (type === "app") {
+      getWorkflowList();
+    } else {
+      getWorkflows();
+    }
+  }, [type]);
 
   const onChangeHandler = (propertyName, value) => {
     const body = {
@@ -75,9 +94,6 @@ const EtlTaskDeploy = ({
     };
     setFormDetails({ ...formDetails, ...body });
   };
-  useEffect(() => {
-    getWorkflows();
-  }, []);
 
   useEffect(() => {
     if (open) {

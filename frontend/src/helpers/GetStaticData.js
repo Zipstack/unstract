@@ -341,7 +341,7 @@ const formattedDateTime = (ISOdateTime) => {
   } else {
     return "";
   }
-}
+};
 
 const getBackendErrorDetail = (attr, backendErrors) => {
   if (backendErrors) {

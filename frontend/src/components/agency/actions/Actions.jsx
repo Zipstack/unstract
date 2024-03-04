@@ -19,8 +19,10 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
 import { CreateApiDeploymentModal } from "../../deployments/create-api-deployment-modal/CreateApiDeploymentModal.jsx";
+import { EtlTaskDeploy } from "../../pipelines-or-deployments/etl-task-deploy/EtlTaskDeploy.jsx";
 import { SocketMessages } from "../../helpers/socket-messages/SocketMessages";
 import FileUpload from "../file-upload/FileUpload.jsx";
+import { deploymentsStaticContent } from "../../../helpers/GetStaticData";
 import "./Actions.css";
 
 function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
@@ -35,6 +37,8 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   const [apiOpsPresent, setApiOpsPresent] = useState(false);
   const [canAddTaskPipeline, setCanAddTaskPipeline] = useState(false);
   const [canAddETLPipeline, setCanAddETAPipeline] = useState(false);
+  const [openAddTaskModal, setOpenAddTaskModal] = useState(false);
+  const [openAddETLModal, setOpenAddETLModal] = useState(false);
 
   const {
     details,
@@ -246,7 +250,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
     setExecutionId("");
   };
 
-  const createAPIDeployment = () => {
+  const createDeployment = (type) => {
     const workflowId = details?.id;
     if (!workflowId) {
       setAlertDetails({
@@ -255,7 +259,15 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
       });
       return;
     }
-    setOpenAddApiModal(true);
+    if (type === "API") {
+      setOpenAddApiModal(true);
+    }
+    if (type === "TASK") {
+      setOpenAddTaskModal(true);
+    }
+    if (type === "ETL") {
+      setOpenAddETLModal(true);
+    }
   };
 
   const handleClearCache = () => {
@@ -395,17 +407,26 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           </Tooltip>
           <Divider type="vertical" />
           <Tooltip title="Deploy as ETL Pipeline">
-            <Button disabled={!canAddETLPipeline}>
-              <DeploymentUnitOutlined />
+            <Button
+              disabled={!canAddETLPipeline}
+              onClick={() => createDeployment("ETL")}
+            >
+              <ApiOutlined />
             </Button>
           </Tooltip>
           <Tooltip title="Deploy as Task Pipeline">
-            <Button disabled={!canAddTaskPipeline}>
+            <Button
+              disabled={!canAddTaskPipeline}
+              onClick={() => createDeployment("TASK")}
+            >
               <DeploymentUnitOutlined />
             </Button>
           </Tooltip>
-          <Tooltip title="Deploy API">
-            <Button disabled={!apiOpsPresent} onClick={createAPIDeployment}>
+          <Tooltip title="Deploy as API">
+            <Button
+              disabled={!apiOpsPresent}
+              onClick={() => createDeployment("API")}
+            >
               <ApiOutlined />
             </Button>
           </Tooltip>
@@ -430,6 +451,22 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           setOpen={setOpenAddApiModal}
           isEdit={false}
           workflowId={details?.id}
+        />
+      )}
+      {openAddTaskModal && (
+        <EtlTaskDeploy
+          open={openAddTaskModal}
+          setOpen={setOpenAddTaskModal}
+          type="task"
+          title={deploymentsStaticContent["task"].modalTitle}
+        />
+      )}
+      {openAddETLModal && (
+        <EtlTaskDeploy
+          open={openAddETLModal}
+          setOpen={setOpenAddETLModal}
+          type="etl"
+          title={deploymentsStaticContent["etl"].modalTitle}
         />
       )}
       <SocketMessages logId={logId} />

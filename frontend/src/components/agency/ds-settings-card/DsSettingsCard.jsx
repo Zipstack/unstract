@@ -3,6 +3,7 @@ import {
   ExportOutlined,
   ImportOutlined,
   SettingOutlined,
+  CheckCircleTwoTone,
 } from "@ant-design/icons";
 import {
   Button,
@@ -260,7 +261,9 @@ function DsSettingsCard({ type, endpointDetails, message, dependent }) {
                   type="text"
                   size="small"
                   onClick={() => setOpenModal(true)}
-                  disabled={!endpointDetails?.connection_type}
+                  disabled={
+                    !endpointDetails?.connection_type || connType === "API"
+                  }
                 >
                   <SettingOutlined />
                 </Button>
@@ -281,7 +284,18 @@ function DsSettingsCard({ type, endpointDetails, message, dependent }) {
                 </Space>
               ) : (
                 <>
-                  {connType !== "API" && (
+                  {connType === "API" ? (
+                    <Typography.Text
+                      className="font-size-12 display-flex-align-center"
+                      ellipsis={{ rows: 1, expandable: false }}
+                      type="secondary"
+                    >
+                      <CheckCircleTwoTone twoToneColor="#52c41a" />
+                      <span style={{ marginLeft: "5px" }}>
+                        API configured successfully
+                      </span>
+                    </Typography.Text>
+                  ) : (
                     <Typography.Text
                       className="font-size-12 display-flex-align-center"
                       ellipsis={{ rows: 1, expandable: false }}
