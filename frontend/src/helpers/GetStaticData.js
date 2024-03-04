@@ -323,11 +323,16 @@ const onboardCompleted = (adaptersList) => {
     return false;
   }
   const MANDATORY_ADAPTERS = ["llm", "vector_db", "embedding"];
-  if (MANDATORY_ADAPTERS.length !== adaptersList.length) {
-    return false;
-  }
   adaptersList = adaptersList.map((element) => element.toLowerCase());
   return MANDATORY_ADAPTERS.every((value) => adaptersList.includes(value));
+};
+
+const getBackendErrorDetail = (attr, backendErrors) => {
+  if (backendErrors) {
+    const error = backendErrors?.errors.find((error) => error?.attr === attr);
+    return error ? error?.detail : null;
+  }
+  return null;
 };
 
 export {
@@ -359,4 +364,5 @@ export {
   removeFileExtension,
   isJson,
   displayPromptResult,
+  getBackendErrorDetail,
 };

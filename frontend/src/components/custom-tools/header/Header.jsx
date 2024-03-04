@@ -41,7 +41,7 @@ function Header({
 
   useEffect(() => {
     getLlmProfilesDropdown();
-  }, []);
+  }, [llmProfiles]);
 
   const handleOpenPreOrPostAmbleModal = (type) => {
     setOpenPreOrPostAmbleModal(true);

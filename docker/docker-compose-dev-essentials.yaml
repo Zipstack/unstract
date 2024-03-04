@@ -95,6 +95,8 @@ services:
       - traefik.http.services.feature-flag.loadbalancer.server.port=8080
 
   unstract-io:
+    profiles:
+      - optional
     image: downloads.unstructured.io/unstructured-io/unstructured-api:0.0.61
     container_name: unstract-unstructured-io
     ports: # Forwarded to available host ports

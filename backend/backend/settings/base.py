@@ -113,6 +113,8 @@ REDIS_DB = os.environ.get("REDIS_DB", "")
 SESSION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "SESSION_EXPIRATION_TIME_IN_SECOND", 3600
 )
+SESSION_COOKIE_SECURE=True
+CSRF_COOKIE_SECURE=True
 
 PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
 API_DEPLOYMENT_PATH_PREFIX = os.environ.get(

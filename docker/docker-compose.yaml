@@ -26,6 +26,10 @@ services:
       - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && PathPrefix(`/api/v1`, `/deployment`)
       - traefik.http.routers.app_deployment_backend.rule=HostRegexp(`{subdomain:[a-zA-Z0-9.-]+}.unstractapp.localhost`) && PathPrefix(`/api/v1`)
   
+    extra_hosts:
+      # "host-gateway" is a special string that translates to host docker0 i/f IP.
+      - "host.docker.internal:host-gateway"
+
   # Celery execution consumer
   execution-consumer:
     image: unstract/backend:${VERSION}
