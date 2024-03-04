@@ -1,11 +1,12 @@
 import sys
 from typing import Any
 
-from constants import SettingsKeys
 from unstract.sdk.constants import LogState, MetadataKey, ToolSettingsKey
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
+
+from .constants import SettingsKeys
 
 
 class DocumentIndexer(BaseTool):
@@ -34,7 +35,7 @@ class DocumentIndexer(BaseTool):
         tool_index = ToolIndex(tool=self)
         self.stream_log("Indexing document...")
         try:
-            tool_index.index_file(
+            index_key = tool_index.index_file(
                 tool_id=self.workflow_id,
                 embedding_type=settings[ToolSettingsKey.EMBEDDING_ADAPTER_ID],
                 vector_db=settings[ToolSettingsKey.VECTOR_DB_ADAPTER_ID],
@@ -47,15 +48,6 @@ class DocumentIndexer(BaseTool):
             )
         except Exception as e:
             self.stream_error_and_exit(f"Error fetching data and indexing: {e}")
-        index_key = ToolIndex.generate_file_id(
-            tool_id=self.workflow_id,
-            file_hash=file_hash,
-            vector_db=settings[ToolSettingsKey.VECTOR_DB_ADAPTER_ID],
-            embedding=settings[ToolSettingsKey.EMBEDDING_ADAPTER_ID],
-            x2text=settings[ToolSettingsKey.X2TEXT_ADAPTER_ID],
-            chunk_size=settings[SettingsKeys.CHUNK_SIZE],
-            chunk_overlap=settings[SettingsKeys.CHUNK_OVERLAP],
-        )
         # Update GUI
         input_log = (
             "### Indexing file\n"
