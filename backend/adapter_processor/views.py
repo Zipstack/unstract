@@ -11,8 +11,8 @@ from adapter_processor.exceptions import (
     UniqueConstraintViolation,
 )
 from adapter_processor.serializers import (
-    AdapterDetailSerializer,
     AdapterInstanceSerializer,
+    AdapterListSerializer,
     DefaultAdapterSerializer,
     TestAdapterSerializer,
 )
@@ -23,6 +23,7 @@ from permissions.permission import IsOwner
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.serializers import ModelSerializer
 from rest_framework.versioning import URLPathVersioning
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from utils.filtering import FilterHelper
@@ -115,7 +116,7 @@ class AdapterViewSet(GenericViewSet):
 
 class AdapterInstanceViewSet(ModelViewSet):
     queryset = AdapterInstance.objects.all()
-
+    permission_classes: list[type[IsOwner]] = [IsOwner]
     serializer_class = AdapterInstanceSerializer
 
     def get_queryset(self) -> Optional[QuerySet]:
@@ -131,6 +132,13 @@ class AdapterInstanceViewSet(ModelViewSet):
                 created_by=self.request.user
             )
         return queryset
+
+    def get_serializer_class(
+        self,
+    ) -> ModelSerializer:
+        if self.action == "list":
+            return AdapterListSerializer
+        return AdapterInstanceSerializer
 
     def create(self, request: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
@@ -159,6 +167,16 @@ class AdapterInstanceViewSet(ModelViewSet):
             serializer.data, status=status.HTTP_201_CREATED, headers=headers
         )
 
+    def destroy(
+        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
+    ) -> Response:
+        adapter_instance: AdapterInstance = self.get_object()
+        if adapter_instance.is_default:
+            logger.error("Cannot delete a default adapter")
+            raise CannotDeleteDefaultAdapter()
+        super().perform_destroy(adapter_instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     def get_existing_defaults(
         self, adapter_config: dict[str, Any], user: User
     ) -> Optional[AdapterInstance]:
@@ -172,19 +190,3 @@ class AdapterInstanceViewSet(ModelViewSet):
         )
 
         return existing_adapter_default
-
-
-class AdapterDetailViewSet(ModelViewSet):
-    queryset = AdapterInstance.objects.all()
-    serializer_class = AdapterDetailSerializer
-    permission_classes = [IsOwner]
-
-    def destroy(
-        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
-    ) -> Response:
-        adapter_instance: AdapterInstance = self.get_object()
-        if adapter_instance.is_default:
-            logger.error("Cannot delete a default adapter")
-            raise CannotDeleteDefaultAdapter
-        super().perform_destroy(adapter_instance)
-        return Response(status=status.HTTP_204_NO_CONTENT)

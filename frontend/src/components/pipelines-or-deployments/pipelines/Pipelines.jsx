@@ -129,7 +129,7 @@ function Pipelines({ type }) {
   };
 
   const handleEnablePipeline = (value, id) => {
-    const body = { active: value };
+    const body = { active: value, pipeline_id: id };
     const requestOptions = {
       method: "PATCH",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${id}/`,
