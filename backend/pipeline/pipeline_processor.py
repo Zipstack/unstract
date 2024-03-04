@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from django.utils import timezone
 from pipeline.exceptions import InactivePipelineError, PipelineSaveError
@@ -38,7 +39,10 @@ class PipelineProcessor:
 
     @staticmethod
     def update_pipeline_status(
-        pipeline: Pipeline, status: tuple[str, str], is_end: bool
+        pipeline: Pipeline,
+        status: tuple[str, str],
+        is_end: bool,
+        is_active: Optional[bool] = None,
     ) -> Pipeline:
         """Updates pipeline status during execution.
 
@@ -52,6 +56,8 @@ class PipelineProcessor:
             pipeline.last_run_time = timezone.now()
         if status:
             pipeline.last_run_status = status
+        if is_active is not None:
+            pipeline.active = is_active
 
         try:
             pipeline.save()
