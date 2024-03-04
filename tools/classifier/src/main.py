@@ -3,7 +3,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from helper import ClassifierHelper
 from llama_index import set_global_service_context
 from unstract.sdk.cache import ToolCache
 from unstract.sdk.constants import LogLevel, LogState, MetadataKey, ToolEnv
@@ -12,6 +11,8 @@ from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
 from unstract.sdk.utils import ToolUtils
 from unstract.sdk.utils.service_context import ServiceContext
+
+from .helper import ClassifierHelper
 
 
 class UnstractClassifier(BaseTool):
