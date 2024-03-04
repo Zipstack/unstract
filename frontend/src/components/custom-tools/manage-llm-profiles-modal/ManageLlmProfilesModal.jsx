@@ -16,7 +16,7 @@ function ManageLlmProfilesModal({
       onCancel={() => setOpen(false)}
       centered
       footer={null}
-      width={800}
+      width={1000}
       maskClosable={false}
     >
       <ManageLlmProfiles

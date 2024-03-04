@@ -15,7 +15,10 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData";
+import {
+  getBackendErrorDetail,
+  handleException,
+} from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -32,17 +35,10 @@ function AddLlmProfileModal({
   modalTitle,
   setModalTitle,
 }) {
-  const [name, setName] = useState("");
-  const [llm, setLlm] = useState("");
-  const [chunkSize, setChunkSize] = useState(1024);
-  const [vectorDb, setVectorDb] = useState("");
-  const [chunkOverlap, setChunkOverlap] = useState(128);
-  const [embeddingModel, setEmbeddingModel] = useState("");
-  const [x2TextService, setX2TextService] = useState("");
-  const [retrievalStrategy, setRetrievalStrategy] = useState("");
-  const [similarityTopK, setSimilarityTopK] = useState(1);
-  const [section, setSection] = useState("Default");
-  const [reIndex, setReIndex] = useState(false);
+  const [form] = Form.useForm();
+  const [formDetails, setFormDetails] = useState({});
+  const [resetForm, setResetForm] = useState(false);
+  const [backendErrors, setBackendErrors] = useState(null);
   const [retrievalItems, setRetrievalItems] = useState([]);
   const [llmItems, setLlmItems] = useState([]);
   const [vectorDbItems, setVectorDbItems] = useState([]);
@@ -74,21 +70,25 @@ function AddLlmProfileModal({
   }, []);
 
   useEffect(() => {
-    if (open) {
+    if (open && editLlmProfileId) {
       return;
     }
 
-    setName("");
-    setLlm("");
-    setChunkSize(1024);
-    setVectorDb("");
-    setChunkOverlap(128);
-    setEmbeddingModel("");
-    setX2TextService("");
-    setRetrievalStrategy("");
-    setSimilarityTopK(1);
-    setSection("Default");
-    setReIndex(false);
+    setResetForm(true);
+    setFormDetails({
+      profile_name: "",
+      llm: "",
+      chunk_size: 1024,
+      vector_store: "",
+      chunk_overlap: 128,
+      embedding_model: "",
+      x2text: "",
+      retrieval_strategy: "simple",
+      similarity_top_k: 1,
+      section: "Default",
+      reindex: false,
+    });
+
     setEditLlmProfileId(null);
     setModalTitle("Add new LLM Profile");
     setActiveKey(false);
@@ -119,19 +119,56 @@ function AddLlmProfileModal({
       (item) => item?.label === llmProfileDetails?.x2text
     );
 
-    setName(llmProfileDetails?.profile_name);
-    setLlm(llmItem?.value || null);
-    setChunkSize(llmProfileDetails?.chunk_size);
-    setVectorDb(vectorDbItem?.value || null);
-    setChunkOverlap(llmProfileDetails?.chunk_overlap);
-    setEmbeddingModel(embeddingItem?.value || null);
-    setX2TextService(x2TextItem?.value || null);
-    setRetrievalStrategy(llmProfileDetails?.retrieval_strategy);
-    setSimilarityTopK(llmProfileDetails?.similarity_top_k);
-    setSection(llmProfileDetails?.section);
-    setReIndex(llmProfileDetails?.reindex);
+    setResetForm(true);
+    setFormDetails({
+      profile_name: llmProfileDetails?.profile_name,
+      llm: llmItem?.value || null,
+      chunk_size: llmProfileDetails?.chunk_size,
+      vector_store: vectorDbItem?.value || null,
+      chunk_overlap: llmProfileDetails?.chunk_overlap,
+      embedding_model: embeddingItem?.value || null,
+      x2text: x2TextItem?.value || null,
+      retrieval_strategy: llmProfileDetails?.retrieval_strategy,
+      similarity_top_k: llmProfileDetails?.similarity_top_k,
+      section: llmProfileDetails?.section,
+      reindex: llmProfileDetails?.reindex,
+    });
     setActiveKey(true);
   }, [editLlmProfileId]);
+
+  useEffect(() => {
+    if (resetForm) {
+      form.resetFields();
+      setResetForm(false);
+    }
+  }, [formDetails]);
+
+  const validateEmptyOrWhitespace = (_, value) => {
+    if (value && value.trim() === "") {
+      return Promise.reject(new Error("Please enter a non-whitespace value"));
+    }
+    return Promise.resolve(); // Resolve if value is empty or contains only whitespaces
+  };
+
+  const handleInputChange = (changedValues, allValues) => {
+    setFormDetails({ ...formDetails, ...allValues });
+    const changedFieldName = Object.keys(changedValues)[0];
+    form.setFields([
+      {
+        name: changedFieldName,
+        errors: [],
+      },
+    ]);
+    setBackendErrors((prevErrors) => {
+      if (prevErrors) {
+        const updatedErrors = prevErrors.errors.filter(
+          (error) => error.attr !== changedFieldName
+        );
+        return { ...prevErrors, errors: updatedErrors };
+      }
+      return null;
+    });
+  };
 
   const setAdaptorProfilesDropdown = () => {
     const requestOptions = {
@@ -202,34 +239,44 @@ function AddLlmProfileModal({
       label: "Advanced Settings",
       children: (
         <div>
-          <Form.Item label="Retrieval Strategy">
-            <Select
-              options={retrievalItems}
-              value={retrievalStrategy}
-              onChange={(value) => setRetrievalStrategy(value)}
-            />
+          <Form.Item
+            label="Retrieval Strategy"
+            name="retrieval_strategy"
+            validateStatus={
+              getBackendErrorDetail("retrieval_strategy", backendErrors)
+                ? "error"
+                : ""
+            }
+            help={getBackendErrorDetail("retrieval_strategy", backendErrors)}
+          >
+            <Select options={retrievalItems} />
           </Form.Item>
-          <Form.Item label="Matching count limit (similarity top-k)">
-            <Input
-              type="number"
-              value={similarityTopK}
-              onChange={(e) => setSimilarityTopK(e.target.value)}
-            />
+          <Form.Item
+            label="Matching count limit (similarity top-k)"
+            name="similarity_top_k"
+            validateStatus={
+              getBackendErrorDetail("similarity_top_k", backendErrors)
+                ? "error"
+                : ""
+            }
+            help={getBackendErrorDetail("similarity_top_k", backendErrors)}
+          >
+            <Input type="number" />
           </Form.Item>
-          <Form.Item label="Limit-to Section">
-            <Select
-              options={[{ value: "Default" }]}
-              value={section}
-              onChange={(value) => setSection(value)}
-            />
+          <Form.Item
+            label="Limit-to Section"
+            name="section"
+            validateStatus={
+              getBackendErrorDetail("section", backendErrors) ? "error" : ""
+            }
+            help={getBackendErrorDetail("section", backendErrors)}
+          >
+            <Select options={[{ value: "Default" }]} />
           </Form.Item>
           <Row className="add-llm-profile-row">
             <Col span={5}>
               <Form.Item label="Re-Index">
-                <Checkbox
-                  checked={reIndex}
-                  onClick={() => setReIndex(!reIndex)}
-                />
+                <Checkbox />
               </Form.Item>
             </Col>
           </Row>
@@ -240,20 +287,6 @@ function AddLlmProfileModal({
   ];
 
   const handleSubmit = () => {
-    const body = {
-      profile_name: name,
-      llm,
-      vector_store: vectorDb,
-      embedding_model: embeddingModel,
-      x2text: x2TextService,
-      chunk_size: chunkSize,
-      chunk_overlap: chunkOverlap,
-      retrieval_strategy: retrievalStrategy,
-      similarity_top_k: similarityTopK,
-      section,
-      reindex: reIndex,
-    };
-
     let method = "POST";
     let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/`;
 
@@ -269,7 +302,7 @@ function AddLlmProfileModal({
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
-      data: body,
+      data: formDetails,
     };
 
     axiosPrivate(requestOptions)
@@ -315,74 +348,158 @@ function AddLlmProfileModal({
       centered
       footer={null}
     >
-      <Form layout="vertical" onFinish={handleSubmit}>
+      <Form
+        form={form}
+        layout="vertical"
+        initialValues={formDetails}
+        onValuesChange={handleInputChange}
+        onFinish={handleSubmit}
+      >
         <div className="pre-post-amble-body">
           <SpaceWrapper>
             <div>
               <Typography.Text className="add-cus-tool-header">
-                {/* Add New LLM Profile */}
                 {modalTitle}
               </Typography.Text>
             </div>
             <div>
-              <Form.Item label="Name">
-                <Input value={name} onChange={(e) => setName(e.target.value)} />
+              <Form.Item
+                label="Name"
+                name="profile_name"
+                rules={[
+                  {
+                    required: true,
+                    message: "Please enter the name",
+                  },
+                  { validator: validateEmptyOrWhitespace },
+                ]}
+                validateStatus={
+                  getBackendErrorDetail("profile_name", backendErrors)
+                    ? "error"
+                    : ""
+                }
+                help={getBackendErrorDetail("profile_name", backendErrors)}
+              >
+                <Input />
               </Form.Item>
               <Row className="add-llm-profile-row">
                 <Col span={15}>
-                  <Form.Item label="LLM">
-                    <Select
-                      options={llmItems}
-                      value={llm}
-                      onChange={(value) => setLlm(value)}
-                    />
+                  <Form.Item
+                    label="LLM"
+                    name="llm"
+                    rules={[
+                      { required: true, message: "Please enter the LLM" },
+                      { validator: validateEmptyOrWhitespace },
+                    ]}
+                    validateStatus={
+                      getBackendErrorDetail("llm", backendErrors) ? "error" : ""
+                    }
+                    help={getBackendErrorDetail("llm", backendErrors)}
+                  >
+                    <Select options={llmItems} />
                   </Form.Item>
                 </Col>
                 <Col span={1} />
                 <Col span={8}>
-                  <Form.Item label="Chunk Size">
-                    <Input
-                      type="number"
-                      value={chunkSize}
-                      onChange={(e) => setChunkSize(e.target.value)}
-                    />
+                  <Form.Item
+                    label="Chunk Size"
+                    name="chunk_size"
+                    rules={[
+                      {
+                        required: true,
+                        message: "Please enter the chunk size",
+                      },
+                    ]}
+                    validateStatus={
+                      getBackendErrorDetail("chunk_size", backendErrors)
+                        ? "error"
+                        : ""
+                    }
+                    help={getBackendErrorDetail("chunk_size", backendErrors)}
+                  >
+                    <Input type="number" />
                   </Form.Item>
                 </Col>
               </Row>
               <Row className="add-llm-profile-row">
                 <Col span={15}>
-                  <Form.Item label="Vector Database">
-                    <Select
-                      options={vectorDbItems}
-                      value={vectorDb}
-                      onChange={(value) => setVectorDb(value)}
-                    />
+                  <Form.Item
+                    label="Vector Database"
+                    name="vector_store"
+                    rules={[
+                      {
+                        required: true,
+                        message: "Please select the vector store",
+                      },
+                      { validator: validateEmptyOrWhitespace },
+                    ]}
+                    validateStatus={
+                      getBackendErrorDetail("vector_store", backendErrors)
+                        ? "error"
+                        : ""
+                    }
+                    help={getBackendErrorDetail("vector_store", backendErrors)}
+                  >
+                    <Select options={vectorDbItems} />
                   </Form.Item>
                 </Col>
                 <Col span={1} />
                 <Col span={8}>
-                  <Form.Item label="Overlap">
-                    <Input
-                      type="number"
-                      value={chunkOverlap}
-                      onChange={(e) => setChunkOverlap(e.target.value)}
-                    />
+                  <Form.Item
+                    label="Overlap"
+                    name="chunk_overlap"
+                    rules={[
+                      {
+                        required: true,
+                        message: "Please enter the overlap",
+                      },
+                    ]}
+                    validateStatus={
+                      getBackendErrorDetail("chunk_overlap", backendErrors)
+                        ? "error"
+                        : ""
+                    }
+                    help={getBackendErrorDetail("chunk_overlap", backendErrors)}
+                  >
+                    <Input type="number" />
                   </Form.Item>
                 </Col>
               </Row>
-              <Form.Item label="Embedding Model">
-                <Select
-                  options={embeddingItems}
-                  value={embeddingModel}
-                  onChange={(value) => setEmbeddingModel(value)}
-                />
+              <Form.Item
+                label="Embedding Model"
+                name="embedding_model"
+                rules={[
+                  {
+                    required: true,
+                    message: "Please select the embedding model",
+                  },
+                  { validator: validateEmptyOrWhitespace },
+                ]}
+                validateStatus={
+                  getBackendErrorDetail("embedding_model", backendErrors)
+                    ? "error"
+                    : ""
+                }
+                help={getBackendErrorDetail("embedding_model", backendErrors)}
+              >
+                <Select options={embeddingItems} />
               </Form.Item>
-              <Form.Item label="Text Extractor">
-                <Select
-                  options={x2TextItems}
-                  value={x2TextService}
-                  onChange={(value) => setX2TextService(value)}
-                />
+              <Form.Item
+                label="Text Extractor"
+                name="x2text"
+                rules={[
+                  {
+                    required: true,
+                    message: "Please select the text extractor",
+                  },
+                  { validator: validateEmptyOrWhitespace },
+                ]}
+                validateStatus={
+                  getBackendErrorDetail("x2text", backendErrors) ? "error" : ""
+                }
+                help={getBackendErrorDetail("x2text", backendErrors)}
+              >
+                <Select options={x2TextItems} />
               </Form.Item>
               <Collapse
                 expandIcon={({ isActive }) => handleCaretIcon(isActive)}

@@ -59,6 +59,8 @@ function PromptCard({
   const [isRunLoading, setIsRunLoading] = useState(false);
   const [displayAssertion, setDisplayAssertion] = useState(false);
   const [openEval, setOpenEval] = useState(false);
+  const [promptKey, setPromptKey] = useState("");
+  const [promptText, setPromptText] = useState("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [selectedLlmProfileId, setSelectedLlmProfileId] = useState(null);
@@ -238,6 +240,22 @@ function PromptCard({
       return;
     }
 
+    if (!promptKey) {
+      setAlertDetails({
+        type: "error",
+        content: "Prompt key cannot be empty",
+      });
+      return;
+    }
+
+    if (!promptText) {
+      setAlertDetails({
+        type: "error",
+        content: "Prompt cannot be empty",
+      });
+      return;
+    }
+
     setIsRunLoading(true);
     setIsCoverageLoading(true);
     setCoverage(0);
@@ -357,8 +375,12 @@ function PromptCard({
     method,
     url
   ) => {
+    let output = outputValue;
+    if (output !== null && typeof output !== "string") {
+      output = JSON.stringify(output);
+    }
     const body = {
-      output: outputValue !== null ? JSON.stringify(outputValue) : null,
+      output: output !== null ? output : null,
       tool_id: details?.tool_id,
       prompt_id: promptDetails?.prompt_id,
       profile_manager: promptDetails?.profile_manager,
@@ -580,6 +602,8 @@ function PromptCard({
                   <EditableText
                     isEditing={isEditingTitle}
                     setIsEditing={setIsEditingTitle}
+                    text={promptKey}
+                    setText={setPromptKey}
                     promptId={promptDetails?.prompt_id}
                     defaultText={promptDetails?.prompt_key}
                     handleChange={handleChange}
@@ -638,9 +662,7 @@ function PromptCard({
                       type="text"
                       className="display-flex-align-center"
                       onClick={() => setDisplayAssertion(!displayAssertion)}
-                      disabled={disableLlmOrDocChange.includes(
-                        promptDetails?.prompt_id
-                      )}
+                      disabled={true}
                     >
                       <AssertionIcon className="prompt-card-actions-head" />
                     </Button>
@@ -681,6 +703,8 @@ function PromptCard({
               <EditableText
                 isEditing={isEditingPrompt}
                 setIsEditing={setIsEditingPrompt}
+                text={promptText}
+                setText={setPromptText}
                 promptId={promptDetails?.prompt_id}
                 defaultText={promptDetails.prompt}
                 handleChange={handleChange}
@@ -753,6 +777,7 @@ function PromptCard({
                   <Tag>{llmProfiles[page - 1]?.llm}</Tag>
                   <Tag>{llmProfiles[page - 1]?.vector_store}</Tag>
                   <Tag>{llmProfiles[page - 1]?.embedding_model}</Tag>
+                  <Tag>{llmProfiles[page - 1]?.x2text}</Tag>
                   <Tag>{`${llmProfiles[page - 1]?.chunk_size}/${
                     llmProfiles[page - 1]?.chunk_overlap
                   }/${llmProfiles[page - 1]?.retrieval_strategy}/${
@@ -766,7 +791,7 @@ function PromptCard({
                   </Typography.Text>
                 </div>
               )}
-              <div>
+              <div className="display-flex-right prompt-card-paginate-div">
                 <Button
                   type="text"
                   size="small"
