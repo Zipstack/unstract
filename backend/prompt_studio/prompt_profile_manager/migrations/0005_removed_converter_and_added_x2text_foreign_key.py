@@ -45,7 +45,6 @@ def disable_triggers(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("account", "0005_encryptionsecret"),
         ("adapter_processor", "0004_alter_adapterinstance_adapter_type"),
         (
             "prompt_profile_manager",

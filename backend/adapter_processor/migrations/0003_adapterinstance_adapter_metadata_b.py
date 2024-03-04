@@ -12,7 +12,6 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         ("adapter_processor", "0002_adapterinstance_unique_adapter"),
-        ("account", "0005_encryptionsecret"),
     ]
 
     def EncryptCredentials(apps: Any, schema_editor: Any) -> None:
