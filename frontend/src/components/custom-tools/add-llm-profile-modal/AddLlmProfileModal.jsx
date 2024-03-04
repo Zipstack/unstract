@@ -32,6 +32,8 @@ function AddLlmProfileModal({
   setOpen,
   editLlmProfileId,
   setEditLlmProfileId,
+  modalTitle,
+  setModalTitle,
 }) {
   const [form] = Form.useForm();
   const [formDetails, setFormDetails] = useState({});
@@ -68,7 +70,7 @@ function AddLlmProfileModal({
   }, []);
 
   useEffect(() => {
-    if (!open) {
+    if (open && editLlmProfileId) {
       return;
     }
 
@@ -88,6 +90,7 @@ function AddLlmProfileModal({
     });
 
     setEditLlmProfileId(null);
+    setModalTitle("Add new LLM Profile");
     setActiveKey(false);
   }, [open]);
 
@@ -234,6 +237,7 @@ function AddLlmProfileModal({
     {
       key: "1",
       label: "Advanced Settings",
+      style: panelStyle,
       children: (
         <div>
           <Form.Item
@@ -270,16 +274,19 @@ function AddLlmProfileModal({
           >
             <Select options={[{ value: "Default" }]} />
           </Form.Item>
-          <Row className="add-llm-profile-row">
-            <Col span={5}>
-              <Form.Item label="Re-Index">
-                <Checkbox />
-              </Form.Item>
-            </Col>
-          </Row>
+          <Form.Item
+            label="Re-Index"
+            valuePropName="checked"
+            name="reindex"
+            validateStatus={
+              getBackendErrorDetail("reindex", backendErrors) ? "error" : ""
+            }
+            help={getBackendErrorDetail("reindex", backendErrors)}
+          >
+            <Checkbox />
+          </Form.Item>
         </div>
       ),
-      style: panelStyle,
     },
   ];
 
@@ -356,7 +363,7 @@ function AddLlmProfileModal({
           <SpaceWrapper>
             <div>
               <Typography.Text className="add-cus-tool-header">
-                Add New LLM Profile
+                {modalTitle}
               </Typography.Text>
             </div>
             <div>
@@ -529,6 +536,8 @@ AddLlmProfileModal.propTypes = {
   setOpen: PropTypes.func.isRequired,
   editLlmProfileId: PropTypes.string,
   setEditLlmProfileId: PropTypes.func.isRequired,
+  modalTitle: PropTypes.string,
+  setModalTitle: PropTypes.func.isRequired,
 };
 
 export { AddLlmProfileModal };
