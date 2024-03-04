@@ -15,7 +15,6 @@ from file_management.serializer import FileInfoSerializer
 from oauth2client.client import HttpAccessTokenRefreshError
 from rest_framework import viewsets
 from rest_framework.response import Response
-from tool_instance.models import ToolInstance
 from unstract.connectors.exceptions import ConnectorError
 
 from .exceptions import AppNotFound, ValidationError
