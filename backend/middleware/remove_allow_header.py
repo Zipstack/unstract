@@ -1,12 +1,7 @@
-from functools import wraps
+from django.utils.deprecation import MiddlewareMixin
 
 
-class RemoveAllowHeaderMiddleware:
-    def __init__(self, get_response):
-        self.get_response = get_response
-
-    def __call__(self, request):
-        response = self.get_response(request)
-        if 'Allow' in response:
-            del response['Allow']
+class RemoveAllowHeaderMiddleware(MiddlewareMixin):
+    def process_response(self, request, response):
+        response.headers.pop('Allow', None)
         return response
