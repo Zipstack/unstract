@@ -49,11 +49,21 @@ import "./PromptCard.css";
 let EvalBtn = null;
 let EvalMetrics = null;
 let EvalModal = null;
+let sortEvalMetricsByType = (param) => {
+  return [];
+};
+let getEvalMetrics = (param1, param2, param3) => {
+  return [];
+};
 try {
   EvalBtn = require("../../../plugins/eval-btn/EvalBtn").EvalBtn;
   EvalMetrics =
     require("../../../plugins/eval-metrics/EvalMetrics").EvalMetrics;
   EvalModal = require("../../../plugins/eval-modal/EvalModal").EvalModal;
+  sortEvalMetricsByType =
+    require("../../../plugins/eval-helper/EvalHelper").sortEvalMetricsByType;
+  getEvalMetrics =
+    require("../../../plugins/eval-helper/EvalHelper").getEvalMetrics;
 } catch {
   // The components will remain null of it is not available
 }
@@ -205,24 +215,6 @@ function PromptCard({
     setPage(newPage);
   };
 
-  const sortEvalMetricsByType = (metrics) => {
-    const sieve = {};
-    for (const metric of metrics) {
-      if (!sieve[metric.type]) {
-        sieve[metric.type] = [metric];
-      } else {
-        sieve[metric.type].push(metric);
-      }
-    }
-
-    let sortedMetrics = [];
-    for (const type of Object.keys(sieve)) {
-      sortedMetrics = sortedMetrics.concat(sieve[type]);
-    }
-
-    return sortedMetrics;
-  };
-
   const handleTypeChange = (value) => {
     handleChange(value, promptDetails?.prompt_id, "enforce_type", true).then(
       () => {
@@ -285,10 +277,11 @@ function PromptCard({
         }
 
         // Handle Eval
-        let evalMetrics = [];
-        if (promptDetails?.evaluate) {
-          evalMetrics = data[`${promptDetails?.prompt_key}__evaluation`] || [];
-        }
+        const evalMetrics = getEvalMetrics(
+          promptDetails?.evaluate,
+          promptDetails?.prompt_key,
+          data
+        );
         handleUpdateOutput(value, selectedDoc, evalMetrics, method, url);
       })
       .catch((err) => {
@@ -332,11 +325,11 @@ function PromptCard({
           }
 
           // Handle Eval
-          let evalMetrics = [];
-          if (promptDetails?.evaluate) {
-            evalMetrics =
-              data[`${promptDetails?.prompt_key}__evaluation`] || [];
-          }
+          const evalMetrics = getEvalMetrics(
+            promptDetails?.evaluate,
+            promptDetails?.prompt_key,
+            data
+          );
           handleUpdateOutput(outputValue, item, evalMetrics, method, url);
         })
         .catch((err) => {
