@@ -4,6 +4,8 @@ import {
   EllipsisOutlined,
   EyeOutlined,
   SyncOutlined,
+  HighlightOutlined,
+  ClearOutlined,
 } from "@ant-design/icons";
 import { Dropdown, Image, Space, Switch, Typography } from "antd";
 import PropTypes from "prop-types";
@@ -174,6 +176,48 @@ function Pipelines({ type }) {
       });
   };
 
+  const clearCache = () => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${selectedPorD.workflow_id}/clear-cache/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+    };
+    axiosPrivate(requestOptions)
+      .then(() => {
+        setOpenDeleteModal(false);
+        setAlertDetails({
+          type: "success",
+          content: "Pipeline Cache Cleared Successfully",
+        });
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
+  };
+
+  const clearFileMarkers = () => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${selectedPorD.workflow_id}/clear-file-marker/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+    };
+    axiosPrivate(requestOptions)
+      .then(() => {
+        setOpenDeleteModal(false);
+        setAlertDetails({
+          type: "success",
+          content: "Pipeline File History Cleared Successfully",
+        });
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
+  };
+
   const actionItems = [
     {
       key: "1",
@@ -208,6 +252,40 @@ function Pipelines({ type }) {
     {
       key: "3",
       label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() => clearCache()}
+        >
+          <div>
+            <ClearOutlined />
+          </div>
+          <div>
+            <Typography.Text>Clear Cache</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "4",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() => clearFileMarkers()}
+        >
+          <div>
+            <HighlightOutlined />
+          </div>
+          <div>
+            <Typography.Text>Clear File Marker</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "5",
+      label: (
         <Space direction="horizontal" className="action-items">
           <div>
             <EyeOutlined />
@@ -219,7 +297,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "4",
+      key: "6",
       label: (
         <Space
           direction="horizontal"

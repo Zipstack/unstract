@@ -351,6 +351,17 @@ const getBackendErrorDetail = (attr, backendErrors) => {
   return null;
 };
 
+const titleCase = (str) => {
+  if (str === null || str.length === 0) {
+    return "";
+  }
+  const words = str.toLowerCase().split(" ");
+  for (let i = 0; i < words.length; i++) {
+    words[i] = words[i][0].toUpperCase() + words[i].slice(1);
+  }
+  return words.join(" ");
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -382,4 +393,5 @@ export {
   isJson,
   displayPromptResult,
   getBackendErrorDetail,
+  titleCase,
 };

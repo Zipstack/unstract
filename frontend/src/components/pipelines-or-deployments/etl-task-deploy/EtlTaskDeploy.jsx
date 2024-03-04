@@ -37,7 +37,7 @@ const EtlTaskDeploy = ({
   type,
   title,
   setTableData,
-  workflowData = {},
+  workflowId,
 }) => {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -53,6 +53,12 @@ const EtlTaskDeploy = ({
   const [isSummaryLoading, setSummaryLoading] = useState(false);
   const [isCronStringValid, setCronStringValid] = useState(true);
   const [isLoading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (workflowId) {
+      setFormDetails({ ...formDetails, workflow_id: workflowId });
+    }
+  }, [workflowId]);
 
   const getWorkflowList = () => {
     workflowApiService
@@ -101,12 +107,6 @@ const EtlTaskDeploy = ({
       setRandomFrequency();
     }
   }, [open]);
-
-  useEffect(() => {
-    if (Object.keys(workflowData).length) {
-      setFormDetails({ ...formDetails, workflow_id: workflowData.workflow_id });
-    }
-  }, [workflowData]);
 
   useEffect(() => {
     const cronString = formDetails?.cron_string || "";
@@ -263,7 +263,7 @@ const EtlTaskDeploy = ({
     setLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        if (!Object.keys(workflowData)?.length) {
+        if (!workflowId) {
           addPipeline(res?.data);
         }
         setOpen(false);
@@ -307,7 +307,7 @@ const EtlTaskDeploy = ({
               value={formDetails.pipeline_name || ""}
             ></Input>
           </SpaceWrapper>
-          {Object.keys(workflowData).length === 0 && (
+          {!workflowId && (
             <SpaceWrapper>
               <Typography>Workflow</Typography>
               <Select
@@ -398,6 +398,6 @@ EtlTaskDeploy.propTypes = {
   type: PropTypes.string.isRequired,
   title: PropTypes.string.isRequired,
   setTableData: PropTypes.func,
-  workflowData: PropTypes.object,
+  workflowId: PropTypes.string,
 };
 export { EtlTaskDeploy };

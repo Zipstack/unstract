@@ -105,6 +105,8 @@ class PipelineSerializer(AuditSerializer):
         Returns:
             OrderedDict[str, Any]: _description_
         """
+        repr[PC.SOURCE_NAME] = PC.NOT_CONFIGURED
+        repr[PC.DESTINATION_NAME] = PC.NOT_CONFIGURED
         for instance in connector_instance_list:
             if instance.connector_type == "INPUT":
                 repr[PC.SOURCE_NAME], repr[PC.SOURCE_ICON] = (

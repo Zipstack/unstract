@@ -406,26 +406,26 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
             </Button>
           </Tooltip>
           <Divider type="vertical" />
+          <Tooltip title="Deploy as API">
+            <Button
+              disabled={!apiOpsPresent}
+              onClick={() => createDeployment("API")}
+            >
+              <ApiOutlined />
+            </Button>
+          </Tooltip>
           <Tooltip title="Deploy as ETL Pipeline">
             <Button
               disabled={!canAddETLPipeline}
               onClick={() => createDeployment("ETL")}
             >
-              <ApiOutlined />
+              <DeploymentUnitOutlined />
             </Button>
           </Tooltip>
           <Tooltip title="Deploy as Task Pipeline">
             <Button
               disabled={!canAddTaskPipeline}
               onClick={() => createDeployment("TASK")}
-            >
-              <DeploymentUnitOutlined />
-            </Button>
-          </Tooltip>
-          <Tooltip title="Deploy as API">
-            <Button
-              disabled={!apiOpsPresent}
-              onClick={() => createDeployment("API")}
             >
               <ApiOutlined />
             </Button>
@@ -459,6 +459,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           setOpen={setOpenAddTaskModal}
           type="task"
           title={deploymentsStaticContent["task"].modalTitle}
+          workflowId={details?.id}
         />
       )}
       {openAddETLModal && (
@@ -467,6 +468,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           setOpen={setOpenAddETLModal}
           type="etl"
           title={deploymentsStaticContent["etl"].modalTitle}
+          workflowId={details?.id}
         />
       )}
       <SocketMessages logId={logId} />

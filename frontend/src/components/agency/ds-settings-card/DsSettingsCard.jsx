@@ -18,7 +18,7 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData";
+import { handleException, titleCase } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -292,7 +292,7 @@ function DsSettingsCard({ type, endpointDetails, message, dependent }) {
                     >
                       <CheckCircleTwoTone twoToneColor="#52c41a" />
                       <span style={{ marginLeft: "5px" }}>
-                        API configured successfully
+                        {titleCase(type)} set to API successfully
                       </span>
                     </Typography.Text>
                   ) : (
