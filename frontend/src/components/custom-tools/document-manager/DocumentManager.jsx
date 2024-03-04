@@ -47,7 +47,7 @@ try {
       label: tabLabel,
     });
   }
-} catch (err) {
+} catch {
   // The component will remain null of it is not available
 }
 
