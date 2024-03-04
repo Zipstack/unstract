@@ -1,11 +1,11 @@
 import {
+  ClearOutlined,
   DeleteOutlined,
   EditOutlined,
   EllipsisOutlined,
   EyeOutlined,
   SyncOutlined,
   HighlightOutlined,
-  ClearOutlined,
 } from "@ant-design/icons";
 import { Dropdown, Image, Space, Switch, Typography } from "antd";
 import PropTypes from "prop-types";
@@ -252,6 +252,19 @@ function Pipelines({ type }) {
     {
       key: "3",
       label: (
+        <Space direction="horizontal" className="action-items">
+          <div>
+            <EyeOutlined />
+          </div>
+          <div>
+            <Typography.Text>View Logs</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "4",
+      label: (
         <Space
           direction="horizontal"
           className="action-items"
@@ -267,7 +280,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "4",
+      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -279,19 +292,6 @@ function Pipelines({ type }) {
           </div>
           <div>
             <Typography.Text>Clear File Marker</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "5",
-      label: (
-        <Space direction="horizontal" className="action-items">
-          <div>
-            <EyeOutlined />
-          </div>
-          <div>
-            <Typography.Text>View Logs</Typography.Text>
           </div>
         </Space>
       ),
