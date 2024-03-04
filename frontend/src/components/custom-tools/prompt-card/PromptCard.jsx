@@ -49,14 +49,13 @@ import "./PromptCard.css";
 let EvalBtn = null;
 let EvalMetrics = null;
 let EvalModal = null;
-
 try {
   EvalBtn = require("../../../plugins/eval-btn/EvalBtn").EvalBtn;
   EvalMetrics =
     require("../../../plugins/eval-metrics/EvalMetrics").EvalMetrics;
   EvalModal = require("../../../plugins/eval-modal/EvalModal").EvalModal;
 } catch {
-  console.log("Component failed to render");
+  // The components will remain null of it is not available
 }
 
 function PromptCard({
@@ -78,7 +77,6 @@ function PromptCard({
   const [result, setResult] = useState({
     promptOutputId: null,
     output: "",
-    evalMetrics: [],
   });
   const [outputIds, setOutputIds] = useState([]);
   const [coverage, setCoverage] = useState(0);
@@ -440,7 +438,6 @@ function PromptCard({
       setResult({
         promptOutputId: null,
         output: "",
-        evalMetrics: [],
       });
       return;
     }
@@ -452,7 +449,6 @@ function PromptCard({
           setResult({
             promptOutputId: null,
             output: "",
-            evalMetrics: [],
           });
           return;
         }

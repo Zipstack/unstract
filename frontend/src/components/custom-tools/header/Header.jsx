@@ -27,9 +27,10 @@ let SummarizeHeader = null;
 try {
   SummarizeHeader =
     require("../../../plugins/summarize-header/SummarizeHeader").SummarizeHeader;
-} catch (err) {
-  console.log(err);
+} catch {
+  // The component will remain null of it is not available
 }
+
 function Header({
   setOpenCusSynonymsModal,
   setOpenManageLlmModal,

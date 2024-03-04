@@ -48,7 +48,7 @@ try {
     });
   }
 } catch (err) {
-  console.log(err);
+  // The component will remain null of it is not available
 }
 
 function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
