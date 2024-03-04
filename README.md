@@ -118,9 +118,6 @@ POSTGRES_DB: unstract_db
 
 If you require a different config, make sure the necessary envs from [backend/sample.env](/backend/sample.env) are exported.
 
-- Execute the script [backend/init.sql](/backend/init.sql) that adds roles and creates a DB and extension for ZS Document Indexer tool to work.
-Make sure that [pgvector](https://github.com/pgvector/pgvector#installation) is installed.
-
 ### Pre-commit hooks
 
 - We use pre-commit to run some hooks whenever code is pushed to perform linting and static code analysis among other checks.

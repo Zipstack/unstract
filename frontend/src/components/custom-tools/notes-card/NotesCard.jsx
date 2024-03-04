@@ -14,6 +14,8 @@ import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";
 
 function NotesCard({ details, handleChange, handleDelete, updateStatus }) {
+  const [promptKey, setPromptKey] = useState("");
+  const [promptText, setPromptText] = useState("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
 
@@ -31,6 +33,8 @@ function NotesCard({ details, handleChange, handleDelete, updateStatus }) {
             <EditableText
               isEditing={isEditingTitle}
               setIsEditing={setIsEditingTitle}
+              text={promptKey}
+              setText={setPromptKey}
               promptId={details?.prompt_id}
               defaultText={details?.prompt_key}
               handleChange={handleChange}
@@ -85,6 +89,8 @@ function NotesCard({ details, handleChange, handleDelete, updateStatus }) {
         <EditableText
           isEditing={isEditingNote}
           setIsEditing={setIsEditingNote}
+          text={promptText}
+          setText={setPromptText}
           promptId={details?.prompt_id}
           defaultText={details?.prompt}
           handleChange={handleChange}
