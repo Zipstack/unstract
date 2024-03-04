@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Optional
 
+from account.models import User
 from django.conf import settings
 from django.db import IntegrityError
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
@@ -126,6 +127,8 @@ class PromptStudioRegistryHelper:
             created: bool
             obj, created = PromptStudioRegistry.objects.update_or_create(
                 custom_tool=custom_tool,
+                created_by=custom_tool.created_by,
+                modified_by=custom_tool.modified_by,
                 defaults={
                     "name": custom_tool.tool_name,
                     "tool_property": properties.to_dict(),
@@ -231,7 +234,7 @@ class PromptStudioRegistryHelper:
         return export_metadata
 
     @staticmethod
-    def fetch_json_for_registry() -> list[dict[str, Any]]:
+    def fetch_json_for_registry(user: User) -> list[dict[str, Any]]:
         try:
             prompt_studio_tools = PromptStudioRegistry.objects.all()
             pi_serializer = PromptStudioRegistrySerializer(

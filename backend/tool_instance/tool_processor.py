@@ -78,6 +78,7 @@ class ToolProcessor:
         embedding_keys = schema.get_embedding_adapter_properties_keys()
         vector_db_keys = schema.get_vector_db_adapter_properties_keys()
         x2text_keys = schema.get_text_extractor_adapter_properties_keys()
+        ocr_keys = schema.get_ocr_adapter_properties_keys()
 
         if llm_keys:
             adapters = AdapterProcessor.get_adapters_by_type(
@@ -119,13 +120,23 @@ class ToolProcessor:
                 )
                 schema.properties[key]["enum"] = list(adapter_names)
 
+        if ocr_keys:
+            adapters = AdapterProcessor.get_adapters_by_type(
+                AdapterTypes.OCR, user=user
+            )
+            for key in ocr_keys:
+                adapter_names = map(
+                    lambda adapter: str(adapter.adapter_name), adapters
+                )
+                schema.properties[key]["enum"] = list(adapter_names)
+
     @staticmethod
-    def get_tool_list() -> list[dict[str, Any]]:
+    def get_tool_list(user: User) -> list[dict[str, Any]]:
         """Function to get a list of tools."""
         tool_registry = ToolRegistry()
         prompt_studio_tools: list[
             dict[str, Any]
-        ] = PromptStudioRegistryHelper.fetch_json_for_registry()
+        ] = PromptStudioRegistryHelper.fetch_json_for_registry(user)
         tool_list: list[
             dict[str, Any]
         ] = tool_registry.fetch_tools_descriptions()

@@ -24,6 +24,9 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && PathPrefix(`/api/v1`, `/deployment`)
+    extra_hosts:
+      # "host-gateway" is a special string that translates to host docker0 i/f IP.
+      - "host.docker.internal:host-gateway"
 
   # Celery execution consumer
   execution-consumer:
@@ -141,7 +144,7 @@ services:
     labels:
       - traefik.enable=false
 
-  document:
+  document-service:
     image: unstract/document-service:${VERSION}
     container_name: unstract-document-service
     ports:

@@ -41,7 +41,6 @@ class Workflow(BaseModel):
         max_length=DESCRIPTION_FIELD_LENGTH, default=""
     )
     workflow_name = models.CharField(max_length=WORKFLOW_NAME_SIZE, unique=True)
-    settings = models.JSONField(null=True, db_comment="Workflow settings")
     prompt_text = models.TextField(default="")
     is_active = models.BooleanField(default=False)
     status = models.CharField(max_length=WORKFLOW_STATUS_LENGTH, default="")

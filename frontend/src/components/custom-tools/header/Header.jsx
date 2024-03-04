@@ -4,13 +4,12 @@ import {
   DiffOutlined,
   EditOutlined,
   ExportOutlined,
-  FilePdfOutlined,
   FileTextOutlined,
   MessageOutlined,
 } from "@ant-design/icons";
 import { Button, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Header.css";
 
@@ -21,26 +20,34 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
+import { SelectLlmProfileModal } from "../select-llm-profile-modal/SelectLlmProfileModal";
 
 function Header({
   setOpenCusSynonymsModal,
-  setOpenManageDocsModal,
   setOpenManageLlmModal,
   handleUpdateTool,
 }) {
   const [openPreOrPostAmbleModal, setOpenPreOrPostAmbleModal] = useState(false);
+  const [openSummLlmProfileModal, setOpenSummLlmProfileModal] = useState(false);
   const [preOrPostAmble, setPreOrPostAmble] = useState("");
   const [isExportLoading, setIsExportLoading] = useState(false);
-  const { details } = useCustomToolStore();
+  const [summarizeLlmBtnText, setSummarizeLlmBtnText] = useState(null);
+  const [llmItems, setLlmItems] = useState([]);
+  const { details, llmProfiles } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    getLlmProfilesDropdown();
+  }, [llmProfiles]);
+
   const handleOpenPreOrPostAmbleModal = (type) => {
     setOpenPreOrPostAmbleModal(true);
     setPreOrPostAmble(type);
   };
+
   const handleClosePreOrPostAmbleModal = () => {
     setOpenPreOrPostAmbleModal(false);
     setPreOrPostAmble("");
@@ -68,6 +75,16 @@ function Header({
       });
   };
 
+  const getLlmProfilesDropdown = () => {
+    const items = [...llmProfiles].map((item) => {
+      return {
+        value: item?.profile_id,
+        label: item?.profile_name,
+      };
+    });
+    setLlmItems(items);
+  };
+
   return (
     <div className="custom-tools-header-layout">
       <div>
@@ -89,25 +106,31 @@ function Header({
       </div>
       <div className="custom-tools-header-btns">
         <div>
-          <Tooltip title="Manage Grammar">
-            <Button onClick={() => setOpenCusSynonymsModal(true)}>
-              <MessageOutlined />
-            </Button>
-          </Tooltip>
+          <Button
+            className="doc-manager-btn"
+            onClick={() => setOpenSummLlmProfileModal(true)}
+            icon={<FileTextOutlined />}
+          >
+            <Typography.Text ellipsis>
+              Summarize: {summarizeLlmBtnText || "Select LLM"}
+            </Typography.Text>
+          </Button>
         </div>
         <div>
-          <Tooltip title="Manage Documents">
-            <Button onClick={() => setOpenManageDocsModal(true)}>
-              <FilePdfOutlined />
-            </Button>
-          </Tooltip>
+          <Button
+            onClick={() => setOpenCusSynonymsModal(true)}
+            icon={<MessageOutlined />}
+          >
+            Manage Grammar
+          </Button>
         </div>
         <div>
-          <Tooltip title="Manage LLM Profiles">
-            <Button onClick={() => setOpenManageLlmModal(true)}>
-              <CodeOutlined />
-            </Button>
-          </Tooltip>
+          <Button
+            onClick={() => setOpenManageLlmModal(true)}
+            icon={<CodeOutlined />}
+          >
+            Manage LLM Profiles
+          </Button>
         </div>
         <div className="custom-tools-header-v-divider" />
         <div>
@@ -143,13 +166,19 @@ function Header({
         type={preOrPostAmble}
         handleUpdateTool={handleUpdateTool}
       />
+      <SelectLlmProfileModal
+        open={openSummLlmProfileModal}
+        setOpen={setOpenSummLlmProfileModal}
+        llmItems={llmItems}
+        setBtnText={setSummarizeLlmBtnText}
+        handleUpdateTool={handleUpdateTool}
+      />
     </div>
   );
 }
 
 Header.propTypes = {
   setOpenCusSynonymsModal: PropTypes.func.isRequired,
-  setOpenManageDocsModal: PropTypes.func.isRequired,
   setOpenManageLlmModal: PropTypes.func.isRequired,
   handleUpdateTool: PropTypes.func.isRequired,
 };

@@ -2,15 +2,15 @@ import json
 import logging
 from typing import Any, Optional
 
-from pipeline.models import Pipeline
 from account.models import Organization
 from celery import shared_task
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from django_tenants.utils import get_tenant_model, tenant_context
+from pipeline.models import Pipeline
+from pipeline.pipeline_processor import PipelineProcessor
 from pymysql import IntegrityError
 from workflow_manager.workflow.models.workflow import Workflow
 from workflow_manager.workflow.workflow_helper import WorkflowHelper
-from pipeline.pipeline_processor import PipelineProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -59,14 +59,19 @@ def create_periodic_task(
 
 
 def update_pipeline(
-    pipeline_guid: Optional[str], status: tuple[str, str]
+    pipeline_guid: Optional[str],
+    status: tuple[str, str],
+    is_active: Optional[bool] = None,
 ) -> Any:
     if pipeline_guid:
+        check_active = True
+        if is_active is True:
+            check_active = False
         pipeline: Pipeline = PipelineProcessor.fetch_pipeline(
-            pipeline_id=pipeline_guid
+            pipeline_id=pipeline_guid, check_active=check_active
         )
         PipelineProcessor.update_pipeline_status(
-            pipeline=pipeline, is_end=True, status=status
+            pipeline=pipeline, is_end=True, status=status, is_active=is_active
         )
         logger.info(f"Updated pipeline status: {status}")
 
@@ -120,3 +125,19 @@ def delete_periodic_task(task_name: str) -> None:
         logger.error(f"Periodic task does not exist: {task_name}")
     except Exception as e:
         logger.error(f"Failed to delete periodic task: {e}")
+
+
+@shared_task
+def disable_task(task_name: str) -> None:
+    task = PeriodicTask.objects.get(name=task_name)
+    task.enabled = False
+    task.save()
+    update_pipeline(task_name, Pipeline.PipelineStatus.PAUSED, False)
+
+
+@shared_task
+def enable_task(task_name: str) -> None:
+    task = PeriodicTask.objects.get(name=task_name)
+    task.enabled = True
+    task.save()
+    update_pipeline(task_name, Pipeline.PipelineStatus.RESTARTING, True)
