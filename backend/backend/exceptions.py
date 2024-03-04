@@ -32,11 +32,15 @@ class UnstractBaseException(APIException):
                 message = detail.message
                 start = message.find("{")
                 dict_str = message[start:]
-                error_object = ast.literal_eval(dict_str)
-                err_message = (
-                    error_object["message"] or error_object["error"]["message"]
-                )
-                detail = err_message
+                try:
+                    error_object = ast.literal_eval(dict_str)
+                    err_message = (
+                        error_object["message"]
+                        or error_object["error"]["message"]
+                    )
+                    detail = err_message
+                except Exception:
+                    detail = detail.message
         super().__init__(detail=detail, **kwargs)
         self._core_err = core_err
 

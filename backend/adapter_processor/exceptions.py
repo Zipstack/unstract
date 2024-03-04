@@ -42,7 +42,7 @@ class UniqueConstraintViolation(APIException):
 
 
 class TestAdapterException(APIException):
-    status_code = 401
+    status_code = 500
     default_detail = "Error while testing adapter."
 
 
