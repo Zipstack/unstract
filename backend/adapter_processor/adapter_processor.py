@@ -102,18 +102,18 @@ class AdapterProcessor:
                 adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE)
                 == AdapterKeys.X2TEXT
             ):
-                adapter_metadata[
-                    X2TextConstants.X2TEXT_HOST
-                ] = settings.X2TEXT_HOST
-                adapter_metadata[
-                    X2TextConstants.X2TEXT_PORT
-                ] = settings.X2TEXT_PORT
+                adapter_metadata[X2TextConstants.X2TEXT_HOST] = (
+                    settings.X2TEXT_HOST
+                )
+                adapter_metadata[X2TextConstants.X2TEXT_PORT] = (
+                    settings.X2TEXT_PORT
+                )
                 platform_key = (
                     PlatformAuthenticationService.get_active_platform_key()
                 )
-                adapter_metadata[
-                    X2TextConstants.PLATFORM_SERVICE_API_KEY
-                ] = str(platform_key.key)
+                adapter_metadata[X2TextConstants.PLATFORM_SERVICE_API_KEY] = (
+                    str(platform_key.key)
+                )
 
             adapter_instance = adapter_class(adapter_metadata)
             test_result: bool = adapter_instance.test_connection()
@@ -126,11 +126,11 @@ class AdapterProcessor:
         except Exception as e:
             logger.error(f"Error while testing : {adapter_id}: {e}")
             if isinstance(e, AdapterError):
-                raise TestAdapterInputException(e)
+                raise TestAdapterInputException(detail=e.message)
             elif isinstance(e, ActiveKeyNotFound):
                 raise e
             else:
-                raise TestAdapterException(str(e))
+                raise TestAdapterException(detail=str(e))
 
     @staticmethod
     def __fetch_adapters_by_key_value(key: str, value: Any) -> Adapter:
