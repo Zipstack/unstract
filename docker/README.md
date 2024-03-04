@@ -22,12 +22,14 @@ VERSION=dev docker compose -f docker-compose.yaml up -d frontend
 
 Now access frontend at http://frontend.unstract.localhost
 
-# Docker Run Optional Services
+# Docker Build and Run Optional Services
 
-Some services are kept optional and will not be started by default. Run them as follows.
+Some services are kept optional and will not be built or started by default. Run them as follows.
 
 ```bash
-# Up optional services.
+# Build optional services also
+VERSION=dev docker compose -f docker-compose.build.yaml --profile optional build
+# Up optional services also
 VERSION=dev docker compose -f docker-compose.yaml --profile optional up -d
 ```
 

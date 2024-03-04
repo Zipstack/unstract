@@ -7,7 +7,7 @@ services:
   backend:
     image: unstract/backend:${VERSION}
     container_name: unstract-backend
-    command: migrate  
+    command: migrate
     ports:
       - "8000:8000"
     env_file:
@@ -17,7 +17,7 @@ services:
       - redis
       - reverse-proxy
       - minio
-    volumes:  
+    volumes:
       - ./workflow_data:/data
     environment:
       - ENVIRONMENT=development
@@ -31,8 +31,8 @@ services:
   # Celery execution consumer
   execution-consumer:
     image: unstract/backend:${VERSION}
-    container_name: unstract-execution-consumer    
-    entrypoint: /app/.venv/bin/celery   
+    container_name: unstract-execution-consumer
+    entrypoint: /app/.venv/bin/celery
     command: "-A backend worker --loglevel=info"
     env_file:
       - ../backend/.env
@@ -145,6 +145,8 @@ services:
       - traefik.enable=false
 
   document-service:
+    profiles:
+        - optional
     image: unstract/document-service:${VERSION}
     container_name: unstract-document-service
     ports:
@@ -158,7 +160,7 @@ services:
     labels:
       - traefik.enable=false
 
-volumes:   
+volumes:
   unstract_data:
 
 networks:
