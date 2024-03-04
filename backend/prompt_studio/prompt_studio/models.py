@@ -34,7 +34,6 @@ class ToolStudioPrompt(BaseModel):
     prompt_key = models.TextField(
         blank=False,
         db_comment="Field to store the prompt key",
-        unique=True,
     )
     enforce_type = models.TextField(
         blank=True,
@@ -116,3 +115,11 @@ class ToolStudioPrompt(BaseModel):
     eval_guidance_toxicity = models.BooleanField(default=True)
     eval_guidance_completeness = models.BooleanField(default=True)
     #
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["prompt_key", "tool_id"],
+                name="unique_prompt_key_tool_id",
+            ),
+        ]

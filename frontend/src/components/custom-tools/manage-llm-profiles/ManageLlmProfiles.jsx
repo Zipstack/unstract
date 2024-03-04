@@ -58,7 +58,12 @@ const columns = [
     align: "center",
   },
 ];
-function ManageLlmProfiles({ setOpen, setOpenLlm, setEditLlmProfileId }) {
+function ManageLlmProfiles({
+  setOpen,
+  setOpenLlm,
+  setEditLlmProfileId,
+  setModalTitle,
+}) {
   const [rows, setRows] = useState([]);
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
@@ -144,6 +149,7 @@ function ManageLlmProfiles({ setOpen, setOpenLlm, setEditLlmProfileId }) {
 
   const handleEdit = (id) => {
     setEditLlmProfileId(id);
+    setModalTitle("Manage LLM profile");
     handleAddNewLlm();
   };
 
@@ -193,6 +199,7 @@ function ManageLlmProfiles({ setOpen, setOpenLlm, setEditLlmProfileId }) {
               dataSource={rows}
               size="small"
               bordered
+              max-width="100%"
               pagination={{ pageSize: 10 }}
             />
           </div>
@@ -214,6 +221,7 @@ ManageLlmProfiles.propTypes = {
   setOpen: PropTypes.func.isRequired,
   setOpenLlm: PropTypes.func.isRequired,
   setEditLlmProfileId: PropTypes.func.isRequired,
+  setModalTitle: PropTypes.func.isRequired,
 };
 
 export { ManageLlmProfiles };

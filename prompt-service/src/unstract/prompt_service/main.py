@@ -486,10 +486,9 @@ def prompt_processor() -> Any:
         if output[PSKeys.CHUNK_SIZE] == 0:
             # We can do this only for chunkless indexes
             context = tool_index.get_text_from_index(
-                project_id=tool_id,
+                embedding_type=output[PSKeys.EMBEDDING],
                 vector_db=output[PSKeys.VECTOR_DB],
                 doc_id=doc_id,
-                embedding_dimension=embedding_dimension,
             )
 
         assertion_failed = False
