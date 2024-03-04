@@ -772,7 +772,8 @@ function PromptCard({
             </div>
             <div className="prompt-card-llm-profiles">
               {llmProfiles?.length > 0 &&
-              promptDetails?.profile_manager?.length > 0 ? (
+              promptDetails?.profile_manager?.length > 0 &&
+              llmProfiles.length >= page ? (
                 <div>
                   <Tag>{llmProfiles[page - 1]?.llm}</Tag>
                   <Tag>{llmProfiles[page - 1]?.vector_store}</Tag>
