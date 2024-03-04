@@ -89,6 +89,21 @@ function DocumentParser({
       data: body,
     };
 
+    const modifiedDetails = { ...details };
+    const modifiedPrompts = [...(modifiedDetails?.prompts || [])].map(
+      (item) => {
+        if (item?.prompt_id === promptId) {
+          return {
+            ...item,
+            [name]: value, // Update the specific field instantly
+          };
+        }
+        return item;
+      }
+    );
+    modifiedDetails["prompts"] = modifiedPrompts;
+    updateCustomTool({ details: modifiedDetails });
+
     handleUpdateStatus(
       isUpdateStatus,
       promptId,
@@ -98,7 +113,6 @@ function DocumentParser({
     return axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data;
-        const modifiedDetails = { ...details };
         const modifiedPrompts = [...(modifiedDetails?.prompts || [])].map(
           (item) => {
             if (item?.prompt_id === data?.prompt_id) {
@@ -119,6 +133,7 @@ function DocumentParser({
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to update"));
+        updateCustomTool({ details });
         handleUpdateStatus(isUpdateStatus, promptId, null);
       })
       .finally(() => {
