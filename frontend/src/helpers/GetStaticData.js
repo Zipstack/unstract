@@ -1,3 +1,6 @@
+import moment from "moment";
+import momentTz from "moment-timezone";
+
 const THEME = {
   DARK: "dark",
   LIGHT: "light",
@@ -327,12 +330,36 @@ const onboardCompleted = (adaptersList) => {
   return MANDATORY_ADAPTERS.every((value) => adaptersList.includes(value));
 };
 
+// Input: ISOdateTime format
+// Output: Mar 10, 2023 7:33 PM IST
+const formattedDateTime = (ISOdateTime) => {
+  if (ISOdateTime) {
+    const validIsoDate = moment.utc(ISOdateTime).toISOString();
+    // eslint-disable-next-line new-cap
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return momentTz.tz(validIsoDate, zone).format("lll z");
+  } else {
+    return "";
+  }
+};
+
 const getBackendErrorDetail = (attr, backendErrors) => {
   if (backendErrors) {
     const error = backendErrors?.errors.find((error) => error?.attr === attr);
     return error ? error?.detail : null;
   }
   return null;
+};
+
+const titleCase = (str) => {
+  if (str === null || str.length === 0) {
+    return "";
+  }
+  const words = str.toLowerCase().split(" ");
+  for (let i = 0; i < words.length; i++) {
+    words[i] = words[i][0].toUpperCase() + words[i].slice(1);
+  }
+  return words.join(" ");
 };
 
 export {
@@ -344,6 +371,7 @@ export {
   deploymentsStaticContent,
   endpointType,
   formatBytes,
+  formattedDateTime,
   getBaseUrl,
   getOrgNameFromPathname,
   getReadableDateAndTime,
@@ -365,4 +393,5 @@ export {
   isJson,
   displayPromptResult,
   getBackendErrorDetail,
+  titleCase,
 };
