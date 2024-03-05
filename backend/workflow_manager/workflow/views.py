@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Optional
 
+from api.models import APIDeployment
 from connector.connector_instance_helper import ConnectorInstanceHelper
 from django.conf import settings
 from django.db.models.query import QuerySet
@@ -23,11 +24,11 @@ from workflow_manager.workflow.dto import ExecutionResponse
 from workflow_manager.workflow.enums import SchemaEntity, SchemaType
 from workflow_manager.workflow.exceptions import (
     InvalidRequest,
+    MissingEnvException,
     WorkflowDoesNotExistError,
     WorkflowExecutionError,
     WorkflowGenerationError,
     WorkflowRegenerationError,
-    MissingEnvException,
 )
 from workflow_manager.workflow.generator import WorkflowGenerator
 from workflow_manager.workflow.models.workflow import Workflow
@@ -248,9 +249,10 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             logger.error(f"Error while executing workflow: {exception}")
             return Response(
                 {
-                    "error": "Please check the logs for more details: " + str(exception)
+                    "error": "Please check the logs for more details: "
+                    + str(exception)
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
         except Exception as exception:
             logger.error(f"Error while executing workflow: {exception}")
@@ -312,6 +314,17 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             workflow_id=workflow.id
         )
         return Response(response.get("message"), status=response.get("status"))
+
+    @action(detail=True, methods=["get"])
+    def can_update(
+        self, request: Request, *args: Any, **kwargs: Any
+    ) -> Response:
+        workflow = self.get_object()
+        used_count = Pipeline.objects.filter(workflow=workflow).count()
+        if used_count == 0:
+            used_count = APIDeployment.objects.filter(workflow=workflow).count()
+        response: dict[str, Any] = {"can_update": used_count == 0}
+        return Response(response, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])
     def clear_file_marker(
