@@ -14,6 +14,7 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import "./EtlTaskDeploy.css";
+import { useWorkflowStore } from "../../../store/workflow-store.js";
 
 const days = [
   "Monday",
@@ -39,6 +40,8 @@ const EtlTaskDeploy = ({
   setTableData,
   workflowId,
 }) => {
+  const workflowStore = useWorkflowStore();
+  const { updateWorkflow } = workflowStore;
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -263,7 +266,10 @@ const EtlTaskDeploy = ({
     setLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        if (!workflowId) {
+        if (workflowId) {
+          // Update - can update workflow endpoint status in store
+          updateWorkflow({ allowChangeEndpoint: false });
+        } else {
           addPipeline(res?.data);
         }
         setOpen(false);
