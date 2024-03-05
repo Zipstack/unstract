@@ -93,3 +93,23 @@ class Pipeline(BaseModel):
 
     def is_active(self) -> bool:
         return bool(self.active)
+
+
+class PipelineLogs(BaseModel):
+    id = models.UUIDField(
+        primary_key=True,
+        editable=False,
+        default=uuid.uuid4,
+        db_comment="Unique identifier for the Pipeline Logs.",
+    )
+    Pipeline = models.ForeignKey(
+        Pipeline,
+        on_delete=models.CASCADE,
+        db_comment="Foreign key reference to the Pipeline model.",
+    )
+    log_id = models.CharField(max_length=255)
+    started_at = models.CharField(max_length=255)
+    completed_at = models.CharField(max_length=255)
+    status = models.CharField(max_length=255)
+    triggered_by = models.CharField(max_length=255)
+    log_text = models.JSONField()
