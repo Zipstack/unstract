@@ -178,6 +178,7 @@ repos:
             --warn-unreachable,
             --warn-unused-configs,
             --warn-unused-ignores,
+            # To use Unpack for typing kwargs
             --enable-incomplete-feature=Unpack
           ]
   - repo: https://github.com/igorshubovych/markdownlint-cli
