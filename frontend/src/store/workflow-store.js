@@ -10,6 +10,7 @@ const defaultState = {
   source: {},
   destination: {},
   details: {},
+  allowChangeEndpoint: true,
 };
 
 const STORE_VARIABLES = { ...defaultState };
