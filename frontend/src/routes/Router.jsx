@@ -95,7 +95,9 @@ function Router() {
               element={<ToolsSettingsPage type="ocr" />}
             />
             <Route path="settings" element={<SettingsPage />} />
-            <Route path="settings/platform" element={<PlatformSettings />} />
+            <Route element={<RequireAdmin />}>
+              <Route path="settings/platform" element={<PlatformSettings />} />
+            </Route>
             <Route path="settings/triad" element={<DefaultTriad />} />
             <Route element={<RequireAdmin />}>
               <Route path="users" element={<UsersPage />} />
