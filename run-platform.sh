@@ -38,7 +38,7 @@ display_banner() {
 display_help() {
   printf "Run Unstract platform in docker containers\n"
   echo
-  echo -e "Syntax: $0"
+  echo -e "Syntax: $0 [options]"
   echo -e "Options:"
   echo -e "   -h, --help        Displays the help information"
   echo -e "   -e, --only-env    Only do env files setup"
@@ -46,7 +46,7 @@ display_help() {
   echo -e "   -d, --detach      Run docker containers in detached mode"
   echo -e "   -x, --trace       Enables trace mode"
   echo -e "   -V, --verbose     Print verbose logs"
-  echo -e "   -v, --version     Specifies the version tag for docker images (default \"dev\")"
+  echo -e "   -v, --version     Docker images version tag (default \"dev\")"
   echo -e ""
 }
 
@@ -135,8 +135,10 @@ build_services() {
         echo "Failed to build docker image for '${service}'."
         exit 1
       }
+      echo "Built docker image 'unstract/${service}:$opt_version'."
+    else
+      echo "Found existing docker image 'unstract/${service}:$opt_version'."
     fi
-    echo "Built Docker image 'unstract/${service}:$opt_version'."
   done
 
   popd 1>/dev/null
@@ -171,7 +173,7 @@ script_dir=$(dirname "$(readlink -f "$BASH_SOURCE")")
 services=($(VERSION=$opt_version docker compose -f $script_dir/docker/docker-compose.build.yaml config --services))
 
 display_banner
-parse_args
+parse_args $*
 
 setup_env
 if [ "$opt_only_env" = true ]; then
