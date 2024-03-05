@@ -1,7 +1,6 @@
 import logging
 from typing import Any, Optional
 
-from api.models import APIDeployment
 from connector.connector_instance_helper import ConnectorInstanceHelper
 from django.conf import settings
 from django.db.models.query import QuerySet
@@ -316,14 +315,8 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         return Response(response.get("message"), status=response.get("status"))
 
     @action(detail=True, methods=["get"])
-    def can_update(
-        self, request: Request, *args: Any, **kwargs: Any
-    ) -> Response:
-        workflow = self.get_object()
-        used_count = Pipeline.objects.filter(workflow=workflow).count()
-        if used_count == 0:
-            used_count = APIDeployment.objects.filter(workflow=workflow).count()
-        response: dict[str, Any] = {"can_update": used_count == 0}
+    def can_update(self, request: Request, pk: str) -> Response:
+        response: dict[str, Any] = WorkflowHelper.can_update_workflow(pk)
         return Response(response, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])

@@ -75,22 +75,18 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   useEffect(() => {
     if (type === "output") {
       if (source?.connection_type === "") {
-        // Keep no values in Destination Dropdown - when source is blank
+        // Clear options when source is blank
         setOptions({});
-      } else if (["API"].includes(source?.connection_type)) {
-        // Keep only API in Destination Dropdown - when API is selected in Source
-        const filteredOptions = inputOptions.filter(
-          (option) => option.value === "API"
-        );
-        setOptions(filteredOptions);
-      } else if (["FILESYSTEM", "DATABASE"].includes(source?.connection_type)) {
-        // Keep all values except API in Destination Dropdown - when FILESYSTEM / DATABASE is selected in Source
-        const filteredOptions = inputOptions.filter(
-          (option) => option.value !== "API"
-        );
+      } else {
+        // Filter options based on source connection type
+        const filteredOptions = ["API"].includes(source?.connection_type)
+          ? inputOptions.filter((option) => option.value === "API")
+          : inputOptions.filter((option) => option.value !== "API");
+
         setOptions(filteredOptions);
       }
     }
+
     if (type === "input") {
       // Remove Database from Source Dropdown
       const filteredOptions = inputOptions.filter(
