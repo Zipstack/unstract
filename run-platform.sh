@@ -17,10 +17,6 @@ debug() {
   fi
 }
 
-log() {
-  echo $1
-}
-
 display_banner() {
   # Make sure the console is huge
   if test $(tput cols) -ge 64; then
@@ -99,58 +95,55 @@ parse_args() {
 }
 
 setup_env() {
-    for service in "${services[@]}"; do
-      sample_env_path="$script_dir/$service/sample.env"
-      env_path="$script_dir/$service/.env"
+  for service in "${services[@]}"; do
+    sample_env_path="$script_dir/$service/sample.env"
+    env_path="$script_dir/$service/.env"
 
-      # Generate Fernet Key. Refer https://pypi.org/project/cryptography/.
-      ENCRYPTION_KEY=$(python -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
+    # Generate Fernet Key. Refer https://pypi.org/project/cryptography/.
+    ENCRYPTION_KEY=$(python -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
 
-      if [ -e "$sample_env_path" ] && [ ! -e "$env_path" ]; then
-        cp "$sample_env_path" "$env_path"
-        # Add encryption secret for backend and platform-service.
-        if [[ "$service" == "backend" || "$service" == "platform-service" ]]; then
-          echo "Adding encryption secret to $service"
-          echo "ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"" >> $env_path
-        fi
+    if [ -e "$sample_env_path" ] && [ ! -e "$env_path" ]; then
+      cp "$sample_env_path" "$env_path"
+      # Add encryption secret for backend and platform-service.
+      if [[ "$service" == "backend" || "$service" == "platform-service" ]]; then
+        echo "Adding encryption secret to $service"
+        echo "ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"" >> $env_path
       fi
-      echo "Created env for $service at $env_path."
-    done
-
-    if [ ! -e "$script_dir/docker/essentials.env" ]; then
-      cp "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
     fi
-    echo "Created env for essential services at $script_dir/docker/essentials.env."
+    echo "Created env for $service at $env_path."
+  done
 
-    if [ ! -e "$script_dir/docker/proxy_overrides.yaml" ]; then
-        echo "NOTE: Proxy behaviour can be overridden via $script_dir/docker/proxy_overrides.yaml."
-    else
-        echo "Found $script_dir/docker/proxy_overrides.yaml. Proxy behaviour will be overridden."
-    fi
+  if [ ! -e "$script_dir/docker/essentials.env" ]; then
+    cp "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
+  fi
+  echo "Created env for essential services at $script_dir/docker/essentials.env."
+
+  if [ ! -e "$script_dir/docker/proxy_overrides.yaml" ]; then
+    echo "NOTE: Proxy behaviour can be overridden via $script_dir/docker/proxy_overrides.yaml."
+  else
+    echo "Found $script_dir/docker/proxy_overrides.yaml. Proxy behaviour will be overridden."
+  fi
 }
 
 build_services() {
-    pushd ${script_dir}/docker
+  pushd ${script_dir}/docker 1>/dev/null
 
-    # Extract service names from docker compose file.
-    services=($(VERSION=$opt_version docker compose -f docker-compose.build.yaml config --services))
+  for service in "${services[@]}"; do
+    if ! docker image inspect "unstract/${service}:$opt_version" &> /dev/null; then
+      echo "Docker image 'unstract/${service}:$opt_version' not found. Building..."
+      VERSION=$opt_version docker-compose -f "${DOCKER_COMPOSE_FILE}" build "${service}" || {
+        echo "Failed to build docker image for '${service}'."
+        exit 1
+      }
+    fi
+    echo "Built Docker image 'unstract/${service}:$opt_version'."
+  done
 
-    for service in "${services[@]}"; do
-      if ! docker image inspect "unstract/${service}:$opt_version" &> /dev/null; then
-        echo "Docker image 'unstract/${service}:$opt_version' not found. Building..."
-        VERSION=$opt_version docker-compose -f "${DOCKER_COMPOSE_FILE}" build "${service}" || {
-          echo "Failed to build docker image for '${service}'."
-          exit 1
-        }
-      fi
-      echo "Built Docker image 'unstract/${service}:$opt_version'."
-    done
-
-    popd
+  popd 1>/dev/null
 }
 
 run_services() {
-  pushd ${script_dir}/docker
+  pushd ${script_dir}/docker 1>/dev/null
 
   if [ -z "$opt_detach" ]; then
     echo -e "$blue_text""Starting docker containers""$default_text"
@@ -159,8 +152,13 @@ run_services() {
   fi
   VERSION=$opt_version docker compose up $opt_detach
 
-  popd
+  popd 1>/dev/null
 }
+
+if ! command -v docker compose &> /dev/null; then
+  echo "docker compose not found. Please install it and try again."
+  exit 1
+fi
 
 opt_only_env=false
 opt_only_build=false
@@ -169,14 +167,8 @@ opt_verbose=false
 opt_version="dev"
 
 script_dir=$(dirname "$(readlink -f "$BASH_SOURCE")")
-services=(
-  "backend"
-  "frontend"
-  "platform-service"
-  "prompt-service"
-  "worker"
-  "x2text-service"
-)
+# Extract service names from docker compose file.
+services=($(VERSION=$opt_version docker compose -f $script_dir/docker/docker-compose.build.yaml config --services))
 
 display_banner
 parse_args
@@ -185,15 +177,8 @@ setup_env
 if [ "$opt_only_env" = true ]; then
   exit 0
 fi
-
-if ! command -v docker compose &> /dev/null; then
-  echo "docker compose not found. Please install it and try again."
-  exit 1
-fi
-
 build_services
 if [ "$opt_only_build" = true ]; then
   exit 0
 fi
-
 run_services
