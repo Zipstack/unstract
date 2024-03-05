@@ -158,6 +158,7 @@ function Steps({ steps, setSteps, activeToolId, sourceMsg, destinationMsg }) {
           type={sourceTypes.connectors[0]}
           endpointDetails={source}
           message={sourceMsg}
+          dependent={destination}
         />
         <Divider className="wf-steps-div" />
       </div>
@@ -184,6 +185,7 @@ function Steps({ steps, setSteps, activeToolId, sourceMsg, destinationMsg }) {
           type={sourceTypes.connectors[1]}
           endpointDetails={destination}
           message={destinationMsg}
+          dependent={source}
         />
       </div>
     </div>
