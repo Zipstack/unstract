@@ -128,18 +128,10 @@ setup_env() {
 build_services() {
   pushd ${script_dir}/docker 1>/dev/null
 
-  for service in "${services[@]}"; do
-    if ! docker image inspect "unstract/${service}:$opt_version" &> /dev/null; then
-      echo "Docker image 'unstract/${service}:$opt_version' not found. Building..."
-      VERSION=$opt_version docker-compose -f $script_dir/docker/docker-compose.build.yaml build "${service}" || {
-        echo "Failed to build docker image for '${service}'."
-        exit 1
-      }
-      echo "Built docker image 'unstract/${service}:$opt_version'."
-    else
-      echo "Found existing docker image 'unstract/${service}:$opt_version'."
-    fi
-  done
+  VERSION=$opt_version docker-compose -f $script_dir/docker/docker-compose.build.yaml build || {
+    echo "Failed to build docker images."
+    exit 1
+  }
 
   popd 1>/dev/null
 }
