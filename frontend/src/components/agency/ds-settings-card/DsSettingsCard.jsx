@@ -3,6 +3,7 @@ import {
   ExportOutlined,
   ImportOutlined,
   SettingOutlined,
+  CheckCircleTwoTone,
 } from "@ant-design/icons";
 import {
   Button,
@@ -17,7 +18,7 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData";
+import { handleException, titleCase } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -41,7 +42,7 @@ const inputOptions = [
   },
 ];
 
-function DsSettingsCard({ type, endpointDetails, message }) {
+function DsSettingsCard({ type, endpointDetails, message, dependent }) {
   const [options, setOptions] = useState([...inputOptions]);
   const [openModal, setOpenModal] = useState(false);
 
@@ -260,7 +261,9 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                   type="text"
                   size="small"
                   onClick={() => setOpenModal(true)}
-                  disabled={!endpointDetails?.connection_type}
+                  disabled={
+                    !endpointDetails?.connection_type || connType === "API"
+                  }
                 >
                   <SettingOutlined />
                 </Button>
@@ -281,7 +284,18 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                 </Space>
               ) : (
                 <>
-                  {connType !== "API" && (
+                  {connType === "API" ? (
+                    <Typography.Text
+                      className="font-size-12 display-flex-align-center"
+                      ellipsis={{ rows: 1, expandable: false }}
+                      type="secondary"
+                    >
+                      <CheckCircleTwoTone twoToneColor="#52c41a" />
+                      <span style={{ marginLeft: "5px" }}>
+                        {titleCase(type)} set to API successfully
+                      </span>
+                    </Typography.Text>
+                  ) : (
                     <Typography.Text
                       className="font-size-12 display-flex-align-center"
                       ellipsis={{ rows: 1, expandable: false }}
@@ -331,6 +345,7 @@ DsSettingsCard.propTypes = {
   type: PropTypes.string.isRequired,
   endpointDetails: PropTypes.object.isRequired,
   message: PropTypes.string,
+  dependent: PropTypes.object.isRequired,
 };
 
 export { DsSettingsCard };
