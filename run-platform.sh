@@ -117,8 +117,10 @@ setup_env() {
 
   if [ ! -e "$script_dir/docker/essentials.env" ]; then
     cp "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
+    echo "Created env for essential services at $script_dir/docker/essentials.env."
+  else
+    echo "Found existing env for essential services at $script_dir/docker/essentials.env."
   fi
-  echo "Created env for essential services at $script_dir/docker/essentials.env."
 
   if [ ! -e "$script_dir/docker/proxy_overrides.yaml" ]; then
     echo "NOTE: Proxy behaviour can be overridden via $script_dir/docker/proxy_overrides.yaml."
