@@ -1,9 +1,20 @@
+from collections.abc import Iterable
 from os.path import splitext
+from typing import Optional, TypedDict
 
 import magic
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.template.defaultfilters import filesizeformat
 from django.utils.translation import gettext_lazy as _
+from typing_extensions import NotRequired, Unpack
+
+
+class FileValidationParam(TypedDict):
+    allowed_mimetypes: NotRequired[Iterable[str]]
+    allowed_extensions: NotRequired[Iterable[str]]
+    max_size: NotRequired[int]
+    min_size: NotRequired[int]
 
 
 class FileValidator:
@@ -37,42 +48,41 @@ class FileValidator:
         "The maximum file size is %(allowed_size)s."
     )
 
-    def __init__(self, *args, **kwargs):  # type: ignore
-        self.allowed_extensions = kwargs.pop("allowed_extensions", None)
-        self.allowed_mimetypes = kwargs.pop("allowed_mimetypes", None)
-        self.min_size = kwargs.pop("min_size", 0)
-        self.max_size = kwargs.pop("max_size", None)
+    def __init__(self, **kwargs: Unpack[FileValidationParam]) -> None:
+        self.allowed_extensions: Optional[Iterable[str]] = kwargs.pop(
+            "allowed_extensions", None
+        )
+        self.allowed_mimetypes: Optional[Iterable[str]] = kwargs.pop(
+            "allowed_mimetypes", None
+        )
+        self.min_size: Optional[int] = kwargs.pop("min_size", 0)
+        self.max_size: Optional[int] = kwargs.pop("max_size", None)
 
-    def __call__(self, value):  # type: ignore
-        """Check the extension, content type and file size for each file."""
-        for file in value:
-            # Check the extension
-            ext = splitext(file.name)[1][1:].lower()
-            if self.allowed_extensions and ext not in self.allowed_extensions:
-                message = self.extension_message % {
-                    "extension": ext,
-                    "allowed_extensions": ", ".join(self.allowed_extensions),
-                }
+    def _check_file_extension(self, file: InMemoryUploadedFile) -> None:
+        ext = splitext(file.name)[1][1:].lower()
+        if self.allowed_extensions and ext not in self.allowed_extensions:
+            message = self.extension_message % {
+                "extension": ext,
+                "allowed_extensions": ", ".join(self.allowed_extensions),
+            }
 
-                raise ValidationError(message)
+            raise ValidationError(message)
 
-            # Check the content type
-            mimetype = magic.from_buffer(file.read(2048), mime=True)
-            file.seek(0)  # Reset the file pointer to the start
+    def _check_file_mime_type(self, file: InMemoryUploadedFile) -> None:
+        mimetype = magic.from_buffer(file.read(2048), mime=True)
+        file.seek(0)  # Reset the file pointer to the start
 
-            if (
-                self.allowed_mimetypes
-                and mimetype not in self.allowed_mimetypes
-            ):
-                message = self.mime_message % {
-                    "mimetype": mimetype,
-                    "allowed_mimetypes": ", ".join(self.allowed_mimetypes),
-                }
+        if self.allowed_mimetypes and mimetype not in self.allowed_mimetypes:
+            message = self.mime_message % {
+                "mimetype": mimetype,
+                "allowed_mimetypes": ", ".join(self.allowed_mimetypes),
+            }
 
-                raise ValidationError(message)
+            raise ValidationError(message)
 
-            # Check the file size
-            filesize = len(file)
+    def _check_file_size(self, file: InMemoryUploadedFile) -> None:
+        filesize = len(file)
+        if (self.max_size is not None) and (self.min_size is not None):
             if self.max_size and filesize > self.max_size:
                 message = self.max_size_message % {
                     "size": filesizeformat(filesize),
@@ -88,3 +98,15 @@ class FileValidator:
                 }
 
                 raise ValidationError(message)
+
+    def __call__(self, value: list[InMemoryUploadedFile]) -> None:
+        """Check the extension, content type and file size for each file."""
+        for file in value:
+            # Check the extension
+            self._check_file_extension(file)
+
+            # Check the content type
+            self._check_file_mime_type(file)
+
+            # Check the file size
+            self._check_file_size(file)

@@ -8,6 +8,7 @@ import {
 } from "../../../helpers/GetStaticData.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
+import { useWorkflowStore } from "../../../store/workflow-store.js";
 
 const defaultFromDetails = {
   display_name: "",
@@ -27,6 +28,8 @@ const CreateApiDeploymentModal = ({
   workflowId,
   workflowEndpointList,
 }) => {
+  const workflowStore = useWorkflowStore();
+  const { updateWorkflow } = workflowStore;
   const apiDeploymentsApiService = apiDeploymentsService();
   const { setAlertDetails } = useAlertStore();
 
@@ -97,7 +100,10 @@ const CreateApiDeploymentModal = ({
     apiDeploymentsApiService
       .createApiDeployment(body)
       .then((res) => {
-        if (!workflowId) {
+        if (workflowId) {
+          // Update - can update workflow endpoint status in store
+          updateWorkflow({ allowChangeEndpoint: false });
+        } else {
           updateTableData();
           setSelectedRow(res?.data);
           openCodeModal(true);
