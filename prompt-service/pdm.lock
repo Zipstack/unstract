@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:f70592e5a8efe531f8e1b05ab6be734d0e13fe53818c9ee1bd38a51e53a729a3"
+content_hash = "sha256:96675e310bd140775dd8d503822f0b88e34e5ea1f51125a2e04fde09c99dcd3b"
 
 [[package]]
 name = "aiohttp"
@@ -3643,7 +3643,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.3.0"
+version = "0.4.0"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract Adapters"
 groups = ["default"]
@@ -3653,31 +3653,29 @@ dependencies = [
     "anyscale==0.5.165",
     "asyncpg==0.29.0",
     "fastembed==0.1.3",
-    "flupy==1.2.0",
     "google-cloud-aiplatform==1.40.0",
     "google-generativeai==0.3.1",
     "huggingface==0.0.1",
     "llama-index==0.9.28",
     "mistralai==0.0.8",
     "openai==1.3.9",
-    "pgvector==0.1.*",
     "pinecone-client==2.2.4",
     "psycopg2-binary==2.9.9",
     "pymilvus==2.3.4",
     "qdrant-client==1.7.0",
     "replicate==0.22.0",
     "supabase==2.2.1",
-    "vecs==0.1.0",
+    "vecs==0.4.3",
     "weaviate-client==3.25.3",
 ]
 files = [
-    {file = "unstract_adapters-0.3.0-py3-none-any.whl", hash = "sha256:ac2e6d6902bb54c0ef4d223b68365d4f044fb92b83c05bcd92208155e548253c"},
-    {file = "unstract_adapters-0.3.0.tar.gz", hash = "sha256:3c4662a73dfaa0b9c0b947da8e3e351221b876c6dd505d054c70a3067fe8d9dc"},
+    {file = "unstract_adapters-0.4.0-py3-none-any.whl", hash = "sha256:6a7fd6fa376f883242c290a862c4d1b024c357b003cb9d86b494c350edfc58a4"},
+    {file = "unstract_adapters-0.4.0.tar.gz", hash = "sha256:78c56813c626af61d1d7b64f3cc603ce7b276a11c96d634d154fce5bc55cd7e6"},
 ]
 
 [[package]]
 name = "unstract-sdk"
-version = "0.13.0"
+version = "0.14.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3691,11 +3689,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.3.0",
+    "unstract-adapters~=0.4.0",
 ]
 files = [
-    {file = "unstract_sdk-0.13.0-py3-none-any.whl", hash = "sha256:15c2aa60a93654fa9eab8b90024ca11b7fc5c9e3e6b8cdde97e11279dde0b2a3"},
-    {file = "unstract_sdk-0.13.0.tar.gz", hash = "sha256:64e97366dd742964620201ed4a3aeb6495c74efd4ba482266f0308bafa08e70d"},
+    {file = "unstract_sdk-0.14.0-py3-none-any.whl", hash = "sha256:f1494ac22d3a8f637ad96c168f31021d86644ac14817b13ced740c4f3eb7084a"},
+    {file = "unstract_sdk-0.14.0.tar.gz", hash = "sha256:448b72fa22d91ed589c8932d5764c912f75d464bd4b1cbade528d4330b91dd7a"},
 ]
 
 [[package]]
@@ -3722,15 +3720,18 @@ files = [
 
 [[package]]
 name = "vecs"
-version = "0.1.0"
+version = "0.4.3"
 summary = "pgvector client"
 groups = ["default"]
 dependencies = [
+    "deprecated==1.2.*",
+    "flupy==1.*",
     "pgvector==0.1.*",
+    "psycopg2-binary==2.9.*",
     "sqlalchemy==2.*",
 ]
 files = [
-    {file = "vecs-0.1.0.tar.gz", hash = "sha256:a651c349b7bbbdcaf8f19cd3319fc438308617fdf6e664db09fdaa4752985e42"},
+    {file = "vecs-0.4.3.tar.gz", hash = "sha256:0a60294143aec43bd0344bb9235b6e57f8f919d102538f6b989d7b85095a31ce"},
 ]
 
 [[package]]
