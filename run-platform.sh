@@ -109,8 +109,10 @@ setup_env() {
         echo "Adding encryption secret to $service"
         echo "ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"" >> $env_path
       fi
+      echo "Created env for $service at $env_path."
+    else
+      echo "Found existing env for $service at $env_path."
     fi
-    echo "Created env for $service at $env_path."
   done
 
   if [ ! -e "$script_dir/docker/essentials.env" ]; then
