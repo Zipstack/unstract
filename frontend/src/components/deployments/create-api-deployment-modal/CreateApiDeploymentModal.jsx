@@ -110,7 +110,7 @@ const CreateApiDeploymentModal = ({
         });
       })
       .catch((err) => {
-        setAlertDetails(handleException(err));
+        handleException(err, "", setBackendErrors);
       })
       .finally(() => {
         setIsLoading(false);
@@ -133,7 +133,8 @@ const CreateApiDeploymentModal = ({
         });
       })
       .catch((err) => {
-        setAlertDetails(handleException(err));
+        const msg = "Failed to update";
+        setAlertDetails(handleException(err, msg, setBackendErrors));
       })
       .finally(() => {
         setIsLoading(false);
@@ -177,7 +178,6 @@ const CreateApiDeploymentModal = ({
         <Form.Item
           label="Description"
           name="description"
-          rules={[{ required: true, message: "Please enter description" }]}
           validateStatus={
             getBackendErrorDetail("description", backendErrors) ? "error" : ""
           }
