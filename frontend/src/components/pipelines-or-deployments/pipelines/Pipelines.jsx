@@ -25,6 +25,7 @@ import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import "./Pipelines.css";
 import { formattedDateTime } from "../../../helpers/GetStaticData";
+import { PipelineLogs } from "../pipeline-logs/PipelineLogs.jsx";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -36,6 +37,7 @@ function Pipelines({ type }) {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const [openPipelineLogs, setOpenPipelineLogs] = useState(false);
 
   useEffect(() => {
     getPipelineList();
@@ -252,7 +254,11 @@ function Pipelines({ type }) {
     {
       key: "3",
       label: (
-        <Space direction="horizontal" className="action-items">
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() => setOpenPipelineLogs(true)}
+        >
           <div>
             <EyeOutlined />
           </div>
@@ -462,6 +468,7 @@ function Pipelines({ type }) {
           setOpen={setOpenDeleteModal}
           deleteRecord={deletePipeline}
         />
+        <PipelineLogs open={openPipelineLogs} setOpen={setOpenPipelineLogs} />
       </div>
       <SocketMessages logId={logId} />
     </>

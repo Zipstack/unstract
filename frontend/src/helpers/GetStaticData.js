@@ -362,6 +362,44 @@ const titleCase = (str) => {
   return words.join(" ");
 };
 
+const listOfPipelineLogs = [
+  {
+    id: "18a47c30-e2ec-48b3-be45-5b1f06639031",
+    start_date_time: "2023-07-28T08:09:31.045244Z",
+    end_date_time: "2023-07-28T08:09:31.045244Z",
+    status: "SUCCESS",
+    logid: "a8a47c30-e2ec-48b3-be45-5b1f06639031",
+  },
+  {
+    id: "28a47c30-e2ec-48b3-be45-5b1f06639031",
+    start_date_time: "2023-07-28T08:09:31.045244Z",
+    end_date_time: "2023-07-28T08:09:31.045244Z",
+    status: "SUCCESS",
+    logid: "b8a47c30-e2ec-48b3-be45-5b1f06639031",
+  },
+  {
+    id: "38a47c30-e2ec-48b3-be45-5b1f06639031",
+    start_date_time: "2023-07-28T08:09:31.045244Z",
+    end_date_time: "2023-07-28T08:09:31.045244Z",
+    status: "SUCCESS",
+    logid: "c8a47c30-e2ec-48b3-be45-5b1f06639031",
+  },
+  {
+    id: "48a47c30-e2ec-48b3-be45-5b1f06639031",
+    start_date_time: "2023-07-28T08:09:31.045244Z",
+    end_date_time: "2023-07-28T08:09:31.045244Z",
+    status: "SUCCESS",
+    logid: "d8a47c30-e2ec-48b3-be45-5b1f06639031",
+  },
+  {
+    id: "58a47c30-e2ec-48b3-be45-5b1f06639031",
+    start_date_time: "2023-07-28T08:09:31.045244Z",
+    end_date_time: "2023-07-28T08:09:31.045244Z",
+    status: "SUCCESS",
+    logid: "e8a47c30-e2ec-48b3-be45-5b1f06639031",
+  },
+];
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -394,4 +432,5 @@ export {
   displayPromptResult,
   getBackendErrorDetail,
   titleCase,
+  listOfPipelineLogs,
 };
