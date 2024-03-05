@@ -131,7 +131,7 @@ build_services() {
   for service in "${services[@]}"; do
     if ! docker image inspect "unstract/${service}:$opt_version" &> /dev/null; then
       echo "Docker image 'unstract/${service}:$opt_version' not found. Building..."
-      VERSION=$opt_version docker-compose -f "${DOCKER_COMPOSE_FILE}" build "${service}" || {
+      VERSION=$opt_version docker-compose -f $script_dir/docker/docker-compose.build.yaml build "${service}" || {
         echo "Failed to build docker image for '${service}'."
         exit 1
       }
