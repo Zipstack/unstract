@@ -40,10 +40,16 @@ const inputOptions = [
     value: "FILESYSTEM",
     label: "File System",
   },
+  {
+    value: "DATABASE",
+    label: "Database",
+  },
 ];
 
-function DsSettingsCard({ type, endpointDetails, message, dependent }) {
-  const [options, setOptions] = useState([...inputOptions]);
+function DsSettingsCard({ type, endpointDetails, message }) {
+  const workflowStore = useWorkflowStore();
+  const { source, destination, allowChangeEndpoint } = workflowStore;
+  const [options, setOptions] = useState({});
   const [openModal, setOpenModal] = useState(false);
 
   const [listOfConnectors, setListOfConnectors] = useState([]);
@@ -67,6 +73,30 @@ function DsSettingsCard({ type, endpointDetails, message, dependent }) {
   };
 
   useEffect(() => {
+    if (type === "output") {
+      if (source?.connection_type === "") {
+        // Clear options when source is blank
+        setOptions({});
+      } else {
+        // Filter options based on source connection type
+        const filteredOptions = ["API"].includes(source?.connection_type)
+          ? inputOptions.filter((option) => option.value === "API")
+          : inputOptions.filter((option) => option.value !== "API");
+
+        setOptions(filteredOptions);
+      }
+    }
+
+    if (type === "input") {
+      // Remove Database from Source Dropdown
+      const filteredOptions = inputOptions.filter(
+        (option) => option.value !== "DATABASE"
+      );
+      setOptions(filteredOptions);
+    }
+  }, [source, destination]);
+
+  useEffect(() => {
     if (endpointDetails?.connection_type !== connType) {
       setConnType(endpointDetails?.connection_type);
     }
@@ -82,21 +112,6 @@ function DsSettingsCard({ type, endpointDetails, message, dependent }) {
 
     getSourceDetails();
   }, [endpointDetails]);
-
-  useEffect(() => {
-    if (type === "output") {
-      setOptions(() => {
-        const newOptions = [...inputOptions];
-        newOptions.push({
-          value: "DATABASE",
-          label: "Database",
-        });
-        return newOptions;
-      });
-      return;
-    }
-    setOptions([...inputOptions]);
-  }, [type]);
 
   useEffect(() => {
     const menuItems = [];
@@ -174,6 +189,41 @@ function DsSettingsCard({ type, endpointDetails, message, dependent }) {
     };
   };
 
+  const clearDestination = (updatedData) => {
+    const body = { ...destination, ...updatedData };
+
+    const requestOptions = {
+      method: "PUT",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/endpoint/${destination?.id}/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: body,
+    };
+
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const data = res?.data || {};
+        const updatedData = {};
+        updatedData["destination"] = data;
+        updateWorkflow(updatedData);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to update"));
+      });
+  };
+
+  const updateDestination = () => {
+    // Clear destination dropdown & data when input is switched
+    if (type === "input") {
+      clearDestination({
+        connection_type: "",
+        connector_instance: null,
+      });
+    }
+  };
+
   const handleUpdate = (updatedData, showSuccess) => {
     const body = { ...endpointDetails, ...updatedData };
 
@@ -237,19 +287,29 @@ function DsSettingsCard({ type, endpointDetails, message, dependent }) {
         <Col span={12} className="ds-set-card-col2">
           <SpaceWrapper>
             <Space>
-              <Select
-                className="ds-set-card-select"
-                size="small"
-                options={options}
-                placeholder="Select Connector Type"
-                value={endpointDetails?.connection_type || undefined}
-                onChange={(value) =>
-                  handleUpdate({
-                    connection_type: value,
-                    connector_instance: null,
-                  })
+              <Tooltip
+                title={
+                  !allowChangeEndpoint &&
+                  "Workflow used in API/Task/ETL deployment"
                 }
-              />
+              >
+                <Select
+                  className="ds-set-card-select"
+                  size="small"
+                  options={options}
+                  placeholder="Select Connector Type"
+                  value={endpointDetails?.connection_type || undefined}
+                  disabled={!allowChangeEndpoint}
+                  onChange={(value) => {
+                    handleUpdate({
+                      connection_type: value,
+                      connector_instance: null,
+                    });
+                    updateDestination();
+                  }}
+                />
+              </Tooltip>
+
               <Tooltip
                 title={`${
                   endpointDetails?.connection_type
@@ -346,7 +406,7 @@ DsSettingsCard.propTypes = {
   type: PropTypes.string.isRequired,
   endpointDetails: PropTypes.object.isRequired,
   message: PropTypes.string,
-  dependent: PropTypes.object.isRequired,
+  canUpdate: PropTypes.bool.isRequired,
 };
 
 export { DsSettingsCard };

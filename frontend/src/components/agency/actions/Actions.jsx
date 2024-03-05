@@ -54,13 +54,27 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   const axiosPrivate = useAxiosPrivate();
 
   useEffect(() => {
-    setApiOpsPresent(source?.connection_type === "API");
-  }, [source]);
-
-  useEffect(() => {
-    setCanAddTaskPipeline(destination?.connection_type === "FILESYSTEM");
-    setCanAddETAPipeline(destination?.connection_type === "DATABASE");
-  }, [destination]);
+    // Enable Deploy as API only when
+    // Source & Destination connection_type are selected as API
+    setApiOpsPresent(
+      source?.connection_type === "API" &&
+        destination?.connection_type === "API"
+    );
+    // Enable Deploy as Task Pipeline only when
+    // destination connection_type is FILESYSTEM and Source & Destination are Configured
+    setCanAddTaskPipeline(
+      destination?.connection_type === "FILESYSTEM" &&
+        source?.connector_instance &&
+        destination?.connector_instance
+    );
+    // Enable Deploy as ETL Pipeline only when
+    // destination connection_type is DATABASE and Source & Destination are Configured
+    setCanAddETAPipeline(
+      destination?.connection_type === "DATABASE" &&
+        source?.connector_instance &&
+        destination.connector_instance
+    );
+  }, [source, destination]);
 
   useEffect(() => {
     if (stepExecType === wfExecutionTypes[1]) {
