@@ -27,6 +27,7 @@ workflow_clear_file_marker = WorkflowViewSet.as_view(
     {"get": "clear_file_marker"}
 )
 workflow_schema = WorkflowViewSet.as_view({"get": "get_schema"})
+can_update = WorkflowViewSet.as_view({"get": "can_update"})
 urlpatterns = format_suffix_patterns(
     [
         path("", workflow_list, name="workflow-list"),
@@ -40,6 +41,11 @@ urlpatterns = format_suffix_patterns(
             "<uuid:pk>/clear-file-marker/",
             workflow_clear_file_marker,
             name="clear-file-marker",
+        ),
+        path(
+            "<uuid:pk>/can-update/",
+            can_update,
+            name="can-update",
         ),
         path("execute/", workflow_execute, name="execute-workflow"),
         path(
