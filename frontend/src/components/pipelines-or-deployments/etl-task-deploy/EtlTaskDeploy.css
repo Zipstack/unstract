@@ -1,1 +1,4 @@
 /* Styles for EtlTaskDeploy */
+.ant-form .ant-form-item{
+    margin-bottom: 12px;
+}

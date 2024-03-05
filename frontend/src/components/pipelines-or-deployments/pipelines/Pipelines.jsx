@@ -36,6 +36,7 @@ function Pipelines({ type }) {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const [isEdit, setIsEdit] = useState(false);
 
   useEffect(() => {
     getPipelineList();
@@ -60,6 +61,11 @@ function Pipelines({ type }) {
       .finally(() => {
         setTableLoading(false);
       });
+  };
+
+  const openAddModal = (edit) => {
+    setIsEdit(edit);
+    setOpenEtlOrTaskModal(true);
   };
 
   const handleSync = (params) => {
@@ -222,7 +228,11 @@ function Pipelines({ type }) {
     {
       key: "1",
       label: (
-        <Space direction="horizontal" className="action-items">
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() => openAddModal(true)}
+        >
           <div>
             <EditOutlined />
           </div>
@@ -436,9 +446,6 @@ function Pipelines({ type }) {
       ),
     },
   ];
-  const openAddModal = () => {
-    setOpenEtlOrTaskModal(true);
-  };
 
   return (
     <>
@@ -450,13 +457,18 @@ function Pipelines({ type }) {
           isTableLoading={tableLoading}
           openAddModal={openAddModal}
         />
-        <EtlTaskDeploy
-          open={openEtlOrTaskModal}
-          setOpen={setOpenEtlOrTaskModal}
-          setTableData={setTableData}
-          type={type}
-          title={deploymentsStaticContent[type].modalTitle}
-        />
+        {openEtlOrTaskModal && (
+          <EtlTaskDeploy
+            open={openEtlOrTaskModal}
+            setOpen={setOpenEtlOrTaskModal}
+            setTableData={setTableData}
+            type={type}
+            title={deploymentsStaticContent[type].modalTitle}
+            isEdit={isEdit}
+            selectedRow={selectedPorD}
+            setSelectedRow={setSelectedPorD}
+          />
+        )}
         <DeleteModal
           open={openDeleteModal}
           setOpen={setOpenDeleteModal}
