@@ -133,8 +133,7 @@ const CreateApiDeploymentModal = ({
         });
       })
       .catch((err) => {
-        const msg = "Failed to update";
-        setAlertDetails(handleException(err, msg, setBackendErrors));
+        handleException(err, "", setBackendErrors);
       })
       .finally(() => {
         setIsLoading(false);
