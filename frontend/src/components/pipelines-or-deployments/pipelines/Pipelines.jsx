@@ -25,7 +25,7 @@ import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import "./Pipelines.css";
 import { formattedDateTime } from "../../../helpers/GetStaticData";
-import { PipelineLogs } from "../pipeline-logs/PipelineLogs.jsx";
+import { PipelineLogHistory } from "../pipeline-log-history/PipelineLogHistory.jsx";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -468,7 +468,11 @@ function Pipelines({ type }) {
           setOpen={setOpenDeleteModal}
           deleteRecord={deletePipeline}
         />
-        <PipelineLogs open={openPipelineLogs} setOpen={setOpenPipelineLogs} />
+        <PipelineLogHistory
+          pipeline={selectedPorD}
+          open={openPipelineLogs}
+          setOpen={setOpenPipelineLogs}
+        />
       </div>
       <SocketMessages logId={logId} />
     </>

@@ -352,7 +352,7 @@ const getBackendErrorDetail = (attr, backendErrors) => {
 };
 
 const titleCase = (str) => {
-  if (str === null || str.length === 0) {
+  if (str === null || str === undefined || str.length === 0) {
     return "";
   }
   const words = str.toLowerCase().split(" ");
@@ -397,6 +397,48 @@ const listOfPipelineLogs = [
     end_date_time: "2023-07-28T08:09:31.045244Z",
     status: "SUCCESS",
     logid: "e8a47c30-e2ec-48b3-be45-5b1f06639031",
+  },
+  {
+    id: "68a47c30-e2ec-48b3-be45-5b1f06639031",
+    start_date_time: "2023-07-28T08:09:31.045244Z",
+    end_date_time: "2023-07-28T08:09:31.045244Z",
+    status: "SUCCESS",
+    logid: "f8a47c30-e2ec-48b3-be45-5b1f06639031",
+  },
+  {
+    id: "78a47c30-e2ec-48b3-be45-5b1f06639031",
+    start_date_time: "2023-07-28T08:09:31.045244Z",
+    end_date_time: "2023-07-28T08:09:31.045244Z",
+    status: "SUCCESS",
+    logid: "g8a47c30-e2ec-48b3-be45-5b1f06639031",
+  },
+  {
+    id: "88a47c30-e2ec-48b3-be45-5b1f06639031",
+    start_date_time: "2023-07-28T08:09:31.045244Z",
+    end_date_time: "2023-07-28T08:09:31.045244Z",
+    status: "SUCCESS",
+    logid: "h8a47c30-e2ec-48b3-be45-5b1f06639031",
+  },
+  {
+    id: "98a47c30-e2ec-48b3-be45-5b1f06639031",
+    start_date_time: "2023-07-28T08:09:31.045244Z",
+    end_date_time: "2023-07-28T08:09:31.045244Z",
+    status: "SUCCESS",
+    logid: "i8a47c30-e2ec-48b3-be45-5b1f06639031",
+  },
+  {
+    id: "10a47c30-e2ec-48b3-be45-5b1f06639031",
+    start_date_time: "2023-07-28T08:09:31.045244Z",
+    end_date_time: "2023-07-28T08:09:31.045244Z",
+    status: "SUCCESS",
+    logid: "j8a47c30-e2ec-48b3-be45-5b1f06639031",
+  },
+  {
+    id: "11a47c30-e2ec-48b3-be45-5b1f06639031",
+    start_date_time: "2023-07-28T08:09:31.045244Z",
+    end_date_time: "2023-07-28T08:09:31.045244Z",
+    status: "SUCCESS",
+    logid: "k8a47c30-e2ec-48b3-be45-5b1f06639031",
   },
 ];
 

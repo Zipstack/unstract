@@ -1,84 +1,86 @@
-import { Modal, Table, Typography } from "antd";
+import { useState, useEffect, useRef } from "react";
+import { Modal, Typography, Button } from "antd";
 import PropTypes from "prop-types";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 
-import {
-  listOfPipelineLogs,
-  formattedDateTime,
-  titleCase,
-} from "../../../helpers/GetStaticData";
+const { Paragraph } = Typography;
 
-const PipelineLogs = ({ open, setOpen }) => {
-  const handleCancel = () => {
-    setOpen(false);
-  };
+const modalStyle = {
+  borderRadius: "8px",
+  padding: "0px 0px 24px 0px",
+};
 
-  const columns = [
-    {
-      title: "Start Date Time",
-      dataIndex: "start_date_time",
-      key: "start_date_time",
-      render: (_, record) => (
-        <div>
-          <Typography.Text>
-            {formattedDateTime(record?.start_date_time)}
-          </Typography.Text>
-        </div>
-      ),
-    },
-    {
-      title: "End Date Time",
-      dataIndex: "end_date_time",
-      key: "end_date_time",
-      render: (_, record) => (
-        <div>
-          <Typography.Text>
-            {formattedDateTime(record?.end_date_time)}
-          </Typography.Text>
-        </div>
-      ),
-    },
-    {
-      title: "Status",
-      dataIndex: "status",
-      key: "status",
-      render: (_, record) => (
-        <div>
-          <Typography.Text>{titleCase(record?.status)}</Typography.Text>
-        </div>
-      ),
-    },
-    {
-      title: "Logs",
-      dataIndex: "logid",
-      key: "logid",
-    },
-  ];
+const logBoxStyle = {
+  width: "96%",
+  minHeight: "80%",
+  maxHeight: "90%",
+  overflow: "auto",
+  scrollBehavior: "smooth",
+};
+
+const PipelineLogs = ({ open, logRow, closeModal }) => {
+  const [logs, setLogs] = useState("");
+  const [status, setStatus] = useState("");
+  const pollInterval = 2000;
+  const boxRef = useRef(null);
+
+  useEffect(() => {
+    if (boxRef.current) {
+      boxRef.current.scrollTop = boxRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  useEffect(() => {
+    async function fetchLogs() {
+      // Add logic to fetch the log messages
+      setLogs("");
+      setStatus("");
+    }
+
+    let intervalId = "";
+
+    if (open) {
+      fetchLogs();
+      intervalId = setInterval(fetchLogs, pollInterval);
+    } else {
+      clearInterval(intervalId);
+    }
+
+    if (status !== "InProgress") {
+      clearInterval(intervalId);
+    }
+
+    return () => clearInterval(intervalId);
+  }, [open, status]);
 
   return (
     <Modal
-      title={"ETL Runs"}
-      centered
-      maskClosable={false}
+      title="Logs"
       open={open}
-      footer={null}
-      onCancel={handleCancel}
-      width={900}
+      onCancel={closeModal}
+      footer={[
+        <Button key="close" onClick={closeModal}>
+          Close
+        </Button>,
+      ]}
+      style={modalStyle}
     >
-      <Table
-        columns={columns}
-        dataSource={listOfPipelineLogs}
-        size="small"
-        bordered
-        max-width="100%"
-        pagination={{ pageSize: 10 }}
-      />
+      <div>
+        <Paragraph>
+          <strong>Status:</strong> {status}
+        </Paragraph>
+        <div ref={boxRef} style={logBoxStyle}>
+          {logs.length > 0 && <SyntaxHighlighter>{logs}</SyntaxHighlighter>}
+        </div>
+      </div>
     </Modal>
   );
 };
 
 PipelineLogs.propTypes = {
   open: PropTypes.bool.isRequired,
-  setOpen: PropTypes.func.isRequired,
+  closeModal: PropTypes.func.isRequired,
+  logRow: PropTypes.object.isRequired,
 };
 
-export { PipelineLogs };
+export default PipelineLogs;
