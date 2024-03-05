@@ -126,7 +126,7 @@ class AdapterProcessor:
         except Exception as e:
             logger.error(f"Error while testing : {adapter_id}: {e}")
             if isinstance(e, AdapterError):
-                raise TestAdapterInputException(e)
+                raise TestAdapterInputException(e.message)
             elif isinstance(e, ActiveKeyNotFound):
                 raise e
             else:
