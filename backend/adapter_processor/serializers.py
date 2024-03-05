@@ -66,6 +66,9 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
             f.decrypt(bytes(instance.adapter_metadata_b).decode("utf-8"))
         )
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
+        rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
+            instance.adapter_id, common.ICON
+        )
 
         return rep
 
@@ -83,6 +86,7 @@ class AdapterListSerializer(BaseAdapterSerializer):
             "adapter_id",
             "adapter_name",
             "adapter_type",
+            "is_default",
         )  # type: ignore
 
     def to_representation(self, instance: AdapterInstance) -> dict[str, str]:
