@@ -73,6 +73,7 @@ function PromptCard({
   handleChange,
   handleDelete,
   updateStatus,
+  updatePlaceHolder,
 }) {
   const [enforceTypeList, setEnforceTypeList] = useState([]);
   const [page, setPage] = useState(0);
@@ -607,6 +608,7 @@ function PromptCard({
                     promptId={promptDetails?.prompt_id}
                     defaultText={promptDetails?.prompt_key}
                     handleChange={handleChange}
+                    placeHolder={updatePlaceHolder}
                   />
                 </Col>
                 <Col span={8} className="display-flex-right">
@@ -709,6 +711,7 @@ function PromptCard({
                 defaultText={promptDetails.prompt}
                 handleChange={handleChange}
                 isTextarea={true}
+                placeHolder={updatePlaceHolder}
               />
             </Space>
           </div>
@@ -851,6 +854,7 @@ PromptCard.propTypes = {
   handleChange: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
   updateStatus: PropTypes.object.isRequired,
+  updatePlaceHolder: PropTypes.string,
 };
 
 export { PromptCard };

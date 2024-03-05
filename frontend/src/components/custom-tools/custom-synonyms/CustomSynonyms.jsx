@@ -142,7 +142,14 @@ function CustomSynonyms({ setOpen }) {
   const handleSave = () => {
     const promptGrammar = {};
     [...synonyms].forEach((item) => {
-      promptGrammar[item?.word] = item?.synonyms || [];
+      if (
+        !item?.word ||
+        !item?.synonyms?.length ||
+        item.word in promptGrammar
+      ) {
+        return;
+      }
+      promptGrammar[item.word] = item.synonyms || [];
     });
     if (promptGrammar && !isEmpty(promptGrammar)) {
       const body = {
