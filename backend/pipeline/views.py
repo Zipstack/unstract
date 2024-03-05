@@ -18,12 +18,14 @@ from pipeline.exceptions import MandatoryCronSchedule, MandatoryWorkflowId
 from pipeline.manager import PipelineManager
 from pipeline.models import Pipeline
 from pipeline.pipeline_processor import PipelineProcessor
+from pipeline.pipelinelogs_helper import PipelineLogsHelper
 from pipeline.serializers.crud import PipelineSerializer
 from pipeline.serializers.execute import (
     PipelineExecuteSerializer as ExecuteSerializer,
 )
 from pipeline.serializers.update import PipelineUpdateSerializer
 from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -148,3 +150,10 @@ class PipelineViewSet(viewsets.ModelViewSet):
             return Response(
                 serializer.errors, status=status.HTTP_400_BAD_REQUEST
             )
+
+    @action(detail=True, methods=["get"])
+    def execution_history(self, request: Request, pk: str) -> Response:
+        response: dict[str, Any] = PipelineLogsHelper.fetch_execution_history(
+            pk
+        )
+        return Response(response, status=status.HTTP_200_OK)

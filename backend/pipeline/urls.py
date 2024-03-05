@@ -10,16 +10,29 @@ pipeline_list = PipelineViewSet.as_view(
     }
 )
 pipeline_detail = PipelineViewSet.as_view(
-    {"get": "retrieve", "put": "update", "patch": "partial_update", "delete": "destroy"}
+    {
+        "get": "retrieve",
+        "put": "update",
+        "patch": "partial_update",
+        "delete": "destroy",
+    }
 )
 
 pipeline_execute = PipelineViewSet.as_view({"post": "execute"})
 
+pipeline_execution_history = PipelineViewSet.as_view(
+    {"get": "execution_history"}
+)
 
 urlpatterns = format_suffix_patterns(
     [
         path("pipeline/", pipeline_list, name=PipelineURL.LIST),
         path("pipeline/<uuid:pk>/", pipeline_detail, name=PipelineURL.DETAIL),
         path("pipeline/execute/", pipeline_execute, name=PipelineURL.EXECUTE),
+        path(
+            "pipeline/<uuid:pk>/execution-history/",
+            pipeline_execution_history,
+            name=PipelineURL.EXECUTE_HISTORY,
+        ),
     ]
 )

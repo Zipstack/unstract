@@ -63,3 +63,4 @@ class PipelineURL:
     DETAIL = "pipeline-detail"
     LIST = "pipeline-list"
     EXECUTE = "pipeline-execute"
+    EXECUTE_HISTORY = "execution-history"

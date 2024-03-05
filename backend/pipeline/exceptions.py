@@ -34,3 +34,8 @@ class MandatoryWorkflowId(APIException):
 class MandatoryCronSchedule(APIException):
     status_code = 400
     default_detail = "Cron schedule is mandatory"
+
+
+class PipelineDoesNotExistError(APIException):
+    status_code = 404
+    default_detail = "Pipeline does not exist"

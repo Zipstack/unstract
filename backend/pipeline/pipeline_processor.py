@@ -2,7 +2,11 @@ import logging
 from typing import Optional
 
 from django.utils import timezone
-from pipeline.exceptions import InactivePipelineError, PipelineSaveError
+from pipeline.exceptions import (
+    InactivePipelineError,
+    PipelineDoesNotExistError,
+    PipelineSaveError,
+)
 from pipeline.models import Pipeline
 
 logger = logging.getLogger(__name__)
@@ -65,3 +69,14 @@ class PipelineProcessor:
             logger.error(f"Error occured while saving pipeline : {exc}")
             raise PipelineSaveError()
         return pipeline
+
+    @staticmethod
+    def get_pipeline_by_id(id: str) -> Pipeline:
+        try:
+            pipeline: Pipeline = Pipeline.objects.get(pk=id)
+            if not pipeline or pipeline is None:
+                raise PipelineDoesNotExistError()
+            return pipeline
+        except Pipeline.DoesNotExist:
+            logger.error(f"Error getting pipeline: {id}")
+            raise PipelineDoesNotExistError()
