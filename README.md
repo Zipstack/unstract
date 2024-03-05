@@ -6,55 +6,58 @@ TODO: Write few lines about the project.
 
 ## System Requirements
 
-- docker
-- git
+- `docker`
+- `git`
+- `pdm` (see below)
+- `pyenv` (recommended to manage multiple Python versions)
 
-## Setup & launch Unstract 
+## Quick Start
 
-Install Docker Engine and the Docker Compose plugin on your workstation  (see [instructions](https://docs.docker.com/engine/install/)).
-After Docker is installed, you can immediately get started locally by running:
+Install Docker Engine and the Docker Compose plugin on your workstation (see [instructions](https://docs.docker.com/engine/install/)).
 
-The script performs various actions based on the command-line options provided. It can create environment files, run Docker Compose up, build Docker images, and stop Docker Compose.
+Once Docker is installed, just run the `run-platform.sh` launch script.
 
-Usage example
-```
-# Run Docker Compose up with a specific version tag
-./run-platform.sh -v v0.1.0
+The launch script does env setup with default values, builds Docker images, and finally runs them for you, to get you started in a few minutes. See usage examples below.
 
-# Display the help information
-./run-platform.sh -h
-
-# Copy environment files from sample.env
-./run-platform.sh -c
-
-# Build Docker images with a specific version tag
-./run-platform.sh -b v0.1.0
-
-### Run Docker Compose up in detached mode with a specific version tag
-./run-platform.sh -d v0.1.0
-
-# build and run entire platform and setting up default Envs.
+```bash
+# Run entire Unstract platform with default env config.
 ./run-platform.sh
 
+# Build and run docker containers with a specific version tag.
+./run-platform.sh -v v0.1.0
+
+# Display the help information.
+./run-platform.sh -h
+
+# Only do setup of environment files.
+./run-platform.sh -e
+
+# Only do docker images build with a specific version tag.
+./run-platform.sh -b v0.1.0
+
+### Build and run Docker containers in detached mode
+./run-platform.sh -d -v v0.1.0
 ```
 
-You're done!, In your browser, visit http://frontend.unstract.localhost
+Now in your browser, visit [http://frontend.unstract.localhost](http://frontend.unstract.localhost).
+
+That's all. Enjoy!
 
 ## Running with docker compose
 
 - All services needed by the backend can be run with
 
-```
+```bash
 cd docker/
-VERSION=test docker compose -f docker-compose.build.yaml build
-VERSION=test docker compose -f docker-compose.yaml up -d
+VERSION=dev docker compose -f docker-compose.build.yaml build
+VERSION=dev docker compose -f docker-compose.yaml up -d
 ```
 
 Additional information on running with Docker can be found in [DOCKERISING.md](/DOCKERISING.md)
 
 - Use the `-f` flag to run all dependencies necessary for development, this runs containers needed for testing as well such as Minio.
 
-```
+```bash
 docker compose -f docker-compose-dev-essentials.yaml up
 ```
 
@@ -67,13 +70,13 @@ docker compose -f docker-compose-dev-essentials.yaml up
 - Install the below libraries which are needed to run Unstract
   - Linux
 
-    ```
+    ```bash
     sudo apt install build-essential pkg-config libpoppler-cpp-dev libmagic-dev python3-dev
     ```
 
   - Mac
 
-    ```
+    ```bash
     brew install pkg-config poppler freetds libmagic
     ```
 
@@ -81,10 +84,15 @@ docker compose -f docker-compose-dev-essentials.yaml up
 
 - In order to install dependencies and run a package, ensure that you've sourced a virtual environment within that package. All commands in this repository assumes that you have sourced your required venv.
 
-```
-cd <package_to_use>
-python -m venv .venv
-source ./venv/bin/activate
+```bash
+cd <service>
+
+# Create venv
+pdm venv create -w virtualenv --with-pip
+eval "$(pdm venv activate in-project)"
+
+# Remove venv
+eval "$(pdm venv activate in-project)"
 ```
 
 
@@ -190,7 +198,7 @@ If you require a different config, make sure the necessary envs from [backend/sa
 - Install dependencies with `npm install`
 - Start the server with `npm start`
 
-### Traefik Proxy Overrides
+### Traefik Proxy Overrides for Local + Docker Runs
 
 It is possible to simultaneously run few services directly on docker host while others are run as docker containers via docker compose.  
 This enables seamless development without worrying about deployment of other services which you are not concerned with.
