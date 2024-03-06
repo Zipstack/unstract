@@ -45,23 +45,7 @@ That's all. Enjoy!
 
 ## Running with docker compose
 
-- All services needed by the backend can be run with
-
-```bash
-cd docker/
-VERSION=dev docker compose -f docker-compose.build.yaml build
-VERSION=dev docker compose -f docker-compose.yaml up -d
-```
-
-Additional information on running with Docker can be found in [DOCKERISING.md](/DOCKERISING.md)
-
-- Use the `-f` flag to run all dependencies necessary for development, this runs containers needed for testing as well such as Minio.
-
-```bash
-docker compose -f docker-compose-dev-essentials.yaml up
-```
-
-- It might take sometime on the first run to pull the images.
+See [Docker README.md](docker/README.md).
 
 ## Running locally
 
@@ -71,18 +55,18 @@ docker compose -f docker-compose-dev-essentials.yaml up
   - Linux
 
     ```bash
-    sudo apt install build-essential pkg-config libpoppler-cpp-dev libmagic-dev python3-dev
+    apt install build-essential libmagic-dev pandoc pkg-config tesseract-ocr
     ```
 
   - Mac
 
     ```bash
-    brew install pkg-config poppler freetds libmagic
+    brew install freetds libmagic pkg-config poppler
     ```
 
 ### Create your virtual env
 
-- In order to install dependencies and run a package, ensure that you've sourced a virtual environment within that package. All commands in this repository assumes that you have sourced your required venv.
+All commands assumes that you have activated your `venv`.
 
 ```bash
 cd <service>
@@ -92,58 +76,60 @@ pdm venv create -w virtualenv --with-pip
 eval "$(pdm venv activate in-project)"
 
 # Remove venv
-eval "$(pdm venv activate in-project)"
+pdm venv remove in-project
 ```
 
 
 ### Install dependencies with PDM
 
-- This repository makes use of [PDM](https://github.com/pdm-project/pdm) for managing dependencies with the help of a virtual
-environment.
-- If you haven't installed PDM in your machine yet, 
-  - Install it using the below command
-  ```
-  curl -sSL https://pdm.fming.dev/install-pdm.py | python3 -
-  ```
-  - Or install it from PyPI using `pip`
-  ```
-  pip install pdm
-  ```
+[PDM](https://github.com/pdm-project/pdm) is used for dependency management.
 
-Ensure you're running the PDM commands from the corresponding package root
-- Install dependencies for running the package with
+```bash
+# Install via script
+curl -sSL https://pdm.fming.dev/install-pdm.py | python3 -
 
+# Install via pip
+pip install pdm
 ```
+
+Go to service dir and install dependencies listed in corresponding `pyproject.toml`.
+
+```bash
+# Install dependencies
 pdm install
-```
-This install dev dependencies as well by default
-- For production, install the requirements with
 
-```
-pdm install --prod
+# Install specific dev dependency group
+pdm install --dev -G lint
+
+# Install production dependencies only
+pdm install --prod --no-editable
 ```
 
-- With PDM its possible to run some services from any directory within this
-repository. To list the possible scripts that can be executed
-```
+PDM allows you to run scripts applicable within the service dir.
+
+```bash
+# List the possible scripts that can be executed
 pdm run -l
 ```
 
-- Add a new dependency with (ensure you're running it from the correct project's root)
-Perform an editable install with `-e` only for local development.
-```
+Add dependencies as follows.
+
+```bash
+# Add a new service dependency to ts pyproject.toml.
 pdm add <package_from_PyPI>
+# Add a relative path as an editable install.
 pdm add -e <relative_path_to_local_package>
-```
-- List all dependencies with
-```
+# List all dependencies.
 pdm list
 ```
-- After updating `pyproject.toml`s with a newly added dependency, the lock file can be updated with
+
+After modifying `pyproject.toml`, the lock file can be updated as below.
+
 ```
 pdm lock
 ```
-- Refer [PDM's documentation](https://pdm.fming.dev/latest/reference/cli/) for further details.
+
+See [PDM's documentation](https://pdm.fming.dev/latest/reference/cli/) for further details.
 
 ### Configuring Postgres
 
@@ -191,7 +177,7 @@ If you require a different config, make sure the necessary envs from [backend/sa
 
 ### Backend
 
-- Check [backend/README.md](/backend/README.md) for running the backend.
+- Check [backend/README.md](backend/README.md) for running the backend.
 
 ### Frontend
 
