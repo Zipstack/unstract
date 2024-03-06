@@ -45,6 +45,7 @@ PG_V_PORT = int(os.environ.get("PG_V_PORT", 5432))
 PG_V_USERNAME = os.environ.get("PG_V_USERNAME", "user")
 PG_V_PASSWORD = os.environ.get("PG_V_PASSWORD", "")
 PG_V_DATABASE = os.environ.get("PG_V_DATABASE", "")
+ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY")
 if not (REDIS_HOST and REDIS_PORT):
     raise ValueError(
         "REDIS_HOST and REDIS_PORT must be set in the environment."
@@ -72,19 +73,6 @@ be_db = peewee.PostgresqlDatabase(
 )
 be_db.init(PG_BE_DATABASE)
 be_db.connect()
-
-
-class EncryptionSecret(peewee.Model):
-    id = peewee.IntegerField()
-    key = peewee.CharField()
-
-    class Meta:
-        table_name = "account_encryptionsecret"
-        database = be_db  # This model uses the "BE_DB" database.
-
-    def save(self, force_insert: bool = False, only: Any = None) -> Any:
-        self.modified_at = datetime.datetime.now()
-        return super().save(force_insert=force_insert, only=only)
 
 
 class UnstractUsage(peewee.Model):
@@ -408,8 +396,7 @@ def adapter_instance() -> Any:
                 )
             )
 
-            encryption_secret: EncryptionSecret = EncryptionSecret.get()
-            f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
+            f: Fernet = Fernet(ENCRYPTION_KEY.encode("utf-8"))
 
             data_dict["adapter_metadata"] = json.loads(
                 f.decrypt(
