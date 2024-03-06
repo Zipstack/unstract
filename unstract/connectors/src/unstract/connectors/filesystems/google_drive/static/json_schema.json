@@ -8,6 +8,7 @@
   "properties": {
     "connectorName": {
       "type": "string",
+      "format": "password",
       "title": "Name of the connector",
       "default": "Unstract's google drive"
     }

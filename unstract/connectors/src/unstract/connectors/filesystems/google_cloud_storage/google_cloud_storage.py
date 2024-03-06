@@ -1,43 +1,43 @@
+import json
 import logging
 import os
 from typing import Any
 
-from dropbox.exceptions import DropboxException
-from dropboxdrivefs import DropboxDriveFileSystem
+from gcsfs import GCSFileSystem
+
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import (
     UnstractFileSystem,
 )
 
-from .exceptions import handle_dropbox_exception
-
 logger = logging.getLogger(__name__)
 
 
-class DropboxFS(UnstractFileSystem):
+class GoogleCloudStorageFS(UnstractFileSystem):
     def __init__(self, settings: dict[str, Any]):
-        super().__init__("Dropbox")
-        self.dropbox_fs = DropboxDriveFileSystem(token=settings["token"])
-        self.path = "///"
+        super().__init__("GoogleCloudStorage")
+        self.bucket = settings.get("bucket", "")
+        project_id = settings.get("project_id", "")
+        json_credentials = json.loads(settings.get("json_credentials", "{}"))
+        self.gcs_fs = GCSFileSystem(token=json_credentials, project=project_id)
 
     @staticmethod
     def get_id() -> str:
-        return "dropbox|db6bf4a6-f892-4d25-8652-2bf251946134"
+        return "google_cloud_storage|109bbe7b-8861-45eb-8841-7244e833d97b"
 
     @staticmethod
     def get_name() -> str:
-        return "Dropbox"
+        return "Google Cloud Storage"
 
     @staticmethod
     def get_description() -> str:
-        return "Access files in your Dropbox storage"
+        return "Access files in your Google Cloud Storage"
 
     @staticmethod
     def get_icon() -> str:
-        # TODO: Add an icon to GCS and serve it
         return (
-            "https://storage.googleapis.com"
-            "/pandora-static/connector-icons/Dropbox.png"
+            "https://storage.googleapis.com/"
+            "pandora-static/connector-icons/google_cloud_storage.png"
         )
 
     @staticmethod
@@ -63,18 +63,13 @@ class DropboxFS(UnstractFileSystem):
     def can_read() -> bool:
         return True
 
-    def get_fsspec_fs(self) -> DropboxDriveFileSystem:
-        return self.dropbox_fs
+    def get_fsspec_fs(self) -> GCSFileSystem:
+        return self.gcs_fs
 
     def test_credentials(self) -> bool:
-        """To test credentials for Dropbox."""
+        """To test credentials for Google Cloud Storage."""
         try:
-            # self.get_fsspec_fs().connect()
-            self.get_fsspec_fs().ls("")
-        except DropboxException as e:
-            logger.error(f"Test creds failed: {e}")
-            raise handle_dropbox_exception(e)
+            is_dir = bool(self.get_fsspec_fs().isdir(f"{self.bucket}"))
+            return is_dir
         except Exception as e:
-            logger.error(f"Test creds failed: {e}")
             raise ConnectorError(str(e))
-        return True
