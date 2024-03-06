@@ -3,12 +3,12 @@
 set -o nounset # exit if a variable is not set
 set -o errexit # exit for any command failure"
 
-# text color escape codes (please note \033 == \e but OSX doesn't respect the \e)
+# text color escape codes (\033 == \e but OSX doesn't respect the \e)
 blue_text='\033[94m'
 red_text='\033[31m'
 default_text='\033[39m'
 
-# set -x/xtrace uses a Sony PS4 for more info
+# set -x/xtrace uses PS4 for more info
 PS4="$blue_text""${0}:${LINENO}: ""$default_text"
 
 debug() {
