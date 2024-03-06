@@ -40,14 +40,14 @@ display_help() {
   echo
   echo -e "Syntax: $0 [options]"
   echo -e "Options:"
-  echo -e "   -h, --help        Displays the help information"
-  echo -e "   -e, --only-env    Only do env files setup"
-  echo -e "   -b, --only-build  Only do docker images build"
-  echo -e "   -B, --build-local Build docker images with specified tag locally"
-  echo -e "   -d, --detach      Run docker containers in detached mode"
-  echo -e "   -x, --trace       Enables trace mode"
-  echo -e "   -V, --verbose     Print verbose logs"
-  echo -e "   -v, --version     Docker images version tag (default \"dev\")"
+  echo -e "   -h, --help          Displays the help information"
+  echo -e "   -e, --only-env      Only do env files setup"
+  echo -e "   -b, --only-build    Only do docker images build"
+  echo -e "   -B, --build-local   Build docker images locally"
+  echo -e "   -d, --detach        Run docker containers in detached mode"
+  echo -e "   -x, --trace         Enables trace mode"
+  echo -e "   -V, --verbose       Print verbose logs"
+  echo -e "   -v, --version       Docker images version tag (default \"dev\")"
   echo -e ""
 }
 
