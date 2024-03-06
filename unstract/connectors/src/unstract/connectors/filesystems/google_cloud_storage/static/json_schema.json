@@ -23,8 +23,8 @@
     },
     "project_id": {
       "type": "string",
-      "title": "Project Id",
-      "description": "Name of the project id."
+      "title": "Project ID",
+      "description": "Name of the project ID."
     },
     "bucket": {
       "type": "string",

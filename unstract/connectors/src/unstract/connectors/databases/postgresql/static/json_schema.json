@@ -51,7 +51,7 @@
             "schema": {
               "type": "string",
               "title": "Schema",
-              "description": "Default schema: public (Optional)",
+              "description": "Default schema: public (optional)",
               "placeholder": "Enter schema (optional)"
             },
             "user": {
