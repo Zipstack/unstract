@@ -69,3 +69,11 @@ class UnstractDB(UnstractConnector, ABC):
         except Exception as e:
             raise ConnectorError(str(e))
         return True
+
+    def execute(self, query: str) -> Any:
+        try:
+            with self.get_engine().cursor() as cursor:
+                cursor.execute(query)
+                return cursor.fetchall()
+        except Exception as e:
+            raise ConnectorError(str(e))

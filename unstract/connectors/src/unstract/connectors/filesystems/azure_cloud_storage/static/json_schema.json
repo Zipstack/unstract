@@ -1,0 +1,36 @@
+{
+  "title": "Azure Cloud Storage",
+  "description": "Access files in your Azure Cloud Storage with this connector",
+  "type": "object",
+  "required": [
+    "connectorName",
+    "account_name",
+    "access_key",
+    "bucket"
+  ],
+  "properties": {
+    "connectorName": {
+      "type": "string",
+      "title": "Name of the connector",
+      "default": "Unstract's Azure cloud storage"
+    },
+    "account_name": {
+      "type": "string",
+      "title": "Account Name",
+      "description": "Account name of azure cloud storage",
+      "default":""
+    },
+    "access_key": {
+      "type": "string",
+      "title": "Access Key",
+      "format": "password",
+      "description": "Access key of the corresponding account",
+      "default":""
+    },
+    "bucket": {
+      "type": "string",
+      "title": "Bucket Name",
+      "description": "Name of the bucket to be restricted to."
+    }
+  }
+}
