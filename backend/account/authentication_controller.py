@@ -119,10 +119,10 @@ class AuthenticationController:
             return redirect(f"{settings.ERROR_URL}")
 
         if member.organization_id and member.role and len(member.role) > 0:
-            organization: Optional[Organization] = (
-                OrganizationService.get_organization_by_org_id(
-                    member.organization_id
-                )
+            organization: Optional[
+                Organization
+            ] = OrganizationService.get_organization_by_org_id(
+                member.organization_id
             )
             if organization:
                 try:
@@ -187,11 +187,12 @@ class AuthenticationController:
         self, request: Request, organization_id: str
     ) -> Response:
         user: User = request.user
+        new_organization = False
         organization_ids = CacheService.get_user_organizations(user.user_id)
         if not organization_ids:
-            z_organizations: list[OrganizationData] = (
-                self.auth_service.get_organizations_by_user_id(user.user_id)
-            )
+            z_organizations: list[
+                OrganizationData
+            ] = self.auth_service.get_organizations_by_user_id(user.user_id)
             organization_ids = {org.id for org in z_organizations}
         if organization_id and organization_id in organization_ids:
             organization = OrganizationService.get_organization_by_org_id(
@@ -212,12 +213,17 @@ class AuthenticationController:
                         organization_data.display_name,
                         organization_data.id,
                     )
+                    new_organization = True
                 except IntegrityError:
                     raise DuplicateData(
                         f"{ErrorMessage.ORGANIZATION_EXIST}, \
                             {ErrorMessage.DUPLICATE_API}"
                     )
             self.create_tenant_user(organization=organization, user=user)
+            if new_organization:
+                self.authentication_helper.create_initial_platform_key(
+                    user=user, organization=organization
+                )
             user_info: Optional[UserInfo] = self.get_user_info(request)
             serialized_user_info = SetOrganizationsResponseSerializer(
                 user_info
@@ -231,9 +237,9 @@ class AuthenticationController:
                 },
             )
             # Update user session data in redis
-            user_session_info: dict[str, Any] = (
-                CacheService.get_user_session_info(user.email)
-            )
+            user_session_info: dict[
+                str, Any
+            ] = CacheService.get_user_session_info(user.email)
             user_session_info["current_org"] = organization_id
             CacheService.set_user_session_info(user_session_info)
             response.set_cookie(Cookie.ORG_ID, organization_id)

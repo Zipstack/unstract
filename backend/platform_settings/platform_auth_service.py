@@ -23,21 +23,35 @@ class PlatformAuthenticationService:
 
     @staticmethod
     def generate_platform_key(
-        is_active: bool, key_name: str, user: User
+        is_active: bool,
+        key_name: str,
+        user: User,
+        organization: Optional[Organization] = None,
     ) -> dict[str, Any]:
         """Method to support generation of new platform key. Throws error when
         maximum count is exceeded. Forbids for user other than admin
         permission.
 
         Args:
-            key (str): Value of the key
+            key_name (str): Value of the key
             is_active (bool): By default the key is False
-            organization_id (str): Org the key belongs to.
+            user (User): User object representing the user generating the key
+            organization (Optional[Organization], optional):
+                Org the key belongs to. Defaults to None.
 
         Returns:
-            PlatformKey
+            dict[str, Any]:
+                A dictionary containing the generated platform key details,
+                    including the id, key name, and key value.
+        Raises:
+            DuplicateData: If a platform key with the same key name
+                already exists for the organization.
+            InternalServiceError: If an internal error occurs while
+                generating the platform key.
         """
-        organization = connection.get_tenant()
+        organization = organization or connection.tenant
+        if not organization:
+            raise InternalServiceError("No valid organization provided")
         try:
             # TODO : Add encryption to Platform keys
             # id is added here to avoid passing of keys in transactions.
