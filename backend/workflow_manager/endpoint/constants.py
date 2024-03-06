@@ -93,4 +93,4 @@ class BigQuery:
     When converted to list table size should be 3
     """
 
-    TABLE_SIZE = 3
+    TABLE_NAME_SIZE = 3

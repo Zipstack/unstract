@@ -10,6 +10,7 @@ from workflow_manager.endpoint.constants import (
     Snowflake,
     TableColumns,
 )
+from workflow_manager.endpoint.exceptions import BigQueryTableNotFound
 from workflow_manager.workflow.enums import AgentName, ColumnModes
 
 from unstract.connectors.databases import connectors as db_connectors
@@ -111,10 +112,8 @@ class DatabaseUtils:
                     column_types[column[0].lower()] = column[1].split("(")[0]
             elif cls == DBConnectionClass.BIGQUERY:
                 bigquery_table_name = str.lower(table_name).split(".")
-                if len(bigquery_table_name) != BigQuery.TABLE_SIZE:
-                    raise ValueError(
-                        "Please enter project_name, dataset and table_name"
-                    )
+                if len(bigquery_table_name) != BigQuery.TABLE_NAME_SIZE:
+                    raise BigQueryTableNotFound()
                 database = bigquery_table_name[0]
                 schema = bigquery_table_name[1]
                 table = bigquery_table_name[2]
