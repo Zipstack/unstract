@@ -43,6 +43,7 @@ function AddLlmProfileModal({
   const [embeddingItems, setEmbeddingItems] = useState([]);
   const [x2TextItems, setX2TextItems] = useState([]);
   const [activeKey, setActiveKey] = useState(false);
+  const [loading, setLoading] = useState(false);
   const { sessionDetails } = useSessionStore();
   const { getDropdownItems, llmProfiles, updateCustomTool } =
     useCustomToolStore();
@@ -284,6 +285,7 @@ function AddLlmProfileModal({
   ];
 
   const handleSubmit = () => {
+    setLoading(true);
     let method = "POST";
     let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/`;
 
@@ -325,6 +327,9 @@ function AddLlmProfileModal({
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
+      })
+      .finally(() => {
+        setLoading(false);
       });
   };
 
@@ -515,7 +520,7 @@ function AddLlmProfileModal({
         <Form.Item className="pre-post-amble-footer display-flex-right">
           <Space>
             <CustomButton onClick={() => setOpen(false)}>Cancel</CustomButton>
-            <CustomButton type="primary" htmlType="submit">
+            <CustomButton type="primary" htmlType="submit" loading={loading}>
               {editLlmProfileId ? "Update" : "Add"}
             </CustomButton>
           </Space>
