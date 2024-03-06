@@ -15,6 +15,7 @@ function EditableText({
   defaultText,
   handleChange,
   isTextarea,
+  placeHolder,
 }) {
   const name = isTextarea ? "prompt" : "prompt_key";
   const [triggerHandleChange, setTriggerHandleChange] = useState(false);
@@ -74,7 +75,7 @@ function EditableText({
         className="font-size-12 width-100"
         value={text}
         onChange={handleTextChange}
-        placeholder="Enter Prompt"
+        placeholder={placeHolder}
         name={name}
         size="small"
         style={{ backgroundColor: "transparent" }}
@@ -118,6 +119,7 @@ EditableText.propTypes = {
   defaultText: PropTypes.string.isRequired,
   handleChange: PropTypes.func.isRequired,
   isTextarea: PropTypes.bool,
+  placeHolder: PropTypes.string,
 };
 
 export { EditableText };
