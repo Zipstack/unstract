@@ -61,3 +61,11 @@ class ToolOutputTypeMismatch(APIException):
     default_detail = (
         "The data type of the tool's output does not match the expected type."
     )
+
+
+class BigQueryTableNotFound(APIException):
+    status_code = 400
+    default_detail = (
+        "Please enter correct correct bigquery table in the form "
+        "{table}.{schema}.{database}."
+    )

@@ -9,7 +9,8 @@
     "account",
     "database",
     "schema",
-    "warehouse"
+    "warehouse",
+    "role"
   ],
   "properties": {
     "connectorName": {

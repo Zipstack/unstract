@@ -1,9 +1,10 @@
 import uuid
 
-from backend.constants import FieldLengthConstants as FieldLength
 from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.db import models
 from django_tenants.models import DomainMixin, TenantMixin
+
+from backend.constants import FieldLengthConstants as FieldLength
 
 NAME_SIZE = 64
 KEY_SIZE = 64
@@ -131,11 +132,3 @@ class PlatformKey(models.Model):
                 name="unique_key_name",
             ),
         ]
-
-
-class EncryptionSecret(models.Model):
-    key = models.CharField(
-        max_length=KEY_SIZE,
-        null=False,
-        blank=True,
-    )
