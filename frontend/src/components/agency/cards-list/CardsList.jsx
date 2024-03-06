@@ -26,6 +26,7 @@ const CardsList = ({ step, index, activeTool, moveItem }) => {
     const toolSettings = { id, tool_id: toolId };
     setToolSettings(toolSettings);
   };
+  console.log(step);
   const deleteStep = () => {
     const requestOptions = {
       method: "DELETE",
@@ -127,7 +128,6 @@ const CardsList = ({ step, index, activeTool, moveItem }) => {
               <div className="wf-step-card-progress display-flex-center">
                 <Progress
                   type="circle"
-                  percent={step?.progress === "SUCCESS" ? 100 : 0}
                   size="small"
                   format={() => index + 1}
                 />
