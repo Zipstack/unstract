@@ -15,7 +15,7 @@ function ToolInfoCard({ toolInfo }) {
     <Card className="toolinfo-card" ref={ref}>
       <Row>
         <Col span={4}>
-          <ToolIcon iconSrc={toolInfo?.icon} />
+          <ToolIcon iconSrc={toolInfo?.icon} showBorder={true} />
         </Col>
         <Col span={20}>
           <div className="tool-info-header">
