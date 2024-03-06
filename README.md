@@ -2,29 +2,30 @@
 
 [![pdm-managed](https://img.shields.io/badge/pdm-managed-blueviolet)](https://pdm-project.org)
 
-TODO: Write few lines about the project.
+Use LLMs to eliminate manual processes involving unstructured data.
 
 ## System Requirements
 
-- `docker`
+- `docker` (see [instructions](https://docs.docker.com/engine/install/))
 - `git`
 - `pdm` (see below)
 - `pyenv` (recommended to manage multiple Python versions)
 
 ## Quick Start
 
-Install Docker Engine and the Docker Compose plugin on your workstation (see [instructions](https://docs.docker.com/engine/install/)).
+Just run the `run-platform.sh` launch script to get started in few minutes.
 
-Once Docker is installed, just run the `run-platform.sh` launch script.
-
-The launch script does env setup with default values, builds Docker images, and finally runs them for you, to get you started in a few minutes. See usage examples below.
+The launch script does env setup with default values, pulls public Docker images or builds them locally and finally runs them in containers.
 
 ```bash
-# Run entire Unstract platform with default env config.
+# Pull and run entire Unstract platform with default env config.
 ./run-platform.sh
 
-# Build and run docker containers with a specific version tag.
+# Pull and run docker containers with a specific version tag.
 ./run-platform.sh -v v0.1.0
+
+# Build docker images and run as containers with a specific version tag.
+./run-platform.sh -B -v v0.1.0
 
 # Display the help information.
 ./run-platform.sh -h
@@ -32,14 +33,14 @@ The launch script does env setup with default values, builds Docker images, and 
 # Only do setup of environment files.
 ./run-platform.sh -e
 
-# Only do docker images build with a specific version tag.
+# Only do docker images pull/build with a specific version tag.
 ./run-platform.sh -b v0.1.0
 
-### Build and run Docker containers in detached mode
+# Pull and run Docker containers in detached mode.
 ./run-platform.sh -d -v v0.1.0
 ```
 
-Now in your browser, visit [http://frontend.unstract.localhost](http://frontend.unstract.localhost).
+Now visit [http://frontend.unstract.localhost](http://frontend.unstract.localhost) in your browser.
 
 That's all. Enjoy!
 

@@ -43,6 +43,7 @@ display_help() {
   echo -e "   -h, --help        Displays the help information"
   echo -e "   -e, --only-env    Only do env files setup"
   echo -e "   -b, --only-build  Only do docker images build"
+  echo -e "   -B, --build-local Build docker images with specified tag locally"
   echo -e "   -d, --detach      Run docker containers in detached mode"
   echo -e "   -x, --trace       Enables trace mode"
   echo -e "   -V, --verbose     Print verbose logs"
@@ -63,6 +64,9 @@ parse_args() {
         ;;
       -b | --only-build)
         opt_only_build=true
+        ;;
+      -B | --build-local)
+        opt_build_local=true
         ;;
       -d | --detach)
         opt_detach="-d"
@@ -89,6 +93,7 @@ parse_args() {
 
   debug "OPTION only_env: $opt_only_env"
   debug "OPTION only_build: $opt_only_build"
+  debug "OPTION build_local: $opt_build_local"
   debug "OPTION detach: $opt_detach"
   debug "OPTION verbose: $opt_verbose"
   debug "OPTION version: $opt_version"
@@ -106,38 +111,61 @@ setup_env() {
       cp "$sample_env_path" "$env_path"
       # Add encryption secret for backend and platform-service.
       if [[ "$service" == "backend" || "$service" == "platform-service" ]]; then
-        echo "Adding encryption secret to $service"
+        echo "$blue_text""Adding encryption secret to $service""$default_text"
         echo "ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"" >> $env_path
       fi
-      echo "Created env for $service at $env_path."
+      echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
     else
-      echo "Found existing env for $service at $env_path."
+      echo -e "Found existing env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
     fi
   done
 
   if [ ! -e "$script_dir/docker/essentials.env" ]; then
     cp "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
-    echo "Created env for essential services at $script_dir/docker/essentials.env."
+    echo -e "Created env for ""$blue_text""essential services""$default_text"" at ""$blue_text""$script_dir/docker/essentials.env""$default_text""."
   else
-    echo "Found existing env for essential services at $script_dir/docker/essentials.env."
+    echo -e "Found existing env for ""$blue_text""essential services""$default_text"" at ""$blue_text""$script_dir/docker/essentials.env""$default_text""."
   fi
 
   if [ ! -e "$script_dir/docker/proxy_overrides.yaml" ]; then
-    echo "NOTE: Proxy behaviour can be overridden via $script_dir/docker/proxy_overrides.yaml."
+    echo -e "NOTE: Proxy behaviour can be overridden via ""$blue_text""$script_dir/docker/proxy_overrides.yaml""$default_text""."
   else
-    echo "Found $script_dir/docker/proxy_overrides.yaml. Proxy behaviour will be overridden."
+    echo -e "Found ""$blue_text""$script_dir/docker/proxy_overrides.yaml""$default_text"". Proxy behaviour will be overridden."
+  fi
+
+  if [ "$opt_only_env" = true ]; then
+    echo "Done." && exit 0
   fi
 }
 
 build_services() {
   pushd ${script_dir}/docker 1>/dev/null
 
-  VERSION=$opt_version docker-compose -f $script_dir/docker/docker-compose.build.yaml build || {
-    echo "Failed to build docker images."
-    exit 1
-  }
+  if [ "$opt_build_local" = true ]; then
+    echo "Building docker images locally."
+    VERSION=$opt_version docker-compose -f $script_dir/docker/docker-compose.build.yaml build || {
+      echo -e "$red_text""Failed to build docker images.""$default_text"
+      exit 1
+    }
+  else
+    for service in "${services[@]}"; do
+      if ! docker image inspect "unstract/${service}:$opt_version" &> /dev/null; then
+        echo -e "$red_text""Docker image 'unstract/${service}:$opt_version' not found. Pulling...""$default_text"
+        docker pull unstract/${service}:$opt_version || {
+          echo -e "$red_text""Failed to pull 'unstract/${service}:$opt_version'. Check if version exists.""$default_text"
+          exit 1
+        }
+      else
+        echo -e "Found docker image ""$blue_text""'unstract/${service}:$opt_version'""$default_text""."
+      fi
+    done
+  fi
 
   popd 1>/dev/null
+
+  if [ "$opt_only_build" = true ]; then
+    echo "Done." && exit 0
+  fi
 }
 
 run_services() {
@@ -148,18 +176,24 @@ run_services() {
   else
     echo -e "$blue_text""Starting docker containers in detach mode""$default_text"
   fi
+  echo -e "Once the services are up, visit ""$blue_text""http://frontend.unstract.localhost""$default_text"" in your browser."
+
   VERSION=$opt_version docker compose up $opt_detach
 
   popd 1>/dev/null
 }
 
+#
+# Run Unstract platform - BEGIN
+#
 if ! command -v docker compose &> /dev/null; then
-  echo "docker compose not found. Please install it and try again."
+  echo "$red_text""docker compose not found. Please install it and try again.""$default_text"
   exit 1
 fi
 
 opt_only_env=false
 opt_only_build=false
+opt_build_local=false
 opt_detach=""
 opt_verbose=false
 opt_version="dev"
@@ -172,11 +206,8 @@ display_banner
 parse_args $*
 
 setup_env
-if [ "$opt_only_env" = true ]; then
-  exit 0
-fi
 build_services
-if [ "$opt_only_build" = true ]; then
-  exit 0
-fi
 run_services
+#
+# Run Unstract platform - END
+#
