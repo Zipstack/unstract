@@ -28,6 +28,7 @@ function ToolIde() {
   const [isGenerateIndexOpen, setIsGenerateIndexOpen] = useState(false);
   const [isGeneratingIndex, setIsGeneratingIndex] = useState(false);
   const [generateIndexResult, setGenerateIndexResult] = useState("");
+  const [modalTitle, setModalTitle] = useState("");
   const { details, updateCustomTool, disableLlmOrDocChange, selectedDoc } =
     useCustomToolStore();
   const { sessionDetails } = useSessionStore();
@@ -147,20 +148,13 @@ function ToolIde() {
       output: docName,
     };
 
-    handleUpdateTool(body)
-      .then(() => {
-        setAlertDetails({
-          type: "success",
-          content: "Document changed successfully",
-        });
-      })
-      .catch((err) => {
-        const revertSelectedDoc = {
-          selectedDoc: prevSelectedDoc,
-        };
-        updateCustomTool(revertSelectedDoc);
-        setAlertDetails(handleException(err, "Failed to select the document"));
-      });
+    handleUpdateTool(body).catch((err) => {
+      const revertSelectedDoc = {
+        selectedDoc: prevSelectedDoc,
+      };
+      updateCustomTool(revertSelectedDoc);
+      setAlertDetails(handleException(err, "Failed to select the document"));
+    });
   };
 
   return (
@@ -224,12 +218,15 @@ function ToolIde() {
         setOpen={setOpenManageLlmModal}
         setOpenLlm={setOpenAddLlmModal}
         setEditLlmProfileId={setEditLlmProfileId}
+        setModalTitle={setModalTitle}
       />
       <AddLlmProfileModal
         open={openAddLlmModal}
         setOpen={setOpenAddLlmModal}
         editLlmProfileId={editLlmProfileId}
         setEditLlmProfileId={setEditLlmProfileId}
+        modalTitle={modalTitle}
+        setModalTitle={setModalTitle}
       />
       <Modal
         open={isGenerateIndexOpen}

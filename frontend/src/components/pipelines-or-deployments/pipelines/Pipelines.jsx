@@ -1,13 +1,11 @@
 import {
-  ArrowRightOutlined,
   ClearOutlined,
   DeleteOutlined,
   EditOutlined,
   EllipsisOutlined,
   EyeOutlined,
-  HighlightOutlined,
-  InfoCircleOutlined,
   SyncOutlined,
+  HighlightOutlined,
 } from "@ant-design/icons";
 import { Dropdown, Image, Space, Switch, Typography } from "antd";
 import PropTypes from "prop-types";
@@ -26,6 +24,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import "./Pipelines.css";
+import { formattedDateTime } from "../../../helpers/GetStaticData";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -266,19 +265,6 @@ function Pipelines({ type }) {
     {
       key: "4",
       label: (
-        <Space direction="horizontal" className="action-items">
-          <div>
-            <InfoCircleOutlined />
-          </div>
-          <div>
-            <Typography.Text>View Information</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "5",
-      label: (
         <Space
           direction="horizontal"
           className="action-items"
@@ -294,7 +280,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "6",
+      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -311,7 +297,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "7",
+      key: "6",
       label: (
         <Space
           direction="horizontal"
@@ -330,26 +316,6 @@ function Pipelines({ type }) {
           </div>
         </Space>
       ),
-    },
-    {
-      key: "8",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => window.open(selectedPorD?.goto, "_blank")}
-        >
-          <div>
-            <ArrowRightOutlined />
-          </div>
-          <div>
-            <Typography.Text disabled={type !== "app"}>
-              Go to App
-            </Typography.Text>
-          </div>
-        </Space>
-      ),
-      disabled: type !== "app",
     },
   ];
 
@@ -399,7 +365,7 @@ function Pipelines({ type }) {
       align: "center",
     },
     {
-      title: "Status",
+      title: "Status of Previous Run",
       dataIndex: "last_run_status",
       key: "last_run_status",
       align: "center",
@@ -416,14 +382,27 @@ function Pipelines({ type }) {
       ),
     },
     {
-      title: "Last Run",
+      title: "Previous Run At",
       key: "last_run_time",
       dataIndex: "last_run_time",
       align: "center",
       render: (_, record) => (
         <div>
           <Typography.Text className="p-or-d-typography" strong>
-            {record?.last_run_time}
+            {formattedDateTime(record?.last_run_time)}
+          </Typography.Text>
+        </div>
+      ),
+    },
+    {
+      title: "Frequency",
+      key: "last_run_time",
+      dataIndex: "last_run_time",
+      align: "center",
+      render: (_, record) => (
+        <div>
+          <Typography.Text className="p-or-d-typography" strong>
+            {record?.cron_data?.cron_summary}
           </Typography.Text>
         </div>
       ),
