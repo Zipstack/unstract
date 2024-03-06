@@ -32,6 +32,8 @@ function AddLlmProfileModal({
   setOpen,
   editLlmProfileId,
   setEditLlmProfileId,
+  modalTitle,
+  setModalTitle,
 }) {
   const [form] = Form.useForm();
   const [formDetails, setFormDetails] = useState({});
@@ -88,6 +90,7 @@ function AddLlmProfileModal({
     });
 
     setEditLlmProfileId(null);
+    setModalTitle("Add new LLM Profile");
     setActiveKey(false);
   }, [open]);
 
@@ -360,8 +363,7 @@ function AddLlmProfileModal({
           <SpaceWrapper>
             <div>
               <Typography.Text className="add-cus-tool-header">
-                {editLlmProfileId?.length > 0 ? "Update" : "Add"} New LLM
-                Profile
+                {modalTitle}
               </Typography.Text>
             </div>
             <div>
@@ -534,6 +536,8 @@ AddLlmProfileModal.propTypes = {
   setOpen: PropTypes.func.isRequired,
   editLlmProfileId: PropTypes.string,
   setEditLlmProfileId: PropTypes.func.isRequired,
+  modalTitle: PropTypes.string,
+  setModalTitle: PropTypes.func.isRequired,
 };
 
 export { AddLlmProfileModal };

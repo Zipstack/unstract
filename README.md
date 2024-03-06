@@ -118,9 +118,6 @@ POSTGRES_DB: unstract_db
 
 If you require a different config, make sure the necessary envs from [backend/sample.env](/backend/sample.env) are exported.
 
-- Execute the script [backend/init.sql](/backend/init.sql) that adds roles and creates a DB and extension for ZS Document Indexer tool to work.
-Make sure that [pgvector](https://github.com/pgvector/pgvector#installation) is installed.
-
 ### Pre-commit hooks
 
 - We use pre-commit to run some hooks whenever code is pushed to perform linting and static code analysis among other checks.
@@ -178,6 +175,14 @@ We just need to override default Traefik proxy routing to allow this, that's all
     - **OR** run `dockers/scripts/resolve_container_svc_from_host.sh` IF container port is NOT exposed on docker host or if you want to keep dependency host names unchanged
 
 Run the services.
+
+#### Generate Encryption key to be used in backend and Platform service
+
+ Generate Fernet Key Refer https://pypi.org/project/cryptography/
+ 
+ `ENCRYPTION_KEY=$(python -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")`
+
+ use the above generated encryption, key in ENV's of platform and backend
 
 #### Conflicting Host Names
 

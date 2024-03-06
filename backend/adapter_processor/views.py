@@ -95,9 +95,9 @@ class AdapterViewSet(GenericViewSet):
         adapter_metadata = serializer.validated_data.get(
             AdapterKeys.ADAPTER_METADATA
         )
-        adapter_metadata[
-            AdapterKeys.ADAPTER_TYPE
-        ] = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+        adapter_metadata[AdapterKeys.ADAPTER_TYPE] = (
+            serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+        )
         try:
             test_result = AdapterProcessor.test_adapter(
                 adapter_id=adapter_id, adapter_metadata=adapter_metadata
@@ -108,10 +108,7 @@ class AdapterViewSet(GenericViewSet):
             )
         except Exception as e:
             logger.error(f"Error testing adapter : {str(e)}")
-            return Response(
-                {"message": str(e)},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+            raise e
 
 
 class AdapterInstanceViewSet(ModelViewSet):

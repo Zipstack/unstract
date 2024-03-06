@@ -203,17 +203,41 @@ function Workflows() {
       });
   }
 
-  function deleteProject(evt, project) {
+  const canDeleteProject = async (id) => {
+    let status = false;
+    await projectApiService.canUpdate(id).then((res) => {
+      status = res?.data?.can_update || false;
+    });
+    return status;
+  };
+
+  const deleteProject = async (evt, project) => {
     evt.stopPropagation();
-    projectApiService
-      .deleteProject(project.id)
-      .then(() => {
-        getProjectList();
-      })
-      .catch(() => {
-        console.error(`Unable to delete workflow ${project.id}`);
+    const canDelete = await canDeleteProject(project.id);
+    if (canDelete) {
+      projectApiService
+        .deleteProject(project.id)
+        .then(() => {
+          getProjectList();
+          setAlertDetails({
+            type: "success",
+            content: "Workflow deleted successfully",
+          });
+        })
+        .catch(() => {
+          setAlertDetails({
+            type: "error",
+            content: `Unable to delete workflow ${project.id}`,
+          });
+        });
+    } else {
+      setAlertDetails({
+        type: "error",
+        content:
+          "Cannot delete this Workflow, since it is used in one or many of the API/ETL/Task pipelines",
       });
-  }
+    }
+  };
 
   function closeNewProject() {
     setEditProject();
