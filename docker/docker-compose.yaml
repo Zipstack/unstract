@@ -49,7 +49,7 @@ services:
   celery-flower:
     image: unstract/backend:${VERSION}
     container_name: unstract-celery-flower
-    entrypoint: /app/.venv/bin/celery
+    entrypoint: .venv/bin/celery
     command: "-A backend flower --port=5555"
     env_file:
       - ../backend/.env
@@ -69,7 +69,7 @@ services:
   celery-beat:
     image: unstract/backend:${VERSION}
     container_name: unstract-celery-beat
-    entrypoint: /app/.venv/bin/celery
+    entrypoint: .venv/bin/celery
     command: "-A backend beat --scheduler django_celery_beat.schedulers:DatabaseScheduler -l INFO"
     env_file:
       - ../backend/.env
@@ -110,6 +110,8 @@ services:
   prompt-service:
     image: unstract/prompt-service:${VERSION}
     container_name: unstract-prompt-service
+    depends_on:
+      - db
     ports:
       - "3003:3003"
     env_file:
