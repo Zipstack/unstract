@@ -162,7 +162,10 @@ class SourceConnector(BaseConnector):
         input_directory = str(
             source_configurations.get(SourceKey.ROOT_FOLDER, "")
         )
-        input_directory = str(Path(root_dir_path, input_directory.lstrip("/")))
+        if root_dir_path:  # user needs to manually type the optional file path
+            input_directory = str(
+                Path(root_dir_path, input_directory.lstrip("/"))
+            )
         if not isinstance(required_patterns, list):
             required_patterns = [required_patterns]
 

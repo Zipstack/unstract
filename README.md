@@ -2,32 +2,51 @@
 
 [![pdm-managed](https://img.shields.io/badge/pdm-managed-blueviolet)](https://pdm-project.org)
 
-TODO: Write few lines about the project.
+Use LLMs to eliminate manual processes involving unstructured data.
 
 ## System Requirements
 
-- docker
-- git
+- `docker` (see [instructions](https://docs.docker.com/engine/install/))
+- `git`
+- `pdm` (see below)
+- `pyenv` (recommended to manage multiple Python versions)
+
+## Quick Start
+
+Just run the `run-platform.sh` launch script to get started in few minutes.
+
+The launch script does env setup with default values, pulls public Docker images or builds them locally and finally runs them in containers.
+
+```bash
+# Pull and run entire Unstract platform with default env config.
+./run-platform.sh
+
+# Pull and run docker containers with a specific version tag.
+./run-platform.sh -v v0.1.0
+
+# Build docker images and run as containers with a specific version tag.
+./run-platform.sh -B -v v0.1.0
+
+# Display the help information.
+./run-platform.sh -h
+
+# Only do setup of environment files.
+./run-platform.sh -e
+
+# Only do docker images pull/build with a specific version tag.
+./run-platform.sh -b v0.1.0
+
+# Pull and run Docker containers in detached mode.
+./run-platform.sh -d -v v0.1.0
+```
+
+Now visit [http://frontend.unstract.localhost](http://frontend.unstract.localhost) in your browser.
+
+That's all. Enjoy!
 
 ## Running with docker compose
 
-- All services needed by the backend can be run with
-
-```
-cd docker/
-VERSION=test docker compose -f docker-compose.build.yaml build
-VERSION=test docker compose -f docker-compose.yaml up -d
-```
-
-Additional information on running with Docker can be found in [DOCKERISING.md](/DOCKERISING.md)
-
-- Use the `-f` flag to run all dependencies necessary for development, this runs containers needed for testing as well such as Minio.
-
-```
-docker compose -f docker-compose-dev-essentials.yaml up
-```
-
-- It might take sometime on the first run to pull the images.
+See [Docker README.md](docker/README.md).
 
 ## Running locally
 
@@ -36,75 +55,82 @@ docker compose -f docker-compose-dev-essentials.yaml up
 - Install the below libraries which are needed to run Unstract
   - Linux
 
-    ```
-    sudo apt install build-essential pkg-config libpoppler-cpp-dev libmagic-dev python3-dev
+    ```bash
+    apt install build-essential libmagic-dev pandoc pkg-config tesseract-ocr
     ```
 
   - Mac
 
-    ```
-    brew install pkg-config poppler freetds libmagic
+    ```bash
+    brew install freetds libmagic pkg-config poppler
     ```
 
 ### Create your virtual env
 
-- In order to install dependencies and run a package, ensure that you've sourced a virtual environment within that package. All commands in this repository assumes that you have sourced your required venv.
+All commands assumes that you have activated your `venv`.
 
-```
-cd <package_to_use>
-python -m venv .venv
-source ./venv/bin/activate
+```bash
+cd <service>
+
+# Create venv
+pdm venv create -w virtualenv --with-pip
+eval "$(pdm venv activate in-project)"
+
+# Remove venv
+pdm venv remove in-project
 ```
 
 
 ### Install dependencies with PDM
 
-- This repository makes use of [PDM](https://github.com/pdm-project/pdm) for managing dependencies with the help of a virtual
-environment.
-- If you haven't installed PDM in your machine yet, 
-  - Install it using the below command
-  ```
-  curl -sSL https://pdm.fming.dev/install-pdm.py | python3 -
-  ```
-  - Or install it from PyPI using `pip`
-  ```
-  pip install pdm
-  ```
+[PDM](https://github.com/pdm-project/pdm) is used for dependency management.
 
-Ensure you're running the PDM commands from the corresponding package root
-- Install dependencies for running the package with
+```bash
+# Install via script
+curl -sSL https://pdm.fming.dev/install-pdm.py | python3 -
 
+# Install via pip
+pip install pdm
 ```
+
+Go to service dir and install dependencies listed in corresponding `pyproject.toml`.
+
+```bash
+# Install dependencies
 pdm install
-```
-This install dev dependencies as well by default
-- For production, install the requirements with
 
-```
-pdm install --prod
+# Install specific dev dependency group
+pdm install --dev -G lint
+
+# Install production dependencies only
+pdm install --prod --no-editable
 ```
 
-- With PDM its possible to run some services from any directory within this
-repository. To list the possible scripts that can be executed
-```
+PDM allows you to run scripts applicable within the service dir.
+
+```bash
+# List the possible scripts that can be executed
 pdm run -l
 ```
 
-- Add a new dependency with (ensure you're running it from the correct project's root)
-Perform an editable install with `-e` only for local development.
-```
+Add dependencies as follows.
+
+```bash
+# Add a new service dependency to ts pyproject.toml.
 pdm add <package_from_PyPI>
+# Add a relative path as an editable install.
 pdm add -e <relative_path_to_local_package>
-```
-- List all dependencies with
-```
+# List all dependencies.
 pdm list
 ```
-- After updating `pyproject.toml`s with a newly added dependency, the lock file can be updated with
+
+After modifying `pyproject.toml`, the lock file can be updated as below.
+
 ```
 pdm lock
 ```
-- Refer [PDM's documentation](https://pdm.fming.dev/latest/reference/cli/) for further details.
+
+See [PDM's documentation](https://pdm.fming.dev/latest/reference/cli/) for further details.
 
 ### Configuring Postgres
 
@@ -152,14 +178,14 @@ If you require a different config, make sure the necessary envs from [backend/sa
 
 ### Backend
 
-- Check [backend/README.md](/backend/README.md) for running the backend.
+- Check [backend/README.md](backend/README.md) for running the backend.
 
 ### Frontend
 
 - Install dependencies with `npm install`
 - Start the server with `npm start`
 
-### Traefik Proxy Overrides
+### Traefik Proxy Overrides for Local + Docker Runs
 
 It is possible to simultaneously run few services directly on docker host while others are run as docker containers via docker compose.  
 This enables seamless development without worrying about deployment of other services which you are not concerned with.
@@ -175,6 +201,14 @@ We just need to override default Traefik proxy routing to allow this, that's all
     - **OR** run `dockers/scripts/resolve_container_svc_from_host.sh` IF container port is NOT exposed on docker host or if you want to keep dependency host names unchanged
 
 Run the services.
+
+#### Generate Encryption key to be used in backend and Platform service
+
+ Generate Fernet Key Refer https://pypi.org/project/cryptography/
+ 
+ `ENCRYPTION_KEY=$(python -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")`
+
+ use the above generated encryption, key in ENV's of platform and backend
 
 #### Conflicting Host Names
 

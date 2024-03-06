@@ -1,0 +1,35 @@
+{
+  "title": "Google Cloud Storage",
+  "description": "Access files in your Google Cloud Storage with this connector",
+  "type": "object",
+  "required": [
+    "connectorName",
+    "json_credentials",
+    "project_id",
+    "bucket"
+  ],
+  "properties": {
+    "connectorName": {
+      "type": "string",
+      "title": "Name of the connector",
+      "default": "Unstract's google cloud storage"
+    },
+    "json_credentials": {
+      "type": "string",
+      "title": "Credentials",
+      "format": "password",
+      "default": "",
+      "description": "You can download credentials from Google Clouds's iam-admin/serviceaccounts/Keys. Click on Add keys."
+    },
+    "project_id": {
+      "type": "string",
+      "title": "Project ID",
+      "description": "Name of the project ID."
+    },
+    "bucket": {
+      "type": "string",
+      "title": "Bucket Name",
+      "description": "Name of the bucket to be restricted to."
+    }
+  }
+}
