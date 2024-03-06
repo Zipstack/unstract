@@ -111,7 +111,7 @@ setup_env() {
       cp "$sample_env_path" "$env_path"
       # Add encryption secret for backend and platform-service.
       if [[ "$service" == "backend" || "$service" == "platform-service" ]]; then
-        echo "$blue_text""Adding encryption secret to $service""$default_text"
+        echo -e "$blue_text""Adding encryption secret to $service""$default_text"
         echo "ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"" >> $env_path
       fi
       echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
