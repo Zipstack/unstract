@@ -54,6 +54,7 @@
 test*.py
 
 backend
+!document-service
 frontend
 platform-service
 prompt-service

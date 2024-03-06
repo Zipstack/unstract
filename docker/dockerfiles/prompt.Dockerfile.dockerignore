@@ -57,6 +57,7 @@ backend
 document-service
 frontend
 platform-service
+!prompt-service
 tools
 unstract
 worker
