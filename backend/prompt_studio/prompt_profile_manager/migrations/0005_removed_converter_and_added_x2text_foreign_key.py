@@ -4,15 +4,16 @@ import json
 
 import django.db.models.deletion
 from cryptography.fernet import Fernet
+from django.conf import settings
 from django.db import connection, migrations, models
 
 
 def fill_with_default_x2text(apps, schema):
     ProfileManager = apps.get_model("prompt_profile_manager", "ProfileManager")
     AdapterInstance = apps.get_model("adapter_processor", "AdapterInstance")
-    EncryptionSecret = apps.get_model("account", "EncryptionSecret")
-    encryption_secret = EncryptionSecret.objects.get()
-    f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
+
+    encryption_secret: str = settings.ENCRYPTION_KEY
+    f: Fernet = Fernet(encryption_secret.encode("utf-8"))
     metadata = {
         "url": "http://unstract-unstructured-io:8000/general/v0/general"
     }
@@ -44,7 +45,6 @@ def disable_triggers(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("account", "0005_encryptionsecret"),
         ("adapter_processor", "0004_alter_adapterinstance_adapter_type"),
         (
             "prompt_profile_manager",
