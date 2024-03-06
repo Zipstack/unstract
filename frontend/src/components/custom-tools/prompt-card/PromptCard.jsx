@@ -97,16 +97,6 @@ function PromptCard({
       return { value: outputTypeData[item] };
     });
     setEnforceTypeList(dropdownList1);
-
-    const llmProfileId = promptDetails?.profile_manager;
-    if (!llmProfileId) {
-      setPage(0);
-      return;
-    }
-    const index = llmProfiles.findIndex(
-      (item) => item?.profile_id === llmProfileId
-    );
-    setPage(index + 1);
   }, []);
 
   useEffect(() => {
@@ -177,6 +167,27 @@ function PromptCard({
     }, 1000),
     []
   );
+
+  useEffect(() => {
+    const isProfilePresent = llmProfiles.some(
+      (profile) => profile.profile_id === selectedLlmProfileId
+    );
+
+    // If selectedLlmProfileId is not present, set it to null
+    if (!isProfilePresent) {
+      setSelectedLlmProfileId(null);
+    }
+
+    const llmProfileId = promptDetails?.profile_manager;
+    if (!llmProfileId) {
+      setPage(0);
+      return;
+    }
+    const index = llmProfiles.findIndex(
+      (item) => item?.profile_id === llmProfileId
+    );
+    setPage(index + 1);
+  }, [llmProfiles]);
 
   const handlePageLeft = () => {
     if (page <= 1) {
@@ -773,17 +784,21 @@ function PromptCard({
             <div className="prompt-card-llm-profiles">
               {llmProfiles?.length > 0 &&
               promptDetails?.profile_manager?.length > 0 &&
-              llmProfiles.length >= page ? (
+              selectedLlmProfileId ? (
                 <div>
-                  <Tag>{llmProfiles[page - 1]?.llm}</Tag>
-                  <Tag>{llmProfiles[page - 1]?.vector_store}</Tag>
-                  <Tag>{llmProfiles[page - 1]?.embedding_model}</Tag>
-                  <Tag>{llmProfiles[page - 1]?.x2text}</Tag>
-                  <Tag>{`${llmProfiles[page - 1]?.chunk_size}/${
-                    llmProfiles[page - 1]?.chunk_overlap
-                  }/${llmProfiles[page - 1]?.retrieval_strategy}/${
-                    llmProfiles[page - 1]?.similarity_top_k
-                  }/${llmProfiles[page - 1]?.section}`}</Tag>
+                  {llmProfiles
+                    .filter(
+                      (profile) => profile.profile_id === selectedLlmProfileId
+                    )
+                    .map((profile, index) => (
+                      <div key={index}>
+                        <Tag>{profile.llm}</Tag>
+                        <Tag>{profile.vector_store}</Tag>
+                        <Tag>{profile.embedding_model}</Tag>
+                        <Tag>{profile.x2text}</Tag>
+                        <Tag>{`${profile.chunk_size}/${profile.chunk_overlap}/${profile.retrieval_strategy}/${profile.similarity_top_k}/${profile.section}`}</Tag>
+                      </div>
+                    ))}
                 </div>
               ) : (
                 <div>
