@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-chown -R unstract /data
-
-su unstract
-
 cmd=$1
 if [ "$cmd" = "migrate" ]; then
     echo "Migration initiated"
