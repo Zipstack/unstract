@@ -14,6 +14,7 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import "./EtlTaskDeploy.css";
+import { useWorkflowStore } from "../../../store/workflow-store.js";
 
 const days = [
   "Monday",
@@ -37,8 +38,10 @@ const EtlTaskDeploy = ({
   type,
   title,
   setTableData,
-  workflowData = {},
+  workflowId,
 }) => {
+  const workflowStore = useWorkflowStore();
+  const { updateWorkflow } = workflowStore;
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -54,7 +57,13 @@ const EtlTaskDeploy = ({
   const [isCronStringValid, setCronStringValid] = useState(true);
   const [isLoading, setLoading] = useState(false);
 
-  const getWorkflows = () => {
+  useEffect(() => {
+    if (workflowId) {
+      setFormDetails({ ...formDetails, workflow_id: workflowId });
+    }
+  }, [workflowId]);
+
+  const getWorkflowList = () => {
     workflowApiService
       .getWorkflowList()
       .then((res) => {
@@ -64,10 +73,29 @@ const EtlTaskDeploy = ({
         console.error("Unable to get workflow list");
       });
   };
+  const getWorkflows = () => {
+    const connectorType = type === "task" ? "FILESYSTEM" : "DATABASE";
+    workflowApiService
+      .getWorkflowEndpointList("DESTINATION", connectorType)
+      .then((res) => {
+        const updatedData = res?.data.map((record) => ({
+          ...record,
+          id: record.workflow,
+        }));
+        setWorkflowList(updatedData);
+      })
+      .catch(() => {
+        console.error("Unable to get workflow list");
+      });
+  };
 
   useEffect(() => {
-    getWorkflows();
-  }, []);
+    if (type === "app") {
+      getWorkflowList();
+    } else {
+      getWorkflows();
+    }
+  }, [type]);
 
   const onChangeHandler = (propertyName, value) => {
     const body = {
@@ -75,9 +103,6 @@ const EtlTaskDeploy = ({
     };
     setFormDetails({ ...formDetails, ...body });
   };
-  useEffect(() => {
-    getWorkflows();
-  }, []);
 
   useEffect(() => {
     if (open) {
@@ -85,12 +110,6 @@ const EtlTaskDeploy = ({
       setRandomFrequency();
     }
   }, [open]);
-
-  useEffect(() => {
-    if (Object.keys(workflowData).length) {
-      setFormDetails({ ...formDetails, workflow_id: workflowData.workflow_id });
-    }
-  }, [workflowData]);
 
   useEffect(() => {
     const cronString = formDetails?.cron_string || "";
@@ -247,7 +266,10 @@ const EtlTaskDeploy = ({
     setLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        if (!Object.keys(workflowData)?.length) {
+        if (workflowId) {
+          // Update - can update workflow endpoint status in store
+          updateWorkflow({ allowChangeEndpoint: false });
+        } else {
           addPipeline(res?.data);
         }
         setOpen(false);
@@ -291,7 +313,7 @@ const EtlTaskDeploy = ({
               value={formDetails.pipeline_name || ""}
             ></Input>
           </SpaceWrapper>
-          {Object.keys(workflowData).length === 0 && (
+          {!workflowId && (
             <SpaceWrapper>
               <Typography>Workflow</Typography>
               <Select
@@ -382,6 +404,6 @@ EtlTaskDeploy.propTypes = {
   type: PropTypes.string.isRequired,
   title: PropTypes.string.isRequired,
   setTableData: PropTypes.func,
-  workflowData: PropTypes.object,
+  workflowId: PropTypes.string,
 };
 export { EtlTaskDeploy };
