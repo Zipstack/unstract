@@ -206,6 +206,7 @@ function DocumentParser({
                 handleDelete={handleDelete}
                 setOpenAddLlmModal={setOpenAddLlmModal}
                 updateStatus={updateStatus}
+                updatePlaceHolder="Enter Prompt"
               />
             )}
             {item.prompt_type === promptType.notes && (
@@ -214,6 +215,7 @@ function DocumentParser({
                 handleChange={handleChange}
                 handleDelete={handleDelete}
                 updateStatus={updateStatus}
+                updatePlaceHolder="Enter Notes"
               />
             )}
             <div ref={bottomRef} className="doc-parser-pad-bottom" />
