@@ -36,7 +36,7 @@ function SelectLlmProfileModal({
   const [isContext, setIsContext] = useState(false);
   const [isSource, setIsSource] = useState(false);
   const [isModified, setIsModified] = useState(false);
-  const { details } = useCustomToolStore();
+  const { details, updateCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
 
   useEffect(() => {
@@ -97,11 +97,19 @@ function SelectLlmProfileModal({
     handleUpdateTool(body)
       .then(() => {
         handleBtnText(selectedLlm);
+        const updatedDetails = { ...details };
+        updatedDetails["summarize_llm_profile"] = selectedLlm;
+        updatedDetails["summarize_prompt"] = prompt;
+        updatedDetails["summarize_context"] = isContext;
+        updatedDetails["summarize_as_source"] = isSource;
+        updateCustomTool({ details: updatedDetails });
+
         setAlertDetails({
           type: "success",
           content: "Successfully updated the LLM profile",
         });
         setIsModified(false);
+        setOpen(false);
       })
       .catch((err) => {
         setAlertDetails(
