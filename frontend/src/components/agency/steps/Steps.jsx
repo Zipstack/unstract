@@ -35,7 +35,28 @@ function Steps({ steps, setSteps, activeToolId, sourceMsg, destinationMsg }) {
 
   useEffect(() => {
     getWfEndpointDetails();
+    canUpdateWorkflow();
   }, []);
+
+  const canUpdateWorkflow = () => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${projectId}/can-update/`,
+    };
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const data = res?.data || {};
+        const body = {
+          allowChangeEndpoint: data?.can_update,
+        };
+        updateWorkflow(body);
+      })
+      .catch((err) => {
+        setAlertDetails(
+          handleException(err, "Failed to get can update status")
+        );
+      });
+  };
 
   const moveItem = (fromIndex, toIndex, funcName, dragging) => {
     if (fromIndex === undefined && funcName) {
@@ -158,7 +179,6 @@ function Steps({ steps, setSteps, activeToolId, sourceMsg, destinationMsg }) {
           type={sourceTypes.connectors[0]}
           endpointDetails={source}
           message={sourceMsg}
-          dependent={destination}
         />
         <Divider className="wf-steps-div" />
       </div>
@@ -185,7 +205,6 @@ function Steps({ steps, setSteps, activeToolId, sourceMsg, destinationMsg }) {
           type={sourceTypes.connectors[1]}
           endpointDetails={destination}
           message={destinationMsg}
-          dependent={source}
         />
       </div>
     </div>

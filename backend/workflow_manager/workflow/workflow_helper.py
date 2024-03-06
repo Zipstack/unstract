@@ -7,6 +7,7 @@ from typing import Any, Optional
 
 from account.cache_service import CacheService
 from account.models import Organization
+from api.models import APIDeployment
 from celery import current_task
 from celery import exceptions as celery_exceptions
 from celery import shared_task
@@ -14,6 +15,7 @@ from celery.result import AsyncResult
 from django.conf import settings
 from django.db import IntegrityError, connection
 from django_tenants.utils import get_tenant_model, tenant_context
+from pipeline.models import Pipeline
 from redis import StrictRedis
 from rest_framework import serializers
 from tool_instance.constants import ToolInstanceKey
@@ -21,7 +23,6 @@ from tool_instance.models import ToolInstance
 from tool_instance.tool_instance_helper import ToolInstanceHelper
 from unstract.workflow_execution.enums import LogComponent, LogState
 from unstract.workflow_execution.exceptions import StopExecution
-from utils.request import feature_flag
 from workflow_manager.endpoint.destination import DestinationConnector
 from workflow_manager.endpoint.source import SourceConnector
 from workflow_manager.workflow.constants import (
@@ -202,10 +203,10 @@ class WorkflowHelper:
         workflow_execution: Optional[WorkflowExecution] = None,
         execution_mode: Optional[tuple[str, str]] = None,
     ) -> ExecutionResponse:
-        tool_instances: list[
-            ToolInstance
-        ] = ToolInstanceHelper.get_tool_instances_by_workflow(
-            workflow.id, ToolInstanceKey.STEP
+        tool_instances: list[ToolInstance] = (
+            ToolInstanceHelper.get_tool_instances_by_workflow(
+                workflow.id, ToolInstanceKey.STEP
+            )
         )
         execution_mode = execution_mode or WorkflowExecution.Mode.INSTANT
         execution_service = WorkflowHelper.build_workflow_execution_service(
@@ -651,6 +652,22 @@ class WorkflowHelper:
             "is_failed": obj.failed(),
             "info": obj.info,
         }
+
+    @staticmethod
+    def can_update_workflow(workflow_id: str) -> dict[str, Any]:
+        try:
+            workflow: Workflow = Workflow.objects.get(pk=workflow_id)
+            if not workflow or workflow is None:
+                raise WorkflowDoesNotExistError()
+            used_count = Pipeline.objects.filter(workflow=workflow).count()
+            if used_count == 0:
+                used_count = APIDeployment.objects.filter(
+                    workflow=workflow
+                ).count()
+            return {"can_update": used_count == 0}
+        except Workflow.DoesNotExist:
+            logger.error(f"Error getting workflow: {id}")
+            raise WorkflowDoesNotExistError()
 
 
 class WorkflowSchemaHelper:

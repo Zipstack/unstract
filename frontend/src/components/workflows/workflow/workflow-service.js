@@ -78,6 +78,13 @@ function workflowService() {
       };
       return axiosPrivate(options);
     },
+    canUpdate: (id) => {
+      options = {
+        url: `${path}/workflow/${id}/can-update`,
+        method: "GET",
+      };
+      return axiosPrivate(options);
+    },
   };
 }
 
