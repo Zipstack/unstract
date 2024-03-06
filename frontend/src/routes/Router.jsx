@@ -97,13 +97,11 @@ function Router() {
             <Route path="settings" element={<SettingsPage />} />
             <Route element={<RequireAdmin />}>
               <Route path="settings/platform" element={<PlatformSettings />} />
-            </Route>
-            <Route path="settings/triad" element={<DefaultTriad />} />
-            <Route element={<RequireAdmin />}>
               <Route path="users" element={<UsersPage />} />
               <Route path="users/invite" element={<InviteEditUserPage />} />
               <Route path="users/edit" element={<InviteEditUserPage />} />
             </Route>
+            <Route path="settings/triad" element={<DefaultTriad />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFound />} />
