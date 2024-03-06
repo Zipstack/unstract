@@ -202,6 +202,14 @@ We just need to override default Traefik proxy routing to allow this, that's all
 
 Run the services.
 
+#### Generate Encryption key to be used in backend and Platform service
+
+ Generate Fernet Key Refer https://pypi.org/project/cryptography/
+ 
+ `ENCRYPTION_KEY=$(python -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")`
+
+ use the above generated encryption, key in ENV's of platform and backend
+
 #### Conflicting Host Names
 
 When same host name environment variables are used by both the service running locally and a service

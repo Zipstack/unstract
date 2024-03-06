@@ -143,6 +143,7 @@ API_STORAGE_DIR = os.environ.get("API_STORAGE_DIR")
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = get_required_setting("DJANGO_SECRET_KEY")
+ENCRYPTION_KEY = get_required_setting("ENCRYPTION_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True

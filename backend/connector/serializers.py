@@ -3,7 +3,6 @@ import logging
 from collections import OrderedDict
 from typing import Any, Optional
 
-from account.models import EncryptionSecret
 from connector.constants import ConnectorInstanceKey as CIKey
 from connector_auth.models import ConnectorAuth
 from connector_auth.pipeline.common import ConnectorAuthHelper
@@ -11,6 +10,7 @@ from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import OAuthTimeOut
 from cryptography.fernet import Fernet
+from django.conf import settings
 from utils.serializer_utils import SerializerUtils
 
 from backend.serializers import AuditSerializer
@@ -55,8 +55,8 @@ class ConnectorInstanceSerializer(AuditSerializer):
         )
         kwargs[CIKey.CONNECTOR_MODE] = connector_mode.value
 
-        encryption_secret: EncryptionSecret = EncryptionSecret.objects.get()
-        f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
+        encryption_secret: str = settings.ENCRYPTION_KEY
+        f: Fernet = Fernet(encryption_secret.encode("utf-8"))
         json_string: str = json.dumps(kwargs.pop(CIKey.CONNECTOR_METADATA))
         if self.validated_data:
             self.validated_data.pop(CIKey.CONNECTOR_METADATA)
@@ -81,8 +81,8 @@ class ConnectorInstanceSerializer(AuditSerializer):
             ] = ConnectorProcessor.get_connector_data_with_key(
                 instance.connector_id, ConnectorKeys.ICON
             )
-        encryption_secret: EncryptionSecret = EncryptionSecret.objects.get()
-        f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
+        encryption_secret: str = settings.ENCRYPTION_KEY
+        f: Fernet = Fernet(encryption_secret.encode("utf-8"))
 
         rep.pop(CIKey.CONNECTOR_METADATA_B)
         if instance.connector_metadata_b:
