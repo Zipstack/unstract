@@ -13,15 +13,15 @@ ENV PDM_VERSION 2.12.3
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update; \
     apt-get --no-install-recommends install -y \
-        fonts-dejavu fonts-dejavu-core fonts-dejavu-extra fonts-droid-fallback fonts-dustin \
-        fonts-f500 fonts-fanwood fonts-freefont-ttf \
-        fonts-liberation fonts-lmodern fonts-lyx \
-        fonts-opensymbol fonts-sil-gentium fonts-texgyre fonts-tlwg-purisa \
-        hyphen-af hyphen-en-us \
-        libreoffice-common \
-        python${PYTHON_VERSION} python3-pip \
-        software-properties-common \
-        unoconv; \
+    fonts-dejavu fonts-dejavu-core fonts-dejavu-extra fonts-droid-fallback fonts-dustin \
+    fonts-f500 fonts-fanwood fonts-freefont-ttf \
+    fonts-liberation fonts-lmodern fonts-lyx \
+    fonts-opensymbol fonts-sil-gentium fonts-texgyre fonts-tlwg-purisa \
+    hyphen-af hyphen-en-us \
+    libreoffice-common libreoffice-dev libreoffice-script-provider-python python3-uno \
+    python${PYTHON_VERSION} python3-pip \
+    software-properties-common \
+    unoconv; \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
     \
     pip install --no-cache-dir -U pip pdm~=${PDM_VERSION};
@@ -31,6 +31,8 @@ EXPOSE 3002
 WORKDIR /app
 
 COPY ${BUILD_CONTEXT_PATH}/ .
+
+RUN pip install --no-cache-dir unoserver==1.5
 
 RUN set -e; \
     \
@@ -49,7 +51,7 @@ RUN set -e; \
 
 # Creates a non-root user with an explicit UID and adds permission to access the /app folder
 # For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-RUN adduser -u 5678 --disabled-password --gecos "" unstract;
+RUN adduser -u 5678 --disabled-password --gecos "" unstract && chown -R unstract /app;
 
 USER unstract
 
