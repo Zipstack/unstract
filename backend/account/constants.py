@@ -72,3 +72,7 @@ class AuthoErrorCode:
     UMM = "UMM"
     INF = "INF"
     USF = "USF"
+
+class SubscriptionKeys:
+    REMAINING_TRIAL_DAYS = "remaining_trial_days"
+    ORGANIZATION_ID = "organization_id"
