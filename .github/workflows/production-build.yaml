@@ -5,7 +5,7 @@ on:
     types:
       - created
 
-run-name: "[${{ github.event.release.tag_name }}] Docker Image Build and Push (Development)"
+run-name: "[${{ github.event.release.tag_name }}] Docker Image Build and Push (Production)"
 
 jobs:
   build-and-push:
@@ -26,8 +26,10 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push image
+      - name: Build and push images
         working-directory: ./docker
         run: |
           VERSION=${{ github.event.release.tag_name }} docker-compose -f docker-compose.build.yaml build --no-cache ${{ matrix.service_name }}
+          docker tag unstract/${{ matrix.service_name }}:${{ github.event.release.tag_name }} unstract/${{ matrix.service_name }}:latest
           docker push unstract/${{ matrix.service_name }}:${{ github.event.release.tag_name }}
+          docker push unstract/${{ matrix.service_name }}:latest
