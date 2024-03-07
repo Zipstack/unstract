@@ -30,14 +30,6 @@
     overflow-y: auto;
 }
 
-.rpv-default-layout__sidebar-headers {
-    background-color: #F8FBFF;
-}
-
-.rpv-default-layout__toolbar {
-    background-color: #F8FBFF;
-}
-
 .rpv-default-layout__container {
     border: 0 !important;
 }
