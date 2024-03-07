@@ -23,8 +23,7 @@ RUN apt-get update; \
     \
     # Creates a non-root user with an explicit UID and adds permission to access the /app folder
     # For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-    adduser -u 5678 --disabled-password --gecos "" unstract --home /app unstract;
-
+    adduser -u 5678 --disabled-password --gecos "" --home /app unstract;
 
 WORKDIR /app
 
