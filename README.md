@@ -202,13 +202,14 @@ We just need to override default Traefik proxy routing to allow this, that's all
 
 Run the services.
 
-#### Generate Encryption key to be used in backend and Platform service
+#### Generate Encryption key to be used in `backend` and `platform-service`
 
- Generate Fernet Key Refer https://pypi.org/project/cryptography/
- 
- `ENCRYPTION_KEY=$(python -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")`
+An encryption key is used to securely encrypt and store data, for example credentials of connectors or adapters.
+We make use of [cryptography's](https://pypi.org/project/cryptography/) Fernet to perform this encryption. Use this snippet to generate a key that can be set in your respective `backend` and `platform-service` `.env` files.
 
- use the above generated encryption, key in ENV's of platform and backend
+```bash
+ENCRYPTION_KEY=$(python -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
+```
 
 #### Conflicting Host Names
 
