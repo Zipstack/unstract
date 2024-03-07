@@ -21,58 +21,59 @@ class SubscriptionConfig:
 
 
 def load_plugins() -> list[Any]:
-    """Iterate through the processor plugins and register them."""
+    """Iterate through the subscription plugins and register them."""
     plugins_app = apps.get_app_config(SubscriptionConfig.PLUGINS_APP)
     package_path = plugins_app.module.__package__
-    processor_dir = os.path.join(plugins_app.path, SubscriptionConfig.PLUGIN_DIR)
-    processor_package_path = f"{package_path}.{SubscriptionConfig.PLUGIN_DIR}"
-    processor_plugins: list[Any] = []
+    subscription_dir = os.path.join(plugins_app.path, SubscriptionConfig.PLUGIN_DIR)
+    subscription_package_path = f"{package_path}.{SubscriptionConfig.PLUGIN_DIR}"
+    subscription_plugins: list[Any] = []
 
-    for item in os.listdir(processor_dir):
+    if not os.path.exists(subscription_dir):
+        return subscription_plugins
+    
+    for item in os.listdir(subscription_dir):
         # Loads a plugin if it is in a directory.
-        if not item.startswith(SubscriptionConfig.PLUGIN_DIR):
-            continue
-        if os.path.isdir(os.path.join(processor_dir, item)):
-            processor_module_name = item
+        if os.path.isdir(os.path.join(subscription_dir, item)):
+            subscription_module_name = item
         # Loads a plugin if it is a shared library.
         # Module name is extracted from shared library name.
-        # `processor.platform_architecture.so` will be file name and
-        # `processor` will be the module name.
+        # `subscription.platform_architecture.so` will be file name and
+        # `subscription` will be the module name.
         elif item.endswith(".so"):
-            processor_module_name = item.split(".")[0]
+            subscription_module_name = item.split(".")[0]
         else:
             continue
         try:
             full_module_path = (
-                f"{processor_package_path}.{processor_module_name}"
+                f"{subscription_package_path}.{subscription_module_name}"
             )
             module = import_module(full_module_path)
             metadata = getattr(module, SubscriptionConfig.METADATA, {})
 
             if metadata.get(SubscriptionConfig.METADATA_IS_ACTIVE, False):
-                processor_plugins.append(
+                subscription_plugins.append(
                     {
                         SubscriptionConfig.MODULE: module,
                         SubscriptionConfig.METADATA: module.metadata,
                     }
                 )
                 logger.info(
-                    "Loaded processor plugin: %s, is_active: %s",
+                    "Loaded subscription plugin: %s, is_active: %s",
                     module.metadata[SubscriptionConfig.METADATA_NAME],
                     module.metadata[SubscriptionConfig.METADATA_IS_ACTIVE],
                 )
             else:
                 logger.info(
-                    "Processor plugin %s is not active.",
-                    processor_module_name,
+                    "subscription plugin %s is not active.",
+                    subscription_module_name,
                 )
         except ModuleNotFoundError as exception:
             logger.error(
-                "Error while importing processor plugin: %s",
+                "Error while importing subscription plugin: %s",
                 exception,
             )
 
-    if len(processor_plugins) == 0:
-        logger.info("No processor plugins found.")
+    if len(subscription_plugins) == 0:
+        logger.info("No subscription plugins found.")
 
-    return processor_plugins
+    return subscription_plugins

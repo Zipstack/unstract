@@ -12,36 +12,37 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "account.custom_auth_middleware.CustomAuthMiddleware",
-    "backend.plugins.subscription.time_trials.middleware.SubscriptionMiddleware",
+    "plugins.subscription.time_trials.middleware.SubscriptionMiddleware",
     "middleware.exception.ExceptionLoggingMiddleware",
     "social_django.middleware.SocialAuthExceptionMiddleware",
 ]
 
-TENANT_APPS = (
-    # your tenant-specific apps
+SHARED_APPS = (
+    # Multitenancy
+    "django_tenants",
+    "corsheaders",
+    # For the organization model
+    "account",
+    # Django apps should go below this line
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "tenant_account",
-    "project",
-    "prompt",
-    "connector",
-    "adapter_processor",
-    "file_management",
-    "workflow_manager.endpoint",
-    "workflow_manager.workflow",
-    "tool_instance",
-    "pipeline",
-    "cron_expression_generator",
-    "platform_settings",
-    "api",
-    "prompt_studio.prompt_profile_manager",
-    "prompt_studio.prompt_studio",
-    "prompt_studio.prompt_studio_core",
-    "prompt_studio.prompt_studio_registry",
-    "prompt_studio.prompt_studio_output_manager",
+    "django.contrib.admindocs",
+    # Third party apps should go below this line,
+    "rest_framework",
+    # Connector OAuth
+    "connector_auth",
+    "social_django",
+    # Doc generator
+    "drf_yasg",
+    "docs",
+    # Plugins
+    "plugins",
+    "log_events",
+    "feature_flag",
+    "django_celery_beat",
     "cloud",
 )
