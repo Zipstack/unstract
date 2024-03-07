@@ -25,6 +25,8 @@ RUN apt-get update; \
     # For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
     adduser -u 5678 --disabled-password --gecos "" --home /app unstract;
 
+USER unstract
+
 WORKDIR /app
 
 COPY ${BUILD_CONTEXT_PATH} .
