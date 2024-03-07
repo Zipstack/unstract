@@ -19,13 +19,7 @@ RUN apt-get update; \
         git; \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
     \
-    pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}; \
-    \
-    # Creates a non-root user with an explicit UID and adds permission to access the /app folder
-    # For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-    adduser -u 5678 --disabled-password --gecos "" --home /app unstract;
-
-USER unstract
+    pip install --no-cache-dir -U pip pdm~=${PDM_VERSION};
 
 WORKDIR /app
 
