@@ -68,7 +68,5 @@ RUN mkdir prompt-studio-data
 
 EXPOSE 3003
 
-USER unstract
-
 # During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
 CMD [".venv/bin/gunicorn", "--bind", "0.0.0.0:3003", "--timeout", "300", "unstract.prompt_service.main:app"]
