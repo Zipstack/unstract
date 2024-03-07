@@ -15,7 +15,7 @@ Use LLMs to eliminate manual processes involving unstructured data.
 
 Just run the `run-platform.sh` launch script to get started in few minutes.
 
-The launch script does env setup with default values, pulls public Docker images or builds them locally and finally runs them in containers.
+The launch script does env setup with default values, pulls public docker images or builds them locally and finally runs them in containers.
 
 ```bash
 # Pull and run entire Unstract platform with default env config.
@@ -24,8 +24,8 @@ The launch script does env setup with default values, pulls public Docker images
 # Pull and run docker containers with a specific version tag.
 ./run-platform.sh -v v0.1.0
 
-# Build docker images and run as containers with a specific version tag.
-./run-platform.sh -B -v v0.1.0
+# Build docker images locally and run with a specific version tag.
+./run-platform.sh -b -v v0.1.0
 
 # Display the help information.
 ./run-platform.sh -h
@@ -33,10 +33,13 @@ The launch script does env setup with default values, pulls public Docker images
 # Only do setup of environment files.
 ./run-platform.sh -e
 
-# Only do docker images pull/build with a specific version tag.
-./run-platform.sh -b v0.1.0
+# Only do docker images pull with a specific version tag.
+./run-platform.sh -p -v v0.1.0
 
-# Pull and run Docker containers in detached mode.
+# Only do docker images pull by building locally with a specific version tag.
+./run-platform.sh -p -b -v v0.1.0
+
+# Pull and run docker containers in detached mode.
 ./run-platform.sh -d -v v0.1.0
 ```
 

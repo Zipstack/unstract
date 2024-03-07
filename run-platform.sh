@@ -42,12 +42,12 @@ display_help() {
   echo -e "Options:"
   echo -e "   -h, --help          Displays the help information"
   echo -e "   -e, --only-env      Only do env files setup"
-  echo -e "   -b, --only-build    Only do docker images build"
-  echo -e "   -B, --build-local   Build docker images locally"
+  echo -e "   -p, --only-pull     Only do docker images pull"
+  echo -e "   -b, --build-local   Build docker images locally"
   echo -e "   -d, --detach        Run docker containers in detached mode"
   echo -e "   -x, --trace         Enables trace mode"
   echo -e "   -V, --verbose       Print verbose logs"
-  echo -e "   -v, --version       Docker images version tag (default \"dev\")"
+  echo -e "   -v, --version       Docker images version tag (default \"latest\")"
   echo -e ""
 }
 
@@ -62,10 +62,10 @@ parse_args() {
       -e | --only-env)
         opt_only_env=true
         ;;
-      -b | --only-build)
-        opt_only_build=true
+      -p | --only-pull)
+        opt_only_pull=true
         ;;
-      -B | --build-local)
+      -b | --build-local)
         opt_build_local=true
         ;;
       -d | --detach)
@@ -92,7 +92,7 @@ parse_args() {
   done
 
   debug "OPTION only_env: $opt_only_env"
-  debug "OPTION only_build: $opt_only_build"
+  debug "OPTION only_pull: $opt_only_pull"
   debug "OPTION build_local: $opt_build_local"
   debug "OPTION detach: $opt_detach"
   debug "OPTION verbose: $opt_verbose"
@@ -163,7 +163,7 @@ build_services() {
 
   popd 1>/dev/null
 
-  if [ "$opt_only_build" = true ]; then
+  if [ "$opt_only_pull" = true ]; then
     echo "Done." && exit 0
   fi
 }
@@ -192,11 +192,11 @@ if ! command -v docker compose &> /dev/null; then
 fi
 
 opt_only_env=false
-opt_only_build=false
+opt_only_pull=false
 opt_build_local=false
 opt_detach=""
 opt_verbose=false
-opt_version="dev"
+opt_version="latest"
 
 script_dir=$(dirname "$(readlink -f "$BASH_SOURCE")")
 # Extract service names from docker compose file.

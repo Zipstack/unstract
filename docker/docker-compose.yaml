@@ -17,6 +17,9 @@ services:
       - redis
       - reverse-proxy
       - minio
+      - platform-service
+      - prompt-service
+      - x2text-service
     volumes:
       - ./workflow_data:/data
     environment:
