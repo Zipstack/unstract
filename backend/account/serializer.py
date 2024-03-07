@@ -2,9 +2,10 @@ import re
 
 # from account.enums import Region
 from account.models import Organization, User
+from account.subscription_plugin_registry import SubscriptionConfig, load_plugins
 from rest_framework import serializers
 
-
+subscription_loader=load_plugins()
 class OrganizationSignupSerializer(serializers.Serializer):
     name = serializers.CharField(required=True, max_length=150)
     display_name = serializers.CharField(required=True, max_length=150)
@@ -63,6 +64,15 @@ class SetOrganizationsResponseSerializer(serializers.Serializer):
 
     def to_representation(self, instance):  # type: ignore
         data = super().to_representation(instance)
+        for subscription_plugin in subscription_loader:
+            try : 
+                cls = subscription_plugin[SubscriptionConfig.METADATA][
+                        SubscriptionConfig.METADATA_SERVICE_CLASS
+                    ]
+                data["remaining_trial_days"]=cls.fetch_active_days(organization_id=id)
+            except Exception:
+                # To avoid error for missing plugins.
+                data = super().to_representation(instance)
         # Modify the representation if needed
         return data
 

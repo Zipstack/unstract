@@ -2,11 +2,12 @@ import logging
 from typing import Optional
 
 from account.models import Domain, Organization
+from account.subscription_plugin_registry import SubscriptionConfig, load_plugins
 from django.db import IntegrityError
 
 Logger = logging.getLogger(__name__)
 
-
+subscription_loader = load_plugins()
 class OrganizationService:
     def __init__(self):  # type: ignore
         pass
@@ -30,6 +31,14 @@ class OrganizationService:
                 schema_name=organization_id,
             )
             organization.save()
+
+            for subscription_plugin in subscription_loader:
+                cls = subscription_plugin[SubscriptionConfig.METADATA][
+                    SubscriptionConfig.METADATA_SERVICE_CLASS
+                ]
+                cls.add(
+                    organization_id=organization_id)
+
         except IntegrityError as error:
             Logger.info(f"[Duplicate Id] Failed to create Organization Error: {error}")
             raise error
