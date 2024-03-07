@@ -15,7 +15,7 @@ The Tool Registry relies on a `registry.yaml` file to maintain a comprehensive l
 
 ### Public Tools
 
-- Public tools are openly accessible to all organizations and are readily available in the platform's hub. These public tools are cataloged in `public_tools.json`. They are pulled from Dockerhub and require no authentication.
+- Public tools are openly accessible to all organizations and are readily available in the platform's `Workflows` page. These public tools are cataloged in `public_tools.json`. They are pulled from Docker hub and hence require no authentication.
 
 ### Private Tools
 
