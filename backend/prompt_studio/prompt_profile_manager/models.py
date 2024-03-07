@@ -3,6 +3,7 @@ import uuid
 from account.models import User
 from adapter_processor.models import AdapterInstance
 from django.db import models
+from prompt_studio.prompt_studio_core.models import CustomTool
 from utils.models.base_model import BaseModel
 
 
@@ -78,4 +79,17 @@ class ProfileManager(BaseModel):
         null=True,
         blank=True,
         editable=False,
+    )
+
+    prompt_studio_tool = models.ForeignKey(
+        CustomTool, on_delete=models.PROTECT, null=True
+    )
+    is_default = models.BooleanField(
+        default=False,
+        db_comment="Default LLM Profile used in prompt",
+    )
+
+    is_summarize_llm = models.BooleanField(
+        default=False,
+        db_comment="Default LLM Profile used for summarizing",
     )

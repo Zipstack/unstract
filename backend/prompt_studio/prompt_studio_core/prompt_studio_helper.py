@@ -103,10 +103,16 @@ class PromptStudioHelper:
         """
         tool: CustomTool = CustomTool.objects.get(pk=tool_id)
         if is_summary:
-            default_profile = tool.summarize_llm_profile
+            profile_manager = ProfileManager.objects.get(
+                prompt_studio_tool=tool, is_summarize_llm=True
+            )
+            default_profile = profile_manager
             file_path = file_name
         else:
-            default_profile = tool.default_profile
+            profile_manager = ProfileManager.objects.get(
+                prompt_studio_tool=tool, is_default=True
+            )
+            default_profile = profile_manager
             file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                 org_id, is_create=False, user_id=user_id, tool_id=tool_id
             )

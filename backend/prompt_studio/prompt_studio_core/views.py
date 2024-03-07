@@ -7,6 +7,10 @@ from django.db.models import QuerySet
 from django.http import HttpRequest
 from permissions.permission import IsOwner
 from prompt_studio.processor_loader import ProcessorConfig, load_plugins
+from prompt_studio.prompt_profile_manager.models import ProfileManager
+from prompt_studio.prompt_profile_manager.serializers import (
+    ProfileManagerSerializer,
+)
 from prompt_studio.prompt_studio.exceptions import FilenameMissingError
 from prompt_studio.prompt_studio_core.constants import (
     ToolStudioErrors,
@@ -27,7 +31,6 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance.models import ToolInstance
 from utils.filtering import FilterHelper
-from prompt_studio.prompt_studio_registry.models import PromptStudioRegistry
 
 from .models import CustomTool
 from .serializers import CustomToolSerializer, PromptStudioIndexSerializer
@@ -97,6 +100,26 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 )
         return super().destroy(request, *args, **kwargs)
 
+    def partial_update(
+        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
+    ) -> Response:
+        summarize_llm_profile_id = request.data.get(
+            "summarize_llm_profile", None
+        )
+        if summarize_llm_profile_id:
+            prompt_tool = self.get_object()
+
+            ProfileManager.objects.filter(
+                prompt_studio_tool=prompt_tool
+            ).update(is_summarize_llm=False)
+            profile_manager = ProfileManager.objects.get(
+                pk=summarize_llm_profile_id
+            )
+            profile_manager.is_summarize_llm = True
+            profile_manager.save()
+
+        return super().partial_update(request, *args, **kwargs)
+
     @action(detail=True, methods=["get"])
     def get_select_choices(self, request: HttpRequest) -> Response:
         """Method to return all static dropdown field values.
@@ -114,6 +137,45 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"Error occured while fetching select fields {e}")
             return Response(select_choices, status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get"])
+    def list_profiles(self, request: HttpRequest, pk: Any = None) -> Response:
+        prompt_tool = (
+            self.get_object()
+        )  # Assuming you have a get_object method in your viewset
+
+        profile_manager_instances = ProfileManager.objects.filter(
+            prompt_studio_tool=prompt_tool
+        )
+
+        serialized_instances = ProfileManagerSerializer(
+            profile_manager_instances, many=True
+        ).data
+
+        return Response(serialized_instances)
+
+    @action(detail=True, methods=["patch"])
+    def make_profile_default(
+        self, request: HttpRequest, pk: Any = None
+    ) -> Response:
+        prompt_tool = (
+            self.get_object()
+        )  # Assuming you have a get_object method in your viewset
+
+        ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
+            is_default=False
+        )
+
+        profile_manager = ProfileManager.objects.get(
+            pk=request.data["default_profile"]
+        )
+        profile_manager.is_default = True
+        profile_manager.save()
+
+        return Response(
+            status=status.HTTP_200_OK,
+            data={"default_profile": profile_manager.profile_id},
+        )
 
     @action(detail=True, methods=["get"])
     def index_document(self, request: HttpRequest) -> Response:
