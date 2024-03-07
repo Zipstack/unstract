@@ -12,7 +12,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "account.custom_auth_middleware.CustomAuthMiddleware",
-    "unstract-cloud.backend.plugins.subscription.time_trials.middleware.SubscriptionMiddleware"
+    "backend.plugins.subscription.time_trials.middleware.SubscriptionMiddleware",
     "middleware.exception.ExceptionLoggingMiddleware",
     "social_django.middleware.SocialAuthExceptionMiddleware",
 ]
