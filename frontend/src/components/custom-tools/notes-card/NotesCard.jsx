@@ -13,7 +13,15 @@ import { useState } from "react";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";
 
-function NotesCard({ details, handleChange, handleDelete, updateStatus }) {
+function NotesCard({
+  details,
+  handleChange,
+  handleDelete,
+  updateStatus,
+  updatePlaceHolder,
+}) {
+  const [promptKey, setPromptKey] = useState("");
+  const [promptText, setPromptText] = useState("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
 
@@ -31,9 +39,12 @@ function NotesCard({ details, handleChange, handleDelete, updateStatus }) {
             <EditableText
               isEditing={isEditingTitle}
               setIsEditing={setIsEditingTitle}
+              text={promptKey}
+              setText={setPromptKey}
               promptId={details?.prompt_id}
               defaultText={details?.prompt_key}
               handleChange={handleChange}
+              placeHolder={updatePlaceHolder}
             />
           </Col>
           <Col span={6} className="display-flex-right">
@@ -85,10 +96,13 @@ function NotesCard({ details, handleChange, handleDelete, updateStatus }) {
         <EditableText
           isEditing={isEditingNote}
           setIsEditing={setIsEditingNote}
+          text={promptText}
+          setText={setPromptText}
           promptId={details?.prompt_id}
           defaultText={details?.prompt}
           handleChange={handleChange}
           isTextarea={true}
+          placeHolder={updatePlaceHolder}
         />
       </Space>
     </Card>
@@ -100,6 +114,7 @@ NotesCard.propTypes = {
   handleChange: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
   updateStatus: PropTypes.object.isRequired,
+  updatePlaceHolder: PropTypes.string,
 };
 
 export { NotesCard };

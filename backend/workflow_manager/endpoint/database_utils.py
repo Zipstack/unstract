@@ -3,15 +3,18 @@ import json
 import logging
 from typing import Any, Optional
 
-from unstract.connectors.databases import connectors as db_connectors
-from unstract.connectors.databases.unstract_db import UnstractDB
 from utils.constants import Common
 from workflow_manager.endpoint.constants import (
+    BigQuery,
     DBConnectionClass,
     Snowflake,
     TableColumns,
 )
+from workflow_manager.endpoint.exceptions import BigQueryTableNotFound
 from workflow_manager.workflow.enums import AgentName, ColumnModes
+
+from unstract.connectors.databases import connectors as db_connectors
+from unstract.connectors.databases.unstract_db import UnstractDB
 
 logger = logging.getLogger(__name__)
 
@@ -60,58 +63,84 @@ class DatabaseUtils:
         return sql_values
 
     @staticmethod
-    def get_column_types(
-        engine: Any, table_name: str, cls: Any = None
-    ) -> dict[str, str]:
-        """Retrieve column types for a specified table from a database engine.
+    def get_column_types_util(columns_with_types: Any) -> dict[str, str]:
+        """Converts db results columns_with_types to dict.
 
         Args:
-            engine (Any): The database engine used to execute queries.
-            table_name (str): The name of the table for which column types
-                are retrieved.
-            cls (Any, optional): The database connection class (e.g.,
-                DBConnectionClass.SNOWFLAKE) for handling database-specific
-                queries.
-                Defaults to None.
+            columns_with_types (Any): _description_
 
         Returns:
-            dict: A dictionary mapping column names to their respective data
-            types.
+            dict[str, str]: _description_
+        """
+        column_types: dict[str, str] = {}
+        for column_name, data_type in columns_with_types:
+            column_types[column_name] = data_type
+        return column_types
+
+    @staticmethod
+    def get_column_types(
+        cls: Any,
+        table_name: str,
+        connector_id: str,
+        connector_settings: dict[str, Any],
+    ) -> Any:
+        """Get db column name and types.
+
+        Args:
+            cls (Any): _description_
+            table_name (str): _description_
+            connector_id (str): _description_
+            connector_settings (dict[str, Any]): _description_
 
         Raises:
-            Exception: If there is an error while retrieving column types,
-                an exception is raised. Exit.
+            ValueError: _description_
+            e: _description_
 
-        Note:
-            - If `cls` is not provided or is None, the function assumes a
-                Default SQL database and queries column types accordingly.
-            - If `cls` is provided and matches DBConnectionClass.SNOWFLAKE,
-                the function queries column types using Snowflake-specific
-                syntax.
+        Returns:
+            Any: _description_
         """
+        column_types: dict[str, str] = {}
         try:
-            column_types: dict[str, str] = {}
-            with engine.cursor() as cursor:
-                if cls == DBConnectionClass.SNOWFLAKE:
-                    results = cursor.execute(f"describe table {table_name}")
-                    for column in results:
-                        column_types[column[0].lower()] = column[1].split("(")[
-                            0
-                        ]
-                else:
-                    # Default to Other SQL DBs
-                    # Postgresql treats the table names as in lowercase
-                    # tested only with Postgresql
-                    table_name = str.lower(table_name)
-                    columns_with_types_query = (
-                        "SELECT column_name, data_type FROM "
-                        "information_schema.columns WHERE "
-                        f"table_name = '{table_name}'"
-                    )
-                    cursor.execute(columns_with_types_query)
-                    columns_with_types = cursor.fetchall()
-                    for column_name, data_type in columns_with_types:
-                        column_types[column_name] = data_type
+            if cls == DBConnectionClass.SNOWFLAKE:
+                query = f"describe table {table_name}"
+                results = DatabaseUtils.execute_and_fetch_data(
+                    connector_id=connector_id,
+                    connector_settings=connector_settings,
+                    query=query,
+                )
+                for column in results:
+                    column_types[column[0].lower()] = column[1].split("(")[0]
+            elif cls == DBConnectionClass.BIGQUERY:
+                bigquery_table_name = str.lower(table_name).split(".")
+                if len(bigquery_table_name) != BigQuery.TABLE_NAME_SIZE:
+                    raise BigQueryTableNotFound()
+                database = bigquery_table_name[0]
+                schema = bigquery_table_name[1]
+                table = bigquery_table_name[2]
+                query = (
+                    "SELECT column_name, data_type FROM "
+                    f"{database}.{schema}.INFORMATION_SCHEMA.COLUMNS WHERE "
+                    f"table_name = '{table}'"
+                )
+                results = DatabaseUtils.execute_and_fetch_data(
+                    connector_id=connector_id,
+                    connector_settings=connector_settings,
+                    query=query,
+                )
+                column_types = DatabaseUtils.get_column_types_util(results)
+            else:
+                table_name = str.lower(table_name)
+                query = (
+                    "SELECT column_name, data_type FROM "
+                    "information_schema.columns WHERE "
+                    f"table_name = '{table_name}'"
+                )
+                results = DatabaseUtils.execute_and_fetch_data(
+                    connector_id=connector_id,
+                    connector_settings=connector_settings,
+                    query=query,
+                )
+                column_types = DatabaseUtils.get_column_types_util(results)
         except Exception as e:
             logger.error(
                 f"Error getting column types for {table_name}: {str(e)}"
@@ -180,13 +209,19 @@ class DatabaseUtils:
 
     @staticmethod
     def get_sql_values_for_query(
-        engine: Any, table_name: str, values: dict[str, Any]
+        engine: Any,
+        connector_id: str,
+        connector_settings: dict[str, Any],
+        table_name: str,
+        values: dict[str, Any],
     ) -> list[str]:
         """Generate SQL values for an insert query based on the provided values
         and table schema.
 
         Args:
             engine (Any): The database engine.
+            connector_id: The connector id of the connector provided
+            connector_settings: Connector settings provided by user
             table_name (str): The name of the target table for the insert query.
             values (dict[str, Any]): A dictionary containing column-value pairs
                 for the insert query.
@@ -202,24 +237,20 @@ class DatabaseUtils:
             - For other SQL databases, it uses default SQL generation
                 based on column types.
         """
-
-        if engine.__class__.__name__ == DBConnectionClass.SNOWFLAKE:
-            # Handle Snowflake
-            column_types: dict[str, str] = DatabaseUtils.get_column_types(
-                engine=engine,
-                table_name=table_name,
-                cls=DBConnectionClass.SNOWFLAKE,
-            )
+        class_name = engine.__class__.__name__
+        column_types: dict[str, str] = DatabaseUtils.get_column_types(
+            cls=class_name,
+            table_name=table_name,
+            connector_id=connector_id,
+            connector_settings=connector_settings,
+        )
+        if class_name == DBConnectionClass.SNOWFLAKE:
             sql_values = DatabaseUtils.make_sql_values_for_query(
                 values=values,
                 column_types=column_types,
                 cls=DBConnectionClass.SNOWFLAKE,
             )
         else:
-            # Default to Other SQL DBs
-            column_types = DatabaseUtils.get_column_types(
-                engine=engine, table_name=table_name
-            )
             sql_values = DatabaseUtils.make_sql_values_for_query(
                 values=values, column_types=column_types
             )
@@ -248,11 +279,13 @@ class DatabaseUtils:
             f"INSERT INTO {table_name} ({','.join(sql_keys)}) "
             f"SELECT {','.join(sql_values)}"
         )
-
         try:
-            with engine.cursor() as cursor:
-                cursor.execute(sql)
-            engine.commit()
+            if hasattr(engine, "cursor"):
+                with engine.cursor() as cursor:
+                    cursor.execute(sql)
+                engine.commit()
+            else:
+                engine.query(sql)
         except Exception as e:
             logger.error(f"Error while writing data: {str(e)}")
             raise e
@@ -266,3 +299,13 @@ class DatabaseUtils:
         ]
         connector_class: UnstractDB = connector(connector_settings)
         return connector_class.get_engine()
+
+    @staticmethod
+    def execute_and_fetch_data(
+        connector_id: str, connector_settings: dict[str, Any], query: str
+    ) -> Any:
+        connector = db_connectors[connector_id][Common.METADATA][
+            Common.CONNECTOR
+        ]
+        connector_class: UnstractDB = connector(connector_settings)
+        return connector_class.execute(query=query)

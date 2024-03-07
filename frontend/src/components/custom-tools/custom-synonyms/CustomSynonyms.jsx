@@ -130,44 +130,65 @@ function CustomSynonyms({ setOpen }) {
     setSynonyms(updatedSynonyms);
   };
 
+  function isEmpty(obj) {
+    if (typeof obj !== "object" || obj === null) {
+      return true;
+    }
+    return Object.values(obj).every(
+      (arr) => Array.isArray(arr) && arr.length === 0
+    );
+  }
+
   const handleSave = () => {
     const promptGrammar = {};
     [...synonyms].forEach((item) => {
-      promptGrammar[item?.word] = item?.synonyms || [];
+      if (
+        !item?.word ||
+        !item?.synonyms?.length ||
+        item.word in promptGrammar
+      ) {
+        return;
+      }
+      promptGrammar[item.word] = item.synonyms || [];
     });
+    if (promptGrammar && !isEmpty(promptGrammar)) {
+      const body = {
+        prompt_grammer: promptGrammar,
+      };
+      const requestOptions = {
+        method: "PATCH",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/`,
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: body,
+      };
 
-    const body = {
-      prompt_grammer: promptGrammar,
-    };
-
-    const requestOptions = {
-      method: "PATCH",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json",
-      },
-      data: body,
-    };
-
-    setIsLoading(true);
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const grammar = res?.data?.prompt_grammer;
-        const updatedDetails = { ...details };
-        updatedDetails["prompt_grammer"] = grammar;
-        updateCustomTool(updatedDetails);
-        setAlertDetails({
-          type: "success",
-          content: "Saved synonyms successfully",
+      setIsLoading(true);
+      axiosPrivate(requestOptions)
+        .then((res) => {
+          const grammar = res?.data?.prompt_grammer;
+          const updatedDetails = { ...details };
+          updatedDetails["prompt_grammer"] = grammar;
+          updateCustomTool(updatedDetails);
+          setAlertDetails({
+            type: "success",
+            content: "Saved synonyms successfully",
+          });
+        })
+        .catch((err) => {
+          setAlertDetails(handleException(err, "Failed to update"));
+        })
+        .finally(() => {
+          setIsLoading(false);
         });
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to update"));
-      })
-      .finally(() => {
-        setIsLoading(false);
+    } else {
+      setAlertDetails({
+        type: "warning",
+        content: "Please add synonyms to save",
       });
+    }
   };
 
   return (

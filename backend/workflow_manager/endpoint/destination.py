@@ -223,7 +223,11 @@ class DestinationConnector(BaseConnector):
             connector_settings=connector_settings,
         )
         sql_values = DatabaseUtils.get_sql_values_for_query(
-            engine=engine, table_name=table_name, values=values
+            engine=engine,
+            connector_id=connector_instance.connector_id,
+            connector_settings=connector_settings,
+            table_name=table_name,
+            values=values,
         )
 
         DatabaseUtils.execute_write_query(
