@@ -5,7 +5,6 @@ import debounce from "lodash/debounce";
 
 import "./EditableText.css";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
-
 function EditableText({
   isEditing,
   setIsEditing,
