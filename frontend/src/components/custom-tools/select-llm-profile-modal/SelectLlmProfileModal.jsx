@@ -36,8 +36,7 @@ function SelectLlmProfileModal({
   const [isContext, setIsContext] = useState(false);
   const [isSource, setIsSource] = useState(false);
   const [isModified, setIsModified] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const { details, updateCustomTool } = useCustomToolStore();
+  const { details } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
 
   useEffect(() => {
@@ -95,31 +94,19 @@ function SelectLlmProfileModal({
       [fieldNames.SUMMARIZE_AS_SOURCE]: isSource,
     };
 
-    setIsLoading(true);
     handleUpdateTool(body)
       .then(() => {
         handleBtnText(selectedLlm);
-        const updatedDetails = { ...details };
-        updatedDetails["summarize_llm_profile"] = selectedLlm;
-        updatedDetails["summarize_prompt"] = prompt;
-        updatedDetails["summarize_context"] = isContext;
-        updatedDetails["summarize_as_source"] = isSource;
-        updateCustomTool({ details: updatedDetails });
-
         setAlertDetails({
           type: "success",
           content: "Successfully updated the LLM profile",
         });
         setIsModified(false);
-        setOpen(false);
       })
       .catch((err) => {
         setAlertDetails(
           handleException(err, "Failed to update the LLM profile")
         );
-      })
-      .finally(() => {
-        setIsLoading(false);
       });
   };
 
@@ -205,7 +192,6 @@ function SelectLlmProfileModal({
                 type="primary"
                 onClick={handleSave}
                 disabled={!isModified}
-                loading={isLoading}
               >
                 Save
               </CustomButton>

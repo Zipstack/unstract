@@ -78,24 +78,26 @@ function OutputAnalyzerCard({ doc, totalFields }) {
         </Flex>
       </div>
       <div className="output-analyzer-main">
-        <Row className="height-100">
-          <Col span={12} className="height-100">
-            <div className="output-analyzer-left-box">
-              <DocumentViewer
-                doc={doc}
-                isLoading={isDocLoading}
-                isContentAvailable={fileUrl?.length > 0}
-              >
-                <PdfViewer fileUrl={fileUrl} />
-              </DocumentViewer>
-            </div>
-          </Col>
-          <Col span={12} className="height-100">
-            <div className="output-analyzer-right-box">
-              <CombinedOutput doc={doc} setFilledFields={setFilledFields} />
-            </div>
-          </Col>
-        </Row>
+        {fileUrl?.length > 0 && (
+          <Row className="height-100">
+            <Col span={12} className="height-100">
+              <div className="output-analyzer-left-box">
+                <DocumentViewer
+                  doc={doc}
+                  isLoading={isDocLoading}
+                  isContentAvailable={fileUrl?.length > 0}
+                >
+                  <PdfViewer fileUrl={fileUrl} />
+                </DocumentViewer>
+              </div>
+            </Col>
+            <Col span={12} className="height-100">
+              <div className="output-analyzer-right-box">
+                <CombinedOutput doc={doc} setFilledFields={setFilledFields} />
+              </div>
+            </Col>
+          </Row>
+        )}
       </div>
     </div>
   );
