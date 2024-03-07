@@ -68,11 +68,5 @@ RUN mkdir prompt-studio-data
 
 EXPOSE 3003
 
-# Creates a non-root user with an explicit UID and adds permission to access the /app folder
-# For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-RUN adduser -u 5678 --disabled-password --gecos "" unstract;
-
-USER unstract
-
 # During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
 CMD [".venv/bin/gunicorn", "--bind", "0.0.0.0:3003", "--timeout", "300", "unstract.prompt_service.main:app"]
