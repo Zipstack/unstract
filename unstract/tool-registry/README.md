@@ -19,7 +19,7 @@ The Tool Registry relies on a `registry.yaml` file to maintain a comprehensive l
 
 ### Private Tools
 
-- In contrast, private tools are documented in the `private_tools.json` file. This file is not tracked by git. These tools are designated for restricted or specialized use and are not accessible to the general public via the cloud platform. They are generally pulled from a supported container registry and require authentication.
+- In contrast, private tools are documented in the `private_tools.json` file. This file is not tracked by git. These tools are meant for restricted or specialized use and are visible only to the running Unstract instance. They are generally pulled from a supported private container registry and hence require authentication.
 
 ## Registering New Tools (Private Tools)
 
