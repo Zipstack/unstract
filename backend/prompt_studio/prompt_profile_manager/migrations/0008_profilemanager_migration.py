@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
     dependencies = [
         (
             "prompt_profile_manager",
-            "0008_alter_profilemanager_profile_name_and_more",
+            "0007_profilemanager_is_default_and_more",
         ),
     ]
 
