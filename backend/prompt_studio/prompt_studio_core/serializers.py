@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from django.core.exceptions import ObjectDoesNotExist
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio.serializers import ToolStudioPromptSerializer
@@ -26,12 +27,22 @@ class CustomToolSerializer(AuditSerializer):
                 prompt_studio_tool=instance, is_summarize_llm=True
             )
             data[TSKeys.SUMMARIZE_LLM_PROFILE] = profile_manager.profile_id
-
+        except ObjectDoesNotExist:
+            logger.info(
+                "Summarize LLM profile doesnt exist for prompt tool %s",
+                str(instance.tool_id),
+            )
+        try:
             profile_manager = ProfileManager.objects.get(
                 prompt_studio_tool=instance, is_default=True
             )
             data[TSKeys.DEFAULT_PROFILE] = profile_manager.profile_id
-
+        except ObjectDoesNotExist:
+            logger.info(
+                "Default LLM profile doesnt exist for prompt tool %s",
+                str(instance.tool_id),
+            )
+        try:
             prompt_instance: ToolStudioPrompt = ToolStudioPrompt.objects.filter(
                 tool_id=data.get(TSKeys.TOOL_ID)
             ).order_by("sequence_number")
