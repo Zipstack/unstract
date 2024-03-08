@@ -7,9 +7,10 @@ from connector.models import ConnectorInstance
 from connector.unstract_account import UnstractAccount
 from django.conf import settings
 from django.db import connection
+from workflow_manager.workflow.models.workflow import Workflow
+
 from unstract.connectors.filesystems.ucs import UnstractCloudStorage
 from unstract.connectors.filesystems.ucs.constants import UCSKey
-from workflow_manager.workflow.models.workflow import Workflow
 
 logger = logging.getLogger(__name__)
 
@@ -314,3 +315,24 @@ class ConnectorInstanceHelper:
             ConnectorInstance.ConnectorMode.DATABASE,
             values,
         )
+
+    @staticmethod
+    def get_input_output_connector_instances_by_workflow(
+        workflow_id: str,
+    ) -> list[ConnectorInstance]:
+        """Method to fetch input and output connectors by workflow.
+
+        Args:
+            workflow_id (str)
+
+        Returns:
+            list[ConnectorInstance]
+        """
+        filter_params: dict[str, Any] = {
+            "workflow": workflow_id,
+        }
+        connector_instances = ConnectorInstance.objects.filter(
+            **filter_params
+        ).all()
+        logger.info(f"Retrived connector instance values {connector_instances}")
+        return list(connector_instances)

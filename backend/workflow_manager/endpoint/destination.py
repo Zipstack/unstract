@@ -6,9 +6,7 @@ from typing import Any, Optional
 
 import fsspec
 import magic
-from account.models import EncryptionSecret
 from connector.models import ConnectorInstance
-from cryptography.fernet import Fernet
 from django.db import connection
 from fsspec.implementations.local import LocalFileSystem
 from unstract.sdk.constants import ToolExecKey
@@ -78,15 +76,8 @@ class DestinationConnector(BaseConnector):
             endpoint_type=WorkflowEndpoint.EndpointType.DESTINATION,
         )
         if endpoint.connector_instance:
-            encryption_secret: EncryptionSecret = EncryptionSecret.objects.get()
-            f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
-            endpoint.connector_instance.connector_metadata = json.loads(
-                f.decrypt(
-                    bytes(endpoint.connector_instance.connector_metadata_b
-                          ).decode(
-                        "utf-8"
-                    )
-                )
+            endpoint.connector_instance.connector_metadata = (
+                endpoint.connector_instance.metadata
             )
         return endpoint
 
@@ -191,9 +182,7 @@ class DestinationConnector(BaseConnector):
     def insert_into_db(self, file_history: Optional[FileHistory]) -> None:
         """Insert data into the database."""
         connector_instance: ConnectorInstance = self.endpoint.connector_instance
-        connector_settings: dict[
-            str, Any
-        ] = connector_instance.connector_metadata
+        connector_settings: dict[str, Any] = connector_instance.metadata
         destination_configurations: dict[str, Any] = self.endpoint.configuration
         table_name: str = str(
             destination_configurations.get(DestinationKey.TABLE)
@@ -234,7 +223,11 @@ class DestinationConnector(BaseConnector):
             connector_settings=connector_settings,
         )
         sql_values = DatabaseUtils.get_sql_values_for_query(
-            engine=engine, table_name=table_name, values=values
+            engine=engine,
+            connector_id=connector_instance.connector_id,
+            connector_settings=connector_settings,
+            table_name=table_name,
+            values=values,
         )
 
         DatabaseUtils.execute_write_query(

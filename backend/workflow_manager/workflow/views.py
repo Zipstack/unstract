@@ -1,11 +1,9 @@
 import logging
 from typing import Any, Optional
 
-from backend.constants import RequestKey
 from connector.connector_instance_helper import ConnectorInstanceHelper
 from django.conf import settings
 from django.db.models.query import QuerySet
-from django.http import HttpRequest
 from permissions.permission import IsOwner
 from pipeline.models import Pipeline
 from pipeline.pipeline_processor import PipelineProcessor
@@ -16,7 +14,6 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance.tool_processor import ToolProcessor
 from unstract.tool_registry.dto import Tool
-from unstract.tool_registry.tool_registry import ToolRegistry
 from utils.filtering import FilterHelper
 from workflow_manager.endpoint.destination import DestinationConnector
 from workflow_manager.endpoint.endpoint_utils import WorkflowEndpointUtils
@@ -26,8 +23,8 @@ from workflow_manager.workflow.dto import ExecutionResponse
 from workflow_manager.workflow.enums import SchemaEntity, SchemaType
 from workflow_manager.workflow.exceptions import (
     InvalidRequest,
+    MissingEnvException,
     WorkflowDoesNotExistError,
-    WorkflowExecutionBadRequestException,
     WorkflowExecutionError,
     WorkflowGenerationError,
     WorkflowRegenerationError,
@@ -43,6 +40,8 @@ from workflow_manager.workflow.workflow_helper import (
     WorkflowHelper,
     WorkflowSchemaHelper,
 )
+
+from backend.constants import RequestKey
 
 logger = logging.getLogger(__name__)
 
@@ -241,8 +240,19 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK,
             )
         except (InvalidRequest, WorkflowExecutionError) as exception:
+            logger.error(f"Error while executing workflow: {exception}")
             update_pipeline(pipeline_guid, Pipeline.PipelineStatus.FAILURE)
             raise exception
+        except MissingEnvException as exception:
+            update_pipeline(pipeline_guid, Pipeline.PipelineStatus.FAILURE)
+            logger.error(f"Error while executing workflow: {exception}")
+            return Response(
+                {
+                    "error": "Please check the logs for more details: "
+                    + str(exception)
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except Exception as exception:
             logger.error(f"Error while executing workflow: {exception}")
             update_pipeline(pipeline_guid, Pipeline.PipelineStatus.FAILURE)
@@ -305,6 +315,11 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         return Response(response.get("message"), status=response.get("status"))
 
     @action(detail=True, methods=["get"])
+    def can_update(self, request: Request, pk: str) -> Response:
+        response: dict[str, Any] = WorkflowHelper.can_update_workflow(pk)
+        return Response(response, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"])
     def clear_file_marker(
         self, request: Request, *args: Any, **kwargs: Any
     ) -> Response:
@@ -340,33 +355,3 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             schema_type=schema_type, schema_entity=schema_entity
         )
         return Response(data=json_schema, status=status.HTTP_200_OK)
-
-    @action(detail=True, methods=["GET"])
-    def workflow_settings_schema(self, request: HttpRequest) -> Response:
-        tool_registry = ToolRegistry()
-        schema = tool_registry.get_project_settings_schema()
-        return Response(schema)
-
-    @action(detail=True, methods=["GET", "PUT"])
-    def workflow_settings(self, request: HttpRequest, pk: str) -> Response:
-        workflow = self.get_object()
-        tool_registry = ToolRegistry()
-        if request.method == "GET":
-            schema = tool_registry.get_project_settings_schema()
-            return Response({"schema": schema, "settings": workflow.settings})
-
-        elif request.method == "PUT":
-            schema = tool_registry.get_project_settings_schema()
-
-            try:
-                tool_registry.validate_schema_with_data(request.data, schema)
-            except Exception as e:
-                logger.error(f"Invalid input data {str(e)}")
-                raise WorkflowExecutionBadRequestException("Invalid input")
-
-            workflow.settings = request.data
-            workflow.save()
-            return Response(
-                {"message": "Settings updated successfully"},
-                status=status.HTTP_200_OK,
-            )

@@ -171,7 +171,7 @@ cython_debug/
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
+.idea/
 
 ### Linux ###
 *~
@@ -604,9 +604,15 @@ $RECYCLE.BIN/
 
 ### Unstract ###
 
-# Plugins
+# Authentication Plugins
 backend/plugins/authentication/*
 !backend/plugins/authentication/auth_sample
+
+# Processor Plugins
+backend/plugins/processor/*
+
+# FE Plugins
+frontend/src/plugins/*
 
 # Tool registry
 unstract/tool-registry/src/unstract/tool_registry/*.json
@@ -622,11 +628,19 @@ docker/*.env
 !docker/sample.*.env
 docker/public_tools.json
 docker/proxy_overrides.yaml
-
-# Tool development
-tools/*/sdks/
-tools/*/data_dir/
-
 docker/workflow_data/
 
+# Tool development
+tools/*/unstract-sdk/
+tools/*/data_dir/
 
+# Backend settings ignore (allows user overrides)
+backend/backend/settings/*
+!backend/backend/settings/__init__.py
+!backend/backend/settings/base.py
+!backend/backend/settings/dev.py
+!backend/backend/settings/test.py
+
+# Local Dependencies for docker testing
+ unstract/unstract-adapters/
+ unstract/unstract-sdk/

@@ -14,7 +14,6 @@ import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { AddCustomToolFormModal } from "../add-custom-tool-form-modal/AddCustomToolFormModal";
 import { ViewTools } from "../view-tools/ViewTools";
-
 import { handleException } from "../../../helpers/GetStaticData";
 import "./ListOfTools.css";
 
@@ -42,6 +41,7 @@ function ListOfTools() {
   const [listOfTools, setListOfTools] = useState([]);
   const [filteredListOfTools, setFilteredListOfTools] = useState([]);
   const [search, setSearch] = useState("");
+  const [isEdit, setIsEdit] = useState(false);
 
   useEffect(() => {
     getListOfTools();
@@ -124,6 +124,7 @@ function ListOfTools() {
     if (!editToolData) {
       return;
     }
+    setIsEdit(true);
     setEditItem(editToolData);
     setOpenAddTool(true);
   };
@@ -175,6 +176,12 @@ function ListOfTools() {
     []
   );
 
+  const showAddTool = () => {
+    setEditItem(null);
+    setIsEdit(false);
+    setOpenAddTool(true);
+  };
+
   return (
     <>
       <div className="list-of-tools-layout">
@@ -199,7 +206,7 @@ function ListOfTools() {
                 <CustomButton
                   type="primary"
                   icon={<PlusOutlined />}
-                  onClick={() => setOpenAddTool(true)}
+                  onClick={showAddTool}
                 >
                   New Tool
                 </CustomButton>
@@ -210,6 +217,7 @@ function ListOfTools() {
               <ViewTools
                 isLoading={isListLoading}
                 viewType={viewType}
+                isEmpty={!listOfTools?.length}
                 listOfTools={filteredListOfTools}
                 setOpenAddTool={setOpenAddTool}
                 handleEdit={handleEdit}
@@ -219,13 +227,15 @@ function ListOfTools() {
           </div>
         </div>
       </div>
-      <AddCustomToolFormModal
-        open={openAddTool}
-        setOpen={setOpenAddTool}
-        editItem={editItem}
-        setEditItem={setEditItem}
-        handleAddNewTool={handleAddNewTool}
-      />
+      {openAddTool && (
+        <AddCustomToolFormModal
+          open={openAddTool}
+          setOpen={setOpenAddTool}
+          editItem={editItem}
+          isEdit={isEdit}
+          handleAddNewTool={handleAddNewTool}
+        />
+      )}
     </>
   );
 }

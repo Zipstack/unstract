@@ -9,19 +9,23 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 function EditableText({
   isEditing,
   setIsEditing,
+  text,
+  setText,
   promptId,
   defaultText,
   handleChange,
   isTextarea,
+  placeHolder,
 }) {
-  const [text, setText] = useState("");
+  const name = isTextarea ? "prompt" : "prompt_key";
+  const [triggerHandleChange, setTriggerHandleChange] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const divRef = useRef(null);
   const { disableLlmOrDocChange } = useCustomToolStore();
 
   useEffect(() => {
     setText(defaultText);
-  }, [defaultText]);
+  }, []);
 
   useEffect(() => {
     // Attach the event listener when the component mounts
@@ -45,10 +49,18 @@ function EditableText({
 
   const onSearchDebounce = useCallback(
     debounce((event) => {
-      handleChange(event, promptId, false, true);
+      setTriggerHandleChange(true);
     }, 1000),
     []
   );
+
+  useEffect(() => {
+    if (!triggerHandleChange) {
+      return;
+    }
+    handleChange(text, promptId, name, true, false);
+    setTriggerHandleChange(false);
+  }, [triggerHandleChange]);
 
   const handleClickOutside = (event) => {
     if (divRef.current && !divRef.current.contains(event.target)) {
@@ -63,8 +75,8 @@ function EditableText({
         className="font-size-12 width-100"
         value={text}
         onChange={handleTextChange}
-        placeholder="Enter Prompt"
-        name="prompt"
+        placeholder={placeHolder}
+        name={name}
         size="small"
         style={{ backgroundColor: "transparent" }}
         variant={`${!isEditing && !isHovered ? "borderless" : "outlined"}`}
@@ -84,7 +96,7 @@ function EditableText({
       value={text}
       onChange={handleTextChange}
       placeholder="Enter Key"
-      name="prompt_key"
+      name={name}
       size="small"
       style={{ backgroundColor: "transparent" }}
       variant={`${!isEditing && !isHovered ? "borderless" : "outlined"}`}
@@ -101,10 +113,13 @@ function EditableText({
 EditableText.propTypes = {
   isEditing: PropTypes.bool.isRequired,
   setIsEditing: PropTypes.func.isRequired,
+  text: PropTypes.string,
+  setText: PropTypes.func.isRequired,
   promptId: PropTypes.string.isRequired,
   defaultText: PropTypes.string.isRequired,
   handleChange: PropTypes.func.isRequired,
   isTextarea: PropTypes.bool,
+  placeHolder: PropTypes.string,
 };
 
 export { EditableText };

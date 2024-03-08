@@ -2,7 +2,7 @@
   "schemaVersion": "0.0.1",
   "displayName": "Document Indexer",
   "functionName": "document_indexer",
-  "toolVersion": "0.0.1",
+  "toolVersion": "0.0.2",
   "description": "Used to index documents in the specified vector DB / embedding.",
   "input": {
     "description": "Document that needs to be indexed"

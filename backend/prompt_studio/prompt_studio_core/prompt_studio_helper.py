@@ -16,7 +16,6 @@ from prompt_studio.prompt_studio_core.exceptions import (
     AnswerFetchError,
     DefaultProfileError,
     IndexingError,
-    OutputSaveError,
     PromptNotValid,
     ToolNotValid,
 )
@@ -82,29 +81,39 @@ class PromptStudioHelper:
 
     @staticmethod
     def index_document(
-        tool_id: str, file_name: str, org_id: str, user_id: str
+        tool_id: str,
+        file_name: str,
+        org_id: str,
+        user_id: str,
+        is_summary: bool = False,
     ) -> Any:
         """Method to index a document.
 
         Args:
-            tool_id (str):Id of the tool
+            tool_id (str): Id of the tool
             file_name (str): File to parse
+            org_id (str): The ID of the organization to which the user belongs.
+            user_id (str): The ID of the user who uploaded the document.
+            is_summary (bool, optional): Whether the document is a summary
+                or not. Defaults to False.
 
         Raises:
             ToolNotValid
             IndexingError
         """
         tool: CustomTool = CustomTool.objects.get(pk=tool_id)
-        default_profile: Optional[ProfileManager] = tool.default_profile
+        if is_summary:
+            default_profile = tool.summarize_llm_profile
+            file_path = file_name
+        else:
+            default_profile = tool.default_profile
+            file_path = FileManagerHelper.handle_sub_directory_for_tenants(
+                org_id, is_create=False, user_id=user_id, tool_id=tool_id
+            )
+            file_path = str(Path(file_path) / file_name)
+
         if not default_profile:
             raise DefaultProfileError()
-        file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            org_id=org_id,
-            user_id=user_id,
-            tool_id=tool_id,
-            is_create=False,
-        )
-        file_path = str(Path(file_path) / file_name)
         stream_log.publish(
             tool_id,
             stream_log.log(
@@ -134,6 +143,7 @@ class PromptStudioHelper:
             tool_id=tool_id,
             file_name=file_path,
             org_id=org_id,
+            is_summary=is_summary,
         )
         logger.info(f"Indexing done sucessfully for {file_name}")
         stream_log.publish(
@@ -182,6 +192,15 @@ class PromptStudioHelper:
                 prompts: list[ToolStudioPrompt] = []
                 prompts.append(prompt_instance)
                 tool: CustomTool = prompt_instance.tool_id
+
+                if tool.summarize_as_source:
+                    directory, filename = os.path.split(file_path)
+                    file_path = os.path.join(
+                        directory,
+                        TSPKeys.SUMMARIZE,
+                        os.path.splitext(filename)[0] + ".txt",
+                    )
+
                 stream_log.publish(
                     tool.tool_id,
                     stream_log.log(
@@ -277,6 +296,7 @@ class PromptStudioHelper:
                 file_name=path,
                 tool_id=str(tool.tool_id),
                 org_id=org_id,
+                is_summary=tool.summarize_as_source,
             )
 
             output: dict[str, Any] = {}
@@ -348,19 +368,6 @@ class PromptStudioHelper:
         if answer["status"] == "ERROR":
             raise AnswerFetchError()
         output_response = json.loads(answer["structure_output"])
-
-        # persist output
-        try:
-            for key in output_response:
-                if TSPKeys.EVAL_RESULT_DELIM not in key:
-                    persisted_prompt = ToolStudioPrompt.objects.get(
-                        prompt_key=key
-                    )
-                    persisted_prompt.output = output_response[key] or ""
-                    persisted_prompt.save()
-        except Exception as e:
-            logger.error(f"Exception while saving prompt output: {e}")
-            raise OutputSaveError()
         return output_response
 
     @staticmethod
@@ -369,6 +376,7 @@ class PromptStudioHelper:
         tool_id: str,
         file_name: str,
         org_id: str,
+        is_summary: bool = False,
     ) -> str:
         try:
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
@@ -380,6 +388,12 @@ class PromptStudioHelper:
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
         file_hash = ToolUtils.get_hash_from_file(file_path=file_name)
+        extract_file_path: Optional[str] = None
+        if not is_summary:
+            directory, filename = os.path.split(file_name)
+            extract_file_path = os.path.join(
+                directory, "extract", os.path.splitext(filename)[0] + ".txt"
+            )
         return str(
             tool_index.index_file(
                 tool_id=tool_id,
@@ -391,5 +405,6 @@ class PromptStudioHelper:
                 chunk_size=profile_manager.chunk_size,
                 chunk_overlap=profile_manager.chunk_overlap,
                 reindex=profile_manager.reindex,
+                output_file_path=extract_file_path,
             )
         )

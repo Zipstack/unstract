@@ -39,11 +39,12 @@ function DocumentParser({
     }
   }, [scrollToBottom]);
 
-  const handleChange = (
+  const handleChange = async (
     event,
     promptId,
     dropdownItem,
-    isUpdateStatus = false
+    isUpdateStatus = false,
+    isPromptUpdate = false
   ) => {
     const promptsAndNotes = details?.prompts || [];
     let name = "";
@@ -88,26 +89,42 @@ function DocumentParser({
       data: body,
     };
 
+    const modifiedDetails = { ...details };
+    const modifiedPrompts = [...(modifiedDetails?.prompts || [])].map(
+      (item) => {
+        if (item?.prompt_id === promptId) {
+          return {
+            ...item,
+            [name]: value, // Update the specific field instantly
+          };
+        }
+        return item;
+      }
+    );
+    modifiedDetails["prompts"] = modifiedPrompts;
+    updateCustomTool({ details: modifiedDetails });
+
     handleUpdateStatus(
       isUpdateStatus,
       promptId,
       promptStudioUpdateStatus.isUpdating
     );
-    axiosPrivate(requestOptions)
+
+    return axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data;
-        const modifiedDetails = { ...details };
         const modifiedPrompts = [...(modifiedDetails?.prompts || [])].map(
           (item) => {
             if (item?.prompt_id === data?.prompt_id) {
-              data.evalMetrics = item?.evalMetrics || [];
               return data;
             }
             return item;
           }
         );
         modifiedDetails["prompts"] = modifiedPrompts;
-        updateCustomTool({ details: modifiedDetails });
+        if (!isPromptUpdate) {
+          updateCustomTool({ details: modifiedDetails });
+        }
         handleUpdateStatus(
           isUpdateStatus,
           promptId,
@@ -116,6 +133,7 @@ function DocumentParser({
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to update"));
+        updateCustomTool({ details });
         handleUpdateStatus(isUpdateStatus, promptId, null);
       })
       .finally(() => {
@@ -188,6 +206,7 @@ function DocumentParser({
                 handleDelete={handleDelete}
                 setOpenAddLlmModal={setOpenAddLlmModal}
                 updateStatus={updateStatus}
+                updatePlaceHolder="Enter Prompt"
               />
             )}
             {item.prompt_type === promptType.notes && (
@@ -196,6 +215,7 @@ function DocumentParser({
                 handleChange={handleChange}
                 handleDelete={handleDelete}
                 updateStatus={updateStatus}
+                updatePlaceHolder="Enter Notes"
               />
             )}
             <div ref={bottomRef} className="doc-parser-pad-bottom" />

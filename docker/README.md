@@ -1,34 +1,39 @@
-# DOCKER BUILD
-We can build the dockers locally using the below command
+# Docker Build
 
-```
-VERSION=test docker compose -f docker-compose.build.yaml build
-```
+```bash
+# Build all services
+VERSION=dev docker compose -f docker-compose.build.yaml build
 
-Here `VERSION` env will be the docker tag version we need to use. For local testing we can pass any value. We can use the same compose files for building and publishing our dockers in our CI/CD systems as well.
-
-If some one needs to build only one of the services they can do it by running build for that alone
-
-Eg:-
-
-```
-VERSION=test docker compose -f docker-compose.build.yaml build frontend
+# Build a specific service alone
+VERSION=dev docker compose -f docker-compose.build.yaml build frontend
 ```
 
-# DOCKER RUN
+# Docker Run
 
-NOTE: copy sample.*.env files into *.env and make required changes in it before running `docker compose up`
+**NOTE**: First copy `sample.*.env` files to `*.env` and update as required.
 
-We can use the `docker compose up` command to run all the required services. Make sure build is done before the run and to use the same `VERSION`. 
+```bash
+# Up all services
+VERSION=dev docker compose -f docker-compose.yaml up -d
 
+# Up a specific service alone
+VERSION=dev docker compose -f docker-compose.yaml up -d frontend
 ```
-VERSION=test docker compose -f docker-compose.yaml up -d
+
+Now access frontend at http://frontend.unstract.localhost
+
+# Docker Build and Run Optional Services
+
+Some services are kept optional and will not be built or started by default. Run them as follows.
+
+```bash
+# Build optional services also
+VERSION=dev docker compose -f docker-compose.build.yaml --profile optional build
+# Up optional services also
+VERSION=dev docker compose -f docker-compose.yaml --profile optional up -d
 ```
 
-Now you should be able to access your frontend at http://frontend.unstract.localhost
-
-
-# `src` FOLDER LAYOUT AND `gunicorn`
+# `src` Folder Layout and `gunicorn`
 
 For the following project structure:
 

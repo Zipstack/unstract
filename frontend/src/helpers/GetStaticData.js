@@ -1,3 +1,6 @@
+import moment from "moment";
+import momentTz from "moment-timezone";
+
 const THEME = {
   DARK: "dark",
   LIGHT: "light",
@@ -241,12 +244,20 @@ const getTimeForLogs = () => {
   return formattedDate;
 };
 
-const handleException = (err, errMessage) => {
+const handleException = (err, errMessage, setBackendErrors = undefined) => {
   if (err?.response?.data?.type === "validation_error") {
     // Handle validation errors
-  } else if (
-    ["client_error", "server_error"].includes(err?.response?.data?.type)
-  ) {
+    if (setBackendErrors) {
+      setBackendErrors(err?.response?.data);
+    } else {
+      return {
+        type: "error",
+        content: errMessage || "Something went wrong",
+      };
+    }
+  }
+
+  if (["client_error", "server_error"].includes(err?.response?.data?.type)) {
     // Handle client_error, server_error
     return {
       type: "error",
@@ -255,12 +266,104 @@ const handleException = (err, errMessage) => {
         errMessage ||
         "Something went wrong",
     };
-  } else {
-    return {
-      type: "error",
-      content: err?.message,
-    };
   }
+
+  return {
+    type: "error",
+    content: errMessage || err?.message,
+  };
+};
+
+const base64toBlob = (data) => {
+  const bytes = atob(data);
+  let length = bytes.length;
+  const out = new Uint8Array(length);
+
+  while (length--) {
+    out[length] = bytes.charCodeAt(length);
+  }
+
+  return new Blob([out], { type: "application/pdf" });
+};
+
+const removeFileExtension = (fileName) => {
+  if (!fileName) {
+    return "";
+  }
+  const fileNameSplit = fileName.split(".");
+  const fileNameSplitLength = fileNameSplit.length;
+  const modFileName = fileNameSplit.slice(0, fileNameSplitLength - 1);
+  return modFileName.join(".");
+};
+
+const isJson = (text) => {
+  try {
+    if (typeof text === "object") {
+      return true;
+    }
+
+    if (typeof text === "string") {
+      const json = JSON.parse(text);
+      return typeof json === "object";
+    }
+    return false;
+  } catch (err) {
+    return false;
+  }
+};
+
+const displayPromptResult = (output) => {
+  try {
+    if (isJson(output)) {
+      return JSON.stringify(JSON.parse(output), null, 4);
+    }
+
+    const outputParsed = JSON.parse(output);
+    return outputParsed;
+  } catch (err) {
+    return output;
+  }
+};
+
+const onboardCompleted = (adaptersList) => {
+  if (!Array.isArray(adaptersList)) {
+    return false;
+  }
+  const MANDATORY_ADAPTERS = ["llm", "vector_db", "embedding"];
+  adaptersList = adaptersList.map((element) => element.toLowerCase());
+  return MANDATORY_ADAPTERS.every((value) => adaptersList.includes(value));
+};
+
+// Input: ISOdateTime format
+// Output: Mar 10, 2023 7:33 PM IST
+const formattedDateTime = (ISOdateTime) => {
+  if (ISOdateTime) {
+    const validIsoDate = moment.utc(ISOdateTime).toISOString();
+    // eslint-disable-next-line new-cap
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return momentTz.tz(validIsoDate, zone).format("lll z");
+  } else {
+    return "";
+  }
+};
+
+const getBackendErrorDetail = (attr, backendErrors) => {
+  if (backendErrors) {
+    const error = backendErrors?.errors.find((error) => error?.attr === attr);
+    return error ? error?.detail : null;
+  }
+  return null;
+};
+
+const titleCase = (str) => {
+  if (str === null || str.length === 0) {
+    return "";
+  }
+  const words = str.toLowerCase().split(" ");
+  for (let i = 0; i < words.length; i++) {
+    words[i] = words[i][0].toUpperCase() + words[i].slice(1);
+  }
+  return words.join(" ");
 };
 
 export {
@@ -272,12 +375,14 @@ export {
   deploymentsStaticContent,
   endpointType,
   formatBytes,
+  formattedDateTime,
   getBaseUrl,
   getOrgNameFromPathname,
   getReadableDateAndTime,
   getTimeForLogs,
   handleException,
   listOfAppDeployments,
+  onboardCompleted,
   promptStudioUpdateStatus,
   promptType,
   publicRoutes,
@@ -287,4 +392,10 @@ export {
   toolIdeOutput,
   wfExecutionTypes,
   workflowStatus,
+  base64toBlob,
+  removeFileExtension,
+  isJson,
+  displayPromptResult,
+  getBackendErrorDetail,
+  titleCase,
 };

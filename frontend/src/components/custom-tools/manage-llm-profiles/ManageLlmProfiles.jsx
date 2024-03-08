@@ -35,6 +35,11 @@ const columns = [
     key: "vector_db",
   },
   {
+    title: "Text Extractor",
+    dataIndex: "text_extractor",
+    key: "text_extractor",
+  },
+  {
     title: "",
     dataIndex: "delete",
     key: "delete",
@@ -53,7 +58,12 @@ const columns = [
     align: "center",
   },
 ];
-function ManageLlmProfiles({ setOpen, setOpenLlm, setEditLlmProfileId }) {
+function ManageLlmProfiles({
+  setOpen,
+  setOpenLlm,
+  setEditLlmProfileId,
+  setModalTitle,
+}) {
   const [rows, setRows] = useState([]);
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
@@ -101,6 +111,7 @@ function ManageLlmProfiles({ setOpen, setOpenLlm, setEditLlmProfileId }) {
         llm: item?.llm || "",
         embedding_model: item?.embedding_model || "",
         vector_db: item?.vector_store || "",
+        text_extractor: item?.x2text || "",
         delete: (
           <ConfirmModal
             handleConfirm={() => handleDelete(item?.profile_id)}
@@ -138,6 +149,7 @@ function ManageLlmProfiles({ setOpen, setOpenLlm, setEditLlmProfileId }) {
 
   const handleEdit = (id) => {
     setEditLlmProfileId(id);
+    setModalTitle("Manage LLM profile");
     handleAddNewLlm();
   };
 
@@ -158,6 +170,12 @@ function ManageLlmProfiles({ setOpen, setOpenLlm, setEditLlmProfileId }) {
         const body = {
           llmProfiles: modifiedLlmProfiles,
         };
+
+        // Reset the default LLM profile if it got deleted.
+        if (id === defaultLlmProfile) {
+          body["defaultLlmProfile"] = "";
+        }
+
         updateCustomTool(body);
       })
       .catch((err) => {
@@ -181,6 +199,7 @@ function ManageLlmProfiles({ setOpen, setOpenLlm, setEditLlmProfileId }) {
               dataSource={rows}
               size="small"
               bordered
+              max-width="100%"
               pagination={{ pageSize: 10 }}
             />
           </div>
@@ -202,6 +221,7 @@ ManageLlmProfiles.propTypes = {
   setOpen: PropTypes.func.isRequired,
   setOpenLlm: PropTypes.func.isRequired,
   setEditLlmProfileId: PropTypes.func.isRequired,
+  setModalTitle: PropTypes.func.isRequired,
 };
 
 export { ManageLlmProfiles };

@@ -2,9 +2,13 @@ import { Form, Input, Modal, Select } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData.js";
+import {
+  getBackendErrorDetail,
+  handleException,
+} from "../../../helpers/GetStaticData.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
+import { useWorkflowStore } from "../../../store/workflow-store.js";
 
 const defaultFromDetails = {
   display_name: "",
@@ -24,6 +28,8 @@ const CreateApiDeploymentModal = ({
   workflowId,
   workflowEndpointList,
 }) => {
+  const workflowStore = useWorkflowStore();
+  const { updateWorkflow } = workflowStore;
   const apiDeploymentsApiService = apiDeploymentsService();
   const { setAlertDetails } = useAlertStore();
 
@@ -35,14 +41,6 @@ const CreateApiDeploymentModal = ({
   const [form] = Form.useForm();
   const [backendErrors, setBackendErrors] = useState(null);
   const [isFormChanged, setIsFormChanged] = useState(false);
-
-  const getBackendErrorDetail = (attr) => {
-    if (backendErrors) {
-      const error = backendErrors?.errors.find((error) => error?.attr === attr);
-      return error ? error?.detail : null;
-    }
-    return null;
-  };
 
   const handleInputChange = (changedValues, allValues) => {
     setIsFormChanged(true);
@@ -102,7 +100,10 @@ const CreateApiDeploymentModal = ({
     apiDeploymentsApiService
       .createApiDeployment(body)
       .then((res) => {
-        if (!workflowId) {
+        if (workflowId) {
+          // Update - can update workflow endpoint status in store
+          updateWorkflow({ allowChangeEndpoint: false });
+        } else {
           updateTableData();
           setSelectedRow(res?.data);
           openCodeModal(true);
@@ -115,7 +116,7 @@ const CreateApiDeploymentModal = ({
         });
       })
       .catch((err) => {
-        setAlertDetails(handleException(err));
+        handleException(err, "", setBackendErrors);
       })
       .finally(() => {
         setIsLoading(false);
@@ -138,7 +139,7 @@ const CreateApiDeploymentModal = ({
         });
       })
       .catch((err) => {
-        setAlertDetails(handleException(err));
+        handleException(err, "", setBackendErrors);
       })
       .finally(() => {
         setIsLoading(false);
@@ -171,8 +172,10 @@ const CreateApiDeploymentModal = ({
           label="Display Name"
           name="display_name"
           rules={[{ required: true, message: "Please enter display name" }]}
-          validateStatus={getBackendErrorDetail("display_name") ? "error" : ""}
-          help={getBackendErrorDetail("display_name")}
+          validateStatus={
+            getBackendErrorDetail("display_name", backendErrors) ? "error" : ""
+          }
+          help={getBackendErrorDetail("display_name", backendErrors)}
         >
           <Input />
         </Form.Item>
@@ -180,9 +183,10 @@ const CreateApiDeploymentModal = ({
         <Form.Item
           label="Description"
           name="description"
-          rules={[{ required: true, message: "Please enter description" }]}
-          validateStatus={getBackendErrorDetail("description") ? "error" : ""}
-          help={getBackendErrorDetail("description")}
+          validateStatus={
+            getBackendErrorDetail("description", backendErrors) ? "error" : ""
+          }
+          help={getBackendErrorDetail("description", backendErrors)}
         >
           <Input />
         </Form.Item>
@@ -202,8 +206,10 @@ const CreateApiDeploymentModal = ({
               message: "Maximum 30 characters only allowed",
             },
           ]}
-          validateStatus={getBackendErrorDetail("api_name") ? "error" : ""}
-          help={getBackendErrorDetail("api_name")}
+          validateStatus={
+            getBackendErrorDetail("api_name", backendErrors) ? "error" : ""
+          }
+          help={getBackendErrorDetail("api_name", backendErrors)}
         >
           <Input />
         </Form.Item>
@@ -213,8 +219,10 @@ const CreateApiDeploymentModal = ({
             label="Workflow"
             name="workflow"
             rules={[{ required: true, message: "Please select an workflow" }]}
-            validateStatus={getBackendErrorDetail("workflow") ? "error" : ""}
-            help={getBackendErrorDetail("workflow")}
+            validateStatus={
+              getBackendErrorDetail("workflow", backendErrors) ? "error" : ""
+            }
+            help={getBackendErrorDetail("workflow", backendErrors)}
           >
             <Select>
               {workflowEndpointList.map((endpoint) => {

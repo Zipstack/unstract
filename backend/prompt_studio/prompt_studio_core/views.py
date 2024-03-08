@@ -6,6 +6,7 @@ from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest
 from permissions.permission import IsOwner
+from prompt_studio.processor_loader import ProcessorConfig, load_plugins
 from prompt_studio.prompt_studio.exceptions import FilenameMissingError
 from prompt_studio.prompt_studio_core.constants import (
     ToolStudioErrors,
@@ -41,6 +42,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
     permission_classes = [IsOwner]
     serializer_class = CustomToolSerializer
+
+    processor_plugins = load_plugins()
 
     def get_queryset(self) -> Optional[QuerySet]:
         filter_args = FilterHelper.build_filter_args(
@@ -141,6 +144,18 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 org_id=request.org_id,
                 user_id=request.user.user_id,
             )
+
+            for processor_plugin in self.processor_plugins:
+                cls = processor_plugin[ProcessorConfig.METADATA][
+                    ProcessorConfig.METADATA_SERVICE_CLASS
+                ]
+                cls.process(
+                    tool_id=tool_id,
+                    file_name=file_name,
+                    org_id=request.org_id,
+                    user_id=request.user.user_id,
+                )
+
             if unique_id:
                 return Response(
                     {"message": "Document indexed successfully."},

@@ -1,6 +1,6 @@
 import { FullscreenExitOutlined, FullscreenOutlined } from "@ant-design/icons";
 import { Col, Collapse, Modal, Row } from "antd";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -14,7 +14,6 @@ import { DisplayLogs } from "../display-logs/DisplayLogs";
 import { DocumentManager } from "../document-manager/DocumentManager";
 import { GenerateIndex } from "../generate-index/GenerateIndex";
 import { Header } from "../header/Header";
-import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
 import { ManageLlmProfilesModal } from "../manage-llm-profiles-modal/ManageLlmProfilesModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
@@ -23,19 +22,15 @@ function ToolIde() {
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [activeKey, setActiveKey] = useState([]);
   const [openCusSynonymsModal, setOpenCusSynonymsModal] = useState(false);
-  const [openManageDocsModal, setOpenManageDocsModal] = useState(false);
   const [openManageLlmModal, setOpenManageLlmModal] = useState(false);
   const [openAddLlmModal, setOpenAddLlmModal] = useState(false);
   const [editLlmProfileId, setEditLlmProfileId] = useState(null);
   const [isGenerateIndexOpen, setIsGenerateIndexOpen] = useState(false);
   const [isGeneratingIndex, setIsGeneratingIndex] = useState(false);
   const [generateIndexResult, setGenerateIndexResult] = useState("");
-  const {
-    details,
-    updateCustomTool,
-    setDefaultCustomTool,
-    disableLlmOrDocChange,
-  } = useCustomToolStore();
+  const [modalTitle, setModalTitle] = useState("");
+  const { details, updateCustomTool, disableLlmOrDocChange, selectedDoc } =
+    useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -72,12 +67,6 @@ function ToolIde() {
     },
   ];
 
-  useEffect(() => {
-    return () => {
-      setDefaultCustomTool();
-    };
-  }, []);
-
   const handleCollapse = (keys) => {
     setActiveKey(keys);
   };
@@ -89,7 +78,7 @@ function ToolIde() {
     setIsGenerateIndexOpen(isOpen);
   };
 
-  const generateIndex = (fileName) => {
+  const generateIndex = async (fileName) => {
     setIsGenerateIndexOpen(true);
     setIsGeneratingIndex(true);
 
@@ -107,7 +96,7 @@ function ToolIde() {
       data: body,
     };
 
-    axiosPrivate(requestOptions)
+    return axiosPrivate(requestOptions)
       .then(() => {
         setGenerateIndexResult("SUCCESS");
       })
@@ -149,20 +138,23 @@ function ToolIde() {
       return;
     }
 
+    const prevSelectedDoc = selectedDoc;
+    const data = {
+      selectedDoc: docName,
+    };
+    updateCustomTool(data);
+
     const body = {
       output: docName,
     };
 
-    handleUpdateTool(body)
-      .then((res) => {
-        const data = {
-          selectedDoc: docName,
-        };
-        updateCustomTool(data);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to select the document"));
-      });
+    handleUpdateTool(body).catch((err) => {
+      const revertSelectedDoc = {
+        selectedDoc: prevSelectedDoc,
+      };
+      updateCustomTool(revertSelectedDoc);
+      setAlertDetails(handleException(err, "Failed to select the document"));
+    });
   };
 
   return (
@@ -170,7 +162,6 @@ function ToolIde() {
       <div>
         <Header
           setOpenCusSynonymsModal={setOpenCusSynonymsModal}
-          setOpenManageDocsModal={setOpenManageDocsModal}
           setOpenManageLlmModal={setOpenManageLlmModal}
           handleUpdateTool={handleUpdateTool}
         />
@@ -222,24 +213,20 @@ function ToolIde() {
         open={openCusSynonymsModal}
         setOpen={setOpenCusSynonymsModal}
       />
-      <ManageDocsModal
-        open={openManageDocsModal}
-        setOpen={setOpenManageDocsModal}
-        generateIndex={generateIndex}
-        handleUpdateTool={handleUpdateTool}
-        handleDocChange={handleDocChange}
-      />
       <ManageLlmProfilesModal
         open={openManageLlmModal}
         setOpen={setOpenManageLlmModal}
         setOpenLlm={setOpenAddLlmModal}
         setEditLlmProfileId={setEditLlmProfileId}
+        setModalTitle={setModalTitle}
       />
       <AddLlmProfileModal
         open={openAddLlmModal}
         setOpen={setOpenAddLlmModal}
         editLlmProfileId={editLlmProfileId}
         setEditLlmProfileId={setEditLlmProfileId}
+        modalTitle={modalTitle}
+        setModalTitle={setModalTitle}
       />
       <Modal
         open={isGenerateIndexOpen}

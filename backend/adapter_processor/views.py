@@ -11,8 +11,8 @@ from adapter_processor.exceptions import (
     UniqueConstraintViolation,
 )
 from adapter_processor.serializers import (
-    AdapterDetailSerializer,
     AdapterInstanceSerializer,
+    AdapterListSerializer,
     DefaultAdapterSerializer,
     TestAdapterSerializer,
 )
@@ -23,6 +23,7 @@ from permissions.permission import IsOwner
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.serializers import ModelSerializer
 from rest_framework.versioning import URLPathVersioning
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from utils.filtering import FilterHelper
@@ -94,21 +95,25 @@ class AdapterViewSet(GenericViewSet):
         adapter_metadata = serializer.validated_data.get(
             AdapterKeys.ADAPTER_METADATA
         )
-        adapter_metadata[
-            AdapterKeys.ADAPTER_TYPE
-        ] = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
-        test_result = AdapterProcessor.test_adapter(
-            adapter_id=adapter_id, adapter_metadata=adapter_metadata
+        adapter_metadata[AdapterKeys.ADAPTER_TYPE] = (
+            serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
         )
-        return Response(
-            {AdapterKeys.IS_VALID: test_result},
-            status=status.HTTP_200_OK,
-        )
+        try:
+            test_result = AdapterProcessor.test_adapter(
+                adapter_id=adapter_id, adapter_metadata=adapter_metadata
+            )
+            return Response(
+                {AdapterKeys.IS_VALID: test_result},
+                status=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            logger.error(f"Error testing adapter : {str(e)}")
+            raise e
 
 
 class AdapterInstanceViewSet(ModelViewSet):
     queryset = AdapterInstance.objects.all()
-
+    permission_classes: list[type[IsOwner]] = [IsOwner]
     serializer_class = AdapterInstanceSerializer
 
     def get_queryset(self) -> Optional[QuerySet]:
@@ -124,6 +129,13 @@ class AdapterInstanceViewSet(ModelViewSet):
                 created_by=self.request.user
             )
         return queryset
+
+    def get_serializer_class(
+        self,
+    ) -> ModelSerializer:
+        if self.action == "list":
+            return AdapterListSerializer
+        return AdapterInstanceSerializer
 
     def create(self, request: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
@@ -152,6 +164,16 @@ class AdapterInstanceViewSet(ModelViewSet):
             serializer.data, status=status.HTTP_201_CREATED, headers=headers
         )
 
+    def destroy(
+        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
+    ) -> Response:
+        adapter_instance: AdapterInstance = self.get_object()
+        if adapter_instance.is_default:
+            logger.error("Cannot delete a default adapter")
+            raise CannotDeleteDefaultAdapter()
+        super().perform_destroy(adapter_instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     def get_existing_defaults(
         self, adapter_config: dict[str, Any], user: User
     ) -> Optional[AdapterInstance]:
@@ -165,19 +187,3 @@ class AdapterInstanceViewSet(ModelViewSet):
         )
 
         return existing_adapter_default
-
-
-class AdapterDetailViewSet(ModelViewSet):
-    queryset = AdapterInstance.objects.all()
-    serializer_class = AdapterDetailSerializer
-    permission_classes = [IsOwner]
-
-    def destroy(
-        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
-    ) -> Response:
-        adapter_instance: AdapterInstance = self.get_object()
-        if adapter_instance.is_default:
-            logger.error("Cannot delete a default adapter")
-            raise CannotDeleteDefaultAdapter
-        super().perform_destroy(adapter_instance)
-        return Response(status=status.HTTP_204_NO_CONTENT)

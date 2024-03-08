@@ -1,4 +1,6 @@
+from file_management.constants import FileInformationKey
 from rest_framework import serializers
+from utils.FileValidator import FileValidator
 
 
 class FileInfoSerializer(serializers.Serializer):
@@ -15,13 +17,36 @@ class FileListRequestSerializer(serializers.Serializer):
 
 
 class FileUploadSerializer(serializers.Serializer):
-    file = serializers.ListField(child=serializers.FileField(), required=True)
+    file = serializers.ListField(
+        child=serializers.FileField(),
+        required=True,
+        validators=[
+            FileValidator(
+                allowed_extensions=FileInformationKey.FILE_UPLOAD_ALLOWED_EXT,
+                allowed_mimetypes=FileInformationKey.FILE_UPLOAD_ALLOWED_MIME,
+                min_size=0,
+                max_size=FileInformationKey.FILE_UPLOAD_MAX_SIZE,
+            )
+        ],
+    )
+    # FileExtensionValidator(allowed_extensions=['pdf'])
     connector_id = serializers.UUIDField()
     path = serializers.CharField()
 
 
 class FileUploadIdeSerializer(serializers.Serializer):
-    file = serializers.ListField(child=serializers.FileField(), required=True)
+    file = serializers.ListField(
+        child=serializers.FileField(),
+        required=True,
+        validators=[
+            FileValidator(
+                allowed_extensions=FileInformationKey.FILE_UPLOAD_ALLOWED_EXT,
+                allowed_mimetypes=FileInformationKey.FILE_UPLOAD_ALLOWED_MIME,
+                min_size=0,
+                max_size=FileInformationKey.FILE_UPLOAD_MAX_SIZE,
+            )
+        ],
+    )
 
 
 class FileInfoIdeSerializer(serializers.Serializer):

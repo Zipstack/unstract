@@ -486,10 +486,9 @@ def prompt_processor() -> Any:
         if output[PSKeys.CHUNK_SIZE] == 0:
             # We can do this only for chunkless indexes
             context = tool_index.get_text_from_index(
-                project_id=tool_id,
+                embedding_type=output[PSKeys.EMBEDDING],
                 vector_db=output[PSKeys.VECTOR_DB],
                 doc_id=doc_id,
-                embedding_dimension=embedding_dimension,
             )
 
         assertion_failed = False
@@ -928,4 +927,4 @@ def extract_variable(
 
 if __name__ == "__main__":
     # Start the server
-    app.run(port=5003)
+    app.run(host="0.0.0.0", port=5003)

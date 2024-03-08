@@ -7,7 +7,7 @@ services:
   backend:
     image: unstract/backend:${VERSION}
     container_name: unstract-backend
-    command: migrate  
+    command: migrate
     ports:
       - "8000:8000"
     env_file:
@@ -17,19 +17,22 @@ services:
       - redis
       - reverse-proxy
       - minio
-    volumes:  
+    volumes:
       - ./workflow_data:/data
     environment:
       - ENVIRONMENT=development
     labels:
       - traefik.enable=true
       - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && PathPrefix(`/api/v1`, `/deployment`)
+    extra_hosts:
+      # "host-gateway" is a special string that translates to host docker0 i/f IP.
+      - "host.docker.internal:host-gateway"
 
   # Celery execution consumer
   execution-consumer:
     image: unstract/backend:${VERSION}
-    container_name: unstract-execution-consumer    
-    entrypoint: /app/.venv/bin/celery   
+    container_name: unstract-execution-consumer
+    entrypoint: /app/.venv/bin/celery
     command: "-A backend worker --loglevel=info"
     env_file:
       - ../backend/.env
@@ -46,7 +49,7 @@ services:
   celery-flower:
     image: unstract/backend:${VERSION}
     container_name: unstract-celery-flower
-    entrypoint: /app/.venv/bin/celery
+    entrypoint: .venv/bin/celery
     command: "-A backend flower --port=5555"
     env_file:
       - ../backend/.env
@@ -66,7 +69,7 @@ services:
   celery-beat:
     image: unstract/backend:${VERSION}
     container_name: unstract-celery-beat
-    entrypoint: /app/.venv/bin/celery
+    entrypoint: .venv/bin/celery
     command: "-A backend beat --scheduler django_celery_beat.schedulers:DatabaseScheduler -l INFO"
     env_file:
       - ../backend/.env
@@ -107,6 +110,8 @@ services:
   prompt-service:
     image: unstract/prompt-service:${VERSION}
     container_name: unstract-prompt-service
+    depends_on:
+      - db
     ports:
       - "3003:3003"
     env_file:
@@ -141,7 +146,9 @@ services:
     labels:
       - traefik.enable=false
 
-  document:
+  document-service:
+    profiles:
+        - optional
     image: unstract/document-service:${VERSION}
     container_name: unstract-document-service
     ports:
@@ -155,7 +162,7 @@ services:
     labels:
       - traefik.enable=false
 
-volumes:   
+volumes:
   unstract_data:
 
 networks:

@@ -7,6 +7,7 @@ function ManageLlmProfilesModal({
   setOpen,
   setOpenLlm,
   setEditLlmProfileId,
+  setModalTitle,
 }) {
   return (
     <Modal
@@ -15,13 +16,14 @@ function ManageLlmProfilesModal({
       onCancel={() => setOpen(false)}
       centered
       footer={null}
-      width={800}
+      width={1000}
       maskClosable={false}
     >
       <ManageLlmProfiles
         setOpen={setOpen}
         setOpenLlm={setOpenLlm}
         setEditLlmProfileId={setEditLlmProfileId}
+        setModalTitle={setModalTitle}
       />
     </Modal>
   );
@@ -32,6 +34,7 @@ ManageLlmProfilesModal.propTypes = {
   setOpen: PropTypes.func.isRequired,
   setOpenLlm: PropTypes.func.isRequired,
   setEditLlmProfileId: PropTypes.func.isRequired,
+  setModalTitle: PropTypes.func.isRequired,
 };
 
 export { ManageLlmProfilesModal };
