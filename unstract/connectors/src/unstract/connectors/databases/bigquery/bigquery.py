@@ -5,12 +5,15 @@ from typing import Any
 from google.cloud import bigquery
 from google.cloud.bigquery import Client
 from unstract.connectors.databases.unstract_db import UnstractDB
+from unstract.connectors.exceptions import ConnectorError
 
 
 class BigQuery(UnstractDB):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("BigQuery")
-        self.json_credentials = json.loads(settings.get("json_credentials", "{}"))
+        self.json_credentials = json.loads(
+            settings.get("json_credentials", "{}")
+        )
 
     @staticmethod
     def get_id() -> str:
@@ -47,7 +50,13 @@ class BigQuery(UnstractDB):
         return True
 
     def get_engine(self) -> Client:
-        con: Client = bigquery.Client.from_service_account_info(  # type: ignore
+        return bigquery.Client.from_service_account_info(  # type: ignore
             info=self.json_credentials
         )
-        return con
+
+    def execute(self, query: str) -> Any:
+        try:
+            query_job = self.get_engine().query(query)
+            return query_job.result()
+        except Exception as e:
+            raise ConnectorError(str(e))
