@@ -25,7 +25,7 @@ function EditableText({
 
   useEffect(() => {
     setText(defaultText);
-  }, [defaultText]);
+  }, []);
 
   useEffect(() => {
     // Attach the event listener when the component mounts
@@ -58,7 +58,7 @@ function EditableText({
     if (!triggerHandleChange) {
       return;
     }
-    handleChange(text, promptId, name, true, true);
+    handleChange(text, promptId, name, true, false);
     setTriggerHandleChange(false);
   }, [triggerHandleChange]);
 
