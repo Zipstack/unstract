@@ -40,10 +40,19 @@ function EditableText({
     setIsEditing(false);
   };
 
+  let handleTextTimer = null;
+
   const handleTextChange = (event) => {
     const value = event.target.value;
     setText(value);
-    onSearchDebounce(event);
+
+    if (handleTextTimer) {
+      clearTimeout(handleTextTimer);
+    }
+
+    handleTextTimer = setTimeout(() => {
+      onSearchDebounce(event);
+    }, 2000);
   };
 
   const onSearchDebounce = useCallback(
@@ -91,7 +100,7 @@ function EditableText({
 
   return (
     <Input
-      className="font-size-12 width-100"
+      className="font-size-14 width-100 input-header-text"
       value={text}
       onChange={handleTextChange}
       placeholder="Enter Key"

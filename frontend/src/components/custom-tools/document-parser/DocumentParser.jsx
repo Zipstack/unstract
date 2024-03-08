@@ -63,10 +63,11 @@ function DocumentParser({
         return;
       }
       if (!isValidJsonKey(value)) {
-        setAlertDetails({
-          type: "error",
-          content: "Please update invalid JSON key",
-        });
+        handleUpdateStatus(
+          isUpdateStatus,
+          promptId,
+          promptStudioUpdateStatus.validationError
+        );
         return;
       }
     }
