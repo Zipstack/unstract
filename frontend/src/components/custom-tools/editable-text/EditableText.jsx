@@ -40,19 +40,10 @@ function EditableText({
     setIsEditing(false);
   };
 
-  let handleTextTimer = null;
-
   const handleTextChange = (event) => {
     const value = event.target.value;
     setText(value);
-
-    if (handleTextTimer) {
-      clearTimeout(handleTextTimer);
-    }
-
-    handleTextTimer = setTimeout(() => {
-      onSearchDebounce(event);
-    }, 2000);
+    onSearchDebounce(event);
   };
 
   const onSearchDebounce = useCallback(
