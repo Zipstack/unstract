@@ -42,17 +42,38 @@ import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
-import { EvalMetricTag } from "../eval-metric-tag/EvalMetricTag";
-import { EvalModal } from "../eval-modal/EvalModal";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+
+let EvalBtn = null;
+let EvalMetrics = null;
+let EvalModal = null;
+let sortEvalMetricsByType = (param) => {
+  return [];
+};
+let getEvalMetrics = (param1, param2, param3) => {
+  return [];
+};
+try {
+  EvalBtn = require("../../../plugins/eval-btn/EvalBtn").EvalBtn;
+  EvalMetrics =
+    require("../../../plugins/eval-metrics/EvalMetrics").EvalMetrics;
+  EvalModal = require("../../../plugins/eval-modal/EvalModal").EvalModal;
+  sortEvalMetricsByType =
+    require("../../../plugins/eval-helper/EvalHelper").sortEvalMetricsByType;
+  getEvalMetrics =
+    require("../../../plugins/eval-helper/EvalHelper").getEvalMetrics;
+} catch {
+  // The components will remain null of it is not available
+}
 
 function PromptCard({
   promptDetails,
   handleChange,
   handleDelete,
   updateStatus,
+  updatePlaceHolder,
 }) {
   const [enforceTypeList, setEnforceTypeList] = useState([]);
   const [page, setPage] = useState(0);
@@ -67,7 +88,6 @@ function PromptCard({
   const [result, setResult] = useState({
     promptOutputId: null,
     output: "",
-    evalMetrics: [],
   });
   const [outputIds, setOutputIds] = useState([]);
   const [coverage, setCoverage] = useState(0);
@@ -98,16 +118,6 @@ function PromptCard({
       return { value: outputTypeData[item] };
     });
     setEnforceTypeList(dropdownList1);
-
-    const llmProfileId = promptDetails?.profile_manager;
-    if (!llmProfileId) {
-      setPage(0);
-      return;
-    }
-    const index = llmProfiles.findIndex(
-      (item) => item?.profile_id === llmProfileId
-    );
-    setPage(index + 1);
   }, []);
 
   useEffect(() => {
@@ -179,6 +189,27 @@ function PromptCard({
     []
   );
 
+  useEffect(() => {
+    const isProfilePresent = llmProfiles.some(
+      (profile) => profile.profile_id === selectedLlmProfileId
+    );
+
+    // If selectedLlmProfileId is not present, set it to null
+    if (!isProfilePresent) {
+      setSelectedLlmProfileId(null);
+    }
+
+    const llmProfileId = promptDetails?.profile_manager;
+    if (!llmProfileId) {
+      setPage(0);
+      return;
+    }
+    const index = llmProfiles.findIndex(
+      (item) => item?.profile_id === llmProfileId
+    );
+    setPage(index + 1);
+  }, [llmProfiles]);
+
   const handlePageLeft = () => {
     if (page <= 1) {
       return;
@@ -195,24 +226,6 @@ function PromptCard({
 
     const newPage = page + 1;
     setPage(newPage);
-  };
-
-  const sortEvalMetricsByType = (metrics) => {
-    const sieve = {};
-    for (const metric of metrics) {
-      if (!sieve[metric.type]) {
-        sieve[metric.type] = [metric];
-      } else {
-        sieve[metric.type].push(metric);
-      }
-    }
-
-    let sortedMetrics = [];
-    for (const type of Object.keys(sieve)) {
-      sortedMetrics = sortedMetrics.concat(sieve[type]);
-    }
-
-    return sortedMetrics;
   };
 
   const handleTypeChange = (value) => {
@@ -277,10 +290,11 @@ function PromptCard({
         }
 
         // Handle Eval
-        let evalMetrics = [];
-        if (promptDetails?.evaluate) {
-          evalMetrics = data[`${promptDetails?.prompt_key}__evaluation`] || [];
-        }
+        const evalMetrics = getEvalMetrics(
+          promptDetails?.evaluate,
+          promptDetails?.prompt_key,
+          data
+        );
         handleUpdateOutput(value, selectedDoc, evalMetrics, method, url);
       })
       .catch((err) => {
@@ -324,11 +338,11 @@ function PromptCard({
           }
 
           // Handle Eval
-          let evalMetrics = [];
-          if (promptDetails?.evaluate) {
-            evalMetrics =
-              data[`${promptDetails?.prompt_key}__evaluation`] || [];
-          }
+          const evalMetrics = getEvalMetrics(
+            promptDetails?.evaluate,
+            promptDetails?.prompt_key,
+            data
+          );
           handleUpdateOutput(outputValue, item, evalMetrics, method, url);
         })
         .catch((err) => {
@@ -430,7 +444,6 @@ function PromptCard({
       setResult({
         promptOutputId: null,
         output: "",
-        evalMetrics: [],
       });
       return;
     }
@@ -442,7 +455,6 @@ function PromptCard({
           setResult({
             promptOutputId: null,
             output: "",
-            evalMetrics: [],
           });
           return;
         }
@@ -608,6 +620,7 @@ function PromptCard({
                     promptId={promptDetails?.prompt_id}
                     defaultText={promptDetails?.prompt_key}
                     handleChange={handleChange}
+                    placeHolder={updatePlaceHolder}
                   />
                 </Col>
                 <Col span={8} className="display-flex-right">
@@ -710,6 +723,7 @@ function PromptCard({
                 defaultText={promptDetails.prompt}
                 handleChange={handleChange}
                 isTextarea={true}
+                placeHolder={updatePlaceHolder}
               />
             </Space>
           </div>
@@ -727,21 +741,13 @@ function PromptCard({
           >
             <div className="prompt-card-llm-profiles">
               <Space direction="horizontal">
-                <div>
-                  <Button
-                    size="small"
-                    onClick={() => setOpenEval(true)}
-                    disabled={disableLlmOrDocChange.includes(
-                      promptDetails?.prompt_id
-                    )}
-                  >
-                    <Space>
-                      <Typography.Text className="font-size-12">
-                        Eval: {promptDetails?.evaluate ? "On" : "Off"}
-                      </Typography.Text>
-                    </Space>
-                  </Button>
-                </div>
+                {EvalBtn && (
+                  <EvalBtn
+                    btnText={promptDetails?.evaluate ? "On" : "Off"}
+                    promptId={promptDetails.prompt_id}
+                    setOpenEval={setOpenEval}
+                  />
+                )}
                 <Button
                   size="small"
                   type="link"
@@ -773,17 +779,22 @@ function PromptCard({
             </div>
             <div className="prompt-card-llm-profiles">
               {llmProfiles?.length > 0 &&
-              promptDetails?.profile_manager?.length > 0 ? (
+              promptDetails?.profile_manager?.length > 0 &&
+              selectedLlmProfileId ? (
                 <div>
-                  <Tag>{llmProfiles[page - 1]?.llm}</Tag>
-                  <Tag>{llmProfiles[page - 1]?.vector_store}</Tag>
-                  <Tag>{llmProfiles[page - 1]?.embedding_model}</Tag>
-                  <Tag>{llmProfiles[page - 1]?.x2text}</Tag>
-                  <Tag>{`${llmProfiles[page - 1]?.chunk_size}/${
-                    llmProfiles[page - 1]?.chunk_overlap
-                  }/${llmProfiles[page - 1]?.retrieval_strategy}/${
-                    llmProfiles[page - 1]?.similarity_top_k
-                  }/${llmProfiles[page - 1]?.section}`}</Tag>
+                  {llmProfiles
+                    .filter(
+                      (profile) => profile.profile_id === selectedLlmProfileId
+                    )
+                    .map((profile, index) => (
+                      <div key={index}>
+                        <Tag>{profile.llm}</Tag>
+                        <Tag>{profile.vector_store}</Tag>
+                        <Tag>{profile.embedding_model}</Tag>
+                        <Tag>{profile.x2text}</Tag>
+                        <Tag>{`${profile.chunk_size}/${profile.chunk_overlap}/${profile.retrieval_strategy}/${profile.similarity_top_k}/${profile.section}`}</Tag>
+                      </div>
+                    ))}
                 </div>
               ) : (
                 <div>
@@ -817,13 +828,7 @@ function PromptCard({
                 </Button>
               </div>
             </div>
-            {result?.evalMetrics?.length > 0 && (
-              <div>
-                {result?.evalMetrics.map((evalMetric) => (
-                  <EvalMetricTag key={evalMetric.id} metric={evalMetric} />
-                ))}
-              </div>
-            )}
+            {EvalMetrics && <EvalMetrics result={result} />}
           </Space>
         </>
         {(isRunLoading ||
@@ -842,12 +847,14 @@ function PromptCard({
           </>
         )}
       </Card>
-      <EvalModal
-        open={openEval}
-        setOpen={setOpenEval}
-        promptDetails={promptDetails}
-        handleChange={handleChange}
-      />
+      {EvalModal && (
+        <EvalModal
+          open={openEval}
+          setOpen={setOpenEval}
+          promptDetails={promptDetails}
+          handleChange={handleChange}
+        />
+      )}
       <OutputForDocModal
         open={openOutputForDoc}
         setOpen={setOpenOutputForDoc}
@@ -864,6 +871,7 @@ PromptCard.propTypes = {
   handleChange: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
   updateStatus: PropTypes.object.isRequired,
+  updatePlaceHolder: PropTypes.string,
 };
 
 export { PromptCard };

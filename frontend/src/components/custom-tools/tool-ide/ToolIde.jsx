@@ -28,6 +28,7 @@ function ToolIde() {
   const [isGenerateIndexOpen, setIsGenerateIndexOpen] = useState(false);
   const [isGeneratingIndex, setIsGeneratingIndex] = useState(false);
   const [generateIndexResult, setGenerateIndexResult] = useState("");
+  const [modalTitle, setModalTitle] = useState("");
   const { details, updateCustomTool, disableLlmOrDocChange, selectedDoc } =
     useCustomToolStore();
   const { sessionDetails } = useSessionStore();
@@ -218,12 +219,15 @@ function ToolIde() {
         setOpen={setOpenManageLlmModal}
         setOpenLlm={setOpenAddLlmModal}
         setEditLlmProfileId={setEditLlmProfileId}
+        setModalTitle={setModalTitle}
       />
       <AddLlmProfileModal
         open={openAddLlmModal}
         setOpen={setOpenAddLlmModal}
         editLlmProfileId={editLlmProfileId}
         setEditLlmProfileId={setEditLlmProfileId}
+        modalTitle={modalTitle}
+        setModalTitle={setModalTitle}
       />
       <Modal
         open={isGenerateIndexOpen}

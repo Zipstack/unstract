@@ -1,5 +1,5 @@
 import { CloseOutlined } from "@ant-design/icons";
-import { Card, Col, Image, Progress, Row, Typography } from "antd";
+import { Card, Col, Progress, Row, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useRef } from "react";
 import { useDrag, useDrop } from "react-dnd";
@@ -13,6 +13,7 @@ import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import "../step-card/StepCard.css";
 import "./CardList.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { ToolIcon } from "../tool-icon/ToolIcon";
 
 const CardsList = ({ step, index, activeTool, moveItem }) => {
   const ref = useRef(null);
@@ -144,12 +145,7 @@ const CardsList = ({ step, index, activeTool, moveItem }) => {
             <div className="card-col-div">
               <Row align="middle">
                 <Col span={2}>
-                  <Image
-                    src={`data:image/svg+xml,${encodeURIComponent(step?.icon)}`}
-                    preview={false}
-                    height={20}
-                    width={20}
-                  />
+                  <ToolIcon iconSrc={step?.icon} showBorder={false} />
                 </Col>
                 <Col span={21}>
                   <div className="step-name">

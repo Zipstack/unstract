@@ -40,6 +40,10 @@ function SidePanel() {
     setActiveTabKey(key.toString());
   };
 
+  const isObjectEmpty = (obj) => {
+    return Object.keys(obj).length === 0;
+  };
+
   useEffect(() => {
     const toolSettingsId = toolSettings?.tool_id;
     if (!toolSettingsId) {
@@ -65,8 +69,15 @@ function SidePanel() {
       setSpecLoading(true);
       axiosPrivate(requestOptions)
         .then((res) => {
-          setToolId(toolSettingsId);
-          setSpec(res?.data);
+          if (isObjectEmpty(res?.data?.properties)) {
+            // Disable tool settings & switch to Tools tab - when custom tool is selected
+            setSpec({});
+            setToolId("");
+            setActiveTabKey("1");
+          } else {
+            setToolId(toolSettingsId);
+            setSpec(res?.data);
+          }
         })
         .catch((err) => {})
         .finally(() => {
