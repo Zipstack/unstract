@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import "./DocumentParser.css";
 
 import {
-  handleException,
   promptStudioUpdateStatus,
   promptType,
 } from "../../../helpers/GetStaticData";
@@ -14,6 +13,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { NotesCard } from "../notes-card/NotesCard";
 import { PromptCard } from "../prompt-card/PromptCard";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function DocumentParser({
   setOpenAddLlmModal,
@@ -30,6 +30,7 @@ function DocumentParser({
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     if (scrollToBottom) {

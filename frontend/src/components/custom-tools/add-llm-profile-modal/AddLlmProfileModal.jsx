@@ -15,10 +15,7 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import {
-  getBackendErrorDetail,
-  handleException,
-} from "../../../helpers/GetStaticData";
+import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -26,6 +23,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./AddLlmProfileModal.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function AddLlmProfileModal({
   open,
@@ -49,6 +47,7 @@ function AddLlmProfileModal({
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const { token } = theme.useToken();
+  const handleException = useExceptionHandler();
   const panelStyle = {
     marginBottom: 16,
   };

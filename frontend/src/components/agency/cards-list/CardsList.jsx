@@ -4,7 +4,6 @@ import PropTypes from "prop-types";
 import { useRef } from "react";
 import { useDrag, useDrop } from "react-dnd";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -13,6 +12,7 @@ import { useWorkflowStore } from "../../../store/workflow-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import "../step-card/StepCard.css";
 import "./CardList.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 const CardsList = ({ step, index, activeTool, moveItem }) => {
   const ref = useRef(null);
@@ -22,6 +22,7 @@ const CardsList = ({ step, index, activeTool, moveItem }) => {
   const { deleteToolInstance } = useWorkflowStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
   const handleClick = (id, toolId, index) => {
     const toolSettings = { id, tool_id: toolId };
     setToolSettings(toolSettings);

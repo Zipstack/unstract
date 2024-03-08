@@ -2,7 +2,6 @@ import { FullscreenExitOutlined, FullscreenOutlined } from "@ant-design/icons";
 import { Col, Collapse, Modal, Row } from "antd";
 import { useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { useAlertStore } from "../../../store/alert-store";
@@ -17,6 +16,7 @@ import { Header } from "../header/Header";
 import { ManageLlmProfilesModal } from "../manage-llm-profiles-modal/ManageLlmProfilesModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function ToolIde() {
   const [showLogsModal, setShowLogsModal] = useState(false);
@@ -33,6 +33,7 @@ function ToolIde() {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   const openLogsModal = () => {
     setShowLogsModal(true);

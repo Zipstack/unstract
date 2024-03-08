@@ -7,8 +7,8 @@ import "./AddCustomToolFormModal.css";
 
 import { useEffect, useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function AddCustomToolFormModal({
   open,
@@ -24,6 +24,7 @@ function AddCustomToolFormModal({
   const [icon, setIcon] = useState("");
   const [isEdit, setIsEdit] = useState(false);
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     setIsEdit(editItem && Object.keys(editItem)?.length > 0);

@@ -2,12 +2,13 @@ import { Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { handleException, sourceTypes } from "../../../helpers/GetStaticData";
+import { sourceTypes } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { ConfigureDs } from "../configure-ds/ConfigureDs";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function AddSource({
   selectedSourceId,
@@ -25,6 +26,7 @@ function AddSource({
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     if (!selectedSourceId) {

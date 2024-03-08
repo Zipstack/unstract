@@ -2,12 +2,10 @@ import { Form, Input, Modal, Select } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import {
-  getBackendErrorDetail,
-  handleException,
-} from "../../../helpers/GetStaticData.js";
+import { getBackendErrorDetail } from "../../../helpers/GetStaticData.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 const defaultFromDetails = {
   display_name: "",
@@ -29,6 +27,7 @@ const CreateApiDeploymentModal = ({
 }) => {
   const apiDeploymentsApiService = apiDeploymentsService();
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
 
   const { Option } = Select;
   const [formDetails, setFormDetails] = useState(

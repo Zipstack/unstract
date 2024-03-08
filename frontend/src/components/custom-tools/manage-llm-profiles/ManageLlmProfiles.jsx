@@ -3,7 +3,6 @@ import { Button, Radio, Space, Table, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -12,6 +11,7 @@ import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./ManageLlmProfiles.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 const columns = [
   {
@@ -65,6 +65,7 @@ function ManageLlmProfiles({ setOpen, setOpenLlm, setEditLlmProfileId }) {
   const { details, defaultLlmProfile, updateCustomTool, llmProfiles } =
     useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
 
   const handleDefaultLlm = (profileId) => {
     const body = {

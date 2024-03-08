@@ -25,7 +25,6 @@ import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { handleException } from "../../../helpers/GetStaticData.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
@@ -36,6 +35,7 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import "./Workflows.css";
 import { workflowService } from "./workflow-service";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 const PROJECT_FILTER_OPTIONS = [
   { label: "My Workflows", value: "mine" },
@@ -60,6 +60,7 @@ function Workflows() {
   const navigate = useNavigate();
   const location = useLocation();
   const projectApiService = workflowService();
+  const handleException = useExceptionHandler();
 
   const [projectList, setProjectList] = useState();
   const [viewType, setViewType] = useState(PROJECT_VIEW_OPTIONS[0].value);

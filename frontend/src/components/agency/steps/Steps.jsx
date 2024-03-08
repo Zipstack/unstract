@@ -4,10 +4,7 @@ import { useEffect } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 
-import {
-  handleException,
-  sourceTypes,
-} from "../../../helpers/GetStaticData.js";
+import { sourceTypes } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -16,6 +13,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DsSettingsCard } from "../ds-settings-card/DsSettingsCard.jsx";
 import { StepCard } from "../step-card/StepCard.jsx";
 import "./Steps.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 function Steps({ steps, setSteps, activeToolId, sourceMsg, destinationMsg }) {
   const workflowStore = useWorkflowStore();
@@ -32,6 +30,7 @@ function Steps({ steps, setSteps, activeToolId, sourceMsg, destinationMsg }) {
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     getWfEndpointDetails();

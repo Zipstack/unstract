@@ -32,7 +32,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AssertionIcon } from "../../../assets";
 import {
   displayPromptResult,
-  handleException,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -47,6 +46,7 @@ import { EvalMetricTag } from "../eval-metric-tag/EvalMetricTag";
 import { EvalModal } from "../eval-modal/EvalModal";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function PromptCard({
   promptDetails,
@@ -87,6 +87,7 @@ function PromptCard({
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     if (promptDetails?.is_assert) {

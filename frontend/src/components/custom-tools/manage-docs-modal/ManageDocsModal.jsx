@@ -12,7 +12,6 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -21,6 +20,7 @@ import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./ManageDocsModal.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function ManageDocsModal({
   open,
@@ -42,6 +42,7 @@ function ManageDocsModal({
     disableLlmOrDocChange,
   } = useCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   const columns = [
     {

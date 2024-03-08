@@ -5,7 +5,6 @@ import { isValidCron } from "cron-validator";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -14,6 +13,7 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import "./EtlTaskDeploy.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 const days = [
   "Monday",
@@ -43,6 +43,7 @@ const EtlTaskDeploy = ({
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const workflowApiService = workflowService();
+  const handleException = useExceptionHandler();
 
   const { Option } = Select;
   const [workflowList, setWorkflowList] = useState([]);

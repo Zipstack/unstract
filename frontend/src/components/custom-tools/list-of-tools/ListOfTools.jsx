@@ -15,8 +15,8 @@ import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { AddCustomToolFormModal } from "../add-custom-tool-form-modal/AddCustomToolFormModal";
 import { ViewTools } from "../view-tools/ViewTools";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import "./ListOfTools.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 const { Search } = Input;
 
@@ -42,6 +42,7 @@ function ListOfTools() {
   const [listOfTools, setListOfTools] = useState([]);
   const [filteredListOfTools, setFilteredListOfTools] = useState([]);
   const [search, setSearch] = useState("");
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     getListOfTools();
