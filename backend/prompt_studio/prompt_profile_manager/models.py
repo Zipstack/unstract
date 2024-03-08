@@ -18,7 +18,7 @@ class ProfileManager(BaseModel):
     profile_id = models.UUIDField(
         primary_key=True, default=uuid.uuid4, editable=False
     )
-    profile_name = models.TextField(unique=True, blank=False)
+    profile_name = models.TextField(blank=False)
     vector_store = models.ForeignKey(
         AdapterInstance,
         db_comment="Field to store the chosen vector store.",
@@ -93,3 +93,11 @@ class ProfileManager(BaseModel):
         default=False,
         db_comment="Default LLM Profile used for summarizing",
     )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["prompt_studio_tool", "profile_name"],
+                name="unique_prompt_studio_tool_profile_name",
+            ),
+        ]
