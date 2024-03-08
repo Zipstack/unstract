@@ -1,9 +1,10 @@
-import { FullscreenExitOutlined } from "@ant-design/icons";
-import { Col, Modal, Row } from "antd";
+import { FullscreenExitOutlined, FullscreenOutlined } from "@ant-design/icons";
+import { Col, Collapse, Modal, Row } from "antd";
 import { useState } from "react";
 
 import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -19,6 +20,7 @@ import "./ToolIde.css";
 
 function ToolIde() {
   const [showLogsModal, setShowLogsModal] = useState(false);
+  const [activeKey, setActiveKey] = useState([]);
   const [openCusSynonymsModal, setOpenCusSynonymsModal] = useState(false);
   const [openManageLlmModal, setOpenManageLlmModal] = useState(false);
   const [openAddLlmModal, setOpenAddLlmModal] = useState(false);
@@ -33,8 +35,40 @@ function ToolIde() {
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
 
+  const openLogsModal = () => {
+    setShowLogsModal(true);
+  };
+
   const closeLogsModal = () => {
     setShowLogsModal(false);
+  };
+
+  const genExtra = () => (
+    <FullscreenOutlined
+      onClick={(event) => {
+        openLogsModal();
+        event.stopPropagation();
+      }}
+    />
+  );
+
+  const getItems = () => [
+    {
+      key: "1",
+      label: !activeKey?.length > 0 && "Logs",
+      children: (
+        <div className="tool-ide-logs">
+          <IslandLayout>
+            <DisplayLogs />
+          </IslandLayout>
+        </div>
+      ),
+      extra: genExtra(),
+    },
+  ];
+
+  const handleCollapse = (keys) => {
+    setActiveKey(keys);
   };
 
   const handleGenerateIndexModal = (isOpen) => {
@@ -150,6 +184,16 @@ function ToolIde() {
               </div>
             </Col>
           </Row>
+          <div className="tool-ide-footer">
+            <Collapse
+              className="tool-ide-collapse-panel"
+              size="small"
+              activeKey={activeKey}
+              items={getItems()}
+              expandIconPosition="end"
+              onChange={handleCollapse}
+            />
+          </div>
           <Modal
             title="Logs"
             open={showLogsModal}
