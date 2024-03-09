@@ -50,8 +50,9 @@ class FileUploadIdeSerializer(serializers.Serializer):
 
 
 class FileInfoIdeSerializer(serializers.Serializer):
-    file_name = serializers.CharField()
+    prompt_document_id = serializers.CharField()
     tool_id = serializers.CharField()
+    view_type = serializers.CharField(required = False)
 
 
 class FileListRequestIdeSerializer(serializers.Serializer):

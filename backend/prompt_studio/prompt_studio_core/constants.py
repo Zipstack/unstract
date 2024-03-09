@@ -75,6 +75,7 @@ class ToolStudioPromptKeys:
     EVAL_SETTINGS_EXCLUDE_FAILED = "exclude_failed"
     SUMMARIZE = "summarize"
     SUMMARIZED_RESULT = "summarized_result"
+    PROMPT_DOCUMENT_ID = "prompt_document_id"
 
 
 class LogLevels:

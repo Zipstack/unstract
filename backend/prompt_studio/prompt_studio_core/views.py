@@ -30,6 +30,7 @@ from utils.filtering import FilterHelper
 from prompt_studio.prompt_studio_registry.models import PromptStudioRegistry
 
 from .models import CustomTool
+from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from .serializers import CustomToolSerializer, PromptStudioIndexSerializer
 
 logger = logging.getLogger(__name__)
@@ -134,15 +135,16 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         tool_id: str = serializer.validated_data.get(
             ToolStudioPromptKeys.TOOL_ID
         )
-        file_name: str = serializer.validated_data.get(
-            ToolStudioPromptKeys.FILE_NAME
-        )
+        prompt_document_id: str = serializer.validated_data.get(ToolStudioPromptKeys.PROMPT_DOCUMENT_ID)
+        document: DocumentManager = DocumentManager.objects.get(pk=prompt_document_id)
+        file_name: str = document.document_name
         try:
             unique_id = PromptStudioHelper.index_document(
                 tool_id=tool_id,
                 file_name=file_name,
                 org_id=request.org_id,
                 user_id=request.user.user_id,
+                prompt_document_id=prompt_document_id,
             )
 
             for processor_plugin in self.processor_plugins:
@@ -184,7 +186,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             Response
         """
         tool_id: str = request.data.get(ToolStudioPromptKeys.TOOL_ID)
-        file_name: str = request.data.get(ToolStudioPromptKeys.FILE_NAME)
+        prompt_document_id: str = request.data.get(ToolStudioPromptKeys.PROMPT_DOCUMENT_ID)
+        document: DocumentManager = DocumentManager.objects.get(pk=prompt_document_id)
+        file_name: str = document.document_name
         id: str = request.data.get(ToolStudioPromptKeys.ID)
 
         if not file_name or file_name == ToolStudioPromptKeys.UNDEFINED:

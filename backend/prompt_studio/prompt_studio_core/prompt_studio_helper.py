@@ -6,7 +6,9 @@ from typing import Any, Optional
 
 from django.conf import settings
 from file_management.file_management_helper import FileManagerHelper
+from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import PromptStudioIndexHelper
 from prompt_studio.prompt_profile_manager.models import ProfileManager
+from prompt_studio.prompt_studio_index_manager.models import IndexManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.constants import LogLevels
 from prompt_studio.prompt_studio_core.constants import (
@@ -85,6 +87,7 @@ class PromptStudioHelper:
         file_name: str,
         org_id: str,
         user_id: str,
+        prompt_document_id: str,
         is_summary: bool = False,
     ) -> Any:
         """Method to index a document.
@@ -143,7 +146,9 @@ class PromptStudioHelper:
             tool_id=tool_id,
             file_name=file_path,
             org_id=org_id,
+            prompt_document_id=prompt_document_id,
             is_summary=is_summary,
+            
         )
         logger.info(f"Indexing done sucessfully for {file_name}")
         stream_log.publish(
@@ -376,6 +381,7 @@ class PromptStudioHelper:
         tool_id: str,
         file_name: str,
         org_id: str,
+        prompt_document_id: str,
         is_summary: bool = False,
     ) -> str:
         try:
@@ -394,7 +400,7 @@ class PromptStudioHelper:
             extract_file_path = os.path.join(
                 directory, "extract", os.path.splitext(filename)[0] + ".txt"
             )
-        return str(
+        doc_id = str(
             tool_index.index_file(
                 tool_id=tool_id,
                 embedding_type=embedding_model,
@@ -408,3 +414,12 @@ class PromptStudioHelper:
                 output_file_path=extract_file_path,
             )
         )
+        
+        PromptStudioIndexHelper.handle_index_manager(
+            prompt_document_id=prompt_document_id,
+            is_summary=is_summary,
+            profile_manager=profile_manager,
+            doc_id=doc_id,
+        )
+        
+        return doc_id
