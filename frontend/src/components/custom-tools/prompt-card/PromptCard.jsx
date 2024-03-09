@@ -610,7 +610,7 @@ function PromptCard({
           >
             <Space direction="vertical" className="width-100" ref={divRef}>
               <Row>
-                <Col span={16}>
+                <Col span={12}>
                   <EditableText
                     isEditing={isEditingTitle}
                     setIsEditing={setIsEditingTitle}
@@ -622,7 +622,7 @@ function PromptCard({
                     placeHolder={updatePlaceHolder}
                   />
                 </Col>
-                <Col span={8} className="display-flex-right">
+                <Col span={12} className="display-flex-right">
                   {isCoverageLoading && (
                     <Tag
                       icon={<LoadingOutlined spin />}
@@ -652,6 +652,16 @@ function PromptCard({
                           className="display-flex-align-center"
                         >
                           Done
+                        </Tag>
+                      )}
+                      {updateStatus?.status ===
+                        promptStudioUpdateStatus.validationError && (
+                        <Tag
+                          icon={<CheckCircleOutlined />}
+                          color="error"
+                          className="display-flex-align-center"
+                        >
+                          Invalid JSON Key
                         </Tag>
                       )}
                     </>
