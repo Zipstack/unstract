@@ -29,8 +29,13 @@ function ToolIde() {
   const [isGeneratingIndex, setIsGeneratingIndex] = useState(false);
   const [generateIndexResult, setGenerateIndexResult] = useState("");
   const [modalTitle, setModalTitle] = useState("");
-  const { details, updateCustomTool, disableLlmOrDocChange, selectedDoc } =
-    useCustomToolStore();
+  const {
+    details,
+    updateCustomTool,
+    disableLlmOrDocChange,
+    selectedDoc,
+    listOfDocs,
+  } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -78,13 +83,13 @@ function ToolIde() {
     setIsGenerateIndexOpen(isOpen);
   };
 
-  const generateIndex = async (fileName) => {
+  const generateIndex = async (docId) => {
     setIsGenerateIndexOpen(true);
     setIsGeneratingIndex(true);
 
     const body = {
       tool_id: details?.tool_id,
-      file_name: fileName,
+      prompt_document_id: docId,
     };
     const requestOptions = {
       method: "POST",
@@ -129,7 +134,7 @@ function ToolIde() {
       });
   };
 
-  const handleDocChange = (docName) => {
+  const handleDocChange = (docId) => {
     if (disableLlmOrDocChange?.length > 0) {
       setAlertDetails({
         type: "error",
@@ -138,14 +143,18 @@ function ToolIde() {
       return;
     }
 
+    const doc = [...listOfDocs].find(
+      (item) => item?.prompt_document_id === docId
+    );
+
     const prevSelectedDoc = selectedDoc;
     const data = {
-      selectedDoc: docName,
+      selectedDoc: doc,
     };
     updateCustomTool(data);
 
     const body = {
-      output: docName,
+      output: docId,
     };
 
     handleUpdateTool(body).catch((err) => {

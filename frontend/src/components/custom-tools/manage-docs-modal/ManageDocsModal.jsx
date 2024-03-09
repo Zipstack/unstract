@@ -64,13 +64,13 @@ function ManageDocsModal({
   ];
 
   useEffect(() => {
-    const newRows = listOfDocs.map((doc) => {
+    const newRows = listOfDocs.map((item) => {
       return {
-        key: doc,
-        document: doc || "",
+        key: item?.prompt_document_id,
+        document: item?.document_name || "",
         delete: (
           <ConfirmModal
-            handleConfirm={() => handleDelete(doc)}
+            handleConfirm={() => handleDelete(item?.prompt_document_id)}
             content="The document will be permanently deleted."
           >
             <Button
@@ -84,8 +84,10 @@ function ManageDocsModal({
         ),
         select: (
           <Radio
-            checked={selectedDoc === doc}
-            onClick={() => handleDocChange(doc)}
+            checked={
+              selectedDoc?.prompt_document_id === item?.prompt_document_id
+            }
+            onClick={() => handleDocChange(item?.prompt_document_id)}
             disabled={disableLlmOrDocChange?.length > 0}
           />
         ),
@@ -100,7 +102,9 @@ function ManageDocsModal({
       reader.readAsDataURL(file);
       reader.onload = () => {
         const fileName = file.name;
-        const fileAlreadyExists = [...listOfDocs].includes(fileName);
+        const fileAlreadyExists = [...listOfDocs].find(
+          (item) => item?.document_name === fileName
+        );
         if (!fileAlreadyExists) {
           resolve(file);
         } else {
@@ -126,17 +130,18 @@ function ManageDocsModal({
         content: "File uploaded successfully",
       });
 
-      const docName = info?.file?.name;
+      const data = info.file.response?.data;
+      const doc = data?.length > 0 ? data[0] : {};
       const newListOfDocs = [...listOfDocs];
-      newListOfDocs.push(docName);
+      newListOfDocs.push(doc);
       setOpen(false);
-      await generateIndex(info?.file?.name);
+      await generateIndex(doc?.prompt_document_id);
       const body = {
-        selectedDoc: docName,
+        selectedDoc: doc,
         listOfDocs: newListOfDocs,
       };
       updateCustomTool(body);
-      handleUpdateTool({ output: docName });
+      handleUpdateTool({ output: doc?.prompt_document_id });
     } else if (info.file.status === "error") {
       setIsUploading(false);
       setAlertDetails({
@@ -146,20 +151,20 @@ function ManageDocsModal({
     }
   };
 
-  const handleDelete = (docName) => {
+  const handleDelete = (docId) => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/file/delete?file_name=${docName}&tool_id=${details?.tool_id}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/file/delete?prompt_document_id=${docId}&tool_id=${details?.tool_id}`,
     };
 
     axiosPrivate(requestOptions)
       .then(() => {
         const newListOfDocs = [...listOfDocs].filter(
-          (item) => item !== docName
+          (item) => item?.prompt_document_id !== docId
         );
         updateCustomTool({ listOfDocs: newListOfDocs });
 
-        if (docName === selectedDoc) {
+        if (docId === selectedDoc?.prompt_document_id) {
           updateCustomTool({ selectedDoc: "" });
           handleUpdateTool({ output: "" });
         }

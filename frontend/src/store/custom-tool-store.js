@@ -3,7 +3,7 @@ import { promptType } from "../helpers/GetStaticData";
 
 const defaultState = {
   dropdownItems: {},
-  selectedDoc: "",
+  selectedDoc: null,
   listOfDocs: [],
   defaultLlmProfile: "",
   llmProfiles: [],
