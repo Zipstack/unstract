@@ -15,3 +15,7 @@
     border: 1px solid #bdbdbd;
     border-radius: 4px;
 }
+
+.input-header-text {
+    font-weight: bold;
+}
