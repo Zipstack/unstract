@@ -1,4 +1,8 @@
-import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import {
+  DeleteOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+} from "@ant-design/icons";
 import {
   Button,
   Divider,
@@ -51,6 +55,12 @@ function ManageDocsModal({
     },
     {
       title: "",
+      dataIndex: "reindex",
+      key: "reindex",
+      width: 30,
+    },
+    {
+      title: "",
       dataIndex: "delete",
       key: "delete",
       width: 30,
@@ -68,6 +78,13 @@ function ManageDocsModal({
       return {
         key: item?.prompt_document_id,
         document: item?.document_name || "",
+        reindex: (
+          <Button
+            size="small"
+            icon={<ReloadOutlined />}
+            onClick={() => generateIndex(item?.prompt_document_id)}
+          />
+        ),
         delete: (
           <ConfirmModal
             handleConfirm={() => handleDelete(item?.prompt_document_id)}

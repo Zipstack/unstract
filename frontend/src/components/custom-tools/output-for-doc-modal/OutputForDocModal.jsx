@@ -69,12 +69,15 @@ function OutputForDocModal({
   const handleRowsGeneration = (data) => {
     const rowsData = [];
     [...listOfDocs].forEach((item) => {
-      const output = data.find((outputValue) => outputValue?.doc_name === item);
+      const output = data.find(
+        (outputValue) =>
+          outputValue?.document_manager === item?.prompt_document_id
+      );
       const isSuccess = output?.output?.length > 0;
 
       const result = {
         key: item,
-        document: item,
+        document: item?.document_name,
         value: (
           <Typography.Text>
             <span style={{ marginRight: "8px" }}>

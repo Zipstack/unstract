@@ -418,7 +418,7 @@ function PromptCard({
       tool_id: details?.tool_id,
       prompt_id: promptDetails?.prompt_id,
       profile_manager: promptDetails?.profile_manager,
-      prompt_document_id: docId,
+      document_manager: docId,
       eval_metrics: evalMetrics,
     };
 

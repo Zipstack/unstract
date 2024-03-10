@@ -14,7 +14,7 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
 import { base64toBlob } from "../../../helpers/GetStaticData";
 import { DocumentViewer } from "../document-viewer/DocumentViewer";
-import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
+import { TextViewer } from "../text-viewer/TextViewer";
 
 const items = [
   {
@@ -213,7 +213,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           isContentAvailable={extractTxt?.length > 0}
           setOpenManageDocsModal={setOpenManageDocsModal}
         >
-          <TextViewerPre text={extractTxt} />
+          <TextViewer text={extractTxt} />
         </DocumentViewer>
       )}
       {SummarizeView && activeKey === 3 && (
