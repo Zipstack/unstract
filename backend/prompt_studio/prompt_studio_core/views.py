@@ -104,7 +104,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
         summarize_llm_profile_id = request.data.get(
-            "summarize_llm_profile", None
+            ToolStudioKeys.SUMMARIZE_LLM_PROFILE, None
         )
         if summarize_llm_profile_id:
             prompt_tool = self.get_object()

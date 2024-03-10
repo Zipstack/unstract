@@ -3,9 +3,6 @@
 from typing import Any
 
 from django.db import migrations
-from prompt_studio.prompt_profile_manager.models import ProfileManager
-from prompt_studio.prompt_studio.models import ToolStudioPrompt
-from prompt_studio.prompt_studio_core.models import CustomTool
 
 
 class Migration(migrations.Migration):
@@ -17,6 +14,12 @@ class Migration(migrations.Migration):
     ]
 
     def MigrateProfileManager(apps: Any, schema_editor: Any) -> None:
+        CustomTool = apps.get_model("prompt_studio_core", "CustomTool")
+        ProfileManager = apps.get_model(
+            "prompt_profile_manager", "ProfileManager"
+        )
+        ToolStudioPrompt = apps.get_model("prompt_studio", "ToolStudioPrompt")
+
         # Iterate over prompt studio tools
         custom_tools = CustomTool.objects.all()
         for custom_tool in custom_tools:
