@@ -68,7 +68,7 @@ function CustomToolsHelper() {
 
         const reqOpsLlmProfiles = {
           method: "GET",
-          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/`,
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profiles/${id}`,
         };
 
         return handleApiRequest(reqOpsLlmProfiles);
