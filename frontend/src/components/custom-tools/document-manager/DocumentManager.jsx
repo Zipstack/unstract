@@ -172,14 +172,19 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
         </div>
         <Space>
           <div>
+            {selectedDoc ? (
+              <Typography.Text className="doc-main-title" ellipsis>
+                {selectedDoc}
+              </Typography.Text>
+            ) : null}
+          </div>
+          <div>
             <Tooltip title="Manage Documents">
               <Button
                 className="doc-manager-btn"
                 onClick={() => setOpenManageDocsModal(true)}
               >
-                <Typography.Text ellipsis>
-                  {selectedDoc || "No Document Selected"}
-                </Typography.Text>
+                <Typography.Text ellipsis>{"Manage Documents"}</Typography.Text>
               </Button>
             </Tooltip>
           </div>
