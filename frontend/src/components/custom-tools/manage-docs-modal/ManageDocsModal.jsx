@@ -2,6 +2,7 @@ import {
   CheckCircleFilled,
   CloseCircleFilled,
   DeleteOutlined,
+  InfoCircleFilled,
   PlusOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
@@ -81,6 +82,15 @@ function ManageDocsModal({
         <CloseCircleFilled style={{ color: "#FF4D4F" }} />
       </span>{" "}
       Not Indexed
+    </Typography.Text>
+  );
+
+  const infoIndex = (
+    <Typography.Text>
+      <span style={{ marginRight: "8px" }}>
+        <InfoCircleFilled style={{ color: "#009AF0" }} />
+      </span>{" "}
+      LLM Profile not selected
     </Typography.Text>
   );
 
@@ -244,8 +254,14 @@ function ManageDocsModal({
   const getIndexStatusMessage = (docId, indexType) => {
     let instance = null;
     if (indexType === indexTypes.raw) {
+      if (!rawLlmProfile) {
+        return infoIndex;
+      }
       instance = rawIndexStatus.find((item) => item?.docId === docId);
     } else {
+      if (!summarizeLlmProfile) {
+        return infoIndex;
+      }
       instance = summarizeIndexStatus.find((item) => item?.docId === docId);
     }
 
@@ -358,7 +374,6 @@ function ManageDocsModal({
       const newListOfDocs = [...listOfDocs];
       newListOfDocs.push(doc);
       const body = {
-        selectedDoc: doc,
         listOfDocs: newListOfDocs,
       };
       updateCustomTool(body);
