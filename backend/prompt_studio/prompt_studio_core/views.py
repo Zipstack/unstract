@@ -200,5 +200,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             file_name=file_name,
             org_id=request.org_id,
             user_id=request.user.user_id,
+            prompt_document_id=prompt_document_id,
         )
         return Response(response, status=status.HTTP_200_OK)

@@ -163,7 +163,7 @@ class PromptStudioHelper:
 
     @staticmethod
     def prompt_responder(
-        id: str, tool_id: str, file_name: str, org_id: str, user_id: str
+        id: str, tool_id: str, file_name: str, org_id: str, user_id: str, prompt_document_id: str
     ) -> Any:
         """Execute chain/single run of the prompts. Makes a call to prompt
         service and returns the dict of response.
@@ -241,7 +241,7 @@ class PromptStudioHelper:
             )
             logger.info(f"Invoking prompt service for prompt id {id}")
             response = PromptStudioHelper._fetch_response(
-                path=file_path, tool=tool, prompts=prompts, org_id=org_id
+                path=file_path, tool=tool, prompts=prompts, org_id=org_id, prompt_document_id=prompt_document_id
             )
             stream_log.publish(
                 tool.tool_id,
@@ -261,6 +261,7 @@ class PromptStudioHelper:
         path: str,
         prompts: list[ToolStudioPrompt],
         org_id: str,
+        prompt_document_id: str
     ) -> Any:
         """Utility function to invoke prompt service. Used internally.
 
@@ -301,6 +302,7 @@ class PromptStudioHelper:
                 file_name=path,
                 tool_id=str(tool.tool_id),
                 org_id=org_id,
+                prompt_document_id=prompt_document_id,
                 is_summary=tool.summarize_as_source,
             )
 

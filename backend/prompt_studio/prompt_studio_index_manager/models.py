@@ -22,19 +22,10 @@ class IndexManager(BaseModel):
         blank=False,
     )
     
-    raw_llm_profile = models.ForeignKey(
+    profile_manager = models.ForeignKey(
         ProfileManager,
         on_delete=models.SET_NULL,
         related_name="index_manager_linked_raw_llm_profile",
-        editable=False,
-        null=True,
-        blank=True,
-    )
-    
-    summarize_llm_profile = models.ForeignKey(
-        ProfileManager,
-        on_delete=models.SET_NULL,
-        related_name="index_manager_linked_summarize_llm_profile",
         editable=False,
         null=True,
         blank=True,
@@ -54,7 +45,12 @@ class IndexManager(BaseModel):
         blank=True,
     )
     
-    is_active = models.BooleanField(default=True)
+    index_ids_history = models.JSONField(
+        db_comment="List of index ids",
+        default=list,
+        null=False,
+        blank=False,
+    )
     
     created_by = models.ForeignKey(
         User,
@@ -73,5 +69,13 @@ class IndexManager(BaseModel):
         blank=True,
         editable=False,
     )
+    
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["document_manager", "profile_manager"],
+                name="unique_document_manager_profile_manager",
+            ),
+        ]
     
     
