@@ -11,6 +11,14 @@ class Migration(migrations.Migration):
             "prompt_profile_manager",
             "0007_profilemanager_is_default_and_more",
         ),
+        (
+            "prompt_studio",
+            "0006_alter_toolstudioprompt_prompt_key_and_more",
+        ),
+        (
+            "prompt_studio_core",
+            "0007_remove_customtool_default_profile_and_more",
+        )
     ]
 
     def MigrateProfileManager(apps: Any, schema_editor: Any) -> None:
