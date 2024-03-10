@@ -2,24 +2,24 @@ import uuid
 
 from account.models import User
 from django.db import models
-from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio_core.models import CustomTool
 from utils.models.base_model import BaseModel
 
+
 class DocumentManager(BaseModel):
-    """Model to store the document details"""
-    
-    prompt_document_id = models.UUIDField(
+    """Model to store the document details."""
+
+    document_id = models.UUIDField(
         primary_key=True, default=uuid.uuid4, editable=False
     )
-    
+
     document_name = models.CharField(
         db_comment="Field to store the document name",
         editable=False,
         null=False,
         blank=False,
     )
-    
+
     tool = models.ForeignKey(
         CustomTool,
         on_delete=models.CASCADE,
@@ -27,7 +27,7 @@ class DocumentManager(BaseModel):
         null=False,
         blank=False,
     )
-    
+
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -36,7 +36,7 @@ class DocumentManager(BaseModel):
         blank=True,
         editable=False,
     )
-    
+
     modified_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -45,7 +45,7 @@ class DocumentManager(BaseModel):
         blank=True,
         editable=False,
     )
-    
+
     class Meta:
         constraints = [
             models.UniqueConstraint(

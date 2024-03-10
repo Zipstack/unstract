@@ -25,10 +25,7 @@ function OutputAnalyzerList() {
       <div className="output-analyzer-body">
         {listOfDocs.map((doc) => {
           return (
-            <div
-              className="output-analyzer-card-gap"
-              key={doc?.prompt_document_id}
-            >
+            <div className="output-analyzer-card-gap" key={doc?.document_id}>
               <OutputAnalyzerCard doc={doc} totalFields={totalFields} />
             </div>
           );

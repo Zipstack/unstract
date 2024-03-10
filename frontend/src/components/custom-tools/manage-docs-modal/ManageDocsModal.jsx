@@ -271,17 +271,14 @@ function ManageDocsModal({
   useEffect(() => {
     const newRows = listOfDocs.map((item) => {
       return {
-        key: item?.prompt_document_id,
+        key: item?.document_id,
         document: item?.document_name || "",
-        rawIndex: getIndexStatusMessage(
-          item?.prompt_document_id,
-          indexTypes.raw
-        ),
+        rawIndex: getIndexStatusMessage(item?.document_id, indexTypes.raw),
         summarizeIndex: getIndexStatusMessage(
-          item?.prompt_document_id,
+          item?.document_id,
           indexTypes.summarize
         ),
-        reindex: indexDocs.includes(item?.prompt_document_id) ? (
+        reindex: indexDocs.includes(item?.document_id) ? (
           <SpinnerLoader />
         ) : (
           <Button
@@ -290,13 +287,13 @@ function ManageDocsModal({
             onClick={() => generateIndex(item)}
             disabled={
               disableLlmOrDocChange?.length > 0 ||
-              indexDocs.includes(item?.prompt_document_id)
+              indexDocs.includes(item?.document_id)
             }
           />
         ),
         delete: (
           <ConfirmModal
-            handleConfirm={() => handleDelete(item?.prompt_document_id)}
+            handleConfirm={() => handleDelete(item?.document_id)}
             content="The document will be permanently deleted."
           >
             <Button
@@ -304,7 +301,7 @@ function ManageDocsModal({
               className="display-flex-align-center"
               disabled={
                 disableLlmOrDocChange?.length > 0 ||
-                indexDocs.includes(item?.prompt_document_id)
+                indexDocs.includes(item?.document_id)
               }
             >
               <DeleteOutlined className="manage-llm-pro-icon" />
@@ -313,13 +310,11 @@ function ManageDocsModal({
         ),
         select: (
           <Radio
-            checked={
-              selectedDoc?.prompt_document_id === item?.prompt_document_id
-            }
-            onClick={() => handleDocChange(item?.prompt_document_id)}
+            checked={selectedDoc?.document_id === item?.document_id}
+            onClick={() => handleDocChange(item?.document_id)}
             disabled={
               disableLlmOrDocChange?.length > 0 ||
-              indexDocs.includes(item?.prompt_document_id)
+              indexDocs.includes(item?.document_id)
             }
           />
         ),
@@ -377,7 +372,7 @@ function ManageDocsModal({
         listOfDocs: newListOfDocs,
       };
       updateCustomTool(body);
-      handleUpdateTool({ output: doc?.prompt_document_id });
+      handleUpdateTool({ output: doc?.document_id });
     } else if (info.file.status === "error") {
       setIsUploading(false);
       setAlertDetails({
@@ -390,17 +385,17 @@ function ManageDocsModal({
   const handleDelete = (docId) => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/file/delete?prompt_document_id=${docId}&tool_id=${details?.tool_id}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/file/delete?document_id=${docId}&tool_id=${details?.tool_id}`,
     };
 
     axiosPrivate(requestOptions)
       .then(() => {
         const newListOfDocs = [...listOfDocs].filter(
-          (item) => item?.prompt_document_id !== docId
+          (item) => item?.document_id !== docId
         );
         updateCustomTool({ listOfDocs: newListOfDocs });
 
-        if (docId === selectedDoc?.prompt_document_id) {
+        if (docId === selectedDoc?.document_id) {
           updateCustomTool({ selectedDoc: "" });
           handleUpdateTool({ output: "" });
         }

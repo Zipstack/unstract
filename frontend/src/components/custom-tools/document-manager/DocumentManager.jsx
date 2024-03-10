@@ -70,7 +70,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   }, [selectedDoc]);
 
   const handleFetchContent = (viewType) => {
-    if (!selectedDoc?.prompt_document_id) {
+    if (!selectedDoc?.document_id) {
       setFileUrl("");
       setExtractTxt("");
       return;
@@ -78,7 +78,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/fetch_contents?prompt_document_id=${selectedDoc?.prompt_document_id}&view_type=${viewType}&tool_id=${details?.tool_id}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/fetch_contents?document_id=${selectedDoc?.document_id}&view_type=${viewType}&tool_id=${details?.tool_id}`,
     };
 
     handleLoadingStateUpdate(viewType, true);
@@ -118,7 +118,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
   useEffect(() => {
     const index = [...listOfDocs].findIndex(
-      (item) => item?.prompt_document_id === selectedDoc?.prompt_document_id
+      (item) => item?.document_id === selectedDoc?.document_id
     );
     setPage(index + 1);
   }, [selectedDoc, listOfDocs]);
@@ -144,7 +144,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const updatePageAndDoc = (newPage) => {
     setPage(newPage);
     const newSelectedDoc = listOfDocs[newPage - 1];
-    handleDocChange(newSelectedDoc?.prompt_document_id);
+    handleDocChange(newSelectedDoc?.document_id);
   };
 
   return (

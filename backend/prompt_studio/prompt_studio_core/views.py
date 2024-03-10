@@ -24,6 +24,7 @@ from prompt_studio.prompt_studio_core.exceptions import (
 from prompt_studio.prompt_studio_core.prompt_studio_helper import (
     PromptStudioHelper,
 )
+from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -33,7 +34,6 @@ from tool_instance.models import ToolInstance
 from utils.filtering import FilterHelper
 
 from .models import CustomTool
-from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from .serializers import CustomToolSerializer, PromptStudioIndexSerializer
 
 logger = logging.getLogger(__name__)
@@ -197,8 +197,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         tool_id: str = serializer.validated_data.get(
             ToolStudioPromptKeys.TOOL_ID
         )
-        prompt_document_id: str = serializer.validated_data.get(ToolStudioPromptKeys.PROMPT_DOCUMENT_ID)
-        document: DocumentManager = DocumentManager.objects.get(pk=prompt_document_id)
+        document_id: str = serializer.validated_data.get(
+            ToolStudioPromptKeys.DOCUMENT_ID)
+        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         try:
             unique_id = PromptStudioHelper.index_document(
@@ -206,7 +207,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 file_name=file_name,
                 org_id=request.org_id,
                 user_id=request.user.user_id,
-                prompt_document_id=prompt_document_id,
+                document_id=document_id,
             )
 
             for processor_plugin in self.processor_plugins:
@@ -218,7 +219,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     file_name=file_name,
                     org_id=request.org_id,
                     user_id=request.user.user_id,
-                    prompt_document_id=prompt_document_id,
+                    document_id=document_id,
                 )
 
             if unique_id:
@@ -249,8 +250,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             Response
         """
         tool_id: str = request.data.get(ToolStudioPromptKeys.TOOL_ID)
-        prompt_document_id: str = request.data.get(ToolStudioPromptKeys.PROMPT_DOCUMENT_ID)
-        document: DocumentManager = DocumentManager.objects.get(pk=prompt_document_id)
+        document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
+        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         id: str = request.data.get(ToolStudioPromptKeys.ID)
 
@@ -263,6 +264,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             file_name=file_name,
             org_id=request.org_id,
             user_id=request.user.user_id,
-            prompt_document_id=prompt_document_id,
+            document_id=document_id,
         )
         return Response(response, status=status.HTTP_200_OK)

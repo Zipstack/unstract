@@ -53,9 +53,7 @@ function CustomToolsHelper() {
         const data = res?.data || [];
         updatedCusTool["listOfDocs"] = data;
 
-        const doc = data.find(
-          (item) => item?.prompt_document_id === selectedDocId
-        );
+        const doc = data.find((item) => item?.document_id === selectedDocId);
         updatedCusTool["selectedDoc"] = doc || null;
 
         const reqOpsDropdownItems = {

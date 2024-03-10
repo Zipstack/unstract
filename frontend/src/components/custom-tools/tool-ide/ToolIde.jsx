@@ -74,7 +74,7 @@ function ToolIde() {
   };
 
   const generateIndex = async (doc) => {
-    const docId = doc?.prompt_document_id;
+    const docId = doc?.document_id;
     const listOfIndexDocs = [...indexDocs];
 
     if (listOfIndexDocs.includes(docId)) {
@@ -87,7 +87,7 @@ function ToolIde() {
 
     const body = {
       tool_id: details?.tool_id,
-      prompt_document_id: docId,
+      document_id: docId,
     };
     const requestOptions = {
       method: "POST",
@@ -150,9 +150,7 @@ function ToolIde() {
       return;
     }
 
-    const doc = [...listOfDocs].find(
-      (item) => item?.prompt_document_id === docId
-    );
+    const doc = [...listOfDocs].find((item) => item?.document_id === docId);
 
     const prevSelectedDoc = selectedDoc;
     const data = {

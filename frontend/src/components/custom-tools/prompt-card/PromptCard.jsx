@@ -281,7 +281,7 @@ function PromptCard({
       method = "PATCH";
       url += `${result?.promptOutputId}/`;
     }
-    handleRunApiRequest(selectedDoc?.prompt_document_id)
+    handleRunApiRequest(selectedDoc?.document_id)
       .then((res) => {
         const data = res?.data;
         const value = data[promptDetails?.prompt_key];
@@ -297,24 +297,18 @@ function PromptCard({
         );
         handleUpdateOutput(
           value,
-          selectedDoc?.prompt_document_id,
+          selectedDoc?.document_id,
           evalMetrics,
           method,
           url
         );
       })
       .catch((err) => {
-        handleUpdateOutput(
-          null,
-          selectedDoc?.prompt_document_id,
-          [],
-          method,
-          url
-        );
+        handleUpdateOutput(null, selectedDoc?.document_id, [], method, url);
         setAlertDetails(
           handleException(
             err,
-            `Failed to generate output for ${selectedDoc?.prompt_document_id}`
+            `Failed to generate output for ${selectedDoc?.document_id}`
           )
         );
       })
@@ -328,7 +322,7 @@ function PromptCard({
   // Get the coverage for all the documents except the one that's currently selected
   const handleCoverage = () => {
     const listOfDocsToProcess = [...listOfDocs].filter(
-      (item) => item?.prompt_document_id !== selectedDoc?.prompt_document_id
+      (item) => item?.document_id !== selectedDoc?.document_id
     );
 
     if (listOfDocsToProcess?.length === 0) {
@@ -340,13 +334,13 @@ function PromptCard({
       let method = "POST";
       let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/`;
       const outputId = outputIds.find(
-        (output) => output?.docId === item?.prompt_document_id
+        (output) => output?.docId === item?.document_id
       );
       if (outputId?.promptOutputId?.length) {
         method = "PATCH";
         url += `${outputId?.promptOutputId}/`;
       }
-      handleRunApiRequest(item?.prompt_document_id)
+      handleRunApiRequest(item?.document_id)
         .then((res) => {
           const data = res?.data;
           const outputValue = data[promptDetails?.prompt_key];
@@ -362,18 +356,18 @@ function PromptCard({
           );
           handleUpdateOutput(
             outputValue,
-            item?.prompt_document_id,
+            item?.document_id,
             evalMetrics,
             method,
             url
           );
         })
         .catch((err) => {
-          handleUpdateOutput(null, item?.prompt_document_id, [], method, url);
+          handleUpdateOutput(null, item?.document_id, [], method, url);
           setAlertDetails(
             handleException(
               err,
-              `Failed to generate output for ${item?.prompt_document_id}`
+              `Failed to generate output for ${item?.document_id}`
             )
           );
         })
@@ -387,7 +381,7 @@ function PromptCard({
     const promptId = promptDetails?.prompt_id;
 
     const body = {
-      prompt_document_id: docId,
+      document_id: docId,
       id: promptId,
       tool_id: details?.tool_id,
     };
@@ -437,7 +431,7 @@ function PromptCard({
       .then((res) => {
         const data = res?.data;
         const promptOutputId = data?.prompt_output_id || null;
-        if (docId === selectedDoc?.prompt_document_id) {
+        if (docId === selectedDoc?.document_id) {
           setResult({
             promptOutputId: promptOutputId,
             output: data?.output,
@@ -513,7 +507,7 @@ function PromptCard({
     let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${selectedLlmProfileId}`;
 
     if (isOutput) {
-      url += `&document_manager=${selectedDoc?.prompt_document_id}`;
+      url += `&document_manager=${selectedDoc?.document_id}`;
     }
     const requestOptions = {
       method: "GET",
@@ -550,7 +544,7 @@ function PromptCard({
       if (
         item?.output !== undefined &&
         [...listOfDocs].find(
-          (doc) => doc?.prompt_document_id === item?.document_manager
+          (doc) => doc?.document_id === item?.document_manager
         )
       ) {
         ids.push({
@@ -591,7 +585,7 @@ function PromptCard({
                   onChange={onSearchDebounce}
                   disabled={
                     disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
-                    indexDocs.includes(selectedDoc?.prompt_document_id)
+                    indexDocs.includes(selectedDoc?.document_id)
                   }
                 />
               </Col>
@@ -607,7 +601,7 @@ function PromptCard({
                   onChange={onSearchDebounce}
                   disabled={
                     disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
-                    indexDocs.includes(selectedDoc?.prompt_document_id)
+                    indexDocs.includes(selectedDoc?.document_id)
                   }
                 />
               </Col>
@@ -700,7 +694,7 @@ function PromptCard({
                       disabled={
                         disableLlmOrDocChange.includes(
                           promptDetails?.prompt_id
-                        ) || indexDocs.includes(selectedDoc?.prompt_document_id)
+                        ) || indexDocs.includes(selectedDoc?.document_id)
                       }
                     >
                       <EditOutlined className="prompt-card-actions-head" />
@@ -729,7 +723,7 @@ function PromptCard({
                         disableLlmOrDocChange.includes(
                           promptDetails?.prompt_id
                         ) ||
-                        indexDocs.includes(selectedDoc?.prompt_document_id)
+                        indexDocs.includes(selectedDoc?.document_id)
                       }
                     >
                       <PlayCircleOutlined className="prompt-card-actions-head" />
@@ -746,8 +740,7 @@ function PromptCard({
                         disabled={
                           disableLlmOrDocChange.includes(
                             promptDetails?.prompt_id
-                          ) ||
-                          indexDocs.includes(selectedDoc?.prompt_document_id)
+                          ) || indexDocs.includes(selectedDoc?.document_id)
                         }
                       >
                         <DeleteOutlined className="prompt-card-actions-head" />
@@ -814,7 +807,7 @@ function PromptCard({
                   value={promptDetails?.enforce_type || null}
                   disabled={
                     disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
-                    indexDocs.includes(selectedDoc?.prompt_document_id)
+                    indexDocs.includes(selectedDoc?.document_id)
                   }
                   onChange={(value) => handleTypeChange(value)}
                 />
@@ -853,7 +846,7 @@ function PromptCard({
                   disabled={
                     page <= 1 ||
                     disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
-                    indexDocs.includes(selectedDoc?.prompt_document_id)
+                    indexDocs.includes(selectedDoc?.document_id)
                   }
                   onClick={handlePageLeft}
                 >
@@ -865,7 +858,7 @@ function PromptCard({
                   disabled={
                     page >= llmProfiles?.length ||
                     disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
-                    indexDocs.includes(selectedDoc?.prompt_document_id)
+                    indexDocs.includes(selectedDoc?.document_id)
                   }
                   onClick={handlePageRight}
                 >

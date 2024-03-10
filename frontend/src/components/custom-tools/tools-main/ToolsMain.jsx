@@ -137,7 +137,7 @@ function ToolsMain({ setOpenAddLlmModal }) {
           />
         )}
         {activeKey === "2" && (
-          <CombinedOutput docId={selectedDoc?.prompt_document_id} />
+          <CombinedOutput docId={selectedDoc?.document_id} />
         )}
       </div>
       <div className="tools-main-footer">

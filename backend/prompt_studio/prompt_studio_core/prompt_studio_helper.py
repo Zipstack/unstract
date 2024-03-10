@@ -6,9 +6,7 @@ from typing import Any, Optional
 
 from django.conf import settings
 from file_management.file_management_helper import FileManagerHelper
-from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import PromptStudioIndexHelper
 from prompt_studio.prompt_profile_manager.models import ProfileManager
-from prompt_studio.prompt_studio_index_manager.models import IndexManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.constants import LogLevels
 from prompt_studio.prompt_studio_core.constants import (
@@ -24,6 +22,9 @@ from prompt_studio.prompt_studio_core.exceptions import (
 from prompt_studio.prompt_studio_core.models import CustomTool
 from prompt_studio.prompt_studio_core.prompt_ide_base_tool import (
     PromptIdeBaseTool,
+)
+from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import (
+    PromptStudioIndexHelper,
 )
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.index import ToolIndex
@@ -87,7 +88,7 @@ class PromptStudioHelper:
         file_name: str,
         org_id: str,
         user_id: str,
-        prompt_document_id: str,
+        document_id: str,
         is_summary: bool = False,
     ) -> Any:
         """Method to index a document.
@@ -152,9 +153,8 @@ class PromptStudioHelper:
             tool_id=tool_id,
             file_name=file_path,
             org_id=org_id,
-            prompt_document_id=prompt_document_id,
+            document_id=document_id,
             is_summary=is_summary,
-            
         )
         logger.info(f"Indexing done sucessfully for {file_name}")
         stream_log.publish(
@@ -169,7 +169,12 @@ class PromptStudioHelper:
 
     @staticmethod
     def prompt_responder(
-        id: str, tool_id: str, file_name: str, org_id: str, user_id: str, prompt_document_id: str
+        id: str,
+        tool_id: str,
+        file_name: str,
+        org_id: str,
+        user_id: str,
+        document_id: str
     ) -> Any:
         """Execute chain/single run of the prompts. Makes a call to prompt
         service and returns the dict of response.
@@ -222,7 +227,8 @@ class PromptStudioHelper:
                     ),
                 )
                 if not prompt_instance:
-                    logger.error(f"Prompt id {id} does not have any data in db")
+                    logger.error(
+                        f"Prompt id {id} does not have any data in db")
                     raise PromptNotValid()
             except Exception as exc:
                 logger.error(f"Error while fetching prompt {exc}")
@@ -247,7 +253,11 @@ class PromptStudioHelper:
             )
             logger.info(f"Invoking prompt service for prompt id {id}")
             response = PromptStudioHelper._fetch_response(
-                path=file_path, tool=tool, prompts=prompts, org_id=org_id, prompt_document_id=prompt_document_id
+                path=file_path,
+                tool=tool,
+                prompts=prompts,
+                org_id=org_id,
+                document_id=document_id
             )
             stream_log.publish(
                 tool.tool_id,
@@ -267,7 +277,7 @@ class PromptStudioHelper:
         path: str,
         prompts: list[ToolStudioPrompt],
         org_id: str,
-        prompt_document_id: str
+        document_id: str
     ) -> Any:
         """Utility function to invoke prompt service. Used internally.
 
@@ -308,7 +318,7 @@ class PromptStudioHelper:
                 file_name=path,
                 tool_id=str(tool.tool_id),
                 org_id=org_id,
-                prompt_document_id=prompt_document_id,
+                document_id=document_id,
                 is_summary=tool.summarize_as_source,
             )
 
@@ -389,7 +399,7 @@ class PromptStudioHelper:
         tool_id: str,
         file_name: str,
         org_id: str,
-        prompt_document_id: str,
+        document_id: str,
         is_summary: bool = False,
     ) -> str:
         try:
@@ -422,12 +432,12 @@ class PromptStudioHelper:
                 output_file_path=extract_file_path,
             )
         )
-        
+
         PromptStudioIndexHelper.handle_index_manager(
-            prompt_document_id=prompt_document_id,
+            document_id=document_id,
             is_summary=is_summary,
             profile_manager=profile_manager,
             doc_id=doc_id,
         )
-        
+
         return doc_id

@@ -27,7 +27,7 @@ function OutputAnalyzerCard({ doc, totalFields }) {
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/fetch_contents?prompt_document_id=${doc?.prompt_document_id}&tool_id=${details?.tool_id}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/fetch_contents?document_id=${doc?.document_id}&tool_id=${details?.tool_id}`,
     };
 
     setIsDocLoading(true);
@@ -93,7 +93,7 @@ function OutputAnalyzerCard({ doc, totalFields }) {
           <Col span={12} className="height-100">
             <div className="output-analyzer-right-box">
               <CombinedOutput
-                docId={doc?.prompt_document_id}
+                docId={doc?.document_id}
                 setFilledFields={setFilledFields}
               />
             </div>

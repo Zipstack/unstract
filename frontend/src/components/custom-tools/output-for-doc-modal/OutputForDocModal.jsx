@@ -70,8 +70,7 @@ function OutputForDocModal({
     const rowsData = [];
     [...listOfDocs].forEach((item) => {
       const output = data.find(
-        (outputValue) =>
-          outputValue?.document_manager === item?.prompt_document_id
+        (outputValue) => outputValue?.document_manager === item?.document_id
       );
       const isSuccess = output?.output?.length > 0;
 

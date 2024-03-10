@@ -107,7 +107,7 @@ function EditableText({
       onClick={() => setIsEditing(true)}
       disabled={
         disableLlmOrDocChange.includes(promptId) ||
-        indexDocs.includes(selectedDoc?.prompt_document_id)
+        indexDocs.includes(selectedDoc?.document_id)
       }
     />
   );
