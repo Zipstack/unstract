@@ -47,6 +47,8 @@ dependencies = [
     "unstract-tool-registry @ file:///${PROJECT_ROOT}/../unstract/tool-registry",
     "unstract-tool-sandbox @ file:///${PROJECT_ROOT}/../unstract/tool-sandbox",
     "unstract-workflow-execution @ file:///${PROJECT_ROOT}/../unstract/workflow-execution",
+    "unstract-sdk @ file:///${PROJECT_ROOT}/../unstract/unstract-sdk",
+    "unstract-adapters @ file:///${PROJECT_ROOT}/../unstract/unstract-adapters",
 ]
 # <3.11.1 due to resolution error from Unstract SDK
 requires-python = ">=3.9,<3.11.1"

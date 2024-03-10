@@ -641,5 +641,5 @@ backend/backend/settings/*
 !backend/backend/settings/test.py
 
 # Local Dependencies for docker testing
- unstract/unstract-adapters/
- unstract/unstract-sdk/
+unstract/unstract-adapters/*
+unstract/unstract-sdk/*

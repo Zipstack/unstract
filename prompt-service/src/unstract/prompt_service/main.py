@@ -8,27 +8,27 @@ import nltk
 import peewee
 from dotenv import load_dotenv
 from flask import Flask, request
-from llama_index import (
+from llama_index.core import (
     QueryBundle,
     ServiceContext,
     VectorStoreIndex,
     get_response_synthesizer,
 )
-from llama_index.indices.base_retriever import BaseRetriever
-from llama_index.llms import LLM
-from llama_index.query_engine import (
+from llama_index.core.llms import LLM
+from llama_index.core.query_engine import (
     RetrieverQueryEngine,
     SubQuestionQueryEngine,
 )
-from llama_index.schema import NodeWithScore
-from llama_index.tools import QueryEngineTool, ToolMetadata
-from llama_index.vector_stores.types import (
+from llama_index.core.retrievers import BaseRetriever
+from llama_index.core.schema import NodeWithScore
+from llama_index.core.tools import QueryEngineTool, ToolMetadata
+from llama_index.core.vector_stores import (
     ExactMatchFilter,
     MetadataFilters,
-    VectorStore,
     VectorStoreQuery,
     VectorStoreQueryResult,
 )
+from llama_index.core.vector_stores.types import VectorStore
 from nltk import ngrams
 from unstract.prompt_service.authentication_middleware import (
     AuthenticationMiddleware,
