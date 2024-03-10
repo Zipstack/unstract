@@ -1,12 +1,50 @@
-import { Dropdown, List, Typography } from "antd";
+import { Flex, Image, List, Popconfirm, Typography } from "antd";
 import PropTypes from "prop-types";
-
 import "./ListView.css";
-import { DeleteOutlined, EditOutlined, MoreOutlined } from "@ant-design/icons";
+import {
+  DeleteOutlined,
+  EditOutlined,
+  QuestionCircleOutlined,
+} from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 
-function ListView({ listOfTools, handleEdit, handleDelete }) {
+function ListView({
+  listOfTools,
+  handleEdit,
+  handleDelete,
+  titleProp,
+  descriptionProp,
+  iconProp,
+  idProp,
+  centered,
+}) {
   const navigate = useNavigate();
+  const handleDeleteClick = (event, toolId) => {
+    event.stopPropagation(); // Stop propagation to prevent list item click
+    handleDelete(toolId);
+  };
+
+  const renderTitle = (record) => {
+    if (iconProp && record[iconProp].length > 4) {
+      return (
+        <Flex gap={20} align="center">
+          <div className="cover-img">
+            <Image
+              src={record[iconProp]}
+              preview={false}
+              className="fit-cover"
+            />
+          </div>
+          <Typography.Text>{record[titleProp]}</Typography.Text>
+        </Flex>
+      );
+    } else if (iconProp) {
+      return `${record[iconProp]} ${record[titleProp]}`;
+    } else {
+      return record[titleProp];
+    }
+  };
+
   return (
     <List
       size="large"
@@ -17,42 +55,37 @@ function ListView({ listOfTools, handleEdit, handleDelete }) {
         return (
           <List.Item
             key={item?.id}
-            onClick={() => navigate(`${item?.tool_id}`)}
-            className="cur-pointer"
+            onClick={() => navigate(`${item[idProp]}`)}
+            className={`cur-pointer ${centered ? "centered" : ""}`}
             extra={
-              <Dropdown
-                menu={{
-                  items: [
-                    {
-                      label: "Edit",
-                      key: "edit",
-                      icon: <EditOutlined />,
-                      onClick: (event) => handleEdit(event, item?.id),
-                    },
-                    {
-                      label: "Delete",
-                      key: "delete",
-                      icon: <DeleteOutlined />,
-                      onClick: (event) => handleDelete(event, item?.id),
-                    },
-                  ],
-                }}
-                trigger={["click"]}
-                placement="bottomRight"
-                onClick={(evt) => evt.stopPropagation()}
-              >
-                <MoreOutlined />
-              </Dropdown>
+              <div onClick={(event) => event.stopPropagation()} role="none">
+                <EditOutlined
+                  key={`${item.id}-edit`}
+                  onClick={(event) => handleEdit(event, item)}
+                  className="action-icon-buttons"
+                />
+                <Popconfirm
+                  key={`${item.id}-delete`}
+                  title="Delete the tool"
+                  description="Are you sure to delete this tool?"
+                  okText="Yes"
+                  cancelText="No"
+                  icon={<QuestionCircleOutlined />}
+                  onConfirm={(event) => {
+                    handleDeleteClick(event, item);
+                  }}
+                >
+                  <Typography.Text>
+                    <DeleteOutlined className="action-icon-buttons" />
+                  </Typography.Text>
+                </Popconfirm>
+              </div>
             }
           >
-            <div className="list-view-item">
-              <Typography.Text strong ellipsis>
-                {item?.tool_name}
-              </Typography.Text>
-              <Typography.Text type="secondary" ellipsis>
-                {item?.description || "No description provided"}
-              </Typography.Text>
-            </div>
+            <List.Item.Meta
+              title={renderTitle(item)}
+              description={item[descriptionProp]}
+            />
           </List.Item>
         );
       }}
@@ -64,6 +97,11 @@ ListView.propTypes = {
   listOfTools: PropTypes.array.isRequired,
   handleEdit: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
+  titleProp: PropTypes.string.isRequired,
+  descriptionProp: PropTypes.string,
+  iconProp: PropTypes.string,
+  idProp: PropTypes.string.isRequired,
+  centered: PropTypes.bool,
 };
 
 export { ListView };
