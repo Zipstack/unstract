@@ -2,7 +2,6 @@ import uuid
 
 from account.models import User
 from django.db import models
-from prompt_studio.prompt_profile_manager.models import ProfileManager
 from utils.models.base_model import BaseModel
 
 
@@ -38,22 +37,7 @@ class CustomTool(BaseModel):
     postamble = models.TextField(
         blank=True, db_comment="Appended as postable to prompts."
     )
-    default_profile = models.ForeignKey(
-        ProfileManager,
-        on_delete=models.SET_NULL,
-        related_name="default_profile",
-        null=True,
-        blank=True,
-        db_comment="Default LLM Profile used in prompt",
-    )
-    summarize_llm_profile = models.ForeignKey(
-        ProfileManager,
-        on_delete=models.SET_NULL,
-        related_name="summarize_llm_profile",
-        null=True,
-        blank=True,
-        db_comment="LLM Profile used for summarize",
-    )
+
     summarize_context = models.BooleanField(
         default=False, db_comment="Flag to summarize content"
     )
