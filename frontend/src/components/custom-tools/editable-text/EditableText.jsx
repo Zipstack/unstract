@@ -5,7 +5,6 @@ import debounce from "lodash/debounce";
 
 import "./EditableText.css";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
-
 function EditableText({
   isEditing,
   setIsEditing,
@@ -92,7 +91,7 @@ function EditableText({
 
   return (
     <Input
-      className="font-size-12 width-100"
+      className="font-size-14 width-100 input-header-text"
       value={text}
       onChange={handleTextChange}
       placeholder="Enter Key"

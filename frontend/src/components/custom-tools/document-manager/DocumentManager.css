@@ -41,3 +41,8 @@
 .rpv-default-layout__container {
     border: 0 !important;
 }
+
+.doc-main-title{
+    color: darkgray;
+    font-weight: 600;
+}
