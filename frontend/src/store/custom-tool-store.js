@@ -9,6 +9,7 @@ const defaultState = {
   llmProfiles: [],
   details: {},
   disableLlmOrDocChange: [],
+  indexDocs: [],
 };
 
 const defaultPromptInstance = {

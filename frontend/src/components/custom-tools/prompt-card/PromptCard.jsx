@@ -103,6 +103,7 @@ function PromptCard({
     updateCustomTool,
     details,
     disableLlmOrDocChange,
+    indexDocs,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -588,9 +589,10 @@ function PromptCard({
                   defaultValue={promptDetails?.assert_prompt}
                   name="assert_prompt"
                   onChange={onSearchDebounce}
-                  disabled={disableLlmOrDocChange.includes(
-                    promptDetails?.prompt_id
-                  )}
+                  disabled={
+                    disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    indexDocs.includes(selectedDoc?.prompt_document_id)
+                  }
                 />
               </Col>
               <Col span={8} className="assert-p-l-4 assert-p-r-4">
@@ -603,9 +605,10 @@ function PromptCard({
                   defaultValue={promptDetails?.assertion_failure_prompt}
                   name="assertion_failure_prompt"
                   onChange={onSearchDebounce}
-                  disabled={disableLlmOrDocChange.includes(
-                    promptDetails?.prompt_id
-                  )}
+                  disabled={
+                    disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    indexDocs.includes(selectedDoc?.prompt_document_id)
+                  }
                 />
               </Col>
               <Col span={8} className="assert-p-l-4">
@@ -694,9 +697,11 @@ function PromptCard({
                       type="text"
                       className="display-flex-align-center"
                       onClick={enableEdit}
-                      disabled={disableLlmOrDocChange.includes(
-                        promptDetails?.prompt_id
-                      )}
+                      disabled={
+                        disableLlmOrDocChange.includes(
+                          promptDetails?.prompt_id
+                        ) || indexDocs.includes(selectedDoc?.prompt_document_id)
+                      }
                     >
                       <EditOutlined className="prompt-card-actions-head" />
                     </Button>
@@ -721,7 +726,10 @@ function PromptCard({
                         (updateStatus?.promptId === promptDetails?.prompt_id &&
                           updateStatus?.status ===
                             promptStudioUpdateStatus.isUpdating) ||
-                        disableLlmOrDocChange.includes(promptDetails?.prompt_id)
+                        disableLlmOrDocChange.includes(
+                          promptDetails?.prompt_id
+                        ) ||
+                        indexDocs.includes(selectedDoc?.prompt_document_id)
                       }
                     >
                       <PlayCircleOutlined className="prompt-card-actions-head" />
@@ -735,9 +743,12 @@ function PromptCard({
                       <Button
                         size="small"
                         type="text"
-                        disabled={disableLlmOrDocChange.includes(
-                          promptDetails?.prompt_id
-                        )}
+                        disabled={
+                          disableLlmOrDocChange.includes(
+                            promptDetails?.prompt_id
+                          ) ||
+                          indexDocs.includes(selectedDoc?.prompt_document_id)
+                        }
                       >
                         <DeleteOutlined className="prompt-card-actions-head" />
                       </Button>
@@ -801,9 +812,10 @@ function PromptCard({
                   optionFilterProp="children"
                   options={enforceTypeList}
                   value={promptDetails?.enforce_type || null}
-                  disabled={disableLlmOrDocChange.includes(
-                    promptDetails?.prompt_id
-                  )}
+                  disabled={
+                    disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    indexDocs.includes(selectedDoc?.prompt_document_id)
+                  }
                   onChange={(value) => handleTypeChange(value)}
                 />
               </div>
@@ -840,7 +852,8 @@ function PromptCard({
                   size="small"
                   disabled={
                     page <= 1 ||
-                    disableLlmOrDocChange.includes(promptDetails?.prompt_id)
+                    disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    indexDocs.includes(selectedDoc?.prompt_document_id)
                   }
                   onClick={handlePageLeft}
                 >
@@ -851,7 +864,8 @@ function PromptCard({
                   size="small"
                   disabled={
                     page >= llmProfiles?.length ||
-                    disableLlmOrDocChange.includes(promptDetails?.prompt_id)
+                    disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    indexDocs.includes(selectedDoc?.prompt_document_id)
                   }
                   onClick={handlePageRight}
                 >

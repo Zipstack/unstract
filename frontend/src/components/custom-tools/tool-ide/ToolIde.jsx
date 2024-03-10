@@ -12,7 +12,6 @@ import { AddLlmProfileModal } from "../add-llm-profile-modal/AddLlmProfileModal"
 import { CustomSynonymsModal } from "../custom-synonyms-modal/CustomSynonymsModal";
 import { DisplayLogs } from "../display-logs/DisplayLogs";
 import { DocumentManager } from "../document-manager/DocumentManager";
-import { GenerateIndex } from "../generate-index/GenerateIndex";
 import { Header } from "../header/Header";
 import { ManageLlmProfilesModal } from "../manage-llm-profiles-modal/ManageLlmProfilesModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
@@ -25,9 +24,6 @@ function ToolIde() {
   const [openManageLlmModal, setOpenManageLlmModal] = useState(false);
   const [openAddLlmModal, setOpenAddLlmModal] = useState(false);
   const [editLlmProfileId, setEditLlmProfileId] = useState(null);
-  const [isGenerateIndexOpen, setIsGenerateIndexOpen] = useState(false);
-  const [isGeneratingIndex, setIsGeneratingIndex] = useState(false);
-  const [generateIndexResult, setGenerateIndexResult] = useState("");
   const [modalTitle, setModalTitle] = useState("");
   const {
     details,
@@ -35,6 +31,7 @@ function ToolIde() {
     disableLlmOrDocChange,
     selectedDoc,
     listOfDocs,
+    indexDocs,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -76,16 +73,17 @@ function ToolIde() {
     setActiveKey(keys);
   };
 
-  const handleGenerateIndexModal = (isOpen) => {
-    if (isGeneratingIndex) {
+  const generateIndex = async (doc) => {
+    const docId = doc?.prompt_document_id;
+    const listOfIndexDocs = [...indexDocs];
+
+    if (listOfIndexDocs.includes(docId)) {
+      setAlertDetails({
+        type: "error",
+        content: "This document is already getting indexed",
+      });
       return;
     }
-    setIsGenerateIndexOpen(isOpen);
-  };
-
-  const generateIndex = async (docId) => {
-    setIsGenerateIndexOpen(true);
-    setIsGeneratingIndex(true);
 
     const body = {
       tool_id: details?.tool_id,
@@ -101,16 +99,25 @@ function ToolIde() {
       data: body,
     };
 
+    listOfIndexDocs.push(docId);
+    updateCustomTool({ indexDocs: listOfIndexDocs });
     return axiosPrivate(requestOptions)
       .then(() => {
-        setGenerateIndexResult("SUCCESS");
+        setAlertDetails({
+          type: "success",
+          content: `${doc?.document_name} - Indexed successfully`,
+        });
       })
       .catch((err) => {
-        setGenerateIndexResult("FAILED");
-        setAlertDetails(handleException(err, "Failed to index"));
+        setAlertDetails(
+          handleException(err, `${doc?.document_name} - Failed to index`)
+        );
       })
       .finally(() => {
-        setIsGeneratingIndex(false);
+        const newListOfIndexDocs = [...indexDocs].filter(
+          (item) => item !== docId
+        );
+        updateCustomTool({ indexDocs: newListOfIndexDocs });
       });
   };
 
@@ -237,19 +244,6 @@ function ToolIde() {
         modalTitle={modalTitle}
         setModalTitle={setModalTitle}
       />
-      <Modal
-        open={isGenerateIndexOpen}
-        footer={false}
-        centered={true}
-        width={400}
-        closable={!isGeneratingIndex}
-        onCancel={() => handleGenerateIndexModal(false)}
-      >
-        <GenerateIndex
-          isGeneratingIndex={isGeneratingIndex}
-          result={generateIndexResult}
-        />
-      </Modal>
     </div>
   );
 }
