@@ -27,6 +27,10 @@ function ListOfTools() {
     getListOfTools();
   }, []);
 
+  useEffect(() => {
+    setFilteredListOfTools(listOfTools);
+  }, [listOfTools]);
+
   const getListOfTools = () => {
     const requestOptions = {
       method: "GET",
