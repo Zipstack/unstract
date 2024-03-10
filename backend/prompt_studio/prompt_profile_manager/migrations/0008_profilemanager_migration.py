@@ -30,6 +30,10 @@ class Migration(migrations.Migration):
             which has distinct profile manager."""
 
             for index, custom_prompt in enumerate(custom_prompts):
+                """There can be scenario where individual prompts wont have a
+                profile manager attached."""
+                if not custom_prompt.profile_manager:
+                    continue
                 profile_manager = ProfileManager.objects.get(
                     pk=custom_prompt.profile_manager.profile_id
                 )
