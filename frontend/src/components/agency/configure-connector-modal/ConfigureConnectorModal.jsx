@@ -21,6 +21,7 @@ function ConfigureConnectorModal({
   formDataConfig,
   setFormDataConfig,
   isSpecConfigLoading,
+  connDetails,
   connType,
 }) {
   const [activeKey, setActiveKey] = useState("1");
@@ -32,13 +33,17 @@ function ConfigureConnectorModal({
     {
       key: "2",
       label: "File System",
-      disabled: !connectorId || connType === "DATABASE",
+      disabled:
+        !connectorId ||
+        connDetails?.connector_id !== selectedId ||
+        connType === "DATABASE",
     },
   ];
 
   const handleSelectItem = (e) => {
     const id = e.key;
     setSelectedId(id?.toString());
+    setActiveKey("1");
   };
 
   const onTabChange = (key) => {
@@ -88,6 +93,7 @@ function ConfigureConnectorModal({
                 formDataConfig={formDataConfig}
                 setFormDataConfig={setFormDataConfig}
                 isSpecConfigLoading={isSpecConfigLoading}
+                connDetails={connDetails}
               />
             )}
             {activeKey === "2" && <ManageFiles selectedItem={connectorId} />}
@@ -112,6 +118,7 @@ ConfigureConnectorModal.propTypes = {
   formDataConfig: PropTypes.object,
   setFormDataConfig: PropTypes.func.isRequired,
   isSpecConfigLoading: PropTypes.bool.isRequired,
+  connDetails: PropTypes.object,
   connType: PropTypes.string.isRequired,
 };
 
