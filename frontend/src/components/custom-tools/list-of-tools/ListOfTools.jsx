@@ -131,6 +131,10 @@ function ListOfTools() {
           (filterToll) => filterToll?.tool_id !== tool.tool_id
         );
         setListOfTools(tools);
+        setAlertDetails({
+          type: "success",
+          console: "Deleted successfully ",
+        });
       })
       .catch((err) => {
         setAlertDetails({
