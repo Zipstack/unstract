@@ -198,11 +198,23 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             ToolStudioPromptKeys.TOOL_ID
         )
         document_id: str = serializer.validated_data.get(
-            ToolStudioPromptKeys.DOCUMENT_ID)
+            ToolStudioPromptKeys.DOCUMENT_ID
+        )
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
-        try:
-            unique_id = PromptStudioHelper.index_document(
+        unique_id = PromptStudioHelper.index_document(
+            tool_id=tool_id,
+            file_name=file_name,
+            org_id=request.org_id,
+            user_id=request.user.user_id,
+            document_id=document_id,
+        )
+
+        for processor_plugin in self.processor_plugins:
+            cls = processor_plugin[ProcessorConfig.METADATA][
+                ProcessorConfig.METADATA_SERVICE_CLASS
+            ]
+            cls.process(
                 tool_id=tool_id,
                 file_name=file_name,
                 org_id=request.org_id,
@@ -210,30 +222,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 document_id=document_id,
             )
 
-            for processor_plugin in self.processor_plugins:
-                cls = processor_plugin[ProcessorConfig.METADATA][
-                    ProcessorConfig.METADATA_SERVICE_CLASS
-                ]
-                cls.process(
-                    tool_id=tool_id,
-                    file_name=file_name,
-                    org_id=request.org_id,
-                    user_id=request.user.user_id,
-                    document_id=document_id,
-                )
-
-            if unique_id:
-                return Response(
-                    {"message": "Document indexed successfully."},
-                    status=status.HTTP_200_OK,
-                )
-            else:
-                logger.error(
-                    "Error occured while indexing. Unique ID is not valid."
-                )
-                raise IndexingError()
-        except Exception as exc:
-            logger.error(f"Error occured while indexing {exc}")
+        if unique_id:
+            return Response(
+                {"message": "Document indexed successfully."},
+                status=status.HTTP_200_OK,
+            )
+        else:
+            logger.error(
+                "Error occured while indexing. Unique ID is not valid."
+            )
             raise IndexingError()
 
     @action(detail=True, methods=["post"])
