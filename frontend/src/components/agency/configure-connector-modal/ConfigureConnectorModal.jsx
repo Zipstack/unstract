@@ -33,7 +33,10 @@ function ConfigureConnectorModal({
     {
       key: "2",
       label: "File System",
-      disabled: !connectorId || connDetails?.connector_id !== selectedId || connType === "DATABASE",
+      disabled:
+        !connectorId ||
+        connDetails?.connector_id !== selectedId ||
+        connType === "DATABASE",
     },
   ];
 
