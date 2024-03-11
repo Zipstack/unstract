@@ -534,11 +534,11 @@ class WorkflowHelper:
                 != WorkflowExecution.Type.STEP
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
-            current_action: Optional[str] = CacheService.get_a_key(execution_id)
+            current_action: Optional[str] = CacheService.get_key(execution_id)
             logger.info(f"workflow_execution.current_action {current_action}")
             if current_action is None:
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
-            CacheService.set_a_key(execution_id, execution_action)
+            CacheService.set_key(execution_id, execution_action)
             workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
 
             return ExecutionResponse(

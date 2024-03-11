@@ -23,7 +23,7 @@ class CacheService:
         return CacheService.cache
 
     @staticmethod
-    def get_a_key(key: str) -> Optional[Any]:
+    def get_key(key: str) -> Optional[Any]:
         cache_instance = CacheService.get_instance()
         if cache_instance is not None:
             data = cache_instance.get(str(key))
@@ -33,7 +33,7 @@ class CacheService:
         return None
 
     @staticmethod
-    def set_a_key(key: str, value: Any) -> None:
+    def set_key(key: str, value: Any) -> None:
         cache_instance = CacheService.get_instance()
         if cache_instance is not None:
             cache_instance.set(
