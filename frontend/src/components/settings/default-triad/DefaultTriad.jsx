@@ -3,7 +3,6 @@ import { Button, Select, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { handleException } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
@@ -11,6 +10,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper.jsx";
 import "./DefaultTriad.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 const { Option } = Select;
 
@@ -19,6 +19,7 @@ function DefaultTriad() {
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
 
   const [adaptorsList, setAdaptorsList] = useState([]);
   const [currentLLMDefault, setCurrentLLMDefault] = useState();

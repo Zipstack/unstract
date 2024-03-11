@@ -14,9 +14,9 @@ import { useCallback, useEffect, useState } from "react";
 import debounce from "lodash/debounce";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 const fieldNames = {
   SUMMARIZE_LLM_PROFILE: "summarize_llm_profile",
@@ -39,6 +39,7 @@ function SelectLlmProfileModal({
   const [isLoading, setIsLoading] = useState(false);
   const { details, updateCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     setPrompt(details?.summarize_prompt);

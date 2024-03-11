@@ -1,7 +1,8 @@
 import { Col, Divider, Flex, Row, Space, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { base64toBlob, handleException } from "../../../helpers/GetStaticData";
+
+import { base64toBlob } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
@@ -9,6 +10,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { CombinedOutput } from "../combined-output/CombinedOutput";
 import { DocumentViewer } from "../document-viewer/DocumentViewer";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function OutputAnalyzerCard({ doc, totalFields }) {
   const [fileUrl, setFileUrl] = useState("");
@@ -18,6 +20,7 @@ function OutputAnalyzerCard({ doc, totalFields }) {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     if (!doc) {
