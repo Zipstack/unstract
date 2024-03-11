@@ -8,22 +8,31 @@ from django.core.cache import cache
 
 
 class CacheService:
-    def __init__(self) -> None:
-        self.cache = redis.Redis(
-            host=settings.REDIS_HOST,
-            port=int(settings.REDIS_PORT),
-            password=settings.REDIS_PASSWORD,
-            username=settings.REDIS_USER,
-        )
+    _instance = None
+    cache: Any
 
-    def get_a_key(self, key: str) -> Optional[Any]:
-        data = self.cache.get(str(key))
+    @staticmethod
+    def get_instance() -> Any:
+        if CacheService._instance is None:
+            CacheService._instance = CacheService()
+            CacheService._instance.cache = redis.Redis(
+                host=settings.REDIS_HOST,
+                port=int(settings.REDIS_PORT),
+                password=settings.REDIS_PASSWORD,
+                username=settings.REDIS_USER,
+            )
+        return CacheService._instance
+
+    @staticmethod
+    def get_a_key(key: str) -> Optional[Any]:
+        data = CacheService.get_instance().cache.get(str(key))
         if data is not None:
             return data.decode("utf-8")
         return data
 
-    def set_a_key(self, key: str, value: Any) -> None:
-        self.cache.set(
+    @staticmethod
+    def set_a_key(key: str, value: Any) -> None:
+        CacheService.get_instance().cache.set(
             str(key),
             value,
             int(settings.WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND),
