@@ -140,6 +140,7 @@ function ToolSettings({ type }) {
               iconProp="icon"
               isEmpty={!tableRows?.length}
               centered
+              isClickable={false}
             />
           </div>
         </div>
