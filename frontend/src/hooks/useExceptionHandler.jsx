@@ -1,36 +1,58 @@
 import { useNavigate } from "react-router-dom";
+import PropTypes from "prop-types";
 
-const useExceptionHandler = (err, errMessage) => {
+const useExceptionHandler = () => {
   const navigate = useNavigate();
 
-  if (err?.response?.data?.type === "validation_error") {
-    // Handle validation errors
-  } else if (err?.response?.data?.type === "subscription_error") {
-    navigate("/trial");
-    return {
-      type: "error",
-      content:
-        err?.response?.data?.errors[0].detail ||
-        errMessage ||
-        "Something went wrong",
-    };
-  } else if (
-    ["client_error", "server_error"].includes(err?.response?.data?.type)
-  ) {
-    // Handle client_error, server_error
-    return {
-      type: "error",
-      content:
-        err?.response?.data?.errors[0].detail ||
-        errMessage ||
-        "Something went wrong",
-    };
-  } else {
-    return {
-      type: "error",
-      content: err?.message,
-    };
-  }
+  const handleException = (err, errMessage = "Something went wrong") => {
+    if (!err) {
+      return {
+        type: "error",
+        content: errMessage,
+      };
+    }
+
+    if (err.response && err.response.data) {
+      const { type, errors } = err.response.data;
+
+      switch (type) {
+        case "validation_error":
+          // Handle validation errors
+          break;
+        case "subscription_error":
+          navigate("/trial");
+          return {
+            type: "error",
+            content:
+              errors && errors[0]?.detail ? errors[0].detail : errMessage,
+          };
+        case "client_error":
+        case "server_error":
+          return {
+            type: "error",
+            content:
+              errors && errors[0]?.detail ? errors[0].detail : errMessage,
+          };
+        default:
+          return {
+            type: "error",
+            content: errMessage,
+          };
+      }
+    } else {
+      return {
+        type: "error",
+        content: errMessage,
+      };
+    }
+  };
+
+  return handleException;
+};
+
+useExceptionHandler.propTypes = {
+  err: PropTypes.object, // Assuming err is an object
+  errMessage: PropTypes.string,
 };
 
 export { useExceptionHandler };
