@@ -45,7 +45,7 @@ class ProfileManagerView(viewsets.ModelViewSet):
     def create(
         self, request: HttpRequest, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        serializer = self.get_serializer(data=request.data)
+        serializer: ProfileManagerSerializer = self.get_serializer(data=request.data)
         # Overriding default exception behaviour
         # TO DO : Handle model related exceptions.
         serializer.is_valid(raise_exception=True)

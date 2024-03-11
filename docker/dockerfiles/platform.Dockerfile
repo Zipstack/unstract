@@ -12,13 +12,19 @@ ENV BUILD_CONTEXT_PATH platform-service
 ENV BUILD_PACKAGES_PATH unstract
 ENV PDM_VERSION 2.12.3
 
-RUN pip install --no-cache-dir -U pip pdm~=${PDM_VERSION};
+RUN pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}; \
+    \
+    # Creates a non-root user with an explicit UID and adds permission to access the /app folder
+    # For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
+    adduser -u 5678 --disabled-password --gecos "" unstract;
+
+USER unstract
 
 WORKDIR /app
 
-COPY ${BUILD_CONTEXT_PATH} .
+COPY --chown=unstract ${BUILD_CONTEXT_PATH} .
 # Copy local dependency packages
-COPY ${BUILD_PACKAGES_PATH} /unstract
+COPY --chown=unstract ${BUILD_PACKAGES_PATH} /unstract
 
 RUN set -e; \
     \
@@ -34,12 +40,6 @@ RUN set -e; \
     pip install --no-cache-dir gunicorn;
 
 EXPOSE 3001
-
-# Creates a non-root user with an explicit UID and adds permission to access the /app folder
-# For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-RUN adduser -u 5678 --disabled-password --gecos "" unstract;
-
-USER unstract
 
 # During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
 CMD [".venv/bin/gunicorn", "--bind", "0.0.0.0:3001", "--timeout", "300", "unstract.platform_service.main:app"]
