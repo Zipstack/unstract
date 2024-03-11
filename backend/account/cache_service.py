@@ -5,38 +5,42 @@ from account.custom_cache import CustomCache
 from account.dto import UserSessionInfo
 from django.conf import settings
 from django.core.cache import cache
+from redis import Redis
 
 
 class CacheService:
-    _instance = None
-    cache: Any
+    cache: Union["Redis[Any]", None] = None
 
     @staticmethod
-    def get_instance() -> Any:
-        if CacheService._instance is None:
-            CacheService._instance = CacheService()
-            CacheService._instance.cache = redis.Redis(
+    def get_instance() -> Union["Redis[Any]", None]:
+        if CacheService.cache is None:
+            CacheService.cache = redis.Redis(
                 host=settings.REDIS_HOST,
                 port=int(settings.REDIS_PORT),
                 password=settings.REDIS_PASSWORD,
                 username=settings.REDIS_USER,
             )
-        return CacheService._instance
+        return CacheService.cache
 
     @staticmethod
     def get_a_key(key: str) -> Optional[Any]:
-        data = CacheService.get_instance().cache.get(str(key))
-        if data is not None:
-            return data.decode("utf-8")
-        return data
+        cache_instance = CacheService.get_instance()
+        if cache_instance is not None:
+            data = cache_instance.get(str(key))
+            if data is not None:
+                return data.decode("utf-8")
+            return data
+        return None
 
     @staticmethod
     def set_a_key(key: str, value: Any) -> None:
-        CacheService.get_instance().cache.set(
-            str(key),
-            value,
-            int(settings.WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND),
-        )
+        cache_instance = CacheService.get_instance()
+        if cache_instance is not None:
+            cache_instance.set(
+                str(key),
+                value,
+                int(settings.WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND),
+            )
 
     @staticmethod
     def set_cookie(cookie: str, token: dict[str, Any]) -> None:

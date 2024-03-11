@@ -578,7 +578,7 @@ class WorkflowHelper:
     @staticmethod
     def clear_cache(workflow_id: str) -> dict[str, Any]:
         """Function to clear cache with a specific pattern."""
-        cache = CacheService.get_instance().cache
+        cache = CacheService.get_instance()
         response: dict[str, Any] = {}
         try:
             keys = cache.scan_iter(f"cache:{workflow_id}*")
