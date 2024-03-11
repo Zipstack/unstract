@@ -1,11 +1,14 @@
 import logging
 from typing import Any
 
-from backend.serializers import AuditSerializer
+from django.core.exceptions import ObjectDoesNotExist
+from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio.serializers import ToolStudioPromptSerializer
 from prompt_studio.prompt_studio_core.constants import ToolStudioKeys as TSKeys
 from rest_framework import serializers
+
+from backend.serializers import AuditSerializer
 
 from .models import CustomTool
 
@@ -19,6 +22,26 @@ class CustomToolSerializer(AuditSerializer):
 
     def to_representation(self, instance):  # type: ignore
         data = super().to_representation(instance)
+        try:
+            profile_manager = ProfileManager.objects.get(
+                prompt_studio_tool=instance, is_summarize_llm=True
+            )
+            data[TSKeys.SUMMARIZE_LLM_PROFILE] = profile_manager.profile_id
+        except ObjectDoesNotExist:
+            logger.info(
+                "Summarize LLM profile doesnt exist for prompt tool %s",
+                str(instance.tool_id),
+            )
+        try:
+            profile_manager = ProfileManager.objects.get(
+                prompt_studio_tool=instance, is_default=True
+            )
+            data[TSKeys.DEFAULT_PROFILE] = profile_manager.profile_id
+        except ObjectDoesNotExist:
+            logger.info(
+                "Default LLM profile doesnt exist for prompt tool %s",
+                str(instance.tool_id),
+            )
         try:
             prompt_instance: ToolStudioPrompt = ToolStudioPrompt.objects.filter(
                 tool_id=data.get(TSKeys.TOOL_ID)
@@ -34,11 +57,12 @@ class CustomToolSerializer(AuditSerializer):
         except Exception as e:
             logger.error(f"Error occured while appending prompts {e}")
             return data
+
         return data
 
 
 class PromptStudioIndexSerializer(serializers.Serializer):
-    file_name = serializers.CharField()
+    document_id = serializers.CharField()
     tool_id = serializers.CharField()
 
 

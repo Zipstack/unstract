@@ -1,12 +1,3 @@
-class OAuthConstant:
-    TOKEN_USER_INFO_FEILD = "userinfo"
-    TOKEN_ORG_ID_FEILD = "org_id"
-    TOKEN_EMAIL_FEILD = "email"
-    TOKEN_Z_ID_FEILD = "sub"
-    TOKEN_USER_NAME_FEILD = "name"
-    TOKEN_PRIMARY_Z_ID_FEILD = "primary_sub"
-
-
 class LoginConstant:
     INVITATION = "invitation"
     ORGANIZATION = "organization"
@@ -64,7 +55,7 @@ class PluginConfig:
     METADATA_IS_ACTIVE = "is_active"
 
 
-class AuthoErrorCode:
+class AuthorizationErrorCode:
     """Error code reference
     frontend/src/components/error/GenericError/GenericError.jsx."""
 

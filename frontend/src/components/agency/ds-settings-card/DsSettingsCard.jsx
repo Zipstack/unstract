@@ -396,6 +396,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         formDataConfig={formDataConfig}
         setFormDataConfig={setFormDataConfig}
         isSpecConfigLoading={isSpecConfigLoading}
+        connDetails={connDetails}
         connType={connType}
       />
     </>

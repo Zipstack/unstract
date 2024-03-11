@@ -103,6 +103,7 @@ function PromptCard({
     updateCustomTool,
     details,
     disableLlmOrDocChange,
+    indexDocs,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -280,7 +281,7 @@ function PromptCard({
       method = "PATCH";
       url += `${result?.promptOutputId}/`;
     }
-    handleRunApiRequest(selectedDoc)
+    handleRunApiRequest(selectedDoc?.document_id)
       .then((res) => {
         const data = res?.data;
         const value = data[promptDetails?.prompt_key];
@@ -294,12 +295,21 @@ function PromptCard({
           promptDetails?.prompt_key,
           data
         );
-        handleUpdateOutput(value, selectedDoc, evalMetrics, method, url);
+        handleUpdateOutput(
+          value,
+          selectedDoc?.document_id,
+          evalMetrics,
+          method,
+          url
+        );
       })
       .catch((err) => {
-        handleUpdateOutput(null, selectedDoc, [], method, url);
+        handleUpdateOutput(null, selectedDoc?.document_id, [], method, url);
         setAlertDetails(
-          handleException(err, `Failed to generate output for ${selectedDoc}`)
+          handleException(
+            err,
+            `Failed to generate output for ${selectedDoc?.document_id}`
+          )
         );
       })
       .finally(() => {
@@ -312,7 +322,7 @@ function PromptCard({
   // Get the coverage for all the documents except the one that's currently selected
   const handleCoverage = () => {
     const listOfDocsToProcess = [...listOfDocs].filter(
-      (item) => item !== selectedDoc
+      (item) => item?.document_id !== selectedDoc?.document_id
     );
 
     if (listOfDocsToProcess?.length === 0) {
@@ -323,12 +333,14 @@ function PromptCard({
     listOfDocsToProcess.forEach((item) => {
       let method = "POST";
       let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/`;
-      const outputId = outputIds.find((output) => output?.docName === item);
+      const outputId = outputIds.find(
+        (output) => output?.docId === item?.document_id
+      );
       if (outputId?.promptOutputId?.length) {
         method = "PATCH";
         url += `${outputId?.promptOutputId}/`;
       }
-      handleRunApiRequest(item)
+      handleRunApiRequest(item?.document_id)
         .then((res) => {
           const data = res?.data;
           const outputValue = data[promptDetails?.prompt_key];
@@ -342,12 +354,21 @@ function PromptCard({
             promptDetails?.prompt_key,
             data
           );
-          handleUpdateOutput(outputValue, item, evalMetrics, method, url);
+          handleUpdateOutput(
+            outputValue,
+            item?.document_id,
+            evalMetrics,
+            method,
+            url
+          );
         })
         .catch((err) => {
-          handleUpdateOutput(null, item, [], method, url);
+          handleUpdateOutput(null, item?.document_id, [], method, url);
           setAlertDetails(
-            handleException(err, `Failed to generate output for ${item}`)
+            handleException(
+              err,
+              `Failed to generate output for ${item?.document_id}`
+            )
           );
         })
         .finally(() => {
@@ -356,11 +377,11 @@ function PromptCard({
     });
   };
 
-  const handleRunApiRequest = async (doc) => {
+  const handleRunApiRequest = async (docId) => {
     const promptId = promptDetails?.prompt_id;
 
     const body = {
-      file_name: doc,
+      document_id: docId,
       id: promptId,
       tool_id: details?.tool_id,
     };
@@ -382,13 +403,7 @@ function PromptCard({
       });
   };
 
-  const handleUpdateOutput = (
-    outputValue,
-    docName,
-    evalMetrics,
-    method,
-    url
-  ) => {
+  const handleUpdateOutput = (outputValue, docId, evalMetrics, method, url) => {
     let output = outputValue;
     if (output !== null && typeof output !== "string") {
       output = JSON.stringify(output);
@@ -398,7 +413,7 @@ function PromptCard({
       tool_id: details?.tool_id,
       prompt_id: promptDetails?.prompt_id,
       profile_manager: promptDetails?.profile_manager,
-      doc_name: docName,
+      document_manager: docId,
       eval_metrics: evalMetrics,
     };
 
@@ -416,7 +431,7 @@ function PromptCard({
       .then((res) => {
         const data = res?.data;
         const promptOutputId = data?.prompt_output_id || null;
-        if (docName === selectedDoc) {
+        if (docId === selectedDoc?.document_id) {
           setResult({
             promptOutputId: promptOutputId,
             output: data?.output,
@@ -429,7 +444,7 @@ function PromptCard({
         );
         if (!isOutputIdAvailable) {
           const listOfOutputIds = [...outputIds];
-          listOfOutputIds.push({ promptOutputId, docName });
+          listOfOutputIds.push({ promptOutputId, docId });
           setOutputIds(listOfOutputIds);
         }
       })
@@ -492,7 +507,7 @@ function PromptCard({
     let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${selectedLlmProfileId}`;
 
     if (isOutput) {
-      url += `&doc_name=${selectedDoc}`;
+      url += `&document_manager=${selectedDoc?.document_id}`;
     }
     const requestOptions = {
       method: "GET",
@@ -519,7 +534,7 @@ function PromptCard({
     const ids = [];
     data.forEach((item) => {
       const isOutputAdded = ids.findIndex(
-        (output) => output?.docName === item?.doc_name
+        (output) => output?.docId === item?.document_manager
       );
 
       if (isOutputAdded > -1) {
@@ -528,11 +543,13 @@ function PromptCard({
 
       if (
         item?.output !== undefined &&
-        [...listOfDocs].includes(item?.doc_name)
+        [...listOfDocs].find(
+          (doc) => doc?.document_id === item?.document_manager
+        )
       ) {
         ids.push({
           promptOutputId: item?.prompt_output_id,
-          docName: item?.doc_name,
+          docId: item?.document_manager,
         });
       }
     });
@@ -566,9 +583,10 @@ function PromptCard({
                   defaultValue={promptDetails?.assert_prompt}
                   name="assert_prompt"
                   onChange={onSearchDebounce}
-                  disabled={disableLlmOrDocChange.includes(
-                    promptDetails?.prompt_id
-                  )}
+                  disabled={
+                    disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    indexDocs.includes(selectedDoc?.document_id)
+                  }
                 />
               </Col>
               <Col span={8} className="assert-p-l-4 assert-p-r-4">
@@ -581,9 +599,10 @@ function PromptCard({
                   defaultValue={promptDetails?.assertion_failure_prompt}
                   name="assertion_failure_prompt"
                   onChange={onSearchDebounce}
-                  disabled={disableLlmOrDocChange.includes(
-                    promptDetails?.prompt_id
-                  )}
+                  disabled={
+                    disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    indexDocs.includes(selectedDoc?.document_id)
+                  }
                 />
               </Col>
               <Col span={8} className="assert-p-l-4">
@@ -610,7 +629,7 @@ function PromptCard({
           >
             <Space direction="vertical" className="width-100" ref={divRef}>
               <Row>
-                <Col span={16}>
+                <Col span={12}>
                   <EditableText
                     isEditing={isEditingTitle}
                     setIsEditing={setIsEditingTitle}
@@ -622,7 +641,7 @@ function PromptCard({
                     placeHolder={updatePlaceHolder}
                   />
                 </Col>
-                <Col span={8} className="display-flex-right">
+                <Col span={12} className="display-flex-right">
                   {isCoverageLoading && (
                     <Tag
                       icon={<LoadingOutlined spin />}
@@ -654,6 +673,16 @@ function PromptCard({
                           Done
                         </Tag>
                       )}
+                      {updateStatus?.status ===
+                        promptStudioUpdateStatus.validationError && (
+                        <Tag
+                          icon={<CheckCircleOutlined />}
+                          color="error"
+                          className="display-flex-align-center"
+                        >
+                          Invalid JSON Key
+                        </Tag>
+                      )}
                     </>
                   )}
                   <Tooltip title="Edit">
@@ -662,9 +691,11 @@ function PromptCard({
                       type="text"
                       className="display-flex-align-center"
                       onClick={enableEdit}
-                      disabled={disableLlmOrDocChange.includes(
-                        promptDetails?.prompt_id
-                      )}
+                      disabled={
+                        disableLlmOrDocChange.includes(
+                          promptDetails?.prompt_id
+                        ) || indexDocs.includes(selectedDoc?.document_id)
+                      }
                     >
                       <EditOutlined className="prompt-card-actions-head" />
                     </Button>
@@ -689,7 +720,10 @@ function PromptCard({
                         (updateStatus?.promptId === promptDetails?.prompt_id &&
                           updateStatus?.status ===
                             promptStudioUpdateStatus.isUpdating) ||
-                        disableLlmOrDocChange.includes(promptDetails?.prompt_id)
+                        disableLlmOrDocChange.includes(
+                          promptDetails?.prompt_id
+                        ) ||
+                        indexDocs.includes(selectedDoc?.document_id)
                       }
                     >
                       <PlayCircleOutlined className="prompt-card-actions-head" />
@@ -703,9 +737,11 @@ function PromptCard({
                       <Button
                         size="small"
                         type="text"
-                        disabled={disableLlmOrDocChange.includes(
-                          promptDetails?.prompt_id
-                        )}
+                        disabled={
+                          disableLlmOrDocChange.includes(
+                            promptDetails?.prompt_id
+                          ) || indexDocs.includes(selectedDoc?.document_id)
+                        }
                       >
                         <DeleteOutlined className="prompt-card-actions-head" />
                       </Button>
@@ -769,9 +805,10 @@ function PromptCard({
                   optionFilterProp="children"
                   options={enforceTypeList}
                   value={promptDetails?.enforce_type || null}
-                  disabled={disableLlmOrDocChange.includes(
-                    promptDetails?.prompt_id
-                  )}
+                  disabled={
+                    disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    indexDocs.includes(selectedDoc?.document_id)
+                  }
                   onChange={(value) => handleTypeChange(value)}
                 />
               </div>
@@ -808,7 +845,8 @@ function PromptCard({
                   size="small"
                   disabled={
                     page <= 1 ||
-                    disableLlmOrDocChange.includes(promptDetails?.prompt_id)
+                    disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    indexDocs.includes(selectedDoc?.document_id)
                   }
                   onClick={handlePageLeft}
                 >
@@ -819,7 +857,8 @@ function PromptCard({
                   size="small"
                   disabled={
                     page >= llmProfiles?.length ||
-                    disableLlmOrDocChange.includes(promptDetails?.prompt_id)
+                    disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    indexDocs.includes(selectedDoc?.document_id)
                   }
                   onClick={handlePageRight}
                 >

@@ -136,7 +136,9 @@ function ToolsMain({ setOpenAddLlmModal }) {
             setScrollToBottom={setScrollToBottom}
           />
         )}
-        {activeKey === "2" && <CombinedOutput doc={selectedDoc} />}
+        {activeKey === "2" && (
+          <CombinedOutput docId={selectedDoc?.document_id} />
+        )}
       </div>
       <div className="tools-main-footer">
         <Footer activeKey={activeKey} addPromptInstance={addPromptInstance} />
