@@ -8,13 +8,14 @@ import "prismjs/themes/prism.css";
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 
-import { handleException, promptType } from "../../../helpers/GetStaticData";
+import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 const outputTypes = {
   json: "JSON",
@@ -32,6 +33,7 @@ function CombinedOutput({ docId, setFilledFields }) {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     if (!docId) {

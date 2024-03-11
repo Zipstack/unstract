@@ -32,7 +32,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AssertionIcon } from "../../../assets";
 import {
   displayPromptResult,
-  handleException,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -45,6 +44,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 let EvalBtn = null;
 let EvalMetrics = null;
@@ -108,6 +108,7 @@ function PromptCard({
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     if (promptDetails?.is_assert) {
