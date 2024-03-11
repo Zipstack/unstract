@@ -4,7 +4,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    overflow-y: hidden;
+    overflow: hidden;
 }
 
 .doc-manager-header {
@@ -27,6 +27,7 @@
 
 .text-viewer-layout {
     padding: 0px 12px;
+    flex: 1;
     overflow-y: auto;
 }
 
@@ -36,5 +37,5 @@
 
 .doc-main-title{
     color: darkgray;
-    font-weight: 600;
+    font-size: 12px;
 }
