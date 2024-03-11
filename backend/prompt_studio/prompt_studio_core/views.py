@@ -24,6 +24,7 @@ from prompt_studio.prompt_studio_core.exceptions import (
 from prompt_studio.prompt_studio_core.prompt_studio_helper import (
     PromptStudioHelper,
 )
+from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -196,15 +197,17 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         tool_id: str = serializer.validated_data.get(
             ToolStudioPromptKeys.TOOL_ID
         )
-        file_name: str = serializer.validated_data.get(
-            ToolStudioPromptKeys.FILE_NAME
-        )
+        document_id: str = serializer.validated_data.get(
+            ToolStudioPromptKeys.DOCUMENT_ID)
+        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
+        file_name: str = document.document_name
         try:
             unique_id = PromptStudioHelper.index_document(
                 tool_id=tool_id,
                 file_name=file_name,
                 org_id=request.org_id,
                 user_id=request.user.user_id,
+                document_id=document_id,
             )
 
             for processor_plugin in self.processor_plugins:
@@ -216,6 +219,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     file_name=file_name,
                     org_id=request.org_id,
                     user_id=request.user.user_id,
+                    document_id=document_id,
                 )
 
             if unique_id:
@@ -246,7 +250,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             Response
         """
         tool_id: str = request.data.get(ToolStudioPromptKeys.TOOL_ID)
-        file_name: str = request.data.get(ToolStudioPromptKeys.FILE_NAME)
+        document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
+        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
+        file_name: str = document.document_name
         id: str = request.data.get(ToolStudioPromptKeys.ID)
 
         if not file_name or file_name == ToolStudioPromptKeys.UNDEFINED:
@@ -258,5 +264,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             file_name=file_name,
             org_id=request.org_id,
             user_id=request.user.user_id,
+            document_id=document_id,
         )
         return Response(response, status=status.HTTP_200_OK)

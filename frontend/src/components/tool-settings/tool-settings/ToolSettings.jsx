@@ -1,5 +1,4 @@
 import { PlusOutlined } from "@ant-design/icons";
-import { Typography } from "antd";
 import PropTypes from "prop-types";
 
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
@@ -14,7 +13,8 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import { ListOfItems } from "../list-of-items/ListOfItems";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
+import { ViewTools } from "../../custom-tools/view-tools/ViewTools";
 
 const titles = {
   llm: "LLMs",
@@ -112,31 +112,34 @@ function ToolSettings({ type }) {
 
   return (
     <div className="plt-tool-settings-layout">
+      <ToolNavBar
+        title={titles[type]}
+        CustomButtons={() => {
+          return (
+            <CustomButton
+              type="primary"
+              onClick={() => setOpenAddSourcesModal(true)}
+              icon={<PlusOutlined />}
+            >
+              {btnText[type]}
+            </CustomButton>
+          );
+        }}
+      />
       <IslandLayout>
         <div className="plt-tool-settings-layout-2">
-          <div className="plt-tool-settings-header">
-            <div className="plt-tool-settings-title">
-              <Typography.Text className="typo-text" strong>
-                {titles[type]}
-              </Typography.Text>
-            </div>
-            <div className="plt-tool-settings-add-btn">
-              <CustomButton
-                type="primary"
-                onClick={() => setOpenAddSourcesModal(true)}
-                icon={<PlusOutlined />}
-              >
-                {btnText[type]}
-              </CustomButton>
-            </div>
-          </div>
           <div className="plt-tool-settings-body">
-            <ListOfItems
+            <ViewTools
+              listOfTools={tableRows}
               isLoading={isLoading}
-              tableRows={tableRows}
-              setEditItemId={setEditItemId}
               handleDelete={handleDelete}
-              handleClick={() => setOpenAddSourcesModal(true)}
+              setOpenAddTool={setOpenAddSourcesModal}
+              handleEdit={(_event, item) => setEditItemId(item?.id)}
+              idProp="id"
+              titleProp="adapter_name"
+              iconProp="icon"
+              isEmpty={!tableRows?.length}
+              centered
             />
           </div>
         </div>
