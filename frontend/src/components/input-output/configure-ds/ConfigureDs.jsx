@@ -26,6 +26,8 @@ function ConfigureDs({
   editItemId,
   sourceType,
   handleUpdate,
+  connDetails,
+  metadata,
 }) {
   const formRef = createRef(null);
   const axiosPrivate = useAxiosPrivate();
@@ -45,6 +47,14 @@ function ConfigureDs({
       setIsTcSuccessful(false);
     }
   }, [formData]);
+
+  useEffect(() => {
+    if (connDetails.connector_id !== selectedSourceId) {
+      setFormData({});
+    } else {
+      setFormData(metadata);
+    }
+  }, [selectedSourceId]);
 
   const isFormValid = () => {
     if (formRef) {
@@ -282,6 +292,8 @@ ConfigureDs.propTypes = {
   editItemId: PropTypes.string,
   sourceType: PropTypes.string.isRequired,
   handleUpdate: PropTypes.func,
+  connDetails: PropTypes.object,
+  metadata: PropTypes.object,
 };
 
 export { ConfigureDs };
