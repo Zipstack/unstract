@@ -7,7 +7,7 @@ from account.authentication_plugin_registry import AuthenticationPluginRegistry
 from account.authentication_service import AuthenticationService
 from account.cache_service import CacheService
 from account.constants import (
-    AuthoErrorCode,
+    AuthorizationErrorCode,
     Cookie,
     ErrorMessage,
     OrganizationMemberModel,
@@ -105,13 +105,13 @@ class AuthenticationController:
         except Exception as ex:
             """Error code reference
             frontend/src/components/error/GenericError/GenericError.jsx."""
-            if ex.code == AuthoErrorCode.IDM:  # type: ignore
-                query_params = {"code": AuthoErrorCode.IDM}
+            if ex.code == AuthorizationErrorCode.IDM:  # type: ignore
+                query_params = {"code": AuthorizationErrorCode.IDM}
                 return redirect(
                     f"{settings.ERROR_URL}?{urlencode(query_params)}"
                 )
-            elif ex.code == AuthoErrorCode.UMM:  # type: ignore
-                query_params = {"code": AuthoErrorCode.UMM}
+            elif ex.code == AuthorizationErrorCode.UMM:  # type: ignore
+                query_params = {"code": AuthorizationErrorCode.UMM}
                 return redirect(
                     f"{settings.ERROR_URL}?{urlencode(query_params)}"
                 )
@@ -157,7 +157,7 @@ class AuthenticationController:
         except Exception as ex:
             #
             self.user_logout(request)
-            if ex.code == AuthoErrorCode.USF:  # type: ignore
+            if ex.code == AuthorizationErrorCode.USF:  # type: ignore
                 response = Response(
                     status=status.HTTP_412_PRECONDITION_FAILED,
                     data={"domain": ex.data.get("domain")},  # type: ignore
