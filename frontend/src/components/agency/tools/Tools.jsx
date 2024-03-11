@@ -4,11 +4,11 @@ import { SearchOutlined } from "@ant-design/icons";
 import { Input } from "antd";
 import "./Tools.css";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { ListOfTools } from "../list-of-tools/ListOfTools";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function Tools() {
   const [listOfTools, setListOfTools] = useState([]);
@@ -18,6 +18,7 @@ function Tools() {
   const { setAlertDetails } = useAlertStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     setLoading(true);

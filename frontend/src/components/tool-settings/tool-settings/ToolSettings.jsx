@@ -6,11 +6,11 @@ import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
 import "../../input-output/data-source-card/DataSourceCard.css";
 import "./ToolSettings.css";
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools";
 
@@ -38,6 +38,7 @@ function ToolSettings({ type }) {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     setTableRows([]);
@@ -81,10 +82,10 @@ function ToolSettings({ type }) {
     }
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = (adapter) => {
     const requestOptions = {
       method: "DELETE",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${id}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter.id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -93,7 +94,7 @@ function ToolSettings({ type }) {
     setIsLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        const filteredList = tableRows.filter((row) => row?.id !== id);
+        const filteredList = tableRows.filter((row) => row?.id !== adapter.id);
         setTableRows(filteredList);
         setAlertDetails({
           type: "success",
@@ -138,6 +139,7 @@ function ToolSettings({ type }) {
               iconProp="icon"
               isEmpty={!tableRows?.length}
               centered
+              isClickable={false}
             />
           </div>
         </div>

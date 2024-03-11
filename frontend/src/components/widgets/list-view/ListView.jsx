@@ -17,11 +17,12 @@ function ListView({
   iconProp,
   idProp,
   centered,
+  isClickable = true,
 }) {
   const navigate = useNavigate();
-  const handleDeleteClick = (event, toolId) => {
+  const handleDeleteClick = (event, tool) => {
     event.stopPropagation(); // Stop propagation to prevent list item click
-    handleDelete(toolId);
+    handleDelete(event, tool);
   };
 
   const renderTitle = (record) => {
@@ -55,7 +56,9 @@ function ListView({
         return (
           <List.Item
             key={item?.id}
-            onClick={() => navigate(`${item[idProp]}`)}
+            onClick={() => {
+              isClickable && navigate(`${item[idProp]}`);
+            }}
             className={`cur-pointer ${centered ? "centered" : ""}`}
             extra={
               <div onClick={(event) => event.stopPropagation()} role="none">
@@ -102,6 +105,7 @@ ListView.propTypes = {
   iconProp: PropTypes.string,
   idProp: PropTypes.string.isRequired,
   centered: PropTypes.bool,
+  isClickable: PropTypes.bool,
 };
 
 export { ListView };
