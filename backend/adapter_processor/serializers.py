@@ -1,6 +1,7 @@
 import json
 from typing import Any
 
+from account.models import User
 from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.constants import AdapterKeys
 from cryptography.fernet import Fernet
@@ -45,13 +46,16 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
     """
 
     def to_internal_value(self, data: dict[str, Any]) -> dict[str, Any]:
-        encryption_secret: str = settings.ENCRYPTION_KEY
-        f: Fernet = Fernet(encryption_secret.encode("utf-8"))
-        json_string: str = json.dumps(data.pop(AdapterKeys.ADAPTER_METADATA))
+        if data.get(AdapterKeys.ADAPTER_METADATA, None):
+            encryption_secret: str = settings.ENCRYPTION_KEY
+            f: Fernet = Fernet(encryption_secret.encode("utf-8"))
+            json_string: str = json.dumps(
+                data.pop(AdapterKeys.ADAPTER_METADATA)
+            )
 
-        data[AdapterKeys.ADAPTER_METADATA_B] = f.encrypt(
-            json_string.encode("utf-8")
-        )
+            data[AdapterKeys.ADAPTER_METADATA_B] = f.encrypt(
+                json_string.encode("utf-8")
+            )
 
         return data
 
@@ -96,3 +100,28 @@ class AdapterListSerializer(BaseAdapterSerializer):
         )
 
         return rep
+
+
+class SharedUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ("id", "username")
+
+
+class SharedUserListSerializer(BaseAdapterSerializer):
+    """Inherits BaseAdapterSerializer.
+
+    Used for listing adapters
+    """
+
+    shared_users = SharedUserSerializer(many=True)
+
+    class Meta(BaseAdapterSerializer.Meta):
+        model = AdapterInstance
+        fields = (
+            "id",
+            "adapter_id",
+            "adapter_name",
+            "adapter_type",
+            "shared_users",
+        )  # type: ignore

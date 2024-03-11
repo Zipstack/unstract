@@ -14,13 +14,16 @@ from adapter_processor.serializers import (
     AdapterInstanceSerializer,
     AdapterListSerializer,
     DefaultAdapterSerializer,
+    SharedUserListSerializer,
     TestAdapterSerializer,
 )
 from django.db import IntegrityError
 from django.db.models import QuerySet
+from django.http import HttpRequest
 from django.http.response import HttpResponse
 from permissions.permission import IsOwner
 from rest_framework import status
+from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import ModelSerializer
@@ -95,9 +98,9 @@ class AdapterViewSet(GenericViewSet):
         adapter_metadata = serializer.validated_data.get(
             AdapterKeys.ADAPTER_METADATA
         )
-        adapter_metadata[AdapterKeys.ADAPTER_TYPE] = (
-            serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
-        )
+        adapter_metadata[
+            AdapterKeys.ADAPTER_TYPE
+        ] = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
         try:
             test_result = AdapterProcessor.test_adapter(
                 adapter_id=adapter_id, adapter_metadata=adapter_metadata
@@ -121,13 +124,11 @@ class AdapterInstanceViewSet(ModelViewSet):
             self.request,
             constant.ADAPTER_TYPE,
         ):
-            queryset = AdapterInstance.objects.filter(
-                created_by=self.request.user, **filter_args
-            )
+            queryset = AdapterInstance.objects.for_user(
+                self.request.user
+            ).filter(**filter_args)
         else:
-            queryset = AdapterInstance.objects.filter(
-                created_by=self.request.user
-            )
+            queryset = AdapterInstance.objects.for_user(self.request.user)
         return queryset
 
     def get_serializer_class(
@@ -187,3 +188,15 @@ class AdapterInstanceViewSet(ModelViewSet):
         )
 
         return existing_adapter_default
+
+    @action(detail=True, methods=["get"])
+    def list_of_shared_users(
+        self, request: HttpRequest, pk: Any = None
+    ) -> Response:
+        adapter = (
+            self.get_object()
+        )  # Assuming you have a get_object method in your viewset
+
+        serialized_instances = SharedUserListSerializer(adapter).data
+
+        return Response(serialized_instances)

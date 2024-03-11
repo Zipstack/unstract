@@ -1,13 +1,25 @@
 import uuid
+from typing import Any
 
 from account.models import User
 from django.db import models
+from django.db.models import QuerySet
 from unstract.adapters.enums import AdapterTypes
 from utils.models.base_model import BaseModel
 
 ADAPTER_NAME_SIZE = 128
 VERSION_NAME_SIZE = 64
 ADAPTER_ID_LENGTH = 128
+
+
+class AdapterInstanceModelManager(models.Manager):
+    def get_queryset(self) -> QuerySet[Any]:
+        return super().get_queryset()
+
+    def for_user(self, user: User) -> QuerySet[Any]:
+        return self.get_queryset().filter(
+            models.Q(created_by=user) | models.Q(shared_users=user)
+        )
 
 
 class AdapterInstance(BaseModel):
@@ -65,6 +77,10 @@ class AdapterInstance(BaseModel):
         default=False,
         db_comment="Is the adapter instance default",
     )
+
+    shared_users = models.ManyToManyField(User, related_name="shared_adapters")
+
+    objects = AdapterInstanceModelManager()
 
     class Meta:
         verbose_name = "adapter_adapterinstance"
