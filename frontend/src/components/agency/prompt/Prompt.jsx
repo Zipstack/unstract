@@ -2,13 +2,13 @@ import { EditOutlined, MinusOutlined } from "@ant-design/icons";
 import { Button, Input, Typography } from "antd";
 import { useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import "./Prompt.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function Prompt() {
   const [isPromptOpen, setIsPromptOpen] = useState(false);
@@ -16,6 +16,7 @@ function Prompt() {
   const { prompt, isLoading, details, updateWorkflow } = useWorkflowStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
 
   const handlePromptChange = (e) => {
     const promptText = e.target.value;
