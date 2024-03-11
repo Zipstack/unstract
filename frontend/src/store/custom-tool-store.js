@@ -1,4 +1,5 @@
 import { create } from "zustand";
+
 import { promptType } from "../helpers/GetStaticData";
 
 const defaultState = {

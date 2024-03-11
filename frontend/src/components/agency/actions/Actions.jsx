@@ -13,7 +13,10 @@ import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
 import { StepIcon } from "../../../assets/index.js";
-import { wfExecutionTypes } from "../../../helpers/GetStaticData";
+import {
+  deploymentsStaticContent,
+  wfExecutionTypes,
+} from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -22,7 +25,6 @@ import { CreateApiDeploymentModal } from "../../deployments/create-api-deploymen
 import { EtlTaskDeploy } from "../../pipelines-or-deployments/etl-task-deploy/EtlTaskDeploy.jsx";
 import { SocketMessages } from "../../helpers/socket-messages/SocketMessages";
 import FileUpload from "../file-upload/FileUpload.jsx";
-import { deploymentsStaticContent } from "../../../helpers/GetStaticData";
 import "./Actions.css";
 
 function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {

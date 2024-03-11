@@ -1,6 +1,5 @@
 import { Button, Input, Modal, Space, Typography } from "antd";
 import PropTypes from "prop-types";
-
 import { useEffect, useState } from "react";
 import "./PreAndPostAmbleModal.css";
 

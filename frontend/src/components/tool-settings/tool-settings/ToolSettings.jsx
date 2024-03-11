@@ -1,13 +1,11 @@
 import { PlusOutlined } from "@ant-design/icons";
 import PropTypes from "prop-types";
+import { useEffect, useState } from "react";
 
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
 import "../../input-output/data-source-card/DataSourceCard.css";
 import "./ToolSettings.css";
-
-import { useEffect, useState } from "react";
-
 import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";

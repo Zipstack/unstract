@@ -1,6 +1,7 @@
 import { Col, Divider, Flex, Row, Space, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+
 import { base64toBlob, handleException } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
