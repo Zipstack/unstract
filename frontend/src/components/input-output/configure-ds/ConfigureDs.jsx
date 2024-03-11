@@ -49,7 +49,7 @@ function ConfigureDs({
   }, [formData]);
 
   useEffect(() => {
-    if (connDetails.connector_id !== selectedSourceId) {
+    if (connDetails && connDetails.connector_id !== selectedSourceId) {
       setFormData({});
     } else {
       setFormData(metadata);
