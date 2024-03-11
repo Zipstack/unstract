@@ -3,10 +3,7 @@ import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
-import {
-  handleException,
-  sourceTypes,
-} from "../../../helpers/GetStaticData.js";
+import { sourceTypes } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
@@ -14,6 +11,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { OAuthDs } from "../../oauth-ds/oauth-ds/OAuthDs.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./ConfigureDs.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 function ConfigureDs({
   spec,
@@ -40,6 +38,7 @@ function ConfigureDs({
   const [status, setStatus] = useState("");
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
 
   const { id } = useParams();
 
@@ -212,15 +211,17 @@ function ConfigureDs({
         const data = res?.data;
         if (sourceTypes.connectors.includes(type)) {
           handleUpdate({ connector_instance: data?.id });
-          setAlertDetails({
-            type: "success",
-            content: "Successfully added connector",
-          });
           return;
         }
         if (data) {
           addNewItem(data, !!editItemId);
         }
+        setAlertDetails({
+          type: "success",
+          content: `Successfully ${
+            method === "POST" ? "added" : "updated"
+          } connector`,
+        });
         setOpen(false);
       })
       .catch((err) => {
