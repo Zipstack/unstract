@@ -84,10 +84,10 @@ function ToolSettings({ type }) {
     }
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = (adapter) => {
     const requestOptions = {
       method: "DELETE",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${id}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter.id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -96,7 +96,7 @@ function ToolSettings({ type }) {
     setIsLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        const filteredList = tableRows.filter((row) => row?.id !== id);
+        const filteredList = tableRows.filter((row) => row?.id !== adapter.id);
         setTableRows(filteredList);
         setAlertDetails({
           type: "success",

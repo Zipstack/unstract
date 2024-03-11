@@ -20,9 +20,9 @@ function ListView({
   isClickable = true,
 }) {
   const navigate = useNavigate();
-  const handleDeleteClick = (event, toolId) => {
+  const handleDeleteClick = (event, tool) => {
     event.stopPropagation(); // Stop propagation to prevent list item click
-    handleDelete(toolId);
+    handleDelete(event, tool);
   };
 
   const renderTitle = (record) => {

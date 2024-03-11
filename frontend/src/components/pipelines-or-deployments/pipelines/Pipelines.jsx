@@ -22,7 +22,6 @@ import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import "./Pipelines.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import { formattedDateTime } from "../../../helpers/GetStaticData";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -388,7 +387,7 @@ function Pipelines({ type }) {
       render: (_, record) => (
         <div>
           <Typography.Text className="p-or-d-typography" strong>
-            {(record?.last_run_time)}
+            {record?.last_run_time}
           </Typography.Text>
         </div>
       ),

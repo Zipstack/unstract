@@ -90,6 +90,10 @@ function Workflows() {
         } else {
           openProject(res.data);
         }
+        setAlertDetails({
+          type: "success",
+          content: "Workflow updated successfully",
+        });
         getProjectList();
       })
       .catch((err) => {

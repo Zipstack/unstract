@@ -201,15 +201,17 @@ function ConfigureDs({
         const data = res?.data;
         if (sourceTypes.connectors.includes(type)) {
           handleUpdate({ connector_instance: data?.id });
-          setAlertDetails({
-            type: "success",
-            content: "Successfully added connector",
-          });
           return;
         }
         if (data) {
           addNewItem(data, !!editItemId);
         }
+        setAlertDetails({
+          type: "success",
+          content: `Successfully ${
+            method === "POST" ? "added" : "updated"
+          } connector`,
+        });
         setOpen(false);
       })
       .catch((err) => {
