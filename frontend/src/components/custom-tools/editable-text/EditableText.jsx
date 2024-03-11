@@ -20,7 +20,8 @@ function EditableText({
   const [triggerHandleChange, setTriggerHandleChange] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const divRef = useRef(null);
-  const { disableLlmOrDocChange } = useCustomToolStore();
+  const { disableLlmOrDocChange, indexDocs, selectedDoc } =
+    useCustomToolStore();
 
   useEffect(() => {
     setText(defaultText);
@@ -104,7 +105,10 @@ function EditableText({
       onMouseOut={() => setIsHovered(false)}
       onBlur={handleBlur}
       onClick={() => setIsEditing(true)}
-      disabled={disableLlmOrDocChange.includes(promptId)}
+      disabled={
+        disableLlmOrDocChange.includes(promptId) ||
+        indexDocs.includes(selectedDoc?.document_id)
+      }
     />
   );
 }
