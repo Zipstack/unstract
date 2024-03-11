@@ -9,6 +9,7 @@ import { AddCustomToolFormModal } from "../add-custom-tool-form-modal/AddCustomT
 import { ViewTools } from "../view-tools/ViewTools";
 import "./ListOfTools.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 
 function ListOfTools() {
   const [isListLoading, setIsListLoading] = useState(false);
@@ -20,7 +21,6 @@ function ListOfTools() {
 
   const [listOfTools, setListOfTools] = useState([]);
   const [filteredListOfTools, setFilteredListOfTools] = useState([]);
-  const [search, setSearch] = useState("");
   const handleException = useExceptionHandler();
   const [isEdit, setIsEdit] = useState(false);
 

@@ -3,16 +3,10 @@ import { Form, Input, Modal, Popover, Button } from "antd";
 import PropTypes from "prop-types";
 import EmojiPicker from "emoji-picker-react";
 
-import {
-  handleException,
-  getBackendErrorDetail,
-} from "../../../helpers/GetStaticData";
+import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import "./AddCustomToolFormModal.css";
 
-import { useEffect, useState } from "react";
-
-import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 const defaultFromDetails = {
   tool_name: "",
