@@ -230,6 +230,7 @@ const endpointType = {
 const promptStudioUpdateStatus = {
   isUpdating: "IS_UPDATING",
   done: "DONE",
+  validationError: "VALIDATION_ERROR",
 };
 
 const getTimeForLogs = () => {

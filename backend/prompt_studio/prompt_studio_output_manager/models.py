@@ -4,6 +4,7 @@ from account.models import User
 from django.db import models
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
+from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from prompt_studio.prompt_studio_core.models import CustomTool
 from utils.models.base_model import BaseModel
 
@@ -17,13 +18,13 @@ class PromptStudioOutputManager(BaseModel):
     prompt_output_id = models.UUIDField(
         primary_key=True, default=uuid.uuid4, editable=False
     )
-
     output = models.CharField(
         db_comment="Field to store output", editable=True, null=True, blank=True
     )
-
-    doc_name = models.CharField(
-        db_comment="Field to store the document name",
+    document_manager = models.ForeignKey(
+        DocumentManager,
+        on_delete=models.CASCADE,
+        related_name="prompt_output_linked_document_manager",
         editable=True,
     )
     eval_metrics = models.JSONField(
@@ -35,21 +36,21 @@ class PromptStudioOutputManager(BaseModel):
     )
     tool_id = models.ForeignKey(
         CustomTool,
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         related_name="prompt_ouput_linked_tool",
         null=True,
         blank=True,
     )
     prompt_id = models.ForeignKey(
         ToolStudioPrompt,
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         related_name="prompt_output_linked_prompt",
         null=True,
         blank=True,
     )
     profile_manager = models.ForeignKey(
         ProfileManager,
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         related_name="prompt_output_linked_prompt",
         null=True,
         blank=True,

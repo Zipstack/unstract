@@ -21,6 +21,8 @@
 .plt-tool-settings-body {
     flex: 1;
     overflow-y: auto;
+    display: flex;
+    justify-content: center;
 }
 
 .plt-tool-settings-title .typo-text {

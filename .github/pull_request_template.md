@@ -1,14 +1,22 @@
 ## What
 
-...
+-
 
 ## Why
 
-...
+-
 
 ## How
 
-...
+-
+
+## Database Migrations
+
+- 
+
+## Env Config
+
+- 
 
 ## Relevant Docs
 
@@ -18,17 +26,15 @@
 
 -
 
-## Dependencies Versions / Env Variables
+## Dependencies Versions
 
 -
 
 ## Notes on Testing
 
-...
+-
 
 ## Screenshots
-
-...
 
 ## Checklist
 

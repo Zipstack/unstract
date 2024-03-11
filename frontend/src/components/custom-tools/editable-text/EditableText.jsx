@@ -5,7 +5,6 @@ import debounce from "lodash/debounce";
 
 import "./EditableText.css";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
-
 function EditableText({
   isEditing,
   setIsEditing,
@@ -21,7 +20,8 @@ function EditableText({
   const [triggerHandleChange, setTriggerHandleChange] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const divRef = useRef(null);
-  const { disableLlmOrDocChange } = useCustomToolStore();
+  const { disableLlmOrDocChange, indexDocs, selectedDoc } =
+    useCustomToolStore();
 
   useEffect(() => {
     setText(defaultText);
@@ -92,7 +92,7 @@ function EditableText({
 
   return (
     <Input
-      className="font-size-12 width-100"
+      className="font-size-14 width-100 input-header-text"
       value={text}
       onChange={handleTextChange}
       placeholder="Enter Key"
@@ -105,7 +105,10 @@ function EditableText({
       onMouseOut={() => setIsHovered(false)}
       onBlur={handleBlur}
       onClick={() => setIsEditing(true)}
-      disabled={disableLlmOrDocChange.includes(promptId)}
+      disabled={
+        disableLlmOrDocChange.includes(promptId) ||
+        indexDocs.includes(selectedDoc?.document_id)
+      }
     />
   );
 }
