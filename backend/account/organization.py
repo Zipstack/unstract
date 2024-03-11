@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 
 from account.models import Domain, Organization
-from account.subscription_plugin_registry import SubscriptionConfig, load_plugins
+from account.subscription_loader import SubscriptionConfig, load_plugins
 from django.db import IntegrityError
 
 Logger = logging.getLogger(__name__)
