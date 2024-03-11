@@ -11,10 +11,7 @@ import { Dropdown, Image, Space, Switch, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import {
-  deploymentsStaticContent,
-  handleException,
-} from "../../../helpers/GetStaticData";
+import { deploymentsStaticContent } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { useSessionStore } from "../../../store/session-store.js";
@@ -24,6 +21,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import "./Pipelines.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { formattedDateTime } from "../../../helpers/GetStaticData";
 
 function Pipelines({ type }) {
@@ -36,6 +34,7 @@ function Pipelines({ type }) {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     getPipelineList();
@@ -389,7 +388,7 @@ function Pipelines({ type }) {
       render: (_, record) => (
         <div>
           <Typography.Text className="p-or-d-typography" strong>
-            {formattedDateTime(record?.last_run_time)}
+            {(record?.last_run_time)}
           </Typography.Text>
         </div>
       ),

@@ -7,9 +7,9 @@ import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { AddCustomToolFormModal } from "../add-custom-tool-form-modal/AddCustomToolFormModal";
 import { ViewTools } from "../view-tools/ViewTools";
-import { handleException } from "../../../helpers/GetStaticData";
-import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import "./ListOfTools.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 
 function ListOfTools() {
   const [isListLoading, setIsListLoading] = useState(false);
@@ -20,7 +20,8 @@ function ListOfTools() {
   const axiosPrivate = useAxiosPrivate();
 
   const [listOfTools, setListOfTools] = useState([]);
-  const [filteredListOfTools, setFilteredListOfTools] = useState(listOfTools);
+  const [filteredListOfTools, setFilteredListOfTools] = useState([]);
+  const handleException = useExceptionHandler();
   const [isEdit, setIsEdit] = useState(false);
 
   useEffect(() => {
