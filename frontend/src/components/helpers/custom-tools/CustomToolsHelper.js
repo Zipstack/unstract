@@ -33,28 +33,28 @@ function CustomToolsHelper() {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${id}`,
     };
 
+    let selectedDocId = null;
     setIsLoading(true);
     handleApiRequest(reqOpsPromptStudio)
       .then((res) => {
         const data = res?.data;
         updatedCusTool["defaultLlmProfile"] = data?.default_profile;
         updatedCusTool["details"] = data;
-        updatedCusTool["selectedDoc"] = data?.output;
+        selectedDocId = data?.output;
         setLogId(data?.log_id);
 
         const reqOpsDocs = {
           method: "GET",
-          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file?tool_id=${data?.tool_id}`,
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-document?tool_id=${data?.tool_id}`,
         };
         return handleApiRequest(reqOpsDocs);
       })
       .then((res) => {
-        const data = (res?.data || [])
-          ?.filter(
-            (item) => item?.name !== "extract" && item?.name !== "summarize"
-          )
-          ?.map((item) => item?.name);
+        const data = res?.data || [];
         updatedCusTool["listOfDocs"] = data;
+
+        const doc = data.find((item) => item?.document_id === selectedDocId);
+        updatedCusTool["selectedDoc"] = doc || null;
 
         const reqOpsDropdownItems = {
           method: "GET",

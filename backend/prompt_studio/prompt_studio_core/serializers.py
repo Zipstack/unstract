@@ -62,7 +62,7 @@ class CustomToolSerializer(AuditSerializer):
 
 
 class PromptStudioIndexSerializer(serializers.Serializer):
-    file_name = serializers.CharField()
+    document_id = serializers.CharField()
     tool_id = serializers.CharField()
 
 
