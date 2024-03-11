@@ -100,6 +100,10 @@ GOOGLE_OAUTH2_KEY="<client-id>"
 GOOGLE_OAUTH2_SECRET="<client-secret>"
 ```
 
+## Tool Registry
+
+Information regarding how tools are added and maintained can be found [here](/unstract/tool-registry/README.md).
+
 
 # Archived - (EXPERIMENTAL)
 

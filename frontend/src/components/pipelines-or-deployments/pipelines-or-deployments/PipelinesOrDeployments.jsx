@@ -19,6 +19,7 @@ import { listOfAppDeployments } from "../../../helpers/GetStaticData";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
 
 function PipelinesOrDeployments({ type }) {
   const [headerText, setHeaderText] = useState("");
@@ -227,24 +228,22 @@ function PipelinesOrDeployments({ type }) {
 
   return (
     <div className="p-or-d-layout">
+      <ToolNavBar
+        title={headerText}
+        CustomButtons={() => {
+          return (
+            <CustomButton
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setOpenEtlOrTaskModal(true)}
+            >
+              App Deployment
+            </CustomButton>
+          );
+        }}
+      />
       <div className="p-or-d-body1">
         <div className="p-or-d-body2">
-          <div className="p-or-d-header">
-            <div className="header-text">
-              <Typography.Text className="typo-text" strong>
-                {headerText}
-              </Typography.Text>
-            </div>
-            <div className="header-btn">
-              <CustomButton
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => setOpenEtlOrTaskModal(true)}
-              >
-                App Deployment
-              </CustomButton>
-            </div>
-          </div>
           <div className="p-or-d-table">
             <div>
               <Table

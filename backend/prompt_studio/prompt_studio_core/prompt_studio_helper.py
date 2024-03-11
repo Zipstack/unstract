@@ -23,6 +23,9 @@ from prompt_studio.prompt_studio_core.models import CustomTool
 from prompt_studio.prompt_studio_core.prompt_ide_base_tool import (
     PromptIdeBaseTool,
 )
+from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import (
+    PromptStudioIndexHelper,
+)
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.prompt import PromptTool
@@ -85,6 +88,7 @@ class PromptStudioHelper:
         file_name: str,
         org_id: str,
         user_id: str,
+        document_id: str,
         is_summary: bool = False,
     ) -> Any:
         """Method to index a document.
@@ -103,10 +107,16 @@ class PromptStudioHelper:
         """
         tool: CustomTool = CustomTool.objects.get(pk=tool_id)
         if is_summary:
-            default_profile = tool.summarize_llm_profile
+            profile_manager = ProfileManager.objects.get(
+                prompt_studio_tool=tool, is_summarize_llm=True
+            )
+            default_profile = profile_manager
             file_path = file_name
         else:
-            default_profile = tool.default_profile
+            profile_manager = ProfileManager.objects.get(
+                prompt_studio_tool=tool, is_default=True
+            )
+            default_profile = profile_manager
             file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                 org_id, is_create=False, user_id=user_id, tool_id=tool_id
             )
@@ -143,6 +153,7 @@ class PromptStudioHelper:
             tool_id=tool_id,
             file_name=file_path,
             org_id=org_id,
+            document_id=document_id,
             is_summary=is_summary,
         )
         logger.info(f"Indexing done sucessfully for {file_name}")
@@ -158,7 +169,12 @@ class PromptStudioHelper:
 
     @staticmethod
     def prompt_responder(
-        id: str, tool_id: str, file_name: str, org_id: str, user_id: str
+        id: str,
+        tool_id: str,
+        file_name: str,
+        org_id: str,
+        user_id: str,
+        document_id: str
     ) -> Any:
         """Execute chain/single run of the prompts. Makes a call to prompt
         service and returns the dict of response.
@@ -211,7 +227,8 @@ class PromptStudioHelper:
                     ),
                 )
                 if not prompt_instance:
-                    logger.error(f"Prompt id {id} does not have any data in db")
+                    logger.error(
+                        f"Prompt id {id} does not have any data in db")
                     raise PromptNotValid()
             except Exception as exc:
                 logger.error(f"Error while fetching prompt {exc}")
@@ -236,7 +253,11 @@ class PromptStudioHelper:
             )
             logger.info(f"Invoking prompt service for prompt id {id}")
             response = PromptStudioHelper._fetch_response(
-                path=file_path, tool=tool, prompts=prompts, org_id=org_id
+                path=file_path,
+                tool=tool,
+                prompts=prompts,
+                org_id=org_id,
+                document_id=document_id
             )
             stream_log.publish(
                 tool.tool_id,
@@ -256,6 +277,7 @@ class PromptStudioHelper:
         path: str,
         prompts: list[ToolStudioPrompt],
         org_id: str,
+        document_id: str
     ) -> Any:
         """Utility function to invoke prompt service. Used internally.
 
@@ -296,6 +318,7 @@ class PromptStudioHelper:
                 file_name=path,
                 tool_id=str(tool.tool_id),
                 org_id=org_id,
+                document_id=document_id,
                 is_summary=tool.summarize_as_source,
             )
 
@@ -376,6 +399,7 @@ class PromptStudioHelper:
         tool_id: str,
         file_name: str,
         org_id: str,
+        document_id: str,
         is_summary: bool = False,
     ) -> str:
         try:
@@ -394,7 +418,7 @@ class PromptStudioHelper:
             extract_file_path = os.path.join(
                 directory, "extract", os.path.splitext(filename)[0] + ".txt"
             )
-        return str(
+        doc_id = str(
             tool_index.index_file(
                 tool_id=tool_id,
                 embedding_type=embedding_model,
@@ -408,3 +432,12 @@ class PromptStudioHelper:
                 output_file_path=extract_file_path,
             )
         )
+
+        PromptStudioIndexHelper.handle_index_manager(
+            document_id=document_id,
+            is_summary=is_summary,
+            profile_manager=profile_manager,
+            doc_id=doc_id,
+        )
+
+        return doc_id

@@ -17,6 +17,9 @@ services:
       - redis
       - reverse-proxy
       - minio
+      - platform-service
+      - prompt-service
+      - x2text-service
     volumes:
       - ./workflow_data:/data
     environment:
@@ -49,7 +52,7 @@ services:
   celery-flower:
     image: unstract/backend:${VERSION}
     container_name: unstract-celery-flower
-    entrypoint: /app/.venv/bin/celery
+    entrypoint: .venv/bin/celery
     command: "-A backend flower --port=5555"
     env_file:
       - ../backend/.env
@@ -69,7 +72,7 @@ services:
   celery-beat:
     image: unstract/backend:${VERSION}
     container_name: unstract-celery-beat
-    entrypoint: /app/.venv/bin/celery
+    entrypoint: .venv/bin/celery
     command: "-A backend beat --scheduler django_celery_beat.schedulers:DatabaseScheduler -l INFO"
     env_file:
       - ../backend/.env
@@ -110,6 +113,8 @@ services:
   prompt-service:
     image: unstract/prompt-service:${VERSION}
     container_name: unstract-prompt-service
+    depends_on:
+      - db
     ports:
       - "3003:3003"
     env_file:
@@ -138,6 +143,7 @@ services:
       - ../worker/.env
     volumes:
       - ./workflow_data:/data
+      # Docker socket bind mount to spawn tool containers
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - redis

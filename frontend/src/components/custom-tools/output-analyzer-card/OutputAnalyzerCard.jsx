@@ -27,7 +27,7 @@ function OutputAnalyzerCard({ doc, totalFields }) {
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/fetch_contents?file_name=${doc}&tool_id=${details?.tool_id}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/fetch_contents?document_id=${doc?.document_id}&tool_id=${details?.tool_id}`,
     };
 
     setIsDocLoading(true);
@@ -49,7 +49,7 @@ function OutputAnalyzerCard({ doc, totalFields }) {
     <div className="output-analyzer-body2">
       <div className="output-analyzer-card-head">
         <Space>
-          <Typography.Text strong>{doc}</Typography.Text>
+          <Typography.Text strong>{doc?.document_name}</Typography.Text>
         </Space>
         <Flex>
           <div>
@@ -78,33 +78,34 @@ function OutputAnalyzerCard({ doc, totalFields }) {
         </Flex>
       </div>
       <div className="output-analyzer-main">
-        {fileUrl?.length > 0 && (
-          <Row className="height-100">
-            <Col span={12} className="height-100">
-              <div className="output-analyzer-left-box">
-                <DocumentViewer
-                  doc={doc}
-                  isLoading={isDocLoading}
-                  isContentAvailable={fileUrl?.length > 0}
-                >
-                  <PdfViewer fileUrl={fileUrl} />
-                </DocumentViewer>
-              </div>
-            </Col>
-            <Col span={12} className="height-100">
-              <div className="output-analyzer-right-box">
-                <CombinedOutput doc={doc} setFilledFields={setFilledFields} />
-              </div>
-            </Col>
-          </Row>
-        )}
+        <Row className="height-100">
+          <Col span={12} className="height-100">
+            <div className="output-analyzer-left-box">
+              <DocumentViewer
+                doc={doc}
+                isLoading={isDocLoading}
+                isContentAvailable={fileUrl?.length > 0}
+              >
+                <PdfViewer fileUrl={fileUrl} />
+              </DocumentViewer>
+            </div>
+          </Col>
+          <Col span={12} className="height-100">
+            <div className="output-analyzer-right-box">
+              <CombinedOutput
+                docId={doc?.document_id}
+                setFilledFields={setFilledFields}
+              />
+            </div>
+          </Col>
+        </Row>
       </div>
     </div>
   );
 }
 
 OutputAnalyzerCard.propTypes = {
-  doc: PropTypes.string.isRequired,
+  doc: PropTypes.object.isRequired,
   totalFields: PropTypes.number.isRequired,
 };
 

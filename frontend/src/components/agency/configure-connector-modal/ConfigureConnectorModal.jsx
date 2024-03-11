@@ -22,9 +22,9 @@ function ConfigureConnectorModal({
   setFormDataConfig,
   isSpecConfigLoading,
   connDetails,
+  connType,
 }) {
   const [activeKey, setActiveKey] = useState("1");
-
   const tabItems = [
     {
       key: "1",
@@ -33,7 +33,7 @@ function ConfigureConnectorModal({
     {
       key: "2",
       label: "File System",
-      disabled: !connectorId || connDetails?.connector_id !== selectedId,
+      disabled: !connectorId || connDetails?.connector_id !== selectedId || connType === "DATABASE",
     },
   ];
 
@@ -116,6 +116,7 @@ ConfigureConnectorModal.propTypes = {
   setFormDataConfig: PropTypes.func.isRequired,
   isSpecConfigLoading: PropTypes.bool.isRequired,
   connDetails: PropTypes.object,
+  connType: PropTypes.string.isRequired,
 };
 
 export { ConfigureConnectorModal };
