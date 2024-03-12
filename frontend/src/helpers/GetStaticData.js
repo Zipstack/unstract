@@ -245,36 +245,6 @@ const getTimeForLogs = () => {
   return formattedDate;
 };
 
-const handleException = (err, errMessage, setBackendErrors = undefined) => {
-  if (err?.response?.data?.type === "validation_error") {
-    // Handle validation errors
-    if (setBackendErrors) {
-      setBackendErrors(err?.response?.data);
-    } else {
-      return {
-        type: "error",
-        content: errMessage || "Something went wrong",
-      };
-    }
-  }
-
-  if (["client_error", "server_error"].includes(err?.response?.data?.type)) {
-    // Handle client_error, server_error
-    return {
-      type: "error",
-      content:
-        err?.response?.data?.errors[0].detail ||
-        errMessage ||
-        "Something went wrong",
-    };
-  }
-
-  return {
-    type: "error",
-    content: errMessage || err?.message,
-  };
-};
-
 const base64toBlob = (data) => {
   const bytes = atob(data);
   let length = bytes.length;
@@ -381,7 +351,6 @@ export {
   getOrgNameFromPathname,
   getReadableDateAndTime,
   getTimeForLogs,
-  handleException,
   listOfAppDeployments,
   onboardCompleted,
   promptStudioUpdateStatus,

@@ -10,7 +10,7 @@ import { Button, Dropdown, Space, Switch, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { getBaseUrl, handleException } from "../../../helpers/GetStaticData";
+import { getBaseUrl } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
@@ -20,6 +20,7 @@ import { DisplayCode } from "../display-code/DisplayCode";
 import { Layout } from "../layout/Layout";
 import { ManageKeys } from "../manage-keys/ManageKeys";
 import { apiDeploymentsService } from "./api-deployments-service";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 function ApiDeployment() {
   const { sessionDetails } = useSessionStore();
@@ -37,6 +38,7 @@ function ApiDeployment() {
   const [apiKeys, setApiKeys] = useState([]);
   const [isEdit, setIsEdit] = useState(false);
   const [workflowEndpointList, setWorkflowEndpointList] = useState([]);
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     getApiDeploymentList();
