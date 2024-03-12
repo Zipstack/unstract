@@ -128,11 +128,7 @@ const CardsList = ({ step, index, activeTool, moveItem }) => {
                 </Typography.Text>
               </div>
               <div className="wf-step-card-progress display-flex-center">
-                <Progress
-                  type="circle"
-                  size="small"
-                  format={() => index + 1}
-                />
+                <Progress type="circle" size="small" format={() => index + 1} />
               </div>
             </div>
           </Col>
