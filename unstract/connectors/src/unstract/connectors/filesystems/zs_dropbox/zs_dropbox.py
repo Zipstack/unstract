@@ -5,7 +5,9 @@ from typing import Any
 from dropbox.exceptions import DropboxException
 from dropboxdrivefs import DropboxDriveFileSystem
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+from unstract.connectors.filesystems.unstract_file_system import (
+    UnstractFileSystem,
+)
 
 from .exceptions import handle_dropbox_exception
 
@@ -34,7 +36,8 @@ class DropboxFS(UnstractFileSystem):
     def get_icon() -> str:
         # TODO: Add an icon to GCS and serve it
         return (
-            "https://storage.googleapis.com/pandora-static/connector-icons/Dropbox.png"
+            "https://storage.googleapis.com"
+            "/pandora-static/connector-icons/Dropbox.png"
         )
 
     @staticmethod

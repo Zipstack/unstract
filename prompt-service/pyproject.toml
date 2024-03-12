@@ -10,9 +10,7 @@ authors = [
     {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
 ]
 dependencies = [
-    "tiktoken~=0.4.0",
     "peewee~=3.16",
-    "filetype==1.2.0",
     "nltk~=3.8",
     "flask~=3.0",
     "llama-index==0.10.16",

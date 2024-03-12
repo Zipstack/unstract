@@ -1,28 +1,27 @@
-import { Typography } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import PropTypes from "prop-types";
 
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { deploymentsStaticContent } from "../../../helpers/GetStaticData";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 
 function Header({ type, openAddModal }) {
+  const customButtons = () => {
+    return (
+      <CustomButton
+        type="primary"
+        icon={<PlusOutlined />}
+        onClick={() => openAddModal(false)}
+      >
+        {deploymentsStaticContent[type].addBtn}
+      </CustomButton>
+    );
+  };
   return (
-    <div className="layout-header">
-      <div>
-        <Typography.Text strong className="title">
-          {deploymentsStaticContent[type].title}
-        </Typography.Text>
-      </div>
-      <div>
-        <CustomButton
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => openAddModal(false)}
-        >
-          {deploymentsStaticContent[type].addBtn}
-        </CustomButton>
-      </div>
-    </div>
+    <ToolNavBar
+      title={deploymentsStaticContent[type].title}
+      CustomButtons={customButtons}
+    />
   );
 }
 

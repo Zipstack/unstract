@@ -230,6 +230,7 @@ const endpointType = {
 const promptStudioUpdateStatus = {
   isUpdating: "IS_UPDATING",
   done: "DONE",
+  validationError: "VALIDATION_ERROR",
 };
 
 const getTimeForLogs = () => {
@@ -244,13 +245,17 @@ const getTimeForLogs = () => {
   return formattedDate;
 };
 
-const handleException = (err, errMessage) => {
+const handleException = (err, errMessage, setBackendErrors = undefined) => {
   if (err?.response?.data?.type === "validation_error") {
     // Handle validation errors
-    return {
-      type: "error",
-      content: errMessage || "Something went wrong",
-    };
+    if (setBackendErrors) {
+      setBackendErrors(err?.response?.data);
+    } else {
+      return {
+        type: "error",
+        content: errMessage || "Something went wrong",
+      };
+    }
   }
 
   if (["client_error", "server_error"].includes(err?.response?.data?.type)) {

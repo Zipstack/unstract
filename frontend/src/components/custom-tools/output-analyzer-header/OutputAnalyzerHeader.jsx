@@ -20,7 +20,7 @@ function OutputAnalyzerHeader() {
             <ArrowLeftOutlined />
           </Button>
           <Typography.Text className="font-size-16" strong>
-            Output Viewer
+            Output Analyzer
           </Typography.Text>
         </Space>
       </div>
