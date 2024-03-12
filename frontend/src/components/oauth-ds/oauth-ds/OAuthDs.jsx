@@ -2,17 +2,15 @@ import { Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import {
-  O_AUTH_PROVIDERS,
-  getBaseUrl,
-  handleException,
-} from "../../../helpers/GetStaticData";
+import { O_AUTH_PROVIDERS, getBaseUrl } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store";
 import GoogleOAuthButton from "../google/GoogleOAuthButton.jsx";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 function OAuthDs({ oAuthProvider, setCacheKey, setStatus }) {
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
 
   const [oauthStatus, setOAuthStatus] = useState(
     localStorage.getItem("oauth-status")

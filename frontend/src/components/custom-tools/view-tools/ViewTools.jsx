@@ -19,6 +19,7 @@ function ViewTools({
   iconProp,
   idProp,
   centered,
+  isClickable = true,
 }) {
   if (isLoading) {
     return <SpinnerLoader />;
@@ -54,6 +55,7 @@ function ViewTools({
       titleProp={titleProp}
       idProp={idProp}
       centered={centered}
+      isClickable={isClickable}
     />
   );
 }
@@ -70,6 +72,7 @@ ViewTools.propTypes = {
   iconProp: PropTypes.string,
   idProp: PropTypes.string.isRequired,
   centered: PropTypes.bool,
+  isClickable: PropTypes.bool,
 };
 
 export { ViewTools };

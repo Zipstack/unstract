@@ -1,11 +1,11 @@
 import PropTypes from "prop-types";
 import { useContext, useEffect } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { SocketContext } from "../../../helpers/SocketContext";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 function SocketMessages({ logId }) {
   const {
     pushStagedMessage,
@@ -17,6 +17,7 @@ function SocketMessages({ logId }) {
   const { pushLogMessages } = useSocketLogsStore();
   const socket = useContext(SocketContext);
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
 
   const onMessage = (data) => {
     try {
