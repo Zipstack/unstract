@@ -44,11 +44,7 @@ class CacheService:
 
     @staticmethod
     def delete_key(key: str) -> Any:
-        """Delete a key from the cache.
-
-        Returns True if the key existed and was deleted, False
-        otherwise.
-        """
+        """Delete a key from the cache."""
         cache_instance = CacheService.get_instance()
         if cache_instance is None:
             return
