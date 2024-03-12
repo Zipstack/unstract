@@ -15,7 +15,6 @@ import { useEffect, useState } from "react";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./PipelinesOrDeployments.css";
 
-// import { listOfAppDeployments } from "../../../helpers/GetStaticData";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
@@ -30,10 +29,10 @@ function PipelinesOrDeployments({ type }) {
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [selectedPorD, setSelectedPorD] = useState({});
 
+  //TODO:: add appdeployment management logic when it is available
   useEffect(() => {
     setHeaderText("App Deployments");
     setModalTitle("Deploy App");
-    // setTableData(listOfAppDeployments);
   }, [type]);
 
   const actionItems = [
