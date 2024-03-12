@@ -37,11 +37,7 @@ PG_BE_PORT = int(os.environ.get("PG_BE_PORT", 5432))
 PG_BE_USERNAME = os.environ.get("PG_BE_USERNAME")
 PG_BE_PASSWORD = os.environ.get("PG_BE_PASSWORD")
 PG_BE_DATABASE = os.environ.get("PG_BE_DATABASE")
-ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY")
-if not (REDIS_HOST and REDIS_PORT):
-    raise ValueError(
-        "REDIS_HOST and REDIS_PORT must be set in the environment."
-    )
+ENCRYPTION_KEY = EnvManager.get_required_setting("ENCRYPTION_KEY")
 
 EnvManager.raise_for_missing_envs()
 
