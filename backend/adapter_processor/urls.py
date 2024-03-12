@@ -7,7 +7,7 @@ from django.urls import path
 from rest_framework.urlpatterns import format_suffix_patterns
 
 default_triad = DefaultAdapterViewSet.as_view(
-    {"post": "configure_default_triad"}
+    {"post": "configure_default_triad", "get": "get_default_triad"}
 )
 adapter = AdapterViewSet.as_view({"get": "list"})
 adapter_schema = AdapterViewSet.as_view({"get": "get_adapter_schema"})

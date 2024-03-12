@@ -75,10 +75,6 @@ class AdapterInstance(BaseModel):
         default=False,
         db_comment="Is the adapter instance currently being used",
     )
-    is_default = models.BooleanField(
-        default=False,
-        db_comment="Is the adapter instance default",
-    )
 
     shared_users = models.ManyToManyField(User, related_name="shared_adapters")
 
@@ -94,3 +90,25 @@ class AdapterInstance(BaseModel):
                 name="unique_adapter",
             ),
         ]
+
+
+class UserDefaultAdapter(BaseModel):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    default_llm_adapter = models.ForeignKey(
+        AdapterInstance,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="default_llm_adapter",
+    )
+    default_embedding_adapter = models.ForeignKey(
+        AdapterInstance,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="default_embedding_adapter",
+    )
+    default_vector_db_adapter = models.ForeignKey(
+        AdapterInstance,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="default_vector_db_adapter",
+    )

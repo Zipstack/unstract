@@ -4,13 +4,13 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper.jsx";
 import "./DefaultTriad.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 const { Option } = Select;
 
@@ -37,6 +37,14 @@ function DefaultTriad() {
           `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`
         );
         setAdaptorsList(res.data);
+
+        const defaultAdaptorRes = await axiosPrivate.get(
+          `/api/v1/unstract/${sessionDetails?.orgId}/adapter/default_triad/`
+        );
+
+        setCurrentLLMDefault(defaultAdaptorRes.data?.default_llm_adapter);
+        setCurrentEMBDefault(defaultAdaptorRes.data?.default_llm_adapter);
+        setCurrentVECTORDefault(defaultAdaptorRes.data?.default_llm_adapter);
       } catch (error) {
         console.error("Error fetching data:", error);
       }
@@ -46,21 +54,6 @@ function DefaultTriad() {
   }, []);
 
   useEffect(() => {
-    setCurrentLLMDefault(
-      adaptorsList.find(
-        (item) => item.adapter_type === "LLM" && item.is_default
-      )?.id
-    );
-    setCurrentVECTORDefault(
-      adaptorsList.find(
-        (item) => item.adapter_type === "VECTOR_DB" && item.is_default
-      )?.id
-    );
-    setCurrentEMBDefault(
-      adaptorsList.find(
-        (item) => item.adapter_type === "EMBEDDING" && item.is_default
-      )?.id
-    );
     setSelectedLLMDefault(currentLLMDefault);
     setSelectedEMBDefault(currentEMBDefault);
     setSelectedVECTORDefault(currentVECTORDefault);
