@@ -43,6 +43,18 @@ class CacheService:
             )
 
     @staticmethod
+    def delete_key(key: str) -> Any:
+        """Delete a key from the cache.
+
+        Returns True if the key existed and was deleted, False
+        otherwise.
+        """
+        cache_instance = CacheService.get_instance()
+        if cache_instance is None:
+            return
+        cache.delete(key)
+
+    @staticmethod
     def set_cookie(cookie: str, token: dict[str, Any]) -> None:
         cache.set(cookie, token)
 
