@@ -581,7 +581,7 @@ class WorkflowHelper:
         cache = CacheService.get_instance()
         response: dict[str, Any] = {}
         if cache is None:
-            logger.error("cache from CacheService is none")
+            logger.error("redis instance returned from cache-service is none")
             response["message"] = WorkflowMessages.CACHE_CLEAR_FAILED
             response["status"] = 400
             return response
