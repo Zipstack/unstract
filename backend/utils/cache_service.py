@@ -48,7 +48,7 @@ class CacheService:
         cache_instance = CacheService.get_instance()
         if cache_instance is None:
             return
-        cache.delete(key)
+        cache_instance.delete(key)
 
     @staticmethod
     def set_cookie(cookie: str, token: dict[str, Any]) -> None:
