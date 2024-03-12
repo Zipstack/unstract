@@ -13,16 +13,13 @@ class CacheService:
 
     @staticmethod
     def get_instance() -> Optional["Redis[Any]"]:
-        print("** init cache ")
         if CacheService._cache is None:
-            print("** new cache ")
             CacheService._cache = redis.Redis(
                 host=settings.REDIS_HOST,
                 port=int(settings.REDIS_PORT),
                 password=settings.REDIS_PASSWORD,
                 username=settings.REDIS_USER,
             )
-            print("** cache *** ", CacheService._cache)
         return CacheService._cache
 
     @staticmethod
