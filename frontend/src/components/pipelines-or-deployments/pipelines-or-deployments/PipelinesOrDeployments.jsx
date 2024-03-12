@@ -29,7 +29,7 @@ function PipelinesOrDeployments({ type }) {
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [selectedPorD, setSelectedPorD] = useState({});
 
-  //TODO:: add appdeployment management logic when it is available
+  // TODO: add appdeployment management logic when it is available
   useEffect(() => {
     setHeaderText("App Deployments");
     setModalTitle("Deploy App");
