@@ -2,10 +2,7 @@ import { Col, Image, Row } from "antd";
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 
-import {
-  CONNECTOR_TYPE_MAP,
-  handleException,
-} from "../../../helpers/GetStaticData.js";
+import { CONNECTOR_TYPE_MAP } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -13,6 +10,7 @@ import { AddSourceModal } from "../add-source-modal/AddSourceModal.jsx";
 import { ManageFiles } from "../manage-files/ManageFiles.jsx";
 import { Sidebar } from "../sidebar/Sidebar.jsx";
 import "./InputOutput.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 const INPUT = "input";
 const OUTPUT = "output";
 
@@ -27,6 +25,7 @@ function InputOutput() {
   const { setAlertDetails } = useAlertStore();
   const { id } = useParams();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
   const location = useLocation();
   const currentPath = location.pathname;
 

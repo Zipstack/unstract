@@ -15,6 +15,7 @@ from unstract.platform_service.helper import (
     AdapterInstanceRequestHelper,
     PromptStudioRequestHelper,
 )
+from unstract.platform_service.utils import EnvManager
 
 load_dotenv()
 
@@ -22,12 +23,13 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s : %(message)s",
 )
+# Configuring envs
 MAX_FILE_SIZE = 100 * 1024 * 1024
 INVALID_ORGANIZATOIN = "Invalid organization"
 INVALID_PAYLOAD = "Bad Request / No payload"
 BAD_REQUEST = "Bad Request"
-REDIS_HOST = os.environ.get("REDIS_HOST")
-REDIS_PORT = int(os.environ.get("REDIS_PORT", 6379))
+REDIS_HOST = EnvManager.get_required_setting("REDIS_HOST")
+REDIS_PORT = int(EnvManager.get_required_setting("REDIS_PORT", 6379))
 REDIS_USERNAME = os.environ.get("REDIS_USERNAME")
 REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD")
 PG_HOST = os.environ.get("PG_HOST")
@@ -45,10 +47,8 @@ PG_V_PORT = int(os.environ.get("PG_V_PORT", 5432))
 PG_V_USERNAME = os.environ.get("PG_V_USERNAME", "user")
 PG_V_PASSWORD = os.environ.get("PG_V_PASSWORD", "")
 PG_V_DATABASE = os.environ.get("PG_V_DATABASE", "")
-if not (REDIS_HOST and REDIS_PORT):
-    raise ValueError(
-        "REDIS_HOST and REDIS_PORT must be set in the environment."
-    )
+ENCRYPTION_KEY = EnvManager.get_required_setting("ENCRYPTION_KEY")
+EnvManager.raise_for_missing_envs()
 
 # TODO: Follow Flask best practices and refactor accordingly
 app = Flask("platform_service")
@@ -72,19 +72,6 @@ be_db = peewee.PostgresqlDatabase(
 )
 be_db.init(PG_BE_DATABASE)
 be_db.connect()
-
-
-class EncryptionSecret(peewee.Model):
-    id = peewee.IntegerField()
-    key = peewee.CharField()
-
-    class Meta:
-        table_name = "account_encryptionsecret"
-        database = be_db  # This model uses the "BE_DB" database.
-
-    def save(self, force_insert: bool = False, only: Any = None) -> Any:
-        self.modified_at = datetime.datetime.now()
-        return super().save(force_insert=force_insert, only=only)
 
 
 class UnstractUsage(peewee.Model):
@@ -408,8 +395,7 @@ def adapter_instance() -> Any:
                 )
             )
 
-            encryption_secret: EncryptionSecret = EncryptionSecret.get()
-            f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
+            f: Fernet = Fernet(ENCRYPTION_KEY.encode("utf-8"))
 
             data_dict["adapter_metadata"] = json.loads(
                 f.decrypt(

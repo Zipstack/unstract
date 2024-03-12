@@ -1,12 +1,5 @@
-import {
-  AppstoreOutlined,
-  BarsOutlined,
-  PlusOutlined,
-} from "@ant-design/icons";
-import { Input, Segmented, Typography } from "antd";
-import debounce from "lodash/debounce";
-import isEmpty from "lodash/isEmpty";
-import { useCallback, useEffect, useState } from "react";
+import { PlusOutlined } from "@ant-design/icons";
+import { useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
@@ -14,24 +7,11 @@ import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { AddCustomToolFormModal } from "../add-custom-tool-form-modal/AddCustomToolFormModal";
 import { ViewTools } from "../view-tools/ViewTools";
-
-import { handleException } from "../../../helpers/GetStaticData";
 import "./ListOfTools.css";
-
-const { Search } = Input;
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 
 function ListOfTools() {
-  const VIEW_OPTIONS = [
-    {
-      value: "grid",
-      icon: <AppstoreOutlined />,
-    },
-    {
-      value: "list",
-      icon: <BarsOutlined />,
-    },
-  ];
-  const [viewType, setViewType] = useState(VIEW_OPTIONS[0].value);
   const [isListLoading, setIsListLoading] = useState(false);
   const [openAddTool, setOpenAddTool] = useState(false);
   const [editItem, setEditItem] = useState(null);
@@ -41,11 +21,16 @@ function ListOfTools() {
 
   const [listOfTools, setListOfTools] = useState([]);
   const [filteredListOfTools, setFilteredListOfTools] = useState([]);
-  const [search, setSearch] = useState("");
+  const handleException = useExceptionHandler();
+  const [isEdit, setIsEdit] = useState(false);
 
   useEffect(() => {
     getListOfTools();
   }, []);
+
+  useEffect(() => {
+    setFilteredListOfTools(listOfTools);
+  }, [listOfTools]);
 
   const getListOfTools = () => {
     const requestOptions = {
@@ -61,6 +46,7 @@ function ListOfTools() {
       .then((res) => {
         const data = res?.data;
         setListOfTools(data);
+        setFilteredListOfTools(data);
       })
       .catch((err) => {
         setAlertDetails(
@@ -118,20 +104,22 @@ function ListOfTools() {
     setListOfTools(tools);
   };
 
-  const handleEdit = (event, id) => {
-    event.domEvent.stopPropagation();
-    const editToolData = [...listOfTools].find((item) => item?.tool_id === id);
+  const handleEdit = (_event, tool) => {
+    const editToolData = [...listOfTools].find(
+      (item) => item?.tool_id === tool.tool_id
+    );
     if (!editToolData) {
       return;
     }
+    setIsEdit(true);
     setEditItem(editToolData);
     setOpenAddTool(true);
   };
 
-  const handleDelete = (event, id) => {
+  const handleDelete = (_event, tool) => {
     const requestOptions = {
       method: "DELETE",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${id}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${tool.tool_id}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -139,8 +127,14 @@ function ListOfTools() {
 
     axiosPrivate(requestOptions)
       .then(() => {
-        const tools = [...listOfTools].filter((tool) => tool?.tool_id !== id);
+        const tools = [...listOfTools].filter(
+          (filterToll) => filterToll?.tool_id !== tool.tool_id
+        );
         setListOfTools(tools);
+        setAlertDetails({
+          type: "success",
+          console: "Deleted successfully ",
+        });
       })
       .catch((err) => {
         setAlertDetails({
@@ -152,81 +146,73 @@ function ListOfTools() {
       });
   };
 
-  const handleViewChange = (type) => {
-    setViewType(type);
-  };
-
-  useEffect(() => {
+  const onSearch = (search, setSearch) => {
     if (search?.length === 0) {
-      setFilteredListOfTools(listOfTools);
+      setSearch(listOfTools);
     }
     const filteredList = [...listOfTools].filter((tool) => {
       const name = tool.tool_name?.toUpperCase();
       const searchUpperCase = search.toUpperCase();
       return name.includes(searchUpperCase);
     });
-    setFilteredListOfTools(filteredList);
-  }, [search, listOfTools]);
+    setSearch(filteredList);
+  };
 
-  const onSearchDebounce = useCallback(
-    debounce(({ target: { value } }) => {
-      setSearch(value);
-    }, 600),
-    []
-  );
+  const showAddTool = () => {
+    setEditItem(null);
+    setIsEdit(false);
+    setOpenAddTool(true);
+  };
+
+  const CustomButtons = () => {
+    return (
+      <CustomButton
+        type="primary"
+        icon={<PlusOutlined />}
+        onClick={showAddTool}
+      >
+        New Tool
+      </CustomButton>
+    );
+  };
 
   return (
     <>
+      <ToolNavBar
+        title={"Prompt Studio"}
+        enableSearch
+        onSearch={onSearch}
+        searchList={listOfTools}
+        setSearchList={setFilteredListOfTools}
+        CustomButtons={CustomButtons}
+      />
       <div className="list-of-tools-layout">
         <div className="list-of-tools-island">
-          <div direction="vertical" className="list-of-tools-wrap">
-            <div className="list-of-tools-header">
-              <Typography.Text className="list-of-tools-title">
-                Prompt Studio
-              </Typography.Text>
-              <div className="list-of-tools-header2">
-                <Segmented
-                  options={VIEW_OPTIONS}
-                  value={viewType}
-                  onChange={handleViewChange}
-                />
-                <Search
-                  disabled={isEmpty(listOfTools)}
-                  placeholder="Search by tool name"
-                  onChange={onSearchDebounce}
-                  allowClear
-                />
-                <CustomButton
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={() => setOpenAddTool(true)}
-                >
-                  New Tool
-                </CustomButton>
-              </div>
-            </div>
-            <div className="list-of-tools-divider" />
-            <div className="list-of-tools-body">
-              <ViewTools
-                isLoading={isListLoading}
-                viewType={viewType}
-                isEmpty={!listOfTools?.length}
-                listOfTools={filteredListOfTools}
-                setOpenAddTool={setOpenAddTool}
-                handleEdit={handleEdit}
-                handleDelete={handleDelete}
-              />
-            </div>
+          <div className="list-of-tools-body">
+            <ViewTools
+              isLoading={isListLoading}
+              isEmpty={!listOfTools?.length}
+              listOfTools={filteredListOfTools}
+              setOpenAddTool={setOpenAddTool}
+              handleEdit={handleEdit}
+              handleDelete={handleDelete}
+              titleProp="tool_name"
+              descriptionProp="description"
+              iconProp="icon"
+              idProp="tool_id"
+            />
           </div>
         </div>
       </div>
-      <AddCustomToolFormModal
-        open={openAddTool}
-        setOpen={setOpenAddTool}
-        editItem={editItem}
-        setEditItem={setEditItem}
-        handleAddNewTool={handleAddNewTool}
-      />
+      {openAddTool && (
+        <AddCustomToolFormModal
+          open={openAddTool}
+          setOpen={setOpenAddTool}
+          editItem={editItem}
+          isEdit={isEdit}
+          handleAddNewTool={handleAddNewTool}
+        />
+      )}
     </>
   );
 }

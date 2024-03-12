@@ -6,6 +6,8 @@ class ToolStudioKeys:
     TOOL_ID = "tool_id"
     PROMPTS = "prompts"
     PLATFORM_SERVICE_API_KEY = "PLATFORM_SERVICE_API_KEY"
+    SUMMARIZE_LLM_PROFILE = "summarize_llm_profile"
+    DEFAULT_PROFILE = "default_profile"
 
 
 class ToolStudioErrors:
@@ -75,6 +77,7 @@ class ToolStudioPromptKeys:
     EVAL_SETTINGS_EXCLUDE_FAILED = "exclude_failed"
     SUMMARIZE = "summarize"
     SUMMARIZED_RESULT = "summarized_result"
+    DOCUMENT_ID = "document_id"
 
 
 class LogLevels:

@@ -3,7 +3,6 @@ import { Button, Input, Select, Space, Table, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -12,6 +11,7 @@ import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./CustomSynonyms.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 const columns = [
   {
@@ -41,6 +41,7 @@ function CustomSynonyms({ setOpen }) {
   const { details, updateCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     const promptGrammar = details?.prompt_grammer;
@@ -142,7 +143,14 @@ function CustomSynonyms({ setOpen }) {
   const handleSave = () => {
     const promptGrammar = {};
     [...synonyms].forEach((item) => {
-      promptGrammar[item?.word] = item?.synonyms || [];
+      if (
+        !item?.word ||
+        !item?.synonyms?.length ||
+        item.word in promptGrammar
+      ) {
+        return;
+      }
+      promptGrammar[item.word] = item.synonyms || [];
     });
     if (promptGrammar && !isEmpty(promptGrammar)) {
       const body = {

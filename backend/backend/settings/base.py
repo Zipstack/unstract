@@ -143,6 +143,7 @@ API_STORAGE_DIR = os.environ.get("API_STORAGE_DIR")
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = get_required_setting("DJANGO_SECRET_KEY")
+ENCRYPTION_KEY = get_required_setting("ENCRYPTION_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -209,6 +210,8 @@ TENANT_APPS = (
     "prompt_studio.prompt_studio_core",
     "prompt_studio.prompt_studio_registry",
     "prompt_studio.prompt_studio_output_manager",
+    "prompt_studio.prompt_studio_document_manager",
+    "prompt_studio.prompt_studio_index_manager",
 )
 
 INSTALLED_APPS = list(SHARED_APPS) + [

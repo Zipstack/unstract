@@ -1,161 +1,180 @@
-import { Input, Modal, Space, Typography } from "antd";
+import { useState } from "react";
+import { Form, Input, Modal, Popover, Button } from "antd";
 import PropTypes from "prop-types";
+import EmojiPicker from "emoji-picker-react";
 
-import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
+import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
+import { useAlertStore } from "../../../store/alert-store";
 import "./AddCustomToolFormModal.css";
 
-import { useEffect, useState } from "react";
-
-import { handleException } from "../../../helpers/GetStaticData";
-import { useAlertStore } from "../../../store/alert-store";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+const defaultFromDetails = {
+  tool_name: "",
+  author: "",
+  description: "",
+  icon: "",
+};
 
 function AddCustomToolFormModal({
   open,
   setOpen,
   editItem,
-  setEditItem,
+  isEdit,
   handleAddNewTool,
 }) {
-  const [title, setTitle] = useState("");
-  const [toolName, setToolName] = useState("");
-  const [author, setAuthor] = useState("");
-  const [description, setDescription] = useState("");
-  const [icon, setIcon] = useState("");
-  const [isEdit, setIsEdit] = useState(false);
+  const [form] = Form.useForm();
+  const [isLoading, setIsLoading] = useState(false);
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [formDetails, setFormDetails] = useState(
+    isEdit ? { ...editItem } : { ...defaultFromDetails }
+  );
+  const [icon, setIcon] = useState(isEdit ? formDetails.icon : "");
+  const [backendErrors, setBackendErrors] = useState(null);
 
-  useEffect(() => {
-    setIsEdit(editItem && Object.keys(editItem)?.length > 0);
-  }, [editItem]);
+  const updateIcon = (emoji) => {
+    setIcon(emoji);
+    setFormDetails((prevState) => ({
+      ...prevState,
+      icon: emoji,
+    }));
+  };
 
-  useEffect(() => {
-    if (!open) {
-      clearForm();
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (isEdit) {
-      setTitle("Edit Tool Information");
-      setToolName(editItem?.tool_name || "");
-      setAuthor(editItem?.author || "");
-      setDescription(editItem?.description || "");
-      setIcon(editItem?.icon || "");
-      return;
-    }
-    setTitle("Add Tool Information");
-  }, [isEdit]);
+  const handleInputChange = (changedValues, allValues) => {
+    setFormDetails({ ...formDetails, ...allValues });
+    const changedFieldName = Object.keys(changedValues)[0];
+    form.setFields([
+      {
+        name: changedFieldName,
+        errors: [],
+      },
+    ]);
+    setBackendErrors((prevErrors) => {
+      if (prevErrors) {
+        const updatedErrors = prevErrors.errors.filter(
+          (error) => error.attr !== changedFieldName
+        );
+        return { ...prevErrors, errors: updatedErrors };
+      }
+      return null;
+    });
+  };
 
   const handleSubmit = (event) => {
-    event.preventDefault();
-    if (!toolName.trim() || !author.trim() || !description.trim()) {
-      setAlertDetails({
-        type: "error",
-        content: "Please add valid values in input fields",
-      });
-      return;
-    }
-
-    const body = {
-      tool_name: toolName,
-      author: author,
-      description: description,
-      icon: icon,
-    };
+    const body = formDetails;
+    setIsLoading(true);
     handleAddNewTool(body)
       .then((success) => {
         setAlertDetails({
           type: "success",
           content: `${isEdit ? "Updated" : "Added"} Successfully`,
         });
-        clearForm();
+        setOpen(false);
+        clearFormDetails();
       })
       .catch((err) => {
-        const msg = `Failed to ${isEdit ? "update" : "add"}`;
-        setAlertDetails(handleException(err, msg));
+        handleException(err, "", setBackendErrors);
+      })
+      .finally(() => {
+        setIsLoading(false);
       });
   };
 
-  const clearForm = () => {
-    setToolName("");
-    setAuthor("");
-    setDescription("");
-    setIcon("");
-    setEditItem({});
-    setIsEdit(false);
+  const clearFormDetails = () => {
+    setFormDetails({ ...defaultFromDetails });
   };
 
   return (
     <Modal
-      className="pre-post-amble-modal"
-      width={400}
+      title={isEdit ? "Edit Tool Information " : "Add Tool Information"}
+      width={450}
       open={open}
-      onCancel={() => setOpen(false)}
-      footer={null}
+      onCancel={() => {
+        setOpen(false);
+        setShowEmojiPicker(false);
+      }}
       centered
       maskClosable={false}
+      onOk={handleSubmit}
+      okText={isEdit ? "Update" : "Save"}
+      okButtonProps={{
+        loading: isLoading,
+      }}
+      destroyOnClose
     >
-      <form onSubmit={handleSubmit}>
-        <div className="pre-post-amble-body">
-          <div>
-            <Typography.Text className="add-cus-tool-header">
-              {title}
-            </Typography.Text>
-          </div>
-          <div className="add-cus-tool-gap" />
-          <SpaceWrapper>
-            <Typography.Text>Tool Name</Typography.Text>
-            <Input
-              value={toolName}
-              onChange={(e) => setToolName(e.target.value)}
-              required
-            />
-          </SpaceWrapper>
-          <div className="add-cus-tool-gap" />
-          <SpaceWrapper>
-            <Typography.Text>Author/Org Name</Typography.Text>
-            <Input
-              value={author}
-              onChange={(e) => setAuthor(e.target.value)}
-              required
-            />
-          </SpaceWrapper>
-          <div className="add-cus-tool-gap" />
-          <SpaceWrapper>
-            <Typography.Text>Description</Typography.Text>
-            <Input.TextArea
-              rows={2}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              required
-            />
-          </SpaceWrapper>
-          <div className="add-cus-tool-gap" />
-          <SpaceWrapper>
-            <Typography.Text>Icon</Typography.Text>
-            <Input value={icon} onChange={(e) => setIcon(e.target.value)} />
-            <Typography.Text type="secondary">
-              Enter the name of the icon from{" "}
-              <a
-                href="https://fonts.google.com/icons"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Google Fonts
-              </a>
-            </Typography.Text>
-          </SpaceWrapper>
-        </div>
-        <div className="pre-post-amble-footer display-flex-right">
-          <Space>
-            <CustomButton onClick={() => setOpen(false)}>Cancel</CustomButton>
-            <CustomButton htmlType="submit" type="primary">
-              Save
-            </CustomButton>
-          </Space>
-        </div>
-      </form>
+      <Form
+        form={form}
+        name="myForm"
+        layout="vertical"
+        initialValues={formDetails}
+        onValuesChange={handleInputChange}
+      >
+        <Form.Item
+          label="Tool Name"
+          name="tool_name"
+          rules={[{ required: true, message: "Please enter tool name" }]}
+          validateStatus={
+            getBackendErrorDetail("tool_name", backendErrors) ? "error" : ""
+          }
+          help={getBackendErrorDetail("tool_name", backendErrors)}
+        >
+          <Input />
+        </Form.Item>
+
+        <Form.Item
+          label="Author/Org Name"
+          name="author"
+          rules={[{ required: true, message: "Please enter Author/Org name" }]}
+          validateStatus={
+            getBackendErrorDetail("author", backendErrors) ? "error" : ""
+          }
+          help={getBackendErrorDetail("author", backendErrors)}
+        >
+          <Input />
+        </Form.Item>
+
+        <Form.Item
+          label="Description"
+          name="description"
+          rules={[{ required: true, message: "Please enter description" }]}
+          validateStatus={
+            getBackendErrorDetail("description", backendErrors) ? "error" : ""
+          }
+          help={getBackendErrorDetail("description", backendErrors)}
+        >
+          <Input.TextArea
+            rows={4}
+            showCount={true}
+            maxLength={200}
+            style={{ height: 100, resize: "none" }}
+          />
+        </Form.Item>
+
+        <Form.Item label="Icon" name="icon">
+          <Popover
+            open={showEmojiPicker}
+            placement="rightTop"
+            arrow={false}
+            trigger={"click"}
+            className="emoji-modal"
+            title={
+              <EmojiPicker
+                previewConfig={{ showPreview: false }}
+                lazyLoadEmojis
+                onEmojiClick={(emoji) => {
+                  updateIcon(emoji.emoji);
+                  setShowEmojiPicker(false);
+                }}
+              />
+            }
+          >
+            <Button onClick={() => setShowEmojiPicker((prev) => !prev)}>
+              {icon} {icon ? "Change" : "Choose"} Icon
+            </Button>
+          </Popover>
+        </Form.Item>
+      </Form>
     </Modal>
   );
 }
@@ -164,7 +183,7 @@ AddCustomToolFormModal.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
   editItem: PropTypes.object.isRequired,
-  setEditItem: PropTypes.func.isRequired,
+  isEdit: PropTypes.bool.isRequired,
   handleAddNewTool: PropTypes.func.isRequired,
 };
 

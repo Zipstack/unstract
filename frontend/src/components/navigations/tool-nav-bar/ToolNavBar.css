@@ -1,0 +1,31 @@
+/* Styles for ToolNavBar */
+
+.search-navbar-dp {
+  height: 25px;
+  width: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #184772;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.api-search-input {
+  width: 250px;
+  margin-right: 10px;
+}
+
+.searchNav {
+  background-color: #f5f7f9;
+  padding-block: 12px;
+  padding-inline-start: 20px;
+  padding-inline-end: 12px;
+  height: 56px;
+  box-shadow: 0px 1px 3px 0px #18324714;
+  border: 1px solid #dce4e4;
+}
+
+.tool-bar-segment {
+  background-color: #0000000f;
+}
