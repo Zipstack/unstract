@@ -63,7 +63,7 @@ function DefaultTriad() {
       });
       setSelectedValues(defaultValues);
     } catch (error) {
-      console.error("Error fetching data:", error);
+      setAlertDetails(handleException(error, "Failed to fetch Default Triads"));
     }
   };
 
