@@ -4,13 +4,14 @@ import debounce from "lodash/debounce";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useState } from "react";
 
-import { handleException, sourceTypes } from "../../../helpers/GetStaticData";
+import { sourceTypes } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { DataSourceCard } from "../data-source-card/DataSourceCard";
 import "./ListOfSources.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function ListOfSources({ setSelectedSourceId, type }) {
   const [sourcesList, setSourcesList] = useState([]);
@@ -20,6 +21,7 @@ function ListOfSources({ setSelectedSourceId, type }) {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     if (searchText?.length === 0) {

@@ -2,7 +2,6 @@ import { Form, Input, Select } from "antd";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { handleException } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
@@ -11,6 +10,7 @@ import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { TopBar } from "../../widgets/top-bar/TopBar.jsx";
 import "./InviteEditUser.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 function InviteEditUser() {
   const axiosPrivate = useAxiosPrivate();
@@ -18,6 +18,7 @@ function InviteEditUser() {
   const { setAlertDetails } = useAlertStore();
   const location = useLocation();
   const navigate = useNavigate();
+  const handleException = useExceptionHandler();
   const [userRoles, setUserRoles] = useState();
   const [loading, setLoading] = useState(true);
   const [submitLoading, setSubmitLoading] = useState(false);
