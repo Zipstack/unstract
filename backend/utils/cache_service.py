@@ -1,54 +1,31 @@
 from typing import Any, Optional, Union
 
-import redis
 from account.custom_cache import CustomCache
 from account.dto import UserSessionInfo
 from django.conf import settings
 from django.core.cache import cache
-from redis import Redis
 
 
 class CacheService:
-    _cache: Optional["Redis[Any]"] = None
-
-    @staticmethod
-    def get_instance() -> Optional["Redis[Any]"]:
-        if CacheService._cache is None:
-            CacheService._cache = redis.Redis(
-                host=settings.REDIS_HOST,
-                port=int(settings.REDIS_PORT),
-                password=settings.REDIS_PASSWORD,
-                username=settings.REDIS_USER,
-            )
-        return CacheService._cache
-
     @staticmethod
     def get_key(key: str) -> Optional[Any]:
-        cache_instance = CacheService.get_instance()
-        if cache_instance is not None:
-            data = cache_instance.get(str(key))
-            if data is not None:
-                return data.decode("utf-8")
-            return data
-        return None
+        data = cache.get(str(key))
+        if data is not None:
+            return data.decode("utf-8")
+        return data
 
     @staticmethod
     def set_key(key: str, value: Any) -> None:
-        cache_instance = CacheService.get_instance()
-        if cache_instance is not None:
-            cache_instance.set(
-                str(key),
-                value,
-                int(settings.WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND),
-            )
+        cache.set(
+            str(key),
+            value,
+            int(settings.CACHE_TTL_SEC),
+        )
 
     @staticmethod
-    def delete_key(key: str) -> Any:
+    def clear(workflow_id: str) -> Any:
         """Delete a key from the cache."""
-        cache_instance = CacheService.get_instance()
-        if cache_instance is None:
-            return
-        cache_instance.delete(key)
+        cache.delete_pattern(f"*:cache:{workflow_id}*")
 
     @staticmethod
     def set_cookie(cookie: str, token: dict[str, Any]) -> None:
@@ -147,6 +124,7 @@ class CacheService:
 
 # KEY_FUNCTION for cache settings
 def custom_key_function(key: str, key_prefix: str, version: int) -> str:
+    version = int(version)
     if version > 1:
         return f"{key_prefix}:{version}:{key}"
     if key_prefix:

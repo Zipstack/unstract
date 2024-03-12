@@ -578,21 +578,9 @@ class WorkflowHelper:
     @staticmethod
     def clear_cache(workflow_id: str) -> dict[str, Any]:
         """Function to clear cache with a specific pattern."""
-        cache = CacheService.get_instance()
         response: dict[str, Any] = {}
-        if cache is None:
-            logger.error("redis instance returned from cache-service is none")
-            response["message"] = WorkflowMessages.CACHE_CLEAR_FAILED
-            response["status"] = 400
-            return response
         try:
-            keys = cache.scan_iter(f"cache:{workflow_id}*")
-            for key in keys:
-                if cache.get(key):
-                    cache.delete(key)
-                    logger.info(f"Successfully Cleared Cache, deleted {key!r}")
-                else:
-                    logger.info(f"No key {key!r} exists in cache")
+            CacheService.clear(workflow_id)
             response["message"] = WorkflowMessages.CACHE_CLEAR_SUCCESS
             response["status"] = 200
             return response

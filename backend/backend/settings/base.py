@@ -182,6 +182,7 @@ SHARED_APPS = (
     "log_events",
     "feature_flag",
     "django_celery_beat",
+    "utils",
 )
 
 TENANT_APPS = (
@@ -301,6 +302,8 @@ CACHES = {
         "KEY_FUNCTION": "utils.cache_service.custom_key_function",
     }
 }
+
+CACHE_TTL_SEC = os.environ.get("CACHE_TTL_SEC", 10800)
 
 RQ_QUEUES = {
     "default": {"USE_REDIS_CACHE": "default"},
