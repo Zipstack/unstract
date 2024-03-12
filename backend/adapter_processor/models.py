@@ -20,7 +20,7 @@ class AdapterInstanceModelManager(models.Manager):
         return (
             self.get_queryset()
             .filter(models.Q(created_by=user) | models.Q(shared_users=user))
-            .distinct("adapter_id")
+            .distinct("id")
         )
 
 
