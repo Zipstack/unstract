@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { SocketMessages } from "../socket-messages/SocketMessages";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function CustomToolsHelper() {
   const [isLoading, setIsLoading] = useState(true);
@@ -18,6 +18,7 @@ function CustomToolsHelper() {
   const { setAlertDetails } = useAlertStore();
   const navigate = useNavigate();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     const updatedCusTool = {

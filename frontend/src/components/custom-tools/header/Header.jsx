@@ -13,7 +13,6 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Header.css";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -21,6 +20,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
 import { SelectLlmProfileModal } from "../select-llm-profile-modal/SelectLlmProfileModal";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 let SummarizeHeader = null;
 
@@ -47,6 +47,7 @@ function Header({
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     getLlmProfilesDropdown();
