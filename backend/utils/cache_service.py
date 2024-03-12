@@ -9,18 +9,21 @@ from redis import Redis
 
 
 class CacheService:
-    cache: Union["Redis[Any]", None] = None
+    _cache: Optional["Redis[Any]"] = None
 
     @staticmethod
-    def get_instance() -> Union["Redis[Any]", None]:
-        if CacheService.cache is None:
-            CacheService.cache = redis.Redis(
+    def get_instance() -> Optional["Redis[Any]"]:
+        print("** init cache ")
+        if CacheService._cache is None:
+            print("** new cache ")
+            CacheService._cache = redis.Redis(
                 host=settings.REDIS_HOST,
                 port=int(settings.REDIS_PORT),
                 password=settings.REDIS_PASSWORD,
                 username=settings.REDIS_USER,
             )
-        return CacheService.cache
+            print("** cache *** ", CacheService._cache)
+        return CacheService._cache
 
     @staticmethod
     def get_key(key: str) -> Optional[Any]:

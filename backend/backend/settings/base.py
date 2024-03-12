@@ -243,7 +243,7 @@ MIDDLEWARE = [
     "account.custom_auth_middleware.CustomAuthMiddleware",
     "middleware.exception.ExceptionLoggingMiddleware",
     "social_django.middleware.SocialAuthExceptionMiddleware",
-    "middleware.remove_allow_header.RemoveAllowHeaderMiddleware"
+    "middleware.remove_allow_header.RemoveAllowHeaderMiddleware",
 ]
 
 PUBLIC_SCHEMA_URLCONF = "backend.public_urls"
@@ -298,7 +298,7 @@ CACHES = {
             "USERNAME": REDIS_USER,
             "PASSWORD": REDIS_PASSWORD,
         },
-        "KEY_FUNCTION": "account.cache_service.custom_key_function",
+        "KEY_FUNCTION": "utils.cache_service.custom_key_function",
     }
 }
 
@@ -393,8 +393,7 @@ WHITELISTED_PATHS_LIST = [
     "/logout",
     "/signup",
 ]
-WHITELISTED_PATHS = [
-    f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
+WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
 # White lists workflow-api-deployment path
 WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
 

@@ -5,7 +5,6 @@ import traceback
 import uuid
 from typing import Any, Optional
 
-from account.cache_service import CacheService
 from account.models import Organization
 from api.models import APIDeployment
 from celery import current_task
@@ -21,6 +20,7 @@ from tool_instance.models import ToolInstance
 from tool_instance.tool_instance_helper import ToolInstanceHelper
 from unstract.workflow_execution.enums import LogComponent, LogState
 from unstract.workflow_execution.exceptions import StopExecution
+from utils.cache_service import CacheService
 from workflow_manager.endpoint.destination import DestinationConnector
 from workflow_manager.endpoint.source import SourceConnector
 from workflow_manager.workflow.constants import (
@@ -580,6 +580,11 @@ class WorkflowHelper:
         """Function to clear cache with a specific pattern."""
         cache = CacheService.get_instance()
         response: dict[str, Any] = {}
+        if cache is None:
+            logger.error("cache from CacheService is none")
+            response["message"] = WorkflowMessages.CACHE_CLEAR_FAILED
+            response["status"] = 400
+            return response
         try:
             keys = cache.scan_iter(f"cache:{workflow_id}*")
             for key in keys:
