@@ -50,7 +50,6 @@ PG_V_DATABASE = os.environ.get("PG_V_DATABASE", "")
 ENCRYPTION_KEY = EnvManager.get_required_setting("ENCRYPTION_KEY")
 EnvManager.raise_for_missing_envs()
 
-
 # TODO: Follow Flask best practices and refactor accordingly
 app = Flask("platform_service")
 
