@@ -102,7 +102,7 @@ class AdapterListSerializer(BaseAdapterSerializer):
         return rep
 
 
-class SharedUserSerializer(serializers.ModelSerializer):
+class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ("id", "username")
@@ -114,7 +114,8 @@ class SharedUserListSerializer(BaseAdapterSerializer):
     Used for listing adapters
     """
 
-    shared_users = SharedUserSerializer(many=True)
+    shared_users = UserSerializer(many=True)
+    created_by = UserSerializer()
 
     class Meta(BaseAdapterSerializer.Meta):
         model = AdapterInstance
@@ -123,5 +124,6 @@ class SharedUserListSerializer(BaseAdapterSerializer):
             "adapter_id",
             "adapter_name",
             "adapter_type",
+            "created_by",
             "shared_users",
         )  # type: ignore

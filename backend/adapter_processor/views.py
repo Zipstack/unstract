@@ -115,7 +115,6 @@ class AdapterViewSet(GenericViewSet):
 
 
 class AdapterInstanceViewSet(ModelViewSet):
-    queryset = AdapterInstance.objects.all()
     permission_classes: list[type[IsOwner]] = [IsOwner]
     serializer_class = AdapterInstanceSerializer
 

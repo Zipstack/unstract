@@ -17,8 +17,10 @@ class AdapterInstanceModelManager(models.Manager):
         return super().get_queryset()
 
     def for_user(self, user: User) -> QuerySet[Any]:
-        return self.get_queryset().filter(
-            models.Q(created_by=user) | models.Q(shared_users=user)
+        return (
+            self.get_queryset()
+            .filter(models.Q(created_by=user) | models.Q(shared_users=user))
+            .distinct("adapter_id")
         )
 
 
