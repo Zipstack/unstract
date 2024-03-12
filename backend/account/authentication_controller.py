@@ -187,6 +187,7 @@ class AuthenticationController:
         self, request: Request, organization_id: str
     ) -> Response:
         user: User = request.user
+        new_organization = False
         organization_ids = CacheService.get_user_organizations(user.user_id)
         if not organization_ids:
             z_organizations: list[
@@ -212,12 +213,17 @@ class AuthenticationController:
                         organization_data.display_name,
                         organization_data.id,
                     )
+                    new_organization = True
                 except IntegrityError:
                     raise DuplicateData(
                         f"{ErrorMessage.ORGANIZATION_EXIST}, \
                             {ErrorMessage.DUPLICATE_API}"
                     )
             self.create_tenant_user(organization=organization, user=user)
+            if new_organization:
+                self.authentication_helper.create_initial_platform_key(
+                    user=user, organization=organization
+                )
             user_info: Optional[UserInfo] = self.get_user_info(request)
             serialized_user_info = SetOrganizationsResponseSerializer(
                 user_info

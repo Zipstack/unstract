@@ -8,7 +8,6 @@ import { Input, Modal, Space, Switch, Table, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -18,6 +17,7 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import "./ManageKeys.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 const ManageKeys = ({
   isDialogOpen,
@@ -29,6 +29,7 @@ const ManageKeys = ({
   const apiDeploymentsApiService = apiDeploymentsService();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
   const [isTableLoading, setIsTableLoading] = useState(false);
   const { setAlertDetails } = useAlertStore();
   const [isNewKey, setIsNewKey] = useState(false);

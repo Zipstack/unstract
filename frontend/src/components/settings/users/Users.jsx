@@ -10,7 +10,6 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Users.css";
 
-import { handleException } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
@@ -18,11 +17,13 @@ import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { TopBar } from "../../widgets/top-bar/TopBar.jsx";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 function Users() {
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
   const navigate = useNavigate();
+  const handleException = useExceptionHandler();
 
   const [userList, setUserList] = useState([]);
   const [filteredUserList, setFilteredUserList] = useState(userList);

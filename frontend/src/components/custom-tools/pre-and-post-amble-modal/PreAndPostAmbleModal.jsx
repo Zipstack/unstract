@@ -1,13 +1,12 @@
 import { Button, Input, Modal, Space, Typography } from "antd";
 import PropTypes from "prop-types";
-
 import { useEffect, useState } from "react";
 import "./PreAndPostAmbleModal.css";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 const fieldNames = {
   preamble: "PREAMBLE",
@@ -19,6 +18,7 @@ function PreAndPostAmbleModal({ isOpen, closeModal, type, handleUpdateTool }) {
   const [text, setText] = useState("");
   const { details, updateCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     if (!isOpen) {
