@@ -184,7 +184,6 @@ SHARED_APPS = (
     "log_events",
     "feature_flag",
     "django_celery_beat",
-    "utils",
 )
 
 TENANT_APPS = (
