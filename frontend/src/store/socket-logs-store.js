@@ -1,4 +1,5 @@
 import { create } from "zustand";
+
 import { getTimeForLogs } from "../helpers/GetStaticData";
 
 const STORE_VARIABLES = {
