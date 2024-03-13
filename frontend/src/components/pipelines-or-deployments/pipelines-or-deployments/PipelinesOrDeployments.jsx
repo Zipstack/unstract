@@ -14,8 +14,6 @@ import { useEffect, useState } from "react";
 
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./PipelinesOrDeployments.css";
-import { listOfAppDeployments } from "../../../helpers/GetStaticData";
-
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
