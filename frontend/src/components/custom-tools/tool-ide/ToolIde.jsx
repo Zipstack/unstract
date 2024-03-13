@@ -7,24 +7,20 @@ import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import { AddLlmProfileModal } from "../add-llm-profile-modal/AddLlmProfileModal";
 import { CustomSynonymsModal } from "../custom-synonyms-modal/CustomSynonymsModal";
 import { DisplayLogs } from "../display-logs/DisplayLogs";
 import { DocumentManager } from "../document-manager/DocumentManager";
 import { Header } from "../header/Header";
-import { ManageLlmProfilesModal } from "../manage-llm-profiles-modal/ManageLlmProfilesModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { SettingsModal } from "../settings-modal/SettingsModal";
 
 function ToolIde() {
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [activeKey, setActiveKey] = useState([]);
   const [openCusSynonymsModal, setOpenCusSynonymsModal] = useState(false);
-  const [openManageLlmModal, setOpenManageLlmModal] = useState(false);
-  const [openAddLlmModal, setOpenAddLlmModal] = useState(false);
-  const [editLlmProfileId, setEditLlmProfileId] = useState(null);
-  const [modalTitle, setModalTitle] = useState("");
+  const [openSettings, setOpenSettings] = useState(false);
   const {
     details,
     updateCustomTool,
@@ -177,8 +173,8 @@ function ToolIde() {
       <div>
         <Header
           setOpenCusSynonymsModal={setOpenCusSynonymsModal}
-          setOpenManageLlmModal={setOpenManageLlmModal}
           handleUpdateTool={handleUpdateTool}
+          setOpenSettings={setOpenSettings}
         />
       </div>
       <div className="tool-ide-body">
@@ -186,7 +182,7 @@ function ToolIde() {
           <Row className="tool-ide-main">
             <Col span={12} className="tool-ide-col">
               <div className="tool-ide-prompts">
-                <ToolsMain setOpenAddLlmModal={setOpenAddLlmModal} />
+                <ToolsMain />
               </div>
             </Col>
             <Col span={12} className="tool-ide-col">
@@ -228,20 +224,10 @@ function ToolIde() {
         open={openCusSynonymsModal}
         setOpen={setOpenCusSynonymsModal}
       />
-      <ManageLlmProfilesModal
-        open={openManageLlmModal}
-        setOpen={setOpenManageLlmModal}
-        setOpenLlm={setOpenAddLlmModal}
-        setEditLlmProfileId={setEditLlmProfileId}
-        setModalTitle={setModalTitle}
-      />
-      <AddLlmProfileModal
-        open={openAddLlmModal}
-        setOpen={setOpenAddLlmModal}
-        editLlmProfileId={editLlmProfileId}
-        setEditLlmProfileId={setEditLlmProfileId}
-        modalTitle={modalTitle}
-        setModalTitle={setModalTitle}
+      <SettingsModal
+        open={openSettings}
+        setOpen={setOpenSettings}
+        handleUpdateTool={handleUpdateTool}
       />
     </div>
   );

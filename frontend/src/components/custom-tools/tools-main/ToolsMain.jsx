@@ -1,5 +1,4 @@
 import { Tabs } from "antd";
-import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
 import { promptType } from "../../../helpers/GetStaticData";
@@ -13,7 +12,7 @@ import { Footer } from "../footer/Footer";
 import "./ToolsMain.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
-function ToolsMain({ setOpenAddLlmModal }) {
+function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
   const [prompts, setPrompts] = useState([]);
   const [scrollToBottom, setScrollToBottom] = useState(false);
@@ -132,7 +131,6 @@ function ToolsMain({ setOpenAddLlmModal }) {
       <div className="tools-main-body">
         {activeKey === "1" && (
           <DocumentParser
-            setOpenAddLlmModal={setOpenAddLlmModal}
             addPromptInstance={addPromptInstance}
             scrollToBottom={scrollToBottom}
             setScrollToBottom={setScrollToBottom}
@@ -148,9 +146,5 @@ function ToolsMain({ setOpenAddLlmModal }) {
     </div>
   );
 }
-
-ToolsMain.propTypes = {
-  setOpenAddLlmModal: PropTypes.func.isRequired,
-};
 
 export { ToolsMain };
