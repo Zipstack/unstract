@@ -6,8 +6,7 @@
     "connectorName",
     "key",
     "secret",
-    "bucket",
-    "path"
+    "bucket"
   ],
   "properties": {
     "connectorName": {
@@ -29,12 +28,6 @@
       "type": "string",
       "title": "Bucket Name",
       "description": "Name of the bucket to be restricted to."
-    },
-    "path": {
-      "type": "string",
-      "title": "Path",
-      "default": "",
-      "description": "Path to restrict to. (example /path/to/restrict/to)"
     },
     "endpointURL": {
       "type": "string",

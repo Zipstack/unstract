@@ -3,6 +3,7 @@ import os
 from typing import Any, Optional
 
 from fsspec.implementations.local import LocalFileSystem
+
 from unstract.connectors.filesystems.unstract_file_system import (
     UnstractFileSystem,
 )
@@ -13,7 +14,6 @@ logger = logging.getLogger(__name__)
 class LocalStorageFS(UnstractFileSystem):
     def __init__(self, settings: Optional[dict] = None):  # type:ignore
         super().__init__("LocalStorage")
-        self.path = settings["path"]  # type:ignore
         self.local = LocalFileSystem()
 
     @staticmethod
