@@ -140,6 +140,7 @@ function ToolSettings({ type }) {
               isEmpty={!tableRows?.length}
               centered
               isClickable={false}
+              type={btnText[type]}
             />
           </div>
         </div>
