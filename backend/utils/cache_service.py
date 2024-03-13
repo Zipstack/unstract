@@ -25,7 +25,7 @@ class CacheService:
     @staticmethod
     def clear(workflow_id: str) -> Any:
         """Delete a key from the cache."""
-        cache.delete_pattern(f"*:cache:{workflow_id}*")
+        cache.delete_pattern(f"*:cache:{workflow_id}:*")
 
     @staticmethod
     def set_cookie(cookie: str, token: dict[str, Any]) -> None:
