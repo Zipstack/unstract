@@ -16,16 +16,16 @@ services:
     labels:
       - traefik.enable=false
     restart: always 
-
   redis:
-    image: 'bitnami/redis:7.0.14'
+    image: "redis:7.2.3"
     container_name: unstract-redis
+    restart: always
+    # uncomment below command if persistance required.
+    #command: redis-server --save 20 1 --loglevel warning --
     ports:
       - "6379:6379"
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
     volumes:
-      - redis_data:/var/lib/redis/data/
+      - redis_data:/data
     labels:
       - traefik.enable=false
 

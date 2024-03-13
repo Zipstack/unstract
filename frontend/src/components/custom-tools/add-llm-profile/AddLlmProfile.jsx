@@ -1,11 +1,10 @@
-import { CaretRightOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, CaretRightOutlined } from "@ant-design/icons";
 import {
-  Checkbox,
+  Button,
   Col,
   Collapse,
   Form,
   Input,
-  Modal,
   Row,
   Select,
   Space,
@@ -22,17 +21,10 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
-import "./AddLlmProfileModal.css";
+import "./AddLlmProfile.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
-function AddLlmProfileModal({
-  open,
-  setOpen,
-  editLlmProfileId,
-  setEditLlmProfileId,
-  modalTitle,
-  setModalTitle,
-}) {
+function AddLlmProfile({ editLlmProfileId, setEditLlmProfileId, setIsAddLlm }) {
   const [form] = Form.useForm();
   const [formDetails, setFormDetails] = useState({});
   const [resetForm, setResetForm] = useState(false);
@@ -44,6 +36,8 @@ function AddLlmProfileModal({
   const [x2TextItems, setX2TextItems] = useState([]);
   const [activeKey, setActiveKey] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [modalTitle, setModalTitle] = useState("");
+  const [areAdaptersReady, setAreAdaptersReady] = useState(false);
   const { sessionDetails } = useSessionStore();
   const { details, getDropdownItems, llmProfiles, updateCustomTool } =
     useCustomToolStore();
@@ -67,10 +61,14 @@ function AddLlmProfileModal({
       };
     });
     setRetrievalItems(items);
+
+    return () => {
+      setEditLlmProfileId(null);
+    };
   }, []);
 
   useEffect(() => {
-    if (open && editLlmProfileId) {
+    if (editLlmProfileId) {
       return;
     }
 
@@ -86,19 +84,19 @@ function AddLlmProfileModal({
       retrieval_strategy: "simple",
       similarity_top_k: 1,
       section: "Default",
-      reindex: false,
       prompt_studio_tool: details?.tool_id,
     });
 
-    setEditLlmProfileId(null);
-    setModalTitle("Add new LLM Profile");
+    setModalTitle("Add New LLM Profile");
     setActiveKey(false);
-  }, [open]);
+  }, []);
 
   useEffect(() => {
-    if (!editLlmProfileId) {
+    if (!editLlmProfileId || !areAdaptersReady) {
       return;
     }
+
+    setModalTitle("Edit LLM Profile");
 
     const llmProfileDetails = [...llmProfiles].find(
       (item) => item?.profile_id === editLlmProfileId
@@ -132,11 +130,10 @@ function AddLlmProfileModal({
       retrieval_strategy: llmProfileDetails?.retrieval_strategy,
       similarity_top_k: llmProfileDetails?.similarity_top_k,
       section: llmProfileDetails?.section,
-      reindex: llmProfileDetails?.reindex,
       prompt_studio_tool: details?.tool_id,
     });
     setActiveKey(true);
-  }, [editLlmProfileId]);
+  }, [editLlmProfileId, areAdaptersReady]);
 
   useEffect(() => {
     if (resetForm) {
@@ -224,6 +221,7 @@ function AddLlmProfileModal({
             });
           }
         });
+        setAreAdaptersReady(true);
       })
       .catch((err) => {
         setAlertDetails(
@@ -276,17 +274,6 @@ function AddLlmProfileModal({
           >
             <Select options={[{ value: "Default" }]} />
           </Form.Item>
-          <Form.Item
-            label="Re-Index"
-            valuePropName="checked"
-            name="reindex"
-            validateStatus={
-              getBackendErrorDetail("reindex", backendErrors) ? "error" : ""
-            }
-            help={getBackendErrorDetail("reindex", backendErrors)}
-          >
-            <Checkbox />
-          </Form.Item>
         </div>
       ),
     },
@@ -327,7 +314,6 @@ function AddLlmProfileModal({
           llmProfiles: newLlmProfiles,
         };
         updateCustomTool(updatedState);
-        setOpen(false);
         setAlertDetails({
           type: "success",
           content: "Saved successfully",
@@ -350,14 +336,7 @@ function AddLlmProfileModal({
   };
 
   return (
-    <Modal
-      className="pre-post-amble-modal"
-      open={open}
-      onCancel={() => setOpen(false)}
-      maskClosable={false}
-      centered
-      footer={null}
-    >
+    <div className="settings-body-pad-top">
       <Form
         form={form}
         layout="vertical"
@@ -365,185 +344,182 @@ function AddLlmProfileModal({
         onValuesChange={handleInputChange}
         onFinish={handleSubmit}
       >
-        <div className="pre-post-amble-body">
-          <SpaceWrapper>
-            <div>
-              <Typography.Text className="add-cus-tool-header">
-                {modalTitle}
-              </Typography.Text>
-            </div>
-            <div>
-              <Form.Item
-                label="Name"
-                name="profile_name"
-                rules={[
-                  {
-                    required: true,
-                    message: "Please enter the name",
-                  },
-                  { validator: validateEmptyOrWhitespace },
-                ]}
-                validateStatus={
-                  getBackendErrorDetail("profile_name", backendErrors)
-                    ? "error"
-                    : ""
-                }
-                help={getBackendErrorDetail("profile_name", backendErrors)}
-              >
-                <Input />
-              </Form.Item>
-              <Row className="add-llm-profile-row">
-                <Col span={15}>
-                  <Form.Item
-                    label="LLM"
-                    name="llm"
-                    rules={[
-                      { required: true, message: "Please enter the LLM" },
-                      { validator: validateEmptyOrWhitespace },
-                    ]}
-                    validateStatus={
-                      getBackendErrorDetail("llm", backendErrors) ? "error" : ""
-                    }
-                    help={getBackendErrorDetail("llm", backendErrors)}
-                  >
-                    <Select options={llmItems} />
-                  </Form.Item>
-                </Col>
-                <Col span={1} />
-                <Col span={8}>
-                  <Form.Item
-                    label="Chunk Size"
-                    name="chunk_size"
-                    rules={[
-                      {
-                        required: true,
-                        message: "Please enter the chunk size",
-                      },
-                    ]}
-                    validateStatus={
-                      getBackendErrorDetail("chunk_size", backendErrors)
-                        ? "error"
-                        : ""
-                    }
-                    help={getBackendErrorDetail("chunk_size", backendErrors)}
-                  >
-                    <Input type="number" />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Row className="add-llm-profile-row">
-                <Col span={15}>
-                  <Form.Item
-                    label="Vector Database"
-                    name="vector_store"
-                    rules={[
-                      {
-                        required: true,
-                        message: "Please select the vector store",
-                      },
-                      { validator: validateEmptyOrWhitespace },
-                    ]}
-                    validateStatus={
-                      getBackendErrorDetail("vector_store", backendErrors)
-                        ? "error"
-                        : ""
-                    }
-                    help={getBackendErrorDetail("vector_store", backendErrors)}
-                  >
-                    <Select options={vectorDbItems} />
-                  </Form.Item>
-                </Col>
-                <Col span={1} />
-                <Col span={8}>
-                  <Form.Item
-                    label="Overlap"
-                    name="chunk_overlap"
-                    rules={[
-                      {
-                        required: true,
-                        message: "Please enter the overlap",
-                      },
-                    ]}
-                    validateStatus={
-                      getBackendErrorDetail("chunk_overlap", backendErrors)
-                        ? "error"
-                        : ""
-                    }
-                    help={getBackendErrorDetail("chunk_overlap", backendErrors)}
-                  >
-                    <Input type="number" />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Form.Item
-                label="Embedding Model"
-                name="embedding_model"
-                rules={[
-                  {
-                    required: true,
-                    message: "Please select the embedding model",
-                  },
-                  { validator: validateEmptyOrWhitespace },
-                ]}
-                validateStatus={
-                  getBackendErrorDetail("embedding_model", backendErrors)
-                    ? "error"
-                    : ""
-                }
-                help={getBackendErrorDetail("embedding_model", backendErrors)}
-              >
-                <Select options={embeddingItems} />
-              </Form.Item>
-              <Form.Item
-                label="Text Extractor"
-                name="x2text"
-                rules={[
-                  {
-                    required: true,
-                    message: "Please select the text extractor",
-                  },
-                  { validator: validateEmptyOrWhitespace },
-                ]}
-                validateStatus={
-                  getBackendErrorDetail("x2text", backendErrors) ? "error" : ""
-                }
-                help={getBackendErrorDetail("x2text", backendErrors)}
-              >
-                <Select options={x2TextItems} />
-              </Form.Item>
-              <Collapse
-                expandIcon={({ isActive }) => handleCaretIcon(isActive)}
-                size="small"
-                style={{
-                  background: token.colorBgContainer,
-                }}
-                items={getItems(panelStyle)}
-                activeKey={activeKey && "1"}
-                onChange={handleCollapse}
-              />
-            </div>
-          </SpaceWrapper>
-        </div>
-        <Form.Item className="pre-post-amble-footer display-flex-right">
+        <SpaceWrapper>
+          <div>
+            <Button size="small" type="text" onClick={() => setIsAddLlm(false)}>
+              <ArrowLeftOutlined />
+            </Button>
+            <Typography.Text className="add-cus-tool-header">
+              {modalTitle}
+            </Typography.Text>
+          </div>
+          <div>
+            <Form.Item
+              label="Name"
+              name="profile_name"
+              rules={[
+                {
+                  required: true,
+                  message: "Please enter the name",
+                },
+                { validator: validateEmptyOrWhitespace },
+              ]}
+              validateStatus={
+                getBackendErrorDetail("profile_name", backendErrors)
+                  ? "error"
+                  : ""
+              }
+              help={getBackendErrorDetail("profile_name", backendErrors)}
+            >
+              <Input />
+            </Form.Item>
+            <Row className="add-llm-profile-row">
+              <Col span={15}>
+                <Form.Item
+                  label="LLM"
+                  name="llm"
+                  rules={[
+                    { required: true, message: "Please enter the LLM" },
+                    { validator: validateEmptyOrWhitespace },
+                  ]}
+                  validateStatus={
+                    getBackendErrorDetail("llm", backendErrors) ? "error" : ""
+                  }
+                  help={getBackendErrorDetail("llm", backendErrors)}
+                >
+                  <Select options={llmItems} />
+                </Form.Item>
+              </Col>
+              <Col span={1} />
+              <Col span={8}>
+                <Form.Item
+                  label="Chunk Size"
+                  name="chunk_size"
+                  rules={[
+                    {
+                      required: true,
+                      message: "Please enter the chunk size",
+                    },
+                  ]}
+                  validateStatus={
+                    getBackendErrorDetail("chunk_size", backendErrors)
+                      ? "error"
+                      : ""
+                  }
+                  help={getBackendErrorDetail("chunk_size", backendErrors)}
+                >
+                  <Input type="number" />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Row className="add-llm-profile-row">
+              <Col span={15}>
+                <Form.Item
+                  label="Vector Database"
+                  name="vector_store"
+                  rules={[
+                    {
+                      required: true,
+                      message: "Please select the vector store",
+                    },
+                    { validator: validateEmptyOrWhitespace },
+                  ]}
+                  validateStatus={
+                    getBackendErrorDetail("vector_store", backendErrors)
+                      ? "error"
+                      : ""
+                  }
+                  help={getBackendErrorDetail("vector_store", backendErrors)}
+                >
+                  <Select options={vectorDbItems} />
+                </Form.Item>
+              </Col>
+              <Col span={1} />
+              <Col span={8}>
+                <Form.Item
+                  label="Overlap"
+                  name="chunk_overlap"
+                  rules={[
+                    {
+                      required: true,
+                      message: "Please enter the overlap",
+                    },
+                  ]}
+                  validateStatus={
+                    getBackendErrorDetail("chunk_overlap", backendErrors)
+                      ? "error"
+                      : ""
+                  }
+                  help={getBackendErrorDetail("chunk_overlap", backendErrors)}
+                >
+                  <Input type="number" />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Form.Item
+              label="Embedding Model"
+              name="embedding_model"
+              rules={[
+                {
+                  required: true,
+                  message: "Please select the embedding model",
+                },
+                { validator: validateEmptyOrWhitespace },
+              ]}
+              validateStatus={
+                getBackendErrorDetail("embedding_model", backendErrors)
+                  ? "error"
+                  : ""
+              }
+              help={getBackendErrorDetail("embedding_model", backendErrors)}
+            >
+              <Select options={embeddingItems} />
+            </Form.Item>
+            <Form.Item
+              label="Text Extractor"
+              name="x2text"
+              rules={[
+                {
+                  required: true,
+                  message: "Please select the text extractor",
+                },
+                { validator: validateEmptyOrWhitespace },
+              ]}
+              validateStatus={
+                getBackendErrorDetail("x2text", backendErrors) ? "error" : ""
+              }
+              help={getBackendErrorDetail("x2text", backendErrors)}
+            >
+              <Select options={x2TextItems} />
+            </Form.Item>
+            <Collapse
+              expandIcon={({ isActive }) => handleCaretIcon(isActive)}
+              size="small"
+              style={{
+                background: token.colorBgContainer,
+              }}
+              items={getItems(panelStyle)}
+              activeKey={activeKey && "1"}
+              onChange={handleCollapse}
+            />
+          </div>
+        </SpaceWrapper>
+        <Form.Item className="display-flex-right">
           <Space>
-            <CustomButton onClick={() => setOpen(false)}>Cancel</CustomButton>
             <CustomButton type="primary" htmlType="submit" loading={loading}>
               {editLlmProfileId ? "Update" : "Add"}
             </CustomButton>
           </Space>
         </Form.Item>
       </Form>
-    </Modal>
+    </div>
   );
 }
 
-AddLlmProfileModal.propTypes = {
-  open: PropTypes.bool.isRequired,
-  setOpen: PropTypes.func.isRequired,
+AddLlmProfile.propTypes = {
   editLlmProfileId: PropTypes.string,
   setEditLlmProfileId: PropTypes.func.isRequired,
-  modalTitle: PropTypes.string,
-  setModalTitle: PropTypes.func.isRequired,
+  setIsAddLlm: PropTypes.func.isRequired,
 };
 
-export { AddLlmProfileModal };
+export { AddLlmProfile };
