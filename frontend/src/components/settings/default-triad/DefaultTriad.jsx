@@ -21,62 +21,80 @@ function DefaultTriad() {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
 
-  const [adaptorsList, setAdaptorsList] = useState([]);
-  const [currentLLMDefault, setCurrentLLMDefault] = useState();
-  const [currentVECTORDefault, setCurrentVECTORDefault] = useState();
-  const [currentEMBDefault, setCurrentEMBDefault] = useState();
+  const [dropdownData, setDropdownData] = useState([]);
+  const [selectedValues, setSelectedValues] = useState({});
+  const [isSubmitEnabled, setIsSubmitEnabled] = useState(false);
 
-  const [selectedLLMDefault, setSelectedLLMDefault] = useState();
-  const [selectedVECTORDefault, setSelectedVECTORDefault] = useState();
-  const [selectedEMBDefault, setSelectedEMBDefault] = useState();
+  const desiredOrder = ["LLM", "EMBEDDING", "VECTOR_DB", "X2TEXT"];
+
+  const labelMap = {
+    LLM: "Default LLM",
+    EMBEDDING: "Default Embeddings",
+    VECTOR_DB: "Default Vector DB",
+    X2TEXT: "Default X2Text",
+  };
+
+  const updateDropdownData = (data) => {
+    const updatedData = data.map((entry) => {
+      if (entry.is_default) {
+        return {
+          ...entry,
+          adapter_name: `${entry.adapter_name} (current default)`,
+        };
+      }
+      return entry;
+    });
+
+    // Update the state with the modified data
+    setDropdownData(updatedData);
+  };
+
+  const fetchData = async () => {
+    try {
+      const response = await axiosPrivate.get(
+        `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`
+      );
+      updateDropdownData(response?.data);
+
+      const defaultAdaptorRes = await axiosPrivate.get(
+        `/api/v1/unstract/${sessionDetails?.orgId}/adapter/default_triad/`
+      );
+
+      const defaultValues = {};
+      defaultValues[labelMap.LLM] = defaultAdaptorRes.data?.default_llm_adapter;
+      defaultValues[labelMap.EMBEDDING] =
+        defaultAdaptorRes.data?.default_embedding_adapter;
+      defaultValues[labelMap.VECTOR_DB] =
+        defaultAdaptorRes.data?.default_vector_db_adapter;
+      defaultValues[labelMap.X2TEXT] =
+        defaultAdaptorRes.data?.default_x2text_adapter;
+
+      setSelectedValues(defaultValues);
+    } catch (error) {
+      setAlertDetails(handleException(error, "Failed to fetch Default Triads"));
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await axiosPrivate.get(
-          `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`
-        );
-        setAdaptorsList(res.data);
-
-        const defaultAdaptorRes = await axiosPrivate.get(
-          `/api/v1/unstract/${sessionDetails?.orgId}/adapter/default_triad/`
-        );
-
-        setCurrentLLMDefault(defaultAdaptorRes.data?.default_llm_adapter);
-        setCurrentEMBDefault(defaultAdaptorRes.data?.default_llm_adapter);
-        setCurrentVECTORDefault(defaultAdaptorRes.data?.default_llm_adapter);
-      } catch (error) {
-        console.error("Error fetching data:", error);
-      }
-    };
-
     fetchData();
   }, []);
 
-  useEffect(() => {
-    setSelectedLLMDefault(currentLLMDefault);
-    setSelectedEMBDefault(currentEMBDefault);
-    setSelectedVECTORDefault(currentVECTORDefault);
-  }, [adaptorsList.length > 0]);
+  const handleDropdownChange = (adapterType, selectedValue) => {
+    setSelectedValues((prevValues) => ({
+      ...prevValues,
+      [adapterType]: selectedValue,
+    }));
+    setIsSubmitEnabled(true);
+  };
 
-  const onSubmit = async () => {
-    if (
-      currentLLMDefault === selectedLLMDefault &&
-      currentEMBDefault === selectedEMBDefault &&
-      currentVECTORDefault === selectedVECTORDefault
-    ) {
-      setAlertDetails({
-        type: "warning",
-        content: "Nothing new to save/update",
-      });
-      return;
-    }
-
+  // Handler for form submission
+  const handleSubmit = async () => {
     try {
       const body = {
-        llm_default: selectedLLMDefault,
-        vector_db_default: selectedVECTORDefault,
-        embedding_default: selectedEMBDefault,
+        llm_default: selectedValues[desiredOrder[0]],
+        embedding_default: selectedValues[desiredOrder[1]],
+        vector_db_default: selectedValues[desiredOrder[2]],
+        x2text_default: selectedValues[desiredOrder[3]],
       };
 
       await axiosPrivate.post(
@@ -94,10 +112,8 @@ function DefaultTriad() {
         type: "success",
         content: "Default triad setting saved successfully",
       });
-
-      setCurrentEMBDefault(selectedEMBDefault);
-      setCurrentLLMDefault(selectedLLMDefault);
-      setCurrentVECTORDefault(selectedVECTORDefault);
+      fetchData();
+      setIsSubmitEnabled(false);
     } catch (error) {
       setAlertDetails(handleException(error, "Failed to generate the key"));
     }
@@ -116,68 +132,32 @@ function DefaultTriad() {
       <div className="plt-set-layout">
         <IslandLayout>
           <div className="plt-set-layout-2 form-width">
-            <SpaceWrapper>
-              <Typography className="triad-select">Default LLM</Typography>
-              <Select
-                placeholder="Select LLM default"
-                onChange={setSelectedLLMDefault}
-                value={selectedLLMDefault}
-                style={{ width: "100%" }}
-              >
-                {adaptorsList
-                  .filter((item) => item.adapter_type === "LLM")
-                  .map((item) => (
-                    <Option key={item.id} value={item.id}>
-                      {item.adapter_name}
-                      {currentLLMDefault === item.id && " (current default)"}
-                    </Option>
-                  ))}
-              </Select>
-            </SpaceWrapper>
-            <SpaceWrapper>
-              <Typography className="triad-select">
-                Default Embeddings
-              </Typography>
-              <Select
-                placeholder="Select Embeddings default"
-                onChange={setSelectedEMBDefault}
-                value={selectedEMBDefault}
-                style={{ width: "100%" }}
-              >
-                {adaptorsList
-                  .filter((item) => item.adapter_type === "EMBEDDING")
-                  .map((item) => (
-                    <Option key={item.id} value={item.id}>
-                      {item.adapter_name}
-                      {currentEMBDefault === item.id && " (current default)"}
-                    </Option>
-                  ))}
-              </Select>
-            </SpaceWrapper>
-            <SpaceWrapper>
-              <Typography className="triad-select">
-                Default Vector DB
-              </Typography>
-              <Select
-                placeholder="Select VECTOR DB default"
-                onChange={setSelectedVECTORDefault}
-                value={selectedVECTORDefault}
-                style={{ width: "100%" }}
-              >
-                {adaptorsList
-                  .filter((item) => item.adapter_type === "VECTOR_DB")
-                  .map((item) => (
-                    <Option key={item.id} value={item.id}>
-                      {item.adapter_name}
-                      {currentVECTORDefault === item.id && " (current default)"}
-                    </Option>
-                  ))}
-              </Select>
-            </SpaceWrapper>
+            {desiredOrder.map((type) => (
+              <SpaceWrapper key={type}>
+                <Typography className="triad-select">
+                  {labelMap[type]}
+                </Typography>
+                <Select
+                  placeholder={`Select ${labelMap[type]}`}
+                  value={selectedValues[type] || undefined}
+                  onChange={(value) => handleDropdownChange(type, value)}
+                  style={{ width: "100%" }}
+                >
+                  {dropdownData
+                    .filter((data) => data.adapter_type === type)
+                    .map((data) => (
+                      <Option key={data.id} value={data.id}>
+                        {data.adapter_name}
+                      </Option>
+                    ))}
+                </Select>
+              </SpaceWrapper>
+            ))}
             <CustomButton
               type="primary"
               className="triad-select"
-              onClick={onSubmit}
+              onClick={handleSubmit}
+              disabled={!isSubmitEnabled}
             >
               Save
             </CustomButton>

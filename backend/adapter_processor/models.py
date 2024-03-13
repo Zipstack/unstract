@@ -112,3 +112,10 @@ class UserDefaultAdapter(BaseModel):
         null=True,
         related_name="default_vector_db_adapter",
     )
+
+    default_x2text_adapter = models.ForeignKey(
+        AdapterInstance,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="default_x2text_adapter",
+    )
