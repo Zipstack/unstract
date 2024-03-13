@@ -24,13 +24,17 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update; \
         unoconv; \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
     \
-    pip install --no-cache-dir -U pip pdm~=${PDM_VERSION};
+    pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}; \
+    \
+    # Creates a non-root user with an explicit UID and adds permission to access the /app folder
+    # For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
+    adduser -u 5678 --disabled-password --gecos "" unstract;
 
-EXPOSE 3002
+USER unstract
 
 WORKDIR /app
 
-COPY ${BUILD_CONTEXT_PATH}/ .
+COPY --chown=unstract ${BUILD_CONTEXT_PATH}/ .
 
 RUN set -e; \
     \
@@ -45,13 +49,10 @@ RUN set -e; \
     # REF: https://docs.gunicorn.org/en/stable/deploy.html#using-virtualenv
     pip install --no-cache-dir gunicorn; \
     \
+    # Storage for document uploads and processing
     mkdir /app/uploads /app/processed;
 
-# Creates a non-root user with an explicit UID and adds permission to access the /app folder
-# For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-RUN adduser -u 5678 --disabled-password --gecos "" unstract;
-
-USER unstract
+EXPOSE 3002
 
 # Wrapper to run both python server and libreoffice.
 CMD [ "/app/wrapper.sh" ]

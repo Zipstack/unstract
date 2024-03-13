@@ -4,7 +4,6 @@ import { useDrop } from "react-dnd";
 
 import { ListOfWfStepsPlaceholder } from "../../../assets";
 import { CardsList } from "../cards-list/CardsList.jsx";
-
 import "./StepCard.css";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper.jsx";
 

@@ -15,7 +15,7 @@ Use LLMs to eliminate manual processes involving unstructured data.
 
 Just run the `run-platform.sh` launch script to get started in few minutes.
 
-The launch script does env setup with default values, pulls public Docker images or builds them locally and finally runs them in containers.
+The launch script does env setup with default values, pulls public docker images or builds them locally and finally runs them in containers.
 
 ```bash
 # Pull and run entire Unstract platform with default env config.
@@ -24,8 +24,8 @@ The launch script does env setup with default values, pulls public Docker images
 # Pull and run docker containers with a specific version tag.
 ./run-platform.sh -v v0.1.0
 
-# Build docker images and run as containers with a specific version tag.
-./run-platform.sh -B -v v0.1.0
+# Build docker images locally and run with a specific version tag.
+./run-platform.sh -b -v v0.1.0
 
 # Display the help information.
 ./run-platform.sh -h
@@ -33,10 +33,13 @@ The launch script does env setup with default values, pulls public Docker images
 # Only do setup of environment files.
 ./run-platform.sh -e
 
-# Only do docker images pull/build with a specific version tag.
-./run-platform.sh -b v0.1.0
+# Only do docker images pull with a specific version tag.
+./run-platform.sh -p -v v0.1.0
 
-# Pull and run Docker containers in detached mode.
+# Only do docker images pull by building locally with a specific version tag.
+./run-platform.sh -p -b -v v0.1.0
+
+# Pull and run docker containers in detached mode.
 ./run-platform.sh -d -v v0.1.0
 ```
 
@@ -44,11 +47,27 @@ Now visit [http://frontend.unstract.localhost](http://frontend.unstract.localhos
 
 That's all. Enjoy!
 
+## Configuring a Text Extractor
+
+Unstract predominantly works with PDF documents and it requires a `Text Extractor` to be configured in the application which helps retrieve text from the documents. Currently supported text extractors include
+
+- [LLMWhisperer](https://unstract-api-resource.developer.azure-api.net/) (works best)
+- Unstructured Community
+- Unstructured Enterprise
+
+### Steps to use LLMWhisperer Service
+
+[LLMWhisperer](https://unstract-api-resource.developer.azure-api.net/) is our text extraction service which provides best results with Unstract.
+- Create an account in the [developer portal](https://unstract-api-resource.developer.azure-api.net/signup)
+- Create a `Subscription` under [your profile](https://unstract-api-resource.developer.azure-api.net/profile) and copy the `Primary Key`
+- Try the APIs from the portal by passing the copied key in the request header `unstract-key`
+- This key needs to be passed in our application while creating an `LLM Whisperer Text Extractor`
+
 ## Running with docker compose
 
 See [Docker README.md](docker/README.md).
 
-## Running locally
+## Setup Unstract for local development
 
 ### Installation
 
@@ -79,7 +98,6 @@ eval "$(pdm venv activate in-project)"
 # Remove venv
 pdm venv remove in-project
 ```
-
 
 ### Install dependencies with PDM
 
@@ -202,14 +220,6 @@ We just need to override default Traefik proxy routing to allow this, that's all
 
 Run the services.
 
-#### Generate Encryption key to be used in backend and Platform service
-
- Generate Fernet Key Refer https://pypi.org/project/cryptography/
- 
- `ENCRYPTION_KEY=$(python -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")`
-
- use the above generated encryption, key in ENV's of platform and backend
-
 #### Conflicting Host Names
 
 When same host name environment variables are used by both the service running locally and a service
@@ -227,4 +237,13 @@ locally and the Tools are in containers, we could set the value to
 `prompt-service` and add it to `/etc/hosts` as shown below.
 ```
 <host_local_ip>    prompt-service
+```
+
+## Generate Encryption key to be used in `backend` and `platform-service`
+
+An encryption key is used to securely encrypt and store data, for example credentials of connectors or adapters.
+We make use of [cryptography's](https://pypi.org/project/cryptography/) Fernet to perform this encryption. Use this snippet to generate a key that can be set in your respective `backend` and `platform-service` `.env` files.
+
+```bash
+ENCRYPTION_KEY=$(python -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
 ```

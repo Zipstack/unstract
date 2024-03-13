@@ -1,13 +1,13 @@
 import { Button, Modal, Table, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { CheckCircleFilled, CloseCircleFilled } from "@ant-design/icons";
+import { useNavigate } from "react-router-dom";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import "./OutputForDocModal.css";
-import { CheckCircleFilled, CloseCircleFilled } from "@ant-design/icons";
-import { useNavigate } from "react-router-dom";
 import { displayPromptResult } from "../../../helpers/GetStaticData";
 
 const columns = [
@@ -69,12 +69,14 @@ function OutputForDocModal({
   const handleRowsGeneration = (data) => {
     const rowsData = [];
     [...listOfDocs].forEach((item) => {
-      const output = data.find((outputValue) => outputValue?.doc_name === item);
+      const output = data.find(
+        (outputValue) => outputValue?.document_manager === item?.document_id
+      );
       const isSuccess = output?.output?.length > 0;
 
       const result = {
         key: item,
-        document: item,
+        document: item?.document_name,
         value: (
           <Typography.Text>
             <span style={{ marginRight: "8px" }}>

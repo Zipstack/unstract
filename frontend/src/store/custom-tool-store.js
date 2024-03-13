@@ -1,14 +1,16 @@
 import { create } from "zustand";
+
 import { promptType } from "../helpers/GetStaticData";
 
 const defaultState = {
   dropdownItems: {},
-  selectedDoc: "",
+  selectedDoc: null,
   listOfDocs: [],
   defaultLlmProfile: "",
   llmProfiles: [],
   details: {},
   disableLlmOrDocChange: [],
+  indexDocs: [],
 };
 
 const defaultPromptInstance = {

@@ -8,20 +8,21 @@ import "prismjs/themes/prism.css";
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 
-import { handleException, promptType } from "../../../helpers/GetStaticData";
+import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 const outputTypes = {
   json: "JSON",
   yaml: "YAML",
 };
 
-function CombinedOutput({ doc, setFilledFields }) {
+function CombinedOutput({ docId, setFilledFields }) {
   const [combinedOutput, setCombinedOutput] = useState({});
   const [yamlData, setYamlData] = useState(null);
   const [selectedOutputType, setSelectedOutputType] = useState(
@@ -32,9 +33,10 @@ function CombinedOutput({ doc, setFilledFields }) {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
-    if (!doc) {
+    if (!docId) {
       return;
     }
 
@@ -91,7 +93,7 @@ function CombinedOutput({ doc, setFilledFields }) {
       .finally(() => {
         setIsOutputLoading(false);
       });
-  }, [doc]);
+  }, [docId]);
 
   useEffect(() => {
     Prism.highlightAll();
@@ -104,7 +106,7 @@ function CombinedOutput({ doc, setFilledFields }) {
   const handleOutputApiRequest = async () => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&doc_name=${doc}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -151,7 +153,7 @@ function CombinedOutput({ doc, setFilledFields }) {
 }
 
 CombinedOutput.propTypes = {
-  doc: PropTypes.string,
+  docId: PropTypes.string,
   setFilledFields: PropTypes.func,
 };
 

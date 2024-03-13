@@ -2,7 +2,6 @@ import { FullscreenExitOutlined, FullscreenOutlined } from "@ant-design/icons";
 import { Col, Collapse, Modal, Row } from "antd";
 import { useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { useAlertStore } from "../../../store/alert-store";
@@ -12,11 +11,11 @@ import { AddLlmProfileModal } from "../add-llm-profile-modal/AddLlmProfileModal"
 import { CustomSynonymsModal } from "../custom-synonyms-modal/CustomSynonymsModal";
 import { DisplayLogs } from "../display-logs/DisplayLogs";
 import { DocumentManager } from "../document-manager/DocumentManager";
-import { GenerateIndex } from "../generate-index/GenerateIndex";
 import { Header } from "../header/Header";
 import { ManageLlmProfilesModal } from "../manage-llm-profiles-modal/ManageLlmProfilesModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function ToolIde() {
   const [showLogsModal, setShowLogsModal] = useState(false);
@@ -25,15 +24,19 @@ function ToolIde() {
   const [openManageLlmModal, setOpenManageLlmModal] = useState(false);
   const [openAddLlmModal, setOpenAddLlmModal] = useState(false);
   const [editLlmProfileId, setEditLlmProfileId] = useState(null);
-  const [isGenerateIndexOpen, setIsGenerateIndexOpen] = useState(false);
-  const [isGeneratingIndex, setIsGeneratingIndex] = useState(false);
-  const [generateIndexResult, setGenerateIndexResult] = useState("");
   const [modalTitle, setModalTitle] = useState("");
-  const { details, updateCustomTool, disableLlmOrDocChange, selectedDoc } =
-    useCustomToolStore();
+  const {
+    details,
+    updateCustomTool,
+    disableLlmOrDocChange,
+    selectedDoc,
+    listOfDocs,
+    indexDocs,
+  } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   const openLogsModal = () => {
     setShowLogsModal(true);
@@ -71,20 +74,21 @@ function ToolIde() {
     setActiveKey(keys);
   };
 
-  const handleGenerateIndexModal = (isOpen) => {
-    if (isGeneratingIndex) {
+  const generateIndex = async (doc) => {
+    const docId = doc?.document_id;
+    const listOfIndexDocs = [...indexDocs];
+
+    if (listOfIndexDocs.includes(docId)) {
+      setAlertDetails({
+        type: "error",
+        content: "This document is already getting indexed",
+      });
       return;
     }
-    setIsGenerateIndexOpen(isOpen);
-  };
-
-  const generateIndex = async (fileName) => {
-    setIsGenerateIndexOpen(true);
-    setIsGeneratingIndex(true);
 
     const body = {
       tool_id: details?.tool_id,
-      file_name: fileName,
+      document_id: docId,
     };
     const requestOptions = {
       method: "POST",
@@ -96,16 +100,25 @@ function ToolIde() {
       data: body,
     };
 
+    listOfIndexDocs.push(docId);
+    updateCustomTool({ indexDocs: listOfIndexDocs });
     return axiosPrivate(requestOptions)
       .then(() => {
-        setGenerateIndexResult("SUCCESS");
+        setAlertDetails({
+          type: "success",
+          content: `${doc?.document_name} - Indexed successfully`,
+        });
       })
       .catch((err) => {
-        setGenerateIndexResult("FAILED");
-        setAlertDetails(handleException(err, "Failed to index"));
+        setAlertDetails(
+          handleException(err, `${doc?.document_name} - Failed to index`)
+        );
       })
       .finally(() => {
-        setIsGeneratingIndex(false);
+        const newListOfIndexDocs = [...indexDocs].filter(
+          (item) => item !== docId
+        );
+        updateCustomTool({ indexDocs: newListOfIndexDocs });
       });
   };
 
@@ -129,7 +142,7 @@ function ToolIde() {
       });
   };
 
-  const handleDocChange = (docName) => {
+  const handleDocChange = (docId) => {
     if (disableLlmOrDocChange?.length > 0) {
       setAlertDetails({
         type: "error",
@@ -138,14 +151,16 @@ function ToolIde() {
       return;
     }
 
+    const doc = [...listOfDocs].find((item) => item?.document_id === docId);
+
     const prevSelectedDoc = selectedDoc;
     const data = {
-      selectedDoc: docName,
+      selectedDoc: doc,
     };
     updateCustomTool(data);
 
     const body = {
-      output: docName,
+      output: docId,
     };
 
     handleUpdateTool(body).catch((err) => {
@@ -228,19 +243,6 @@ function ToolIde() {
         modalTitle={modalTitle}
         setModalTitle={setModalTitle}
       />
-      <Modal
-        open={isGenerateIndexOpen}
-        footer={false}
-        centered={true}
-        width={400}
-        closable={!isGeneratingIndex}
-        onCancel={() => handleGenerateIndexModal(false)}
-      >
-        <GenerateIndex
-          isGeneratingIndex={isGeneratingIndex}
-          result={generateIndexResult}
-        />
-      </Modal>
     </div>
   );
 }

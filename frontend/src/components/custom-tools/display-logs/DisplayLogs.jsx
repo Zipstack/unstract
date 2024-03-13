@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
+import { Col, Row, Typography } from "antd";
 
 import "./DisplayLogs.css";
-import { Col, Row, Typography } from "antd";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
 
 function DisplayLogs() {

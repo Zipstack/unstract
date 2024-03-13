@@ -2,7 +2,7 @@ import { Tabs } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { handleException, promptType } from "../../../helpers/GetStaticData";
+import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -11,6 +11,7 @@ import { CombinedOutput } from "../combined-output/CombinedOutput";
 import { DocumentParser } from "../document-parser/DocumentParser";
 import { Footer } from "../footer/Footer";
 import "./ToolsMain.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function ToolsMain({ setOpenAddLlmModal }) {
   const [activeKey, setActiveKey] = useState("1");
@@ -26,6 +27,7 @@ function ToolsMain({ setOpenAddLlmModal }) {
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   const items = [
     {
@@ -136,7 +138,9 @@ function ToolsMain({ setOpenAddLlmModal }) {
             setScrollToBottom={setScrollToBottom}
           />
         )}
-        {activeKey === "2" && <CombinedOutput doc={selectedDoc} />}
+        {activeKey === "2" && (
+          <CombinedOutput docId={selectedDoc?.document_id} />
+        )}
       </div>
       <div className="tools-main-footer">
         <Footer activeKey={activeKey} addPromptInstance={addPromptInstance} />

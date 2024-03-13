@@ -3,21 +3,18 @@ import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
 import PropTypes from "prop-types";
-
-import "./DocumentManager.css";
 import { LeftOutlined, RightOutlined } from "@ant-design/icons";
+import { useEffect, useState } from "react";
+import "./DocumentManager.css";
+
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
-import { useEffect, useState } from "react";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
-import {
-  base64toBlob,
-  removeFileExtension,
-} from "../../../helpers/GetStaticData";
+import { base64toBlob } from "../../../helpers/GetStaticData";
 import { DocumentViewer } from "../document-viewer/DocumentViewer";
-import { TextViewer } from "../text-viewer/TextViewer";
+import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 
 const items = [
   {
@@ -31,7 +28,7 @@ const items = [
 ];
 
 const viewTypes = {
-  pdf: "PDF",
+  original: "ORIGINAL",
   extract: "EXTRACT",
 };
 
@@ -65,27 +62,15 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const axiosPrivate = useAxiosPrivate();
 
   useEffect(() => {
-    const fileNameTxt = removeFileExtension(selectedDoc);
-    const files = [
-      {
-        fileName: selectedDoc,
-        viewType: viewTypes.pdf,
-      },
-      {
-        fileName: `extract/${fileNameTxt}.txt`,
-        viewType: viewTypes.extract,
-      },
-    ];
-
     setFileUrl("");
     setExtractTxt("");
-    files.forEach((item) => {
-      handleFetchContent(item);
+    Object.keys(viewTypes).forEach((item) => {
+      handleFetchContent(viewTypes[item]);
     });
   }, [selectedDoc]);
 
-  const handleFetchContent = (fileDetails) => {
-    if (!selectedDoc) {
+  const handleFetchContent = (viewType) => {
+    if (!selectedDoc?.document_id) {
       setFileUrl("");
       setExtractTxt("");
       return;
@@ -93,32 +78,32 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/fetch_contents?file_name=${fileDetails?.fileName}&tool_id=${details?.tool_id}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/fetch_contents?document_id=${selectedDoc?.document_id}&view_type=${viewType}&tool_id=${details?.tool_id}`,
     };
 
-    handleLoadingStateUpdate(fileDetails?.viewType, true);
+    handleLoadingStateUpdate(viewType, true);
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data?.data;
-        if (fileDetails?.viewType === viewTypes.pdf) {
+        if (viewType === viewTypes.original) {
           const base64String = data || "";
           const blob = base64toBlob(base64String);
           setFileUrl(URL.createObjectURL(blob));
           return;
         }
 
-        if (fileDetails?.viewType === viewTypes?.extract) {
+        if (viewType === viewTypes?.extract) {
           setExtractTxt(data);
         }
       })
       .catch((err) => {})
       .finally(() => {
-        handleLoadingStateUpdate(fileDetails?.viewType, false);
+        handleLoadingStateUpdate(viewType, false);
       });
   };
 
   const handleLoadingStateUpdate = (viewType, value) => {
-    if (viewType === viewTypes.pdf) {
+    if (viewType === viewTypes.original) {
       setIsDocLoading(value);
     }
 
@@ -132,7 +117,9 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   };
 
   useEffect(() => {
-    const index = [...listOfDocs].findIndex((item) => item === selectedDoc);
+    const index = [...listOfDocs].findIndex(
+      (item) => item?.document_id === selectedDoc?.document_id
+    );
     setPage(index + 1);
   }, [selectedDoc, listOfDocs]);
 
@@ -157,7 +144,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const updatePageAndDoc = (newPage) => {
     setPage(newPage);
     const newSelectedDoc = listOfDocs[newPage - 1];
-    handleDocChange(newSelectedDoc);
+    handleDocChange(newSelectedDoc?.document_id);
   };
 
   return (
@@ -172,14 +159,19 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
         </div>
         <Space>
           <div>
+            {selectedDoc ? (
+              <Typography.Text className="doc-main-title" ellipsis>
+                {selectedDoc?.document_name}
+              </Typography.Text>
+            ) : null}
+          </div>
+          <div>
             <Tooltip title="Manage Documents">
               <Button
                 className="doc-manager-btn"
                 onClick={() => setOpenManageDocsModal(true)}
               >
-                <Typography.Text ellipsis>
-                  {selectedDoc || "No Document Selected"}
-                </Typography.Text>
+                <Typography.Text ellipsis>{"Manage Documents"}</Typography.Text>
               </Button>
             </Tooltip>
           </div>
@@ -211,7 +203,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       </div>
       {activeKey === "1" && (
         <DocumentViewer
-          doc={selectedDoc}
+          doc={selectedDoc?.document_name}
           isLoading={isDocLoading}
           isContentAvailable={fileUrl?.length > 0}
           setOpenManageDocsModal={setOpenManageDocsModal}
@@ -221,12 +213,12 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       )}
       {activeKey === "2" && (
         <DocumentViewer
-          doc={selectedDoc}
+          doc={selectedDoc?.document_name}
           isLoading={isExtractLoading}
           isContentAvailable={extractTxt?.length > 0}
           setOpenManageDocsModal={setOpenManageDocsModal}
         >
-          <TextViewer text={extractTxt} />
+          <TextViewerPre text={extractTxt} />
         </DocumentViewer>
       )}
       {SummarizeView && activeKey === 3 && (

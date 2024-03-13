@@ -1,20 +1,18 @@
 import { PlusOutlined } from "@ant-design/icons";
-import { Typography } from "antd";
 import PropTypes from "prop-types";
+import { useEffect, useState } from "react";
 
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
 import "../../input-output/data-source-card/DataSourceCard.css";
 import "./ToolSettings.css";
-
-import { useEffect, useState } from "react";
-
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import { ListOfItems } from "../list-of-items/ListOfItems";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
+import { ViewTools } from "../../custom-tools/view-tools/ViewTools";
 
 const titles = {
   llm: "LLMs",
@@ -40,6 +38,7 @@ function ToolSettings({ type }) {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     setTableRows([]);
@@ -83,10 +82,10 @@ function ToolSettings({ type }) {
     }
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = (adapter) => {
     const requestOptions = {
       method: "DELETE",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${id}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter.id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -95,7 +94,7 @@ function ToolSettings({ type }) {
     setIsLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        const filteredList = tableRows.filter((row) => row?.id !== id);
+        const filteredList = tableRows.filter((row) => row?.id !== adapter.id);
         setTableRows(filteredList);
         setAlertDetails({
           type: "success",
@@ -112,31 +111,36 @@ function ToolSettings({ type }) {
 
   return (
     <div className="plt-tool-settings-layout">
+      <ToolNavBar
+        title={titles[type]}
+        CustomButtons={() => {
+          return (
+            <CustomButton
+              type="primary"
+              onClick={() => setOpenAddSourcesModal(true)}
+              icon={<PlusOutlined />}
+            >
+              {btnText[type]}
+            </CustomButton>
+          );
+        }}
+      />
       <IslandLayout>
         <div className="plt-tool-settings-layout-2">
-          <div className="plt-tool-settings-header">
-            <div className="plt-tool-settings-title">
-              <Typography.Text className="typo-text" strong>
-                {titles[type]}
-              </Typography.Text>
-            </div>
-            <div className="plt-tool-settings-add-btn">
-              <CustomButton
-                type="primary"
-                onClick={() => setOpenAddSourcesModal(true)}
-                icon={<PlusOutlined />}
-              >
-                {btnText[type]}
-              </CustomButton>
-            </div>
-          </div>
           <div className="plt-tool-settings-body">
-            <ListOfItems
+            <ViewTools
+              listOfTools={tableRows}
               isLoading={isLoading}
-              tableRows={tableRows}
-              setEditItemId={setEditItemId}
               handleDelete={handleDelete}
-              handleClick={() => setOpenAddSourcesModal(true)}
+              setOpenAddTool={setOpenAddSourcesModal}
+              handleEdit={(_event, item) => setEditItemId(item?.id)}
+              idProp="id"
+              titleProp="adapter_name"
+              iconProp="icon"
+              isEmpty={!tableRows?.length}
+              centered
+              isClickable={false}
+              type={btnText[type]}
             />
           </div>
         </div>

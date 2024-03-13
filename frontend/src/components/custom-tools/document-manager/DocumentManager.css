@@ -4,7 +4,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    overflow-y: hidden;
+    overflow: hidden;
 }
 
 .doc-manager-header {
@@ -27,9 +27,15 @@
 
 .text-viewer-layout {
     padding: 0px 12px;
+    flex: 1;
     overflow-y: auto;
 }
 
 .rpv-default-layout__container {
     border: 0 !important;
+}
+
+.doc-main-title{
+    color: darkgray;
+    font-size: 12px;
 }

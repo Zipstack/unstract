@@ -108,8 +108,8 @@ REDIS_DB = os.environ.get("REDIS_DB", "")
 SESSION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "SESSION_EXPIRATION_TIME_IN_SECOND", 3600
 )
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", True)
+CSRF_COOKIE_SECURE = os.environ.get("CSRF_COOKIE_SECURE", True)
 
 PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
 API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
@@ -210,6 +210,8 @@ TENANT_APPS = (
     "prompt_studio.prompt_studio_core",
     "prompt_studio.prompt_studio_registry",
     "prompt_studio.prompt_studio_output_manager",
+    "prompt_studio.prompt_studio_document_manager",
+    "prompt_studio.prompt_studio_index_manager",
 )
 
 INSTALLED_APPS = list(SHARED_APPS) + [

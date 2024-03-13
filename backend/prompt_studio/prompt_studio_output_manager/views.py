@@ -28,7 +28,7 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
             PromptStudioOutputManagerKeys.TOOL_ID,
             PromptStudioOutputManagerKeys.PROMPT_ID,
             PromptStudioOutputManagerKeys.PROFILE_MANAGER,
-            PromptStudioOutputManagerKeys.DOC_NAME,
+            PromptStudioOutputManagerKeys.DOCUMENT_MANAGER,
         )
         if filter_args:
             queryset = PromptStudioOutputManager.objects.filter(**filter_args)
