@@ -56,6 +56,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
     };
 
     if (SummarizeManager) {
+      // Add Summary Manager menu item to the existing list
       items.splice(
         1,
         0,
