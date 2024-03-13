@@ -144,6 +144,8 @@ class AdapterProcessor:
                     adapter_type = AdapterTypes.EMBEDDING.name
                 elif key == AdapterKeys.VECTOR_DB_DEFAULT:
                     adapter_type = AdapterTypes.VECTOR_DB.name
+                elif key == AdapterKeys.X2TEXT_DEFAULT:
+                    adapter_type = AdapterTypes.X2TEXT.name
 
                 filter_params["adapter_type"] = adapter_type
                 filter_params["is_default"] = True
