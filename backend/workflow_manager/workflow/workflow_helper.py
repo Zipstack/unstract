@@ -580,7 +580,8 @@ class WorkflowHelper:
         """Function to clear cache with a specific pattern."""
         response: dict[str, Any] = {}
         try:
-            CacheService.clear(workflow_id)
+            key_pattern = f"*:cache:{workflow_id}:*"
+            CacheService.clear_cache(key_pattern)
             response["message"] = WorkflowMessages.CACHE_CLEAR_SUCCESS
             response["status"] = 200
             return response

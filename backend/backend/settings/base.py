@@ -138,6 +138,8 @@ STRUCTURE_TOOL_IMAGE_NAME = get_required_setting("STRUCTURE_TOOL_IMAGE_NAME")
 STRUCTURE_TOOL_IMAGE_TAG = get_required_setting("STRUCTURE_TOOL_IMAGE_TAG")
 WORKFLOW_DATA_DIR = os.environ.get("WORKFLOW_DATA_DIR")
 API_STORAGE_DIR = os.environ.get("API_STORAGE_DIR")
+CACHE_TTL_SEC = os.environ.get("CACHE_TTL_SEC", 10800)
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
@@ -302,8 +304,6 @@ CACHES = {
         "KEY_FUNCTION": "utils.cache_service.custom_key_function",
     }
 }
-
-CACHE_TTL_SEC = os.environ.get("CACHE_TTL_SEC", 10800)
 
 RQ_QUEUES = {
     "default": {"USE_REDIS_CACHE": "default"},
