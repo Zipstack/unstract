@@ -19,16 +19,23 @@ function ViewTools({
   idProp,
   centered,
   isClickable = true,
+  type,
 }) {
   if (isLoading) {
     return <SpinnerLoader />;
   }
 
   if (isEmpty) {
+    let text = "No tools available";
+    let btnText = "New Tool";
+    if (type) {
+      text = `No ${type.split("New ")[1].toLowerCase()} available`;
+      btnText = type;
+    }
     return (
       <EmptyState
-        text="No tools available"
-        btnText="New Tool"
+        text={text}
+        btnText={btnText}
         handleClick={() => setOpenAddTool(true)}
       />
     );
@@ -72,6 +79,7 @@ ViewTools.propTypes = {
   idProp: PropTypes.string.isRequired,
   centered: PropTypes.bool,
   isClickable: PropTypes.bool,
+  type: PropTypes.string,
 };
 
 export { ViewTools };
