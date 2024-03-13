@@ -70,6 +70,5 @@ class Migration(migrations.Migration):
                 related_name="profile_manager_x2text",
                 to="adapter_processor.adapterinstance",
             ),
-        ),
-        migrations.RunPython(fill_with_default_x2text, reversal_x2text),
+        ),        
     ]
