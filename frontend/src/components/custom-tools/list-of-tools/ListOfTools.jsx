@@ -171,7 +171,7 @@ function ListOfTools() {
         icon={<PlusOutlined />}
         onClick={showAddTool}
       >
-        New Tool
+        New Project
       </CustomButton>
     );
   };
@@ -200,6 +200,7 @@ function ListOfTools() {
               descriptionProp="description"
               iconProp="icon"
               idProp="tool_id"
+              type="New Project"
             />
           </div>
         </div>
