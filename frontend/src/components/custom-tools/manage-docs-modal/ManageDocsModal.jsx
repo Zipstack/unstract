@@ -2,7 +2,6 @@ import {
   CheckCircleFilled,
   CloseCircleFilled,
   DeleteOutlined,
-  InfoCircleFilled,
   PlusOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
@@ -11,7 +10,6 @@ import {
   Divider,
   Modal,
   Radio,
-  Select,
   Space,
   Table,
   Tooltip,
@@ -46,13 +44,12 @@ function ManageDocsModal({
 }) {
   const [isUploading, setIsUploading] = useState(false);
   const [rows, setRows] = useState([]);
-  const [rawLlmProfile, setRawLlmProfile] = useState("");
+  const [rawLlmProfile, setRawLlmProfile] = useState(null);
   const [isRawDataLoading, setIsRawDataLoading] = useState(false);
   const [rawIndexStatus, setRawIndexStatus] = useState([]);
-  const [summarizeLlmProfile, setSummarizeLlmProfile] = useState("");
+  const [summarizeLlmProfile, setSummarizeLlmProfile] = useState(null);
   const [isSummarizeDataLoading, setIsSummarizeDataLoading] = useState(false);
   const [summarizeIndexStatus, setSummarizeIndexStatus] = useState([]);
-  const [llmItems, setLlmItems] = useState([]);
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const {
@@ -86,31 +83,27 @@ function ManageDocsModal({
     </Typography.Text>
   );
 
-  const infoIndex = (
+  const failedSummary = (
     <Typography.Text>
       <span style={{ marginRight: "8px" }}>
-        <InfoCircleFilled style={{ color: "#009AF0" }} />
+        <CloseCircleFilled style={{ color: "#FF4D4F" }} />
       </span>{" "}
-      LLM Profile not selected
+      Not Summarized
     </Typography.Text>
   );
 
   useEffect(() => {
     setRawLlmProfile(defaultLlmProfile);
     setSummarizeLlmProfile(details?.summarize_llm_profile);
-  }, [llmItems]);
-
-  useEffect(() => {
-    getLlmProfilesDropdown();
-  }, [llmProfiles]);
+  }, [defaultLlmProfile, details]);
 
   useEffect(() => {
     handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
-  }, [rawLlmProfile, indexDocs]);
+  }, [indexDocs, rawLlmProfile]);
 
   useEffect(() => {
     handleGetIndexStatus(summarizeLlmProfile, indexTypes.summarize);
-  }, [summarizeLlmProfile, indexDocs]);
+  }, [indexDocs, summarizeLlmProfile]);
 
   const handleLoading = (indexType, value) => {
     if (indexType === indexTypes.raw) {
@@ -176,14 +169,12 @@ function ManageDocsModal({
       });
   };
 
-  const getLlmProfilesDropdown = () => {
-    const items = [...llmProfiles].map((item) => {
-      return {
-        value: item?.profile_id,
-        label: item?.profile_name,
-      };
-    });
-    setLlmItems(items);
+  const getLlmProfileName = (llmProfile) => {
+    const llmProfileName = llmProfiles.find(
+      (item) => item?.profile_id === llmProfile
+    );
+
+    return llmProfileName?.profile_name || "No LLM Profile Selected";
   };
 
   const columns = [
@@ -195,41 +186,29 @@ function ManageDocsModal({
     {
       title: (
         <Space className="w-100">
-          <Typography.Text>Raw</Typography.Text>
-          <Select
-            size="small"
-            style={{
-              width: 100,
-            }}
-            value={rawLlmProfile}
-            options={llmItems}
-            onChange={(value) => setRawLlmProfile(value)}
-          />
+          <Typography.Text>Index</Typography.Text>
+          <Typography.Text type="secondary">
+            {"(" + getLlmProfileName(rawLlmProfile) + ")"}
+          </Typography.Text>
           {isRawDataLoading && <SpinnerLoader />}
         </Space>
       ),
-      dataIndex: "rawIndex",
-      key: "rawIndex",
+      dataIndex: "index",
+      key: "index",
       width: 250,
     },
     {
       title: (
         <Space className="w-100">
-          <Typography.Text>Summarize</Typography.Text>
-          <Select
-            size="small"
-            style={{
-              width: 100,
-            }}
-            value={summarizeLlmProfile}
-            options={llmItems}
-            onChange={(value) => setSummarizeLlmProfile(value)}
-          />
+          <Typography.Text>Summary</Typography.Text>
+          <Typography.Text type="secondary">
+            {"(" + getLlmProfileName(summarizeLlmProfile) + ")"}
+          </Typography.Text>
           {isSummarizeDataLoading && <SpinnerLoader />}
         </Space>
       ),
-      dataIndex: "summarizeIndex",
-      key: "summarizeIndex",
+      dataIndex: "summary",
+      key: "summary",
       width: 250,
     },
     {
@@ -254,19 +233,16 @@ function ManageDocsModal({
 
   const getIndexStatusMessage = (docId, indexType) => {
     let instance = null;
+    let failed = null;
     if (indexType === indexTypes.raw) {
-      if (!rawLlmProfile) {
-        return infoIndex;
-      }
       instance = rawIndexStatus.find((item) => item?.docId === docId);
+      failed = failedIndex;
     } else {
-      if (!summarizeLlmProfile) {
-        return infoIndex;
-      }
       instance = summarizeIndexStatus.find((item) => item?.docId === docId);
+      failed = failedSummary;
     }
 
-    return instance?.isIndexed ? successIndex : failedIndex;
+    return instance?.isIndexed ? successIndex : failed;
   };
 
   useEffect(() => {
@@ -274,11 +250,8 @@ function ManageDocsModal({
       return {
         key: item?.document_id,
         document: item?.document_name || "",
-        rawIndex: getIndexStatusMessage(item?.document_id, indexTypes.raw),
-        summarizeIndex: getIndexStatusMessage(
-          item?.document_id,
-          indexTypes.summarize
-        ),
+        index: getIndexStatusMessage(item?.document_id, indexTypes.raw),
+        summary: getIndexStatusMessage(item?.document_id, indexTypes.summarize),
         reindex: indexDocs.includes(item?.document_id) ? (
           <SpinnerLoader />
         ) : (
