@@ -200,6 +200,7 @@ function ListOfTools() {
               descriptionProp="description"
               iconProp="icon"
               idProp="tool_id"
+              type="New Project"
             />
           </div>
         </div>
