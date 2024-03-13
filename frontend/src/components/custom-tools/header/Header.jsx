@@ -69,10 +69,12 @@ function Header({ setOpenSettings }) {
       </div>
       <div className="custom-tools-header-btns">
         <div>
-          <Button
-            icon={<SettingOutlined />}
-            onClick={() => setOpenSettings(true)}
-          />
+          <Tooltip title="Settings">
+            <Button
+              icon={<SettingOutlined />}
+              onClick={() => setOpenSettings(true)}
+            />
+          </Tooltip>
         </div>
         <div className="custom-tools-header-v-divider" />
         <div>
