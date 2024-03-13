@@ -3,12 +3,10 @@ import logging
 import os
 import shutil
 from hashlib import md5, sha256
-from pathlib import Path
 from typing import Any, Optional
 
 import fsspec
 from connector.models import ConnectorInstance
-from connector_processor.constants import ConnectorKeys
 from django.core.files.uploadedfile import UploadedFile
 from django.db import connection
 from unstract.workflow_execution.enums import LogState
@@ -158,14 +156,9 @@ class SourceConnector(BaseConnector):
                 SourceKey.MAX_FILES, FileSystemConnector.MAX_FILES
             )
         )
-        root_dir_path = connector_settings.get(ConnectorKeys.PATH, "")
         input_directory = str(
             source_configurations.get(SourceKey.ROOT_FOLDER, "")
         )
-        if root_dir_path:  # user needs to manually type the optional file path
-            input_directory = str(
-                Path(root_dir_path, input_directory.lstrip("/"))
-            )
         if not isinstance(required_patterns, list):
             required_patterns = [required_patterns]
 

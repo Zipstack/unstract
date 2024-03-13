@@ -1,7 +1,6 @@
 class ConnectorKeys:
     CLASS = "class"
     MODULE = "module"
-    PATH = "path"
     IS_VALID = "is_valid"
     ID = "id"
     OAUTH = "oauth"
