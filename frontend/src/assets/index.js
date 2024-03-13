@@ -18,6 +18,13 @@ import { ReactComponent as StepIcon } from "./steps.svg";
 import { ReactComponent as AssertionIcon } from "./assertion.svg";
 import { ReactComponent as CombinedOutputIcon } from "./combined-output.svg";
 import { ReactComponent as EmptyPlaceholder } from "./empty.svg";
+import { ReactComponent as Desktop } from "./desktop.svg";
+import { ReactComponent as ReachOut } from "./reach-out.svg";
+import { ReactComponent as RequireDemoIcon } from "./require-demo.svg";
+import { ReactComponent as LearnMore } from "./learn-more.svg";
+import { ReactComponent as UnstractBlackLogo } from "./UnstractLogoBlack.svg";
+import { ReactComponent as SquareBg } from "./square-bg.svg";
+import { ReactComponent as TrialDoc } from "./trial-doc.svg";
 
 export {
   SunIcon,
@@ -40,4 +47,11 @@ export {
   EmptyPlaceholder,
   AssertionIcon,
   CombinedOutputIcon,
+  Desktop,
+  ReachOut,
+  RequireDemoIcon,
+  LearnMore,
+  UnstractBlackLogo,
+  SquareBg,
+  TrialDoc,
 };

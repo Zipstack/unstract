@@ -1,9 +1,19 @@
-import { Alert, Button, Col, Dropdown, Image, Row, Typography } from "antd";
+import {
+  Alert,
+  Button,
+  Col,
+  Dropdown,
+  Image,
+  Row,
+  Switch,
+  Typography,
+} from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { UnstractLogo } from "../../../assets/index.js";
+import { MoonIcon, SunIcon, UnstractLogo } from "../../../assets/index.js";
 import {
+  THEME,
   getBaseUrl,
   onboardCompleted,
 } from "../../../helpers/GetStaticData.js";
@@ -11,12 +21,26 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
 import { useSessionStore } from "../../../store/session-store.js";
+
 import "./TopNavBar.css";
+
+let TrialDaysInfo;
+try {
+  TrialDaysInfo =
+    require("../../../plugins/subscription/trial-helper/TrialDaysInfo.jsx").default;
+} catch (err) {
+  // Plugin not found
+}
+
+// const PREFERS_DARK_THEME = window.matchMedia("(prefers-color-scheme: dark)");
 
 function TopNavBar() {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { orgName } = sessionDetails;
+  const { orgName, remainingTrialDays } = sessionDetails;
+  const updateSessionDetails = useSessionStore(
+    (state) => state.updateSessionDetails
+  );
   const baseUrl = getBaseUrl();
   const onBoardUrl = baseUrl + `/${orgName}/onboard`;
   const logout = useLogout();
@@ -70,6 +94,26 @@ function TopNavBar() {
     },
   ];
 
+  useEffect(() => {
+    // if (PREFERS_DARK_THEME.matches) {
+    //   document.body.classList.add(THEME.DARK);
+    //   updateTheme(THEME.DARK);
+    // }
+    updateTheme(THEME.LIGHT);
+  }, []);
+
+  function updateTheme(theme = THEME.LIGHT) {
+    updateSessionDetails({ currentTheme: theme });
+  }
+
+  function changeTheme(checked) {
+    if (checked) {
+      document.body.classList.add(THEME.DARK);
+    } else {
+      document.body.classList.remove(THEME.DARK);
+    }
+    updateTheme(checked ? THEME.DARK : THEME.LIGHT);
+  }
   // Function to get the initials from the user name
   const getInitials = (name) => {
     const names = name.split(" ");
@@ -110,23 +154,38 @@ function TopNavBar() {
       </Col>
       <Col span={4}>
         <Row justify="end" align="middle">
-          <Dropdown menu={{ items }} placement="bottomLeft" arrow>
-            <div className="top-navbar-dp">
-              {sessionDetails?.picture ? (
-                <Image
-                  className="navbar-img"
-                  height="100%"
-                  width="100%"
-                  preview={false}
-                  src={sessionDetails?.picture}
-                />
-              ) : (
-                <Typography.Text className="initials">
-                  {getInitials(sessionDetails?.name)}
-                </Typography.Text>
-              )}
-            </div>
-          </Dropdown>
+          {TrialDaysInfo && (
+            <TrialDaysInfo remainingTrialDays={remainingTrialDays} />
+          )}
+          <Col>
+            <Switch
+              onClick={changeTheme}
+              // checked={currentTheme === THEME.LIGHT}
+              checked={false}
+              checkedChildren={<MoonIcon />}
+              unCheckedChildren={<SunIcon />}
+              disabled
+            />
+          </Col>
+          <Col style={{ marginLeft: "10px" }}>
+            <Dropdown menu={{ items }} placement="bottomLeft" arrow>
+              <div className="top-navbar-dp">
+                {sessionDetails?.picture ? (
+                  <Image
+                    className="navbar-img"
+                    height="100%"
+                    width="100%"
+                    preview={false}
+                    src={sessionDetails?.picture}
+                  />
+                ) : (
+                  <Typography.Text className="initials">
+                    {getInitials(sessionDetails?.name)}
+                  </Typography.Text>
+                )}
+              </div>
+            </Dropdown>
+          </Col>
         </Row>
       </Col>
     </Row>

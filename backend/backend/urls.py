@@ -14,9 +14,10 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
-from backend.constants import UrlPathConstants
 from django.conf.urls import *  # noqa: F401, F403
 from django.urls import include, path
+
+from backend.constants import UrlPathConstants
 
 urlpatterns = [
     path("", include("tenant_account.urls")),
@@ -59,3 +60,12 @@ urlpatterns = [
         include("prompt_studio.prompt_studio_index_manager.urls"),
     ),
 ]
+
+try:
+    import subscription.urls  # noqa: F401
+
+    urlpatterns += [
+        path("", include("subscription.urls")),
+    ]
+except ImportError:
+    pass

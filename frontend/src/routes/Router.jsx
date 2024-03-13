@@ -29,6 +29,14 @@ import { UsersPage } from "../pages/UsersPage.jsx";
 import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 
+let TrialRoutes;
+try {
+  TrialRoutes =
+    require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
+} catch (err) {
+  TrialRoutes = NotFound;
+}
+
 function Router() {
   return (
     <Routes>
@@ -38,7 +46,6 @@ function Router() {
         <Route path="" element={<RequireGuest />}>
           <Route path="landing" element={<LandingPage />} />
         </Route>
-
         {/* protected routes */}
         <Route path="" element={<RequireAuth />}>
           <Route path=":orgName" element={<FullPageLayout />}>
@@ -104,6 +111,9 @@ function Router() {
             <Route path="settings/triad" element={<DefaultTriad />} />
           </Route>
         </Route>
+        {TrialRoutes && (
+          <Route path="/trial-expired" element={<TrialRoutes />} />
+        )}
         <Route path="*" element={<NotFound />} />
       </Route>
       <Route path="oauth-status" element={<OAuthStatus />} />
