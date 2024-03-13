@@ -7,6 +7,7 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 
 const fieldNames = {
   preamble: "PREAMBLE",
@@ -62,36 +63,34 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
   };
 
   return (
-    <>
-      <div className="pre-post-amble-body">
-        <Space direction="vertical" className="pre-post-amble-body-space">
+    <div className="settings-body-pad-top">
+      <SpaceWrapper>
+        <div>
+          <Typography.Text strong className="pre-post-amble-title">
+            {title}
+          </Typography.Text>
+        </div>
+        <div>
           <div>
-            <Typography.Text strong className="pre-post-amble-title">
-              {title}
-            </Typography.Text>
+            <Typography.Text>Add {title}</Typography.Text>
           </div>
-          <div>
-            <div>
-              <Typography.Text>Add {title}</Typography.Text>
-            </div>
-          </div>
-          <div>
-            <Input.TextArea
-              rows={3}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-            />
-          </div>
-        </Space>
-      </div>
-      <div className="display-flex-right">
-        <Space>
-          <CustomButton type="primary" onClick={handleSave}>
-            Save
-          </CustomButton>
-        </Space>
-      </div>
-    </>
+        </div>
+        <div>
+          <Input.TextArea
+            rows={3}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </div>
+        <div className="display-flex-right">
+          <Space>
+            <CustomButton type="primary" onClick={handleSave}>
+              Save
+            </CustomButton>
+          </Space>
+        </div>
+      </SpaceWrapper>
+    </div>
   );
 }
 

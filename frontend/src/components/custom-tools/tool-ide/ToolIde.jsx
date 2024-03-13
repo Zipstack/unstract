@@ -21,7 +21,6 @@ function ToolIde() {
   const [activeKey, setActiveKey] = useState([]);
   const [openCusSynonymsModal, setOpenCusSynonymsModal] = useState(false);
   const [openSettings, setOpenSettings] = useState(false);
-  const [editLlmProfileId, setEditLlmProfileId] = useState(null);
   const {
     details,
     updateCustomTool,
@@ -228,8 +227,6 @@ function ToolIde() {
       <SettingsModal
         open={openSettings}
         setOpen={setOpenSettings}
-        editLlmProfileId={editLlmProfileId}
-        setEditLlmProfileId={setEditLlmProfileId}
         handleUpdateTool={handleUpdateTool}
       />
     </div>

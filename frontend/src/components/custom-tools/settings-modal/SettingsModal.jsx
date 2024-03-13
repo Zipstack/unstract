@@ -5,28 +5,73 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { getMenuItem } from "../../../helpers/GetStaticData";
 import { useEffect, useState } from "react";
 import { ManageLlmProfiles } from "../manage-llm-profiles/ManageLlmProfiles";
-import { SelectLlmProfileModal } from "../select-llm-profile-modal/SelectLlmProfileModal";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { CustomSynonyms } from "../custom-synonyms/CustomSynonyms";
 import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
+import {
+  CodeOutlined,
+  DiffOutlined,
+  FileTextOutlined,
+  MessageOutlined,
+} from "@ant-design/icons";
+import "./SettingsModal.css";
 
-function SettingsModal({
-  open,
-  setOpen,
-  editLlmProfileId,
-  setEditLlmProfileId,
-  handleUpdateTool,
-}) {
+let SummarizeManager = null;
+try {
+  SummarizeManager =
+    require("../../../plugins/summarize-manager/SummarizeManager").SummarizeManager;
+} catch {
+  // Component will remain null if it is not present.
+}
+function SettingsModal({ open, setOpen, handleUpdateTool }) {
   const [selectedId, setSelectedId] = useState(1);
   const [llmItems, setLlmItems] = useState([]);
   const { llmProfiles } = useCustomToolStore();
-  const menuItems = [
-    getMenuItem("Manage LLM Profiles", 1),
-    getMenuItem("Summary Manager", 2),
-    getMenuItem("Manage Grammar", 3),
-    getMenuItem("Preamble", 4),
-    getMenuItem("Postamble", 5),
-  ];
+  const [menuItems, setMenuItems] = useState([]);
+  const [components, setComponents] = useState([]);
+
+  useEffect(() => {
+    const items = [
+      getMenuItem("Manage LLM Profiles", 1, <CodeOutlined />),
+      getMenuItem("Manage Grammar", 3, <MessageOutlined />),
+      getMenuItem("Preamble", 4, <DiffOutlined />),
+      getMenuItem("Postamble", 5, <DiffOutlined />),
+    ];
+
+    const listOfComponents = {
+      1: <ManageLlmProfiles />,
+      3: <CustomSynonyms />,
+      4: (
+        <PreAndPostAmbleModal
+          type="PREAMBLE"
+          handleUpdateTool={handleUpdateTool}
+        />
+      ),
+      5: (
+        <PreAndPostAmbleModal
+          type="POSTAMBLE"
+          handleUpdateTool={handleUpdateTool}
+        />
+      ),
+    };
+
+    if (SummarizeManager) {
+      items.splice(
+        1,
+        0,
+        getMenuItem("Summary Manager", 2, <FileTextOutlined />)
+      );
+      listOfComponents[2] = (
+        <SummarizeManager
+          llmItems={llmItems}
+          handleUpdateTool={handleUpdateTool}
+        />
+      );
+    }
+
+    setMenuItems(items);
+    setComponents(listOfComponents);
+  }, []);
 
   useEffect(() => {
     getLlmProfilesDropdown();
@@ -47,34 +92,6 @@ function SettingsModal({
     setLlmItems(items);
   };
 
-  const listOfComponents = {
-    1: (
-      <ManageLlmProfiles
-        editLlmProfileId={editLlmProfileId}
-        setEditLlmProfileId={setEditLlmProfileId}
-      />
-    ),
-    2: (
-      <SelectLlmProfileModal
-        llmItems={llmItems}
-        handleUpdateTool={handleUpdateTool}
-      />
-    ),
-    3: <CustomSynonyms />,
-    4: (
-      <PreAndPostAmbleModal
-        type="PREAMBLE"
-        handleUpdateTool={handleUpdateTool}
-      />
-    ),
-    5: (
-      <PreAndPostAmbleModal
-        type="POSTAMBLE"
-        handleUpdateTool={handleUpdateTool}
-      />
-    ),
-  };
-
   return (
     <Modal
       open={open}
@@ -91,11 +108,8 @@ function SettingsModal({
           </Typography.Text>
         </div>
         <Row className="conn-modal-row" style={{ height: "800px" }}>
-          <Col
-            span={6}
-            className="conn-modal-col conn-modal-col-left conn-modal-form-pad-right"
-          >
-            <div className="conn-modal-menu">
+          <Col span={4} className="conn-modal-col conn-modal-col-left">
+            <div className="conn-modal-menu conn-modal-form-pad-right">
               <Menu
                 className="sidebar-menu"
                 style={{ border: 0 }}
@@ -106,8 +120,10 @@ function SettingsModal({
               />
             </div>
           </Col>
-          <Col span={18} className="conn-modal-col conn-modal-form-pad-left">
-            {listOfComponents[selectedId]}
+          <Col span={20} className="conn-modal-col">
+            <div className="conn-modal-form-pad-left">
+              {components[selectedId]}
+            </div>
           </Col>
         </Row>
       </SpaceWrapper>
@@ -118,8 +134,6 @@ function SettingsModal({
 SettingsModal.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
-  editLlmProfileId: PropTypes.string,
-  setEditLlmProfileId: PropTypes.func.isRequired,
   handleUpdateTool: PropTypes.func.isRequired,
 };
 

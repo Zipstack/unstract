@@ -1,6 +1,5 @@
 import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import { Button, Radio, Table, Typography } from "antd";
-import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -11,7 +10,7 @@ import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./ManageLlmProfiles.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { AddLlmProfileModal } from "../add-llm-profile-modal/AddLlmProfileModal";
+import { AddLlmProfile } from "../add-llm-profile/AddLlmProfile";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 
 const columns = [
@@ -59,9 +58,10 @@ const columns = [
     align: "center",
   },
 ];
-function ManageLlmProfiles({ editLlmProfileId, setEditLlmProfileId }) {
+function ManageLlmProfiles() {
   const [rows, setRows] = useState([]);
   const [isAddLlm, setIsAddLlm] = useState(false);
+  const [editLlmProfileId, setEditLlmProfileId] = useState(null);
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
   const { details, defaultLlmProfile, updateCustomTool, llmProfiles } =
@@ -177,7 +177,7 @@ function ManageLlmProfiles({ editLlmProfileId, setEditLlmProfileId }) {
 
   if (isAddLlm) {
     return (
-      <AddLlmProfileModal
+      <AddLlmProfile
         editLlmProfileId={editLlmProfileId}
         setEditLlmProfileId={setEditLlmProfileId}
         setIsAddLlm={setIsAddLlm}
@@ -186,26 +186,24 @@ function ManageLlmProfiles({ editLlmProfileId, setEditLlmProfileId }) {
   }
 
   return (
-    <div>
-      <div className="pre-post-amble-body">
-        <SpaceWrapper>
-          <div>
-            <Typography.Text className="add-cus-tool-header">
-              LLM Profiles Manager
-            </Typography.Text>
-          </div>
-          <div>
-            <Table
-              columns={columns}
-              dataSource={rows}
-              size="small"
-              bordered
-              max-width="100%"
-              pagination={{ pageSize: 10 }}
-            />
-          </div>
-        </SpaceWrapper>
-      </div>
+    <div className="settings-body-pad-top">
+      <SpaceWrapper>
+        <div>
+          <Typography.Text className="add-cus-tool-header">
+            LLM Profiles Manager
+          </Typography.Text>
+        </div>
+        <div>
+          <Table
+            columns={columns}
+            dataSource={rows}
+            size="small"
+            bordered
+            max-width="100%"
+            pagination={{ pageSize: 10 }}
+          />
+        </div>
+      </SpaceWrapper>
       <div className="display-flex-right">
         <CustomButton type="primary" onClick={() => setIsAddLlm(true)}>
           Add New LLM Profile
@@ -214,10 +212,5 @@ function ManageLlmProfiles({ editLlmProfileId, setEditLlmProfileId }) {
     </div>
   );
 }
-
-ManageLlmProfiles.propTypes = {
-  editLlmProfileId: PropTypes.string,
-  setEditLlmProfileId: PropTypes.func.isRequired,
-};
 
 export { ManageLlmProfiles };

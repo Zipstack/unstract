@@ -192,41 +192,43 @@ function CustomSynonyms() {
   };
 
   return (
-    <div>
-      <div className="pre-post-amble-body">
-        <SpaceWrapper>
-          <div>
-            <Typography.Text className="add-cus-tool-header">
-              Custom Synonyms
-            </Typography.Text>
-          </div>
-          <div>
-            <Table
-              columns={columns}
-              dataSource={rows}
-              size="small"
-              bordered
-              pagination={{ position: [] }}
-            />
-          </div>
-          <div>
+    <div className="settings-body-pad-top">
+      <SpaceWrapper>
+        <div>
+          <Typography.Text className="add-cus-tool-header">
+            Custom Synonyms
+          </Typography.Text>
+        </div>
+        <div>
+          <Table
+            columns={columns}
+            dataSource={rows}
+            size="small"
+            bordered
+            pagination={{ position: [] }}
+          />
+        </div>
+        <div>
+          <CustomButton
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={handleAddRow}
+          >
+            Rows
+          </CustomButton>
+        </div>
+        <div className="display-flex-right">
+          <Space>
             <CustomButton
               type="primary"
-              icon={<PlusOutlined />}
-              onClick={handleAddRow}
+              onClick={handleSave}
+              loading={isLoading}
             >
-              Rows
+              Save
             </CustomButton>
-          </div>
-        </SpaceWrapper>
-      </div>
-      <div className="display-flex-right">
-        <Space>
-          <CustomButton type="primary" onClick={handleSave} loading={isLoading}>
-            Save
-          </CustomButton>
-        </Space>
-      </div>
+          </Space>
+        </div>
+      </SpaceWrapper>
     </div>
   );
 }

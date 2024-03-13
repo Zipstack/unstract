@@ -1,7 +1,6 @@
 import { ArrowLeftOutlined, CaretRightOutlined } from "@ant-design/icons";
 import {
   Button,
-  Checkbox,
   Col,
   Collapse,
   Form,
@@ -22,15 +21,10 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
-import "./AddLlmProfileModal.css";
+import "./AddLlmProfile.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
-function AddLlmProfileModal({
-  editLlmProfileId,
-  setEditLlmProfileId,
-  isAddLlm,
-  setIsAddLlm,
-}) {
+function AddLlmProfile({ editLlmProfileId, setEditLlmProfileId, setIsAddLlm }) {
   const [form] = Form.useForm();
   const [formDetails, setFormDetails] = useState({});
   const [resetForm, setResetForm] = useState(false);
@@ -43,6 +37,7 @@ function AddLlmProfileModal({
   const [activeKey, setActiveKey] = useState(false);
   const [loading, setLoading] = useState(false);
   const [modalTitle, setModalTitle] = useState("");
+  const [areAdaptersReady, setAreAdaptersReady] = useState(false);
   const { sessionDetails } = useSessionStore();
   const { details, getDropdownItems, llmProfiles, updateCustomTool } =
     useCustomToolStore();
@@ -89,17 +84,15 @@ function AddLlmProfileModal({
       retrieval_strategy: "simple",
       similarity_top_k: 1,
       section: "Default",
-      reindex: false,
       prompt_studio_tool: details?.tool_id,
     });
 
-    setEditLlmProfileId(null);
     setModalTitle("Add New LLM Profile");
     setActiveKey(false);
   }, []);
 
   useEffect(() => {
-    if (!editLlmProfileId) {
+    if (!editLlmProfileId || !areAdaptersReady) {
       return;
     }
 
@@ -137,11 +130,10 @@ function AddLlmProfileModal({
       retrieval_strategy: llmProfileDetails?.retrieval_strategy,
       similarity_top_k: llmProfileDetails?.similarity_top_k,
       section: llmProfileDetails?.section,
-      reindex: llmProfileDetails?.reindex,
       prompt_studio_tool: details?.tool_id,
     });
     setActiveKey(true);
-  }, [isAddLlm, editLlmProfileId]);
+  }, [editLlmProfileId, areAdaptersReady]);
 
   useEffect(() => {
     if (resetForm) {
@@ -229,6 +221,7 @@ function AddLlmProfileModal({
             });
           }
         });
+        setAreAdaptersReady(true);
       })
       .catch((err) => {
         setAlertDetails(
@@ -280,17 +273,6 @@ function AddLlmProfileModal({
             help={getBackendErrorDetail("section", backendErrors)}
           >
             <Select options={[{ value: "Default" }]} />
-          </Form.Item>
-          <Form.Item
-            label="Re-Index"
-            valuePropName="checked"
-            name="reindex"
-            validateStatus={
-              getBackendErrorDetail("reindex", backendErrors) ? "error" : ""
-            }
-            help={getBackendErrorDetail("reindex", backendErrors)}
-          >
-            <Checkbox />
           </Form.Item>
         </div>
       ),
@@ -354,14 +336,14 @@ function AddLlmProfileModal({
   };
 
   return (
-    <Form
-      form={form}
-      layout="vertical"
-      initialValues={formDetails}
-      onValuesChange={handleInputChange}
-      onFinish={handleSubmit}
-    >
-      <div className="pre-post-amble-body">
+    <div className="settings-body-pad-top">
+      <Form
+        form={form}
+        layout="vertical"
+        initialValues={formDetails}
+        onValuesChange={handleInputChange}
+        onFinish={handleSubmit}
+      >
         <SpaceWrapper>
           <div>
             <Button size="small" type="text" onClick={() => setIsAddLlm(false)}>
@@ -522,23 +504,22 @@ function AddLlmProfileModal({
             />
           </div>
         </SpaceWrapper>
-      </div>
-      <Form.Item className="display-flex-right">
-        <Space>
-          <CustomButton type="primary" htmlType="submit" loading={loading}>
-            {editLlmProfileId ? "Update" : "Add"}
-          </CustomButton>
-        </Space>
-      </Form.Item>
-    </Form>
+        <Form.Item className="display-flex-right">
+          <Space>
+            <CustomButton type="primary" htmlType="submit" loading={loading}>
+              {editLlmProfileId ? "Update" : "Add"}
+            </CustomButton>
+          </Space>
+        </Form.Item>
+      </Form>
+    </div>
   );
 }
 
-AddLlmProfileModal.propTypes = {
+AddLlmProfile.propTypes = {
   editLlmProfileId: PropTypes.string,
   setEditLlmProfileId: PropTypes.func.isRequired,
-  isAddLlm: PropTypes.bool.isRequired,
   setIsAddLlm: PropTypes.func.isRequired,
 };
 
-export { AddLlmProfileModal };
+export { AddLlmProfile };
