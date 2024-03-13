@@ -266,6 +266,28 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
     setExecutionId("");
   };
 
+  const isIncompleteWorkflow = () => {
+    if (details?.tool_instances.length === 0) {
+      return true;
+    }
+  };
+
+  // Disable Run & Step execution -
+  // when NO tool present in the workflow
+  // When source OR destination is NOT configured
+  const disableAction = () => {
+    if (isIncompleteWorkflow()) {
+      return true;
+    }
+    if (
+      source?.connection_type === "API" &&
+      destination?.connection_type === "API"
+    ) {
+      return false;
+    }
+    return !source?.connector_instance || !destination?.connector_instance;
+  };
+
   const createDeployment = (type) => {
     const workflowId = details?.id;
     if (!workflowId) {
@@ -363,7 +385,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
                   ? getInputFile(true, false, 4)
                   : handleWfExecution(true, false, 4)
               }
-              disabled={handleDisable(4)}
+              disabled={disableAction() || handleDisable(4)}
               loading={execType === "NORMAL"}
             >
               <PlayCircleOutlined />
@@ -377,7 +399,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
                   ? getInputFile(true, true, 0)
                   : handleWfExecution(true, true, 0)
               }
-              disabled={handleDisable(0)}
+              disabled={disableAction() || handleDisable(0)}
               loading={execType === "STEP"}
             >
               <StepIcon className="step-icon" />
@@ -416,7 +438,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
               <ClearOutlined />
             </Button>
           </Tooltip>
-          <Tooltip title="Clear File Marker">
+          <Tooltip title="Clear Processed File History">
             <Button disabled={isLoading} onClick={handleClearFileMarker}>
               <HistoryOutlined />
             </Button>
@@ -424,7 +446,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           <Divider type="vertical" />
           <Tooltip title="Deploy as API">
             <Button
-              disabled={!apiOpsPresent}
+              disabled={isIncompleteWorkflow() || !apiOpsPresent}
               onClick={() => createDeployment("API")}
             >
               <ApiOutlined />
@@ -432,7 +454,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           </Tooltip>
           <Tooltip title="Deploy as ETL Pipeline">
             <Button
-              disabled={!canAddETLPipeline}
+              disabled={isIncompleteWorkflow() || !canAddETLPipeline}
               onClick={() => createDeployment("ETL")}
             >
               <DeploymentUnitOutlined />
@@ -440,7 +462,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           </Tooltip>
           <Tooltip title="Deploy as Task Pipeline">
             <Button
-              disabled={!canAddTaskPipeline}
+              disabled={isIncompleteWorkflow() || !canAddTaskPipeline}
               onClick={() => createDeployment("TASK")}
             >
               <ApiOutlined />

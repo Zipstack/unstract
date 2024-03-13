@@ -15,6 +15,8 @@ import { useEffect, useState } from "react";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./PipelinesOrDeployments.css";
 import { listOfAppDeployments } from "../../../helpers/GetStaticData";
+
+import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
@@ -28,10 +30,10 @@ function PipelinesOrDeployments({ type }) {
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [selectedPorD, setSelectedPorD] = useState({});
 
+  // TODO: add appdeployment management logic when it is available
   useEffect(() => {
     setHeaderText("App Deployments");
     setModalTitle("Deploy App");
-    setTableData(listOfAppDeployments);
   }, [type]);
 
   const actionItems = [
@@ -224,7 +226,6 @@ function PipelinesOrDeployments({ type }) {
       ),
     },
   ];
-
   return (
     <div className="p-or-d-layout">
       <ToolNavBar
@@ -235,6 +236,7 @@ function PipelinesOrDeployments({ type }) {
               type="primary"
               icon={<PlusOutlined />}
               onClick={() => setOpenEtlOrTaskModal(true)}
+              disabled={true}
             >
               App Deployment
             </CustomButton>
@@ -244,14 +246,18 @@ function PipelinesOrDeployments({ type }) {
       <div className="p-or-d-body1">
         <div className="p-or-d-body2">
           <div className="p-or-d-table">
-            <div>
-              <Table
-                size="small"
-                columns={columns}
-                dataSource={tableData}
-                rowKey="id"
-              />
-            </div>
+            {!tableData || tableData?.length === 0 ? (
+              <EmptyState text="Coming soon" />
+            ) : (
+              <div>
+                <Table
+                  size="small"
+                  columns={columns}
+                  dataSource={tableData}
+                  rowKey="id"
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -289,7 +289,7 @@ function Pipelines({ type }) {
             <HighlightOutlined />
           </div>
           <div>
-            <Typography.Text>Clear File Marker</Typography.Text>
+            <Typography.Text>Clear Processed File History</Typography.Text>
           </div>
         </Space>
       ),

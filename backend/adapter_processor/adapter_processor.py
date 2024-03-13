@@ -9,11 +9,9 @@ from adapter_processor.exceptions import (
     InternalServiceError,
     InValidAdapterId,
     TestAdapterException,
-    TestAdapterInputException,
 )
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
-from platform_settings.exceptions import ActiveKeyNotFound, InvalidRequest
 from platform_settings.platform_auth_service import (
     PlatformAuthenticationService,
 )
@@ -119,18 +117,8 @@ class AdapterProcessor:
             test_result: bool = adapter_instance.test_connection()
             logger.info(f"{adapter_id} test result: {test_result}")
             return test_result
-        except ActiveKeyNotFound:
-            raise ActiveKeyNotFound()
-        except InvalidRequest as e:
-            raise InvalidRequest(str(e.detail))
-        except Exception as e:
-            logger.error(f"Error while testing : {adapter_id}: {e}")
-            if isinstance(e, AdapterError):
-                raise TestAdapterInputException(e.message)
-            elif isinstance(e, ActiveKeyNotFound):
-                raise e
-            else:
-                raise TestAdapterException(str(e))
+        except AdapterError as e:
+            raise TestAdapterException(str(e))
 
     @staticmethod
     def __fetch_adapters_by_key_value(key: str, value: Any) -> Adapter:
@@ -156,6 +144,8 @@ class AdapterProcessor:
                     adapter_type = AdapterTypes.EMBEDDING.name
                 elif key == AdapterKeys.VECTOR_DB_DEFAULT:
                     adapter_type = AdapterTypes.VECTOR_DB.name
+                elif key == AdapterKeys.X2TEXT_DEFAULT:
+                    adapter_type = AdapterTypes.X2TEXT.name
 
                 filter_params["adapter_type"] = adapter_type
                 filter_params["is_default"] = True
