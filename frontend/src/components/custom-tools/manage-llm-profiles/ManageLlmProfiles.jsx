@@ -1,5 +1,5 @@
 import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
-import { Button, Radio, Space, Table, Typography } from "antd";
+import { Button, Radio, Table, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -8,10 +8,11 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
-import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./ManageLlmProfiles.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { AddLlmProfileModal } from "../add-llm-profile-modal/AddLlmProfileModal";
+import { CustomButton } from "../../widgets/custom-button/CustomButton";
 
 const columns = [
   {
@@ -58,13 +59,9 @@ const columns = [
     align: "center",
   },
 ];
-function ManageLlmProfiles({
-  setOpen,
-  setOpenLlm,
-  setEditLlmProfileId,
-  setModalTitle,
-}) {
+function ManageLlmProfiles({ editLlmProfileId, setEditLlmProfileId }) {
   const [rows, setRows] = useState([]);
+  const [isAddLlm, setIsAddLlm] = useState(false);
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
   const { details, defaultLlmProfile, updateCustomTool, llmProfiles } =
@@ -105,7 +102,7 @@ function ManageLlmProfiles({
   };
 
   useEffect(() => {
-    const modifiedRows = llmProfiles.map((item, index) => {
+    const modifiedRows = llmProfiles.map((item) => {
       return {
         key: item?.profile_id,
         name: item?.profile_name || "",
@@ -143,15 +140,9 @@ function ManageLlmProfiles({
     setRows(modifiedRows);
   }, [llmProfiles, defaultLlmProfile]);
 
-  const handleAddNewLlm = () => {
-    setOpen(false);
-    setOpenLlm(true);
-  };
-
   const handleEdit = (id) => {
     setEditLlmProfileId(id);
-    setModalTitle("Manage LLM profile");
-    handleAddNewLlm();
+    setIsAddLlm(true);
   };
 
   const handleDelete = (id) => {
@@ -184,6 +175,16 @@ function ManageLlmProfiles({
       });
   };
 
+  if (isAddLlm) {
+    return (
+      <AddLlmProfileModal
+        editLlmProfileId={editLlmProfileId}
+        setEditLlmProfileId={setEditLlmProfileId}
+        setIsAddLlm={setIsAddLlm}
+      />
+    );
+  }
+
   return (
     <div>
       <div className="pre-post-amble-body">
@@ -193,7 +194,6 @@ function ManageLlmProfiles({
               LLM Profiles Manager
             </Typography.Text>
           </div>
-          <div className="add-cus-tool-gap" />
           <div>
             <Table
               columns={columns}
@@ -206,23 +206,18 @@ function ManageLlmProfiles({
           </div>
         </SpaceWrapper>
       </div>
-      <div className="pre-post-amble-footer display-flex-right">
-        <Space>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <CustomButton type="primary" onClick={handleAddNewLlm}>
-            Add New LLM Profile
-          </CustomButton>
-        </Space>
+      <div className="display-flex-right">
+        <CustomButton type="primary" onClick={() => setIsAddLlm(true)}>
+          Add New LLM Profile
+        </CustomButton>
       </div>
     </div>
   );
 }
 
 ManageLlmProfiles.propTypes = {
-  setOpen: PropTypes.func.isRequired,
-  setOpenLlm: PropTypes.func.isRequired,
+  editLlmProfileId: PropTypes.string,
   setEditLlmProfileId: PropTypes.func.isRequired,
-  setModalTitle: PropTypes.func.isRequired,
 };
 
 export { ManageLlmProfiles };
