@@ -1,11 +1,10 @@
 import PropTypes from "prop-types";
+import { Typography } from "antd";
 
 import { ListView } from "../../widgets/list-view/ListView";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import "./ViewTools.css";
 import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
-
-import { Typography } from "antd";
 
 function ViewTools({
   isLoading,

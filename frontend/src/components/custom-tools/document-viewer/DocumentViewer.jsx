@@ -1,7 +1,8 @@
 import PropTypes from "prop-types";
+import { Typography } from "antd";
+
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
-import { Typography } from "antd";
 
 function DocumentViewer({
   children,
