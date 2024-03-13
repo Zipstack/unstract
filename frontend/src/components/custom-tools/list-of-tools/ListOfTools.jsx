@@ -171,7 +171,7 @@ function ListOfTools() {
         icon={<PlusOutlined />}
         onClick={showAddTool}
       >
-        New Tool
+        New Project
       </CustomButton>
     );
   };
