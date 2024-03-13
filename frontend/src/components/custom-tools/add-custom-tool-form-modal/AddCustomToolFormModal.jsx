@@ -6,7 +6,6 @@ import EmojiPicker from "emoji-picker-react";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import "./AddCustomToolFormModal.css";
-
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 const defaultFromDetails = {
   tool_name: "",
