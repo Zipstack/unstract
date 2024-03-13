@@ -29,7 +29,12 @@
     "no-mixed-operators": [2],
     "eqeqeq": [2],
     "func-names": "warn",
-    "import/no-unresolved": [1, { "caseSensitive": false }],
+    "import/no-unresolved": [
+      1,
+      {
+        "caseSensitive": false
+      }
+    ],
     "import/order": [
       "warn",
       {
@@ -43,13 +48,17 @@
           {
             "pattern": "*.json",
             "group": "index",
-            "patternOptions": { "matchBase": true },
+            "patternOptions": {
+              "matchBase": true
+            },
             "position": "after"
           },
           {
             "pattern": "*.css",
             "group": "index",
-            "patternOptions": { "matchBase": true },
+            "patternOptions": {
+              "matchBase": true
+            },
             "position": "after"
           }
         ],
@@ -60,10 +69,12 @@
   "settings": {
     "react": {
       "version": "detect"
+    },
+    "import/resolver": {
+      "node": {
+        "extensions": [".js", ".jsx"]
+      }
     }
   },
-  "ignorePatterns": [
-    "node_modules",
-    "build"
-  ]
+  "ignorePatterns": ["node_modules", "build"]
 }

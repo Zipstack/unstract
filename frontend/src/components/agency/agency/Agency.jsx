@@ -1,11 +1,4 @@
 import { Button, Collapse, Layout, Modal } from "antd";
-
-import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
-import { DisplayLogs } from "../../custom-tools/display-logs/DisplayLogs";
-import { Actions } from "../actions/Actions";
-import { WorkflowExecution } from "../workflow-execution/WorkflowExecution";
-import "./Agency.css";
-
 import {
   FullscreenExitOutlined,
   FullscreenOutlined,
@@ -15,6 +8,11 @@ import {
 import Sider from "antd/es/layout/Sider";
 import { useEffect, useState } from "react";
 
+import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
+import { DisplayLogs } from "../../custom-tools/display-logs/DisplayLogs";
+import { Actions } from "../actions/Actions";
+import { WorkflowExecution } from "../workflow-execution/WorkflowExecution";
+import "./Agency.css";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
