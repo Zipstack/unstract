@@ -250,9 +250,16 @@ class AdapterProcessor:
             marked as default.
         """
         try:
-            adapters: list[AdapterInstance] = AdapterInstance.objects.filter(
-                is_default=True, created_by=user
-            )
+            adapters: list[AdapterInstance] = []
+            default_adapter = UserDefaultAdapter.objects.get(user=user)
+
+            if default_adapter.default_embedding_adapter:
+                adapters.append(default_adapter.default_embedding_adapter)
+            if default_adapter.default_llm_adapter:
+                adapters.append(default_adapter.default_llm_adapter)
+            if default_adapter.default_vector_db_adapter:
+                adapters.append(default_adapter.default_vector_db_adapter)
+
             return adapters
         except ObjectDoesNotExist as e:
             logger.error(f"No default adapters found: {e}")
