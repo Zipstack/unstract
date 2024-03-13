@@ -71,7 +71,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
 
     setMenuItems(items);
     setComponents(listOfComponents);
-  }, []);
+  }, [llmItems]);
 
   useEffect(() => {
     getLlmProfilesDropdown();
