@@ -16,7 +16,6 @@ import { PromptCard } from "../prompt-card/PromptCard";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function DocumentParser({
-  setOpenAddLlmModal,
   addPromptInstance,
   scrollToBottom,
   setScrollToBottom,
@@ -222,7 +221,6 @@ function DocumentParser({
                 promptDetails={item}
                 handleChange={handleChange}
                 handleDelete={handleDelete}
-                setOpenAddLlmModal={setOpenAddLlmModal}
                 updateStatus={updateStatus}
                 updatePlaceHolder="Enter Prompt"
               />
@@ -245,7 +243,6 @@ function DocumentParser({
 }
 
 DocumentParser.propTypes = {
-  setOpenAddLlmModal: PropTypes.func.isRequired,
   addPromptInstance: PropTypes.func.isRequired,
   scrollToBottom: PropTypes.bool.isRequired,
   setScrollToBottom: PropTypes.func.isRequired,
