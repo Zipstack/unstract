@@ -1,9 +1,9 @@
 import { Card, Col, Row, Typography } from "antd";
 import PropTypes from "prop-types";
+import { useDrag } from "react-dnd";
 
 import "./ToolInfoCard.css";
 import { ToolIcon } from "../tool-icon/ToolIcon";
-import { useDrag } from "react-dnd";
 
 function ToolInfoCard({ toolInfo }) {
   const [, ref] = useDrag({

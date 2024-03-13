@@ -1,8 +1,9 @@
+import { useEffect, useState } from "react";
+
 import { OutputAnalyzerHeader } from "../output-analyzer-header/OutputAnalyzerHeader";
 import "./OutputAnalyzerList.css";
 import { OutputAnalyzerCard } from "../output-analyzer-card/OutputAnalyzerCard";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { useEffect, useState } from "react";
 import { promptType } from "../../../helpers/GetStaticData";
 
 function OutputAnalyzerList() {
