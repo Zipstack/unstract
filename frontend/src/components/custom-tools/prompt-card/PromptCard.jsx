@@ -308,7 +308,7 @@ function PromptCard({
       .then((res) => {
         const data = res?.data;
         const value = data[promptDetails?.prompt_key];
-        if (value !== null && String(value)?.length > 0) {
+        if (value || value === 0) {
           setCoverage((prev) => prev + 1);
         }
 
@@ -394,7 +394,7 @@ function PromptCard({
         .then((res) => {
           const data = res?.data;
           const outputValue = data[promptDetails?.prompt_key];
-          if (outputValue !== null && String(outputValue)?.length > 0) {
+          if (outputValue || outputValue === 0) {
             setCoverage((prev) => prev + 1);
           }
 
