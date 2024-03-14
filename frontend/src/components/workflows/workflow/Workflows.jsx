@@ -218,6 +218,7 @@ function Workflows() {
               titleProp="workflow_name"
               descriptionProp="description"
               idProp="id"
+              type="Workflow"
             />
           )}
           {editingProject && (

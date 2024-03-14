@@ -221,6 +221,7 @@ function ToolSettings({ type }) {
               isClickable={false}
               handleShare={handleShare}
               showOwner={true}
+              type="Adapter"
             />
           </div>
         </div>

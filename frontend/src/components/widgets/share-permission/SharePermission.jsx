@@ -43,11 +43,9 @@ function SharePermission({
   }, [permissionEdit, adapter, allUsers, selectedUsers]);
 
   useEffect(() => {
-    console.log(adapter);
     if (adapter && adapter.shared_users) {
       setSelectedUsers(
         adapter.shared_users.map((user) => {
-          console.log(user);
           if (user?.id !== undefined) {
             return user.id.toString();
           } else {
@@ -151,7 +149,6 @@ function SharePermission({
                   const user = allUsers.find(
                     (u) => u.id.toString() === userId.toString()
                   );
-                  console.log(user);
                   return {
                     id: user.id,
                     email: user.email,

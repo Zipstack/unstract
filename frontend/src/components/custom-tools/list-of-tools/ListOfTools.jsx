@@ -195,6 +195,7 @@ function ListOfTools() {
               descriptionProp="description"
               iconProp="icon"
               idProp="tool_id"
+              type="Prompt Project"
             />
           </div>
         </div>

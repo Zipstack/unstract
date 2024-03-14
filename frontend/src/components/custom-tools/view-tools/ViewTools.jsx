@@ -22,6 +22,7 @@ function ViewTools({
   isClickable = true,
   handleShare,
   showOwner,
+  type,
 }) {
   if (isLoading) {
     return <SpinnerLoader />;
@@ -60,6 +61,7 @@ function ViewTools({
       isClickable={isClickable}
       handleShare={handleShare}
       showOwner={showOwner}
+      type={type}
     />
   );
 }
@@ -79,6 +81,7 @@ ViewTools.propTypes = {
   centered: PropTypes.bool,
   isClickable: PropTypes.bool,
   showOwner: PropTypes.bool,
+  type: PropTypes.string.isRequired,
 };
 
 export { ViewTools };

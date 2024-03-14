@@ -23,6 +23,7 @@ function ListView({
   centered,
   isClickable = true,
   showOwner = true,
+  type,
 }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
@@ -111,8 +112,8 @@ function ListView({
           )}
           <Popconfirm
             key={`${item.id}-delete`}
-            title="Delete the tool"
-            description="Are you sure to delete this tool?"
+            title={`Delete the ${type}`}
+            description={`Are you sure to delete ${item[titleProp]}`}
             okText="Yes"
             cancelText="No"
             icon={<QuestionCircleOutlined />}
@@ -145,7 +146,6 @@ function ListView({
           <List.Item
             key={item?.id}
             onClick={(event) => {
-              console.log(isClickable);
               isClickable
                 ? navigate(`${item[idProp]}`)
                 : handleShareClick(event, item, false);
@@ -175,6 +175,7 @@ ListView.propTypes = {
   centered: PropTypes.bool,
   isClickable: PropTypes.bool,
   showOwner: PropTypes.bool,
+  type: PropTypes.string,
 };
 
 export { ListView };
