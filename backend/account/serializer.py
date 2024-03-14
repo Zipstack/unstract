@@ -1,10 +1,9 @@
 import re
-from account.constants import SubscriptionKeys
 
 # from account.enums import Region
 from account.models import Organization, User
-from account.subscription_loader import SubscriptionConfig
 from rest_framework import serializers
+
 
 class OrganizationSignupSerializer(serializers.Serializer):
     name = serializers.CharField(required=True, max_length=150)
@@ -14,7 +13,8 @@ class OrganizationSignupSerializer(serializers.Serializer):
     def validate_organization_id(self, value):  # type: ignore
         if not re.match(r"^[a-z0-9_-]+$", value):
             raise serializers.ValidationError(
-                "organization_code should only contain alphanumeric characters,_ and -."
+                "organization_code should only contain alphanumeric "
+                "characters,_ and -."
             )
         return value
 
