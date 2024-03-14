@@ -4,6 +4,7 @@ services:
   db:
     image: 'postgres:15.6'
     container_name: unstract-db
+    restart: always 
     # set shared memory limit when using docker-compose
     shm_size: 128mb
     ports:
@@ -15,7 +16,7 @@ services:
       - ./essentials.env
     labels:
       - traefik.enable=false
-    restart: always 
+    
   redis:
     image: "redis:7.2.3"
     container_name: unstract-redis
@@ -33,6 +34,7 @@ services:
     image: 'minio/minio:latest'
     container_name: unstract-minio
     hostname: minio
+    restart: always
     ports:
       - '9000:9000'
       - '9001:9001'
@@ -50,6 +52,7 @@ services:
     # The official v2 Traefik docker image
     image: traefik:v2.10
     container_name: unstract-proxy
+    restart: always
     # - Enables the web UI.
     # - Tells Traefik to use docker and file providers.
     # - Direct Traefik to the correct network for docker provider.
@@ -99,6 +102,7 @@ services:
       - optional
     image: downloads.unstructured.io/unstructured-io/unstructured-api:0.0.61
     container_name: unstract-unstructured-io
+    restart: always
     ports: # Forwarded to available host ports
       - "8083:8000"
     labels:
@@ -108,6 +112,7 @@ services:
     # Vector DB for doc indexer
     image: 'qdrant/qdrant'
     container_name: unstract-vector-db
+    restart: always
     ports:
       - "6333:6333"
     volumes:
