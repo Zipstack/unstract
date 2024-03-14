@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
+from adapter_processor.models import AdapterInstance
 from django.conf import settings
 from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.prompt_profile_manager.models import ProfileManager
@@ -31,7 +32,7 @@ from unstract.sdk.exceptions import SdkError
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
-from adapter_processor.models import AdapterInstance
+
 from unstract.core.pubsub_helper import LogHelper as stream_log
 
 CHOICES_JSON = "/static/select_choices.json"
