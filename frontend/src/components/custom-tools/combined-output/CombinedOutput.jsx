@@ -99,7 +99,7 @@ function CombinedOutput({ docId, setFilledFields }) {
       .finally(() => {
         setIsOutputLoading(false);
       });
-  }, [docId]);
+  }, [docId, isSinglePassExtract]);
 
   useEffect(() => {
     Prism.highlightAll();
@@ -126,6 +126,7 @@ function CombinedOutput({ docId, setFilledFields }) {
   };
 
   const runSinglePassExtraction = () => {
+    setCombinedOutput({});
     const body = {
       document_id: docId,
       tool_id: details?.tool_id,
