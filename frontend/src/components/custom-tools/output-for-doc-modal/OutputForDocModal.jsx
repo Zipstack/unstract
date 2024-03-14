@@ -72,7 +72,7 @@ function OutputForDocModal({
       const output = data.find(
         (outputValue) => outputValue?.document_manager === item?.document_id
       );
-      const isSuccess = output?.output?.length > 0;
+      const isSuccess = output?.output || output?.output === 0;
 
       const result = {
         key: item,

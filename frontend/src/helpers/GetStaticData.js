@@ -347,6 +347,12 @@ const getMenuItem = (label, key, icon, children, type) => {
   };
 };
 
+const docIndexStatus = {
+  yet_to_start: "YET_TO_START",
+  indexing: "INDEXING",
+  done: "DONE",
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -379,4 +385,5 @@ export {
   getBackendErrorDetail,
   titleCase,
   getMenuItem,
+  docIndexStatus,
 };
