@@ -86,9 +86,7 @@ function ListView({
                   ? item?.created_by_email === sessionDetails.email
                     ? "Me"
                     : item?.created_by_email
-                  : item === sessionDetails.email
-                  ? "Me"
-                  : item}
+                  : "-"}
               </Typography.Text>
             </div>
           )}
