@@ -181,6 +181,7 @@ function ManageLlmProfiles() {
         editLlmProfileId={editLlmProfileId}
         setEditLlmProfileId={setEditLlmProfileId}
         setIsAddLlm={setIsAddLlm}
+        handleDefaultLlm={handleDefaultLlm}
       />
     );
   }

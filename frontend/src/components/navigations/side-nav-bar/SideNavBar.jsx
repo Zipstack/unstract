@@ -15,6 +15,7 @@ import LlmIcon from "../../../assets/llm.svg";
 import PlatformSettingsIcon from "../../../assets/platform-settings.svg";
 import task from "../../../assets/task.svg";
 import VectorDbIcon from "../../../assets/vector-db.svg";
+import TextExtractorIcon from "../../../assets/text-extractor.svg";
 import { useSessionStore } from "../../../store/session-store";
 
 const SideNavBar = ({ collapsed }) => {
@@ -124,7 +125,7 @@ const SideNavBar = ({ collapsed }) => {
           id: 3.4,
           title: "Text Extractor",
           description: "Setup platform wide access to Text extractor services",
-          image: EmbeddingIcon,
+          image: TextExtractorIcon,
           path: `/${orgName}/settings/textExtractor`,
           active: window.location.pathname.startsWith(
             `/${orgName}/settings/textExtractor`
@@ -132,16 +133,6 @@ const SideNavBar = ({ collapsed }) => {
         },
         {
           id: 3.5,
-          title: "OCR",
-          description: "Setup platform wide access to OCR services",
-          image: EmbeddingIcon,
-          path: `/${orgName}/settings/ocr`,
-          active: window.location.pathname.startsWith(
-            `/${orgName}/settings/ocr`
-          ),
-        },
-        {
-          id: 3.6,
           title: "Platform",
           description: "Settings for the platform",
           image: PlatformSettingsIcon,
