@@ -204,7 +204,7 @@ function ManageDocsModal({
       ),
       dataIndex: "index",
       key: "index",
-      width: 250,
+      width: 260,
     },
     {
       title: "",
@@ -236,7 +236,7 @@ function ManageDocsModal({
       ),
       dataIndex: "summary",
       key: "summary",
-      width: 250,
+      width: 260,
     });
   }
 
