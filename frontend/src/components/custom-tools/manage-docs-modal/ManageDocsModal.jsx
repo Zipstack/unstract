@@ -148,6 +148,7 @@ function ManageDocsModal({
 
   const handleGetIndexStatus = (llmProfileId, indexType) => {
     if (!llmProfileId) {
+      handleIndexStatus(indexType, []);
       return;
     }
 
@@ -271,7 +272,9 @@ function ManageDocsModal({
             onClick={() => generateIndex(item)}
             disabled={
               disableLlmOrDocChange?.length > 0 ||
-              indexDocs.includes(item?.document_id)
+              indexDocs.includes(item?.document_id) ||
+              isUploading ||
+              !defaultLlmProfile
             }
           />
         ),
@@ -285,7 +288,9 @@ function ManageDocsModal({
               className="display-flex-align-center"
               disabled={
                 disableLlmOrDocChange?.length > 0 ||
-                indexDocs.includes(item?.document_id)
+                indexDocs.includes(item?.document_id) ||
+                isUploading ||
+                !defaultLlmProfile
               }
             >
               <DeleteOutlined className="manage-llm-pro-icon" />
