@@ -5,24 +5,22 @@ import traceback
 import uuid
 from typing import Any, Optional
 
-from account.cache_service import CacheService
 from account.models import Organization
 from api.models import APIDeployment
 from celery import current_task
 from celery import exceptions as celery_exceptions
 from celery import shared_task
 from celery.result import AsyncResult
-from django.conf import settings
 from django.db import IntegrityError, connection
 from django_tenants.utils import get_tenant_model, tenant_context
 from pipeline.models import Pipeline
-from redis import StrictRedis
 from rest_framework import serializers
 from tool_instance.constants import ToolInstanceKey
 from tool_instance.models import ToolInstance
 from tool_instance.tool_instance_helper import ToolInstanceHelper
 from unstract.workflow_execution.enums import LogComponent, LogState
 from unstract.workflow_execution.exceptions import StopExecution
+from utils.cache_service import CacheService
 from workflow_manager.endpoint.destination import DestinationConnector
 from workflow_manager.endpoint.source import SourceConnector
 from workflow_manager.workflow.constants import (
@@ -203,10 +201,10 @@ class WorkflowHelper:
         workflow_execution: Optional[WorkflowExecution] = None,
         execution_mode: Optional[tuple[str, str]] = None,
     ) -> ExecutionResponse:
-        tool_instances: list[ToolInstance] = (
-            ToolInstanceHelper.get_tool_instances_by_workflow(
-                workflow.id, ToolInstanceKey.STEP
-            )
+        tool_instances: list[
+            ToolInstance
+        ] = ToolInstanceHelper.get_tool_instances_by_workflow(
+            workflow.id, ToolInstanceKey.STEP
         )
         execution_mode = execution_mode or WorkflowExecution.Mode.INSTANT
         execution_service = WorkflowHelper.build_workflow_execution_service(
@@ -536,14 +534,11 @@ class WorkflowHelper:
                 != WorkflowExecution.Type.STEP
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
-            cache_service = CacheService()
-            current_action: Optional[str] = cache_service.get_a_key(
-                execution_id
-            )
+            current_action: Optional[str] = CacheService.get_key(execution_id)
             logger.info(f"workflow_execution.current_action {current_action}")
             if current_action is None:
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
-            cache_service.set_a_key(execution_id, execution_action)
+            CacheService.set_key(execution_id, execution_action)
             workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
 
             return ExecutionResponse(
@@ -583,23 +578,10 @@ class WorkflowHelper:
     @staticmethod
     def clear_cache(workflow_id: str) -> dict[str, Any]:
         """Function to clear cache with a specific pattern."""
-
-        # TODO: Clear this section if not needed
-        cache = StrictRedis(
-            host=settings.REDIS_HOST,
-            port=int(settings.REDIS_PORT),
-            password=settings.REDIS_PASSWORD,
-            username=settings.REDIS_USER,
-        )
         response: dict[str, Any] = {}
         try:
-            keys = cache.scan_iter(f"cache:{workflow_id}*")
-            for key in keys:
-                if cache.get(key):
-                    cache.delete(key)
-                    logger.info(f"Successfully Cleared Cache, deleted {key!r}")
-                else:
-                    logger.info(f"No key {key!r} exists in cache")
+            key_pattern = f"*:cache:{workflow_id}:*"
+            CacheService.clear_cache(key_pattern)
             response["message"] = WorkflowMessages.CACHE_CLEAR_SUCCESS
             response["status"] = 200
             return response
