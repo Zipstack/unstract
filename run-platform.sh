@@ -100,12 +100,11 @@ parse_args() {
 }
 
 setup_env() {
+  # Generate Fernet Key. Refer https://pypi.org/project/cryptography/. for both backend and platform-service.
+  ENCRYPTION_KEY=$(python3 -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
   for service in "${services[@]}"; do
     sample_env_path="$script_dir/$service/sample.env"
     env_path="$script_dir/$service/.env"
-
-    # Generate Fernet Key. Refer https://pypi.org/project/cryptography/.
-    ENCRYPTION_KEY=$(python3 -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
 
     if [ -e "$sample_env_path" ] && [ ! -e "$env_path" ]; then
       cp "$sample_env_path" "$env_path"
