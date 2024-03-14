@@ -33,7 +33,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 let SummarizeStatusTitle = null;
 try {
   SummarizeStatusTitle =
-    require("../../../plugins/summarize-status-title/SummarizeStatusTitle").SummarizeStatusTitle;
+    require("../../../plugins/summarize-status-title/SummarizeStatusTitle111").SummarizeStatusTitle;
 } catch {
   // The component will remain null if it is not available
 }
@@ -266,35 +266,39 @@ function ManageDocsModal({
         reindex: indexDocs.includes(item?.document_id) ? (
           <SpinnerLoader />
         ) : (
-          <Button
-            size="small"
-            icon={<ReloadOutlined />}
-            onClick={() => generateIndex(item)}
-            disabled={
-              disableLlmOrDocChange?.length > 0 ||
-              indexDocs.includes(item?.document_id) ||
-              isUploading ||
-              !defaultLlmProfile
-            }
-          />
-        ),
-        delete: (
-          <ConfirmModal
-            handleConfirm={() => handleDelete(item?.document_id)}
-            content="The document will be permanently deleted."
-          >
+          <Tooltip title="Index">
             <Button
               size="small"
-              className="display-flex-align-center"
+              icon={<ReloadOutlined />}
+              onClick={() => generateIndex(item)}
               disabled={
                 disableLlmOrDocChange?.length > 0 ||
                 indexDocs.includes(item?.document_id) ||
                 isUploading ||
                 !defaultLlmProfile
               }
-            >
-              <DeleteOutlined className="manage-llm-pro-icon" />
-            </Button>
+            />
+          </Tooltip>
+        ),
+        delete: (
+          <ConfirmModal
+            handleConfirm={() => handleDelete(item?.document_id)}
+            content="The document will be permanently deleted."
+          >
+            <Tooltip title="Delete">
+              <Button
+                size="small"
+                className="display-flex-align-center"
+                disabled={
+                  disableLlmOrDocChange?.length > 0 ||
+                  indexDocs.includes(item?.document_id) ||
+                  isUploading ||
+                  !defaultLlmProfile
+                }
+              >
+                <DeleteOutlined className="manage-llm-pro-icon" />
+              </Button>
+            </Tooltip>
           </ConfirmModal>
         ),
         select: (
