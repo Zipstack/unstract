@@ -135,7 +135,7 @@ OutputForDocModal.propTypes = {
   setOpen: PropTypes.func.isRequired,
   promptId: PropTypes.string.isRequired,
   promptKey: PropTypes.string.isRequired,
-  profileManagerId: PropTypes.string.isRequired,
+  profileManagerId: PropTypes.string,
 };
 
 export { OutputForDocModal };
