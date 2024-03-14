@@ -95,7 +95,7 @@ function ToolSettings({ type }) {
   const handleDelete = (_event, adapter) => {
     const requestOptions = {
       method: "DELETE",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter.id}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter?.id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -104,7 +104,7 @@ function ToolSettings({ type }) {
     setIsLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        const filteredList = tableRows.filter((row) => row?.id !== adapter.id);
+        const filteredList = tableRows.filter((row) => row?.id !== adapter?.id);
         setTableRows(filteredList);
         setAlertDetails({
           type: "success",
@@ -132,7 +132,7 @@ function ToolSettings({ type }) {
     axiosPrivate(requestOptions)
       .then((res) => {
         setopenSharePermissionModal(true);
-        setAdapterDetails(res.data);
+        setAdapterDetails(res?.data);
         setIsPermissionEdit(isEdit);
       })
       .catch((err) => {
@@ -155,8 +155,8 @@ function ToolSettings({ type }) {
         const users = response?.data?.members || [];
         setUserList(
           users.map((user) => ({
-            id: user.id,
-            email: user.email,
+            id: user?.id,
+            email: user?.email,
           }))
         );
       })
@@ -171,7 +171,7 @@ function ToolSettings({ type }) {
   const onShare = (userIds, adapter) => {
     const requestOptions = {
       method: "PATCH",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter.id}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter?.id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },

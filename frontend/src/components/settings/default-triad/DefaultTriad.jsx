@@ -70,8 +70,7 @@ function DefaultTriad() {
         setAlertDetails(
           handleException(err, "Failed to get the adapters list")
         );
-      })
-      .finally(() => {});
+      });
   };
 
   const fetchDetaultTriads = () => {
@@ -159,8 +158,7 @@ function DefaultTriad() {
         setAlertDetails(
           handleException(err, "Failed to update Default Triads")
         );
-      })
-      .finally(() => {});
+      });
   };
 
   return (
@@ -191,10 +189,10 @@ function DefaultTriad() {
                     style={{ width: "100%" }}
                   >
                     {dropdownData
-                      .filter((data) => data.adapter_type === type)
+                      .filter((data) => data?.adapter_type === type)
                       .map((data) => (
-                        <Option key={data.id} value={data.id}>
-                          {data.adapter_name}
+                        <Option key={data?.id} value={data?.id}>
+                          {data?.adapter_name}
                         </Option>
                       ))}
                   </Select>

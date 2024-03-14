@@ -28,12 +28,12 @@ function SharePermission({
       const users = allUsers.filter((user) => {
         if (adapter?.created_by?.id !== undefined) {
           return (
-            user.id !== adapter?.created_by?.id?.toString() &&
+            user?.id !== adapter?.created_by?.id?.toString() &&
             !selectedUsers.includes(user.id.toString())
           );
         } else {
           return (
-            user.id !== adapter?.created_by?.toString() &&
+            user?.id !== adapter?.created_by?.toString() &&
             !selectedUsers.includes(user.id.toString())
           );
         }
@@ -87,6 +87,7 @@ function SharePermission({
                 size={"middle"}
                 placeholder="Search"
                 value={null}
+                className="share-permission-search"
                 onChange={(selectedValue) => {
                   const isValueSelected = selectedUsers.includes(selectedValue);
                   if (!isValueSelected) {
@@ -94,7 +95,6 @@ function SharePermission({
                     setSelectedUsers([...selectedUsers, selectedValue]);
                   }
                 }}
-                style={{ width: "100%" }}
                 options={filteredUsers.map((user) => ({
                   label: user.email,
                   value: user.id,
