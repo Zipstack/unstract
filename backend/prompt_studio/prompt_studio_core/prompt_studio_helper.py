@@ -28,6 +28,7 @@ from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import
     PromptStudioIndexHelper,
 )
 from unstract.sdk.constants import LogLevel
+from unstract.sdk.exceptions import SdkError
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
@@ -152,7 +153,7 @@ class PromptStudioHelper:
         doc_id = PromptStudioHelper.dynamic_indexer(
             profile_manager=default_profile,
             tool_id=tool_id,
-            file_name=file_path,
+            file_path=file_path,
             org_id=org_id,
             document_id=document_id,
             is_summary=is_summary,
@@ -374,7 +375,7 @@ class PromptStudioHelper:
                 raise DefaultProfileError()
             PromptStudioHelper.dynamic_indexer(
                 profile_manager=prompt_profile_manager,
-                file_name=path,
+                file_path=path,
                 tool_id=str(tool.tool_id),
                 org_id=org_id,
                 document_id=document_id,
@@ -456,11 +457,28 @@ class PromptStudioHelper:
     def dynamic_indexer(
         profile_manager: ProfileManager,
         tool_id: str,
-        file_name: str,
+        file_path: str,
         org_id: str,
         document_id: str,
         is_summary: bool = False,
     ) -> str:
+        """Used to index a file based on the passed arguments.
+
+        This is useful when a file needs to be indexed dynamically as the
+        parameters meant for indexing changes. The file
+
+        Args:
+            profile_manager (ProfileManager): Profile manager instance that hold
+                values such as chunk size, chunk overlap and adapter IDs
+            tool_id (str): UUID of the prompt studio tool
+            file_path (str): Path to the file that needs to be indexed
+            org_id (str): ID of the organization
+            is_summary (bool, optional): Flag to ensure if extracted contents
+                need to be persisted.  Defaults to False.
+
+        Returns:
+            str: Index key for the combination of arguments
+        """
         try:
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = ToolIndex(tool=util)
@@ -470,38 +488,38 @@ class PromptStudioHelper:
         embedding_model = str(profile_manager.embedding_model.id)
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
-        file_hash = ToolUtils.get_hash_from_file(file_path=file_name)
+        file_hash = ToolUtils.get_hash_from_file(file_path=file_path)
         extract_file_path: Optional[str] = None
         if not is_summary:
-            directory, filename = os.path.split(file_name)
+            directory, filename = os.path.split(file_path)
             extract_file_path = os.path.join(
                 directory, "extract", os.path.splitext(filename)[0] + ".txt"
             )
         else:
             profile_manager.chunk_size = 0
-        doc_id = str(
-            tool_index.index_file(
+        try:
+            doc_id: str = tool_index.index_file(
                 tool_id=tool_id,
                 embedding_type=embedding_model,
                 vector_db=vector_db,
                 x2text_adapter=x2text_adapter,
-                file_path=file_name,
+                file_path=file_path,
                 file_hash=file_hash,
                 chunk_size=profile_manager.chunk_size,
                 chunk_overlap=profile_manager.chunk_overlap,
                 reindex=profile_manager.reindex,
                 output_file_path=extract_file_path,
             )
-        )
 
-        PromptStudioIndexHelper.handle_index_manager(
-            document_id=document_id,
-            is_summary=is_summary,
-            profile_manager=profile_manager,
-            doc_id=doc_id,
-        )
-
-        return doc_id
+            PromptStudioIndexHelper.handle_index_manager(
+                document_id=document_id,
+                is_summary=is_summary,
+                profile_manager=profile_manager,
+                doc_id=doc_id,
+            )
+            return doc_id
+        except SdkError as e:
+            raise IndexingError(str(e))
 
     @staticmethod
     def _fetch_single_pass_response(
@@ -529,7 +547,7 @@ class PromptStudioHelper:
 
         PromptStudioHelper.dynamic_indexer(
             profile_manager=default_profile,
-            file_name=file_path,
+            file_path=file_path,
             tool_id=tool_id,
             org_id=org_id,
             is_summary=tool.summarize_as_source,
