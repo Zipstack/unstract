@@ -16,6 +16,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
   const [prompts, setPrompts] = useState([]);
+  const [triggerRunSinglePass, setTriggerRunSinglePass] = useState(false);
   const [scrollToBottom, setScrollToBottom] = useState(false);
   const { sessionDetails } = useSessionStore();
   const {
@@ -90,6 +91,14 @@ function ToolsMain() {
     setPrompts(details?.prompts || []);
   }, [details]);
 
+  useEffect(() => {
+    if (!isSinglePassExtract) {
+      return;
+    }
+    setActiveKey("2");
+    setTriggerRunSinglePass((prev) => !prev);
+  }, [isSinglePassExtract]);
+
   const onChange = (key) => {
     setActiveKey(key);
   };
@@ -128,7 +137,6 @@ function ToolsMain() {
 
   const handleSinglePassExtraction = () => {
     updateCustomTool({ isSinglePassExtract: true });
-    setActiveKey("2");
   };
 
   return (
@@ -143,6 +151,7 @@ function ToolsMain() {
               icon={<PlayCircleOutlined />}
               onClick={handleSinglePassExtraction}
               loading={isSinglePassExtract}
+              disabled={disableLlmOrDocChange?.length > 0}
             />
           </Tooltip>
         </div>
@@ -156,7 +165,10 @@ function ToolsMain() {
           />
         )}
         {activeKey === "2" && (
-          <CombinedOutput docId={selectedDoc?.document_id} />
+          <CombinedOutput
+            docId={selectedDoc?.document_id}
+            triggerRunSinglePass={triggerRunSinglePass}
+          />
         )}
       </div>
       <div className="tools-main-footer">
