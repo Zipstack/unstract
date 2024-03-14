@@ -32,7 +32,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AssertionIcon } from "../../../assets";
 import {
   displayPromptResult,
-  handleException,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -45,6 +44,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 let EvalBtn = null;
 let EvalMetrics = null;
@@ -104,10 +104,12 @@ function PromptCard({
     details,
     disableLlmOrDocChange,
     indexDocs,
+    summarizeIndexStatus,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     if (promptDetails?.is_assert) {
@@ -179,6 +181,7 @@ function PromptCard({
   useEffect(() => {
     if (isCoverageLoading && coverageTotal === listOfDocs?.length) {
       setIsCoverageLoading(false);
+      setCoverageTotal(0);
     }
   }, [coverageTotal]);
 
@@ -281,6 +284,26 @@ function PromptCard({
       method = "PATCH";
       url += `${result?.promptOutputId}/`;
     }
+
+    const isSummaryIndexed = [...summarizeIndexStatus].find(
+      (item) =>
+        item?.docId === selectedDoc?.document_id && item?.isIndexed === true
+    );
+
+    if (
+      !isSummaryIndexed &&
+      details?.summarize_as_source &&
+      details?.summarize_llm_profile
+    ) {
+      // Summary needs to be indexed before running the prompt
+      handleUpdateOutput(null, selectedDoc?.document_id, [], method, url);
+      handleStepsAfterRunCompletion();
+      setAlertDetails({
+        type: "error",
+        content: `Summary needs to be indexed before running the prompt - ${selectedDoc?.document_name}.`,
+      });
+      return;
+    }
     handleRunApiRequest(selectedDoc?.document_id)
       .then((res) => {
         const data = res?.data;
@@ -313,10 +336,14 @@ function PromptCard({
         );
       })
       .finally(() => {
-        setIsRunLoading(false);
-        setCoverageTotal((prev) => prev + 1);
-        handleCoverage();
+        handleStepsAfterRunCompletion();
       });
+  };
+
+  const handleStepsAfterRunCompletion = () => {
+    setIsRunLoading(false);
+    setCoverageTotal(1);
+    handleCoverage();
   };
 
   // Get the coverage for all the documents except the one that's currently selected
@@ -330,6 +357,7 @@ function PromptCard({
       return;
     }
 
+    let totalCoverageValue = 1;
     listOfDocsToProcess.forEach((item) => {
       let method = "POST";
       let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/`;
@@ -339,6 +367,28 @@ function PromptCard({
       if (outputId?.promptOutputId?.length) {
         method = "PATCH";
         url += `${outputId?.promptOutputId}/`;
+      }
+
+      const isSummaryIndexed = [...summarizeIndexStatus].find(
+        (indexStatus) =>
+          indexStatus?.docId === item?.document_id &&
+          indexStatus?.isIndexed === true
+      );
+
+      if (
+        !isSummaryIndexed &&
+        details?.summarize_as_source &&
+        details?.summarize_llm_profile
+      ) {
+        // Summary needs to be indexed before running the prompt
+        handleUpdateOutput(null, item?.document_id, [], method, url);
+        totalCoverageValue++;
+        setCoverageTotal(totalCoverageValue);
+        setAlertDetails({
+          type: "error",
+          content: `Summary needs to be indexed before running the prompt - ${item?.document_name}.`,
+        });
+        return;
       }
       handleRunApiRequest(item?.document_id)
         .then((res) => {
@@ -372,7 +422,8 @@ function PromptCard({
           );
         })
         .finally(() => {
-          setCoverageTotal((prev) => prev + 1);
+          totalCoverageValue++;
+          setCoverageTotal(totalCoverageValue);
         });
     });
   };

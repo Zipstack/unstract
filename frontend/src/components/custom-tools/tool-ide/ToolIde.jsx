@@ -2,29 +2,25 @@ import { FullscreenExitOutlined, FullscreenOutlined } from "@ant-design/icons";
 import { Col, Collapse, Modal, Row } from "antd";
 import { useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import { AddLlmProfileModal } from "../add-llm-profile-modal/AddLlmProfileModal";
 import { CustomSynonymsModal } from "../custom-synonyms-modal/CustomSynonymsModal";
 import { DisplayLogs } from "../display-logs/DisplayLogs";
 import { DocumentManager } from "../document-manager/DocumentManager";
 import { Header } from "../header/Header";
-import { ManageLlmProfilesModal } from "../manage-llm-profiles-modal/ManageLlmProfilesModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { SettingsModal } from "../settings-modal/SettingsModal";
 
 function ToolIde() {
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [activeKey, setActiveKey] = useState([]);
   const [openCusSynonymsModal, setOpenCusSynonymsModal] = useState(false);
-  const [openManageLlmModal, setOpenManageLlmModal] = useState(false);
-  const [openAddLlmModal, setOpenAddLlmModal] = useState(false);
-  const [editLlmProfileId, setEditLlmProfileId] = useState(null);
-  const [modalTitle, setModalTitle] = useState("");
+  const [openSettings, setOpenSettings] = useState(false);
   const {
     details,
     updateCustomTool,
@@ -32,10 +28,13 @@ function ToolIde() {
     selectedDoc,
     listOfDocs,
     indexDocs,
+    pushIndexDoc,
+    deleteIndexDoc,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   const openLogsModal = () => {
     setShowLogsModal(true);
@@ -75,9 +74,8 @@ function ToolIde() {
 
   const generateIndex = async (doc) => {
     const docId = doc?.document_id;
-    const listOfIndexDocs = [...indexDocs];
 
-    if (listOfIndexDocs.includes(docId)) {
+    if (indexDocs.includes(docId)) {
       setAlertDetails({
         type: "error",
         content: "This document is already getting indexed",
@@ -89,6 +87,7 @@ function ToolIde() {
       tool_id: details?.tool_id,
       document_id: docId,
     };
+
     const requestOptions = {
       method: "POST",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/index-document/`,
@@ -99,8 +98,7 @@ function ToolIde() {
       data: body,
     };
 
-    listOfIndexDocs.push(docId);
-    updateCustomTool({ indexDocs: listOfIndexDocs });
+    pushIndexDoc(docId);
     return axiosPrivate(requestOptions)
       .then(() => {
         setAlertDetails({
@@ -114,10 +112,7 @@ function ToolIde() {
         );
       })
       .finally(() => {
-        const newListOfIndexDocs = [...indexDocs].filter(
-          (item) => item !== docId
-        );
-        updateCustomTool({ indexDocs: newListOfIndexDocs });
+        deleteIndexDoc(docId);
       });
   };
 
@@ -176,8 +171,8 @@ function ToolIde() {
       <div>
         <Header
           setOpenCusSynonymsModal={setOpenCusSynonymsModal}
-          setOpenManageLlmModal={setOpenManageLlmModal}
           handleUpdateTool={handleUpdateTool}
+          setOpenSettings={setOpenSettings}
         />
       </div>
       <div className="tool-ide-body">
@@ -185,7 +180,7 @@ function ToolIde() {
           <Row className="tool-ide-main">
             <Col span={12} className="tool-ide-col">
               <div className="tool-ide-prompts">
-                <ToolsMain setOpenAddLlmModal={setOpenAddLlmModal} />
+                <ToolsMain />
               </div>
             </Col>
             <Col span={12} className="tool-ide-col">
@@ -227,20 +222,10 @@ function ToolIde() {
         open={openCusSynonymsModal}
         setOpen={setOpenCusSynonymsModal}
       />
-      <ManageLlmProfilesModal
-        open={openManageLlmModal}
-        setOpen={setOpenManageLlmModal}
-        setOpenLlm={setOpenAddLlmModal}
-        setEditLlmProfileId={setEditLlmProfileId}
-        setModalTitle={setModalTitle}
-      />
-      <AddLlmProfileModal
-        open={openAddLlmModal}
-        setOpen={setOpenAddLlmModal}
-        editLlmProfileId={editLlmProfileId}
-        setEditLlmProfileId={setEditLlmProfileId}
-        modalTitle={modalTitle}
-        setModalTitle={setModalTitle}
+      <SettingsModal
+        open={openSettings}
+        setOpen={setOpenSettings}
+        handleUpdateTool={handleUpdateTool}
       />
     </div>
   );

@@ -108,8 +108,8 @@ REDIS_DB = os.environ.get("REDIS_DB", "")
 SESSION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "SESSION_EXPIRATION_TIME_IN_SECOND", 3600
 )
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", True)
+CSRF_COOKIE_SECURE = os.environ.get("CSRF_COOKIE_SECURE", True)
 
 PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
 API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
@@ -138,6 +138,8 @@ STRUCTURE_TOOL_IMAGE_NAME = get_required_setting("STRUCTURE_TOOL_IMAGE_NAME")
 STRUCTURE_TOOL_IMAGE_TAG = get_required_setting("STRUCTURE_TOOL_IMAGE_TAG")
 WORKFLOW_DATA_DIR = os.environ.get("WORKFLOW_DATA_DIR")
 API_STORAGE_DIR = os.environ.get("API_STORAGE_DIR")
+CACHE_TTL_SEC = os.environ.get("CACHE_TTL_SEC", 10800)
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
@@ -243,7 +245,7 @@ MIDDLEWARE = [
     "account.custom_auth_middleware.CustomAuthMiddleware",
     "middleware.exception.ExceptionLoggingMiddleware",
     "social_django.middleware.SocialAuthExceptionMiddleware",
-    "middleware.remove_allow_header.RemoveAllowHeaderMiddleware"
+    "middleware.remove_allow_header.RemoveAllowHeaderMiddleware",
 ]
 
 PUBLIC_SCHEMA_URLCONF = "backend.public_urls"
@@ -298,7 +300,7 @@ CACHES = {
             "USERNAME": REDIS_USER,
             "PASSWORD": REDIS_PASSWORD,
         },
-        "KEY_FUNCTION": "account.cache_service.custom_key_function",
+        "KEY_FUNCTION": "utils.cache_service.custom_key_function",
     }
 }
 
@@ -393,8 +395,7 @@ WHITELISTED_PATHS_LIST = [
     "/logout",
     "/signup",
 ]
-WHITELISTED_PATHS = [
-    f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
+WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
 # White lists workflow-api-deployment path
 WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
 

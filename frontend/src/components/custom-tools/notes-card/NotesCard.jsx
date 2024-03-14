@@ -6,10 +6,10 @@ import {
 } from "@ant-design/icons";
 import { Button, Card, Col, Row, Space, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
-
 import "./NotesCard.css";
-import { EditableText } from "../editable-text/EditableText";
 import { useState } from "react";
+
+import { EditableText } from "../editable-text/EditableText";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";
 

@@ -1,0 +1,6 @@
+/* Styles for SettingsModal */
+
+.settings-body-pad-top {
+    padding-top: 12px;
+    overflow-y: auto;
+}

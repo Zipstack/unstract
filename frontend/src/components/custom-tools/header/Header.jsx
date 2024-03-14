@@ -1,66 +1,30 @@
 import {
   ArrowLeftOutlined,
-  CodeOutlined,
-  DiffOutlined,
   EditOutlined,
   ExportOutlined,
-  FileTextOutlined,
-  MessageOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
 import { Button, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Header.css";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
-import { SelectLlmProfileModal } from "../select-llm-profile-modal/SelectLlmProfileModal";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
-let SummarizeHeader = null;
-
-try {
-  SummarizeHeader =
-    require("../../../plugins/summarize-header/SummarizeHeader").SummarizeHeader;
-} catch {
-  // The component will remain null of it is not available
-}
-
-function Header({
-  setOpenCusSynonymsModal,
-  setOpenManageLlmModal,
-  handleUpdateTool,
-}) {
-  const [openPreOrPostAmbleModal, setOpenPreOrPostAmbleModal] = useState(false);
-  const [openSummLlmProfileModal, setOpenSummLlmProfileModal] = useState(false);
-  const [preOrPostAmble, setPreOrPostAmble] = useState("");
+function Header({ setOpenSettings }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
-  const [summarizeLlmBtnText, setSummarizeLlmBtnText] = useState(null);
-  const [llmItems, setLlmItems] = useState([]);
-  const { details, llmProfiles } = useCustomToolStore();
+  const { details } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    getLlmProfilesDropdown();
-  }, [llmProfiles]);
-
-  const handleOpenPreOrPostAmbleModal = (type) => {
-    setOpenPreOrPostAmbleModal(true);
-    setPreOrPostAmble(type);
-  };
-
-  const handleClosePreOrPostAmbleModal = () => {
-    setOpenPreOrPostAmbleModal(false);
-    setPreOrPostAmble("");
-  };
+  const handleException = useExceptionHandler();
 
   const handleExport = () => {
     const requestOptions = {
@@ -84,16 +48,6 @@ function Header({
       });
   };
 
-  const getLlmProfilesDropdown = () => {
-    const items = [...llmProfiles].map((item) => {
-      return {
-        value: item?.profile_id,
-        label: item?.profile_name,
-      };
-    });
-    setLlmItems(items);
-  };
-
   return (
     <div className="custom-tools-header-layout">
       <div>
@@ -114,41 +68,12 @@ function Header({
         </Button>
       </div>
       <div className="custom-tools-header-btns">
-        {SummarizeHeader && (
-          <SummarizeHeader
-            setOpen={setOpenSummLlmProfileModal}
-            btnText={summarizeLlmBtnText}
-          />
-        )}
         <div>
-          <Button
-            onClick={() => setOpenCusSynonymsModal(true)}
-            icon={<MessageOutlined />}
-          >
-            Manage Grammar
-          </Button>
-        </div>
-        <div>
-          <Button
-            onClick={() => setOpenManageLlmModal(true)}
-            icon={<CodeOutlined />}
-          >
-            Manage LLM Profiles
-          </Button>
-        </div>
-        <div className="custom-tools-header-v-divider" />
-        <div>
-          <Tooltip title="Preamble">
-            <Button onClick={() => handleOpenPreOrPostAmbleModal("PREAMBLE")}>
-              <DiffOutlined />
-            </Button>
-          </Tooltip>
-        </div>
-        <div>
-          <Tooltip title="Postamble">
-            <Button onClick={() => handleOpenPreOrPostAmbleModal("POSTAMBLE")}>
-              <FileTextOutlined />
-            </Button>
+          <Tooltip title="Settings">
+            <Button
+              icon={<SettingOutlined />}
+              onClick={() => setOpenSettings(true)}
+            />
           </Tooltip>
         </div>
         <div className="custom-tools-header-v-divider" />
@@ -164,27 +89,12 @@ function Header({
           </Tooltip>
         </div>
       </div>
-      <PreAndPostAmbleModal
-        isOpen={openPreOrPostAmbleModal}
-        closeModal={handleClosePreOrPostAmbleModal}
-        type={preOrPostAmble}
-        handleUpdateTool={handleUpdateTool}
-      />
-      <SelectLlmProfileModal
-        open={openSummLlmProfileModal}
-        setOpen={setOpenSummLlmProfileModal}
-        llmItems={llmItems}
-        setBtnText={setSummarizeLlmBtnText}
-        handleUpdateTool={handleUpdateTool}
-      />
     </div>
   );
 }
 
 Header.propTypes = {
-  setOpenCusSynonymsModal: PropTypes.func.isRequired,
-  setOpenManageLlmModal: PropTypes.func.isRequired,
-  handleUpdateTool: PropTypes.func.isRequired,
+  setOpenSettings: PropTypes.func.isRequired,
 };
 
 export { Header };

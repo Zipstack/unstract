@@ -3,13 +3,10 @@ import { Form, Input, Modal, Popover, Button } from "antd";
 import PropTypes from "prop-types";
 import EmojiPicker from "emoji-picker-react";
 
-import {
-  handleException,
-  getBackendErrorDetail,
-} from "../../../helpers/GetStaticData";
+import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import "./AddCustomToolFormModal.css";
-
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 const defaultFromDetails = {
   tool_name: "",
   author: "",
@@ -27,6 +24,7 @@ function AddCustomToolFormModal({
   const [form] = Form.useForm();
   const [isLoading, setIsLoading] = useState(false);
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [formDetails, setFormDetails] = useState(
     isEdit ? { ...editItem } : { ...defaultFromDetails }

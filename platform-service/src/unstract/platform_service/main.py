@@ -15,6 +15,7 @@ from unstract.platform_service.helper import (
     AdapterInstanceRequestHelper,
     PromptStudioRequestHelper,
 )
+from unstract.platform_service.utils import EnvManager
 
 load_dotenv()
 
@@ -22,47 +23,26 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s : %(message)s",
 )
+# Configuring envs
 MAX_FILE_SIZE = 100 * 1024 * 1024
 INVALID_ORGANIZATOIN = "Invalid organization"
 INVALID_PAYLOAD = "Bad Request / No payload"
 BAD_REQUEST = "Bad Request"
-REDIS_HOST = os.environ.get("REDIS_HOST")
-REDIS_PORT = int(os.environ.get("REDIS_PORT", 6379))
+REDIS_HOST = EnvManager.get_required_setting("REDIS_HOST")
+REDIS_PORT = int(EnvManager.get_required_setting("REDIS_PORT", 6379))
 REDIS_USERNAME = os.environ.get("REDIS_USERNAME")
 REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD")
-PG_HOST = os.environ.get("PG_HOST")
-PG_PORT = int(os.environ.get("PG_PORT", 5432))
-PG_USERNAME = os.environ.get("PG_USERNAME")
-PG_PASSWORD = os.environ.get("PG_PASSWORD")
-PG_DATABASE = os.environ.get("PG_DATABASE")
 PG_BE_HOST = os.environ.get("PG_BE_HOST")
 PG_BE_PORT = int(os.environ.get("PG_BE_PORT", 5432))
 PG_BE_USERNAME = os.environ.get("PG_BE_USERNAME")
 PG_BE_PASSWORD = os.environ.get("PG_BE_PASSWORD")
 PG_BE_DATABASE = os.environ.get("PG_BE_DATABASE")
-PG_V_HOST = os.environ.get("PG_V_HOST", "127.0.0.1")
-PG_V_PORT = int(os.environ.get("PG_V_PORT", 5432))
-PG_V_USERNAME = os.environ.get("PG_V_USERNAME", "user")
-PG_V_PASSWORD = os.environ.get("PG_V_PASSWORD", "")
-PG_V_DATABASE = os.environ.get("PG_V_DATABASE", "")
-ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY")
-if not (REDIS_HOST and REDIS_PORT):
-    raise ValueError(
-        "REDIS_HOST and REDIS_PORT must be set in the environment."
-    )
+ENCRYPTION_KEY = EnvManager.get_required_setting("ENCRYPTION_KEY")
+
+EnvManager.raise_for_missing_envs()
 
 # TODO: Follow Flask best practices and refactor accordingly
 app = Flask("platform_service")
-
-doc_db = peewee.PostgresqlDatabase(
-    PG_DATABASE,
-    user=PG_USERNAME,
-    password=PG_PASSWORD,
-    host=PG_HOST,
-    port=PG_PORT,
-)
-doc_db.init(PG_DATABASE)
-doc_db.connect()
 
 be_db = peewee.PostgresqlDatabase(
     PG_BE_DATABASE,
