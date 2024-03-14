@@ -15,6 +15,7 @@ import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools";
+import { SharePermission } from "../../widgets/share-permission/SharePermission";
 
 const titles = {
   llm: "LLMs",
@@ -35,7 +36,13 @@ const btnText = {
 function ToolSettings({ type }) {
   const [tableRows, setTableRows] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isShareLoading, setIsShareLoading] = useState(false);
+  const [adapterDetails, setAdapterDetails] = useState(null);
+  const [userList, setUserList] = useState([]);
   const [openAddSourcesModal, setOpenAddSourcesModal] = useState(false);
+  const [openSharePermissionModal, setopenSharePermissionModal] =
+    useState(false);
+  const [isPermissonEdit, setIsPermissionEdit] = useState(false);
   const [editItemId, setEditItemId] = useState(null);
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -47,7 +54,10 @@ function ToolSettings({ type }) {
     if (!type) {
       return;
     }
+    getAdapters();
+  }, [type]);
 
+  const getAdapters = () => {
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${
@@ -65,7 +75,7 @@ function ToolSettings({ type }) {
       .finally(() => {
         setIsLoading(false);
       });
-  }, [type]);
+  };
 
   const addNewItem = (row, isEdit) => {
     if (isEdit) {
@@ -84,7 +94,7 @@ function ToolSettings({ type }) {
     }
   };
 
-  const handleDelete = (adapter) => {
+  const handleDelete = (_event, adapter) => {
     const requestOptions = {
       method: "DELETE",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter.id}/`,
@@ -108,6 +118,73 @@ function ToolSettings({ type }) {
       })
       .finally(() => {
         setIsLoading(false);
+      });
+  };
+
+  const handleShare = (_event, adapter, isEdit) => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/users/${adapter.id}/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+    };
+    setIsShareLoading(true);
+    getAllUsers();
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        setopenSharePermissionModal(true);
+        setAdapterDetails(res.data);
+        setIsPermissionEdit(isEdit);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      })
+      .finally(() => {
+        setIsShareLoading(false);
+      });
+  };
+
+  const getAllUsers = () => {
+    setIsShareLoading(true);
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
+    };
+
+    axiosPrivate(requestOptions)
+      .then((response) => {
+        const users = response?.data?.members || [];
+        setUserList(
+          users.map((user) => ({
+            id: user.id,
+            email: user.email,
+          }))
+        );
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to load"));
+      })
+      .finally(() => {
+        setIsShareLoading(false);
+      });
+  };
+
+  const onShare = (userIds, adapter) => {
+    const requestOptions = {
+      method: "PATCH",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter.id}/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+      data: { shared_users: userIds },
+    };
+    axiosPrivate(requestOptions)
+      .then((response) => {
+        setopenSharePermissionModal(false);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to load"));
       });
   };
 
@@ -142,6 +219,8 @@ function ToolSettings({ type }) {
               isEmpty={!tableRows?.length}
               centered
               isClickable={false}
+              handleShare={handleShare}
+              showOwner={true}
             />
           </div>
         </div>
@@ -153,6 +232,15 @@ function ToolSettings({ type }) {
         addNewItem={addNewItem}
         editItemId={editItemId}
         setEditItemId={setEditItemId}
+      />
+      <SharePermission
+        open={openSharePermissionModal}
+        setOpen={setopenSharePermissionModal}
+        adapter={adapterDetails}
+        permissionEdit={isPermissonEdit}
+        loading={isShareLoading}
+        allUsers={userList}
+        onApply={onShare}
       />
     </div>
   );

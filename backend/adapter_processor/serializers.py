@@ -91,6 +91,7 @@ class AdapterListSerializer(BaseAdapterSerializer):
             "adapter_name",
             "adapter_type",
             "is_default",
+            "created_by"
         )  # type: ignore
 
     def to_representation(self, instance: AdapterInstance) -> dict[str, str]:
@@ -98,6 +99,7 @@ class AdapterListSerializer(BaseAdapterSerializer):
         rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
             instance.adapter_id, common.ICON
         )
+        rep["created_by_email"] = instance.created_by.email
 
         return rep
 

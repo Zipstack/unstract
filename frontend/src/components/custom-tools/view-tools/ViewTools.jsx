@@ -20,6 +20,8 @@ function ViewTools({
   idProp,
   centered,
   isClickable = true,
+  handleShare,
+  showOwner,
 }) {
   if (isLoading) {
     return <SpinnerLoader />;
@@ -56,6 +58,8 @@ function ViewTools({
       idProp={idProp}
       centered={centered}
       isClickable={isClickable}
+      handleShare={handleShare}
+      showOwner={showOwner}
     />
   );
 }
@@ -67,12 +71,14 @@ ViewTools.propTypes = {
   setOpenAddTool: PropTypes.func,
   handleEdit: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
+  handleShare: PropTypes.func,
   titleProp: PropTypes.string.isRequired,
   descriptionProp: PropTypes.string,
   iconProp: PropTypes.string,
   idProp: PropTypes.string.isRequired,
   centered: PropTypes.bool,
   isClickable: PropTypes.bool,
+  showOwner: PropTypes.bool,
 };
 
 export { ViewTools };
