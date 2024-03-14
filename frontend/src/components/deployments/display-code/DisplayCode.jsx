@@ -55,7 +55,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
         headers = {
           'Authorization': 'Bearer REPLACE_WITH_API_KEY'
         }
-        response = requests.request("GET", api_url, headers=headers, data=payload)
+        response = requests.request("GET", api_url, headers=headers)
       {{/if}}
       print('Response:', response.json())
     `;
@@ -127,12 +127,12 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
   const TAB_ITEMS = [
     {
       key: "POST",
-      label: "POST",
+      label: "POST Document",
       children: <CodeSnippet code={code} />,
     },
     {
       key: "GET",
-      label: "GET",
+      label: "GET Status",
       children: <CodeSnippet code={code} />,
     },
   ];

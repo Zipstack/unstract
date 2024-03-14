@@ -1,7 +1,6 @@
 import { Card, Dropdown, Popconfirm, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
-
 import "./GridView.css";
 import {
   DeleteOutlined,

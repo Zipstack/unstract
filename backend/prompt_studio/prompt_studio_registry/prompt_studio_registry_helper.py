@@ -12,7 +12,7 @@ from prompt_studio.prompt_studio_core.prompt_studio_helper import (
 from unstract.tool_registry.dto import Properties, Spec, Tool
 
 from .constants import JsonSchemaKey
-from .exceptions import InternalError, ProfileErrors, ToolSaveError
+from .exceptions import InternalError, ToolSaveError
 from .models import PromptStudioRegistry
 from .serializers import PromptStudioRegistrySerializer
 
@@ -180,11 +180,10 @@ class PromptStudioRegistryHelper:
         llm = ""
         embedding_model = ""
 
+        default_llm_profile = tool.get_default_llm_profile()  # type: ignore
         for prompt in prompts:
-            if not tool.default_profile:
-                raise ProfileErrors()
             if not prompt.profile_manager:
-                prompt.profile_manager = tool.default_profile
+                prompt.profile_manager = default_llm_profile
 
             vector_db = str(prompt.profile_manager.vector_store.id)
             embedding_model = str(prompt.profile_manager.embedding_model.id)

@@ -7,12 +7,13 @@ from adapter_processor.constants import AdapterKeys
 from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
+from rest_framework.serializers import ModelSerializer
 from unstract.adapters.constants import Common as common
 
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
 
-from .models import AdapterInstance
+from .models import AdapterInstance, UserDefaultAdapter
 
 
 class TestAdapterSerializer(serializers.Serializer):
@@ -129,3 +130,9 @@ class SharedUserListSerializer(BaseAdapterSerializer):
             "created_by",
             "shared_users",
         )  # type: ignore
+
+
+class UserDefaultAdapterSerializer(ModelSerializer):
+    class Meta:
+        model = UserDefaultAdapter
+        fields = "__all__"

@@ -1,11 +1,10 @@
 import PropTypes from "prop-types";
+import { Typography } from "antd";
 
 import { ListView } from "../../widgets/list-view/ListView";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import "./ViewTools.css";
 import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
-
-import { Typography } from "antd";
 
 function ViewTools({
   isLoading,
@@ -29,10 +28,16 @@ function ViewTools({
   }
 
   if (isEmpty) {
+    let text = "No tools available";
+    let btnText = "New Tool";
+    if (type) {
+      text = `No ${type.split("New ")[1].toLowerCase()} available`;
+      btnText = type;
+    }
     return (
       <EmptyState
-        text="No tools available"
-        btnText="New Tool"
+        text={text}
+        btnText={btnText}
         handleClick={() => setOpenAddTool(true)}
       />
     );
@@ -81,7 +86,7 @@ ViewTools.propTypes = {
   centered: PropTypes.bool,
   isClickable: PropTypes.bool,
   showOwner: PropTypes.bool,
-  type: PropTypes.string.isRequired,
+  type: PropTypes.string,
 };
 
 export { ViewTools };
