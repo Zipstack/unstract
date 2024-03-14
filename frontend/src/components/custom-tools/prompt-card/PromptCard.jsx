@@ -583,6 +583,7 @@ function PromptCard({
 
   const handleGetCoverageData = (data) => {
     const ids = [];
+    let coverageValue = 0;
     data.forEach((item) => {
       const isOutputAdded = ids.findIndex(
         (output) => output?.docId === item?.document_manager
@@ -602,10 +603,14 @@ function PromptCard({
           promptOutputId: item?.prompt_output_id,
           docId: item?.document_manager,
         });
+
+        if (item?.output || item?.output === 0) {
+          coverageValue++;
+        }
       }
     });
     setOutputIds(ids);
-    setCoverage(ids?.length);
+    setCoverage(coverageValue);
   };
 
   const enableEdit = (event) => {
