@@ -1,7 +1,6 @@
 import logging
 from typing import Any, Optional
 
-from account.models import User
 from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.constants import AdapterKeys
 from adapter_processor.exceptions import (
@@ -22,7 +21,7 @@ from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest
 from django.http.response import HttpResponse
-from permissions.permission import IsOwner
+from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -206,24 +205,11 @@ class AdapterInstanceViewSet(ModelViewSet):
         super().perform_destroy(adapter_instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    def get_existing_defaults(
-        self, adapter_config: dict[str, Any], user: User
-    ) -> Optional[AdapterInstance]:
-        filter_params: dict[str, Any] = {}
-        adapter_type = adapter_config.get(AdapterKeys.ADAPTER_TYPE)
-        filter_params["adapter_type"] = adapter_type
-        filter_params["is_default"] = True
-        filter_params["created_by"] = user
-        existing_adapter_default: AdapterInstance = (
-            AdapterInstance.objects.filter(**filter_params).first()
-        )
-
-        return existing_adapter_default
-
     @action(detail=True, methods=["get"])
     def list_of_shared_users(
         self, request: HttpRequest, pk: Any = None
     ) -> Response:
+        self.permission_classes = [IsOwnerOrSharedUser]
         adapter = (
             self.get_object()
         )  # Assuming you have a get_object method in your viewset
