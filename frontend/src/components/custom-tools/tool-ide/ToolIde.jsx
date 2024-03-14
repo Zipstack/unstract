@@ -28,6 +28,8 @@ function ToolIde() {
     selectedDoc,
     listOfDocs,
     indexDocs,
+    pushIndexDoc,
+    deleteIndexDoc,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -72,9 +74,8 @@ function ToolIde() {
 
   const generateIndex = async (doc) => {
     const docId = doc?.document_id;
-    const listOfIndexDocs = [...indexDocs];
 
-    if (listOfIndexDocs.includes(docId)) {
+    if (indexDocs.includes(docId)) {
       setAlertDetails({
         type: "error",
         content: "This document is already getting indexed",
@@ -86,6 +87,7 @@ function ToolIde() {
       tool_id: details?.tool_id,
       document_id: docId,
     };
+
     const requestOptions = {
       method: "POST",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/index-document/`,
@@ -96,8 +98,7 @@ function ToolIde() {
       data: body,
     };
 
-    listOfIndexDocs.push(docId);
-    updateCustomTool({ indexDocs: listOfIndexDocs });
+    pushIndexDoc(docId);
     return axiosPrivate(requestOptions)
       .then(() => {
         setAlertDetails({
@@ -111,10 +112,7 @@ function ToolIde() {
         );
       })
       .finally(() => {
-        const newListOfIndexDocs = [...indexDocs].filter(
-          (item) => item !== docId
-        );
-        updateCustomTool({ indexDocs: newListOfIndexDocs });
+        deleteIndexDoc(docId);
       });
   };
 
