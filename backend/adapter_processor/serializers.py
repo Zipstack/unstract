@@ -91,8 +91,7 @@ class AdapterListSerializer(BaseAdapterSerializer):
             "adapter_id",
             "adapter_name",
             "adapter_type",
-            "is_default",
-            "created_by"
+            "created_by",
         )  # type: ignore
 
     def to_representation(self, instance: AdapterInstance) -> dict[str, str]:
