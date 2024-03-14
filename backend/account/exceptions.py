@@ -28,10 +28,13 @@ class BadRequestException(APIException):
 
 class InactiveOrganization(APIException):
     status_code = 400
-    default_detail = "Selected Organization is not active. Please contact admin."
+    default_detail = (
+        "Selected organization is not active. Please contact admin."
+    )
     default_code = "subscription_error"
 
+
 class TrialExpired(APIException):
-    status_code = 400
+    status_code = 402
     default_detail = "Trial period expired. Please contact sales/admin."
     default_code = "subscription_error"

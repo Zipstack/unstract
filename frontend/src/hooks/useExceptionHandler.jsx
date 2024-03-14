@@ -20,7 +20,6 @@ const useExceptionHandler = () => {
 
     if (err.response && err.response.data) {
       const { type, errors } = err.response.data;
-
       switch (type) {
         case "validation_error":
           // Handle validation errors
