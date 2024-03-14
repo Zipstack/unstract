@@ -33,7 +33,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 let SummarizeStatusTitle = null;
 try {
   SummarizeStatusTitle =
-    require("../../../plugins/summarize-status-title/SummarizeStatusTitle111").SummarizeStatusTitle;
+    require("../../../plugins/summarize-status-title/SummarizeStatusTitle").SummarizeStatusTitle;
 } catch {
   // The component will remain null if it is not available
 }
