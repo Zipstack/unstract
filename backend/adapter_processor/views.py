@@ -1,7 +1,6 @@
 import logging
 from typing import Any, Optional
 
-from account.models import User
 from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.constants import AdapterKeys
 from adapter_processor.exceptions import (
@@ -16,12 +15,13 @@ from adapter_processor.serializers import (
     DefaultAdapterSerializer,
     SharedUserListSerializer,
     TestAdapterSerializer,
+    UserDefaultAdapterSerializer,
 )
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest
 from django.http.response import HttpResponse
-from permissions.permission import IsOwner
+from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -33,7 +33,7 @@ from utils.filtering import FilterHelper
 
 from .constants import AdapterKeys as constant
 from .exceptions import InternalServiceError
-from .models import AdapterInstance
+from .models import AdapterInstance, UserDefaultAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,20 @@ class DefaultAdapterViewSet(ModelViewSet):
         default_triad = request.data
         AdapterProcessor.set_default_triad(default_triad, request.user)
         return Response(status=status.HTTP_200_OK)
+
+    def get_default_triad(
+        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
+    ) -> HttpResponse:
+        try:
+            user_default_adapter = UserDefaultAdapter.objects.get(
+                user=request.user
+            )
+            serializer = UserDefaultAdapterSerializer(user_default_adapter).data
+            return Response(serializer)
+
+        except UserDefaultAdapter.DoesNotExist:
+            # Handle the case when no records are found
+            return Response(status=status.HTTP_200_OK, data={})
 
 
 class AdapterViewSet(GenericViewSet):
@@ -141,17 +155,34 @@ class AdapterInstanceViewSet(ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
+            instance = serializer.save()
+
             # Check to see if there is a default configured
             # for this adapter_type and for the current user
-            existing_adapter_default = self.get_existing_defaults(
-                request.data, request.user
-            )
-            # If there is no default, then make this one as default
-            if existing_adapter_default is None:
-                # Update the adapter_instance to is_default=True
-                serializer.validated_data[AdapterKeys.IS_DEFAULT] = True
+            (
+                user_default_adapter,
+                created,
+            ) = UserDefaultAdapter.objects.get_or_create(user=request.user)
 
-            serializer.save()
+            adapter_type = serializer.validated_data.get(
+                AdapterKeys.ADAPTER_TYPE
+            )
+            if (adapter_type == AdapterKeys.LLM) and (
+                not user_default_adapter.default_llm_adapter
+            ):
+                user_default_adapter.default_llm_adapter = instance
+
+            elif (adapter_type == AdapterKeys.EMBEDDING) and (
+                not user_default_adapter.default_embedding_adapter
+            ):
+                user_default_adapter.default_embedding_adapter = instance
+            elif (adapter_type == AdapterKeys.VECTOR_DB) and (
+                not user_default_adapter.default_vector_db_adapter
+            ):
+                user_default_adapter.default_vector_db_adapter = instance
+
+            user_default_adapter.save()
+
         except IntegrityError:
             raise UniqueConstraintViolation(
                 f"{AdapterKeys.ADAPTER_NAME_EXISTS}"
@@ -174,24 +205,11 @@ class AdapterInstanceViewSet(ModelViewSet):
         super().perform_destroy(adapter_instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    def get_existing_defaults(
-        self, adapter_config: dict[str, Any], user: User
-    ) -> Optional[AdapterInstance]:
-        filter_params: dict[str, Any] = {}
-        adapter_type = adapter_config.get(AdapterKeys.ADAPTER_TYPE)
-        filter_params["adapter_type"] = adapter_type
-        filter_params["is_default"] = True
-        filter_params["created_by"] = user
-        existing_adapter_default: AdapterInstance = (
-            AdapterInstance.objects.filter(**filter_params).first()
-        )
-
-        return existing_adapter_default
-
     @action(detail=True, methods=["get"])
     def list_of_shared_users(
         self, request: HttpRequest, pk: Any = None
     ) -> Response:
+        self.permission_classes = [IsOwnerOrSharedUser]
         adapter = (
             self.get_object()
         )  # Assuming you have a get_object method in your viewset

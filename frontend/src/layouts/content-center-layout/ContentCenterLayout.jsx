@@ -1,5 +1,4 @@
 import PropTypes from "prop-types";
-
 import "./ContentCenterLayout.css";
 import { Typography } from "antd";
 

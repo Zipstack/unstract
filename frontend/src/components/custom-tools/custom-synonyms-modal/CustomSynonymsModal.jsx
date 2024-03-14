@@ -1,5 +1,6 @@
 import { Modal } from "antd";
 import PropTypes from "prop-types";
+
 import { CustomSynonyms } from "../custom-synonyms/CustomSynonyms";
 
 function CustomSynonymsModal({ open, setOpen }) {
