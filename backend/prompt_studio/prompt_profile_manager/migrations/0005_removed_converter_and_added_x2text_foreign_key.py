@@ -57,9 +57,9 @@ class Migration(migrations.Migration):
             model_name="profilemanager",
             name="pdf_to_text_converters",
         ),
-        migrations.RunPython(
-            disable_triggers, reverse_code=migrations.RunPython.noop
-        ),
+        # migrations.RunPython(
+        #     disable_triggers, reverse_code=migrations.RunPython.noop
+        # ),
         migrations.AddField(
             model_name="profilemanager",
             name="x2text",
@@ -71,5 +71,7 @@ class Migration(migrations.Migration):
                 to="adapter_processor.adapterinstance",
             ),
         ),
-        migrations.RunPython(fill_with_default_x2text, reversal_x2text),
+        # This function is not required for fresh instances as the profile manager table itself will be empty.
+        # The existing environments have already completed this migration. Hence it won't be necessary.
+        # migrations.RunPython(fill_with_default_x2text, reversal_x2text),
     ]

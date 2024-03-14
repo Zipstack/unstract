@@ -29,9 +29,11 @@ class AnswerFetchError(APIException):
 
 
 class DefaultProfileError(APIException):
-    status_code = 400
-    default_detail = "Default profile is not selected. \
-        Please select one from Profile manager."
+    status_code = 500
+    default_detail = (
+        "Default LLM profile is not configured."
+        "Please set an LLM profile as default to continue."
+    )
 
 
 class EnvRequired(APIException):

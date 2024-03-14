@@ -31,7 +31,9 @@ class Migration(migrations.Migration):
                 to="adapter_processor.adapterinstance",
             ),
         ),
-        migrations.RunPython(
-            enable_triggers,
-        ),
+        # Without superuser role this statement cannot be executed
+        # and this is als0 not recommended.
+        # migrations.RunPython(
+        #     enable_triggers,
+        # ),
     ]
