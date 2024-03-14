@@ -929,8 +929,8 @@ def extract_variable(
     #     f.write(json.dumps(structured_output, indent=2))
 
 
-def init_single_pass_extraction_plugin():
-    """Initialize single-pass-extraction plugin if available."""
+def enable_single_pass_extraction():
+    """Enables single-pass-extraction plugin if available."""
     single_pass_extration_plugin: dict[str, Any] = plugins.get(
         "single-pass-extraction", {}
     )
@@ -938,7 +938,7 @@ def init_single_pass_extraction_plugin():
         single_pass_extration_plugin["entrypoint_cls"](app)
 
 
-init_single_pass_extraction_plugin()
+enable_single_pass_extraction()
 
 
 if __name__ == "__main__":
