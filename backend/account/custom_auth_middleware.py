@@ -2,17 +2,18 @@ from typing import Optional
 
 from account.authentication_plugin_registry import AuthenticationPluginRegistry
 from account.authentication_service import AuthenticationService
-from account.cache_service import CacheService
 from account.constants import Common, Cookie, DefaultOrg
 from account.dto import UserSessionInfo
 from account.models import User
 from account.user import UserService
-from backend.constants import RequestHeader
 from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from tenant_account.organization_member_service import OrganizationMemberService
+from utils.cache_service import CacheService
+
+from backend.constants import RequestHeader
 
 
 class CustomAuthMiddleware:
