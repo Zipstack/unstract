@@ -46,6 +46,7 @@ class WorkflowSerializer(AuditSerializer):
             many=True,
             context=self.context,
         ).data
+        representation["created_by_email"] = instance.created_by.email
         return representation
 
     def create(self, validated_data: dict[str, Any]) -> Any:

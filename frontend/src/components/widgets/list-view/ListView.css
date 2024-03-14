@@ -2,9 +2,9 @@
 
 .list-view-wrapper {
   height: 100%;
-  overflow: hidden auto;
-  width: 60%;
-  max-width: 1200px;
+  width: 70%;
+  min-width: 800px;
+  max-width: 1400px;
 }
 
 .list-view-item {
@@ -22,9 +22,10 @@
 }
 
 .action-icon-buttons {
-  font-size: 16px;
+  font-size: 18px;
   margin-left: 20px;
   z-index: 20;
+  color: #092c4c;
 }
 
 .cur-pointer .ant-list-item-meta {
@@ -52,4 +53,39 @@
   width: 120px;
   height: 90px;
   object-fit: contain;
+}
+
+.adapters-list-profile-container {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+
+.adapters-list-user-prefix {
+  margin: 0 5px;
+  font-weight: 500;
+}
+
+.adapters-list-title {
+  font-size: 16px;
+}
+
+.cover-img {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+}
+
+.action-icon-buttons {
+  flex: content;
+}
+
+.list-view-content {
+  display: flex;
+  width: 80%;
+}
+
+.adapters-list-title-container {
+  width: 50%;
 }
