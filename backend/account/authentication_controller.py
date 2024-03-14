@@ -5,7 +5,6 @@ from urllib.parse import urlencode
 from account.authentication_helper import AuthenticationHelper
 from account.authentication_plugin_registry import AuthenticationPluginRegistry
 from account.authentication_service import AuthenticationService
-from account.cache_service import CacheService
 from account.constants import (
     AuthorizationErrorCode,
     Cookie,
@@ -47,6 +46,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from tenant_account.models import OrganizationMember as OrganizationMember
 from tenant_account.organization_member_service import OrganizationMemberService
+from utils.cache_service import CacheService
 
 Logger = logging.getLogger(__name__)
 
