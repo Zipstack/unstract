@@ -3,13 +3,13 @@ import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
 import PropTypes from "prop-types";
-
-import "./DocumentManager.css";
 import { LeftOutlined, RightOutlined } from "@ant-design/icons";
+import { useEffect, useState } from "react";
+import "./DocumentManager.css";
+
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
-import { useEffect, useState } from "react";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
 import { base64toBlob } from "../../../helpers/GetStaticData";
