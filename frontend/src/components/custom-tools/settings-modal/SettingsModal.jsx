@@ -1,19 +1,20 @@
 import { Col, Menu, Modal, Row, Typography } from "antd";
 import PropTypes from "prop-types";
-
-import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
-import { getMenuItem } from "../../../helpers/GetStaticData";
 import { useEffect, useState } from "react";
-import { ManageLlmProfiles } from "../manage-llm-profiles/ManageLlmProfiles";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { CustomSynonyms } from "../custom-synonyms/CustomSynonyms";
-import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
 import {
   CodeOutlined,
   DiffOutlined,
   FileTextOutlined,
   MessageOutlined,
 } from "@ant-design/icons";
+
+import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
+import { getMenuItem } from "../../../helpers/GetStaticData";
+import { ManageLlmProfiles } from "../manage-llm-profiles/ManageLlmProfiles";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { CustomSynonyms } from "../custom-synonyms/CustomSynonyms";
+import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
+
 import "./SettingsModal.css";
 
 let SummarizeManager = null;
