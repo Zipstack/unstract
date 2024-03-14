@@ -1,6 +1,5 @@
 import { Button, Tabs, Tooltip } from "antd";
 import { useEffect, useState } from "react";
-import { PlayCircleOutlined } from "@ant-design/icons";
 
 import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -12,6 +11,7 @@ import { DocumentParser } from "../document-parser/DocumentParser";
 import { Footer } from "../footer/Footer";
 import "./ToolsMain.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { PlayCircleOutlined } from "@ant-design/icons";
 
 function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
@@ -148,10 +148,10 @@ function ToolsMain() {
         <div className="display-flex-align-center">
           <Tooltip title="Single Pass Extraction">
             <Button
-              icon={<PlayCircleOutlined />}
               onClick={handleSinglePassExtraction}
               loading={isSinglePassExtract}
               disabled={disableLlmOrDocChange?.length > 0}
+              icon={<PlayCircleOutlined />}
             />
           </Tooltip>
         </div>
