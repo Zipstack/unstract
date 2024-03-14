@@ -337,6 +337,16 @@ const titleCase = (str) => {
   return words.join(" ");
 };
 
+const getMenuItem = (label, key, icon, children, type) => {
+  return {
+    key,
+    icon,
+    children,
+    label,
+    type,
+  };
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -368,4 +378,5 @@ export {
   displayPromptResult,
   getBackendErrorDetail,
   titleCase,
+  getMenuItem,
 };

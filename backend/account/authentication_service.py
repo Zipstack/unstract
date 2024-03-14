@@ -3,7 +3,6 @@ import uuid
 from typing import Any, Optional
 
 from account.authentication_helper import AuthenticationHelper
-from account.cache_service import CacheService
 from account.constants import Common, DefaultOrg
 from account.custom_exceptions import Forbidden, MethodNotImplemented
 from account.dto import (
@@ -23,6 +22,7 @@ from django.http import HttpRequest
 from rest_framework.request import Request
 from rest_framework.response import Response
 from tenant_account.models import OrganizationMember as OrganizationMember
+from utils.cache_service import CacheService
 
 Logger = logging.getLogger(__name__)
 
