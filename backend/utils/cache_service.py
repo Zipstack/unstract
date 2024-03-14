@@ -1,6 +1,5 @@
 from typing import Any, Optional, Union
 
-import redis
 from account.custom_cache import CustomCache
 from account.dto import UserSessionInfo
 from django.conf import settings
@@ -8,26 +7,25 @@ from django.core.cache import cache
 
 
 class CacheService:
-    def __init__(self) -> None:
-        self.cache = redis.Redis(
-            host=settings.REDIS_HOST,
-            port=int(settings.REDIS_PORT),
-            password=settings.REDIS_PASSWORD,
-            username=settings.REDIS_USER,
-        )
-
-    def get_a_key(self, key: str) -> Optional[Any]:
-        data = self.cache.get(str(key))
+    @staticmethod
+    def get_key(key: str) -> Optional[Any]:
+        data = cache.get(str(key))
         if data is not None:
             return data.decode("utf-8")
         return data
 
-    def set_a_key(self, key: str, value: Any) -> None:
-        self.cache.set(
+    @staticmethod
+    def set_key(key: str, value: Any) -> None:
+        cache.set(
             str(key),
             value,
-            int(settings.WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND),
+            int(settings.CACHE_TTL_SEC),
         )
+
+    @staticmethod
+    def clear_cache(key_pattern: str) -> Any:
+        """Delete keys in bulk based on the key pattern."""
+        cache.delete_pattern(key_pattern)
 
     @staticmethod
     def set_cookie(cookie: str, token: dict[str, Any]) -> None:
@@ -126,6 +124,7 @@ class CacheService:
 
 # KEY_FUNCTION for cache settings
 def custom_key_function(key: str, key_prefix: str, version: int) -> str:
+    version = int(version)
     if version > 1:
         return f"{key_prefix}:{version}:{key}"
     if key_prefix:

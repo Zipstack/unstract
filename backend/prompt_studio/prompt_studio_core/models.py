@@ -2,7 +2,9 @@ import uuid
 
 from account.models import User
 from adapter_processor.models import AdapterInstance
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
+from prompt_studio.prompt_studio_core.exceptions import DefaultProfileError
 from utils.models.base_model import BaseModel
 
 
@@ -77,3 +79,10 @@ class CustomTool(BaseModel):
         editable=False,
     )
     exclude_failed = models.BooleanField(default=True)
+
+    # TODO: Add ProfileManager to return type
+    def get_default_llm_profile(self):  # type: ignore
+        try:
+            return self.profilemanager_set.filter(is_default=True).first()
+        except ObjectDoesNotExist:
+            raise DefaultProfileError
