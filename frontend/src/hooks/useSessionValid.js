@@ -88,7 +88,6 @@ function useSessionValid() {
     } catch (err) {
       // TODO: Throw popup error message
       if (err.response?.status === 402) {
-        console.log("Payment required");
         handleException(err);
       }
 

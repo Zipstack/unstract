@@ -1,13 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
 
-let getTrialDetails;
-try {
-  getTrialDetails = require("../plugins/subscription/trial-helper/fetchTrialDetails.jsx");
-} catch (err) {
-  // Plugin not available
-}
-
 const useExceptionHandler = () => {
   const navigate = useNavigate();
   const handleException = (err, errMessage = "Something went wrong") => {
@@ -25,9 +18,7 @@ const useExceptionHandler = () => {
           // Handle validation errors
           break;
         case "subscription_error":
-          if (getTrialDetails) {
-            navigate("/trial-expired");
-          }
+          navigate("/trial-expired");
           return {
             type: "error",
             content:
