@@ -31,7 +31,7 @@ from unstract.sdk.exceptions import SdkError
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
-
+from adapter_processor.models import AdapterInstance
 from unstract.core.pubsub_helper import LogHelper as stream_log
 
 CHOICES_JSON = "/static/select_choices.json"
@@ -289,11 +289,24 @@ class PromptStudioHelper:
         Raises:
             AnswerFetchError
         """
-        outputs: list[dict[str, Any]] = []
-
+        monitor_llm_instance: Optional[AdapterInstance] = tool.monitor_llm
+        monitor_llm: Optional[str] = None
+        if monitor_llm:
+            monitor_llm = str(monitor_llm_instance.id)
         prompt_grammer = tool.prompt_grammer
+        outputs: list[dict[str, Any]] = []
         grammer_dict = {}
         grammar_list = []
+
+        # Using default profile manager llm if monitor_llm is None
+        if monitor_llm:
+            monitor_llm = str(monitor_llm_instance.id)
+        else:
+            # TODO: Use CustomTool model to get profile_manager
+            profile_manager = ProfileManager.objects.get(
+                prompt_studio_tool=tool, is_default=True
+            )
+            monitor_llm = str(profile_manager.llm.id)
 
         # Adding validations
         if prompt_grammer:
@@ -355,11 +368,11 @@ class PromptStudioHelper:
                 TSPKeys.EVAL_SETTINGS_EVALUATE
             ] = prompt.evaluate
             output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_MONITOR_LLM] = [
-                llm
+                monitor_llm
             ]
             output[TSPKeys.EVAL_SETTINGS][
                 TSPKeys.EVAL_SETTINGS_EXCLUDE_FAILED
-            ] = False
+            ] = tool.exclude_failed
             for attr in dir(prompt):
                 if attr.startswith(TSPKeys.EVAL_METRIC_PREFIX):
                     attr_val = getattr(prompt, attr)
