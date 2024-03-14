@@ -11,6 +11,8 @@ const defaultState = {
   details: {},
   disableLlmOrDocChange: [],
   indexDocs: [],
+  rawIndexStatus: [],
+  summarizeIndexStatus: [],
 };
 
 const defaultPromptInstance = {

@@ -30,6 +30,14 @@ import "./ManageDocsModal.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
+let SummarizeStatusTitle = null;
+try {
+  SummarizeStatusTitle =
+    require("../../../plugins/summarize-status-title/SummarizeStatusTitle").SummarizeStatusTitle;
+} catch {
+  // The component will remain null if it is not available
+}
+
 const indexTypes = {
   raw: "RAW",
   summarize: "Summarize",
@@ -46,10 +54,8 @@ function ManageDocsModal({
   const [rows, setRows] = useState([]);
   const [rawLlmProfile, setRawLlmProfile] = useState(null);
   const [isRawDataLoading, setIsRawDataLoading] = useState(false);
-  const [rawIndexStatus, setRawIndexStatus] = useState([]);
   const [summarizeLlmProfile, setSummarizeLlmProfile] = useState(null);
   const [isSummarizeDataLoading, setIsSummarizeDataLoading] = useState(false);
-  const [summarizeIndexStatus, setSummarizeIndexStatus] = useState([]);
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const {
@@ -61,6 +67,8 @@ function ManageDocsModal({
     defaultLlmProfile,
     disableLlmOrDocChange,
     indexDocs,
+    rawIndexStatus,
+    summarizeIndexStatus,
   } = useCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
@@ -117,11 +125,11 @@ function ManageDocsModal({
 
   const handleIndexStatus = (indexType, data) => {
     if (indexType === indexTypes.raw) {
-      setRawIndexStatus(data);
+      updateCustomTool({ rawIndexStatus: data });
     }
 
     if (indexType === indexTypes.summarize) {
-      setSummarizeIndexStatus(data);
+      updateCustomTool({ summarizeIndexStatus: data });
     }
   };
 
@@ -198,20 +206,6 @@ function ManageDocsModal({
       width: 250,
     },
     {
-      title: (
-        <Space className="w-100">
-          <Typography.Text>Summary</Typography.Text>
-          <Typography.Text type="secondary">
-            {"(" + getLlmProfileName(summarizeLlmProfile) + ")"}
-          </Typography.Text>
-          {isSummarizeDataLoading && <SpinnerLoader />}
-        </Space>
-      ),
-      dataIndex: "summary",
-      key: "summary",
-      width: 250,
-    },
-    {
       title: "",
       dataIndex: "reindex",
       key: "reindex",
@@ -230,6 +224,20 @@ function ManageDocsModal({
       width: 30,
     },
   ];
+
+  if (SummarizeStatusTitle) {
+    columns.splice(2, 0, {
+      title: (
+        <SummarizeStatusTitle
+          profileName={"(" + getLlmProfileName(summarizeLlmProfile) + ")"}
+          isLoading={isSummarizeDataLoading}
+        />
+      ),
+      dataIndex: "summary",
+      key: "summary",
+      width: 250,
+    });
+  }
 
   const getIndexStatusMessage = (docId, indexType) => {
     let instance = null;
@@ -251,7 +259,9 @@ function ManageDocsModal({
         key: item?.document_id,
         document: item?.document_name || "",
         index: getIndexStatusMessage(item?.document_id, indexTypes.raw),
-        summary: getIndexStatusMessage(item?.document_id, indexTypes.summarize),
+        summary:
+          SummarizeStatusTitle &&
+          getIndexStatusMessage(item?.document_id, indexTypes.summarize),
         reindex: indexDocs.includes(item?.document_id) ? (
           <SpinnerLoader />
         ) : (
