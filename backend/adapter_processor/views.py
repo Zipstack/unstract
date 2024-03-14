@@ -180,6 +180,10 @@ class AdapterInstanceViewSet(ModelViewSet):
                 not user_default_adapter.default_vector_db_adapter
             ):
                 user_default_adapter.default_vector_db_adapter = instance
+            elif (adapter_type == AdapterKeys.X2TEXT) and (
+                not user_default_adapter.default_x2text_adapter
+            ):
+                user_default_adapter.default_x2text_adapter = instance
 
             user_default_adapter.save()
 
@@ -199,9 +203,32 @@ class AdapterInstanceViewSet(ModelViewSet):
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
         adapter_instance: AdapterInstance = self.get_object()
-        if adapter_instance.is_default:
+        adapter_type = adapter_instance.adapter_type
+        user_default_adapter = UserDefaultAdapter.objects.get(user=request.user)
+        if (
+            (
+                adapter_type == AdapterKeys.LLM
+                and adapter_instance == user_default_adapter.default_llm_adapter
+            )
+            or (
+                adapter_type == AdapterKeys.EMBEDDING
+                and adapter_instance
+                == user_default_adapter.default_embedding_adapter
+            )
+            or (
+                adapter_type == AdapterKeys.VECTOR_DB
+                and adapter_instance
+                == user_default_adapter.default_vector_db_adapter
+            )
+            or (
+                adapter_type == AdapterKeys.X2TEXT
+                and adapter_instance
+                == user_default_adapter.default_x2text_adapter
+            )
+        ):
             logger.error("Cannot delete a default adapter")
             raise CannotDeleteDefaultAdapter()
+
         super().perform_destroy(adapter_instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
 

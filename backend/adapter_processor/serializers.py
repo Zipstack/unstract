@@ -74,6 +74,7 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
         rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
             instance.adapter_id, common.ICON
         )
+        rep["created_by_email"] = instance.created_by.email
 
         return rep
 
