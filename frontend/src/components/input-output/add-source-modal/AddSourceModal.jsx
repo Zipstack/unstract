@@ -90,7 +90,10 @@ function AddSourceModal({
   return (
     <Modal
       open={open}
-      onCancel={() => setOpen(false)}
+      onCancel={() => {
+        setOpen(false);
+        setMetadata(null);
+      }}
       maskClosable={false}
       title={titles[type]}
       width={selectedSourceId?.length ? 500 : 1100}

@@ -82,7 +82,7 @@ function ToolSettings({ type }) {
     }
   };
 
-  const handleDelete = (adapter) => {
+  const handleDelete = (_event, adapter) => {
     const requestOptions = {
       method: "DELETE",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter.id}/`,

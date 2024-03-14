@@ -17,6 +17,7 @@
   background-color: var(--page-bg-2);
   padding: 12px;
   height: 100%;
+  overflow-y: auto;
 }
 
 .workflows-pg-body {
@@ -25,6 +26,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  padding: 20px;
 }
 
 .cardsListWrapper {
@@ -40,7 +42,7 @@
 }
 
 .cardsListWrapper::-webkit-scrollbar-thumb {
-  background: #E0E5EB ;
+  background: #e0e5eb;
 }
 
 .cardsList {
@@ -80,6 +82,6 @@
 }
 
 .list-of-workflows-body {
-    flex: 1;
-    overflow-y: auto;
+  flex: 1;
+  overflow-y: auto;
 }
