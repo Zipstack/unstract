@@ -10,6 +10,7 @@
 .doc-manager-header {
     display: flex;
     justify-content: space-between;
+    padding-right: 12px
 }
 
 .doc-manager-btn {

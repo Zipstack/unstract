@@ -29,7 +29,8 @@ function CombinedOutput({ docId, setFilledFields }) {
     outputTypes.json
   );
   const [isOutputLoading, setIsOutputLoading] = useState(false);
-  const { details } = useCustomToolStore();
+  const { details, isSinglePassExtract, updateCustomTool } =
+    useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -37,6 +38,11 @@ function CombinedOutput({ docId, setFilledFields }) {
 
   useEffect(() => {
     if (!docId) {
+      return;
+    }
+
+    if (isSinglePassExtract) {
+      runSinglePassExtraction();
       return;
     }
 
@@ -116,6 +122,37 @@ function CombinedOutput({ docId, setFilledFields }) {
       .then((res) => res)
       .catch((err) => {
         throw err;
+      });
+  };
+
+  const runSinglePassExtraction = () => {
+    const body = {
+      document_id: docId,
+      tool_id: details?.tool_id,
+    };
+
+    const requestOptions = {
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/single-pass-extraction`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: body,
+    };
+
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const data = res?.data || {};
+        setCombinedOutput(data);
+      })
+      .catch((err) => {
+        setAlertDetails(
+          handleException(err, "Failed to generate single pass extraction")
+        );
+      })
+      .finally(() => {
+        updateCustomTool({ isSinglePassExtract: false });
       });
   };
 

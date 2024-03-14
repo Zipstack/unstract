@@ -1,4 +1,4 @@
-import { Tabs } from "antd";
+import { Button, Tabs, Tooltip } from "antd";
 import { useEffect, useState } from "react";
 
 import { promptType } from "../../../helpers/GetStaticData";
@@ -11,6 +11,7 @@ import { DocumentParser } from "../document-parser/DocumentParser";
 import { Footer } from "../footer/Footer";
 import "./ToolsMain.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { PlayCircleOutlined } from "@ant-design/icons";
 
 function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
@@ -23,6 +24,7 @@ function ToolsMain() {
     selectedDoc,
     updateCustomTool,
     disableLlmOrDocChange,
+    isSinglePassExtract,
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -32,6 +34,7 @@ function ToolsMain() {
     {
       key: "1",
       label: "Document Parser",
+      disabled: isSinglePassExtract,
     },
     {
       key: "2",
@@ -123,10 +126,27 @@ function ToolsMain() {
       });
   };
 
+  const handleSinglePassExtraction = () => {
+    updateCustomTool({ isSinglePassExtract: true });
+    setActiveKey("2");
+  };
+
   return (
     <div className="tools-main-layout">
-      <div className="tools-main-tabs">
-        <Tabs activeKey={activeKey} items={items} onChange={onChange} />
+      <div className="doc-manager-header">
+        <div className="tools-main-tabs">
+          <Tabs activeKey={activeKey} items={items} onChange={onChange} />
+        </div>
+        <div className="display-flex-align-center">
+          <Tooltip title="Single Pass Extraction">
+            <Button
+              onClick={handleSinglePassExtraction}
+              loading={isSinglePassExtract}
+            >
+              <PlayCircleOutlined />
+            </Button>
+          </Tooltip>
+        </div>
       </div>
       <div className="tools-main-body">
         {activeKey === "1" && (
