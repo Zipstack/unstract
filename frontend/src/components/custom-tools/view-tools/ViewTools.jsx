@@ -31,7 +31,7 @@ function ViewTools({
     let text = "No tools available";
     let btnText = "New Tool";
     if (type) {
-      text = `No ${type.split("New ")[1].toLowerCase()} available`;
+      text = `No ${type.toLowerCase()} available`;
       btnText = type;
     }
     return (

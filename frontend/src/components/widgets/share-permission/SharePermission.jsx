@@ -165,8 +165,8 @@ function SharePermission({
                           >
                             <Popconfirm
                               key={`${item.id}-delete`}
-                              title="Delete the tool"
-                              description="Are you sure to remove this user?"
+                              title="Delete the User"
+                              description={`Are you sure to remove ${item.email}?`}
                               okText="Yes"
                               cancelText="No"
                               icon={<QuestionCircleOutlined />}
