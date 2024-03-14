@@ -52,6 +52,11 @@ function ListView({
       dataSource={listOfTools}
       style={{ marginInline: "4px" }}
       className="list-view-wrapper"
+      pagination={{
+        position: "bottom",
+        align: "end",
+        size: "small",
+      }}
       renderItem={(item) => {
         return (
           <List.Item

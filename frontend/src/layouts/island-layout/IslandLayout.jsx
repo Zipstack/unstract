@@ -3,11 +3,7 @@ import PropTypes from "prop-types";
 import "./IslandLayout.css";
 
 function IslandLayout({ children }) {
-  return (
-    <div className="island-layout">
-      <div>{children}</div>
-    </div>
-  );
+  return <div className="island-layout">{children}</div>;
 }
 
 IslandLayout.propTypes = {
