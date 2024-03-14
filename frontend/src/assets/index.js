@@ -18,6 +18,8 @@ import { ReactComponent as StepIcon } from "./steps.svg";
 import { ReactComponent as AssertionIcon } from "./assertion.svg";
 import { ReactComponent as CombinedOutputIcon } from "./combined-output.svg";
 import { ReactComponent as EmptyPlaceholder } from "./empty.svg";
+import { ReactComponent as TextExtractorIcon } from "./text-extractor.svg";
+import { ReactComponent as OcrIcon } from "./ocr.svg";
 
 export {
   SunIcon,
@@ -40,4 +42,6 @@ export {
   EmptyPlaceholder,
   AssertionIcon,
   CombinedOutputIcon,
+  TextExtractorIcon,
+  OcrIcon,
 };
