@@ -1,13 +1,55 @@
 /* Styles for ListView */
 
 .list-view-wrapper {
-    height: 100%;
-    overflow: hidden auto;
+  height: 100%;
+  overflow: hidden auto;
+  width: 60%;
+  max-width: 1200px;
 }
 
 .list-view-item {
-    display: grid;
-    grid-auto-flow: row;
-    row-gap: 2px;
-    cursor: pointer;
+  display: grid;
+  grid-auto-flow: row;
+  row-gap: 2px;
+  cursor: pointer;
+}
+
+.cur-pointer {
+  padding: 10px 0 !important;
+  height: 85px;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.action-icon-buttons {
+  font-size: 16px;
+  margin-left: 20px;
+  z-index: 20;
+}
+
+.cur-pointer .ant-list-item-meta {
+  align-self: flex-start;
+}
+
+.cur-pointer.centered .ant-list-item-meta {
+  align-self: center !important;
+}
+
+.cur-pointer .ant-list-item-meta-description {
+  -webkit-line-clamp: 2;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+}
+
+.list-view-divider {
+  border-inline-start: solid rgba(5, 5, 5, 0.13);
+  height: 20px;
+}
+
+.cover-img .fit-cover {
+  width: 120px;
+  height: 90px;
+  object-fit: contain;
 }

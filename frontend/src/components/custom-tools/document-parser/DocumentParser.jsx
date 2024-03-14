@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import "./DocumentParser.css";
 
 import {
-  handleException,
   promptStudioUpdateStatus,
   promptType,
 } from "../../../helpers/GetStaticData";
@@ -14,9 +13,9 @@ import { useSessionStore } from "../../../store/session-store";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { NotesCard } from "../notes-card/NotesCard";
 import { PromptCard } from "../prompt-card/PromptCard";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function DocumentParser({
-  setOpenAddLlmModal,
   addPromptInstance,
   scrollToBottom,
   setScrollToBottom,
@@ -30,6 +29,7 @@ function DocumentParser({
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     if (scrollToBottom) {
@@ -57,9 +57,27 @@ function DocumentParser({
       value = event.target.value;
     }
 
-    if (!value && name === "prompt_key") {
+    if (name === "prompt_key") {
       // Return if the prompt or the prompt key is empty
-      return;
+      if (!value) {
+        return;
+      }
+      if (!isValidJsonKey(value)) {
+        handleUpdateStatus(
+          isUpdateStatus,
+          promptId,
+          promptStudioUpdateStatus.validationError
+        );
+        return;
+      }
+    }
+
+    function isValidJsonKey(key) {
+      // Check for Prompt-Key
+      // Allowed case, contains alphanumeric characters and underscores,
+      // and doesn't start with a number.
+      const regex = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+      return regex.test(key);
     }
 
     const index = promptsAndNotes.findIndex(
@@ -149,7 +167,6 @@ function DocumentParser({
     if (!isUpdate) {
       return;
     }
-
     setUpdateStatus({
       promptId: promptId,
       status: value,
@@ -204,7 +221,6 @@ function DocumentParser({
                 promptDetails={item}
                 handleChange={handleChange}
                 handleDelete={handleDelete}
-                setOpenAddLlmModal={setOpenAddLlmModal}
                 updateStatus={updateStatus}
                 updatePlaceHolder="Enter Prompt"
               />
@@ -227,7 +243,6 @@ function DocumentParser({
 }
 
 DocumentParser.propTypes = {
-  setOpenAddLlmModal: PropTypes.func.isRequired,
   addPromptInstance: PropTypes.func.isRequired,
   scrollToBottom: PropTypes.bool.isRequired,
   setScrollToBottom: PropTypes.func.isRequired,

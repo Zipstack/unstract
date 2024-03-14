@@ -17,14 +17,14 @@ import {
 } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-
-import { handleException, titleCase } from "../../../helpers/GetStaticData";
+import { getMenuItem, titleCase } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { ConfigureConnectorModal } from "../configure-connector-modal/ConfigureConnectorModal";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 const tooltip = {
   input: "Data Source Settings",
@@ -66,6 +66,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const { updateWorkflow } = useWorkflowStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   const icons = {
     input: <ImportOutlined className="ds-set-icon-size" />,
@@ -123,7 +124,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       ) {
         return;
       }
-      menuItems.push(getItem(item?.name, item?.id, sourceIcon(item?.icon)));
+      menuItems.push(getMenuItem(item?.name, item?.id, sourceIcon(item?.icon)));
     });
     setSelectedId("");
     setFilteredList(menuItems);
@@ -177,16 +178,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
   const sourceIcon = (src) => {
     return <Image src={src} height={25} width={25} preview={false} />;
-  };
-
-  const getItem = (label, key, icon, children, type) => {
-    return {
-      key,
-      icon,
-      children,
-      label,
-      type,
-    };
   };
 
   const clearDestination = (updatedData) => {
@@ -396,6 +387,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         formDataConfig={formDataConfig}
         setFormDataConfig={setFormDataConfig}
         isSpecConfigLoading={isSpecConfigLoading}
+        connDetails={connDetails}
         connType={connType}
       />
     </>

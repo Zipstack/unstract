@@ -230,6 +230,7 @@ const endpointType = {
 const promptStudioUpdateStatus = {
   isUpdating: "IS_UPDATING",
   done: "DONE",
+  validationError: "VALIDATION_ERROR",
 };
 
 const getTimeForLogs = () => {
@@ -242,36 +243,6 @@ const getTimeForLogs = () => {
 
   const formattedDate = `${hours}:${minutes}:${seconds}`;
   return formattedDate;
-};
-
-const handleException = (err, errMessage, setBackendErrors = undefined) => {
-  if (err?.response?.data?.type === "validation_error") {
-    // Handle validation errors
-    if (setBackendErrors) {
-      setBackendErrors(err?.response?.data);
-    } else {
-      return {
-        type: "error",
-        content: errMessage || "Something went wrong",
-      };
-    }
-  }
-
-  if (["client_error", "server_error"].includes(err?.response?.data?.type)) {
-    // Handle client_error, server_error
-    return {
-      type: "error",
-      content:
-        err?.response?.data?.errors[0].detail ||
-        errMessage ||
-        "Something went wrong",
-    };
-  }
-
-  return {
-    type: "error",
-    content: errMessage || err?.message,
-  };
 };
 
 const base64toBlob = (data) => {
@@ -366,6 +337,16 @@ const titleCase = (str) => {
   return words.join(" ");
 };
 
+const getMenuItem = (label, key, icon, children, type) => {
+  return {
+    key,
+    icon,
+    children,
+    label,
+    type,
+  };
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -380,7 +361,6 @@ export {
   getOrgNameFromPathname,
   getReadableDateAndTime,
   getTimeForLogs,
-  handleException,
   listOfAppDeployments,
   onboardCompleted,
   promptStudioUpdateStatus,
@@ -398,4 +378,5 @@ export {
   displayPromptResult,
   getBackendErrorDetail,
   titleCase,
+  getMenuItem,
 };

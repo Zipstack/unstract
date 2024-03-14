@@ -7,7 +7,7 @@ from account.authentication_plugin_registry import AuthenticationPluginRegistry
 from account.authentication_service import AuthenticationService
 from account.cache_service import CacheService
 from account.constants import (
-    AuthoErrorCode,
+    AuthorizationErrorCode,
     Cookie,
     ErrorMessage,
     OrganizationMemberModel,
@@ -105,13 +105,13 @@ class AuthenticationController:
         except Exception as ex:
             """Error code reference
             frontend/src/components/error/GenericError/GenericError.jsx."""
-            if ex.code == AuthoErrorCode.IDM:  # type: ignore
-                query_params = {"code": AuthoErrorCode.IDM}
+            if ex.code == AuthorizationErrorCode.IDM:  # type: ignore
+                query_params = {"code": AuthorizationErrorCode.IDM}
                 return redirect(
                     f"{settings.ERROR_URL}?{urlencode(query_params)}"
                 )
-            elif ex.code == AuthoErrorCode.UMM:  # type: ignore
-                query_params = {"code": AuthoErrorCode.UMM}
+            elif ex.code == AuthorizationErrorCode.UMM:  # type: ignore
+                query_params = {"code": AuthorizationErrorCode.UMM}
                 return redirect(
                     f"{settings.ERROR_URL}?{urlencode(query_params)}"
                 )
@@ -119,10 +119,10 @@ class AuthenticationController:
             return redirect(f"{settings.ERROR_URL}")
 
         if member.organization_id and member.role and len(member.role) > 0:
-            organization: Optional[Organization] = (
-                OrganizationService.get_organization_by_org_id(
-                    member.organization_id
-                )
+            organization: Optional[
+                Organization
+            ] = OrganizationService.get_organization_by_org_id(
+                member.organization_id
             )
             if organization:
                 try:
@@ -157,7 +157,7 @@ class AuthenticationController:
         except Exception as ex:
             #
             self.user_logout(request)
-            if ex.code == AuthoErrorCode.USF:  # type: ignore
+            if ex.code == AuthorizationErrorCode.USF:  # type: ignore
                 response = Response(
                     status=status.HTTP_412_PRECONDITION_FAILED,
                     data={"domain": ex.data.get("domain")},  # type: ignore
@@ -187,11 +187,12 @@ class AuthenticationController:
         self, request: Request, organization_id: str
     ) -> Response:
         user: User = request.user
+        new_organization = False
         organization_ids = CacheService.get_user_organizations(user.user_id)
         if not organization_ids:
-            z_organizations: list[OrganizationData] = (
-                self.auth_service.get_organizations_by_user_id(user.user_id)
-            )
+            z_organizations: list[
+                OrganizationData
+            ] = self.auth_service.get_organizations_by_user_id(user.user_id)
             organization_ids = {org.id for org in z_organizations}
         if organization_id and organization_id in organization_ids:
             organization = OrganizationService.get_organization_by_org_id(
@@ -212,12 +213,17 @@ class AuthenticationController:
                         organization_data.display_name,
                         organization_data.id,
                     )
+                    new_organization = True
                 except IntegrityError:
                     raise DuplicateData(
                         f"{ErrorMessage.ORGANIZATION_EXIST}, \
                             {ErrorMessage.DUPLICATE_API}"
                     )
             self.create_tenant_user(organization=organization, user=user)
+            if new_organization:
+                self.authentication_helper.create_initial_platform_key(
+                    user=user, organization=organization
+                )
             user_info: Optional[UserInfo] = self.get_user_info(request)
             serialized_user_info = SetOrganizationsResponseSerializer(
                 user_info
@@ -231,9 +237,9 @@ class AuthenticationController:
                 },
             )
             # Update user session data in redis
-            user_session_info: dict[str, Any] = (
-                CacheService.get_user_session_info(user.email)
-            )
+            user_session_info: dict[
+                str, Any
+            ] = CacheService.get_user_session_info(user.email)
             user_session_info["current_org"] = organization_id
             CacheService.set_user_session_info(user_session_info)
             response.set_cookie(Cookie.ORG_ID, organization_id)

@@ -1,14 +1,18 @@
 import { create } from "zustand";
+
 import { promptType } from "../helpers/GetStaticData";
 
 const defaultState = {
   dropdownItems: {},
-  selectedDoc: "",
+  selectedDoc: null,
   listOfDocs: [],
   defaultLlmProfile: "",
   llmProfiles: [],
   details: {},
   disableLlmOrDocChange: [],
+  indexDocs: [],
+  rawIndexStatus: [],
+  summarizeIndexStatus: [],
 };
 
 const defaultPromptInstance = {
@@ -70,6 +74,22 @@ const useCustomToolStore = create((setState, getState) => ({
     const existingState = { ...getState() };
     const dropdownItems = existingState?.dropdownItems || {};
     return dropdownItems[propertyName];
+  },
+  pushIndexDoc: (docId) => {
+    const existingState = { ...getState() };
+    const docs = [...(existingState?.indexDocs || [])];
+    docs.push(docId);
+
+    existingState.indexDocs = docs;
+    setState(existingState);
+  },
+  deleteIndexDoc: (docId) => {
+    const existingState = { ...getState() };
+    const docs = [...(existingState?.indexDocs || [])].filter(
+      (item) => item !== docId
+    );
+    existingState.indexDocs = docs;
+    setState(existingState);
   },
 }));
 

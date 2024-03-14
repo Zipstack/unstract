@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { SocketMessages } from "../socket-messages/SocketMessages";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function CustomToolsHelper() {
   const [isLoading, setIsLoading] = useState(true);
@@ -18,6 +18,7 @@ function CustomToolsHelper() {
   const { setAlertDetails } = useAlertStore();
   const navigate = useNavigate();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     const updatedCusTool = {
@@ -33,28 +34,28 @@ function CustomToolsHelper() {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${id}`,
     };
 
+    let selectedDocId = null;
     setIsLoading(true);
     handleApiRequest(reqOpsPromptStudio)
       .then((res) => {
         const data = res?.data;
         updatedCusTool["defaultLlmProfile"] = data?.default_profile;
         updatedCusTool["details"] = data;
-        updatedCusTool["selectedDoc"] = data?.output;
+        selectedDocId = data?.output;
         setLogId(data?.log_id);
 
         const reqOpsDocs = {
           method: "GET",
-          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file?tool_id=${data?.tool_id}`,
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-document?tool_id=${data?.tool_id}`,
         };
         return handleApiRequest(reqOpsDocs);
       })
       .then((res) => {
-        const data = (res?.data || [])
-          ?.filter(
-            (item) => item?.name !== "extract" && item?.name !== "summarize"
-          )
-          ?.map((item) => item?.name);
+        const data = res?.data || [];
         updatedCusTool["listOfDocs"] = data;
+
+        const doc = data.find((item) => item?.document_id === selectedDocId);
+        updatedCusTool["selectedDoc"] = doc || null;
 
         const reqOpsDropdownItems = {
           method: "GET",
@@ -68,7 +69,7 @@ function CustomToolsHelper() {
 
         const reqOpsLlmProfiles = {
           method: "GET",
-          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/`,
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profiles/${id}`,
         };
 
         return handleApiRequest(reqOpsLlmProfiles);
