@@ -40,7 +40,7 @@ try {
     require("../../../plugins/summarize-tab/SummarizeTab").tabLabel;
   if (tabLabel) {
     items.push({
-      key: 3,
+      key: "3",
       label: tabLabel,
     });
   }
