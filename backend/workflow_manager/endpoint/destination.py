@@ -133,16 +133,15 @@ class DestinationConnector(BaseConnector):
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
         destination_configurations: dict[str, Any] = self.endpoint.configuration
-        root_path = str(connector_settings.get(DestinationKey.PATH))
-        output_folder = str(
+        output_directory = str(
             destination_configurations.get(DestinationKey.OUTPUT_FOLDER, "/")
         )
+
         overwrite = bool(
             destination_configurations.get(
                 DestinationKey.OVERWRITE_OUTPUT_DOCUMENT, False
             )
         )
-        output_directory = os.path.join(root_path, output_folder)
 
         destination_volume_path = os.path.join(
             self.execution_dir, ToolExecKey.OUTPUT_DIR
@@ -151,6 +150,7 @@ class DestinationConnector(BaseConnector):
         connector_fs = self.get_fsspec(
             settings=connector_settings, connector_id=connector.connector_id
         )
+
         if not connector_fs.isdir(output_directory):
             connector_fs.mkdir(output_directory)
 
