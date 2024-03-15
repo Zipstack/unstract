@@ -76,6 +76,8 @@ class AdapterInstance(BaseModel):
         db_comment="Is the adapter instance currently being used",
     )
 
+    # Introduced field to establish M2M relation between users and adapters.
+    # This will introduce intermediary table which relates both the models.
     shared_users = models.ManyToManyField(User, related_name="shared_adapters")
 
     objects = AdapterInstanceModelManager()
