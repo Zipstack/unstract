@@ -264,3 +264,35 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             document_id=document_id,
         )
         return Response(response, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"])
+    def single_pass_extraction(self, request: HttpRequest) -> Response:
+        """API Entry point method to fetch response to prompt.
+
+        Args:
+            request (HttpRequest): _description_
+
+        Raises:
+            FilenameMissingError: _description_
+
+        Returns:
+            Response
+        """
+        # TODO: Handle fetch_response and single_pass_
+        # extraction using common function
+        tool_id: str = request.data.get(ToolStudioPromptKeys.TOOL_ID)
+        document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
+        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
+        file_name: str = document.document_name
+
+        if not file_name or file_name == ToolStudioPromptKeys.UNDEFINED:
+            logger.error("Mandatory field file_name is missing")
+            raise FilenameMissingError()
+        response: dict[str, Any] = PromptStudioHelper.prompt_responder(
+            tool_id=tool_id,
+            file_name=file_name,
+            org_id=request.org_id,
+            user_id=request.user.user_id,
+            document_id=document_id,
+        )
+        return Response(response, status=status.HTTP_200_OK)
