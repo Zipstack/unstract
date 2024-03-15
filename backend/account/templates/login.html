@@ -12,6 +12,7 @@
             align-items: center;
             height: 100vh;
             margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
         }
         form {
             width: 300px; /* Adjust as needed */
@@ -101,6 +102,7 @@
             <!-- Spinner animation -->
             <div class="lds-dual-ring"></div>
         </div>
+        {% load static %}
         <h2>Login</h2>
         {% if error_message %}
             <p class="error-message">{{ error_message }}</p>
