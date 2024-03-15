@@ -37,7 +37,7 @@ python manage.py runserver localhost:8000
 - Server will start and run at port 8000. (<http://localhost:8000>)
   
 ## Username and Password
-The default username is `unstract` and the default password is `unstract`. You can change the password in the .env file (`DEFAULT_AUTH_PASSWORD`) before starting the server. Once it is set in the database, the .env variable will not be considered.
+The default username is `unstract` and the default password is `unstract`. To customize your password, simply navigate to the .env file and update the `DEFAULT_AUTH_PASSWORD` variable before launching the server. Once changed, use your new password to log in. To update the password after it's been set, you must first change it in the .env file, then log in using the new password.
 
 ## Asynchronous execution/pipeline execution
 

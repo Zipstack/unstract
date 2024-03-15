@@ -299,18 +299,22 @@ class AuthenticationService:
                 False otherwise.
         """
         if (
-            username == DefaultOrg.MOCK_USER
-            and password == DefaultOrg.MOCK_USER_PASSWORD
+            username != DefaultOrg.MOCK_USER
+            or password != DefaultOrg.MOCK_USER_PASSWORD
         ):
-            user = User(
-                username=DefaultOrg.MOCK_USER,
-                user_id=DefaultOrg.MOCK_USER_ID,
-                email=DefaultOrg.MOCK_USER_EMAIL,
-                password=make_password(DefaultOrg.MOCK_USER_PASSWORD),
-            )
-            user.save()
-            return True
-        return False
+            return False
+
+        user, created = User.objects.get_or_create(
+            username=DefaultOrg.MOCK_USER
+        )
+        if created:
+            user.password = make_password(DefaultOrg.MOCK_USER_PASSWORD)
+        else:
+            user.user_id = DefaultOrg.MOCK_USER_ID
+            user.email = DefaultOrg.MOCK_USER_EMAIL
+            user.password = make_password(DefaultOrg.MOCK_USER_PASSWORD)
+        user.save()
+        return True
 
     def get_user_info(self, request: Request) -> Optional[UserInfo]:
         user: User = request.user
