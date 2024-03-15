@@ -140,6 +140,8 @@ WORKFLOW_DATA_DIR = os.environ.get("WORKFLOW_DATA_DIR")
 API_STORAGE_DIR = os.environ.get("API_STORAGE_DIR")
 CACHE_TTL_SEC = os.environ.get("CACHE_TTL_SEC", 10800)
 
+DEFAULT_USER_PASSWORD = os.environ.get("DEFAULT_USER_PASSWORD", "mock123")
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 

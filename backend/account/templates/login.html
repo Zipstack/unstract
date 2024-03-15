@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <style>
+        /* Centering the form */
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        form {
+            width: 300px; /* Adjust as needed */
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            position: relative; /* Add this to position spinner relative to the form */
+        }
+        /* Custom styles */
+        h2 {
+            text-align: center;
+            margin-top: 0; /* Add this to remove default margin */
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        input[type="submit"] {
+            width: 100%;
+            padding: 10px;
+            background-color: #007bff; /* Change to your organization's color */
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        input[type="submit"]:hover {
+            background-color: #0056b3; /* Change to a darker shade of your organization's color */
+        }
+        .error-message {
+            color: red;
+            text-align: center;
+            margin: 10px 0; /* Add margin for spacing */
+        }
+        .organization-emblem {
+            display: block;
+            margin: 20px auto; /* Adjust the margin to position the emblem */
+            max-width: 100px; /* Adjust the max-width as needed */
+        }
+        /* Spinner styles */
+        .spinner {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none; /* Initially hidden */
+        }
+        .lds-dual-ring {
+            display: inline-block;
+            width: 64px;
+            height: 64px;
+        }
+        .lds-dual-ring:after {
+            content: " ";
+            display: block;
+            width: 46px;
+            height: 46px;
+            margin: 1px;
+            border-radius: 50%;
+            border: 5px solid #FEDF00;
+            border-color: #FEDF00 transparent #FEDF00 transparent;
+            animation: lds-dual-ring 1.2s linear infinite;
+        }
+        @keyframes lds-dual-ring {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body>
+    <form method="post" action="{% url 'login' %}">
+        <div class="spinner">
+            <!-- Spinner animation -->
+            <div class="lds-dual-ring"></div>
+        </div>
+        <h2>Login</h2>
+        {% if error_message %}
+            <p class="error-message">{{ error_message }}</p>
+        {% endif %}
+        {% csrf_token %}
+        <label for="username">Username:</label><br>
+        <input type="text" id="username" name="username" required><br>
+        <label for="password">Password:</label><br>
+        <input type="password" id="password" name="password" required><br><br>
+        <input type="submit" value="Login">
+    </form>
+    <script>
+        // Function to show spinner on form submit
+        document.querySelector('form').addEventListener('submit', function() {
+            document.querySelector('.spinner').style.display = 'block';
+        });
+    </script>
+</body>
+</html>
