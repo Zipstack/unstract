@@ -18,7 +18,8 @@ class LLMHelperTests(unittest.TestCase):
         prompt = "Run at 6:00 PM every single day"
         # prompt = "Run every alternate day in 4 hour intervals"
         # TODO: Below prompt fails, check on this
-        # prompt = "Run every alternate day in 4 hour intervals, starting from 4:00PM"
+        # prompt = "Run every alternate day in 4 hour\
+        #      intervals, starting from 4:00PM"
         logging.info(f"Generating for input: {prompt}")
         project_settings = {
             "guid": "test",
@@ -32,7 +33,8 @@ class LLMHelperTests(unittest.TestCase):
             logging.error(f"{CRON_GEN_ERROR}: {llm_response.output}")
             self.fail(f"{CRON_GEN_ERROR}: {llm_response.output}")
         logging.info(
-            f"Generated cron: {llm_response.output} in {llm_response.time_taken:.3f}s"
+            f"Generated cron: {llm_response.output} "
+            f"in {llm_response.time_taken:.3f}s"
         )
         self.assertEqual(llm_response.output, "0 18 * * *")
 

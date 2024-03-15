@@ -8,6 +8,7 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
+
 import DefaultPrompts from "./DefaultPrompts.json";
 
 const fieldNames = {

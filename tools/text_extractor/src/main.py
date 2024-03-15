@@ -10,7 +10,6 @@ from unstract.sdk.x2txt import X2Text
 
 
 class TextExtractor(BaseTool):
-
     def validate(self, input_file: str, settings: dict[str, Any]) -> None:
         """Validate the input file and settings.
 
@@ -46,19 +45,21 @@ class TextExtractor(BaseTool):
         text_extraction_adapter_id = settings["extractorId"]
         source_name = self.get_exec_metadata.get(MetadataKey.SOURCE_NAME)
 
-        self.stream_log(f"Extractor ID: {text_extraction_adapter_id} "
-                        "has been retrieved from settings.")
-
-        input_log = (
-            f"Processing file: \n\n`{source_name}`"
+        self.stream_log(
+            f"Extractor ID: {text_extraction_adapter_id} "
+            "has been retrieved from settings."
         )
+
+        input_log = f"Processing file: \n\n`{source_name}`"
         self.stream_update(input_log, state=LogState.INPUT_UPDATE)
 
         tool_extraction = X2Text(tool=self)
         text_extraction_adapter = tool_extraction.get_x2text(
-            adapter_instance_id=text_extraction_adapter_id)
+            adapter_instance_id=text_extraction_adapter_id
+        )
         self.stream_log(
-            "Text extraction adapter has been created successfully.")
+            "Text extraction adapter has been created successfully."
+        )
         extracted_text = text_extraction_adapter.process(
             input_file_path=input_file
         )
@@ -66,7 +67,7 @@ class TextExtractor(BaseTool):
 
         self.stream_log("Text has been extracted successfully.")
 
-        first_5_lines = '\n\n'.join(extracted_text.split('\n')[:5])
+        first_5_lines = "\n\n".join(extracted_text.split("\n")[:5])
         output_log = (
             f"### Text\n\n```text\n{first_5_lines}\n```\n\n...(truncated)"
         )
@@ -75,8 +76,7 @@ class TextExtractor(BaseTool):
         try:
             self.stream_log("Preparing to write the extracted text.")
             if source_name:
-                output_path = (
-                    Path(output_dir) / f"{Path(source_name).stem}.txt")
+                output_path = Path(output_dir) / f"{Path(source_name).stem}.txt"
                 with open(output_path, "w", encoding="utf-8") as file:
                     file.write(extracted_text)
 
@@ -93,11 +93,11 @@ class TextExtractor(BaseTool):
 
     def convert_to_actual_string(self, text: Any) -> str:
         if isinstance(text, bytes):
-            return text.decode('utf-8')
+            return text.decode("utf-8")
         elif isinstance(text, str):
             if text.startswith("b'") and text.endswith("'"):
                 bytes_text: bytes = ast.literal_eval(text)
-                return bytes_text.decode('utf-8')
+                return bytes_text.decode("utf-8")
             else:
                 return text
         else:

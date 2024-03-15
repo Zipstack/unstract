@@ -1,6 +1,10 @@
 import logging
 
-from cron_descriptor import CasingTypeEnum, ExpressionDescriptor, FormatException
+from cron_descriptor import (
+    CasingTypeEnum,
+    ExpressionDescriptor,
+    FormatException,
+)
 from cron_expression_generator.exceptions import CronDescriptionError
 
 logger = logging.getLogger(__name__)

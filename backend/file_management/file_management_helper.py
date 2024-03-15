@@ -194,8 +194,7 @@ class FileManagerHelper:
 
         elif file_content_type == "text/plain":
             with fs.open(file_path, "r") as file:
-                FileManagerHelper.logger.info(
-                    f"Reading text file: {file_path}")
+                FileManagerHelper.logger.info(f"Reading text file: {file_path}")
                 text_content = file.read()
                 return text_content
         else:

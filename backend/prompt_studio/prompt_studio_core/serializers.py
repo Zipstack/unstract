@@ -57,9 +57,9 @@ class CustomToolSerializer(AuditSerializer):
         except Exception as e:
             logger.error(f"Error occured while appending prompts {e}")
             return data
-        
+
         data["created_by_email"] = instance.created_by.email
-        
+
         return data
 
 

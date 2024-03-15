@@ -6,8 +6,9 @@ import {
   QuestionCircleOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { SpinnerLoader } from "../spinner-loader/SpinnerLoader";
 import { useEffect, useState } from "react";
+
+import { SpinnerLoader } from "../spinner-loader/SpinnerLoader";
 
 function SharePermission({
   open,

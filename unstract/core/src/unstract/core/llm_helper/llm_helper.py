@@ -4,6 +4,7 @@ import time
 from typing import Optional
 
 from llama_index.llms import AzureOpenAI
+
 from unstract.core.llm_helper.config import AzureOpenAIConfig
 from unstract.core.llm_helper.enums import LLMResult, PromptContext
 from unstract.core.llm_helper.llm_cache import LLMCache
@@ -46,7 +47,9 @@ class LLMHelper:
         prompt_for_model = self.prompt
 
         if self.prompt_context == PromptContext.GENERATE_CRON_STRING:
-            prompt_for_model = prompt_for_model.replace("{$user_prompt}", user_prompt)
+            prompt_for_model = prompt_for_model.replace(
+                "{$user_prompt}", user_prompt
+            )
 
         return prompt_for_model
 
@@ -57,7 +60,8 @@ class LLMHelper:
 
         Args:
             prompt (str): Prompt to generate response for
-            use_cache (bool, optional): Flag to retrieve from cache. Defaults to False.
+            use_cache (bool, optional): Flag to retrieve from cache.
+                Defaults to False.
 
         Returns:
             LLMResponse: LLM output
@@ -67,7 +71,9 @@ class LLMHelper:
         if ai_service == "azure-open-ai":
             logger.info("Using Azure OpenAI")
             if use_cache:
-                response = self.llm_cache.get_for_prompt(prompt=prompt_for_model)
+                response = self.llm_cache.get_for_prompt(
+                    prompt=prompt_for_model
+                )
                 if response:
                     return LLMResponse(
                         result=LLMResult.OK, output=response, cost_type="cache"
@@ -102,8 +108,12 @@ class LLMHelper:
             logger.info(f"OpenAI Response: {resp}")
             time_taken = end_time - start_time
 
-            self.llm_cache.set_for_prompt(prompt=prompt_for_model, response=resp)
-            return LLMResponse(output=resp, cost_type=ai_service, time_taken=time_taken)
+            self.llm_cache.set_for_prompt(
+                prompt=prompt_for_model, response=resp
+            )
+            return LLMResponse(
+                output=resp, cost_type=ai_service, time_taken=time_taken
+            )
         else:
             logger.error(f"AI service '{ai_service}' not found")
         return LLMResponse(

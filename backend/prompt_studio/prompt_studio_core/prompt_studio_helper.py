@@ -352,15 +352,13 @@ class PromptStudioHelper:
         """
         monitor_llm_instance: Optional[AdapterInstance] = tool.monitor_llm
         monitor_llm: Optional[str] = None
-        if monitor_llm_instance:
-            monitor_llm = str(monitor_llm_instance.id)
         prompt_grammer = tool.prompt_grammer
         outputs: list[dict[str, Any]] = []
         grammer_dict = {}
         grammar_list = []
 
         # Using default profile manager llm if monitor_llm is None
-        if monitor_llm:
+        if monitor_llm_instance:
             monitor_llm = str(monitor_llm_instance.id)
         else:
             # TODO: Use CustomTool model to get profile_manager

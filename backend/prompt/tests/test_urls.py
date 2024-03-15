@@ -1,16 +1,14 @@
 import pytest
 from django.urls import reverse
+from prompt.models import Prompt
 from rest_framework import status
 from rest_framework.test import APITestCase
-
-from prompt.models import Prompt
 
 pytestmark = pytest.mark.django_db
 
 
 @pytest.mark.prompt
 class TestPrompts(APITestCase):
-
     def test_prompts_list(self):
         """Ensure we can list all prompts."""
         url = reverse("prompts_v1-list")
@@ -27,8 +25,9 @@ class TestPrompts(APITestCase):
 
     def test_prompts_detail_throw_404(self):
         """Tests whether a 404 error is thrown on retrieving a prompt."""
-        url = reverse("prompts-detail",
-                      kwargs={"pk": 200})  # Prompt doesn't exist
+        url = reverse(
+            "prompts-detail", kwargs={"pk": 200}
+        )  # Prompt doesn't exist
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -41,8 +40,9 @@ class TestPrompts(APITestCase):
             "version_name": "v0.1.2",
             "created_by": 2,
             "modified_by": 2,
-            "prompt_input": "You're a CS undergrad looking to receive an admit from a \
-                university for a masters in AI, write a convincing SOP",
+            "prompt_input": "You're a CS undergrad looking to receive an \
+                admit from a university for a masters \
+                in AI, write a convincing SOP",
             "promoted": False,
         }
         response = self.client.post(url, data, format="json")
@@ -60,8 +60,9 @@ class TestPrompts(APITestCase):
             "version_name": "v0.1.2",
             "created_by": 2,
             "modified_by": 2,
-            "prompt_input": "You're a CS undergrad looking to receive an admit from a \
-                university for a masters in AI, write a convincing SOP",
+            "prompt_input": "You're a CS undergrad looking to receive an \
+                admit from a university for a masters \
+                in AI, write a convincing SOP",
             "promoted": False,
         }
         response = self.client.post(url, data, format="json")
@@ -76,8 +77,9 @@ class TestPrompts(APITestCase):
             "version_name": "v0.1.3",
             "created_by": 2,
             "modified_by": 2,
-            "prompt_input": "You're a CS undergrad looking to receive an admit from a \
-                university for a masters in AI, write a convincing SOP",
+            "prompt_input": "You're a CS undergrad looking to receive \
+                an admit from a university for a masters \
+                in AI, write a convincing SOP",
             "promoted": False,
         }
         response = self.client.put(url, data, format="json")
@@ -94,8 +96,9 @@ class TestPrompts(APITestCase):
             "version_name": "v0.1.3",
             "created_by": 2,
             "modified_by": 2,
-            "prompt_input": "You're a CS undergrad looking to receive an admit from a \
-                university for a masters in AI, write a convincing SOP",
+            "prompt_input": "You're a CS undergrad looking to receive \
+                an admit from a university for a masters \
+                in AI, write a convincing SOP",
             "promoted": False,
         }
         response = self.client.put(url, data, format="json")

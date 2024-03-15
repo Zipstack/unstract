@@ -109,18 +109,20 @@ class PipelineSerializer(AuditSerializer):
         repr[PC.DESTINATION_NAME] = PC.NOT_CONFIGURED
         for instance in connector_instance_list:
             if instance.connector_type == "INPUT":
-                repr[PC.SOURCE_NAME], repr[PC.SOURCE_ICON] = (
-                    self._get_name_and_icon(
-                        connectors=connectors,
-                        connector_id=instance.connector_id,
-                    )
+                (
+                    repr[PC.SOURCE_NAME],
+                    repr[PC.SOURCE_ICON],
+                ) = self._get_name_and_icon(
+                    connectors=connectors,
+                    connector_id=instance.connector_id,
                 )
             if instance.connector_type == "OUTPUT":
-                repr[PC.DESTINATION_NAME], repr[PC.DESTINATION_ICON] = (
-                    self._get_name_and_icon(
-                        connectors=connectors,
-                        connector_id=instance.connector_id,
-                    )
+                (
+                    repr[PC.DESTINATION_NAME],
+                    repr[PC.DESTINATION_ICON],
+                ) = self._get_name_and_icon(
+                    connectors=connectors,
+                    connector_id=instance.connector_id,
                 )
         return repr
 

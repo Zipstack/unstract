@@ -4,45 +4,44 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('prompt_studio', '0001_initial'),
+        ("prompt_studio", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='toolstudioprompt',
-            name='eval_guidance_completeness',
+            model_name="toolstudioprompt",
+            name="eval_guidance_completeness",
             field=models.BooleanField(default=True),
         ),
         migrations.AddField(
-            model_name='toolstudioprompt',
-            name='eval_guidance_toxicity',
+            model_name="toolstudioprompt",
+            name="eval_guidance_toxicity",
             field=models.BooleanField(default=True),
         ),
         migrations.AddField(
-            model_name='toolstudioprompt',
-            name='eval_quality_correctness',
+            model_name="toolstudioprompt",
+            name="eval_quality_correctness",
             field=models.BooleanField(default=True),
         ),
         migrations.AddField(
-            model_name='toolstudioprompt',
-            name='eval_quality_faithfulness',
+            model_name="toolstudioprompt",
+            name="eval_quality_faithfulness",
             field=models.BooleanField(default=True),
         ),
         migrations.AddField(
-            model_name='toolstudioprompt',
-            name='eval_quality_relevance',
+            model_name="toolstudioprompt",
+            name="eval_quality_relevance",
             field=models.BooleanField(default=True),
         ),
         migrations.AddField(
-            model_name='toolstudioprompt',
-            name='eval_security_pii',
+            model_name="toolstudioprompt",
+            name="eval_security_pii",
             field=models.BooleanField(default=True),
         ),
         migrations.AddField(
-            model_name='toolstudioprompt',
-            name='evaluate',
+            model_name="toolstudioprompt",
+            name="evaluate",
             field=models.BooleanField(default=True),
         ),
     ]

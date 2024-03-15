@@ -8,6 +8,8 @@ from django.db import IntegrityError
 Logger = logging.getLogger(__name__)
 
 subscription_loader = load_plugins()
+
+
 class OrganizationService:
     def __init__(self):  # type: ignore
         pass
@@ -15,7 +17,9 @@ class OrganizationService:
     @staticmethod
     def get_organization_by_org_id(org_id: str) -> Optional[Organization]:
         try:
-            return Organization.objects.get(organization_id=org_id)  # type: ignore
+            return Organization.objects.get(  # type: ignore
+                organization_id=org_id
+            )
         except Organization.DoesNotExist:
             return None
 
@@ -36,11 +40,12 @@ class OrganizationService:
                 cls = subscription_plugin[SubscriptionConfig.METADATA][
                     SubscriptionConfig.METADATA_SERVICE_CLASS
                 ]
-                cls.add(
-                    organization_id=organization_id)
+                cls.add(organization_id=organization_id)
 
         except IntegrityError as error:
-            Logger.info(f"[Duplicate Id] Failed to create Organization Error: {error}")
+            Logger.info(
+                f"[Duplicate Id] Failed to create Organization Error: {error}"
+            )
             raise error
         # Add one or more domains for the tenant
         domain = Domain()

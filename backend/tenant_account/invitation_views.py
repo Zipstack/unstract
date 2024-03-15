@@ -15,7 +15,9 @@ class InvitationViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["GET"])
     def list_invitations(self, request: Request) -> Response:
         auth_controller = AuthenticationController()
-        invitations: list[MemberInvitation] = auth_controller.get_user_invitations(
+        invitations: list[
+            MemberInvitation
+        ] = auth_controller.get_user_invitations(
             organization_id=request.org_id,
         )
         serialized_members = ListInvitationsResponseSerializer(

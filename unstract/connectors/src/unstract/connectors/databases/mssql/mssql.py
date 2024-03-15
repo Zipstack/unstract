@@ -3,6 +3,7 @@ from typing import Any
 
 import pymssql
 from pymssql import Connection
+
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 
@@ -30,7 +31,8 @@ class MSSQL(UnstractDB):
 
     @staticmethod
     def get_icon() -> str:
-        return "https://storage.googleapis.com/pandora-static/connector-icons/MSSQL.png"
+        return "https://storage.googleapis.com/\
+            pandora-static/connector-icons/MSSQL.png"
 
     @staticmethod
     def get_json_schema() -> str:

@@ -16,7 +16,8 @@ def register_connectors(connectors: dict[str, Any]) -> None:
     # connectors = {}
     for connector in os.listdir(current_directory):
         connector_path = os.path.join(current_directory, connector)
-        # Check if the item is a directory and not a special directory like __pycache__
+        # Check if the item is a directory and
+        # not a special directory like __pycache__
         if os.path.isdir(connector_path) and not connector.startswith("__"):
             try:
                 full_module_path = f"{package}.{connector}"

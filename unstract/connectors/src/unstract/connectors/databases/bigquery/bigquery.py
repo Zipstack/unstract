@@ -4,6 +4,7 @@ from typing import Any
 
 from google.cloud import bigquery
 from google.cloud.bigquery import Client
+
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
 

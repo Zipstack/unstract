@@ -15,11 +15,13 @@ from dotenv import load_dotenv
 from log_events.views import sio
 
 load_dotenv()
-path_prefix = settings.PATH_PREFIX 
+path_prefix = settings.PATH_PREFIX
 
 os.environ.setdefault(
     "DJANGO_SETTINGS_MODULE",
     os.environ.get("DJANGO_SETTINGS_MODULE", "backend.settings.dev"),
 )
 django_app = get_wsgi_application()
-application = socketio.WSGIApp(sio, django_app,socketio_path=f"{path_prefix}/socket")
+application = socketio.WSGIApp(
+    sio, django_app, socketio_path=f"{path_prefix}/socket"
+)

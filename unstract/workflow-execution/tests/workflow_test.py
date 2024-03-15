@@ -18,10 +18,16 @@ def get_mock_tool_instances() -> list[ToolInstance]:
             input=item["input"],
             output=item["output"],
             metadata=item["metadata"],
-            input_file_connector=ConnectorInstance(**item["input_file_connector"]),
-            output_file_connector=ConnectorInstance(**item["output_file_connector"]),
+            input_file_connector=ConnectorInstance(
+                **item["input_file_connector"]
+            ),
+            output_file_connector=ConnectorInstance(
+                **item["output_file_connector"]
+            ),
             input_db_connector=ConnectorInstance(**item["input_db_connector"]),
-            output_db_connector=ConnectorInstance(**item["output_db_connector"]),
+            output_db_connector=ConnectorInstance(
+                **item["output_db_connector"]
+            ),
             tool_settings=ToolSettings(**item["tool_settings"]),
         )
         for item in tool_instance_data
@@ -68,7 +74,7 @@ class TestWorkflow(unittest.TestCase):
         result = workflow.compile_workflow(execution_id="execution_id")
 
         self.assertEqual(result, {"workflow": "workflow_id", "success": True})
-        mock_tool_utils.validate_tool_instance_with_tools.assert_called_once_with(
+        mock_tool_utils.validate_tool_instance_with_tools.assert_called_once_with(  # noqa: E501
             tool_instances=mock_tool_instances
         )
 
@@ -85,8 +91,8 @@ class TestWorkflow(unittest.TestCase):
         mock_tool_instances = get_mock_tool_instances()
         mock_tool_utils = Mock()
 
-        mock_tool_utils.validate_tool_instance_with_tools.side_effect = Exception(
-            "Test error message"
+        mock_tool_utils.validate_tool_instance_with_tools.side_effect = (
+            Exception("Test error message")
         )
 
         workflow = Workflow(
@@ -106,7 +112,7 @@ class TestWorkflow(unittest.TestCase):
                 "success": False,
             },
         )
-        mock_tool_utils.validate_tool_instance_with_tools.assert_called_once_with(
+        mock_tool_utils.validate_tool_instance_with_tools.assert_called_once_with(  # noqa: E501
             tool_instances=mock_tool_instances
         )
 

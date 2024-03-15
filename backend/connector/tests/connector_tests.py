@@ -45,7 +45,10 @@ class TestConnector(APITestCase):
             "modified_by": 2,
             "modified_at": "2023-06-14T05:28:47.759Z",
             "connector_id": "e3a4512m-efgb-48d5-98a9-3983nd77f",
-            "connector_metadata": {"drive_link": "sample_url", "sharable_link": True},
+            "connector_metadata": {
+                "drive_link": "sample_url",
+                "sharable_link": True,
+            },
         }
         response = self.client.post(url, data, format="json")
 
@@ -200,9 +203,9 @@ class TestConnector(APITestCase):
             },
         }
         response = self.client.put(url, data, format="json")
-        nested_value = response.data["connector_metadata"]["sample_metadata_json"][
-            "key1"
-        ]
+        nested_value = response.data["connector_metadata"][
+            "sample_metadata_json"
+        ]["key1"]
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(nested_value, "value1")
@@ -226,9 +229,9 @@ class TestConnector(APITestCase):
             },
         }
         response = self.client.put(url, data, format="json")
-        nested_value = response.data["connector_metadata"]["sample_metadata_json"][
-            "key1"
-        ]
+        nested_value = response.data["connector_metadata"][
+            "sample_metadata_json"
+        ]["key1"]
         nested_list = response.data["connector_metadata"]["file_list"]
         last_val = nested_list.pop()
 
@@ -256,13 +259,13 @@ class TestConnector(APITestCase):
     #         },
     #     }
     #     response = self.client.put(url, data, format="json")
-    #     nested_value = response.data["connector_metadata"]["sample_metadata_json"][
+    #     nested_value = response.data["connector_metadata"]["sample_metadata_json"][ # noqa: E501
     #         "key00"
     #     ]
 
     # @pytest.mark.xfail(raises=KeyError)
     # def test_connectors_update_json_nested_failed(self) -> None:
-    #     """Tests to update connector to test a first level of json with a wrong
+    #     """Tests to update connector to test a first level of json with a wrong # noqa: E501
     #     key."""
 
     #     url = reverse("connectors_v1-detail", kwargs={"pk": 1})
@@ -280,7 +283,7 @@ class TestConnector(APITestCase):
     #         },
     #     }
     #     response = self.client.put(url, data, format="json")
-    #     nested_value = response.data["connector_metadata"]["sample_metadata_jsonNew"]
+    #     nested_value = response.data["connector_metadata"]["sample_metadata_jsonNew"] # noqa: E501
 
     def test_connectors_update_field(self) -> None:
         """Tests the PATCH method."""
@@ -293,7 +296,9 @@ class TestConnector(APITestCase):
 
         self.assertEqual(
             connector_id,
-            ConnectorInstance.objects.get(connector_id=connector_id).connector_id,
+            ConnectorInstance.objects.get(
+                connector_id=connector_id
+            ).connector_id,
         )
 
     def test_connectors_update_json_field_patch(self) -> None:
@@ -304,7 +309,10 @@ class TestConnector(APITestCase):
             "connector_metadata": {
                 "drive_link": "patch_update_url",
                 "sharable_link": True,
-                "sample_metadata_json": {"key1": "patch_update1", "key2": "value2"},
+                "sample_metadata_json": {
+                    "key1": "patch_update1",
+                    "key2": "value2",
+                },
             }
         }
 

@@ -4,8 +4,8 @@ from account.models import User
 from django.db import models
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
-from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from prompt_studio.prompt_studio_core.models import CustomTool
+from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from utils.models.base_model import BaseModel
 
 

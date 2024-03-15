@@ -7,8 +7,11 @@ from typing import Any
 from boxfs import BoxFileSystem
 from boxsdk import JWTAuth
 from boxsdk.exception import BoxOAuthException
+
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+from unstract.connectors.filesystems.unstract_file_system import (
+    UnstractFileSystem,
+)
 
 logger = logging.getLogger(__name__)
 logging.getLogger("boxsdk").setLevel(logging.ERROR)
@@ -51,8 +54,9 @@ class BoxFS(UnstractFileSystem):
                 treat_as_user_message=True,
             )
 
-        # #  TODO: Remove this block once ServiceKeyAuth works, retaining it for testing
-        # # Refer https://forum.box.com/t/free-developer-accounts-please-read/152/3
+        # #  TODO: Remove this block once ServiceKeyAuth works,
+        #  retaining it for testing
+        # # Refer https://forum.box.com/t/free-developer-accounts-please-read/152/3 # noqa:E501
         # from boxsdk import Client, OAuth2
         # client_id = ""
         # client_secret = ""
@@ -77,11 +81,14 @@ class BoxFS(UnstractFileSystem):
 
     @staticmethod
     def get_description() -> str:
-        return "Fetch and store data to and from the Box content management system"
+        return (
+            "Fetch and store data to and from the Box content management system"
+        )
 
     @staticmethod
     def get_icon() -> str:
-        return "https://storage.googleapis.com/pandora-static/connector-icons/Box.png"
+        return "https://storage.googleapis.com/pandora-static\
+            /connector-icons/Box.png"
 
     @staticmethod
     def get_json_schema() -> str:

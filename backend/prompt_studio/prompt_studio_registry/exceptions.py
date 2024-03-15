@@ -23,7 +23,7 @@ class MandatoryFieldMissingError(APIException):
 
 class ProfileErrors(APIException):
     status_code = 400
-    default_detail = f"""Looks like some default values are 
+    default_detail = """Looks like some default values are
         not selected. Please check profile managers."""
 
 

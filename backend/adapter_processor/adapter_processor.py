@@ -99,18 +99,18 @@ class AdapterProcessor:
                 adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE)
                 == AdapterKeys.X2TEXT
             ):
-                adapter_metadata[X2TextConstants.X2TEXT_HOST] = (
-                    settings.X2TEXT_HOST
-                )
-                adapter_metadata[X2TextConstants.X2TEXT_PORT] = (
-                    settings.X2TEXT_PORT
-                )
+                adapter_metadata[
+                    X2TextConstants.X2TEXT_HOST
+                ] = settings.X2TEXT_HOST
+                adapter_metadata[
+                    X2TextConstants.X2TEXT_PORT
+                ] = settings.X2TEXT_PORT
                 platform_key = (
                     PlatformAuthenticationService.get_active_platform_key()
                 )
-                adapter_metadata[X2TextConstants.PLATFORM_SERVICE_API_KEY] = (
-                    str(platform_key.key)
-                )
+                adapter_metadata[
+                    X2TextConstants.PLATFORM_SERVICE_API_KEY
+                ] = str(platform_key.key)
 
             adapter_instance = adapter_class(adapter_metadata)
             test_result: bool = adapter_instance.test_connection()

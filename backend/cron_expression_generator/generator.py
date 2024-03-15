@@ -13,14 +13,18 @@ class CronGenerator:
     """Uses LLM to generate a cron string for a user input of frequency."""
 
     @staticmethod
-    def generate_cron(frequency: str, cache_key_prefix: Optional[str] = None) -> str:
+    def generate_cron(
+        frequency: str, cache_key_prefix: Optional[str] = None
+    ) -> str:
         """Generates cron for a user provided description of frequency.
 
-        Uses LLM to prefix the user input with a prompt template and generate cron
+        Uses LLM to prefix the user input with a prompt template
+        and generate cron
 
         Args:
             frequency (str): User provided input
-            cache_key (Optional[str], optional): Key to cache against. Defaults to None.
+            cache_key (Optional[str], optional): Key to cache against.
+                Defaults to None.
 
         Returns:
             str: Generated cron string
@@ -39,7 +43,8 @@ class CronGenerator:
         )
         if use_cache is False:
             logging.info(
-                f"Cron generation LLM call - Elapsed: {cron_response.time_taken:.3f}s"
+                "Cron generation LLM call - Elapsed:"
+                f" {cron_response.time_taken:.3f}s"
             )
         if cron_response.result.value == LLMResult.NOK.value:
             raise LLMHelperError(cron_response.output)

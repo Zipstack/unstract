@@ -32,7 +32,9 @@ class PlatformAuthHelper:
             )
             raise error
         if not auth_controller.is_admin_by_role(member.role):
-            logger.error("User is not having right access to perform this operation.")
+            logger.error(
+                "User is not having right access to perform this operation."
+            )
             raise UserForbidden()
         else:
             pass
@@ -44,7 +46,8 @@ class PlatformAuthHelper:
             >= PLATFORM_KEY_COUNT
         ):
             logger.error(
-                f"Only {PLATFORM_KEY_COUNT} keys are support at a time. Count exceeded."
+                f"Only {PLATFORM_KEY_COUNT} keys are "
+                "support at a time. Count exceeded."
             )
             raise KeyCountExceeded()
         else:

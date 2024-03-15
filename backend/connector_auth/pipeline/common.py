@@ -13,7 +13,9 @@ from social_core.backends.oauth import BaseOAuth2
 logger = logging.getLogger(__name__)
 
 
-def check_user_exists(backend: BaseOAuth2, user: User, **kwargs: Any) -> dict[str, str]:
+def check_user_exists(
+    backend: BaseOAuth2, user: User, **kwargs: Any
+) -> dict[str, str]:
     """Checks if user is authenticated (will be handled in auth middleware,
     present as a fail safe)
 
@@ -46,9 +48,12 @@ def cache_oauth_creds(
     regarding expiry, uid (unique ID given by provider) and provider.
     """
     cache_key = kwargs.get("cache_key") or backend.strategy.session_get(
-        settings.SOCIAL_AUTH_FIELDS_STORED_IN_SESSION[0], ConnectorAuthKey.OAUTH_KEY
+        settings.SOCIAL_AUTH_FIELDS_STORED_IN_SESSION[0],
+        ConnectorAuthKey.OAUTH_KEY,
     )
-    extra_data = backend.extra_data(user, uid, response, details, *args, **kwargs)
+    extra_data = backend.extra_data(
+        user, uid, response, details, *args, **kwargs
+    )
     extra_data[SocialAuthConstants.PROVIDER] = backend.name
     extra_data[SocialAuthConstants.UID] = uid
 
@@ -74,7 +79,8 @@ class ConnectorAuthHelper:
             cache_key (str): Key to obtain credentials from
 
         Returns:
-            Optional[dict[str,str]]: Returns credentials. None if it doesn't exist
+            Optional[dict[str,str]]: Returns credentials.
+                None if it doesn't exist
         """
         oauth_creds: dict[str, str] = cache.get(cache_key)
         if delete_key:

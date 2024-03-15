@@ -9,13 +9,17 @@ class OrganizationMemberService:
 
     def get_user_by_email(self, email: str) -> Optional[OrganizationMember]:
         try:
-            return OrganizationMember.objects.get(user__email=email)  # type: ignore
+            return OrganizationMember.objects.get(  # type: ignore
+                user__email=email
+            )
         except OrganizationMember.DoesNotExist:
             return None
 
     def get_user_by_user_id(self, user_id: str) -> Optional[OrganizationMember]:
         try:
-            return OrganizationMember.objects.get(user__user_id=user_id)  # type: ignore
+            return OrganizationMember.objects.get(  # type: ignore
+                user__user_id=user_id
+            )
         except OrganizationMember.DoesNotExist:
             return None
 

@@ -3,8 +3,8 @@ from tenant_account.users_view import OrganizationUserViewSet
 
 organization_user_role = OrganizationUserViewSet.as_view(
     {
-        "post": OrganizationUserViewSet.assign_organization_role_to_user.__name__,
-        "delete": OrganizationUserViewSet.remove_organization_role_from_user.__name__,
+        "post": OrganizationUserViewSet.assign_organization_role_to_user.__name__,  # noqa: E501
+        "delete": OrganizationUserViewSet.remove_organization_role_from_user.__name__,  # noqa: E501
     }
 )
 
@@ -23,7 +23,7 @@ invite_user = OrganizationUserViewSet.as_view(
 organization_users = OrganizationUserViewSet.as_view(
     {
         "get": OrganizationUserViewSet.get_organization_members.__name__,
-        "delete": OrganizationUserViewSet.remove_members_from_organization.__name__,
+        "delete": OrganizationUserViewSet.remove_members_from_organization.__name__,  # noqa: E501
     }
 )
 

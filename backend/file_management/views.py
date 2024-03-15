@@ -22,7 +22,7 @@ from file_management.serializer import (
 )
 from oauth2client.client import HttpAccessTokenRefreshError
 from prompt_studio.prompt_studio_document_manager.models import DocumentManager
-from prompt_studio.prompt_studio_document_manager.prompt_studio_document_helper import (
+from prompt_studio.prompt_studio_document_manager.prompt_studio_document_helper import (  # noqa: E501
     PromptStudioDocumentHelper,
 )
 from rest_framework import serializers, status, viewsets
@@ -145,12 +145,13 @@ class FileManagementViewSet(viewsets.ModelViewSet):
 
             # Create a record in the db for the file
             document = PromptStudioDocumentHelper.create(
-                tool_id=tool_id, document_name=file_name)
+                tool_id=tool_id, document_name=file_name
+            )
             # Create a dictionary to store document data
             doc = {
                 "document_id": document.document_id,
                 "document_name": document.document_name,
-                "tool": document.tool.tool_id
+                "tool": document.tool.tool_id,
             }
             # Store file
             logger.info(
@@ -177,7 +178,7 @@ class FileManagementViewSet(viewsets.ModelViewSet):
         tool_id: str = serializer.validated_data.get("tool_id")
         view_type: str = serializer.validated_data.get("view_type")
 
-        filename_without_extension = file_name.rsplit('.', 1)[0]
+        filename_without_extension = file_name.rsplit(".", 1)[0]
         if view_type == FileViewTypes.EXTRACT:
             file_name = (
                 f"{FileViewTypes.EXTRACT.lower()}/"
@@ -201,8 +202,7 @@ class FileManagementViewSet(viewsets.ModelViewSet):
         if not file_path.endswith("/"):
             file_path += "/"
         file_path += file_name
-        contents = FileManagerHelper.fetch_file_contents(
-            file_system, file_path)
+        contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
         return Response({"data": contents}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])

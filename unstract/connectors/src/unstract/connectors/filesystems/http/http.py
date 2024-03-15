@@ -4,8 +4,11 @@ from typing import Any
 
 import aiohttp
 from fsspec.implementations.http import HTTPFileSystem
+
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+from unstract.connectors.filesystems.unstract_file_system import (
+    UnstractFileSystem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +19,17 @@ class HttpFS(UnstractFileSystem):
         # # TODO: Enforce this assertion?
         # baseURL = URL(settings["base_url"])
         # if baseURL.origin() != baseURL:
-        #     raise ValueError("Only absolute URLs without path part are supported")
+        # raise ValueError(
+        #     "Only absolute URLs without path part are supported"
+        # )
 
         client_kwargs: dict[str, Any] = {
             "base_url": settings["base_url"],
         }
         if all(settings.get(key) for key in ("username", "password")):
-            basic_auth = aiohttp.BasicAuth(settings["username"], settings["password"])
+            basic_auth = aiohttp.BasicAuth(
+                settings["username"], settings["password"]
+            )
             client_kwargs.update({"auth": basic_auth})
         self.http_fs = HTTPFileSystem(client_kwargs=client_kwargs)
 
@@ -40,7 +47,8 @@ class HttpFS(UnstractFileSystem):
 
     @staticmethod
     def get_icon() -> str:
-        return "https://storage.googleapis.com/pandora-static/connector-icons/HTTP.svg"
+        return "https://storage.googleapis.com/pandora-static\
+            /connector-icons/HTTP.svg"
 
     @staticmethod
     def get_json_schema() -> str:

@@ -78,6 +78,8 @@ class LogHelper:
             r.publish(channel, payload)
             r.close()
         except Exception as e:
-            logging.error(f"Could not publish message to channel {channel}: {e}")
+            logging.error(
+                f"Could not publish message to channel {channel}: {e}"
+            )
             return False
         return True
