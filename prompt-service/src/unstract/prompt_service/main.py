@@ -392,7 +392,11 @@ def authentication_middleware(func: Any) -> Any:
     return wrapper
 
 
-@app.route("/answer-prompt", methods=["POST", "GET", "DELETE"])
+@app.route(
+    "/answer-prompt",
+    endpoint="answer_prompt",
+    methods=["POST", "GET", "DELETE"],
+)
 @authentication_middleware
 def prompt_processor() -> Any:
     result: dict[str, Any] = {}
@@ -520,7 +524,7 @@ def prompt_processor() -> Any:
                 ].find(" ")
                 if first_space_index > 0:
                     answer = output[PSKeys.ASSERTION_FAILURE_PROMPT][
-                        first_space_index + 1 :  # noqa
+                        first_space_index + 1
                     ]
                 app.logger.info(f"[Assigning] {answer} to the output")
             else:
@@ -923,6 +927,18 @@ def extract_variable(
     # app.logger.info(f"Total Tokens: {total_extraction_tokens}")
     # with open(f"/tmp/json_of_{file_name_without_path}.json", "w") as f:
     #     f.write(json.dumps(structured_output, indent=2))
+
+
+def enable_single_pass_extraction():
+    """Enables single-pass-extraction plugin if available."""
+    single_pass_extration_plugin: dict[str, Any] = plugins.get(
+        "single-pass-extraction", {}
+    )
+    if single_pass_extration_plugin:
+        single_pass_extration_plugin["entrypoint_cls"](app)
+
+
+enable_single_pass_extraction()
 
 
 if __name__ == "__main__":
