@@ -61,7 +61,7 @@ def _pubsub_listen_forever() -> None:
             message = pubsub.get_message()
 
             if message:
-                logger.debug(f"[{os.getpid()}] Pub sub message received: {message}")
+                logger.info(f"[{os.getpid()}] Pub sub message received: {message}")
                 if message["type"] == "pmessage":
                     _handle_pubsub_messages(message)
 

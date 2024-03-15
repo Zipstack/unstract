@@ -2,10 +2,10 @@ import PropTypes from "prop-types";
 import { useContext, useEffect } from "react";
 
 import { SocketContext } from "../../../helpers/SocketContext";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 function SocketMessages({ logId }) {
   const {
     pushStagedMessage,
@@ -22,6 +22,7 @@ function SocketMessages({ logId }) {
   const onMessage = (data) => {
     try {
       const msg = JSON.parse(new TextDecoder().decode(data.data));
+      console.log("Push message:", msg);
       if (msg?.type === "LOG" || msg?.type === "COST") {
         msg.message = msg?.log;
         pushLogMessages(msg);
