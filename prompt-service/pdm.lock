@@ -3524,7 +3524,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.4.1"
+version = "0.4.2"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract Adapters"
 groups = ["default"]
@@ -3550,8 +3550,8 @@ dependencies = [
     "weaviate-client==3.25.3",
 ]
 files = [
-    {file = "unstract_adapters-0.4.1-py3-none-any.whl", hash = "sha256:d8be73fe96f37f347274b62360e2a99b69e83b93e4be4c93797e383e0a0cafbb"},
-    {file = "unstract_adapters-0.4.1.tar.gz", hash = "sha256:1f0ceaa8a26af51dd46713ec73b029a115c2a9f43a00e10ae73e8dedee7e1069"},
+    {file = "unstract_adapters-0.4.2-py3-none-any.whl", hash = "sha256:62a8d432fb16d4c63cfc79664a7fa1c7b7c0b733b40046193be10ad790ed8a13"},
+    {file = "unstract_adapters-0.4.2.tar.gz", hash = "sha256:e77cf812b5f1870ca74f2047657fda913469b3b13c851363c19c369066ff8404"},
 ]
 
 [[package]]
@@ -3831,12 +3831,12 @@ files = [
 
 [[package]]
 name = "zipp"
-version = "3.18.0"
+version = "3.18.1"
 requires_python = ">=3.8"
 summary = "Backport of pathlib-compatible object wrapper for zip files"
 groups = ["default"]
 marker = "python_version < \"3.10\""
 files = [
-    {file = "zipp-3.18.0-py3-none-any.whl", hash = "sha256:c1bb803ed69d2cce2373152797064f7e79bc43f0a3748eb494096a867e0ebf79"},
-    {file = "zipp-3.18.0.tar.gz", hash = "sha256:df8d042b02765029a09b157efd8e820451045890acc30f8e37dd2f94a060221f"},
+    {file = "zipp-3.18.1-py3-none-any.whl", hash = "sha256:206f5a15f2af3dbaee80769fb7dc6f249695e940acca08dfb2a4769fe61e538b"},
+    {file = "zipp-3.18.1.tar.gz", hash = "sha256:2884ed22e7d8961de1c9a05142eb69a247f120291bc0206a00a7642f09b5b715"},
 ]

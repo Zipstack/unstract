@@ -1,13 +1,11 @@
 from enum import Enum
 import json
-import logging
 import re
 import sqlite3
 from typing import Any, Optional
 
 import nltk
 import peewee
-from dotenv import load_dotenv
 from flask import Flask, request
 from llama_index import (
     QueryBundle,
@@ -49,14 +47,6 @@ from unstract.sdk.utils.service_context import (
 from unstract.sdk.vector_db import ToolVectorDB
 from unstract.core.pubsub_helper import LogPublisher
 
-load_dotenv()
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s : %(message)s",
-)
-
-
 POS_TEXT_PATH = "/tmp/pos.txt"
 USE_UNSTRACT_PROMPT = True
 MAX_RETRIES = 3
@@ -81,7 +71,7 @@ AuthenticationMiddleware.be_db = be_db
 
 app = Flask("prompt-service")
 
-plugins = plugin_loader()
+plugins = plugin_loader(app)
 
 def _publish_log(
     log_events_id: str, component: dict[str, str], level: Enum, state: Enum, message: str
