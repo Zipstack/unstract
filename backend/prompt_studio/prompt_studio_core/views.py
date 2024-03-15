@@ -5,13 +5,15 @@ from account.custom_exceptions import DuplicateData
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest
-from permissions.permission import IsOwner
+from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from prompt_studio.processor_loader import ProcessorConfig, load_plugins
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_profile_manager.serializers import (
     ProfileManagerSerializer,
 )
+from prompt_studio.prompt_studio.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio.exceptions import FilenameMissingError
+from prompt_studio.prompt_studio.serializers import ToolStudioPromptSerializer
 from prompt_studio.prompt_studio_core.constants import (
     ToolStudioErrors,
     ToolStudioKeys,
@@ -48,10 +50,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
     versioning_class = URLPathVersioning
 
-    permission_classes = [IsOwner]
     serializer_class = CustomToolSerializer
 
     processor_plugins = load_plugins()
+
+    def get_permissions(self) -> list[Any]:
+        if self.action == "destroy":
+            return [IsOwner()]
+
+        return [IsOwnerOrSharedUser()]
 
     def get_queryset(self) -> Optional[QuerySet]:
         filter_args = FilterHelper.build_filter_args(
@@ -59,18 +66,14 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             ToolStudioKeys.CREATED_BY,
         )
         if filter_args:
-            queryset = CustomTool.objects.filter(
-                created_by=self.request.user, **filter_args
+            queryset = CustomTool.objects.for_user(self.request.user).filter(
+                **filter_args
             )
         else:
-            queryset = CustomTool.objects.filter(
-                created_by=self.request.user,
-            )
+            queryset = CustomTool.objects.for_user(self.request.user)
         return queryset
 
-    def create(
-        self, request: HttpRequest, *args: tuple[Any], **kwargs: dict[str, Any]
-    ) -> Response:
+    def create(self, request: HttpRequest) -> Response:
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
@@ -313,3 +316,21 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serialized_instances = SharedUserListSerializer(custom_tool).data
 
         return Response(serialized_instances)
+
+    @action(detail=True, methods=["post"])
+    def create_prompt(self, request: HttpRequest, pk: Any = None) -> Response:
+        context = super().get_serializer_context()
+        serializer = ToolStudioPromptSerializer(
+            data=request.data, context=context
+        )
+        # TODO : Handle model related exceptions.
+        serializer.is_valid(raise_exception=True)
+        try:
+            # serializer.save()
+            self.perform_create(serializer)
+        except IntegrityError:
+            raise DuplicateData(
+                f"{ToolStudioPromptErrors.PROMPT_NAME_EXISTS}, \
+                    {ToolStudioPromptErrors.DUPLICATE_API}"
+            )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

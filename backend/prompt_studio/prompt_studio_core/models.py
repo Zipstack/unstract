@@ -100,6 +100,8 @@ class CustomTool(BaseModel):
         User, related_name="shared_custom_tool"
     )
 
+    objects = CustomToolModelManager()
+
     # TODO: Add ProfileManager to return type
     def get_default_llm_profile(self):  # type: ignore
         try:

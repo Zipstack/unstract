@@ -1,9 +1,10 @@
+import { PlayCircleOutlined } from "@ant-design/icons";
 import { Button, Tabs, Tooltip } from "antd";
 import { useEffect, useState } from "react";
-import { PlayCircleOutlined } from "@ant-design/icons";
 
 import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -11,7 +12,6 @@ import { CombinedOutput } from "../combined-output/CombinedOutput";
 import { DocumentParser } from "../document-parser/DocumentParser";
 import { Footer } from "../footer/Footer";
 import "./ToolsMain.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
@@ -112,7 +112,9 @@ function ToolsMain() {
     }
     const requestOptions = {
       method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompts/${details?.tool_id}/`,
+      // url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/`,
+
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",

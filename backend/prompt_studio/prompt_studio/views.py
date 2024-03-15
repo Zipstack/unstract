@@ -1,16 +1,9 @@
 import logging
-from typing import Any, Optional
+from typing import Optional
 
-from account.custom_exceptions import DuplicateData
-from django.db import IntegrityError
 from django.db.models import QuerySet
-from django.http import HttpRequest
-from prompt_studio.prompt_studio.constants import (
-    ToolStudioPromptErrors,
-    ToolStudioPromptKeys,
-)
-from rest_framework import status, viewsets
-from rest_framework.response import Response
+from prompt_studio.prompt_studio.constants import ToolStudioPromptKeys
+from rest_framework import viewsets
 from rest_framework.versioning import URLPathVersioning
 from utils.filtering import FilterHelper
 
@@ -50,18 +43,3 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
                 created_by=self.request.user,
             )
         return queryset
-
-    def create(
-        self, request: HttpRequest, *args: tuple[Any], **kwargs: dict[str, Any]
-    ) -> Response:
-        serializer = self.get_serializer(data=request.data)
-        # TODO : Handle model related exceptions.
-        serializer.is_valid(raise_exception=True)
-        try:
-            self.perform_create(serializer)
-        except IntegrityError:
-            raise DuplicateData(
-                f"{ToolStudioPromptErrors.PROMPT_NAME_EXISTS}, \
-                    {ToolStudioPromptErrors.DUPLICATE_API}"
-            )
-        return Response(serializer.data, status=status.HTTP_201_CREATED)

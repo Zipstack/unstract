@@ -21,6 +21,8 @@ prompt_studio_profiles = PromptStudioCoreView.as_view(
     {"get": "list_profiles", "patch": "make_profile_default"}
 )
 
+prompt_studio_prompts = PromptStudioCoreView.as_view({"post": "create_prompt"})
+
 prompt_studio_prompt_index = PromptStudioCoreView.as_view(
     {"post": "index_document"}
 )
@@ -55,6 +57,11 @@ urlpatterns = format_suffix_patterns(
             "prompt-studio/profiles/<uuid:pk>/",
             prompt_studio_profiles,
             name="prompt-studio-profiles",
+        ),
+        path(
+            "prompt-studio/prompts/<uuid:pk>/",
+            prompt_studio_prompts,
+            name="prompt-studio-prompts",
         ),
         path(
             "prompt-studio/index-document/",

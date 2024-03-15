@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class CustomToolSerializer(AuditSerializer):
     class Meta:
         model = CustomTool
-        fields = "__all__"
+        exclude = ["shared_users"]
 
     def to_representation(self, instance):  # type: ignore
         data = super().to_representation(instance)
