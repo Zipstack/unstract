@@ -1,6 +1,8 @@
 import logging
 import os
 import uuid
+from json import JSONDecodeError
+from jsonschema import Draft202012Validator, ValidationError, validators
 from typing import Any, Optional
 
 from account.models import User
@@ -15,9 +17,11 @@ from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_utils import ToolUtils
 from workflow_manager.workflow.constants import WorkflowKey
-
+from unstract.sdk.tool.validator import extend_with_default
 logger = logging.getLogger(__name__)
 
+# Helps validate a JSON against a schema and applies missing key's defaults too.
+DefaultsGeneratingValidator = extend_with_default(Draft202012Validator)
 
 class ToolInstanceHelper:
     @staticmethod
@@ -327,3 +331,22 @@ class ToolInstanceHelper:
             tool_instance = ToolInstance.objects.get(pk=tool_instance_id)
             tool_instance.step = step + 1
             tool_instance.save()
+
+    @staticmethod
+    def validate_tool_settings(
+        tool_uid: str,
+        tool_meta: dict[str, Any]
+    ) -> tuple[bool, str]:
+        """Function to validate Tools settings."""
+
+        schema_json: dict[str, Any] = ToolProcessor.get_tool_settings(
+            tool_uid=tool_uid
+            )
+        try:
+            DefaultsGeneratingValidator(schema_json).validate(tool_meta)
+            return True, ""
+        except JSONDecodeError as e:
+            return False, str(e)
+        except ValidationError as e:
+            return False, str(e.schema["description"])
+        

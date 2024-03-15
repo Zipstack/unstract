@@ -18,9 +18,13 @@ from rest_framework import serializers
 from tool_instance.constants import ToolInstanceKey
 from tool_instance.models import ToolInstance
 from tool_instance.tool_instance_helper import ToolInstanceHelper
-from unstract.workflow_execution.enums import LogComponent, LogState
-from unstract.workflow_execution.exceptions import StopExecution
-from utils.cache_service import CacheService
+from workflow_manager.workflow.exceptions import (
+    InvalidRequest,
+    TaskDoesNotExistError,
+    WorkflowDoesNotExistError,
+    WorkflowExecutionNotExist,
+    ToolValidationError,
+)
 from workflow_manager.endpoint.destination import DestinationConnector
 from workflow_manager.endpoint.source import SourceConnector
 from workflow_manager.workflow.constants import (
@@ -30,21 +34,19 @@ from workflow_manager.workflow.constants import (
     WorkflowMessages,
 )
 from workflow_manager.workflow.dto import AsyncResultData, ExecutionResponse
+
 from workflow_manager.workflow.enums import (
     ExecutionStatus,
     SchemaEntity,
     SchemaType,
 )
-from workflow_manager.workflow.exceptions import (
-    InvalidRequest,
-    TaskDoesNotExistError,
-    WorkflowDoesNotExistError,
-    WorkflowExecutionNotExist,
-)
+from utils.cache_service import CacheService
 from workflow_manager.workflow.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow.models.execution import WorkflowExecution
 from workflow_manager.workflow.models.workflow import Workflow
+from unstract.workflow_execution.enums import LogComponent, LogState
+from unstract.workflow_execution.exceptions import StopExecution
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +193,19 @@ class WorkflowHelper:
         )
 
     @staticmethod
+    def validate_tool_instances_meta(
+        tool_instances: list[ToolInstance]
+    ) -> str:
+        for tool in tool_instances:
+            valid, message = ToolInstanceHelper.validate_tool_settings(
+                tool_uid=tool.tool_id,
+                tool_meta=tool.metadata
+                )
+            if not valid:
+                raise ToolValidationError(message)
+        return ""
+    
+    @staticmethod
     def run_workflow(
         workflow: Workflow,
         hash_values_of_files: dict[str, str] = {},
@@ -206,6 +221,10 @@ class WorkflowHelper:
         ] = ToolInstanceHelper.get_tool_instances_by_workflow(
             workflow.id, ToolInstanceKey.STEP
         )
+
+        WorkflowHelper.validate_tool_instances_meta(
+            tool_instances=tool_instances
+            )
         execution_mode = execution_mode or WorkflowExecution.Mode.INSTANT
         execution_service = WorkflowHelper.build_workflow_execution_service(
             organization_id=organization_id,
