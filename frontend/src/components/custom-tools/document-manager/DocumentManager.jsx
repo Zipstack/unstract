@@ -40,7 +40,7 @@ try {
     require("../../../plugins/summarize-tab/SummarizeTab").tabLabel;
   if (tabLabel) {
     items.push({
-      key: 3,
+      key: "3",
       label: tabLabel,
     });
   }
@@ -59,8 +59,14 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [currDocIndexStatus, setCurrDocIndexStatus] = useState(
     docIndexStatus.yet_to_start
   );
-  const { selectedDoc, listOfDocs, disableLlmOrDocChange, details, indexDocs } =
-    useCustomToolStore();
+  const {
+    selectedDoc,
+    listOfDocs,
+    disableLlmOrDocChange,
+    details,
+    indexDocs,
+    isSinglePassExtract,
+  } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
 
@@ -219,7 +225,10 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
               type="text"
               size="small"
               disabled={
-                !selectedDoc || disableLlmOrDocChange?.length > 0 || page <= 1
+                !selectedDoc ||
+                disableLlmOrDocChange?.length > 0 ||
+                page <= 1 ||
+                isSinglePassExtract
               }
               onClick={handlePageLeft}
             >
@@ -231,7 +240,8 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
               disabled={
                 !selectedDoc ||
                 disableLlmOrDocChange?.length > 0 ||
-                page >= listOfDocs?.length
+                page >= listOfDocs?.length ||
+                isSinglePassExtract
               }
               onClick={handlePageRight}
             >

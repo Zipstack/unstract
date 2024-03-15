@@ -139,6 +139,11 @@ function ListView({
         size: "small",
       }}
       className="list-view-wrapper"
+      pagination={{
+        position: "bottom",
+        align: "end",
+        size: "small",
+      }}
       renderItem={(item) => {
         return (
           <List.Item

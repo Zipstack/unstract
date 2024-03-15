@@ -3,11 +3,18 @@
 .plt-tool-settings-layout {
   background-color: var(--page-bg-2);
   height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.island-layout {
+  overflow: hidden;
 }
 
 .plt-tool-settings-layout-2 {
   display: flex;
   flex-direction: column;
+  height: 100%;
   padding: 18px;
 }
 
@@ -19,6 +26,7 @@
 
 .plt-tool-settings-body {
   flex: 1;
+  overflow-y: auto;
   display: flex;
   justify-content: center;
 }

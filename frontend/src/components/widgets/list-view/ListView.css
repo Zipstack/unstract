@@ -2,6 +2,7 @@
 
 .list-view-wrapper {
   height: 100%;
+  overflow: hidden auto;
   width: 70%;
   min-width: 800px;
   max-width: 1400px;
