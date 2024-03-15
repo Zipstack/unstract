@@ -1,25 +1,29 @@
 import { Col, Menu, Modal, Row, Typography } from "antd";
 import PropTypes from "prop-types";
-
-import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
-import { getMenuItem } from "../../../helpers/GetStaticData";
 import { useEffect, useState } from "react";
-import { ManageLlmProfiles } from "../manage-llm-profiles/ManageLlmProfiles";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { CustomSynonyms } from "../custom-synonyms/CustomSynonyms";
-import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
 import {
   CodeOutlined,
   DiffOutlined,
   FileTextOutlined,
   MessageOutlined,
 } from "@ant-design/icons";
+
+import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
+import { getMenuItem } from "../../../helpers/GetStaticData";
+import { ManageLlmProfiles } from "../manage-llm-profiles/ManageLlmProfiles";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { CustomSynonyms } from "../custom-synonyms/CustomSynonyms";
+import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
+
 import "./SettingsModal.css";
 
 let SummarizeManager = null;
+let EvaluationManager = null;
 try {
   SummarizeManager =
     require("../../../plugins/summarize-manager/SummarizeManager").SummarizeManager;
+  EvaluationManager =
+    require("../../../plugins/evaluation-manager/EvaluationManager").EvaluationManager;
 } catch {
   // Component will remain null if it is not present.
 }
@@ -33,21 +37,21 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
   useEffect(() => {
     const items = [
       getMenuItem("Manage LLM Profiles", 1, <CodeOutlined />),
-      getMenuItem("Manage Grammar", 3, <MessageOutlined />),
-      getMenuItem("Preamble", 4, <DiffOutlined />),
-      getMenuItem("Postamble", 5, <DiffOutlined />),
+      getMenuItem("Manage Grammar", 4, <MessageOutlined />),
+      getMenuItem("Preamble", 5, <DiffOutlined />),
+      getMenuItem("Postamble", 6, <DiffOutlined />),
     ];
 
     const listOfComponents = {
       1: <ManageLlmProfiles />,
-      3: <CustomSynonyms />,
-      4: (
+      4: <CustomSynonyms />,
+      5: (
         <PreAndPostAmbleModal
           type="PREAMBLE"
           handleUpdateTool={handleUpdateTool}
         />
       ),
-      5: (
+      6: (
         <PreAndPostAmbleModal
           type="POSTAMBLE"
           handleUpdateTool={handleUpdateTool}
@@ -55,18 +59,24 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       ),
     };
 
-    if (SummarizeManager) {
+    if (SummarizeManager && EvaluationManager) {
       // Add Summary Manager menu item to the existing list
       items.splice(
         1,
         0,
-        getMenuItem("Summary Manager", 2, <FileTextOutlined />)
+        ...[
+          getMenuItem("Summary Manager", 2, <FileTextOutlined />),
+          getMenuItem("Evaluation Manager", 3, <FileTextOutlined />),
+        ]
       );
       listOfComponents[2] = (
         <SummarizeManager
           llmItems={llmItems}
           handleUpdateTool={handleUpdateTool}
         />
+      );
+      listOfComponents[3] = (
+        <EvaluationManager handleUpdateTool={handleUpdateTool} />
       );
     }
 
