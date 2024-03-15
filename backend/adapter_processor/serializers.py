@@ -1,17 +1,19 @@
 import json
 from typing import Any
 
+from account.models import User
 from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.constants import AdapterKeys
 from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
+from rest_framework.serializers import ModelSerializer
 from unstract.adapters.constants import Common as common
 
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
 
-from .models import AdapterInstance
+from .models import AdapterInstance, UserDefaultAdapter
 
 
 class TestAdapterSerializer(serializers.Serializer):
@@ -45,13 +47,16 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
     """
 
     def to_internal_value(self, data: dict[str, Any]) -> dict[str, Any]:
-        encryption_secret: str = settings.ENCRYPTION_KEY
-        f: Fernet = Fernet(encryption_secret.encode("utf-8"))
-        json_string: str = json.dumps(data.pop(AdapterKeys.ADAPTER_METADATA))
+        if data.get(AdapterKeys.ADAPTER_METADATA, None):
+            encryption_secret: str = settings.ENCRYPTION_KEY
+            f: Fernet = Fernet(encryption_secret.encode("utf-8"))
+            json_string: str = json.dumps(
+                data.pop(AdapterKeys.ADAPTER_METADATA)
+            )
 
-        data[AdapterKeys.ADAPTER_METADATA_B] = f.encrypt(
-            json_string.encode("utf-8")
-        )
+            data[AdapterKeys.ADAPTER_METADATA_B] = f.encrypt(
+                json_string.encode("utf-8")
+            )
 
         return data
 
@@ -69,6 +74,7 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
         rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
             instance.adapter_id, common.ICON
         )
+        rep["created_by_email"] = instance.created_by.email
 
         return rep
 
@@ -86,7 +92,7 @@ class AdapterListSerializer(BaseAdapterSerializer):
             "adapter_id",
             "adapter_name",
             "adapter_type",
-            "is_default",
+            "created_by",
         )  # type: ignore
 
     def to_representation(self, instance: AdapterInstance) -> dict[str, str]:
@@ -94,5 +100,39 @@ class AdapterListSerializer(BaseAdapterSerializer):
         rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
             instance.adapter_id, common.ICON
         )
+        rep["created_by_email"] = instance.created_by.email
 
         return rep
+
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ("id", "username")
+
+
+class SharedUserListSerializer(BaseAdapterSerializer):
+    """Inherits BaseAdapterSerializer.
+
+    Used for listing adapters
+    """
+
+    shared_users = UserSerializer(many=True)
+    created_by = UserSerializer()
+
+    class Meta(BaseAdapterSerializer.Meta):
+        model = AdapterInstance
+        fields = (
+            "id",
+            "adapter_id",
+            "adapter_name",
+            "adapter_type",
+            "created_by",
+            "shared_users",
+        )  # type: ignore
+
+
+class UserDefaultAdapterSerializer(ModelSerializer):
+    class Meta:
+        model = UserDefaultAdapter
+        fields = "__all__"
