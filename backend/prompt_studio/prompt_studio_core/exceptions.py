@@ -19,7 +19,7 @@ class PromptNotValid(APIException):
 
 
 class IndexingError(APIException):
-    status_code = 500
+    status_code = 400
     default_detail = "Error while indexing file"
 
 
@@ -49,3 +49,8 @@ class OutputSaveError(APIException):
 class ToolDeleteError(APIException):
     status_code = 500
     default_detail = "Failed to delete the error"
+
+
+class NoPromptsFound(APIException):
+    status_code = 404
+    default_detail = "No prompts available to process"

@@ -17,6 +17,7 @@ from prompt_studio.prompt_studio_core.exceptions import (
     AnswerFetchError,
     DefaultProfileError,
     IndexingError,
+    NoPromptsFound,
     PromptNotValid,
     ToolNotValid,
 )
@@ -171,18 +172,18 @@ class PromptStudioHelper:
 
     @staticmethod
     def prompt_responder(
-        id: str,
         tool_id: str,
         file_name: str,
         org_id: str,
         user_id: str,
         document_id: str,
+        id: Optional[str] = None,
     ) -> Any:
         """Execute chain/single run of the prompts. Makes a call to prompt
         service and returns the dict of response.
 
         Args:
-            id (str): ID of the prompt
+            id (Optional[str]): ID of the prompt
             tool_id (str): ID of tool created in prompt studio
             file_name (str): Name of the file uploaded
             org_id (str): Organization ID
@@ -195,7 +196,6 @@ class PromptStudioHelper:
         Returns:
             Any: Dictionary containing the response from prompt-service
         """
-        logger.info(f"Invoking prompt responser for prompt {id}")
         file_path = FileManagerHelper.handle_sub_directory_for_tenants(
             org_id=org_id,
             user_id=user_id,
@@ -203,8 +203,9 @@ class PromptStudioHelper:
             is_create=False,
         )
         file_path = str(Path(file_path) / file_name)
-        if id and tool_id:
-            logger.info("Executing in single prompt mode")
+        if id:
+            message: str = f"Executing single prompt {id} of tool {tool_id}"
+            logger.info(message)
             try:
                 prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
                 prompts: list[ToolStudioPrompt] = []
@@ -224,8 +225,7 @@ class PromptStudioHelper:
                     stream_log.log(
                         stage=LogLevels.RUN,
                         level=LogLevels.INFO,
-                        message=f"Executing single prompt \
-                            {id} of tool {tool.tool_id}",
+                        message=message,
                     ),
                 )
                 if not prompt_instance:
@@ -270,6 +270,66 @@ class PromptStudioHelper:
                 ),
             )
             logger.info(f"Response fetched succesfully for prompt {id}")
+            return response
+        else:
+            message = f"Executing in single pass prompt mode for tool {tool_id}"
+            logger.info(message)
+            try:
+                prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
+
+                if not prompts:
+                    raise NoPromptsFound()
+
+                tool = prompts[0].tool_id
+                response = PromptStudioHelper._fetch_single_pass_response(
+                    file_path=file_path,
+                    tool=tool,
+                    prompts=prompts,
+                    org_id=org_id,
+                    document_id=document_id,
+                )
+
+                stream_log.publish(
+                    tool_id,
+                    stream_log.log(
+                        stage=LogLevels.RUN,
+                        level=LogLevels.INFO,
+                        message="Executing single pass "
+                        f"prompt for tool {tool_id}",
+                    ),
+                )
+            except NoPromptsFound:
+                logger.error("No prompts found for tool %s", tool_id)
+                raise
+            except Exception as e:
+                logger.error("Error while fetching prompt %s", e)
+                raise AnswerFetchError()
+            stream_log.publish(
+                tool_id,
+                stream_log.log(
+                    stage=LogLevels.RUN,
+                    level=LogLevels.INFO,
+                    message=f"Prompt instances fetched for tool {tool_id}",
+                ),
+            )
+            stream_log.publish(
+                tool_id,
+                stream_log.log(
+                    stage=LogLevels.RUN,
+                    level=LogLevels.INFO,
+                    message=f"Invoking prompt service for tool {tool_id}",
+                ),
+            )
+            stream_log.publish(
+                tool_id,
+                stream_log.log(
+                    stage=LogLevels.RUN,
+                    level=LogLevels.INFO,
+                    message=f"Response fetched sucessfully \
+                        from platform for tool {tool_id}",
+                ),
+            )
+            logger.info("Response fetched succesfully for tool %s", tool_id)
             return response
 
     @staticmethod
@@ -449,7 +509,8 @@ class PromptStudioHelper:
             extract_file_path = os.path.join(
                 directory, "extract", os.path.splitext(filename)[0] + ".txt"
             )
-
+        else:
+            profile_manager.chunk_size = 0
         try:
             doc_id: str = tool_index.index_file(
                 tool_id=tool_id,
@@ -473,3 +534,90 @@ class PromptStudioHelper:
             return doc_id
         except SdkError as e:
             raise IndexingError(str(e))
+
+    @staticmethod
+    def _fetch_single_pass_response(
+        tool: CustomTool,
+        file_path: str,
+        prompts: list[ToolStudioPrompt],
+        org_id: str,
+        document_id: str,
+    ) -> Any:
+        tool_id: str = str(tool.tool_id)
+        outputs: list[dict[str, Any]] = []
+        grammar: list[dict[str, Any]] = []
+        prompt_grammar = tool.prompt_grammer
+        default_profile: ProfileManager = ProfileManager.objects.get(
+            prompt_studio_tool=tool, is_default=True
+        )
+        default_profile.chunk_size = 0  # To retrive full context
+
+        if prompt_grammar:
+            for word, synonyms in prompt_grammar.items():
+                grammar.append({TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
+
+        if not default_profile:
+            raise DefaultProfileError()
+
+        PromptStudioHelper.dynamic_indexer(
+            profile_manager=default_profile,
+            file_path=file_path,
+            tool_id=tool_id,
+            org_id=org_id,
+            is_summary=tool.summarize_as_source,
+            document_id=document_id,
+        )
+
+        vector_db = str(default_profile.vector_store.id)
+        embedding_model = str(default_profile.embedding_model.id)
+        llm = str(default_profile.llm.id)
+        x2text = str(default_profile.x2text.id)
+        llm_profile_manager = {}
+        llm_profile_manager[TSPKeys.PREAMBLE] = tool.preamble
+        llm_profile_manager[TSPKeys.POSTAMBLE] = tool.postamble
+        llm_profile_manager[TSPKeys.GRAMMAR] = grammar
+        llm_profile_manager[TSPKeys.LLM] = llm
+        llm_profile_manager[TSPKeys.X2TEXT_ADAPTER] = x2text
+        llm_profile_manager[TSPKeys.VECTOR_DB] = vector_db
+        llm_profile_manager[TSPKeys.EMBEDDING] = embedding_model
+        llm_profile_manager[TSPKeys.CHUNK_SIZE] = default_profile.chunk_size
+        llm_profile_manager[
+            TSPKeys.CHUNK_OVERLAP
+        ] = default_profile.chunk_overlap
+
+        for prompt in prompts:
+            output: dict[str, Any] = {}
+            output[TSPKeys.PROMPT] = prompt.prompt
+            output[TSPKeys.ACTIVE] = prompt.active
+            output[TSPKeys.TYPE] = prompt.enforce_type
+            output[TSPKeys.NAME] = prompt.prompt_key
+            outputs.append(output)
+
+        if tool.summarize_as_source:
+            path = Path(file_path)
+            file_path = str(
+                path.parent / TSPKeys.SUMMARIZE / (path.stem + ".txt")
+            )
+        file_hash = ToolUtils.get_hash_from_file(file_path=file_path)
+
+        payload = {
+            TSPKeys.LLM_PROFILE_MANAGER: llm_profile_manager,
+            TSPKeys.OUTPUTS: outputs,
+            TSPKeys.TOOL_ID: tool_id,
+            TSPKeys.FILE_HASH: file_hash,
+        }
+
+        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
+
+        responder = PromptTool(
+            tool=util,
+            prompt_host=settings.PROMPT_HOST,
+            prompt_port=settings.PROMPT_PORT,
+        )
+
+        answer = responder.single_pass_extraction(payload)
+        # TODO: Make use of dataclasses
+        if answer["status"] == "ERROR":
+            raise AnswerFetchError()
+        output_response = json.loads(answer["structure_output"])
+        return output_response
