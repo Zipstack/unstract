@@ -18,7 +18,7 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { titleCase } from "../../../helpers/GetStaticData";
+import { getMenuItem, titleCase } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -125,7 +125,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       ) {
         return;
       }
-      menuItems.push(getItem(item?.name, item?.id, sourceIcon(item?.icon)));
+      menuItems.push(getMenuItem(item?.name, item?.id, sourceIcon(item?.icon)));
     });
     setSelectedId("");
     setFilteredList(menuItems);
@@ -179,16 +179,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
   const sourceIcon = (src) => {
     return <Image src={src} height={25} width={25} preview={false} />;
-  };
-
-  const getItem = (label, key, icon, children, type) => {
-    return {
-      key,
-      icon,
-      children,
-      label,
-      type,
-    };
   };
 
   const clearDestination = (updatedData) => {

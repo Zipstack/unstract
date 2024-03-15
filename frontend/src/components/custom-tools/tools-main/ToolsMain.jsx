@@ -1,6 +1,6 @@
-import { Tabs } from "antd";
-import PropTypes from "prop-types";
+import { Button, Tabs, Tooltip } from "antd";
 import { useEffect, useState } from "react";
+import { PlayCircleOutlined } from "@ant-design/icons";
 
 import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -13,9 +13,10 @@ import { Footer } from "../footer/Footer";
 import "./ToolsMain.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
-function ToolsMain({ setOpenAddLlmModal }) {
+function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
   const [prompts, setPrompts] = useState([]);
+  const [triggerRunSinglePass, setTriggerRunSinglePass] = useState(false);
   const [scrollToBottom, setScrollToBottom] = useState(false);
   const { sessionDetails } = useSessionStore();
   const {
@@ -24,6 +25,7 @@ function ToolsMain({ setOpenAddLlmModal }) {
     selectedDoc,
     updateCustomTool,
     disableLlmOrDocChange,
+    isSinglePassExtract,
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -33,6 +35,7 @@ function ToolsMain({ setOpenAddLlmModal }) {
     {
       key: "1",
       label: "Document Parser",
+      disabled: isSinglePassExtract,
     },
     {
       key: "2",
@@ -88,6 +91,14 @@ function ToolsMain({ setOpenAddLlmModal }) {
     setPrompts(details?.prompts || []);
   }, [details]);
 
+  useEffect(() => {
+    if (!isSinglePassExtract) {
+      return;
+    }
+    setActiveKey("2");
+    setTriggerRunSinglePass((prev) => !prev);
+  }, [isSinglePassExtract]);
+
   const onChange = (key) => {
     setActiveKey(key);
   };
@@ -124,22 +135,40 @@ function ToolsMain({ setOpenAddLlmModal }) {
       });
   };
 
+  const handleSinglePassExtraction = () => {
+    updateCustomTool({ isSinglePassExtract: true });
+  };
+
   return (
     <div className="tools-main-layout">
-      <div className="tools-main-tabs">
-        <Tabs activeKey={activeKey} items={items} onChange={onChange} />
+      <div className="doc-manager-header">
+        <div className="tools-main-tabs">
+          <Tabs activeKey={activeKey} items={items} onChange={onChange} />
+        </div>
+        <div className="display-flex-align-center">
+          <Tooltip title="Single Pass Extraction">
+            <Button
+              onClick={handleSinglePassExtraction}
+              loading={isSinglePassExtract}
+              disabled={disableLlmOrDocChange?.length > 0}
+              icon={<PlayCircleOutlined />}
+            />
+          </Tooltip>
+        </div>
       </div>
       <div className="tools-main-body">
         {activeKey === "1" && (
           <DocumentParser
-            setOpenAddLlmModal={setOpenAddLlmModal}
             addPromptInstance={addPromptInstance}
             scrollToBottom={scrollToBottom}
             setScrollToBottom={setScrollToBottom}
           />
         )}
         {activeKey === "2" && (
-          <CombinedOutput docId={selectedDoc?.document_id} />
+          <CombinedOutput
+            docId={selectedDoc?.document_id}
+            triggerRunSinglePass={triggerRunSinglePass}
+          />
         )}
       </div>
       <div className="tools-main-footer">
@@ -148,9 +177,5 @@ function ToolsMain({ setOpenAddLlmModal }) {
     </div>
   );
 }
-
-ToolsMain.propTypes = {
-  setOpenAddLlmModal: PropTypes.func.isRequired,
-};
 
 export { ToolsMain };

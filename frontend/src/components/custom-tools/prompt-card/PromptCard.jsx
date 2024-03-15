@@ -104,6 +104,7 @@ function PromptCard({
     details,
     disableLlmOrDocChange,
     indexDocs,
+    summarizeIndexStatus,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -180,6 +181,7 @@ function PromptCard({
   useEffect(() => {
     if (isCoverageLoading && coverageTotal === listOfDocs?.length) {
       setIsCoverageLoading(false);
+      setCoverageTotal(0);
     }
   }, [coverageTotal]);
 
@@ -282,11 +284,31 @@ function PromptCard({
       method = "PATCH";
       url += `${result?.promptOutputId}/`;
     }
+
+    const isSummaryIndexed = [...summarizeIndexStatus].find(
+      (item) =>
+        item?.docId === selectedDoc?.document_id && item?.isIndexed === true
+    );
+
+    if (
+      !isSummaryIndexed &&
+      details?.summarize_as_source &&
+      details?.summarize_llm_profile
+    ) {
+      // Summary needs to be indexed before running the prompt
+      handleUpdateOutput(null, selectedDoc?.document_id, [], method, url);
+      handleStepsAfterRunCompletion();
+      setAlertDetails({
+        type: "error",
+        content: `Summary needs to be indexed before running the prompt - ${selectedDoc?.document_name}.`,
+      });
+      return;
+    }
     handleRunApiRequest(selectedDoc?.document_id)
       .then((res) => {
         const data = res?.data;
         const value = data[promptDetails?.prompt_key];
-        if (value !== null && String(value)?.length > 0) {
+        if (value || value === 0) {
           setCoverage((prev) => prev + 1);
         }
 
@@ -314,10 +336,14 @@ function PromptCard({
         );
       })
       .finally(() => {
-        setIsRunLoading(false);
-        setCoverageTotal((prev) => prev + 1);
-        handleCoverage();
+        handleStepsAfterRunCompletion();
       });
+  };
+
+  const handleStepsAfterRunCompletion = () => {
+    setIsRunLoading(false);
+    setCoverageTotal(1);
+    handleCoverage();
   };
 
   // Get the coverage for all the documents except the one that's currently selected
@@ -331,6 +357,7 @@ function PromptCard({
       return;
     }
 
+    let totalCoverageValue = 1;
     listOfDocsToProcess.forEach((item) => {
       let method = "POST";
       let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/`;
@@ -341,11 +368,33 @@ function PromptCard({
         method = "PATCH";
         url += `${outputId?.promptOutputId}/`;
       }
+
+      const isSummaryIndexed = [...summarizeIndexStatus].find(
+        (indexStatus) =>
+          indexStatus?.docId === item?.document_id &&
+          indexStatus?.isIndexed === true
+      );
+
+      if (
+        !isSummaryIndexed &&
+        details?.summarize_as_source &&
+        details?.summarize_llm_profile
+      ) {
+        // Summary needs to be indexed before running the prompt
+        handleUpdateOutput(null, item?.document_id, [], method, url);
+        totalCoverageValue++;
+        setCoverageTotal(totalCoverageValue);
+        setAlertDetails({
+          type: "error",
+          content: `Summary needs to be indexed before running the prompt - ${item?.document_name}.`,
+        });
+        return;
+      }
       handleRunApiRequest(item?.document_id)
         .then((res) => {
           const data = res?.data;
           const outputValue = data[promptDetails?.prompt_key];
-          if (outputValue !== null && String(outputValue)?.length > 0) {
+          if (outputValue || outputValue === 0) {
             setCoverage((prev) => prev + 1);
           }
 
@@ -373,7 +422,8 @@ function PromptCard({
           );
         })
         .finally(() => {
-          setCoverageTotal((prev) => prev + 1);
+          totalCoverageValue++;
+          setCoverageTotal(totalCoverageValue);
         });
     });
   };
@@ -533,6 +583,7 @@ function PromptCard({
 
   const handleGetCoverageData = (data) => {
     const ids = [];
+    let coverageValue = 0;
     data.forEach((item) => {
       const isOutputAdded = ids.findIndex(
         (output) => output?.docId === item?.document_manager
@@ -552,10 +603,14 @@ function PromptCard({
           promptOutputId: item?.prompt_output_id,
           docId: item?.document_manager,
         });
+
+        if (item?.output || item?.output === 0) {
+          coverageValue++;
+        }
       }
     });
     setOutputIds(ids);
-    setCoverage(ids?.length);
+    setCoverage(coverageValue);
   };
 
   const enableEdit = (event) => {

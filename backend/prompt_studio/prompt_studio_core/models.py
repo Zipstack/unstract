@@ -1,7 +1,10 @@
 import uuid
 
 from account.models import User
+from adapter_processor.models import AdapterInstance
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
+from prompt_studio.prompt_studio_core.exceptions import DefaultProfileError
 from utils.models.base_model import BaseModel
 
 
@@ -52,6 +55,13 @@ class CustomTool(BaseModel):
     prompt_grammer = models.JSONField(
         null=True, blank=True, db_comment="Synonymous words used in prompt"
     )
+    monitor_llm = models.ForeignKey(
+        AdapterInstance,
+        on_delete=models.PROTECT,
+        db_comment="Field to store monitor llm",
+        null=True,
+        blank=True,
+    )
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -68,3 +78,11 @@ class CustomTool(BaseModel):
         blank=True,
         editable=False,
     )
+    exclude_failed = models.BooleanField(default=True)
+
+    # TODO: Add ProfileManager to return type
+    def get_default_llm_profile(self):  # type: ignore
+        try:
+            return self.profilemanager_set.filter(is_default=True).first()
+        except ObjectDoesNotExist:
+            raise DefaultProfileError
