@@ -643,3 +643,6 @@ backend/backend/settings/*
 # Local Dependencies for docker testing
  unstract/unstract-adapters/
  unstract/unstract-sdk/
+
+# BE pluggable-apps
+backend/pluggable_apps/*
