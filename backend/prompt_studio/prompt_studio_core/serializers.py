@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from account.serializer import UserSerializer
 from django.core.exceptions import ObjectDoesNotExist
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
@@ -57,9 +58,9 @@ class CustomToolSerializer(AuditSerializer):
         except Exception as e:
             logger.error(f"Error occured while appending prompts {e}")
             return data
-        
+
         data["created_by_email"] = instance.created_by.email
-        
+
         return data
 
 
@@ -72,3 +73,19 @@ class PromptStudioResponseSerializer(serializers.Serializer):
     file_name = serializers.CharField()
     tool_id = serializers.CharField()
     id = serializers.CharField()
+
+
+class SharedUserListSerializer(serializers.ModelSerializer):
+    """Used for listing users of Custom tool."""
+
+    created_by = UserSerializer()
+    shared_users = UserSerializer(many=True)
+
+    class Meta:
+        model = CustomTool
+        fields = (
+            "tool_id",
+            "tool_name",
+            "created_by",
+            "shared_users",
+        )

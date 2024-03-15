@@ -1,11 +1,25 @@
 import uuid
+from typing import Any
 
 from account.models import User
 from adapter_processor.models import AdapterInstance
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
+from django.db.models import QuerySet
 from prompt_studio.prompt_studio_core.exceptions import DefaultProfileError
 from utils.models.base_model import BaseModel
+
+
+class CustomToolModelManager(models.Manager):
+    def get_queryset(self) -> QuerySet[Any]:
+        return super().get_queryset()
+
+    def for_user(self, user: User) -> QuerySet[Any]:
+        return (
+            self.get_queryset()
+            .filter(models.Q(created_by=user) | models.Q(shared_users=user))
+            .distinct("tool_id")
+        )
 
 
 class CustomTool(BaseModel):
@@ -79,6 +93,12 @@ class CustomTool(BaseModel):
         editable=False,
     )
     exclude_failed = models.BooleanField(default=True)
+
+    # Introduced field to establish M2M relation between users and custom_tool.
+    # This will introduce intermediary table which relates both the models.
+    shared_users = models.ManyToManyField(
+        User, related_name="shared_custom_tool"
+    )
 
     # TODO: Add ProfileManager to return type
     def get_default_llm_profile(self):  # type: ignore

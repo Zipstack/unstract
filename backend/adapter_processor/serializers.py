@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from account.models import User
+from account.serializer import UserSerializer
 from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.constants import AdapterKeys
 from cryptography.fernet import Fernet
@@ -105,16 +105,10 @@ class AdapterListSerializer(BaseAdapterSerializer):
         return rep
 
 
-class UserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ("id", "username")
-
-
 class SharedUserListSerializer(BaseAdapterSerializer):
     """Inherits BaseAdapterSerializer.
 
-    Used for listing adapters
+    Used for listing adapter users
     """
 
     shared_users = UserSerializer(many=True)

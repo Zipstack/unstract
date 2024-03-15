@@ -33,6 +33,10 @@ prompt_studio_adapter_choices = PromptStudioCoreView.as_view(
 prompt_studio_single_pass_extraction = PromptStudioCoreView.as_view(
     {"post": "single_pass_extraction"}
 )
+prompt_studio_users = PromptStudioCoreView.as_view(
+    {"get": "list_of_shared_users"}
+)
+
 
 urlpatterns = format_suffix_patterns(
     [
@@ -71,6 +75,11 @@ urlpatterns = format_suffix_patterns(
             "prompt-studio/single-pass-extraction",
             prompt_studio_single_pass_extraction,
             name="prompt-studio-single-pass-extraction",
+        ),
+        path(
+            "prompt-studio/users/<uuid:pk>",
+            prompt_studio_users,
+            name="prompt-studio-users",
         ),
     ]
 )

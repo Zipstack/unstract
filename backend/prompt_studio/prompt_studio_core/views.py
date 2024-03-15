@@ -34,7 +34,11 @@ from tool_instance.models import ToolInstance
 from utils.filtering import FilterHelper
 
 from .models import CustomTool
-from .serializers import CustomToolSerializer, PromptStudioIndexSerializer
+from .serializers import (
+    CustomToolSerializer,
+    PromptStudioIndexSerializer,
+    SharedUserListSerializer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -296,3 +300,16 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             document_id=document_id,
         )
         return Response(response, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"])
+    def list_of_shared_users(
+        self, request: HttpRequest, pk: Any = None
+    ) -> Response:
+        # self.permission_classes = [IsOwnerOrSharedUser]
+        custom_tool = (
+            self.get_object()
+        )  # Assuming you have a get_object method in your viewset
+
+        serialized_instances = SharedUserListSerializer(custom_tool).data
+
+        return Response(serialized_instances)
