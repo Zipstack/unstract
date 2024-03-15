@@ -30,6 +30,9 @@ prompt_studio_prompt_response = PromptStudioCoreView.as_view(
 prompt_studio_adapter_choices = PromptStudioCoreView.as_view(
     {"get": "get_adapter_choices"}
 )
+prompt_studio_single_pass_extraction = PromptStudioCoreView.as_view(
+    {"post": "single_pass_extraction"}
+)
 
 urlpatterns = format_suffix_patterns(
     [
@@ -63,6 +66,11 @@ urlpatterns = format_suffix_patterns(
             "prompt-studio/adapter-choices/",
             prompt_studio_adapter_choices,
             name="prompt-studio-adapter-choices",
+        ),
+        path(
+            "prompt-studio/single-pass-extraction",
+            prompt_studio_single_pass_extraction,
+            name="prompt-studio-single-pass-extraction",
         ),
     ]
 )

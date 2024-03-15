@@ -133,16 +133,11 @@ function ListOfTools() {
         setListOfTools(tools);
         setAlertDetails({
           type: "success",
-          console: "Deleted successfully ",
+          console: "Deleted successfully",
         });
       })
       .catch((err) => {
-        setAlertDetails({
-          type: "error",
-          // TODO: Handle with generic function to parse drf-validation error messages
-          // Here we assume its either a server error or display a generic message
-          content: err?.response?.data?.errors[0].detail || "Failed to delete",
-        });
+        setAlertDetails(handleException(err, "Failed to Delete"));
       });
   };
 
@@ -200,7 +195,7 @@ function ListOfTools() {
               descriptionProp="description"
               iconProp="icon"
               idProp="tool_id"
-              type="New Project"
+              type="Prompt Project"
             />
           </div>
         </div>
