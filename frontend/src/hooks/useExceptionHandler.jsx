@@ -3,7 +3,6 @@ import PropTypes from "prop-types";
 
 const useExceptionHandler = () => {
   const navigate = useNavigate();
-
   const handleException = (err, errMessage = "Something went wrong") => {
     if (!err) {
       return {
@@ -14,13 +13,12 @@ const useExceptionHandler = () => {
 
     if (err.response && err.response.data) {
       const { type, errors } = err.response.data;
-
       switch (type) {
         case "validation_error":
           // Handle validation errors
           break;
         case "subscription_error":
-          navigate("/trial");
+          navigate("/trial-expired");
           return {
             type: "error",
             content:
