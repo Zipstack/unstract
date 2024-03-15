@@ -3877,13 +3877,13 @@ files = [
 
 [[package]]
 name = "setuptools"
-version = "69.1.1"
+version = "69.2.0"
 requires_python = ">=3.8"
 summary = "Easily download, build, install, upgrade, and uninstall Python packages"
 groups = ["default"]
 files = [
-    {file = "setuptools-69.1.1-py3-none-any.whl", hash = "sha256:02fa291a0471b3a18b2b2481ed902af520c69e8ae0919c13da936542754b4c56"},
-    {file = "setuptools-69.1.1.tar.gz", hash = "sha256:5c0806c7d9af348e6dd3777b4f4dbb42c7ad85b190104837488eab9a7c945cf8"},
+    {file = "setuptools-69.2.0-py3-none-any.whl", hash = "sha256:c21c49fb1042386df081cb5d86759792ab89efca84cf114889191cd09aacc80c"},
+    {file = "setuptools-69.2.0.tar.gz", hash = "sha256:0ff4183f8f42cd8fa3acea16c45205521a4ef28f73c6391d8a25e92893134f2e"},
 ]
 
 [[package]]
@@ -4640,7 +4640,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.4.1"
+version = "0.4.2"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract Adapters"
 groups = ["default"]
@@ -4666,8 +4666,8 @@ dependencies = [
     "weaviate-client==3.25.3",
 ]
 files = [
-    {file = "unstract_adapters-0.4.1-py3-none-any.whl", hash = "sha256:d8be73fe96f37f347274b62360e2a99b69e83b93e4be4c93797e383e0a0cafbb"},
-    {file = "unstract_adapters-0.4.1.tar.gz", hash = "sha256:1f0ceaa8a26af51dd46713ec73b029a115c2a9f43a00e10ae73e8dedee7e1069"},
+    {file = "unstract_adapters-0.4.2-py3-none-any.whl", hash = "sha256:62a8d432fb16d4c63cfc79664a7fa1c7b7c0b733b40046193be10ad790ed8a13"},
+    {file = "unstract_adapters-0.4.2.tar.gz", hash = "sha256:e77cf812b5f1870ca74f2047657fda913469b3b13c851363c19c369066ff8404"},
 ]
 
 [[package]]
