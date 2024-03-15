@@ -44,10 +44,10 @@ class ErrorMessage:
 class DefaultOrg:
     ORGANIZATION_NAME = "mock_org"
     MOCK_ORG = "mock_org"
-    MOCK_USER = "mock_user"
+    MOCK_USER = "unstract"
     MOCK_USER_ID = "mock_user_id"
     MOCK_USER_EMAIL = "email@mock.com"
-    MOCK_USER_PASSWORD = settings.DEFAULT_USER_PASSWORD
+    MOCK_USER_PASSWORD = settings.DEFAULT_AUTH_PASSWORD
 
 
 class UserLoginTemplate:

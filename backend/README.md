@@ -37,7 +37,7 @@ python manage.py runserver localhost:8000
 - Server will start and run at port 8000. (<http://localhost:8000>)
   
 ## Username and Password
-The default username is `mock_user` and the default password is `mock123`. You can change the password in the .env file (`DEFAULT_USER_PASSWORD`) before starting the server. Once it is set in the database, the .env variable will not be considered.
+The default username is `unstract` and the default password is `unstract123`. You can change the password in the .env file (`DEFAULT_AUTH_PASSWORD`) before starting the server. Once it is set in the database, the .env variable will not be considered.
 
 ## Asynchronous execution/pipeline execution
 
