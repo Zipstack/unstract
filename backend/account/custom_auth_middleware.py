@@ -50,12 +50,12 @@ class CustomAuthMiddleware:
         elif request.COOKIES:
             self.authenticate_with_cookies(request, tenantAccessiblePublicPath)
         if (
-            request.user  # type: ignore
+            request.user
             and request.session
             and "user" in request.session
         ):
             StateStore.set(Common.LOG_EVENTS_ID, request.session.session_key)
-            response = self.get_response(request)  # type: ignore
+            response = self.get_response(request)
             StateStore.clear(Common.LOG_EVENTS_ID)
             return response
         return JsonResponse({"message": "Unauthorized"}, status=401)
