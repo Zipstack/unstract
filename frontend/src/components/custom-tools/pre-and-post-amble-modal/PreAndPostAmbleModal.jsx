@@ -1,4 +1,4 @@
-import { Button, Input, Modal, Space, Typography } from "antd";
+import { Button, Input, Space, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import "./PreAndPostAmbleModal.css";
@@ -7,13 +7,15 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
+import DefaultPrompts from "./DefaultPrompts.json";
 
 const fieldNames = {
   preamble: "PREAMBLE",
   postamble: "POSTAMBLE",
 };
 
-function PreAndPostAmbleModal({ isOpen, closeModal, type, handleUpdateTool }) {
+function PreAndPostAmbleModal({ type, handleUpdateTool }) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const { details, updateCustomTool } = useCustomToolStore();
@@ -21,23 +23,28 @@ function PreAndPostAmbleModal({ isOpen, closeModal, type, handleUpdateTool }) {
   const handleException = useExceptionHandler();
 
   useEffect(() => {
-    if (!isOpen) {
-      setText("");
-      setTitle("");
-      return;
-    }
-
     if (type === fieldNames.preamble) {
       setTitle("Preamble");
-      setText(details?.preamble || "");
+      setText(details?.preamble || DefaultPrompts.preamble);
       return;
     }
 
     if (type === fieldNames.postamble) {
       setTitle("Postamble");
-      setText(details?.postamble || "");
+      setText(details?.postamble || DefaultPrompts.postamble);
     }
-  }, [isOpen]);
+  }, [type]);
+
+  const setDefaultPrompt = () => {
+    if (type === fieldNames.preamble) {
+      setText(DefaultPrompts.preamble);
+      return;
+    }
+
+    if (type === fieldNames.postamble) {
+      setText(DefaultPrompts.postamble);
+    }
+  };
 
   const handleSave = () => {
     const body = {};
@@ -57,7 +64,6 @@ function PreAndPostAmbleModal({ isOpen, closeModal, type, handleUpdateTool }) {
         };
         const updatedDetails = { ...details, ...updatedData };
         updateCustomTool({ details: updatedDetails });
-        closeModal();
         setAlertDetails({
           type: "success",
           content: "Saved successfully",
@@ -69,50 +75,41 @@ function PreAndPostAmbleModal({ isOpen, closeModal, type, handleUpdateTool }) {
   };
 
   return (
-    <Modal
-      className="pre-post-amble-modal"
-      open={isOpen}
-      onCancel={closeModal}
-      footer={null}
-      centered
-      maskClosable={false}
-    >
-      <div className="pre-post-amble-body">
-        <Space direction="vertical" className="pre-post-amble-body-space">
+    <div className="settings-body-pad-top">
+      <SpaceWrapper>
+        <div>
+          <Typography.Text strong className="pre-post-amble-title">
+            {title}
+          </Typography.Text>
+        </div>
+        <div>
           <div>
-            <Typography.Text strong className="pre-post-amble-title">
-              {title}
-            </Typography.Text>
+            <Typography.Text>Add {title}</Typography.Text>
           </div>
-          <div>
-            <div>
-              <Typography.Text>Add {title}</Typography.Text>
-            </div>
-          </div>
-          <div>
-            <Input.TextArea
-              rows={3}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-            />
-          </div>
-        </Space>
-      </div>
-      <div className="pre-post-amble-footer display-flex-right">
-        <Space>
-          <Button onClick={closeModal}>Cancel</Button>
-          <CustomButton type="primary" onClick={handleSave}>
-            Save
-          </CustomButton>
-        </Space>
-      </div>
-    </Modal>
+        </div>
+        <div>
+          <Input.TextArea
+            rows={4}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          <Button size="small" type="link" onClick={setDefaultPrompt}>
+            Add default prompt
+          </Button>
+        </div>
+        <div className="display-flex-right">
+          <Space>
+            <CustomButton type="primary" onClick={handleSave}>
+              Save
+            </CustomButton>
+          </Space>
+        </div>
+      </SpaceWrapper>
+    </div>
   );
 }
 
 PreAndPostAmbleModal.propTypes = {
-  isOpen: PropTypes.bool.isRequired,
-  closeModal: PropTypes.func.isRequired,
   type: PropTypes.string.isRequired,
   handleUpdateTool: PropTypes.func.isRequired,
 };

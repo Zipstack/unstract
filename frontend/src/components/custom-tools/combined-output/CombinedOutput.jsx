@@ -1,5 +1,3 @@
-import { Segmented } from "antd";
-import jsYaml from "js-yaml";
 import Prism from "prismjs";
 import "prismjs/components/prism-json";
 import "prismjs/plugins/line-numbers/prism-line-numbers.css";
@@ -17,19 +15,11 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
-const outputTypes = {
-  json: "JSON",
-  yaml: "YAML",
-};
-
-function CombinedOutput({ docId, setFilledFields }) {
+function CombinedOutput({ docId, setFilledFields, triggerRunSinglePass }) {
   const [combinedOutput, setCombinedOutput] = useState({});
-  const [yamlData, setYamlData] = useState(null);
-  const [selectedOutputType, setSelectedOutputType] = useState(
-    outputTypes.json
-  );
   const [isOutputLoading, setIsOutputLoading] = useState(false);
-  const { details } = useCustomToolStore();
+  const { details, isSinglePassExtract, updateCustomTool } =
+    useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -37,6 +27,10 @@ function CombinedOutput({ docId, setFilledFields }) {
 
   useEffect(() => {
     if (!docId) {
+      return;
+    }
+
+    if (isSinglePassExtract) {
       return;
     }
 
@@ -81,9 +75,6 @@ function CombinedOutput({ docId, setFilledFields }) {
         if (setFilledFields) {
           setFilledFields(filledFields);
         }
-
-        const yamlDump = jsYaml.dump(output);
-        setYamlData(yamlDump);
       })
       .catch((err) => {
         setAlertDetails(
@@ -97,11 +88,11 @@ function CombinedOutput({ docId, setFilledFields }) {
 
   useEffect(() => {
     Prism.highlightAll();
-  }, [combinedOutput, selectedOutputType]);
+  }, [combinedOutput]);
 
-  const handleOutputTypeChange = (value) => {
-    setSelectedOutputType(value);
-  };
+  useEffect(() => {
+    runSinglePassExtraction();
+  }, [triggerRunSinglePass]);
 
   const handleOutputApiRequest = async () => {
     const requestOptions = {
@@ -119,6 +110,37 @@ function CombinedOutput({ docId, setFilledFields }) {
       });
   };
 
+  const runSinglePassExtraction = () => {
+    const body = {
+      document_id: docId,
+      tool_id: details?.tool_id,
+    };
+
+    const requestOptions = {
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/single-pass-extraction`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: body,
+    };
+
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const data = res?.data || {};
+        setCombinedOutput(data);
+      })
+      .catch((err) => {
+        setAlertDetails(
+          handleException(err, "Failed to generate single pass extraction")
+        );
+      })
+      .finally(() => {
+        updateCustomTool({ isSinglePassExtract: false });
+      });
+  };
+
   if (isOutputLoading) {
     return <SpinnerLoader />;
   }
@@ -126,23 +148,14 @@ function CombinedOutput({ docId, setFilledFields }) {
   return (
     <div className="combined-op-layout">
       <div className="combined-op-header">
-        <div className="combined-op-segment">
-          <Segmented
-            size="small"
-            defaultValue={selectedOutputType}
-            options={["JSON", "YAML"]}
-            onChange={handleOutputTypeChange}
-          />
-        </div>
+        <div className="combined-op-segment"></div>
       </div>
       <div className="combined-op-divider" />
       <div className="combined-op-body code-snippet">
         {combinedOutput && (
           <pre className="line-numbers width-100">
             <code className="language-javascript width-100">
-              {selectedOutputType === outputTypes.json
-                ? JSON.stringify(combinedOutput, null, 2)
-                : yamlData}
+              {JSON.stringify(combinedOutput, null, 2)}
             </code>
           </pre>
         )}
@@ -155,6 +168,7 @@ function CombinedOutput({ docId, setFilledFields }) {
 CombinedOutput.propTypes = {
   docId: PropTypes.string,
   setFilledFields: PropTypes.func,
+  triggerRunSinglePass: PropTypes.bool.isRequired,
 };
 
 export { CombinedOutput };

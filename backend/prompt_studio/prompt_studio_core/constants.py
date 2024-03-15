@@ -78,6 +78,8 @@ class ToolStudioPromptKeys:
     SUMMARIZE = "summarize"
     SUMMARIZED_RESULT = "summarized_result"
     DOCUMENT_ID = "document_id"
+    EXTRACT = "extract"
+    LLM_PROFILE_MANAGER = "llm_profile_manager"
 
 
 class LogLevels:

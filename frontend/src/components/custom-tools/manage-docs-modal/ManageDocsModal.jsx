@@ -2,7 +2,6 @@ import {
   CheckCircleFilled,
   CloseCircleFilled,
   DeleteOutlined,
-  InfoCircleFilled,
   PlusOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
@@ -11,7 +10,6 @@ import {
   Divider,
   Modal,
   Radio,
-  Select,
   Space,
   Table,
   Tooltip,
@@ -32,6 +30,14 @@ import "./ManageDocsModal.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
+let SummarizeStatusTitle = null;
+try {
+  SummarizeStatusTitle =
+    require("../../../plugins/summarize-status-title/SummarizeStatusTitle").SummarizeStatusTitle;
+} catch {
+  // The component will remain null if it is not available
+}
+
 const indexTypes = {
   raw: "RAW",
   summarize: "Summarize",
@@ -46,13 +52,10 @@ function ManageDocsModal({
 }) {
   const [isUploading, setIsUploading] = useState(false);
   const [rows, setRows] = useState([]);
-  const [rawLlmProfile, setRawLlmProfile] = useState("");
+  const [rawLlmProfile, setRawLlmProfile] = useState(null);
   const [isRawDataLoading, setIsRawDataLoading] = useState(false);
-  const [rawIndexStatus, setRawIndexStatus] = useState([]);
-  const [summarizeLlmProfile, setSummarizeLlmProfile] = useState("");
+  const [summarizeLlmProfile, setSummarizeLlmProfile] = useState(null);
   const [isSummarizeDataLoading, setIsSummarizeDataLoading] = useState(false);
-  const [summarizeIndexStatus, setSummarizeIndexStatus] = useState([]);
-  const [llmItems, setLlmItems] = useState([]);
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const {
@@ -64,6 +67,9 @@ function ManageDocsModal({
     defaultLlmProfile,
     disableLlmOrDocChange,
     indexDocs,
+    rawIndexStatus,
+    summarizeIndexStatus,
+    isSinglePassExtract,
   } = useCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
@@ -86,31 +92,27 @@ function ManageDocsModal({
     </Typography.Text>
   );
 
-  const infoIndex = (
+  const failedSummary = (
     <Typography.Text>
       <span style={{ marginRight: "8px" }}>
-        <InfoCircleFilled style={{ color: "#009AF0" }} />
+        <CloseCircleFilled style={{ color: "#FF4D4F" }} />
       </span>{" "}
-      LLM Profile not selected
+      Not Summarized
     </Typography.Text>
   );
 
   useEffect(() => {
     setRawLlmProfile(defaultLlmProfile);
     setSummarizeLlmProfile(details?.summarize_llm_profile);
-  }, [llmItems]);
-
-  useEffect(() => {
-    getLlmProfilesDropdown();
-  }, [llmProfiles]);
+  }, [defaultLlmProfile, details]);
 
   useEffect(() => {
     handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
-  }, [rawLlmProfile, indexDocs]);
+  }, [indexDocs, rawLlmProfile]);
 
   useEffect(() => {
     handleGetIndexStatus(summarizeLlmProfile, indexTypes.summarize);
-  }, [summarizeLlmProfile, indexDocs]);
+  }, [indexDocs, summarizeLlmProfile]);
 
   const handleLoading = (indexType, value) => {
     if (indexType === indexTypes.raw) {
@@ -124,11 +126,11 @@ function ManageDocsModal({
 
   const handleIndexStatus = (indexType, data) => {
     if (indexType === indexTypes.raw) {
-      setRawIndexStatus(data);
+      updateCustomTool({ rawIndexStatus: data });
     }
 
     if (indexType === indexTypes.summarize) {
-      setSummarizeIndexStatus(data);
+      updateCustomTool({ summarizeIndexStatus: data });
     }
   };
 
@@ -147,6 +149,7 @@ function ManageDocsModal({
 
   const handleGetIndexStatus = (llmProfileId, indexType) => {
     if (!llmProfileId) {
+      handleIndexStatus(indexType, []);
       return;
     }
 
@@ -176,14 +179,12 @@ function ManageDocsModal({
       });
   };
 
-  const getLlmProfilesDropdown = () => {
-    const items = [...llmProfiles].map((item) => {
-      return {
-        value: item?.profile_id,
-        label: item?.profile_name,
-      };
-    });
-    setLlmItems(items);
+  const getLlmProfileName = (llmProfile) => {
+    const llmProfileName = llmProfiles.find(
+      (item) => item?.profile_id === llmProfile
+    );
+
+    return llmProfileName?.profile_name || "No LLM Profile Selected";
   };
 
   const columns = [
@@ -195,42 +196,16 @@ function ManageDocsModal({
     {
       title: (
         <Space className="w-100">
-          <Typography.Text>Raw</Typography.Text>
-          <Select
-            size="small"
-            style={{
-              width: 100,
-            }}
-            value={rawLlmProfile}
-            options={llmItems}
-            onChange={(value) => setRawLlmProfile(value)}
-          />
+          <Typography.Text>Index</Typography.Text>
+          <Typography.Text type="secondary">
+            {"(" + getLlmProfileName(rawLlmProfile) + ")"}
+          </Typography.Text>
           {isRawDataLoading && <SpinnerLoader />}
         </Space>
       ),
-      dataIndex: "rawIndex",
-      key: "rawIndex",
-      width: 250,
-    },
-    {
-      title: (
-        <Space className="w-100">
-          <Typography.Text>Summarize</Typography.Text>
-          <Select
-            size="small"
-            style={{
-              width: 100,
-            }}
-            value={summarizeLlmProfile}
-            options={llmItems}
-            onChange={(value) => setSummarizeLlmProfile(value)}
-          />
-          {isSummarizeDataLoading && <SpinnerLoader />}
-        </Space>
-      ),
-      dataIndex: "summarizeIndex",
-      key: "summarizeIndex",
-      width: 250,
+      dataIndex: "index",
+      key: "index",
+      width: 260,
     },
     {
       title: "",
@@ -252,21 +227,32 @@ function ManageDocsModal({
     },
   ];
 
+  if (SummarizeStatusTitle) {
+    columns.splice(2, 0, {
+      title: (
+        <SummarizeStatusTitle
+          profileName={"(" + getLlmProfileName(summarizeLlmProfile) + ")"}
+          isLoading={isSummarizeDataLoading}
+        />
+      ),
+      dataIndex: "summary",
+      key: "summary",
+      width: 260,
+    });
+  }
+
   const getIndexStatusMessage = (docId, indexType) => {
     let instance = null;
+    let failed = null;
     if (indexType === indexTypes.raw) {
-      if (!rawLlmProfile) {
-        return infoIndex;
-      }
       instance = rawIndexStatus.find((item) => item?.docId === docId);
+      failed = failedIndex;
     } else {
-      if (!summarizeLlmProfile) {
-        return infoIndex;
-      }
       instance = summarizeIndexStatus.find((item) => item?.docId === docId);
+      failed = failedSummary;
     }
 
-    return instance?.isIndexed ? successIndex : failedIndex;
+    return instance?.isIndexed ? successIndex : failed;
   };
 
   useEffect(() => {
@@ -274,39 +260,47 @@ function ManageDocsModal({
       return {
         key: item?.document_id,
         document: item?.document_name || "",
-        rawIndex: getIndexStatusMessage(item?.document_id, indexTypes.raw),
-        summarizeIndex: getIndexStatusMessage(
-          item?.document_id,
-          indexTypes.summarize
-        ),
+        index: getIndexStatusMessage(item?.document_id, indexTypes.raw),
+        summary:
+          SummarizeStatusTitle &&
+          getIndexStatusMessage(item?.document_id, indexTypes.summarize),
         reindex: indexDocs.includes(item?.document_id) ? (
           <SpinnerLoader />
         ) : (
-          <Button
-            size="small"
-            icon={<ReloadOutlined />}
-            onClick={() => generateIndex(item)}
-            disabled={
-              disableLlmOrDocChange?.length > 0 ||
-              indexDocs.includes(item?.document_id)
-            }
-          />
+          <Tooltip title="Index">
+            <Button
+              size="small"
+              icon={<ReloadOutlined />}
+              onClick={() => generateIndex(item)}
+              disabled={
+                disableLlmOrDocChange?.length > 0 ||
+                indexDocs.includes(item?.document_id) ||
+                isUploading ||
+                !defaultLlmProfile ||
+                isSinglePassExtract
+              }
+            />
+          </Tooltip>
         ),
         delete: (
           <ConfirmModal
             handleConfirm={() => handleDelete(item?.document_id)}
             content="The document will be permanently deleted."
           >
-            <Button
-              size="small"
-              className="display-flex-align-center"
-              disabled={
-                disableLlmOrDocChange?.length > 0 ||
-                indexDocs.includes(item?.document_id)
-              }
-            >
-              <DeleteOutlined className="manage-llm-pro-icon" />
-            </Button>
+            <Tooltip title="Delete">
+              <Button
+                size="small"
+                className="display-flex-align-center"
+                disabled={
+                  disableLlmOrDocChange?.length > 0 ||
+                  indexDocs.includes(item?.document_id) ||
+                  isUploading ||
+                  isSinglePassExtract
+                }
+              >
+                <DeleteOutlined className="manage-llm-pro-icon" />
+              </Button>
+            </Tooltip>
           </ConfirmModal>
         ),
         select: (
@@ -315,7 +309,8 @@ function ManageDocsModal({
             onClick={() => handleDocChange(item?.document_id)}
             disabled={
               disableLlmOrDocChange?.length > 0 ||
-              indexDocs.includes(item?.document_id)
+              indexDocs.includes(item?.document_id) ||
+              isSinglePassExtract
             }
           />
         ),
@@ -329,6 +324,7 @@ function ManageDocsModal({
     rawIndexStatus,
     summarizeIndexStatus,
     indexDocs,
+    isSinglePassExtract,
   ]);
 
   const beforeUpload = (file) => {
@@ -449,7 +445,9 @@ function ManageDocsModal({
                   block
                   loading={isUploading}
                   disabled={
-                    !defaultLlmProfile || disableLlmOrDocChange?.length > 0
+                    !defaultLlmProfile ||
+                    disableLlmOrDocChange?.length > 0 ||
+                    isSinglePassExtract
                   }
                 >
                   Upload New File
