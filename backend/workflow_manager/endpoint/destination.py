@@ -136,7 +136,6 @@ class DestinationConnector(BaseConnector):
         output_directory = str(
             destination_configurations.get(DestinationKey.OUTPUT_FOLDER, "/")
         )
-
         overwrite = bool(
             destination_configurations.get(
                 DestinationKey.OVERWRITE_OUTPUT_DOCUMENT, False
@@ -150,7 +149,6 @@ class DestinationConnector(BaseConnector):
         connector_fs = self.get_fsspec(
             settings=connector_settings, connector_id=connector.connector_id
         )
-
         if not connector_fs.isdir(output_directory):
             connector_fs.mkdir(output_directory)
 
