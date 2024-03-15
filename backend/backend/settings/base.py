@@ -375,7 +375,8 @@ USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
-STATIC_URL = f"/{PATH_PREFIX}/static/"
+STATIC_URL = '/api/v1/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -396,6 +397,7 @@ WHITELISTED_PATHS_LIST = [
     "/favicon.ico",
     "/logout",
     "/signup",
+    "/static",
 ]
 WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
 # White lists workflow-api-deployment path

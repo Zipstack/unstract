@@ -43,24 +43,21 @@
         input[type="submit"] {
             width: 100%;
             padding: 10px;
-            background-color: #007bff; /* Change to your organization's color */
+            background: #2F93F6;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
         }
         input[type="submit"]:hover {
-            background-color: #0056b3; /* Change to a darker shade of your organization's color */
+            background: #2F93F6;
         }
         .error-message {
             color: red;
             text-align: center;
             margin: 10px 0; /* Add margin for spacing */
-        }
-        .organization-emblem {
-            display: block;
-            margin: 20px auto; /* Adjust the margin to position the emblem */
-            max-width: 100px; /* Adjust the max-width as needed */
+            font-weight: initial;
+            font-size: 12px;
         }
         /* Spinner styles */
         .spinner {
@@ -82,8 +79,8 @@
             height: 46px;
             margin: 1px;
             border-radius: 50%;
-            border: 5px solid #FEDF00;
-            border-color: #FEDF00 transparent #FEDF00 transparent;
+            border: 5px solid #00a6de;
+            border-color: #00a6de transparent #00a6de transparent;
             animation: lds-dual-ring 1.2s linear infinite;
         }
         @keyframes lds-dual-ring {
@@ -94,6 +91,16 @@
                 transform: rotate(360deg);
             }
         }
+        .logo-box{
+            width: 100%;
+            text-align: center;
+            margin-bottom: 20px;
+            margin-top: 20px;
+        }
+        .login-heading{
+            font-size: 24px;
+            font-weight: initial;
+        }
     </style>
 </head>
 <body>
@@ -103,14 +110,17 @@
             <div class="lds-dual-ring"></div>
         </div>
         {% load static %}
-        <h2>Login</h2>
+        <div class="logo-box">
+            <img src="{% static 'logo.svg' %}" alt="My image">
+        </div>
+        <h2 class="login-heading">Login</h2>
         {% if error_message %}
             <p class="error-message">{{ error_message }}</p>
         {% endif %}
         {% csrf_token %}
-        <label for="username">Username:</label><br>
-        <input type="text" id="username" name="username" required><br>
-        <label for="password">Password:</label><br>
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required>
+        <label for="password">Password</label>
         <input type="password" id="password" name="password" required><br><br>
         <input type="submit" value="Login">
     </form>
