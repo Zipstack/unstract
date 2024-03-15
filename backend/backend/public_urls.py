@@ -31,8 +31,6 @@ urlpatterns = [
     path(f"{path_prefix}/", include("connector_auth.urls")),
     # Docs
     path(f"{path_prefix}/", include("docs.urls")),
-    # Socket.io
-    path(f"{path_prefix}/", include("log_events.urls")),
     # API deployment
     path(f"{api_path_prefix}/", include("api.urls")),
     # Feature flags

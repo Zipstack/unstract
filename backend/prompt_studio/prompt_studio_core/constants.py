@@ -8,6 +8,7 @@ class ToolStudioKeys:
     PLATFORM_SERVICE_API_KEY = "PLATFORM_SERVICE_API_KEY"
     SUMMARIZE_LLM_PROFILE = "summarize_llm_profile"
     DEFAULT_PROFILE = "default_profile"
+    LOG_EVENTS_ID = "log_events_id"
 
 
 class ToolStudioErrors:

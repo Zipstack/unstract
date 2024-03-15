@@ -86,6 +86,7 @@ class PromptServiceContants:
     EVAL_SETTINGS_EVALUATE = "evaluate"
     EVAL_SETTINGS_MONITOR_LLM = "monitor_llm"
     EVAL_SETTINGS_EXCLUDE_FAILED = "exclude_failed"
+    LOG_EVENTS_ID = "log_events_id"
 
 
 class Query:
@@ -107,3 +108,9 @@ class LogLevel(Enum):
     WARN = "WARN"
     ERROR = "ERROR"
     FATAL = "FATAL"
+
+
+class RunLevel(Enum):
+    RUN = "RUN"
+    EVAL = "EVAL"
+

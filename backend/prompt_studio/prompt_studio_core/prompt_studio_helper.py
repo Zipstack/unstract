@@ -10,6 +10,7 @@ from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.constants import LogLevels
 from prompt_studio.prompt_studio_core.constants import (
+    ToolStudioKeys as TSKeys,
     ToolStudioPromptKeys as TSPKeys,
 )
 from prompt_studio.prompt_studio_core.exceptions import (
@@ -26,13 +27,14 @@ from prompt_studio.prompt_studio_core.prompt_ide_base_tool import (
 from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import (  # noqa: E501
     PromptStudioIndexHelper,
 )
+from utils.local_context import StateStore
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import SdkError
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
 
-from unstract.core.pubsub_helper import LogHelper as stream_log
+from unstract.core.pubsub_helper import LogPublisher
 
 CHOICES_JSON = "/static/select_choices.json"
 
@@ -41,6 +43,17 @@ logger = logging.getLogger(__name__)
 
 class PromptStudioHelper:
     """Helper class for Custom tool operations."""
+
+    @staticmethod
+    def _publish_log(
+        component: dict[str, str], level: str, state: str, message: str
+    ) -> None:
+        LogPublisher.publish(
+            StateStore.get(TSKeys.LOG_EVENTS_ID),
+            LogPublisher.log_prompt(
+                component, level, state, message
+            ),
+        )
 
     @staticmethod
     def get_select_fields() -> dict[str, Any]:
@@ -125,30 +138,19 @@ class PromptStudioHelper:
 
         if not default_profile:
             raise DefaultProfileError()
-        stream_log.publish(
-            tool_id,
-            stream_log.log(
-                stage=LogLevels.RUN,
-                level=LogLevels.INFO,
-                message=f"Invoking indexing for {tool_id}",
-            ),
-        )
         if not tool:
             logger.error(f"No tool instance found for the ID {tool_id}")
             raise ToolNotValid()
 
-        stream_log.publish(
-            tool_id,
-            stream_log.log(
-                stage=LogLevels.RUN,
-                level=LogLevels.INFO,
-                message=f"Calling prompt service for\
-                      indexing the doc {file_name}",
-            ),
-        )
         logger.info(
-            f"Invoking indexing in prompt service for the tool {tool_id}"
+            f"[{tool_id}] Indexing started for doc: {file_name}"
         )
+        PromptStudioHelper._publish_log(
+            {"tool_id": tool_id, "doc_name": file_name},
+            LogLevels.INFO, LogLevels.RUN,
+            "Indexing started"
+        )
+
         doc_id = PromptStudioHelper.dynamic_indexer(
             profile_manager=default_profile,
             tool_id=tool_id,
@@ -157,15 +159,16 @@ class PromptStudioHelper:
             document_id=document_id,
             is_summary=is_summary,
         )
-        logger.info(f"Indexing done sucessfully for {file_name}")
-        stream_log.publish(
-            tool_id,
-            stream_log.log(
-                stage=LogLevels.RUN,
-                level=LogLevels.INFO,
-                message=f"Indexing successful for the file: {file_name}",
-            ),
+
+        logger.info(
+            f"[{tool_id}] Indexing successful for doc: {file_name}"
         )
+        PromptStudioHelper._publish_log(
+            {"tool_id": tool_id, "doc_name": file_name},
+            LogLevels.INFO, LogLevels.RUN,
+            "Indexing successful"
+        )
+
         return doc_id
 
     @staticmethod
@@ -194,7 +197,28 @@ class PromptStudioHelper:
         Returns:
             Any: Dictionary containing the response from prompt-service
         """
-        logger.info(f"Invoking prompt responser for prompt {id}")
+        if not id or not tool_id:
+            logger.error(f"[{tool_id or 'NA'}] Invalid prompt id: {id}")
+            raise PromptNotValid()
+
+        prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
+        if not prompt_instance:
+            logger.error(f"Invalid prompt id: {id}")
+            raise PromptNotValid()
+
+        logger.info(
+            f"[{tool_id}] Executing single prompt {id}"
+        )
+        PromptStudioHelper._publish_log(
+            {"tool_id": tool_id, "prompt_id": id},
+            LogLevels.INFO, LogLevels.RUN,
+            "Executing single prompt",
+        )
+
+        prompts: list[ToolStudioPrompt] = []
+        prompts.append(prompt_instance)
+        tool: CustomTool = prompt_instance.tool_id
+
         file_path = FileManagerHelper.handle_sub_directory_for_tenants(
             org_id=org_id,
             user_id=user_id,
@@ -202,56 +226,25 @@ class PromptStudioHelper:
             is_create=False,
         )
         file_path = str(Path(file_path) / file_name)
-        if id and tool_id:
-            logger.info("Executing in single prompt mode")
-            try:
-                prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
-                prompts: list[ToolStudioPrompt] = []
-                prompts.append(prompt_instance)
-                tool: CustomTool = prompt_instance.tool_id
 
-                if tool.summarize_as_source:
-                    directory, filename = os.path.split(file_path)
-                    file_path = os.path.join(
-                        directory,
-                        TSPKeys.SUMMARIZE,
-                        os.path.splitext(filename)[0] + ".txt",
-                    )
+        if tool.summarize_as_source:
+            directory, filename = os.path.split(file_path)
+            file_path = os.path.join(
+                directory,
+                TSPKeys.SUMMARIZE,
+                os.path.splitext(filename)[0] + ".txt",
+            )
 
-                stream_log.publish(
-                    tool.tool_id,
-                    stream_log.log(
-                        stage=LogLevels.RUN,
-                        level=LogLevels.INFO,
-                        message=f"Executing single prompt \
-                            {id} of tool {tool.tool_id}",
-                    ),
-                )
-                if not prompt_instance:
-                    logger.error(f"Prompt id {id} does not have any data in db")
-                    raise PromptNotValid()
-            except Exception as exc:
-                logger.error(f"Error while fetching prompt {exc}")
-                raise AnswerFetchError()
-            stream_log.publish(
-                tool.tool_id,
-                stream_log.log(
-                    stage=LogLevels.RUN,
-                    level=LogLevels.INFO,
-                    message=f"Prompt instance fetched \
-                        for {id} of tool {tool.tool_id}",
-                ),
-            )
-            stream_log.publish(
-                tool.tool_id,
-                stream_log.log(
-                    stage=LogLevels.RUN,
-                    level=LogLevels.INFO,
-                    message=f"Invoking prompt service for\
-                          {id} of tool {tool.tool_id}",
-                ),
-            )
-            logger.info(f"Invoking prompt service for prompt id {id}")
+        logger.info(
+            f"[{tool.tool_id}] Invoking prompt service for prompt {id}"
+        )
+        PromptStudioHelper._publish_log(
+            {"tool_id": tool_id, "prompt_id": id},
+            LogLevels.DEBUG, LogLevels.RUN,
+            "Invoking prompt service",
+        )
+
+        try:
             response = PromptStudioHelper._fetch_response(
                 path=file_path,
                 tool=tool,
@@ -259,17 +252,27 @@ class PromptStudioHelper:
                 org_id=org_id,
                 document_id=document_id,
             )
-            stream_log.publish(
-                tool.tool_id,
-                stream_log.log(
-                    stage=LogLevels.RUN,
-                    level=LogLevels.INFO,
-                    message=f"Response fetched sucessfully \
-                        from platform for prompt {id} of tool {tool.tool_id}",
-                ),
+        except Exception as exc:
+            logger.error(
+                f"[{tool.tool_id}] Error while fetching response for prompt {id}: {exc}"
             )
-            logger.info(f"Response fetched succesfully for prompt {id}")
-            return response
+            PromptStudioHelper._publish_log(
+                {"tool_id": tool_id, "prompt_id": id},
+                LogLevels.ERROR, LogLevels.RUN,
+                "Failed to fetch prompt response",
+            )
+            raise AnswerFetchError()
+
+        logger.info(
+            f"[{tool.tool_id}] Response fetched successfully for prompt {id}"
+        )
+        PromptStudioHelper._publish_log(
+            {"tool_id": tool_id, "prompt_id": id},
+            LogLevels.INFO, LogLevels.RUN,
+            "Single prompt execution completed",
+        )
+
+        return response
 
     @staticmethod
     def _fetch_response(
@@ -376,6 +379,7 @@ class PromptStudioHelper:
             TSPKeys.TOOL_ID: tool_id,
             TSPKeys.FILE_NAME: path,
             TSPKeys.FILE_HASH: file_hash,
+            TSKeys.LOG_EVENTS_ID: StateStore.get(TSKeys.LOG_EVENTS_ID)
         }
 
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)

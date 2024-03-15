@@ -1,17 +1,30 @@
 import importlib
+import json
+import logging
 import os
 from pathlib import Path
+import sys
 from typing import Any
 
+from dotenv import load_dotenv
 from flask import current_app
+import redis
+
+load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(filename)s - %(message)s",
+)
 
 
-class PromptServiceHelper:
+class EnvLoader:
     @staticmethod
     def get_env_or_die(env_key: str) -> str:
         env_value = os.environ.get(env_key)
         if env_value is None or env_value == "":
-            current_app.logger.error(f"Env variable {env_key} is required")
+            logging.error(f"Env variable {env_key} is required")
+            sys.exit(1)
         return env_value  # type:ignore
 
 

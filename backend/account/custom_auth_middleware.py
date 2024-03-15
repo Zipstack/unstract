@@ -13,7 +13,7 @@ from django.core.cache import cache
 from django.db import connection
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from tenant_account.organization_member_service import OrganizationMemberService
-
+from utils.local_context import StateStore
 
 class CustomAuthMiddleware:
     def __init__(self, get_response: HttpResponse):
@@ -54,7 +54,9 @@ class CustomAuthMiddleware:
             and request.session
             and "user" in request.session
         ):
+            StateStore.set(Common.LOG_EVENTS_ID, request.session.session_key)
             response = self.get_response(request)  # type: ignore
+            StateStore.clear(Common.LOG_EVENTS_ID)
             return response
         return JsonResponse({"message": "Unauthorized"}, status=401)
 
