@@ -196,7 +196,6 @@ TENANT_APPS = (
     "django.contrib.staticfiles",
     "tenant_account",
     "project",
-    "prompt",
     "connector",
     "adapter_processor",
     "file_management",

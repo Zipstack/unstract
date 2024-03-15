@@ -21,7 +21,6 @@ from backend.constants import UrlPathConstants
 
 urlpatterns = [
     path("", include("tenant_account.urls")),
-    path("", include("prompt.urls")),
     path("", include("project.urls")),
     path("", include("connector.urls")),
     path("", include("connector_processor.urls")),
