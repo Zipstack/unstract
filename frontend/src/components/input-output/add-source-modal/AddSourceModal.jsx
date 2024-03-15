@@ -52,8 +52,6 @@ function AddSourceModal({
   }, [open]);
 
   const getSourceDetails = () => {
-    setOpen(true);
-
     const isConnector = sourceTypes.connectors.includes(type);
     let url = `/api/v1/unstract/${sessionDetails?.orgId}`;
     if (isConnector) {
@@ -69,6 +67,7 @@ function AddSourceModal({
 
     axiosPrivate(requestOptions)
       .then((res) => {
+        setOpen(true);
         const data = res?.data;
         if (isConnector) {
           setSelectedSourceId(data?.connector_id);
@@ -84,6 +83,7 @@ function AddSourceModal({
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
+        setOpen(false);
       });
   };
 
