@@ -2,9 +2,18 @@ import axios from "axios";
 
 import { getSessionData } from "../helpers/GetSessionData";
 import { useSessionStore } from "../store/session-store";
+import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
+
+let getTrialDetails;
+try {
+  getTrialDetails = require("../plugins/subscription/trial-helper/fetchTrialDetails.jsx");
+} catch (err) {
+  // Plugin not available
+}
 
 function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
+  const handleException = useExceptionHandler();
 
   return async () => {
     try {
@@ -67,10 +76,21 @@ function useSessionValid() {
       ];
       userAndOrgDetails["adapters"] = adapterTypes;
 
+      if (getTrialDetails) {
+        const remainingTrialDays = await getTrialDetails.fetchTrialDetails(
+          orgId,
+          csrfToken
+        );
+        userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
+      }
+
       // Set the session details
       setSessionDetails(getSessionData(userAndOrgDetails));
     } catch (err) {
       // TODO: Throw popup error message
+      if (err.response?.status === 402) {
+        handleException(err);
+      }
 
       if (err.request.status === 412) {
         const domainName = JSON.parse(err.request.response).domain;

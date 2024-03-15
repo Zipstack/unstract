@@ -13,7 +13,8 @@ class OrganizationSignupSerializer(serializers.Serializer):
     def validate_organization_id(self, value):  # type: ignore
         if not re.match(r"^[a-z0-9_-]+$", value):
             raise serializers.ValidationError(
-                "organization_code should only contain alphanumeric characters,_ and -."
+                "organization_code should only contain alphanumeric "
+                "characters,_ and -."
             )
         return value
 

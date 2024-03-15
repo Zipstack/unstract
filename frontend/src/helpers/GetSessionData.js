@@ -20,6 +20,7 @@ function getSessionData(sessionData) {
     isAdmin: sessionData.isAdmin,
     adapters: sessionData?.adapters,
     logEventsId: sessionData?.logEventsId,
+    remainingTrialDays: sessionData?.remainingTrialDays,
   };
 }
 
