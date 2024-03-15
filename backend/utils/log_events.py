@@ -8,6 +8,7 @@ from typing import Any
 import redis
 import socketio
 from django.conf import settings
+from django.core.wsgi import WSGIHandler
 
 logger = logging.getLogger(__name__)
 # shutdown = False
@@ -60,7 +61,7 @@ def _pubsub_listen_forever() -> None:
             message = pubsub.get_message()
 
             if message:
-                logger.debug(f"[{os.getpid()}] Pub sub message received: {message}")  # type: ignore
+                logger.debug(f"[{os.getpid()}] Pub sub message received: {message}")
                 if message["type"] == "pmessage":
                     _handle_pubsub_messages(message)
 
@@ -80,7 +81,7 @@ def _pubsub_listen_forever() -> None:
 #     # TODO Shutdown socketio server
 #     # sio.close_room("logs:*", namespace="/")
 
-def start_server(django_app, namespace:str):
+def start_server(django_app: WSGIHandler, namespace: str) -> WSGIHandler:
     # signal.signal(signal.SIGINT, _graceful_shutdown)
     # signal.signal(signal.SIGTERM, _graceful_shutdown)
 

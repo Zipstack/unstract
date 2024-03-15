@@ -280,7 +280,7 @@ class PromptStudioHelper:
 
             logger.info(f"[{tool_id}] Executing prompts in single pass")
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "prompt_id": id},
+                {"tool_id": tool_id, "prompt_id": str(id)},
                 LogLevels.INFO, LogLevels.RUN,
                 "Executing prompts in single pass",
             )
@@ -296,10 +296,10 @@ class PromptStudioHelper:
                 )
             except Exception as e:
                 logger.error(
-                    f"[{tool.tool_id}] Error while fetching single pass response: {exc}"
+                    f"[{tool.tool_id}] Error while fetching single pass response: {e}"
                 )
                 PromptStudioHelper._publish_log(
-                    {"tool_id": tool_id, "prompt_id": id},
+                    {"tool_id": tool_id, "prompt_id": str(id)},
                     LogLevels.ERROR, LogLevels.RUN,
                     "Failed to fetch single pass response",
                 )
@@ -309,7 +309,7 @@ class PromptStudioHelper:
                 f"[{tool.tool_id}] Single pass response fetched successfully"
             )
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "prompt_id": id},
+                {"tool_id": tool_id, "prompt_id": str(id)},
                 LogLevels.INFO, LogLevels.RUN,
                 "Single pass execution completed",
             )

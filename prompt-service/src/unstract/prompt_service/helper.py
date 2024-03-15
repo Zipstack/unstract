@@ -25,7 +25,7 @@ class EnvLoader:
         if env_value is None or env_value == "":
             logging.error(f"Env variable {env_key} is required")
             sys.exit(1)
-        return env_value  # type:ignore
+        return env_value
 
 
 class PluginException(Exception):

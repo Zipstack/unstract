@@ -1,3 +1,4 @@
+from enum import Enum
 import json
 import logging
 import re
@@ -83,7 +84,7 @@ app = Flask("prompt-service")
 plugins = plugin_loader()
 
 def _publish_log(
-    log_events_id: str, component: dict[str, str], level: str, state: str, message: str
+    log_events_id: str, component: dict[str, str], level: Enum, state: Enum, message: str
 ) -> None:
     LogPublisher.publish(
         log_events_id,
@@ -417,9 +418,9 @@ def prompt_processor() -> Any:
             result["error"] = "Bad Request / No payload"
             return result, 400
     outputs = payload.get(PSKeys.OUTPUTS)
-    tool_id = payload.get(PSKeys.TOOL_ID)
+    tool_id: str = payload.get(PSKeys.TOOL_ID, "")
     file_hash = payload.get(PSKeys.FILE_HASH)
-    log_events_id = payload.get(PSKeys.LOG_EVENTS_ID, "")
+    log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
 
     structured_output: dict[str, Any] = {}
     variable_names: list[str] = []
@@ -1028,7 +1029,7 @@ def extract_variable(
     #     f.write(json.dumps(structured_output, indent=2))
 
 
-def enable_single_pass_extraction():
+def enable_single_pass_extraction() -> None:
     """Enables single-pass-extraction plugin if available."""
     single_pass_extration_plugin: dict[str, Any] = plugins.get(
         "single-pass-extraction", {}

@@ -84,6 +84,8 @@ python_files = ["tests.py", "test_*.py", "*_tests.py"]
 allow_subclassing_any = true
 allow_untyped_decorators = true
 check_untyped_defs = true
+# To use Unpack for typing kwargs
+enable_incomplete_feature = "Unpack"
 exclude = '''(?x)^(
     .*migrations/.*\.py|
     backend/prompt/.*|
