@@ -13,10 +13,18 @@ import "../../../layouts/page-layout/PageLayout.css";
 import { useSessionStore } from "../../../store/session-store.js";
 import "./TopNavBar.css";
 
+let TrialDaysInfo;
+try {
+  TrialDaysInfo =
+    require("../../../plugins/subscription/trial-helper/TrialDaysInfo.jsx").default;
+} catch (err) {
+  // Plugin not found
+}
+
 function TopNavBar() {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { orgName } = sessionDetails;
+  const { orgName, remainingTrialDays } = sessionDetails;
   const baseUrl = getBaseUrl();
   const onBoardUrl = baseUrl + `/${orgName}/onboard`;
   const logout = useLogout();
@@ -110,6 +118,9 @@ function TopNavBar() {
       </Col>
       <Col span={4}>
         <Row justify="end" align="middle">
+          {TrialDaysInfo && (
+            <TrialDaysInfo remainingTrialDays={remainingTrialDays} />
+          )}
           <Dropdown menu={{ items }} placement="bottomLeft" arrow>
             <div className="top-navbar-dp">
               {sessionDetails?.picture ? (

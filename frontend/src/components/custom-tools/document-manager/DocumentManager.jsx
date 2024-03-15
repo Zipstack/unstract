@@ -12,7 +12,7 @@ import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
-import { base64toBlob } from "../../../helpers/GetStaticData";
+import { base64toBlob, docIndexStatus } from "../../../helpers/GetStaticData";
 import { DocumentViewer } from "../document-viewer/DocumentViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 
@@ -40,7 +40,7 @@ try {
     require("../../../plugins/summarize-tab/SummarizeTab").tabLabel;
   if (tabLabel) {
     items.push({
-      key: 3,
+      key: "3",
       label: tabLabel,
     });
   }
@@ -56,8 +56,17 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [extractTxt, setExtractTxt] = useState("");
   const [isDocLoading, setIsDocLoading] = useState(false);
   const [isExtractLoading, setIsExtractLoading] = useState(false);
-  const { selectedDoc, listOfDocs, disableLlmOrDocChange, details } =
-    useCustomToolStore();
+  const [currDocIndexStatus, setCurrDocIndexStatus] = useState(
+    docIndexStatus.yet_to_start
+  );
+  const {
+    selectedDoc,
+    listOfDocs,
+    disableLlmOrDocChange,
+    details,
+    indexDocs,
+    isSinglePassExtract,
+  } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
 
@@ -69,10 +78,46 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     });
   }, [selectedDoc]);
 
+  useEffect(() => {
+    if (currDocIndexStatus === docIndexStatus.done) {
+      handleFetchContent(viewTypes.extract);
+      setCurrDocIndexStatus(docIndexStatus.yet_to_start);
+    }
+  }, [currDocIndexStatus]);
+
+  useEffect(() => {
+    if (docIndexStatus.yet_to_start === currDocIndexStatus) {
+      const isIndexing = indexDocs.find(
+        (item) => item === selectedDoc?.document_id
+      );
+
+      if (isIndexing) {
+        setCurrDocIndexStatus(docIndexStatus.indexing);
+      }
+      return;
+    }
+
+    if (docIndexStatus.indexing === currDocIndexStatus) {
+      const isIndexing = indexDocs.find(
+        (item) => item === selectedDoc?.document_id
+      );
+
+      if (!isIndexing) {
+        setCurrDocIndexStatus(docIndexStatus.done);
+      }
+    }
+  }, [indexDocs]);
+
   const handleFetchContent = (viewType) => {
-    if (!selectedDoc?.document_id) {
+    if (viewType === viewTypes.original) {
       setFileUrl("");
+    }
+
+    if (viewType === viewTypes.extract) {
       setExtractTxt("");
+    }
+
+    if (!selectedDoc?.document_id) {
       return;
     }
 
@@ -180,7 +225,10 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
               type="text"
               size="small"
               disabled={
-                !selectedDoc || disableLlmOrDocChange?.length > 0 || page <= 1
+                !selectedDoc ||
+                disableLlmOrDocChange?.length > 0 ||
+                page <= 1 ||
+                isSinglePassExtract
               }
               onClick={handlePageLeft}
             >
@@ -192,7 +240,8 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
               disabled={
                 !selectedDoc ||
                 disableLlmOrDocChange?.length > 0 ||
-                page >= listOfDocs?.length
+                page >= listOfDocs?.length ||
+                isSinglePassExtract
               }
               onClick={handlePageRight}
             >
@@ -221,8 +270,11 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           <TextViewerPre text={extractTxt} />
         </DocumentViewer>
       )}
-      {SummarizeView && activeKey === 3 && (
-        <SummarizeView setOpenManageDocsModal={setOpenManageDocsModal} />
+      {SummarizeView && activeKey === "3" && (
+        <SummarizeView
+          setOpenManageDocsModal={setOpenManageDocsModal}
+          currDocIndexStatus={currDocIndexStatus}
+        />
       )}
       <ManageDocsModal
         open={openManageDocsModal}

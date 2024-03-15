@@ -33,7 +33,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 let SummarizeStatusTitle = null;
 try {
   SummarizeStatusTitle =
-    require("../../../plugins/summarize-status-title/SummarizeStatusTitle111").SummarizeStatusTitle;
+    require("../../../plugins/summarize-status-title/SummarizeStatusTitle").SummarizeStatusTitle;
 } catch {
   // The component will remain null if it is not available
 }
@@ -69,6 +69,7 @@ function ManageDocsModal({
     indexDocs,
     rawIndexStatus,
     summarizeIndexStatus,
+    isSinglePassExtract,
   } = useCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
@@ -275,7 +276,8 @@ function ManageDocsModal({
                 disableLlmOrDocChange?.length > 0 ||
                 indexDocs.includes(item?.document_id) ||
                 isUploading ||
-                !defaultLlmProfile
+                !defaultLlmProfile ||
+                isSinglePassExtract
               }
             />
           </Tooltip>
@@ -293,7 +295,7 @@ function ManageDocsModal({
                   disableLlmOrDocChange?.length > 0 ||
                   indexDocs.includes(item?.document_id) ||
                   isUploading ||
-                  !defaultLlmProfile
+                  isSinglePassExtract
                 }
               >
                 <DeleteOutlined className="manage-llm-pro-icon" />
@@ -307,7 +309,8 @@ function ManageDocsModal({
             onClick={() => handleDocChange(item?.document_id)}
             disabled={
               disableLlmOrDocChange?.length > 0 ||
-              indexDocs.includes(item?.document_id)
+              indexDocs.includes(item?.document_id) ||
+              isSinglePassExtract
             }
           />
         ),
@@ -321,6 +324,7 @@ function ManageDocsModal({
     rawIndexStatus,
     summarizeIndexStatus,
     indexDocs,
+    isSinglePassExtract,
   ]);
 
   const beforeUpload = (file) => {
@@ -441,7 +445,9 @@ function ManageDocsModal({
                   block
                   loading={isUploading}
                   disabled={
-                    !defaultLlmProfile || disableLlmOrDocChange?.length > 0
+                    !defaultLlmProfile ||
+                    disableLlmOrDocChange?.length > 0 ||
+                    isSinglePassExtract
                   }
                 >
                   Upload New File

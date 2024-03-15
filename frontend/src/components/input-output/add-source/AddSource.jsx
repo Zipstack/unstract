@@ -61,6 +61,7 @@ function AddSource({
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
+        setOpen(false);
       })
       .finally(() => {
         setIsLoading(false);
