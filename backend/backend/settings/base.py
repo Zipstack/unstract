@@ -140,6 +140,8 @@ WORKFLOW_DATA_DIR = os.environ.get("WORKFLOW_DATA_DIR")
 API_STORAGE_DIR = os.environ.get("API_STORAGE_DIR")
 CACHE_TTL_SEC = os.environ.get("CACHE_TTL_SEC", 10800)
 
+DEFAULT_AUTH_PASSWORD = os.environ.get("DEFAULT_AUTH_PASSWORD", "unstract")
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
@@ -191,7 +193,6 @@ TENANT_APPS = (
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
-    "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "tenant_account",
@@ -374,6 +375,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 STATIC_URL = f"/{PATH_PREFIX}/static/"
+STATIC_ROOT = os.path.join(BASE_DIR, "static")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -394,6 +396,7 @@ WHITELISTED_PATHS_LIST = [
     "/favicon.ico",
     "/logout",
     "/signup",
+    "/static",
 ]
 WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
 # White lists workflow-api-deployment path
