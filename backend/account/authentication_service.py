@@ -82,6 +82,9 @@ class AuthenticationService:
         """
         user = authenticate(request, username=username, password=password)
         if user:
+            # To avoid conflicts with django superuser
+            if user.is_superuser:
+                return False
             login(request, user)
             return True
         # Attempt to initiate default user and authenticate again
