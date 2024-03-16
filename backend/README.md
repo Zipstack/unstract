@@ -45,12 +45,12 @@ To customize your username or password:
 2. Update the values for `DEFAULT_AUTH_USERNAME` and `DEFAULT_AUTH_PASSWORD` with strong, unique credentials of your choosing.
 3. Save the `.env` file and restart the server to apply changes.
 
-> **Note**: The username `admin` is reserved for Django admin, So It is recommended to choose a username other than `admin` to avoid conflicts with Django admin access.
+> **NOTE**: The username `admin` is reserved for Django admin, hence cannot be used.
 
-To update the username or password after it's been set,
+To update the username or password after it's been set:
 1. Modify the username and password in `.env`.
 2. Restart server to apply updates.
-3. Login with the new credentials
+3. Login with the new credentials.
 
 
 ## Asynchronous execution/pipeline execution
