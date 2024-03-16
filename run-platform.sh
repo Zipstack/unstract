@@ -44,7 +44,6 @@ display_help() {
   echo -e "   -e, --only-env      Only do env files setup"
   echo -e "   -p, --only-pull     Only do docker images pull"
   echo -e "   -b, --build-local   Build docker images locally"
-  echo -e "   -d, --detach        Run docker containers in detached mode"
   echo -e "   -x, --trace         Enables trace mode"
   echo -e "   -V, --verbose       Print verbose logs"
   echo -e "   -v, --version       Docker images version tag (default \"latest\")"
@@ -67,9 +66,6 @@ parse_args() {
         ;;
       -b | --build-local)
         opt_build_local=true
-        ;;
-      -d | --detach)
-        opt_detach="-d"
         ;;
       -x | --trace)
         set -o xtrace  # display every line before execution; enables PS4
@@ -94,7 +90,6 @@ parse_args() {
   debug "OPTION only_env: $opt_only_env"
   debug "OPTION only_pull: $opt_only_pull"
   debug "OPTION build_local: $opt_build_local"
-  debug "OPTION detach: $opt_detach"
   debug "OPTION verbose: $opt_verbose"
   debug "OPTION version: $opt_version"
 }
@@ -102,6 +97,7 @@ parse_args() {
 setup_env() {
   # Generate Fernet Key. Refer https://pypi.org/project/cryptography/. for both backend and platform-service.
   ENCRYPTION_KEY=$(python3 -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
+
   for service in "${services[@]}"; do
     sample_env_path="$script_dir/$service/sample.env"
     env_path="$script_dir/$service/.env"
@@ -111,7 +107,11 @@ setup_env() {
       # Add encryption secret for backend and platform-service.
       if [[ "$service" == "backend" || "$service" == "platform-service" ]]; then
         echo -e "$blue_text""Adding encryption secret to $service""$default_text"
-        echo "ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"" >> $env_path
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+          sed -i '' "s/ENCRYPTION_KEY.*/ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"/" $env_path
+        else
+          sed -i "s/ENCRYPTION_KEY.*/ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"/" $env_path
+        fi
       fi
       echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
     else
@@ -170,14 +170,11 @@ build_services() {
 run_services() {
   pushd ${script_dir}/docker 1>/dev/null
 
-  if [ -z "$opt_detach" ]; then
-    echo -e "$blue_text""Starting docker containers""$default_text"
-  else
-    echo -e "$blue_text""Starting docker containers in detach mode""$default_text"
-  fi
-  echo -e "Once the services are up, visit ""$blue_text""http://frontend.unstract.localhost""$default_text"" in your browser."
-
-  VERSION=$opt_version docker compose up $opt_detach
+  echo -e "$blue_text""Starting docker containers in detached mode""$default_text"
+  VERSION=$opt_version docker compose up -d
+  echo -e "\nOnce the services are up, visit ""$blue_text""http://frontend.unstract.localhost""$default_text"" in your browser."
+  echo "See logs with:"
+  echo -e "    ""$blue_text""docker compose -f docker/docker-compose.yaml logs -f""$default_text"
 
   popd 1>/dev/null
 }
@@ -193,7 +190,6 @@ fi
 opt_only_env=false
 opt_only_pull=false
 opt_build_local=false
-opt_detach=""
 opt_verbose=false
 opt_version="latest"
 
