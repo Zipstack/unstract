@@ -52,7 +52,7 @@ def callback(request: Request) -> Response:
     return auth_controller.authorization_callback(request)
 
 
-@api_view(["GET"])
+@api_view(["GET", "POST"])
 def login(request: Request) -> Response:
     auth_controller = AuthenticationController()
     return auth_controller.user_login(request)
