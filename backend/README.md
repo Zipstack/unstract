@@ -40,7 +40,7 @@ python manage.py runserver localhost:8000
 
 The default username is `unstract` and the default password is `unstract`.
 
-To customize your username or password,
+To customize your username or password:
 1. Navigate to the `.env` file located at `backend`.
 2. Update the values for `DEFAULT_AUTH_USERNAME` and `DEFAULT_AUTH_PASSWORD` with strong, unique credentials of your choosing.
 3. Save the `.env` file and restart the server to apply changes.
