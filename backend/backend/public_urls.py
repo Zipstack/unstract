@@ -18,6 +18,8 @@ from account.admin import admin
 from django.conf import settings
 from django.conf.urls import *  # noqa: F401, F403
 from django.urls import include, path
+from django.conf.urls.static import static
+from django.conf import settings
 
 path_prefix = settings.PATH_PREFIX
 api_path_prefix = settings.API_DEPLOYMENT_PATH_PREFIX
@@ -36,3 +38,4 @@ urlpatterns = [
     # Feature flags
     path(f"{path_prefix}/flags/", include("feature_flag.urls")),
 ]
+urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
