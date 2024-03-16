@@ -78,7 +78,6 @@ profile = "black"
 DJANGO_SETTINGS_MODULE = "backend.settings.test_cases"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
 
-
 # IMPORTANT!
 # Keep this same as mypy hook args in .pre-commit-config.yaml
 [tool.mypy]
