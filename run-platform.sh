@@ -17,6 +17,22 @@ debug() {
   fi
 }
 
+check_dependencies() {
+  if ! command -v docker compose &> /dev/null; then
+    echo "$red_text""docker not found. Exiting.""$default_text"
+    exit 1
+  fi
+  # For 'docker compose' vs 'docker-compose', see https://stackoverflow.com/a/66526176.
+  if command -v docker compose &> /dev/null; then
+    docker_compose_cmd="docker compose"
+  elif command -v docker-compose &> /dev/null; then
+    docker_compose_cmd="docker-compose"
+  else
+    echo "$red_text""Both 'docker compose' and 'docker-compose' not found. Exiting.""$default_text"
+    exit 1
+  fi
+}
+
 display_banner() {
   # Make sure the console is huge
   if test $(tput cols) -ge 64; then
@@ -154,7 +170,7 @@ build_services() {
 
   if [ "$opt_build_local" = true ]; then
     echo "Building docker images locally."
-    VERSION=$opt_version docker-compose -f $script_dir/docker/docker-compose.build.yaml build || {
+    VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.build.yaml build || {
       echo -e "$red_text""Failed to build docker images.""$default_text"
       exit 1
     }
@@ -183,10 +199,10 @@ run_services() {
   pushd ${script_dir}/docker 1>/dev/null
 
   echo -e "$blue_text""Starting docker containers in detached mode""$default_text"
-  VERSION=$opt_version docker compose up -d
+  VERSION=$opt_version $docker_compose_cmd up -d
   echo -e "\nOnce the services are up, visit ""$blue_text""http://frontend.unstract.localhost""$default_text"" in your browser."
   echo "See logs with:"
-  echo -e "    ""$blue_text""docker compose -f docker/docker-compose.yaml logs -f""$default_text"
+  echo -e "    ""$blue_text""$docker_compose_cmd -f docker/docker-compose.yaml logs -f""$default_text"
 
   popd 1>/dev/null
 }
@@ -194,10 +210,7 @@ run_services() {
 #
 # Run Unstract platform - BEGIN
 #
-if ! command -v docker compose &> /dev/null; then
-  echo "$red_text""docker compose not found. Please install it and try again.""$default_text"
-  exit 1
-fi
+check_dependencies
 
 opt_only_env=false
 opt_only_pull=false
@@ -207,7 +220,7 @@ opt_version="latest"
 
 script_dir=$(dirname "$(readlink -f "$BASH_SOURCE")")
 # Extract service names from docker compose file.
-services=($(VERSION=$opt_version docker compose -f $script_dir/docker/docker-compose.build.yaml config --services))
+services=($(VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.build.yaml config --services))
 
 display_banner
 parse_args $*
