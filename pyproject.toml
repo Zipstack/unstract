@@ -78,12 +78,6 @@ profile = "black"
 DJANGO_SETTINGS_MODULE = "backend.settings.test_cases"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
 
-# [tool.gitleaks]
-# [tool.gitleaks.extend]
-# useDefault = true
-[tool.gitleaks.allowlist]
-paths = ['''run-platform.sh''']
-
 
 # IMPORTANT!
 # Keep this same as mypy hook args in .pre-commit-config.yaml

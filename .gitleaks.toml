@@ -1,5 +1,0 @@
-[extend]
-useDefault = true
-
-[allowlist]
-paths = ['''run-platform.sh''']
