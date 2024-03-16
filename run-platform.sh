@@ -200,6 +200,7 @@ run_services() {
 
   echo -e "$blue_text""Starting docker containers in detached mode""$default_text"
   VERSION=$opt_version $docker_compose_cmd up -d
+
   echo -e "\nOnce the services are up, visit ""$blue_text""http://frontend.unstract.localhost""$default_text"" in your browser."
   echo "See logs with:"
   echo -e "    ""$blue_text""$docker_compose_cmd -f docker/docker-compose.yaml logs -f""$default_text"
