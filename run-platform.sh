@@ -115,6 +115,7 @@ setup_env() {
         echo -e "$blue_text""Adding encryption secret to $service""$default_text"
         echo "ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"" >> $env_path
       fi
+      # Add default auth credentials for backend.
       if [ "$service" == "backend" ]; then
         echo -e "$blue_text""Adding default auth credentials to $service""$default_text"
         echo "DEFAULT_AUTH_USERNAME=\"$DEFAULT_AUTH_KEY\"" >> $env_path
