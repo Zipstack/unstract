@@ -6,6 +6,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 function SocketMessages({ logId }) {
   const {
     pushStagedMessage,
@@ -15,6 +16,7 @@ function SocketMessages({ logId }) {
     setPointer,
   } = useSocketMessagesStore();
   const { pushLogMessages } = useSocketLogsStore();
+  const { updateCusToolMessages } = useSocketCustomToolStore();
   const socket = useContext(SocketContext);
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
@@ -22,13 +24,18 @@ function SocketMessages({ logId }) {
   const onMessage = (data) => {
     try {
       const msg = JSON.parse(new TextDecoder().decode(data.data));
-      console.log("Push message:", msg);
-      if (msg?.type === "LOG" || msg?.type === "COST") {
+      if (
+        (msg?.type === "LOG" || msg?.type === "COST") &&
+        msg?.service !== "prompt"
+      ) {
         msg.message = msg?.log;
         pushLogMessages(msg);
       }
       if (msg?.type === "UPDATE") {
         pushStagedMessage(msg);
+      }
+      if (msg?.type === "LOG" && msg?.service === "prompt") {
+        updateCusToolMessages(msg);
       }
     } catch (err) {
       setAlertDetails(handleException(err, "Failed to process socket message"));
