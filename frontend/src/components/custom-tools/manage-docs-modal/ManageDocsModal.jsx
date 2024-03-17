@@ -107,11 +107,7 @@ function ManageDocsModal({
       color = "error";
     }
 
-    return (
-      <Tag color={color}>
-        {indexMessage?.message || "No message to display"}
-      </Tag>
-    );
+    return <Tag color={color}>{indexMessage?.message || ""}</Tag>;
   };
 
   const failedSummary = (
