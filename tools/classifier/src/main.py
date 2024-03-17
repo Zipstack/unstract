@@ -3,16 +3,16 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from llama_index import set_global_service_context
+from helper import ClassifierHelper
 from unstract.sdk.cache import ToolCache
 from unstract.sdk.constants import LogLevel, LogState, MetadataKey, ToolEnv
 from unstract.sdk.llm import ToolLLM
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
 from unstract.sdk.utils import ToolUtils
-from unstract.sdk.utils.service_context import ServiceContext
-
-from .helper import ClassifierHelper
+from unstract.sdk.utils.callback_manager import (
+    CallbackManager as UNCallbackManager,
+)
 
 
 class UnstractClassifier(BaseTool):
@@ -65,14 +65,13 @@ class UnstractClassifier(BaseTool):
         llm = tool_llm.get_llm()
         if not llm:
             self.stream_error_and_exit("Unable to get llm instance")
-        service_context = ServiceContext.get_service_context(
+        # Setting the LLM to be used  in the global context
+        UNCallbackManager.set_callback_manager(
             platform_api_key=self.get_env_or_die(ToolEnv.PLATFORM_API_KEY),
             llm=llm,
             workflow_id=self.workflow_id,
             execution_id=self.execution_id,
         )
-        set_global_service_context(service_context)
-
         max_tokens = tool_llm.get_max_tokens(reserved_for_output=50 + 1000)
         max_bytes = int(max_tokens * 1.3)
         self.stream_log(

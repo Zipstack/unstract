@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from flask import Flask, request
 from llama_index.core import (
     QueryBundle,
-    ServiceContext,
+    Settings,
     VectorStoreIndex,
     get_response_synthesizer,
 )
@@ -42,8 +42,8 @@ from unstract.sdk.embedding import ToolEmbedding
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.llm import ToolLLM
 from unstract.sdk.tool.base import BaseTool
-from unstract.sdk.utils.service_context import (
-    ServiceContext as UNServiceContext,
+from unstract.sdk.utils.callback_manager import (
+    CallbackManager as UNCallbackManager,
 )
 from unstract.sdk.vector_db import ToolVectorDB
 
@@ -200,12 +200,10 @@ class UnstractRetriever_V_K(BaseRetriever):
         doc_id: str,
         vector_db: VectorStore,
         collection: str,
-        service_context: ServiceContext,
         tool: BaseTool,
     ):
         self.index = index
         self.db_name = f"/tmp/{doc_id}.db"
-        self.service_context = service_context
         self.doc_id = doc_id
         self.collection = collection
         self.vector_db = vector_db
@@ -463,9 +461,6 @@ def prompt_processor() -> Any:
             return result, 500
         embedding_dimension = embedd_helper.get_embedding_length(embedding_li)
 
-        service_context = UNServiceContext.get_service_context(
-            platform_api_key=platform_key, llm=llm_li, embed_model=embedding_li
-        )
         vdb_helper = ToolVectorDB(
             tool=util,
         )
@@ -478,8 +473,13 @@ def prompt_processor() -> Any:
             app.logger.error(msg)
             result["error"] = msg
             return result, 500
+        # Set up llm. embedding and callback manager to collect usage stats
+        # for this context
+        UNCallbackManager.set_callback_manager(
+            platform_api_key=platform_key, llm=llm_li, embedding=embedding_li
+        )
         vector_index = VectorStoreIndex.from_vector_store(
-            vector_store=vector_db_li, service_context=service_context
+            vector_store=vector_db_li, embed_model=embedding_li
         )
 
         context = ""
@@ -568,13 +568,12 @@ def prompt_processor() -> Any:
                         output,
                         util,
                         doc_id,
-                        service_context,
                         vector_db_li,
                         vector_index,
                     )
                 elif output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SUBQUESTION:
                     answer, context = subquestion_retriver(
-                        output, doc_id, service_context, vector_index
+                        output, doc_id, vector_index
                     )
                     # nodes = response.source_nodes
                     # print(nodes)
@@ -735,7 +734,6 @@ def prompt_processor() -> Any:
 def subquestion_retriver(
     output: dict[str, Any],
     doc_id: str,
-    service_context: ServiceContext,
     vector_index: VectorStoreIndex,
 ) -> tuple[Any, str]:
     query_engine = vector_index.as_query_engine(
@@ -755,7 +753,6 @@ def subquestion_retriver(
     ]
     query_engine = SubQuestionQueryEngine.from_defaults(
         query_engine_tools=query_engine_tools,
-        service_context=service_context,
         use_async=True,
     )
 
@@ -771,7 +768,6 @@ def vector_keyword_retriver(
     output: dict[str, Any],
     util: BaseTool,
     doc_id: str,
-    service_context: ServiceContext,
     vector_db_li: VectorStore,
     vector_index: VectorStoreIndex,
 ) -> tuple[Any, str]:
@@ -780,11 +776,10 @@ def vector_keyword_retriver(
         doc_id,
         vector_db_li,
         "unstract_vector_db",
-        service_context,
         util,
     )
     response_synthesizer = get_response_synthesizer(
-        service_context=service_context,
+        callback_manager=Settings.callback_manager,
         verbose=True,
     )
     custom_query_engine = RetrieverQueryEngine(
