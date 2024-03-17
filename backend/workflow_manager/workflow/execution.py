@@ -1,8 +1,8 @@
 import logging
 import time
-import uuid
 from typing import Optional
 
+from account.constants import Common
 from api.exceptions import InvalidAPIRequest
 from django.db import connection
 from platform_settings.platform_auth_service import (
@@ -24,7 +24,7 @@ from unstract.workflow_execution.enums import (
 )
 from unstract.workflow_execution.exceptions import StopExecution
 from utils.local_context import StateStore
-from workflow_manager.workflow.constants import WorkflowKey, WorkflowExecutionKey
+from workflow_manager.workflow.constants import WorkflowKey
 from workflow_manager.workflow.enums import ExecutionStatus
 from workflow_manager.workflow.exceptions import WorkflowExecutionError
 from workflow_manager.workflow.models import Workflow, WorkflowExecution
@@ -68,9 +68,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             ignore_processed_entities=False,
         )
         if not workflow_execution:
-            self.execution_log_id = StateStore.get(
-                WorkflowExecutionKey.LOG_EVENTS_ID
-            )
+            self.execution_log_id = StateStore.get(Common.LOG_EVENTS_ID)
             self.execution_mode = mode
             self.execution_method: tuple[str, str] = (
                 WorkflowExecution.Method.SCHEDULED
@@ -139,9 +137,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             if single_step
             else WorkflowExecution.Type.COMPLETE
         )
-        execution_log_id = StateStore.get(
-            WorkflowExecutionKey.LOG_EVENTS_ID
-        ) if not log_guid else log_guid
+        execution_log_id = (
+            StateStore.get(Common.LOG_EVENTS_ID) if not log_guid else log_guid
+        )
         workflow_execution = WorkflowExecution(
             pipeline_id=pipeline_id,
             workflow_id=workflow_id,

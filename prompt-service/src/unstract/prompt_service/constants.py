@@ -112,6 +112,10 @@ class LogLevel(Enum):
 
 
 class RunLevel(Enum):
+    """Different stages of prompt execution.
+
+    Comprises of prompt run and response evaluation stages.
+    """
+
     RUN = "RUN"
     EVAL = "EVAL"
-

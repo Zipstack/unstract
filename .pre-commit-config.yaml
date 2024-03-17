@@ -42,12 +42,12 @@ repos:
         args: ["-d", "relaxed"]
         language: system
   - repo: https://github.com/rhysd/actionlint
-    rev: v1.6.26
+    rev: v1.6.27
     hooks:
       - id: actionlint-docker
         args: [-ignore, 'label ".+" is unknown']
   - repo: https://github.com/psf/black
-    rev: 24.2.0
+    rev: 24.3.0
     hooks:
       - id: black
         args: [--config=pyproject.toml, -l 80]
@@ -94,7 +94,7 @@ repos:
   #     - id: absolufy-imports
   #       files: ^backend/
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.15.0
+    rev: v3.15.1
     hooks:
       - id: pyupgrade
         entry: pyupgrade --py39-plus --keep-runtime-typing
@@ -120,7 +120,7 @@ repos:
     hooks:
       - id: yesqa
   - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: "v9.0.0-beta.0" # Use the sha / tag you want to point at
+    rev: "v9.0.0-beta.2" # Use the sha / tag you want to point at
     hooks:
       - id: eslint
         args: [--config=frontend/.eslintrc.json]
@@ -138,14 +138,14 @@ repos:
     hooks:
       - id: htmlhint
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.15.0
+    rev: v3.15.1
     hooks:
       - id: pyupgrade
         entry: pyupgrade --py38-plus --keep-runtime-typing
         types:
           - python
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.8.0
+    rev: v1.9.0
     hooks:
       - id: mypy
         language: system
@@ -159,7 +159,7 @@ repos:
             --allow-untyped-decorators,
             --check-untyped-defs,
             # To use Unpack for typing kwargs
-            --enable-incomplete-feature=Unpack
+            --enable-incomplete-feature=Unpack,
             --exclude, ".*migrations/.*.py",
             --exclude, "backend/prompt/.*",
             --exclude, "document-service/.*",
@@ -189,11 +189,13 @@ repos:
       - id: markdownlint-fix
         args: [--disable, MD013]
   - repo: https://github.com/pdm-project/pdm
-    rev: 2.12.3
+    rev: 2.12.4
     hooks:
       - id: pdm-lock-check
   - repo: local
     hooks:
+      # ! IMPORTANT !
+      # Requires unstract-db to be running and accessible
       - id: check-django-migrations
         name: Check django migrations
         entry: sh -c 'pdm run `find . -name "manage.py" -not -path "*/.venv/*"` makemigrations --check --dry-run --no-input'
