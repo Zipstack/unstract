@@ -1,6 +1,5 @@
 import logging
 import os
-import signal
 import threading
 import time
 from typing import Any
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 sio = socketio.Server(
     # Allowed values: {threading, eventlet, gevent, gevent_uwsgi}
     async_mode="threading",
-    cors_allowed_origins=["http://frontend.unstract.localhost"],
+    cors_allowed_origins=settings.CORS_ALLOWED_ORIGINS,
     logger=False,
     engineio_logger=False,
     always_connect=True,
@@ -28,12 +27,14 @@ redis_conn = redis.Redis(
     password=settings.REDIS_PASSWORD,
 )
 
+
 @sio.event
 def connect(sid: str, environ: Any, auth: Any) -> None:
     logger.info(f"[{os.getpid()}] Client with SID:{sid} connected")
     # TODO Authenticate websocket connections
     # with sio.session(sid) as session:
-        # session['authenticated'] = True
+    #     session['authenticated'] = True
+
 
 @sio.event
 def disconnect(sid: str) -> None:
@@ -61,18 +62,21 @@ def _pubsub_listen_forever() -> None:
             message = pubsub.get_message()
 
             if message:
-                logger.info(f"[{os.getpid()}] Pub sub message received: {message}")
+                logger.info(
+                    f"[{os.getpid()}] Pub sub message received: {message}"
+                )
                 if message["type"] == "pmessage":
                     _handle_pubsub_messages(message)
 
             # if shutdown:
-            #     logger.info(f"[{os.getpid()}] Stopping to listen for pub sub messages...")
+            #     logger.info(f"[{os.getpid()}] Stopping to listen for pub sub messages...")  # noqa: E501
             #     pubsub.unsubscribe()
             #     break
 
-            time.sleep(0.001)
+            time.sleep(0.01)
     except Exception as e:
         logger.error(f"[{os.getpid()}] Failed to do pubsub: {e}")
+
 
 # TODO Add graceful shutdown
 # def _graceful_shutdown(signum, frame):
@@ -80,6 +84,7 @@ def _pubsub_listen_forever() -> None:
 #     shutdown = True
 #     # TODO Shutdown socketio server
 #     # sio.close_room("logs:*", namespace="/")
+
 
 def start_server(django_app: WSGIHandler, namespace: str) -> WSGIHandler:
     # signal.signal(signal.SIGINT, _graceful_shutdown)

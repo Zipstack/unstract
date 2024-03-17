@@ -32,7 +32,6 @@ class WorkflowExecutionKey:
     EXECUTION_ID = "execution_id"
     LOG_GUID = "log_guid"
     WITH_LOG = "with_log"
-    LOG_EVENTS_ID = "log_events_id"
 
 
 class WorkflowErrors:
