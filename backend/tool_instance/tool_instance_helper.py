@@ -179,6 +179,7 @@ class ToolInstanceHelper:
                 adapter_type=AdapterTypes.OCR,
             )
 
+    # TODO: Review if adding this metadata is still required
     @staticmethod
     def get_altered_metadata(
         tool_instance: ToolInstance,

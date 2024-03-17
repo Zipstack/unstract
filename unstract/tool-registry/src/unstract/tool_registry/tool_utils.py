@@ -254,28 +254,30 @@ class ToolUtils:
             models=language_models,
             adapter_type=AdapterTypes.LLM,
             schema=schema,
-            default_adapter_id=AdapterPropertyKey.LLM_ADAPTER_ID,
+            default_adapter_id=AdapterPropertyKey.DEFAULT_LLM_ADAPTER_ID,
         )
         ToolUtils.process_adapter_models(
             models=embeddings,
             adapter_type=AdapterTypes.EMBEDDING,
             schema=schema,
-            default_adapter_id=AdapterPropertyKey.EMBEDDING_ADAPTER_ID,
+            default_adapter_id=AdapterPropertyKey.DEFAULT_EMBEDDING_ADAPTER_ID,
         )
         ToolUtils.process_adapter_models(
             models=vector_stores,
             adapter_type=AdapterTypes.VECTOR_DB,
             schema=schema,
-            default_adapter_id=AdapterPropertyKey.VECTOR_DB_ADAPTER_ID,
+            default_adapter_id=AdapterPropertyKey.DEFAULT_VECTOR_DB_ADAPTER_ID,
         )
         ToolUtils.process_adapter_models(
             models=text_extractors,
             adapter_type=AdapterTypes.X2TEXT,
             schema=schema,
+            default_adapter_id=AdapterPropertyKey.DEFAULT_X2TEXT_ADAPTER_ID,
         )
         ToolUtils.process_adapter_models(
             models=ocrs,
             adapter_type=AdapterTypes.OCR,
             schema=schema,
+            default_adapter_id=AdapterPropertyKey.DEFAULT_OCR_ADAPTER_ID,
         )
         return schema
