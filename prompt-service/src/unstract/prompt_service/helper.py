@@ -1,14 +1,10 @@
 import importlib
-import json
-import logging
 import os
 from pathlib import Path
-import sys
 from typing import Any
 
 from dotenv import load_dotenv
 from flask import Flask
-import redis
 
 load_dotenv()
 
@@ -18,8 +14,7 @@ class EnvLoader:
     def get_env_or_die(env_key: str) -> str:
         env_value = os.environ.get(env_key)
         if env_value is None or env_value == "":
-            print(f"Env variable {env_key} is required")
-            sys.exit(1)
+            raise ValueError(f"Env variable {env_key} is required")
         return env_value
 
 
@@ -46,9 +41,7 @@ def plugin_loader(app: Flask) -> dict[str, dict[str, Any]]:
     plugins_pkg = "unstract.prompt_service.plugins"
 
     if not plugins_dir.exists():
-        app.logger.info(
-            f"Plugins dir not found: {plugins_dir}. Skipping."
-        )
+        app.logger.info(f"Plugins dir not found: {plugins_dir}. Skipping.")
         return {}
 
     plugins: dict[str, dict[str, Any]] = {}
