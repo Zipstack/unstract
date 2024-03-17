@@ -87,14 +87,14 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                 execution_method=self.execution_method,
                 execution_type=self.execution_type,
                 status=ExecutionStatus.INITIATED.value,
-                project_settings_id=self.execution_log_id,
+                execution_log_id=self.execution_log_id,
             )
             workflow_execution.save()
         else:
             self.execution_mode = workflow_execution.execution_mode
             self.execution_method = workflow_execution.execution_method
             self.execution_type = workflow_execution.execution_type
-            self.execution_log_id = workflow_execution.project_settings_id
+            self.execution_log_id = workflow_execution.execution_log_id
 
         self.set_messaging_channel(str(self.execution_log_id))
         project_settings = {}
@@ -147,7 +147,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution_method=execution_method,
             execution_type=execution_type,
             status=ExecutionStatus.PENDING.value,
-            project_settings_id=execution_log_id,
+            execution_log_id=execution_log_id,
         )
         if execution_id:
             workflow_execution.id = execution_id
