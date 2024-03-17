@@ -1,69 +1,45 @@
 import { useEffect, useRef } from "react";
 import { Col, Row, Typography } from "antd";
 
-import "./DisplayLogs.css";
-import { useSocketLogsStore } from "../../../store/socket-logs-store";
+import "../../agency/display-logs/DisplayLogs.css";
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
+import { getDateTimeString } from "../../../helpers/GetStaticData";
 
 function DisplayLogs() {
   const bottomRef = useRef(null);
-  const { logs } = useSocketLogsStore();
+  const { messages } = useSocketCustomToolStore();
 
   useEffect(() => {
-    if (logs?.length) {
+    if (messages?.length) {
       // Scroll down to the lastest chat.
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [logs]);
+  }, [messages]);
 
   return (
     <div className="tool-logs">
-      {logs.map((log) => {
+      {messages.map((message) => {
         return (
-          <div key={log?.key}>
+          <div key={message?.timestamp}>
             <Row>
-              <Col span={2}>
+              <Col span={3}>
                 <Typography className="display-logs-col-first">
-                  {log?.timestamp}
+                  {getDateTimeString(message?.timestamp)}
                 </Typography>
               </Col>
               <Col span={2}>
                 <Typography className="display-logs-col">
-                  {log?.stage}
+                  {message?.level}
                 </Typography>
               </Col>
               <Col span={2}>
                 <Typography className="display-logs-col">
-                  {log?.step}
+                  {message?.state}
                 </Typography>
               </Col>
-              <Col span={8}>
+              <Col span={16}>
                 <Typography className="display-logs-col">
-                  {log?.message}
-                </Typography>
-              </Col>
-              <Col span={2}>
-                <Typography className="display-logs-col">
-                  {log?.cost_type}
-                </Typography>
-              </Col>
-              <Col span={2}>
-                <Typography className="display-logs-col">
-                  {log?.cost_units}
-                </Typography>
-              </Col>
-              <Col span={2}>
-                <Typography className="display-logs-col">
-                  {log?.cost}
-                </Typography>
-              </Col>
-              <Col span={2}>
-                <Typography className="display-logs-col">
-                  {log?.iteration}
-                </Typography>
-              </Col>
-              <Col span={2}>
-                <Typography className="display-logs-col">
-                  {log?.iteration_total}
+                  {message?.message}
                 </Typography>
               </Col>
             </Row>

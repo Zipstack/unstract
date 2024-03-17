@@ -4,36 +4,34 @@ import "./LogsLabel.css";
 
 function LogsLabel() {
   return (
-    <div className="logs-label-layout">
-      <Row style={{ padding: "0px 0px", flex: "none" }}>
-        <Col style={{ borderRight: "1px solid #C9C9C9" }} span={2}>
+    <div className="pl-5">
+      <Row className="logs-label-row">
+        <Col className="logs-label-col" span={2}>
           <Typography>Time</Typography>
         </Col>
-        <Col style={{ borderRight: "1px solid #C9C9C9" }} span={2}>
+        <Col className="logs-label-col" span={2}>
           <Typography style={{ paddingLeft: "5px" }}>Stage</Typography>
         </Col>
-        <Col style={{ borderRight: "1px solid #C9C9C9" }} span={2}>
+        <Col className="logs-label-col" span={2}>
           <Typography style={{ paddingLeft: "5px" }}>Step</Typography>
         </Col>
-        <Col style={{ borderRight: "1px solid #C9C9C9" }} span={8}>
+        <Col className="logs-label-col" span={8}>
           <Typography style={{ paddingLeft: "5px" }}>Message</Typography>
         </Col>
-        <Col style={{ borderRight: "1px solid #C9C9C9" }} span={2}>
+        <Col className="logs-label-col" span={2}>
           <Typography style={{ paddingLeft: "5px" }}>Cost Type</Typography>
         </Col>
-        <Col style={{ borderRight: "1px solid #C9C9C9" }} span={2}>
+        <Col className="logs-label-col" span={2}>
           <Typography style={{ paddingLeft: "5px" }}>Cost Units</Typography>
         </Col>
-        <Col style={{ borderRight: "1px solid #C9C9C9" }} span={2}>
+        <Col className="logs-label-col" span={2}>
           <Typography style={{ paddingLeft: "5px" }}>Cost Value</Typography>
         </Col>
-        <Col style={{ borderRight: "1px solid #C9C9C9" }} span={2}>
-          <Typography style={{ paddingLeft: "5px" }}>Iteration</Typography>
+        <Col className="logs-label-col" span={2}>
+          <Typography className="pl-5">Iteration</Typography>
         </Col>
         <Col style={{}} span={2}>
-          <Typography style={{ paddingLeft: "5px" }}>
-            Iteration Total
-          </Typography>
+          <Typography className="pl-5">Iteration Total</Typography>
         </Col>
       </Row>
     </div>
