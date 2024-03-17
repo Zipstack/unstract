@@ -1,7 +1,8 @@
-from enum import Enum
 import json
+import logging
 import re
 import sqlite3
+from enum import Enum
 from typing import Any, Optional
 
 import nltk
@@ -45,7 +46,13 @@ from unstract.sdk.utils.service_context import (
     ServiceContext as UNServiceContext,
 )
 from unstract.sdk.vector_db import ToolVectorDB
+
 from unstract.core.pubsub_helper import LogPublisher
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s : %(message)s",
+)
 
 POS_TEXT_PATH = "/tmp/pos.txt"
 USE_UNSTRACT_PROMPT = True
@@ -73,15 +80,19 @@ app = Flask("prompt-service")
 
 plugins = plugin_loader(app)
 
+
 def _publish_log(
-    log_events_id: str, component: dict[str, str], level: Enum, state: Enum, message: str
+    log_events_id: str,
+    component: dict[str, str],
+    level: Enum,
+    state: Enum,
+    message: str,
 ) -> None:
     LogPublisher.publish(
         log_events_id,
-        LogPublisher.log_prompt(
-            component, level.value, state.value, message
-        ),
+        LogPublisher.log_prompt(component, level.value, state.value, message),
     )
+
 
 def get_keywords_from_pos(text: str) -> list[Any]:
     text = text.lower()
@@ -415,8 +426,11 @@ def prompt_processor() -> Any:
     structured_output: dict[str, Any] = {}
     variable_names: list[str] = []
     _publish_log(
-        log_events_id, {"tool_id": tool_id}, LogLevel.DEBUG, RunLevel.RUN,
-        "Preparing to execute all prompts"
+        log_events_id,
+        {"tool_id": tool_id},
+        LogLevel.DEBUG,
+        RunLevel.RUN,
+        "Preparing to execute all prompts",
     )
 
     for output in outputs:  # type:ignore
@@ -434,17 +448,21 @@ def prompt_processor() -> Any:
         if active is False:
             app.logger.info(f"[{tool_id}] Skipping inactive prompt: {name}")
             _publish_log(
-                log_events_id, {"tool_id": tool_id, "prompt_key": name},
-                LogLevel.INFO, RunLevel.RUN,
-                "Skipping inactive prompt"
+                log_events_id,
+                {"tool_id": tool_id, "prompt_key": name},
+                LogLevel.INFO,
+                RunLevel.RUN,
+                "Skipping inactive prompt",
             )
             continue
 
         app.logger.info(f"[{tool_id}] Executing prompt: {name}")
         _publish_log(
-            log_events_id, {"tool_id": tool_id, "prompt_key": name},
-            LogLevel.DEBUG, RunLevel.RUN,
-            "Executing prompt"
+            log_events_id,
+            {"tool_id": tool_id, "prompt_key": name},
+            LogLevel.DEBUG,
+            RunLevel.RUN,
+            "Executing prompt",
         )
 
         # Finding and replacing the variables in the prompt
@@ -464,11 +482,12 @@ def prompt_processor() -> Any:
             chunk_overlap=output[PSKeys.CHUNK_OVERLAP],
         )
         _publish_log(
-            log_events_id, {"tool_id": tool_id, "prompt_key": name},
-            LogLevel.DEBUG, RunLevel.RUN,
-            "Retrieved document ID"
+            log_events_id,
+            {"tool_id": tool_id, "prompt_key": name},
+            LogLevel.DEBUG,
+            RunLevel.RUN,
+            "Retrieved document ID",
         )
-
 
         llm_helper = ToolLLM(tool=util)
         llm_li: Optional[LLM] = llm_helper.get_llm(
@@ -478,9 +497,11 @@ def prompt_processor() -> Any:
             msg = f"Couldn't fetch LLM {output[PSKeys.LLM]}"
             app.logger.error(msg)
             _publish_log(
-                log_events_id, {"tool_id": tool_id, "prompt_key": name},
-                LogLevel.ERROR, RunLevel.RUN,
-                "Failed due to LLM error"
+                log_events_id,
+                {"tool_id": tool_id, "prompt_key": name},
+                LogLevel.ERROR,
+                RunLevel.RUN,
+                "Failed due to LLM error",
             )
             result["error"] = msg
             return result, 500
@@ -492,9 +513,11 @@ def prompt_processor() -> Any:
             msg = f"Couldn't fetch embedding {output[PSKeys.EMBEDDING]}"
             app.logger.error(msg)
             _publish_log(
-                log_events_id, {"tool_id": tool_id, "prompt_key": name},
-                LogLevel.ERROR, RunLevel.RUN,
-                "Failed due to embedding error"
+                log_events_id,
+                {"tool_id": tool_id, "prompt_key": name},
+                LogLevel.ERROR,
+                RunLevel.RUN,
+                "Failed due to embedding error",
             )
             result["error"] = msg
             return result, 500
@@ -515,9 +538,11 @@ def prompt_processor() -> Any:
             app.logger.error(msg)
             result["error"] = msg
             _publish_log(
-                log_events_id, {"tool_id": tool_id, "prompt_key": name},
-                LogLevel.ERROR, RunLevel.RUN,
-                "Failed due to vector db error"
+                log_events_id,
+                {"tool_id": tool_id, "prompt_key": name},
+                LogLevel.ERROR,
+                RunLevel.RUN,
+                "Failed due to vector db error",
             )
             return result, 500
         vector_index = VectorStoreIndex.from_vector_store(
@@ -536,9 +561,11 @@ def prompt_processor() -> Any:
         assertion_failed = False
         answer = "yes"
         _publish_log(
-            log_events_id, {"tool_id": tool_id, "prompt_key": name},
-            LogLevel.DEBUG, RunLevel.RUN,
-            "Verifying assertion prompt"
+            log_events_id,
+            {"tool_id": tool_id, "prompt_key": name},
+            LogLevel.DEBUG,
+            RunLevel.RUN,
+            "Verifying assertion prompt",
         )
 
         is_assert = output[PSKeys.IS_ASSERT]
@@ -555,9 +582,11 @@ def prompt_processor() -> Any:
         if answer.startswith("No") or answer.startswith("no"):
             app.logger.info("Assert failed.")
             _publish_log(
-                log_events_id, {"tool_id": tool_id, "prompt_key": name},
-                LogLevel.DEBUG, RunLevel.RUN,
-                "Assertion failed"
+                log_events_id,
+                {"tool_id": tool_id, "prompt_key": name},
+                LogLevel.DEBUG,
+                RunLevel.RUN,
+                "Assertion failed",
             )
             assertion_failed = True
             answer = ""
@@ -595,9 +624,11 @@ def prompt_processor() -> Any:
             else:
                 answer = "NA"
                 _publish_log(
-                    log_events_id, {"tool_id": tool_id, "prompt_key": name},
-                    LogLevel.INFO, RunLevel.RUN,
-                    "Retrieving context from adapter"
+                    log_events_id,
+                    {"tool_id": tool_id, "prompt_key": name},
+                    LogLevel.INFO,
+                    RunLevel.RUN,
+                    "Retrieving context from adapter",
                 )
 
                 if output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SIMPLE:
@@ -640,15 +671,19 @@ def prompt_processor() -> Any:
                     app.logger.info("No retrieval strategy matched")
 
                 _publish_log(
-                    log_events_id, {"tool_id": tool_id, "prompt_key": name},
-                    LogLevel.DEBUG, RunLevel.RUN,
-                    "Retrieved context from adapter"
+                    log_events_id,
+                    {"tool_id": tool_id, "prompt_key": name},
+                    LogLevel.DEBUG,
+                    RunLevel.RUN,
+                    "Retrieved context from adapter",
                 )
 
         _publish_log(
-            log_events_id, {"tool_id": tool_id, "prompt_key": name},
-            LogLevel.INFO, RunLevel.RUN,
-            f"Processing prompt type: {output[PSKeys.TYPE]}"
+            log_events_id,
+            {"tool_id": tool_id, "prompt_key": name},
+            LogLevel.INFO,
+            RunLevel.RUN,
+            f"Processing prompt type: {output[PSKeys.TYPE]}",
         )
 
         if output[PSKeys.TYPE] == PSKeys.NUMBER:
@@ -759,9 +794,11 @@ def prompt_processor() -> Any:
             eval_plugin: dict[str, Any] = plugins.get("evaluation", {})
             if eval_plugin:
                 _publish_log(
-                    log_events_id, {"tool_id": tool_id, "prompt_key": name},
-                    LogLevel.INFO, RunLevel.EVAL,
-                    "Evaluating response"
+                    log_events_id,
+                    {"tool_id": tool_id, "prompt_key": name},
+                    LogLevel.INFO,
+                    RunLevel.EVAL,
+                    "Evaluating response",
                 )
                 try:
                     evaluator = eval_plugin["entrypoint_cls"](
@@ -781,15 +818,19 @@ def prompt_processor() -> Any:
                         f'Failed to evaluate prompt {output["name"]}: {str(e)}'
                     )
                     _publish_log(
-                        log_events_id, {"tool_id": tool_id, "prompt_key": name},
-                        LogLevel.ERROR, RunLevel.EVAL,
-                        "Error while evaluation"
+                        log_events_id,
+                        {"tool_id": tool_id, "prompt_key": name},
+                        LogLevel.ERROR,
+                        RunLevel.EVAL,
+                        "Error while evaluation",
                     )
                 else:
                     _publish_log(
-                        log_events_id, {"tool_id": tool_id, "prompt_key": name},
-                        LogLevel.DEBUG, RunLevel.EVAL,
-                        "Evaluation completed"
+                        log_events_id,
+                        {"tool_id": tool_id, "prompt_key": name},
+                        LogLevel.DEBUG,
+                        RunLevel.EVAL,
+                        "Evaluation completed",
                     )
             else:
                 app.logger.info(
@@ -800,8 +841,11 @@ def prompt_processor() -> Any:
         #
 
     _publish_log(
-        log_events_id, {"tool_id": tool_id}, LogLevel.INFO, RunLevel.RUN,
-        "Sanitizing null values"
+        log_events_id,
+        {"tool_id": tool_id},
+        LogLevel.INFO,
+        RunLevel.RUN,
+        "Sanitizing null values",
     )
     for k, v in structured_output.items():
         if isinstance(v, str) and v.lower() == "na":
@@ -820,8 +864,11 @@ def prompt_processor() -> Any:
                     v[k1] = None
 
     _publish_log(
-        log_events_id, {"tool_id": tool_id}, LogLevel.INFO, RunLevel.RUN,
-        "Execution complete"
+        log_events_id,
+        {"tool_id": tool_id},
+        LogLevel.INFO,
+        RunLevel.RUN,
+        "Execution complete",
     )
     return structured_output
 

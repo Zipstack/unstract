@@ -36,7 +36,9 @@ class WorkflowExecution(BaseModel):
         editable=False, db_comment="Id of workflow to be executed"
     )
     project_settings_id = models.UUIDField(
-        editable=False, db_comment="Id of project settings used while execution"
+        editable=False,
+        default=uuid.uuid4,
+        db_comment="Id of project settings used while execution",
     )
     execution_mode = models.CharField(
         choices=Mode.choices, db_comment="Mode of execution"
