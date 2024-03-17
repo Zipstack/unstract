@@ -10,13 +10,19 @@ function LogsLabel() {
           <Typography>Time</Typography>
         </Col>
         <Col className="logs-label-col" span={2}>
-          <Typography style={{ paddingLeft: "5px" }}>Level</Typography>
+          <Typography className="pl-5">Level</Typography>
         </Col>
         <Col className="logs-label-col" span={2}>
-          <Typography style={{ paddingLeft: "5px" }}>State</Typography>
+          <Typography className="pl-5">State</Typography>
         </Col>
-        <Col className="logs-label-col" span={16}>
-          <Typography style={{ paddingLeft: "5px" }}>Message</Typography>
+        <Col className="logs-label-col" span={3}>
+          <Typography className="pl-5">Prompt Key</Typography>
+        </Col>
+        <Col className="logs-label-col" span={3}>
+          <Typography className="pl-5">Document Name</Typography>
+        </Col>
+        <Col className="logs-label-col" span={10}>
+          <Typography className="pl-5">Message</Typography>
         </Col>
       </Row>
     </div>

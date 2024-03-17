@@ -10,22 +10,22 @@ function LogsLabel() {
           <Typography>Time</Typography>
         </Col>
         <Col className="logs-label-col" span={2}>
-          <Typography style={{ paddingLeft: "5px" }}>Stage</Typography>
+          <Typography className="pl-5">Stage</Typography>
         </Col>
         <Col className="logs-label-col" span={2}>
-          <Typography style={{ paddingLeft: "5px" }}>Step</Typography>
+          <Typography className="pl-5">Step</Typography>
         </Col>
         <Col className="logs-label-col" span={8}>
-          <Typography style={{ paddingLeft: "5px" }}>Message</Typography>
+          <Typography className="pl-5">Message</Typography>
         </Col>
         <Col className="logs-label-col" span={2}>
-          <Typography style={{ paddingLeft: "5px" }}>Cost Type</Typography>
+          <Typography className="pl-5">Cost Type</Typography>
         </Col>
         <Col className="logs-label-col" span={2}>
-          <Typography style={{ paddingLeft: "5px" }}>Cost Units</Typography>
+          <Typography className="pl-5">Cost Units</Typography>
         </Col>
         <Col className="logs-label-col" span={2}>
-          <Typography style={{ paddingLeft: "5px" }}>Cost Value</Typography>
+          <Typography className="pl-5">Cost Value</Typography>
         </Col>
         <Col className="logs-label-col" span={2}>
           <Typography className="pl-5">Iteration</Typography>

@@ -37,7 +37,17 @@ function DisplayLogs() {
                   {message?.state}
                 </Typography>
               </Col>
-              <Col span={16}>
+              <Col span={3}>
+                <Typography className="display-logs-col">
+                  {message?.component?.prompt_key}
+                </Typography>
+              </Col>
+              <Col span={3}>
+                <Typography className="display-logs-col">
+                  {message?.component?.doc_name}
+                </Typography>
+              </Col>
+              <Col span={10}>
                 <Typography className="display-logs-col">
                   {message?.message}
                 </Typography>
