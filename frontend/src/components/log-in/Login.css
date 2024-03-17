@@ -78,3 +78,6 @@
     display: flex;
     justify-content: center;
 }
+.button-margin {
+    margin-top: 60px;
+}

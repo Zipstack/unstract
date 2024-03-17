@@ -24,7 +24,12 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./AddLlmProfile.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
-function AddLlmProfile({ editLlmProfileId, setEditLlmProfileId, setIsAddLlm }) {
+function AddLlmProfile({
+  editLlmProfileId,
+  setEditLlmProfileId,
+  setIsAddLlm,
+  handleDefaultLlm,
+}) {
   const [form] = Form.useForm();
   const [formDetails, setFormDetails] = useState({});
   const [resetForm, setResetForm] = useState(false);
@@ -318,6 +323,12 @@ function AddLlmProfile({ editLlmProfileId, setEditLlmProfileId, setIsAddLlm }) {
           type: "success",
           content: "Saved successfully",
         });
+
+        if (newLlmProfiles?.length === 1) {
+          // Set the first LLM profile as default
+          handleDefaultLlm(data?.profile_id);
+        }
+        setIsAddLlm(false);
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
@@ -520,6 +531,7 @@ AddLlmProfile.propTypes = {
   editLlmProfileId: PropTypes.string,
   setEditLlmProfileId: PropTypes.func.isRequired,
   setIsAddLlm: PropTypes.func.isRequired,
+  handleDefaultLlm: PropTypes.func.isRequired,
 };
 
 export { AddLlmProfile };

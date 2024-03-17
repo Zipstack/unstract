@@ -7,6 +7,7 @@ services:
   backend:
     image: unstract/backend:${VERSION}
     container_name: unstract-backend
+    restart: unless-stopped
     command: migrate
     ports:
       - "8000:8000"
@@ -35,6 +36,7 @@ services:
   execution-consumer:
     image: unstract/backend:${VERSION}
     container_name: unstract-execution-consumer
+    restart: unless-stopped
     entrypoint: /app/.venv/bin/celery
     command: "-A backend worker --loglevel=info"
     env_file:
@@ -52,6 +54,7 @@ services:
   celery-flower:
     image: unstract/backend:${VERSION}
     container_name: unstract-celery-flower
+    restart: unless-stopped
     entrypoint: .venv/bin/celery
     command: "-A backend flower --port=5555"
     env_file:
@@ -72,12 +75,12 @@ services:
   celery-beat:
     image: unstract/backend:${VERSION}
     container_name: unstract-celery-beat
+    restart: unless-stopped
     entrypoint: .venv/bin/celery
     command: "-A backend beat --scheduler django_celery_beat.schedulers:DatabaseScheduler -l INFO"
     env_file:
       - ../backend/.env
       - ./essentials.env
-    restart: on-failure
     depends_on:
         - db
         - redis
@@ -86,6 +89,7 @@ services:
   frontend:
     image: unstract/frontend:${VERSION}
     container_name: unstract-frontend
+    restart: unless-stopped
     ports:
       - "3000:3000"
     depends_on:
@@ -100,6 +104,7 @@ services:
   platform-service:
     image: unstract/platform-service:${VERSION}
     container_name: unstract-platform-service
+    restart: unless-stopped
     ports:
       - "3001:3001"
     env_file:
@@ -113,6 +118,7 @@ services:
   prompt-service:
     image: unstract/prompt-service:${VERSION}
     container_name: unstract-prompt-service
+    restart: unless-stopped
     depends_on:
       - db
     ports:
@@ -127,6 +133,7 @@ services:
   x2text-service:
     image: unstract/x2text-service:${VERSION}
     container_name: unstract-x2text-service
+    restart: unless-stopped
     ports:
       - "3004:3004"
     env_file:
@@ -139,6 +146,7 @@ services:
   worker:
     image: unstract/worker:${VERSION}
     container_name: unstract-worker
+    restart: unless-stopped
     ports:
       - 5002:5002
     env_file:
@@ -157,6 +165,7 @@ services:
         - optional
     image: unstract/document-service:${VERSION}
     container_name: unstract-document-service
+    restart: unless-stopped
     ports:
       - 3002:3002
     depends_on:

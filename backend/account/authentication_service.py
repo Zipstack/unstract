@@ -3,7 +3,7 @@ import uuid
 from typing import Any, Optional
 
 from account.authentication_helper import AuthenticationHelper
-from account.constants import Common, DefaultOrg
+from account.constants import DefaultOrg, ErrorMessage, UserLoginTemplate
 from account.custom_exceptions import Forbidden, MethodNotImplemented
 from account.dto import (
     CallbackData,
@@ -13,16 +13,19 @@ from account.dto import (
     ResetUserPasswordDto,
     UserInfo,
     UserRoleData,
-    UserSessionInfo,
 )
 from account.enums import UserRole
 from account.models import Organization, User
 from account.organization import OrganizationService
+from account.serializer import LoginRequestSerializer
+from django.conf import settings
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.hashers import make_password
 from django.http import HttpRequest
+from django.shortcuts import redirect, render
 from rest_framework.request import Request
 from rest_framework.response import Response
 from tenant_account.models import OrganizationMember as OrganizationMember
-from utils.cache_service import CacheService
 
 Logger = logging.getLogger(__name__)
 
@@ -30,21 +33,97 @@ Logger = logging.getLogger(__name__)
 class AuthenticationService:
     def __init__(self) -> None:
         self.authentication_helper = AuthenticationHelper()
-        self.default_user: User = self.get_user()
         self.default_organization: Organization = self.user_organization()
-        self.user_session_info = self.get_user_session_info()
 
-    def get_current_organization(self) -> Organization:
-        return self.default_organization
+    def user_login(self, request: Request) -> Any:
+        """Authenticate and log in a user.
 
-    def get_current_user(self) -> User:
-        return self.default_user
+        Args:
+            request (Request): The HTTP request object.
 
-    def get_current_user_session(self) -> UserSessionInfo:
-        return self.user_session_info
+        Returns:
+            Any: The response object.
 
-    def user_login(self, request: HttpRequest) -> Any:
-        raise MethodNotImplemented()
+        Raises:
+            ValueError: If there is an error in the login credentials.
+        """
+        if request.method == "GET":
+            return self.render_login_page(request)
+        try:
+            validated_data = self.validate_login_credentials(request)
+            username = validated_data.get("username")
+            password = validated_data.get("password")
+        except ValueError as e:
+            return render(
+                request,
+                UserLoginTemplate.TEMPLATE,
+                {UserLoginTemplate.ERROR_PLACE_HOLDER: str(e)},
+            )
+        if self.authenticate_and_login(request, username, password):
+            return redirect(settings.WEB_APP_ORIGIN_URL)
+
+        return self.render_login_page_with_error(
+            request, ErrorMessage.USER_LOGIN_ERROR
+        )
+
+    def authenticate_and_login(
+        self, request: Request, username: str, password: str
+    ) -> bool:
+        """Authenticate and log in a user.
+
+        Args:
+            request (Request): The HTTP request object.
+            username (str): The username of the user.
+            password (str): The password of the user.
+
+        Returns:
+            bool: True if the user is successfully authenticated and logged in,
+                False otherwise.
+        """
+        user = authenticate(request, username=username, password=password)
+        if user:
+            login(request, user)
+            return True
+        # Attempt to initiate default user and authenticate again
+        if self.set_default_user(username, password):
+            user = authenticate(request, username=username, password=password)
+            if user:
+                login(request, user)
+                return True
+        return False
+
+    def render_login_page(self, request: Request) -> Any:
+        return render(request, UserLoginTemplate.TEMPLATE)
+
+    def render_login_page_with_error(
+        self, request: Request, error_message: str
+    ) -> Any:
+        return render(
+            request,
+            UserLoginTemplate.TEMPLATE,
+            {UserLoginTemplate.ERROR_PLACE_HOLDER: error_message},
+        )
+
+    def validate_login_credentials(self, request: Request) -> Any:
+        """Validate the login credentials.
+
+        Args:
+            request (Request): The HTTP request object.
+
+        Returns:
+            dict: The validated login credentials.
+
+        Raises:
+            ValueError: If the login credentials are invalid.
+        """
+        serializer = LoginRequestSerializer(data=request.POST)
+        if not serializer.is_valid():
+            error_messages = {
+                field: errors[0] for field, errors in serializer.errors.items()
+            }
+            first_error_message = list(error_messages.values())[0]
+            raise ValueError(first_error_message)
+        return serializer.validated_data
 
     def user_signup(self, request: HttpRequest) -> Any:
         raise MethodNotImplemented()
@@ -65,8 +144,8 @@ class AuthenticationService:
 
     def get_callback_data(self, request: Request) -> CallbackData:
         return CallbackData(
-            user_id=DefaultOrg.MOCK_USER_ID,
-            email=DefaultOrg.MOCK_USER_EMAIL,
+            user_id=request.user.user_id,
+            email=request.user.email,
             token="",
         )
 
@@ -82,7 +161,7 @@ class AuthenticationService:
         self, request: Request, user: User
     ) -> MemberData:
         member_data: MemberData = MemberData(
-            user_id=self.default_user.user_id,
+            user_id=user.user_id,
             organization_id=self.default_organization.organization_id,
             role=[UserRole.ADMIN.value],
         )
@@ -101,7 +180,7 @@ class AuthenticationService:
         data: Optional[dict[str, Any]] = None,
     ) -> MemberData:
         member_data: MemberData = MemberData(
-            user_id=self.default_user.user_id,
+            user_id=user.user_id,
             organization_id=self.default_organization.organization_id,
         )
 
@@ -204,38 +283,38 @@ class AuthenticationService:
         )
         return organizationData
 
-    def get_user(self) -> User:
-        user = CacheService.get_user_session_info(DefaultOrg.MOCK_USER_EMAIL)
-        if not user:
-            try:
-                user = User.objects.get(email=DefaultOrg.MOCK_USER_EMAIL)
-            except User.DoesNotExist:
-                user = User(
-                    username=DefaultOrg.MOCK_USER,
-                    user_id=DefaultOrg.MOCK_USER_ID,
-                    email=DefaultOrg.MOCK_USER_EMAIL,
-                )
-                user.save()
-        if isinstance(user, User):
-            id = user.id
-            user_id = user.user_id
-            email = user.email
-        else:
-            id = user[Common.ID]
-            user_id = user[Common.USER_ID]
-            email = user[Common.USER_EMAIL]
+    def set_default_user(self, username: str, password: str) -> bool:
+        """Set the default user for authentication.
 
-        current_org = Common.PUBLIC_SCHEMA_NAME
+        This method creates a default user with the provided username and
+        password if the username and password match the default values defined
+        in the 'DefaultOrg' class. The default user is saved in the database.
 
-        user_session_info: UserSessionInfo = UserSessionInfo(
-            id=id,
-            user_id=user_id,
-            email=email,
-            current_org=current_org,
+        Args:
+            username (str): The username of the default user.
+            password (str): The password of the default user.
+
+        Returns:
+            bool: True if the default user is successfully created and saved,
+                False otherwise.
+        """
+        if (
+            username != DefaultOrg.MOCK_USER
+            or password != DefaultOrg.MOCK_USER_PASSWORD
+        ):
+            return False
+
+        user, created = User.objects.get_or_create(
+            username=DefaultOrg.MOCK_USER
         )
-        CacheService.set_user_session_info(user_session_info)
-        user_info = User(id=id, user_id=user_id, username=email, email=email)
-        return user_info
+        if created:
+            user.password = make_password(DefaultOrg.MOCK_USER_PASSWORD)
+        else:
+            user.user_id = DefaultOrg.MOCK_USER_ID
+            user.email = DefaultOrg.MOCK_USER_EMAIL
+            user.password = make_password(DefaultOrg.MOCK_USER_PASSWORD)
+        user.save()
+        return True
 
     def get_user_info(self, request: Request) -> Optional[UserInfo]:
         user: User = request.user
@@ -248,32 +327,7 @@ class AuthenticationService:
                 email=user.email,
             )
         else:
-            user = self.get_user()
-            return UserInfo(
-                id=user.id,
-                user_id=user.user_id,
-                name=user.username,
-                display_name=user.username,
-                email=user.email,
-            )
-
-    def get_user_session_info(self) -> UserSessionInfo:
-        user_session_info_dict = CacheService.get_user_session_info(
-            self.default_user.email
-        )
-        if not user_session_info_dict:
-            user_session_info: UserSessionInfo = UserSessionInfo(
-                id=self.default_user.id,
-                user_id=self.default_user.user_id,
-                email=self.default_user.email,
-                current_org=self.default_organization.organization_id,
-            )
-            CacheService.set_user_session_info(user_session_info)
-        else:
-            user_session_info = UserSessionInfo.from_dict(
-                user_session_info_dict
-            )
-        return user_session_info
+            return None
 
     def get_organization_info(self, org_id: str) -> Optional[Organization]:
         return OrganizationService.get_organization_by_org_id(org_id=org_id)
@@ -300,12 +354,16 @@ class AuthenticationService:
         return f"{name} organization"
 
     def user_logout(self, request: HttpRequest) -> Response:
-        raise MethodNotImplemented()
+        """Log out the user.
 
-    def get_user_id_from_token(
-        self, token: Optional[dict[str, Any]]
-    ) -> Response:
-        return DefaultOrg.MOCK_USER_ID
+        Args:
+            request (HttpRequest): The HTTP request object.
+
+        Returns:
+            Response: The redirect response to the web app origin URL.
+        """
+        logout(request)
+        return redirect(settings.WEB_APP_ORIGIN_URL)
 
     def get_organization_members_by_org_id(
         self, organization_id: str
