@@ -47,6 +47,9 @@ class WorkflowExecution(BaseModel):
     execution_type = models.CharField(
         choices=Type.choices, db_comment="Type of execution"
     )
+    execution_log_id = models.CharField(
+        default="", editable=False, db_comment="Execution log events Id"
+    )
     status = models.CharField(
         default="", db_comment="Current status of execution"
     )
