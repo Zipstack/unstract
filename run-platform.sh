@@ -79,10 +79,11 @@ parse_args() {
         ;;
       -v | --version)
         if [ -z "${2-}" ]; then
-          echo "No unstract docker version provided."
-          opt_version="latest"
+          echo "No version specified."
+          echo
+          display_help
+          exit
         else
-          echo "Unstract docker version: latest"
           opt_version="$2"
         fi
         shift
