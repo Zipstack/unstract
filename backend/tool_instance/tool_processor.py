@@ -60,7 +60,6 @@ class ToolProcessor:
         )
         schema_json: dict[str, Any] = schema.to_dict()
         return schema_json
-
  
     @staticmethod
     def update_schema_with_adapter_configurations(
