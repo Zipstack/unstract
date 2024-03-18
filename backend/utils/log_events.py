@@ -10,7 +10,6 @@ from django.conf import settings
 from django.core.wsgi import WSGIHandler
 
 logger = logging.getLogger(__name__)
-# shutdown = False
 
 sio = socketio.Server(
     # Allowed values: {threading, eventlet, gevent, gevent_uwsgi}
@@ -30,10 +29,8 @@ redis_conn = redis.Redis(
 
 @sio.event
 def connect(sid: str, environ: Any, auth: Any) -> None:
-    logger.info(f"[{os.getpid()}] Client with SID:{sid} connected")
     # TODO Authenticate websocket connections
-    # with sio.session(sid) as session:
-    #     session['authenticated'] = True
+    logger.info(f"[{os.getpid()}] Client with SID:{sid} connected")
 
 
 @sio.event
@@ -68,28 +65,14 @@ def _pubsub_listen_forever() -> None:
                 if message["type"] == "pmessage":
                     _handle_pubsub_messages(message)
 
-            # if shutdown:
-            #     logger.info(f"[{os.getpid()}] Stopping to listen for pub sub messages...")  # noqa: E501
-            #     pubsub.unsubscribe()
-            #     break
+            # TODO Add graceful shutdown
 
             time.sleep(0.01)
     except Exception as e:
         logger.error(f"[{os.getpid()}] Failed to do pubsub: {e}")
 
 
-# TODO Add graceful shutdown
-# def _graceful_shutdown(signum, frame):
-#     global shutdown
-#     shutdown = True
-#     # TODO Shutdown socketio server
-#     # sio.close_room("logs:*", namespace="/")
-
-
 def start_server(django_app: WSGIHandler, namespace: str) -> WSGIHandler:
-    # signal.signal(signal.SIGINT, _graceful_shutdown)
-    # signal.signal(signal.SIGTERM, _graceful_shutdown)
-
     django_app = socketio.WSGIApp(sio, django_app, socketio_path=namespace)
 
     pubsub_listener = threading.Thread(
