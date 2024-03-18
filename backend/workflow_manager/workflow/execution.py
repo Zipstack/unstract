@@ -68,7 +68,12 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             ignore_processed_entities=False,
         )
         if not workflow_execution:
-            self.execution_log_id = StateStore.get(Common.LOG_EVENTS_ID)
+            # Use pipline_id for pipelines / API deployment
+            # since session might not be present.
+            log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
+            self.execution_log_id = (
+                log_events_id if log_events_id else pipeline_id
+            )
             self.execution_mode = mode
             self.execution_method: tuple[str, str] = (
                 WorkflowExecution.Method.SCHEDULED
@@ -117,6 +122,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             raise InvalidAPIRequest("File shouldn't be empty")
         tool_instance.metadata[JsonSchemaKey.ROOT_FOLDER] = execution_path
 
+    # TODO: Review and remove log_guid if its unused
     @staticmethod
     def create_workflow_execution(
         workflow_id: str,
@@ -137,9 +143,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             if single_step
             else WorkflowExecution.Type.COMPLETE
         )
-        execution_log_id = (
-            StateStore.get(Common.LOG_EVENTS_ID) if not log_guid else log_guid
-        )
+        log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
+        execution_log_id = log_events_id if log_events_id else pipeline_id
         workflow_execution = WorkflowExecution(
             pipeline_id=pipeline_id,
             workflow_id=workflow_id,
