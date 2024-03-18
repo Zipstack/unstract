@@ -105,7 +105,7 @@ check_required_packages() {
     echo "$red_text""docker not found. Please install it and try again.""$default_text"
     exit 1
   fi
-  if ! command -v docker compose &> /dev/null; then
+  if ! (command -v docker compose &> /dev/null && command -v docker-compose &> /dev/null); then
     echo "$red_text""docker compose not found. Please install it and try again.""$default_text"
     exit 1
   fi
@@ -229,6 +229,6 @@ parse_args $*
 setup_env
 build_services
 run_services
-#
-# Run Unstract platform - END
-#
+
+ Run Unstract platform - END
+
