@@ -100,12 +100,13 @@ parse_args() {
 }
 
 setup_env() {
+  # Generate Fernet Key. Refer https://pypi.org/project/cryptography/. for both backend and platform-service.
+  ENCRYPTION_KEY=$(python3 -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
+  DEFAULT_AUTH_KEY="unstract"
+  
   for service in "${services[@]}"; do
     sample_env_path="$script_dir/$service/sample.env"
     env_path="$script_dir/$service/.env"
-
-    # Generate Fernet Key. Refer https://pypi.org/project/cryptography/.
-    ENCRYPTION_KEY=$(python3 -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
 
     if [ -e "$sample_env_path" ] && [ ! -e "$env_path" ]; then
       cp "$sample_env_path" "$env_path"
@@ -113,6 +114,12 @@ setup_env() {
       if [[ "$service" == "backend" || "$service" == "platform-service" ]]; then
         echo -e "$blue_text""Adding encryption secret to $service""$default_text"
         echo "ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"" >> $env_path
+      fi
+      # Add default auth credentials for backend.
+      if [ "$service" == "backend" ]; then
+        echo -e "$blue_text""Adding default auth credentials to $service""$default_text"
+        echo "DEFAULT_AUTH_USERNAME=\"$DEFAULT_AUTH_KEY\"" >> $env_path
+        echo "DEFAULT_AUTH_PASSWORD=\"$DEFAULT_AUTH_KEY\"" >> $env_path
       fi
       echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
     else

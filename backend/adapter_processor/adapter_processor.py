@@ -2,7 +2,6 @@ import json
 import logging
 from typing import Any, Optional
 
-import adapter_processor
 from account.models import User
 from adapter_processor.constants import AdapterKeys
 from adapter_processor.exceptions import (
@@ -21,7 +20,7 @@ from unstract.adapters.enums import AdapterTypes
 from unstract.adapters.exceptions import AdapterError
 from unstract.adapters.x2text.constants import X2TextConstants
 
-from .models import AdapterInstance
+from .models import AdapterInstance, UserDefaultAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -131,47 +130,41 @@ class AdapterProcessor:
 
     @staticmethod
     def set_default_triad(default_triad: dict[str, str], user: User) -> None:
-        filter_params: dict[str, Any] = {}
-
         try:
-            for key in default_triad:
-                filter_params.clear()
-                adapter_id = default_triad[key]
-                # Query rows where adapter_type=X and is_default=True
-                if key == AdapterKeys.LLM_DEFAULT:
-                    adapter_type = AdapterTypes.LLM.name
-                elif key == AdapterKeys.EMBEDDING_DEFAULT:
-                    adapter_type = AdapterTypes.EMBEDDING.name
-                elif key == AdapterKeys.VECTOR_DB_DEFAULT:
-                    adapter_type = AdapterTypes.VECTOR_DB.name
-                elif key == AdapterKeys.X2TEXT_DEFAULT:
-                    adapter_type = AdapterTypes.X2TEXT.name
+            (
+                user_default_adapter,
+                created,
+            ) = UserDefaultAdapter.objects.get_or_create(user=user)
 
-                filter_params["adapter_type"] = adapter_type
-                filter_params["is_default"] = True
-                filter_params["created_by"] = user
-
-                AdapterInstance.objects.filter(**filter_params).update(
-                    is_default=False
+            if default_triad.get(AdapterKeys.LLM_DEFAULT, None):
+                user_default_adapter.default_llm_adapter = (
+                    AdapterInstance.objects.get(
+                        pk=default_triad[AdapterKeys.LLM_DEFAULT]
+                    )
+                )
+            if default_triad.get(AdapterKeys.EMBEDDING_DEFAULT, None):
+                user_default_adapter.default_embedding_adapter = (
+                    AdapterInstance.objects.get(
+                        pk=default_triad[AdapterKeys.EMBEDDING_DEFAULT]
+                    )
                 )
 
-                # Update the adapter_id in the incoming
-                # list to set is_default=True
-                filter_params.clear()
-                try:
-                    new_adapter_default: AdapterInstance = (
-                        AdapterInstance.objects.get(pk=adapter_id)
+            if default_triad.get(AdapterKeys.VECTOR_DB_DEFAULT, None):
+                user_default_adapter.default_vector_db_adapter = (
+                    AdapterInstance.objects.get(
+                        pk=default_triad[AdapterKeys.VECTOR_DB_DEFAULT]
                     )
-                    new_adapter_default.is_default = True
-                    new_adapter_default.save()
-                except (
-                    adapter_processor.models.AdapterInstance.DoesNotExist
-                ) as e:
-                    logger.error(
-                        f"Error while retrieving adapter: {adapter_id} "
-                        f"reason: {e}"
+                )
+
+            if default_triad.get(AdapterKeys.X2TEXT, None):
+                user_default_adapter.default_x2text_adapter = (
+                    AdapterInstance.objects.get(
+                        pk=default_triad[AdapterKeys.X2TEXT]
                     )
-                    raise InValidAdapterId()
+                )
+
+            user_default_adapter.save()
+
             logger.info("Changed defaults successfully")
         except Exception as e:
             logger.error(f"Unable to save defaults because: {e}")
@@ -209,13 +202,17 @@ class AdapterProcessor:
 
         Parameters:
         - adapter_type (AdapterTypes): The type of adapters to retrieve.
+        - user: Logged in User
 
         Returns:
         - list[AdapterInstance]: A list of AdapterInstance objects that match
             the specified adapter type.
         """
-        adapters: list[AdapterInstance] = AdapterInstance.objects.filter(
-            adapter_type=adapter_type.value, created_by=user
+
+        adapters: list[AdapterInstance] = AdapterInstance.objects.for_user(
+            user
+        ).filter(
+            adapter_type=adapter_type.value,
         )
         return adapters
 
@@ -260,13 +257,25 @@ class AdapterProcessor:
             marked as default.
         """
         try:
-            adapters: list[AdapterInstance] = AdapterInstance.objects.filter(
-                is_default=True, created_by=user
-            )
+            adapters: list[AdapterInstance] = []
+            default_adapter = UserDefaultAdapter.objects.get(user=user)
+
+            if default_adapter.default_embedding_adapter:
+                adapters.append(default_adapter.default_embedding_adapter)
+            if default_adapter.default_llm_adapter:
+                adapters.append(default_adapter.default_llm_adapter)
+            if default_adapter.default_vector_db_adapter:
+                adapters.append(default_adapter.default_vector_db_adapter)
+            if default_adapter.default_x2text_adapter:
+                adapters.append(default_adapter.default_x2text_adapter)
+
             return adapters
         except ObjectDoesNotExist as e:
             logger.error(f"No default adapters found: {e}")
-            raise InternalServiceError("No default adapters found")
+            raise InternalServiceError(
+                "No default adapters found, "
+                "configure them through Platform Settings"
+            )
         except Exception as e:
             logger.error(f"Error occurred while fetching default adapters: {e}")
             raise InternalServiceError("Error fetching default adapters")

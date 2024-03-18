@@ -1,3 +1,6 @@
+from django.conf import settings
+
+
 class LoginConstant:
     INVITATION = "invitation"
     ORGANIZATION = "organization"
@@ -35,14 +38,21 @@ class Cookie:
 class ErrorMessage:
     ORGANIZATION_EXIST = "Organization already exists"
     DUPLICATE_API = "It appears that a duplicate call may have been made."
+    USER_LOGIN_ERROR = "Invalid username or password. Please try again."
 
 
 class DefaultOrg:
     ORGANIZATION_NAME = "mock_org"
     MOCK_ORG = "mock_org"
-    MOCK_USER = "mock_user"
+    MOCK_USER = settings.DEFAULT_AUTH_USERNAME
     MOCK_USER_ID = "mock_user_id"
     MOCK_USER_EMAIL = "email@mock.com"
+    MOCK_USER_PASSWORD = settings.DEFAULT_AUTH_PASSWORD
+
+
+class UserLoginTemplate:
+    TEMPLATE = "login.html"
+    ERROR_PLACE_HOLDER = "error_message"
 
 
 class PluginConfig:

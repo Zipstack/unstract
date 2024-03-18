@@ -1,4 +1,4 @@
-import { Input, Space, Typography } from "antd";
+import { Button, Input, Space, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import "./PreAndPostAmbleModal.css";
@@ -8,6 +8,7 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
+import DefaultPrompts from "./DefaultPrompts.json";
 
 const fieldNames = {
   preamble: "PREAMBLE",
@@ -24,15 +25,26 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
   useEffect(() => {
     if (type === fieldNames.preamble) {
       setTitle("Preamble");
-      setText(details?.preamble || "");
+      setText(details?.preamble || DefaultPrompts.preamble);
       return;
     }
 
     if (type === fieldNames.postamble) {
       setTitle("Postamble");
-      setText(details?.postamble || "");
+      setText(details?.postamble || DefaultPrompts.postamble);
     }
   }, [type]);
+
+  const setDefaultPrompt = () => {
+    if (type === fieldNames.preamble) {
+      setText(DefaultPrompts.preamble);
+      return;
+    }
+
+    if (type === fieldNames.postamble) {
+      setText(DefaultPrompts.postamble);
+    }
+  };
 
   const handleSave = () => {
     const body = {};
@@ -77,10 +89,13 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
         </div>
         <div>
           <Input.TextArea
-            rows={3}
+            rows={4}
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
+          <Button size="small" type="link" onClick={setDefaultPrompt}>
+            Add default prompt
+          </Button>
         </div>
         <div className="display-flex-right">
           <Space>

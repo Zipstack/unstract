@@ -13,6 +13,7 @@ const defaultState = {
   indexDocs: [],
   rawIndexStatus: [],
   summarizeIndexStatus: [],
+  isSinglePassExtract: false,
 };
 
 const defaultPromptInstance = {

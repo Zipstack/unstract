@@ -1,5 +1,6 @@
-import { Tabs } from "antd";
+import { Button, Tabs, Tooltip } from "antd";
 import { useEffect, useState } from "react";
+import { PlayCircleOutlined } from "@ant-design/icons";
 
 import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -15,6 +16,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
   const [prompts, setPrompts] = useState([]);
+  const [triggerRunSinglePass, setTriggerRunSinglePass] = useState(false);
   const [scrollToBottom, setScrollToBottom] = useState(false);
   const { sessionDetails } = useSessionStore();
   const {
@@ -23,6 +25,7 @@ function ToolsMain() {
     selectedDoc,
     updateCustomTool,
     disableLlmOrDocChange,
+    isSinglePassExtract,
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -32,6 +35,7 @@ function ToolsMain() {
     {
       key: "1",
       label: "Document Parser",
+      disabled: isSinglePassExtract,
     },
     {
       key: "2",
@@ -87,6 +91,14 @@ function ToolsMain() {
     setPrompts(details?.prompts || []);
   }, [details]);
 
+  useEffect(() => {
+    if (!isSinglePassExtract) {
+      return;
+    }
+    setActiveKey("2");
+    setTriggerRunSinglePass((prev) => !prev);
+  }, [isSinglePassExtract]);
+
   const onChange = (key) => {
     setActiveKey(key);
   };
@@ -123,10 +135,26 @@ function ToolsMain() {
       });
   };
 
+  const handleSinglePassExtraction = () => {
+    updateCustomTool({ isSinglePassExtract: true });
+  };
+
   return (
     <div className="tools-main-layout">
-      <div className="tools-main-tabs">
-        <Tabs activeKey={activeKey} items={items} onChange={onChange} />
+      <div className="doc-manager-header">
+        <div className="tools-main-tabs">
+          <Tabs activeKey={activeKey} items={items} onChange={onChange} />
+        </div>
+        <div className="display-flex-align-center">
+          <Tooltip title="Single Pass Extraction">
+            <Button
+              onClick={handleSinglePassExtraction}
+              loading={isSinglePassExtract}
+              disabled={disableLlmOrDocChange?.length > 0}
+              icon={<PlayCircleOutlined />}
+            />
+          </Tooltip>
+        </div>
       </div>
       <div className="tools-main-body">
         {activeKey === "1" && (
@@ -137,7 +165,10 @@ function ToolsMain() {
           />
         )}
         {activeKey === "2" && (
-          <CombinedOutput docId={selectedDoc?.document_id} />
+          <CombinedOutput
+            docId={selectedDoc?.document_id}
+            triggerRunSinglePass={triggerRunSinglePass}
+          />
         )}
       </div>
       <div className="tools-main-footer">
