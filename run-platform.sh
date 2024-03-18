@@ -229,6 +229,6 @@ parse_args $*
 setup_env
 build_services
 run_services
-
- Run Unstract platform - END
-
+#
+# Run Unstract platform - END
+#
