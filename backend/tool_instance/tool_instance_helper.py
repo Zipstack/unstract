@@ -2,26 +2,25 @@ import logging
 import os
 import uuid
 from json import JSONDecodeError
-from jsonschema import Draft202012Validator, ValidationError, validators
 from typing import Any, Optional
 
 from account.models import User
 from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.models import AdapterInstance
 from connector.connector_instance_helper import ConnectorInstanceHelper
+from jsonschema import ValidationError
 from tool_instance.constants import JsonSchemaKey
 from tool_instance.models import ToolInstance
 from tool_instance.tool_processor import ToolProcessor
 from unstract.adapters.enums import AdapterTypes
+from unstract.sdk.tool.validator import DefaultsGeneratingValidator
 from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_utils import ToolUtils
 from workflow_manager.workflow.constants import WorkflowKey
-from unstract.sdk.tool.validator import extend_with_default
+
 logger = logging.getLogger(__name__)
 
-# Helps validate a JSON against a schema and applies missing key's defaults too.
-DefaultsGeneratingValidator = extend_with_default(Draft202012Validator)
 
 class ToolInstanceHelper:
     @staticmethod
@@ -335,14 +334,13 @@ class ToolInstanceHelper:
 
     @staticmethod
     def validate_tool_settings(
-        tool_uid: str,
-        tool_meta: dict[str, Any]
+        tool_uid: str, tool_meta: dict[str, Any]
     ) -> tuple[bool, str]:
         """Function to validate Tools settings."""
 
         schema_json: dict[str, Any] = ToolProcessor.get_tool_settings(
             tool_uid=tool_uid
-            )
+        )
         try:
             DefaultsGeneratingValidator(schema_json).validate(tool_meta)
             return True, ""
@@ -350,4 +348,3 @@ class ToolInstanceHelper:
             return False, str(e)
         except ValidationError as e:
             return False, str(e.schema["description"])
-        

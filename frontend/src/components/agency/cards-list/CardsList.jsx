@@ -28,7 +28,6 @@ const CardsList = ({ step, index, activeTool, moveItem }) => {
     const toolSettings = { id, tool_id: toolId };
     setToolSettings(toolSettings);
   };
-  console.log(step);
   const deleteStep = () => {
     const requestOptions = {
       method: "DELETE",
