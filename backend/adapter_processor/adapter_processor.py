@@ -272,7 +272,10 @@ class AdapterProcessor:
             return adapters
         except ObjectDoesNotExist as e:
             logger.error(f"No default adapters found: {e}")
-            raise InternalServiceError("No default adapters found")
+            raise InternalServiceError(
+                "No default adapters found, "
+                "configure them through Platform Settings"
+            )
         except Exception as e:
             logger.error(f"Error occurred while fetching default adapters: {e}")
             raise InternalServiceError("Error fetching default adapters")

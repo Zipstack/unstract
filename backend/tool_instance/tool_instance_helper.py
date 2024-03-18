@@ -1,16 +1,19 @@
 import logging
 import os
 import uuid
+from json import JSONDecodeError
 from typing import Any, Optional
 
 from account.models import User
 from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.models import AdapterInstance
 from connector.connector_instance_helper import ConnectorInstanceHelper
+from jsonschema import ValidationError
 from tool_instance.constants import JsonSchemaKey
 from tool_instance.models import ToolInstance
 from tool_instance.tool_processor import ToolProcessor
 from unstract.adapters.enums import AdapterTypes
+from unstract.sdk.tool.validator import DefaultsGeneratingValidator
 from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_utils import ToolUtils
@@ -179,6 +182,7 @@ class ToolInstanceHelper:
                 adapter_type=AdapterTypes.OCR,
             )
 
+    # TODO: Review if adding this metadata is still required
     @staticmethod
     def get_altered_metadata(
         tool_instance: ToolInstance,
@@ -327,3 +331,20 @@ class ToolInstanceHelper:
             tool_instance = ToolInstance.objects.get(pk=tool_instance_id)
             tool_instance.step = step + 1
             tool_instance.save()
+
+    @staticmethod
+    def validate_tool_settings(
+        tool_uid: str, tool_meta: dict[str, Any]
+    ) -> tuple[bool, str]:
+        """Function to validate Tools settings."""
+
+        schema_json: dict[str, Any] = ToolProcessor.get_tool_settings(
+            tool_uid=tool_uid
+        )
+        try:
+            DefaultsGeneratingValidator(schema_json).validate(tool_meta)
+            return True, ""
+        except JSONDecodeError as e:
+            return False, str(e)
+        except ValidationError as e:
+            return False, str(e.schema["description"])
