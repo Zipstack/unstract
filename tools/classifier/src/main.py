@@ -65,7 +65,7 @@ class UnstractClassifier(BaseTool):
         llm = tool_llm.get_llm()
         if not llm:
             self.stream_error_and_exit("Unable to get llm instance")
-        # Setting the LLM to be used  in the global context
+        # Setting the callback_manager to be used
         UNCallbackManager.set_callback_manager(
             platform_api_key=self.get_env_or_die(ToolEnv.PLATFORM_API_KEY),
             llm=llm,
