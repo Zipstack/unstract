@@ -78,7 +78,14 @@ parse_args() {
         opt_verbose=true
         ;;
       -v | --version)
-        opt_version="$2"
+        if [ -z "${2-}" ]; then
+          echo "No version specified."
+          echo
+          display_help
+          exit
+        else
+          opt_version="$2"
+        fi
         shift
         ;;
       *)
@@ -103,7 +110,7 @@ setup_env() {
   # Generate Fernet Key. Refer https://pypi.org/project/cryptography/. for both backend and platform-service.
   ENCRYPTION_KEY=$(python3 -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
   DEFAULT_AUTH_KEY="unstract"
-  
+
   for service in "${services[@]}"; do
     sample_env_path="$script_dir/$service/sample.env"
     env_path="$script_dir/$service/.env"
