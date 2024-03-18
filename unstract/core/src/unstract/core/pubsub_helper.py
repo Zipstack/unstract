@@ -1,14 +1,13 @@
-from datetime import datetime, timezone
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import redis
 
 
 class LogPublisher:
-
     r = redis.Redis(
         host=os.environ.get("REDIS_HOST", "http://localhost"),
         port=os.environ.get("REDIS_PORT", "6379"),
@@ -73,14 +72,12 @@ class LogPublisher:
             "message": message,
         }
 
-    @staticmethod
-    def publish(channel_id: str, payload: dict[str, Any]) -> bool:
+    @classmethod
+    def publish(cls, channel_id: str, payload: dict[str, Any]) -> bool:
         channel = f"logs:{channel_id}"
         try:
-            LogPublisher.r.publish(channel, json.dumps(payload))
+            cls.r.publish(channel, json.dumps(payload))
         except Exception as e:
-            logging.error(
-                f"Failed to publish '{channel}' <= {payload}: {e}"
-            )
+            logging.error(f"Failed to publish '{channel}' <= {payload}: {e}")
             return False
         return True
