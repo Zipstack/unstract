@@ -477,10 +477,12 @@ def prompt_processor() -> Any:
             app.logger.error(msg)
             result["error"] = msg
             return result, 500
-        # Set up llm. embedding and callback manager to collect usage stats
+        # Set up llm, embedding and callback manager to collect usage stats
         # for this context
-        UNCallbackManager.set_callback_manager(
-            platform_api_key=platform_key, llm=llm_li, embedding=embedding_li
+        Settings.llm = llm_li
+        Settings.embed_model = embedding_li
+        Settings.callback_manager = UNCallbackManager.get_callback_manager(
+            platform_api_key=platform_key, llm=llm_li, embed_model=embedding_li
         )
         vector_index = VectorStoreIndex.from_vector_store(
             vector_store=vector_db_li, embed_model=embedding_li
