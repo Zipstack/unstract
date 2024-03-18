@@ -48,8 +48,10 @@ class CustomAuthMiddleware:
             and "user" in request.session
         ):
             StateStore.set(Common.LOG_EVENTS_ID, request.session.session_key)
+            StateStore.set(Common.USER_ID, request.user)
             response = self.get_response(request)
             StateStore.clear(Common.LOG_EVENTS_ID)
+            StateStore.clear(Common.USER_ID)
             return response
         return JsonResponse({"message": "Unauthorized"}, status=401)
 

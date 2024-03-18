@@ -18,6 +18,8 @@ from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_utils import ToolUtils
 from workflow_manager.workflow.constants import WorkflowKey
+from utils.local_context import StateStore
+from account.constants import Common
 
 logger = logging.getLogger(__name__)
 
@@ -337,14 +339,15 @@ class ToolInstanceHelper:
         tool_uid: str, tool_meta: dict[str, Any]
     ) -> tuple[bool, str]:
         """Function to validate Tools settings."""
-
-        schema_json: dict[str, Any] = ToolProcessor.get_tool_settings(
-            tool_uid=tool_uid
-        )
+        tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
+        tool_name: str = tool.properties.display_name if tool.properties.display_name else tool_uid
+        # Getting user from local_context store
+        user: User = StateStore.get(Common.USER_ID)
+        schema_json: dict[str, Any] = ToolProcessor.get_json_schema_for_tool(tool_uid= tool_uid, user= user)
         try:
             DefaultsGeneratingValidator(schema_json).validate(tool_meta)
             return True, ""
         except JSONDecodeError as e:
             return False, str(e)
         except ValidationError as e:
-            return False, str(e.schema["description"])
+            return False, str(tool_name + ": " + e.schema["description"])
