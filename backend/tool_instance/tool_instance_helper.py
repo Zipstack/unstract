@@ -8,6 +8,7 @@ from account.models import User
 from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.models import AdapterInstance
 from connector.connector_instance_helper import ConnectorInstanceHelper
+from django.core.exceptions import PermissionDenied
 from jsonschema import ValidationError
 from tool_instance.constants import JsonSchemaKey
 from tool_instance.models import ToolInstance
@@ -348,3 +349,56 @@ class ToolInstanceHelper:
             return False, str(e)
         except ValidationError as e:
             return False, str(e.schema["description"])
+
+    @staticmethod
+    def validate_adapter_permissions(
+        user: User, tool_uid: str, tool_meta: dict[str, Any]
+    ) -> None:
+        tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
+        for llm in tool.properties.adapter.language_models:
+            if llm.adapter_id:
+                adapter_id = tool_meta[llm.adapter_id]
+            else:
+                adapter_id = tool_meta[
+                    AdapterPropertyKey.DEFAULT_LLM_ADAPTER_ID
+                ]
+            ToolInstanceHelper.validate_adapter_access(user, adapter_id)
+
+        for vdb in tool.properties.adapter.vector_stores:
+            if vdb.adapter_id:
+                adapter_id = tool_meta[vdb.adapter_id]
+            else:
+                adapter_id = tool_meta[
+                    AdapterPropertyKey.DEFAULT_VECTOR_DB_ADAPTER_ID
+                ]
+            ToolInstanceHelper.validate_adapter_access(user, adapter_id)
+        for embedding in tool.properties.adapter.embedding_services:
+            if embedding.adapter_id:
+                adapter_id = tool_meta[embedding.adapter_id]
+            else:
+                adapter_id = tool_meta[
+                    AdapterPropertyKey.DEFAULT_EMBEDDING_ADAPTER_ID
+                ]
+            ToolInstanceHelper.validate_adapter_access(user, adapter_id)
+        for text_extractor in tool.properties.adapter.text_extractors:
+            if text_extractor.adapter_id:
+                adapter_id = tool_meta[text_extractor.adapter_id]
+            else:
+                adapter_id = tool_meta[
+                    AdapterPropertyKey.DEFAULT_X2TEXT_ADAPTER_ID
+                ]
+            ToolInstanceHelper.validate_adapter_access(user, adapter_id)
+
+    @staticmethod
+    def validate_adapter_access(
+        user: User,
+        adapter_id: str,
+    ) -> None:
+        adapter_instance = AdapterInstance.objects.get(pk=adapter_id)
+        if not (
+            adapter_instance.created_by == user
+            or adapter_instance.shared_users.filter(pk=user.pk).exists()
+        ):
+            raise PermissionDenied(
+                "You don't have permission to perform this action."
+            )

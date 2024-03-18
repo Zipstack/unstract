@@ -192,6 +192,17 @@ class WorkflowHelper:
         )
 
     @staticmethod
+    def validate_adapter_permissions(
+        tool_instances: list[ToolInstance],
+    ) -> None:
+        for tool in tool_instances:
+            ToolInstanceHelper.validate_adapter_permissions(
+                user=tool.workflow.created_by,
+                tool_uid=tool.tool_id,
+                tool_meta=tool.metadata,
+            )
+
+    @staticmethod
     def validate_tool_instances_meta(
         tool_instances: list[ToolInstance],
     ) -> None:
@@ -218,6 +229,8 @@ class WorkflowHelper:
         ] = ToolInstanceHelper.get_tool_instances_by_workflow(
             workflow.id, ToolInstanceKey.STEP
         )
+
+        WorkflowHelper.validate_adapter_permissions(tool_instances)
 
         WorkflowHelper.validate_tool_instances_meta(
             tool_instances=tool_instances
