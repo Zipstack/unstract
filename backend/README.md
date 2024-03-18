@@ -36,21 +36,23 @@ python manage.py runserver localhost:8000
 
 - Server will start and run at port 8000. (<http://localhost:8000>)
   
-## Setting Username and Password
+## Authentication
 
 The default username is `unstract` and the default password is `unstract`.
 
-To customize your username or password:
-1. Navigate to the `.env` file located at `backend`.
-2. Update the values for `DEFAULT_AUTH_USERNAME` and `DEFAULT_AUTH_PASSWORD` with strong, unique credentials of your choosing.
-3. Save the `.env` file and restart the server to apply changes.
+To customize the username or password:
 
-> **NOTE**: The username `admin` is reserved for Django admin, hence cannot be used.
+1. Navigate to `/backend/.env` created from [/backend/sample.env](/backend/sample.env)
+1. Update the values for `DEFAULT_AUTH_USERNAME` and `DEFAULT_AUTH_PASSWORD` with strong, unique credentials of your choosing
+1. Save the `/backend/.env` file and restart the server to apply changes
+
+> **NOTE**: The username `admin` is reserved for Django admin, hence cannot be used
 
 To update the username or password after it's been set:
-1. Modify the username and password in `.env`.
-2. Restart server to apply updates.
-3. Login with the new credentials.
+
+1. Modify the username and password in the same `/backend/.env`
+1. Restart server to apply updates
+1. Login with the new credentials
 
 
 ## Asynchronous execution/pipeline execution
