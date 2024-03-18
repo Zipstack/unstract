@@ -49,21 +49,8 @@ That's all. Enjoy!
 
 ## Authentication
 
-The default username is `unstract` and the default password is `unstract`
-
-To customize the username or password:
-
-1. Navigate to `/backend/.env` created from [/backend/sample.env](/backend/sample.env)
-1. Update the values for `DEFAULT_AUTH_USERNAME` and `DEFAULT_AUTH_PASSWORD` with strong, unique credentials of your choosing
-1. Save the `/backend/.env` file and restart the server to apply changes
-
-> **NOTE**: The username `admin` is reserved for Django admin, hence cannot be used
-
-To update the username or password after it's been set:
-
-1. Modify the username and password in the same `/backend/.env`
-1. Restart server to apply updates
-1. Login with the new credentials
+The default username is `unstract` and the default password is `unstract`.
+More details on configuring this can be found in [backend's README.md](/backend/README.md#authentication)
 
 ## Configuring a Text Extractor
 
