@@ -45,6 +45,7 @@ import { EditableText } from "../editable-text/EditableText";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 
 let EvalBtn = null;
 let EvalMetrics = null;
@@ -94,6 +95,7 @@ function PromptCard({
   const [coverageTotal, setCoverageTotal] = useState(0);
   const [isCoverageLoading, setIsCoverageLoading] = useState(false);
   const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
+  const [progressMsg, setProgressMsg] = useState({});
   const divRef = useRef(null);
   const {
     getDropdownItems,
@@ -106,10 +108,34 @@ function PromptCard({
     indexDocs,
     summarizeIndexStatus,
   } = useCustomToolStore();
+  const { messages } = useSocketCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+
+  useEffect(() => {
+    // Find the latest message that matches the criteria
+    const msg = [...messages]
+      .reverse()
+      .find(
+        (item) =>
+          (item?.component?.prompt_id === promptDetails?.prompt_id ||
+            item?.component?.prompt_key === promptKey) &&
+          (item?.level === "INFO" || item?.level === "ERROR")
+      );
+
+    // If no matching message is found, return early
+    if (!msg) {
+      return;
+    }
+
+    // Set the progress message state with the found message
+    setProgressMsg({
+      message: msg?.message || "",
+      level: msg?.level || "INFO",
+    });
+  }, [messages]);
 
   useEffect(() => {
     if (promptDetails?.is_assert) {
@@ -698,13 +724,15 @@ function PromptCard({
                   />
                 </Col>
                 <Col span={12} className="display-flex-right">
-                  {isCoverageLoading && (
+                  {progressMsg?.message && (
                     <Tag
-                      icon={<LoadingOutlined spin />}
-                      color="processing"
+                      icon={isCoverageLoading && <LoadingOutlined spin />}
+                      color={
+                        progressMsg?.level === "ERROR" ? "error" : "processing"
+                      }
                       className="display-flex-align-center"
                     >
-                      Generating Response
+                      {progressMsg?.message}
                     </Tag>
                   )}
                   {updateStatus?.promptId === promptDetails?.prompt_id && (
