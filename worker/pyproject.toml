@@ -10,8 +10,9 @@ dependencies = [
     "flask~=3.0.0",
     "python-dotenv==1.0.0",
     "redis==5.0.1",
+    "unstract-core @ file:///${PROJECT_ROOT}/../unstract/core",
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.9,<3.11.1"
 readme = "README.md"
 license = {text = "MIT"}
 

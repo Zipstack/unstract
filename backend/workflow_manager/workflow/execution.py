@@ -1,8 +1,8 @@
 import logging
 import time
-import uuid
 from typing import Optional
 
+from account.constants import Common
 from api.exceptions import InvalidAPIRequest
 from django.db import connection
 from platform_settings.platform_auth_service import (
@@ -23,6 +23,7 @@ from unstract.workflow_execution.enums import (
     LogState,
 )
 from unstract.workflow_execution.exceptions import StopExecution
+from utils.local_context import StateStore
 from workflow_manager.workflow.constants import WorkflowKey
 from workflow_manager.workflow.enums import ExecutionStatus
 from workflow_manager.workflow.exceptions import WorkflowExecutionError
@@ -67,7 +68,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             ignore_processed_entities=False,
         )
         if not workflow_execution:
-            self.execution_log_id = uuid.uuid4()
+            self.execution_log_id = StateStore.get(Common.LOG_EVENTS_ID)
             self.execution_mode = mode
             self.execution_method: tuple[str, str] = (
                 WorkflowExecution.Method.SCHEDULED
@@ -86,15 +87,14 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                 execution_method=self.execution_method,
                 execution_type=self.execution_type,
                 status=ExecutionStatus.INITIATED.value,
-                # TODO: Review use of this
-                project_settings_id=self.execution_log_id,
+                execution_log_id=self.execution_log_id,
             )
             workflow_execution.save()
         else:
             self.execution_mode = workflow_execution.execution_mode
             self.execution_method = workflow_execution.execution_method
             self.execution_type = workflow_execution.execution_type
-            self.execution_log_id = workflow_execution.project_settings_id
+            self.execution_log_id = workflow_execution.execution_log_id
 
         self.set_messaging_channel(str(self.execution_log_id))
         project_settings = {}
@@ -137,7 +137,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             if single_step
             else WorkflowExecution.Type.COMPLETE
         )
-        execution_log_id = uuid.uuid4() if not log_guid else log_guid
+        execution_log_id = (
+            StateStore.get(Common.LOG_EVENTS_ID) if not log_guid else log_guid
+        )
         workflow_execution = WorkflowExecution(
             pipeline_id=pipeline_id,
             workflow_id=workflow_id,
@@ -145,7 +147,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution_method=execution_method,
             execution_type=execution_type,
             status=ExecutionStatus.PENDING.value,
-            project_settings_id=execution_log_id,
+            execution_log_id=execution_log_id,
         )
         if execution_id:
             workflow_execution.id = execution_id

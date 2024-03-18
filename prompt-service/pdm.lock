@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:2506bd5ad75643e2af3328ad7e8b5babc3a21dea2f7bdec19a4ce1c0952a1e8f"
+content_hash = "sha256:c580d96285837b8deea3bf3eda6af2cb773cb4acb33bcf6bef0bc136fe7753a6"
 
 [[package]]
 name = "aiohttp"
@@ -330,24 +330,24 @@ files = [
 
 [[package]]
 name = "boto3"
-version = "1.34.61"
-requires_python = ">= 3.8"
+version = "1.28.85"
+requires_python = ">= 3.7"
 summary = "The AWS SDK for Python"
 groups = ["default"]
 dependencies = [
-    "botocore<1.35.0,>=1.34.61",
+    "botocore<1.32.0,>=1.31.85",
     "jmespath<2.0.0,>=0.7.1",
-    "s3transfer<0.11.0,>=0.10.0",
+    "s3transfer<0.8.0,>=0.7.0",
 ]
 files = [
-    {file = "boto3-1.34.61-py3-none-any.whl", hash = "sha256:992e994c7e481a5d3259c699574882b79d631a46f7c369bea350b7ccb0651317"},
-    {file = "boto3-1.34.61.tar.gz", hash = "sha256:4b40bf2c8494647c9e88c180537dc9fc0c1047a9fffbb1e5b0da6596f1e59b7b"},
+    {file = "boto3-1.28.85-py3-none-any.whl", hash = "sha256:1fb7e7ba32a6701990168eb7a08e1fb624ae48130784dfab25904ed47deabb31"},
+    {file = "boto3-1.28.85.tar.gz", hash = "sha256:96b4cb2708933cef7dbe1177df37ef0593839942978784147aade0e49511eb2b"},
 ]
 
 [[package]]
 name = "botocore"
-version = "1.34.61"
-requires_python = ">= 3.8"
+version = "1.31.85"
+requires_python = ">= 3.7"
 summary = "Low-level, data-driven core of boto 3."
 groups = ["default"]
 dependencies = [
@@ -357,8 +357,8 @@ dependencies = [
     "urllib3<2.1,>=1.25.4; python_version >= \"3.10\"",
 ]
 files = [
-    {file = "botocore-1.34.61-py3-none-any.whl", hash = "sha256:079f3288d38f97fd5656c25c44a94bea0e7090b938abfdeea463eaadb210c4a0"},
-    {file = "botocore-1.34.61.tar.gz", hash = "sha256:72df4af7e4e6392552c882d48c74e4be9bf7be4cd8d829711b312fbae13d7034"},
+    {file = "botocore-1.31.85-py3-none-any.whl", hash = "sha256:b8f35d65f2b45af50c36fc25cc1844d6bd61d38d2148b2ef133b8f10e198555d"},
+    {file = "botocore-1.31.85.tar.gz", hash = "sha256:ce58e688222df73ec5691f934be1a2122a52c9d11d3037b586b3fff16ed6d25f"},
 ]
 
 [[package]]
@@ -2644,6 +2644,20 @@ files = [
 ]
 
 [[package]]
+name = "redis"
+version = "5.0.3"
+requires_python = ">=3.7"
+summary = "Python client for Redis database and key-value store"
+groups = ["default"]
+dependencies = [
+    "async-timeout>=4.0.3; python_full_version < \"3.11.3\"",
+]
+files = [
+    {file = "redis-5.0.3-py3-none-any.whl", hash = "sha256:5da9b8fe9e1254293756c16c008e8620b3d15fcc6dde6babde9541850e72a32d"},
+    {file = "redis-5.0.3.tar.gz", hash = "sha256:4973bae7444c0fbed64a06b87446f79361cb7e4ec1538c022d696ed7a5015580"},
+]
+
+[[package]]
 name = "referencing"
 version = "0.33.0"
 requires_python = ">=3.8"
@@ -2862,16 +2876,16 @@ files = [
 
 [[package]]
 name = "s3transfer"
-version = "0.10.0"
-requires_python = ">= 3.8"
+version = "0.7.0"
+requires_python = ">= 3.7"
 summary = "An Amazon S3 Transfer Manager"
 groups = ["default"]
 dependencies = [
-    "botocore<2.0a.0,>=1.33.2",
+    "botocore<2.0a.0,>=1.12.36",
 ]
 files = [
-    {file = "s3transfer-0.10.0-py3-none-any.whl", hash = "sha256:3cdb40f5cfa6966e812209d0994f2a4709b561c88e90cf00c2696d2df4e56b2e"},
-    {file = "s3transfer-0.10.0.tar.gz", hash = "sha256:d0c8bbf672d5eebbe4e57945e23b972d963f07d82f661cabf678a5c88831595b"},
+    {file = "s3transfer-0.7.0-py3-none-any.whl", hash = "sha256:10d6923c6359175f264811ef4bf6161a3156ce8e350e705396a7557d6293c33a"},
+    {file = "s3transfer-0.7.0.tar.gz", hash = "sha256:fd3889a66f5fe17299fe75b82eae6cf722554edca744ca5d5fe308b104883d2e"},
 ]
 
 [[package]]
@@ -2949,13 +2963,13 @@ files = [
 
 [[package]]
 name = "setuptools"
-version = "69.1.1"
+version = "69.2.0"
 requires_python = ">=3.8"
 summary = "Easily download, build, install, upgrade, and uninstall Python packages"
 groups = ["default"]
 files = [
-    {file = "setuptools-69.1.1-py3-none-any.whl", hash = "sha256:02fa291a0471b3a18b2b2481ed902af520c69e8ae0919c13da936542754b4c56"},
-    {file = "setuptools-69.1.1.tar.gz", hash = "sha256:5c0806c7d9af348e6dd3777b4f4dbb42c7ad85b190104837488eab9a7c945cf8"},
+    {file = "setuptools-69.2.0-py3-none-any.whl", hash = "sha256:c21c49fb1042386df081cb5d86759792ab89efca84cf114889191cd09aacc80c"},
+    {file = "setuptools-69.2.0.tar.gz", hash = "sha256:0ff4183f8f42cd8fa3acea16c45205521a4ef28f73c6391d8a25e92893134f2e"},
 ]
 
 [[package]]
@@ -3510,7 +3524,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.4.1"
+version = "0.4.2"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract Adapters"
 groups = ["default"]
@@ -3536,8 +3550,23 @@ dependencies = [
     "weaviate-client==3.25.3",
 ]
 files = [
-    {file = "unstract_adapters-0.4.1-py3-none-any.whl", hash = "sha256:d8be73fe96f37f347274b62360e2a99b69e83b93e4be4c93797e383e0a0cafbb"},
-    {file = "unstract_adapters-0.4.1.tar.gz", hash = "sha256:1f0ceaa8a26af51dd46713ec73b029a115c2a9f43a00e10ae73e8dedee7e1069"},
+    {file = "unstract_adapters-0.4.2-py3-none-any.whl", hash = "sha256:62a8d432fb16d4c63cfc79664a7fa1c7b7c0b733b40046193be10ad790ed8a13"},
+    {file = "unstract_adapters-0.4.2.tar.gz", hash = "sha256:e77cf812b5f1870ca74f2047657fda913469b3b13c851363c19c369066ff8404"},
+]
+
+[[package]]
+name = "unstract-core"
+version = "0.0.1"
+requires_python = ">=3.9,<3.11.1"
+path = "../unstract/core"
+summary = "Core library that helps with executing workflows."
+groups = ["default"]
+dependencies = [
+    "boto3~=1.28.17",
+    "botocore~=1.31.17",
+    "llama-index==0.9.28",
+    "redis~=5.0.1",
+    "requests==2.31.0",
 ]
 
 [[package]]
@@ -3802,12 +3831,12 @@ files = [
 
 [[package]]
 name = "zipp"
-version = "3.18.0"
+version = "3.18.1"
 requires_python = ">=3.8"
 summary = "Backport of pathlib-compatible object wrapper for zip files"
 groups = ["default"]
 marker = "python_version < \"3.10\""
 files = [
-    {file = "zipp-3.18.0-py3-none-any.whl", hash = "sha256:c1bb803ed69d2cce2373152797064f7e79bc43f0a3748eb494096a867e0ebf79"},
-    {file = "zipp-3.18.0.tar.gz", hash = "sha256:df8d042b02765029a09b157efd8e820451045890acc30f8e37dd2f94a060221f"},
+    {file = "zipp-3.18.1-py3-none-any.whl", hash = "sha256:206f5a15f2af3dbaee80769fb7dc6f249695e940acca08dfb2a4769fe61e538b"},
+    {file = "zipp-3.18.1.tar.gz", hash = "sha256:2884ed22e7d8961de1c9a05142eb69a247f120291bc0206a00a7642f09b5b715"},
 ]

@@ -60,5 +60,6 @@ platform-service
 prompt-service
 tools
 unstract
+!unstract/core
 !worker
 x2text-service
