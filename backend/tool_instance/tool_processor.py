@@ -62,6 +62,14 @@ class ToolProcessor:
         return schema_json
 
     @staticmethod
+    def get_tool_settings(tool_uid: str) -> dict[str, str]:
+        """Function to get Tools settings."""
+        tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
+        schema: Spec = ToolUtils.get_json_schema_for_tool(tool)
+        schema_json: dict[str, Any] = schema.to_dict()
+        return schema_json
+    
+    @staticmethod
     def update_schema_with_adapter_configurations(
         schema: Spec, user: User
     ) -> None:
