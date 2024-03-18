@@ -99,6 +99,23 @@ parse_args() {
   debug "OPTION version: $opt_version"
 }
 
+check_required_packages() {
+  echo "Checking if the required packages are installed..."
+  if ! command -v docker &> /dev/null; then
+    echo "$red_text""docker not found. Please install it and try again.""$default_text"
+    exit 1
+  fi
+  if ! command -v docker compose &> /dev/null; then
+    echo "$red_text""docker compose not found. Please install it and try again.""$default_text"
+    exit 1
+  fi
+  if ! command -v python3 &> /dev/null; then
+    echo "$red_text""python3 not found. Please install it and try again.""$default_text"
+    exit 1
+  fi
+
+}
+
 setup_env() {
   # Generate Fernet Key. Refer https://pypi.org/project/cryptography/. for both backend and platform-service.
   ENCRYPTION_KEY=$(python3 -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
@@ -193,10 +210,7 @@ run_services() {
 #
 # Run Unstract platform - BEGIN
 #
-if ! command -v docker compose &> /dev/null; then
-  echo "$red_text""docker compose not found. Please install it and try again.""$default_text"
-  exit 1
-fi
+check_required_packages
 
 opt_only_env=false
 opt_only_pull=false
