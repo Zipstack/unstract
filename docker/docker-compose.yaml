@@ -127,8 +127,6 @@ services:
       - ../prompt-service/.env
     labels:
       - traefik.enable=false
-    volumes:
-      - /home/gayathrivijayakumar/code/Unstract/unstract/unstract/unstract-adapters/.venv/lib/python3.9/site-packages/llama_index/llms/mistralai:/app/.venv/lib/python3.9/site-packages/llama_index/llms/mistralai/
 
   x2text-service:
     image: unstract/x2text-service:${VERSION}
