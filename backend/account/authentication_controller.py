@@ -355,22 +355,15 @@ class AuthenticationController:
                 )
                 user_response = {}
                 user_response["email"] = email
-                message: str = "User invitation successful"
-                if user:
-                    # Already in organization
-                    status = False
-                    message = "User is already part of current organization."
-                else:
-                    try:
-                        self.auth_service.check_user_organization_association(
-                            user_email=email
-                        )
-                        status = self.auth_service.invite_user(
-                            admin_user, org_id, email, role=role
-                        )
-                    except Exception as exception:
-                        status = False
-                        message = exception.message  # type: ignore
+                status = False
+                message = "User is already part of current organization."
+                # Check if user is already part of current organization
+                if not user:
+                    status = self.auth_service.invite_user(
+                        admin_user, org_id, email, role=role
+                    )
+                    message = "User invitation successful."
+
                 response.append(
                     UserInviteResponse(
                         email=email,
