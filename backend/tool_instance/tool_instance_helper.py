@@ -337,14 +337,14 @@ class ToolInstanceHelper:
         tool_uid: str, tool_meta: dict[str, Any]
     ) -> tuple[bool, str]:
         """Function to validate Tools settings."""
-
-        schema_json: dict[str, Any] = ToolProcessor.get_tool_settings(
-            tool_uid=tool_uid
-        )
+        tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
+        schema: Spec = tool.spec
+        schema_json: dict[str, Any] = schema.to_dict()
+        tool_name: str = tool.properties.display_name if tool.properties.display_name else tool_uid
         try:
             DefaultsGeneratingValidator(schema_json).validate(tool_meta)
             return True, ""
         except JSONDecodeError as e:
             return False, str(e)
         except ValidationError as e:
-            return False, str(e.schema["description"])
+            return False, str(tool_name + ": " + e.schema["description"])
