@@ -16,6 +16,8 @@ dependencies = [
     "llama-index==0.9.28",
     "python-dotenv==1.0.0",
     "unstract-sdk~=0.15.1",
+    "redis>=5.0.3",
+    "unstract-core @ file:///${PROJECT_ROOT}/../unstract/core",
 ]
 requires-python = ">=3.9,<3.11.1"
 readme = "README.md"

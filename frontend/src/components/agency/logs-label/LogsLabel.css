@@ -1,3 +1,12 @@
-.logs-label-layout {
+.pl-5 {
     padding-left: 5px;
+}
+
+.logs-label-row {
+    padding: 0px;
+    flex: none;
+}
+
+.logs-label-col {
+    border-right: 1px solid #C9C9C9;
 }

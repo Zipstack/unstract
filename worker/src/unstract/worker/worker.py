@@ -6,8 +6,9 @@ import uuid
 from typing import Any, Optional
 
 from dotenv import load_dotenv
+
+from unstract.core.pubsub_helper import LogPublisher
 from unstract.worker.constants import Env, LogType, ToolKey
-from unstract.worker.pubsub_helper import LogHelper as fe_log
 
 import docker
 from docker import DockerClient  # type: ignore[attr-defined]
@@ -146,7 +147,7 @@ class UnstractWorker:
             log_dict["component"] = tool_instance_id
         if channel:
             # Publish to channel of socket io
-            fe_log.publish(channel, log_dict)
+            LogPublisher.publish(channel, log_dict)
         return None
 
     def is_valid_log_type(self, log_type: Optional[str]) -> bool:
