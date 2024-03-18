@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from adapter_processor.models import AdapterInstance
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
 from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
@@ -43,6 +44,53 @@ logger = logging.getLogger(__name__)
 
 class PromptStudioHelper:
     """Helper class for Custom tool operations."""
+
+    @staticmethod
+    def validate_profile_manager_owner_access(
+        profile_manager: ProfileManager,
+    ) -> None:
+        """Helper method to validate the owner's access to the profile manager.
+
+        Args:
+            profile_manager (ProfileManager): The profile manager instance to
+              validate.
+
+        Raises:
+            PermissionDenied: If the owner does not have permission to perform
+              the action.
+        """
+        profile_manager_owner = profile_manager.created_by
+
+        if not (
+            (
+                profile_manager.llm.created_by == profile_manager_owner
+                or profile_manager.llm.shared_users.filter(
+                    pk=profile_manager_owner.pk
+                ).exists()
+            )
+            and (
+                profile_manager.vector_store.created_by == profile_manager_owner
+                or profile_manager.vector_store.shared_users.filter(
+                    pk=profile_manager_owner.pk
+                ).exists()
+            )
+            and (
+                profile_manager.embedding_model.created_by
+                == profile_manager_owner
+                or profile_manager.embedding_model.shared_users.filter(
+                    pk=profile_manager_owner.pk
+                ).exists()
+            )
+            and (
+                profile_manager.x2text.created_by == profile_manager_owner
+                or profile_manager.x2text.shared_users.filter(
+                    pk=profile_manager_owner.pk
+                ).exists()
+            )
+        ):
+            raise PermissionDenied(
+                "You don't have permission to perform this action."
+            )
 
     @staticmethod
     def get_select_fields() -> dict[str, Any]:
@@ -378,6 +426,11 @@ class PromptStudioHelper:
                 grammar_list.append(grammer_dict)
                 grammer_dict = {}
         for prompt in prompts:
+            # Need to check the user who created profile manager
+            # has access to adapters
+            PromptStudioHelper.validate_profile_manager_owner_access(
+                prompt.profile_manager
+            )
             # Not checking reindex here as there might be
             # change in Profile Manager
             vector_db = str(prompt.profile_manager.vector_store.id)
