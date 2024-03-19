@@ -15,7 +15,12 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
-function CombinedOutput({ docId, setFilledFields, triggerRunSinglePass }) {
+function CombinedOutput({
+  docId,
+  setFilledFields,
+  triggerRunSinglePass,
+  setTriggerRunSinglePass,
+}) {
   const [combinedOutput, setCombinedOutput] = useState({});
   const [isOutputLoading, setIsOutputLoading] = useState(false);
   const { details, isSinglePassExtract, updateCustomTool } =
@@ -91,6 +96,10 @@ function CombinedOutput({ docId, setFilledFields, triggerRunSinglePass }) {
   }, [combinedOutput]);
 
   useEffect(() => {
+    if (!triggerRunSinglePass) {
+      return;
+    }
+    setTriggerRunSinglePass(false);
     runSinglePassExtraction();
   }, [triggerRunSinglePass]);
 
@@ -169,6 +178,7 @@ CombinedOutput.propTypes = {
   docId: PropTypes.string,
   setFilledFields: PropTypes.func,
   triggerRunSinglePass: PropTypes.bool.isRequired,
+  setTriggerRunSinglePass: PropTypes.func.isRequired,
 };
 
 export { CombinedOutput };
