@@ -1,13 +1,16 @@
 import logging
 from typing import Any
 
+from account.models import User
 from account.serializer import UserSerializer
 from django.core.exceptions import ObjectDoesNotExist
+from file_management.constants import FileInformationKey
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio.serializers import ToolStudioPromptSerializer
 from prompt_studio.prompt_studio_core.constants import ToolStudioKeys as TSKeys
 from rest_framework import serializers
+from utils.FileValidator import FileValidator
 
 from backend.serializers import AuditSerializer
 
@@ -17,9 +20,13 @@ logger = logging.getLogger(__name__)
 
 
 class CustomToolSerializer(AuditSerializer):
+    shared_users = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), required=False, allow_null=True, many=True
+    )
+
     class Meta:
         model = CustomTool
-        exclude = ["shared_users"]
+        fields = "__all__"
 
     def to_representation(self, instance):  # type: ignore
         data = super().to_representation(instance)
@@ -89,3 +96,23 @@ class SharedUserListSerializer(serializers.ModelSerializer):
             "created_by",
             "shared_users",
         )
+
+
+class FileInfoIdeSerializer(serializers.Serializer):
+    document_id = serializers.CharField()
+    view_type = serializers.CharField(required=False)
+
+
+class FileUploadIdeSerializer(serializers.Serializer):
+    file = serializers.ListField(
+        child=serializers.FileField(),
+        required=True,
+        validators=[
+            FileValidator(
+                allowed_extensions=FileInformationKey.FILE_UPLOAD_ALLOWED_EXT,
+                allowed_mimetypes=FileInformationKey.FILE_UPLOAD_ALLOWED_MIME,
+                min_size=0,
+                max_size=FileInformationKey.FILE_UPLOAD_MAX_SIZE,
+            )
+        ],
+    )

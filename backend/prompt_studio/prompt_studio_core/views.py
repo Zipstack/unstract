@@ -5,6 +5,7 @@ from account.custom_exceptions import DuplicateData
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest
+from file_management.file_management_helper import FileManagerHelper
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from prompt_studio.processor_loader import ProcessorConfig, load_plugins
 from prompt_studio.prompt_profile_manager.models import ProfileManager
@@ -15,6 +16,7 @@ from prompt_studio.prompt_studio.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio.exceptions import FilenameMissingError
 from prompt_studio.prompt_studio.serializers import ToolStudioPromptSerializer
 from prompt_studio.prompt_studio_core.constants import (
+    FileViewTypes,
     ToolStudioErrors,
     ToolStudioKeys,
     ToolStudioPromptKeys,
@@ -27,6 +29,9 @@ from prompt_studio.prompt_studio_core.prompt_studio_helper import (
     PromptStudioHelper,
 )
 from prompt_studio.prompt_studio_document_manager.models import DocumentManager
+from prompt_studio.prompt_studio_document_manager.prompt_studio_document_helper import (  # noqa: E501
+    PromptStudioDocumentHelper,
+)
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -35,9 +40,15 @@ from rest_framework.versioning import URLPathVersioning
 from tool_instance.models import ToolInstance
 from utils.filtering import FilterHelper
 
+from unstract.connectors.filesystems.local_storage.local_storage import (
+    LocalStorageFS,
+)
+
 from .models import CustomTool
 from .serializers import (
     CustomToolSerializer,
+    FileInfoIdeSerializer,
+    FileUploadIdeSerializer,
     PromptStudioIndexSerializer,
     SharedUserListSerializer,
 )
@@ -241,7 +252,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             raise IndexingError()
 
     @action(detail=True, methods=["post"])
-    def fetch_response(self, request: HttpRequest) -> Response:
+    def fetch_response(self, request: HttpRequest, pk: Any = None) -> Response:
         """API Entry point method to fetch response to prompt.
 
         Args:
@@ -253,7 +264,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         Returns:
             Response
         """
-        tool_id: str = request.data.get(ToolStudioPromptKeys.TOOL_ID)
+        custom_tool = self.get_object()
+        tool_id: str = str(custom_tool.tool_id)
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
@@ -267,7 +279,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             tool_id=tool_id,
             file_name=file_name,
             org_id=request.org_id,
-            user_id=request.user.user_id,
+            user_id=custom_tool.created_by.user_id,
             document_id=document_id,
         )
         return Response(response, status=status.HTTP_200_OK)
@@ -334,3 +346,86 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     {ToolStudioPromptErrors.DUPLICATE_API}"
             )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"])
+    def fetch_contents_ide(
+        self, request: HttpRequest, pk: Any = None
+    ) -> Response:
+        custom_tool = self.get_object()
+        serializer = FileInfoIdeSerializer(data=request.GET)
+        serializer.is_valid(raise_exception=True)
+        document_id: str = serializer.validated_data.get("document_id")
+        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
+        file_name: str = document.document_name
+        view_type: str = serializer.validated_data.get("view_type")
+
+        filename_without_extension = file_name.rsplit(".", 1)[0]
+        if view_type == FileViewTypes.EXTRACT:
+            file_name = (
+                f"{FileViewTypes.EXTRACT.lower()}/"
+                f"{filename_without_extension}.txt"
+            )
+        if view_type == FileViewTypes.SUMMARIZE:
+            file_name = (
+                f"{FileViewTypes.SUMMARIZE.lower()}/"
+                f"{filename_without_extension}.txt"
+            )
+
+        file_path = (
+            file_path
+        ) = FileManagerHelper.handle_sub_directory_for_tenants(
+            request.org_id,
+            is_create=True,
+            user_id=custom_tool.created_by.user_id,
+            tool_id=str(custom_tool.tool_id),
+        )
+        file_system = LocalStorageFS(settings={"path": file_path})
+        if not file_path.endswith("/"):
+            file_path += "/"
+        file_path += file_name
+        contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
+        return Response({"data": contents}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"])
+    def upload_for_ide(self, request: HttpRequest, pk: Any = None) -> Response:
+        custom_tool = self.get_object()
+        serializer = FileUploadIdeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        uploaded_files: Any = serializer.validated_data.get("file")
+
+        file_path = FileManagerHelper.handle_sub_directory_for_tenants(
+            request.org_id,
+            is_create=True,
+            user_id=custom_tool.created_by.user_id,
+            tool_id=str(custom_tool.tool_id),
+        )
+        file_system = LocalStorageFS(settings={"path": file_path})
+
+        documents = []
+        for uploaded_file in uploaded_files:
+            file_name = uploaded_file.name
+
+            # Create a record in the db for the file
+            document = PromptStudioDocumentHelper.create(
+                tool_id=str(custom_tool.tool_id), document_name=file_name
+            )
+            # Create a dictionary to store document data
+            doc = {
+                "document_id": document.document_id,
+                "document_name": document.document_name,
+                "tool": document.tool.tool_id,
+            }
+            # Store file
+            logger.info(
+                f"Uploading file: {file_name}"
+                if file_name
+                else "Uploading file"
+            )
+            FileManagerHelper.upload_file(
+                file_system,
+                file_path,
+                uploaded_file,
+                file_name,
+            )
+            documents.append(doc)
+        return Response({"data": documents})

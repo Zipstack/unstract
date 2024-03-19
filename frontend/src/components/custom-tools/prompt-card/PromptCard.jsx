@@ -35,17 +35,17 @@ import {
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 
 let EvalBtn = null;
 let EvalMetrics = null;
@@ -463,12 +463,11 @@ function PromptCard({
     const body = {
       document_id: docId,
       id: promptId,
-      tool_id: details?.tool_id,
     };
 
     const requestOptions = {
       method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/${details?.tool_id}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",

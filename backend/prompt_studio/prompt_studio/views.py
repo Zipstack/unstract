@@ -35,11 +35,7 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
             ToolStudioPromptKeys.TOOL_ID,
         )
         if filter_args:
-            queryset = ToolStudioPrompt.objects.filter(
-                created_by=self.request.user, **filter_args
-            )
+            queryset = ToolStudioPrompt.objects.filter(**filter_args)
         else:
-            queryset = ToolStudioPrompt.objects.filter(
-                created_by=self.request.user,
-            )
+            queryset = ToolStudioPrompt.objects.all()
         return queryset

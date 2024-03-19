@@ -82,6 +82,12 @@ class ToolStudioPromptKeys:
     LLM_PROFILE_MANAGER = "llm_profile_manager"
 
 
+class FileViewTypes:
+    ORIGINAL = "ORIGINAL"
+    EXTRACT = "EXTRACT"
+    SUMMARIZE = "SUMMARIZE"
+
+
 class LogLevels:
     INFO = "INFO"
     ERROR = "ERROR"

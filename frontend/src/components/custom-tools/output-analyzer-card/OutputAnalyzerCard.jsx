@@ -3,14 +3,14 @@ import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
 import { base64toBlob } from "../../../helpers/GetStaticData";
-import { useAlertStore } from "../../../store/alert-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { PdfViewer } from "../pdf-viewer/PdfViewer";
-import { useSessionStore } from "../../../store/session-store";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { useSessionStore } from "../../../store/session-store";
 import { CombinedOutput } from "../combined-output/CombinedOutput";
 import { DocumentViewer } from "../document-viewer/DocumentViewer";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { PdfViewer } from "../pdf-viewer/PdfViewer";
 
 function OutputAnalyzerCard({ doc, totalFields }) {
   const [fileUrl, setFileUrl] = useState("");
@@ -30,7 +30,7 @@ function OutputAnalyzerCard({ doc, totalFields }) {
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/fetch_contents?document_id=${doc?.document_id}&tool_id=${details?.tool_id}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/fetch_contents/${details?.tool_id}?document_id=${doc?.document_id}`,
     };
 
     setIsDocLoading(true);
