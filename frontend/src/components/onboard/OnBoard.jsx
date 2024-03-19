@@ -1,13 +1,13 @@
 import { CheckCircleFilled } from "@ant-design/icons";
-import { Button, Card, Col, Layout, Row, Space } from "antd";
+import { Button, Card, Col, Layout, Row, Space, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import logo from "../../assets/UnstractLogoBlack.svg";
-import BgShape from "../../assets/bg_shape.svg";
-import ConnectEmbedding from "../../assets/connect_embedding.svg";
 import ConnectLLM from "../../assets/connect_llm.svg";
 import ConnectVectorDb from "../../assets/connect_vector_db.svg";
+import ConnectEmbedding from "../../assets/connect_embedding.svg";
+import ConnectTextExtractor from "../../assets/connect_x2text.svg";
 import { onboardCompleted } from "../../helpers/GetStaticData.js";
 import { useSessionStore } from "../../store/session-store.js";
 import { AddSourceModal } from "../input-output/add-source-modal/AddSourceModal.jsx";
@@ -37,7 +37,7 @@ function OnBoard() {
       icon: ConnectLLM,
       type: "llm",
       description:
-        "Unstract uses Large Language Models (LLMs) to help structure unstructured data and answer questions from large amounts of unstructured data. We support a wide variety of LLMs from various providers.",
+        "Unstract harnesses Large Language Models (LLMs) to organize and analyze vast unstructured data, offering support for diverse LLMs from multiple providers.",
     },
     {
       id: 2,
@@ -45,7 +45,7 @@ function OnBoard() {
       icon: ConnectVectorDb,
       type: "vector_db",
       description:
-        "Vector Databases can help find chunks of text from unstructured source data. This helps find relevant data that can then be sent to LLMs to answer your questions or to structure unstructured data.",
+        "Vector Databases locate text segments within unstructured source data, facilitating the retrieval of pertinent information for LLMs to process queries or structure unstructured data efficiently.",
     },
     {
       id: 3,
@@ -53,7 +53,15 @@ function OnBoard() {
       icon: ConnectEmbedding,
       type: "embedding",
       description:
-        "Embedding models help semantically map unstructured data so that we can then search and retrieve relevant portions of data when structuring or search such data. The quality of the embedding model can affect the quality of relevant data retrieval.",
+        "Embedding models semantically map unstructured data for precise retrieval, impacting the quality of data organization and search relevance.",
+    },
+    {
+      id: 4,
+      title: "CONNECT A TEXT EXTRACTOR",
+      icon: ConnectTextExtractor,
+      type: "x2text",
+      description:
+        "The Text Extractor extracts text from diverse unstructured documents, optimizing input for LLM comprehension, including OCR as needed, ensuring optimal understanding of content.",
     },
   ];
 
@@ -84,9 +92,8 @@ function OnBoard() {
                   </div>
                 </div>
                 <Row align="middle">
-                  <Col span={6} align="center" justify="center">
-                    <div className="svg-container">
-                      <img src={BgShape} alt="logo bg" className="icon-bg" />
+                  <Col span={3} align="" justify="">
+                    <div className="">
                       <img
                         src={step.icon}
                         alt="Logo"
@@ -94,12 +101,12 @@ function OnBoard() {
                       />
                     </div>
                   </Col>
-                  <Col span={14}>
+                  <Col span={17}>
                     <Space direction="vertical" style={{ marginTop: "-5px" }}>
                       <h3 className="text-title-style">{step.title}</h3>
-                      <p className="text-description-style">
+                      <Typography.Text className="text-description-style">
                         {step.description}
-                      </p>
+                      </Typography.Text>
                     </Space>
                   </Col>
                   <Col span={4} align="center" justify="center">
