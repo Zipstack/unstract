@@ -7,6 +7,8 @@ Use LLMs to eliminate manual processes involving unstructured data.
 ## System Requirements
 
 - `docker` (see [instructions](https://docs.docker.com/engine/install/))
+- `docker compose` (see [instructions](https://docs.docker.com/compose/))
+- `python3`
 - `git`
 - `pdm` (see below)
 - `pyenv` (recommended to manage multiple Python versions)
