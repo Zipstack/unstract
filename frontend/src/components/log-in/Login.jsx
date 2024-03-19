@@ -1,10 +1,16 @@
-import { Button, Typography } from "antd";
+import { Typography, Button } from "antd";
 
 import logo from "../../assets/UnstractLogoBlack.svg";
 import loginBG from "../../assets/login-page-bg.svg";
 import { getBaseUrl } from "../../helpers/GetStaticData";
 import "./Login.css";
 
+let LoginForm = null;
+try {
+  LoginForm = require("../../plugins/login-form/LoginForm").LoginForm;
+} catch {
+  // The components will remain null of it is not available
+}
 function Login() {
   const baseUrl = getBaseUrl();
   const newURL = baseUrl + "/api/v1/login";
@@ -17,20 +23,15 @@ function Login() {
       <div className="login-left-section">
         <div className="button-wraper">
           <img src={logo} alt="Logo" className="logo" />
-          <div className="text-wrapper">
-            <Typography.Title level={3}>Sign Up</Typography.Title>
-            <Typography>
-              Try Unstract free for 14 days. No credit card required.
-            </Typography>
-          </div>
-          <Button className="login-button" onClick={handleLogin}>
-            Create Your free account
-          </Button>
-          <div className="signin-text-wrapper">
-            <Typography>
-              Already have an account? <a href={newURL}>Sign in</a>
-            </Typography>
-          </div>
+          {LoginForm && <LoginForm handleLogin={handleLogin} newURL={newURL} />}
+          {!LoginForm && (
+            <Button
+              className="login-button button-margin"
+              onClick={handleLogin}
+            >
+              Login
+            </Button>
+          )}
         </div>
       </div>
       <div className="login-right-section">

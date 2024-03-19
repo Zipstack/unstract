@@ -47,6 +47,11 @@ Now visit [http://frontend.unstract.localhost](http://frontend.unstract.localhos
 
 That's all. Enjoy!
 
+## Authentication
+
+The default username is `unstract` and the default password is `unstract`.
+More details on configuring this can be found in [backend's README.md](/backend/README.md#authentication)
+
 ## Configuring a Text Extractor
 
 Unstract predominantly works with PDF documents and it requires a `Text Extractor` to be configured in the application which helps retrieve text from the documents. Currently supported text extractors include

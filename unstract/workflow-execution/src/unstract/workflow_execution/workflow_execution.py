@@ -4,6 +4,8 @@ import time
 from typing import Any, Optional, Union
 
 import redis
+
+from unstract.core.pubsub_helper import LogPublisher
 from unstract.tool_sandbox import ToolSandbox
 from unstract.workflow_execution.constants import StepExecution, ToolExecution
 from unstract.workflow_execution.dto import ToolInstance, WorkflowDto
@@ -23,13 +25,19 @@ from unstract.workflow_execution.exceptions import (
 from unstract.workflow_execution.execution_file_handler import (
     ExecutionFileHandler,
 )
-from unstract.workflow_execution.pubsub_helper import LogHelper
 from unstract.workflow_execution.tools_utils import ToolsUtils
 
 logger = logging.getLogger(__name__)
 
 
 class WorkflowExecutionService:
+    redis_con = redis.Redis(
+        host=os.environ.get("REDIS_HOST", "http://127.0.0.1"),
+        port=int(os.environ.get("REDIS_PORT", "6379")),
+        password=os.environ.get("REDIS_USER"),
+        username=os.environ.get("REDIS_PASSWORD"),
+    )
+
     def __init__(
         self,
         organization_id: str,
@@ -42,17 +50,7 @@ class WorkflowExecutionService:
         self.organization_id = organization_id
         self.workflow_id = workflow_id
 
-        self.redis_host = os.environ.get("REDIS_HOST", "http://127.0.0.1")
-        self.redis_port = os.environ.get("REDIS_PORT", "6379")
-        self.redis_user = os.environ.get("REDIS_USER")
-        self.redis_password = os.environ.get("REDIS_PASSWORD")
         self.tool_instances = tool_instances
-        self.redis_con = redis.Redis(
-            host=self.redis_host,
-            port=int(self.redis_port),
-            password=self.redis_password,
-            username=self.redis_user,
-        )
         self.tool_utils = ToolsUtils(
             organization_id=organization_id,
             redis=self.redis_con,
@@ -378,7 +376,7 @@ class WorkflowExecutionService:
         Returns:
             None
         """
-        log_details = LogHelper.log(
+        log_details = LogPublisher.log_workflow(
             self.log_stage.value,
             message,
             level.value,
@@ -386,9 +384,7 @@ class WorkflowExecutionService:
             iteration=iteration,
             iteration_total=iteration_total,
         )
-        LogHelper.publish(
-            messaging_channel=self.messaging_channel, message=log_details
-        )
+        LogPublisher.publish(self.messaging_channel, log_details)
 
     def publish_update_log(
         self,
@@ -410,5 +406,7 @@ class WorkflowExecutionService:
         if isinstance(component, LogComponent):
             component = component.value
 
-        log_details = LogHelper.update(state.value, message, component)
-        LogHelper.publish(self.messaging_channel, log_details)
+        log_details = LogPublisher.log_workflow_update(
+            state.value, message, component
+        )
+        LogPublisher.publish(self.messaging_channel, log_details)

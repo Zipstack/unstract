@@ -1,55 +1,69 @@
 import { useEffect, useRef } from "react";
 import { Col, Row, Typography } from "antd";
 
-import "../../agency/display-logs/DisplayLogs.css";
-import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
-import { getDateTimeString } from "../../../helpers/GetStaticData";
+import "./DisplayLogs.css";
+import { useSocketLogsStore } from "../../../store/socket-logs-store";
 
 function DisplayLogs() {
   const bottomRef = useRef(null);
-  const { messages } = useSocketCustomToolStore();
+  const { logs } = useSocketLogsStore();
 
   useEffect(() => {
-    if (messages?.length) {
+    if (logs?.length) {
       // Scroll down to the lastest chat.
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+  }, [logs]);
 
   return (
     <div className="tool-logs">
-      {messages.map((message) => {
+      {logs.map((log) => {
         return (
-          <div key={message?.timestamp}>
+          <div key={log?.key}>
             <Row>
-              <Col span={3}>
+              <Col span={2}>
                 <Typography className="display-logs-col-first">
-                  {getDateTimeString(message?.timestamp)}
+                  {log?.timestamp}
                 </Typography>
               </Col>
               <Col span={2}>
                 <Typography className="display-logs-col">
-                  {message?.level}
+                  {log?.stage}
                 </Typography>
               </Col>
               <Col span={2}>
                 <Typography className="display-logs-col">
-                  {message?.state}
+                  {log?.step}
                 </Typography>
               </Col>
-              <Col span={3}>
+              <Col span={8}>
                 <Typography className="display-logs-col">
-                  {message?.component?.prompt_key}
+                  {log?.message}
                 </Typography>
               </Col>
-              <Col span={3}>
+              <Col span={2}>
                 <Typography className="display-logs-col">
-                  {message?.component?.doc_name}
+                  {log?.cost_type}
                 </Typography>
               </Col>
-              <Col span={10}>
+              <Col span={2}>
                 <Typography className="display-logs-col">
-                  {message?.message}
+                  {log?.cost_units}
+                </Typography>
+              </Col>
+              <Col span={2}>
+                <Typography className="display-logs-col">
+                  {log?.cost}
+                </Typography>
+              </Col>
+              <Col span={2}>
+                <Typography className="display-logs-col">
+                  {log?.iteration}
+                </Typography>
+              </Col>
+              <Col span={2}>
+                <Typography className="display-logs-col">
+                  {log?.iteration_total}
                 </Typography>
               </Col>
             </Row>
