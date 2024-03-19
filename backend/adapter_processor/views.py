@@ -237,13 +237,13 @@ class AdapterInstanceViewSet(ModelViewSet):
     ) -> Response:
         if AdapterKeys.SHARED_USERS in request.data:
             # find the deleted users
+            adapter = self.get_object()
             shared_users = {
                 int(user_id) for user_id in request.data.get("shared_users", {})
             }
-            adapter = self.get_object()
-            shared_users = set(shared_users)
             current_users = {user.id for user in adapter.shared_users.all()}
             removed_users = current_users.difference(shared_users)
+
             # if removed user use this adapter as default
             # Remove the same from his default
             for user_id in removed_users:

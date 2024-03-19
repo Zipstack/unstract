@@ -355,6 +355,7 @@ class ToolInstanceHelper:
         user: User, tool_uid: str, tool_meta: dict[str, Any]
     ) -> None:
         tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
+
         for llm in tool.properties.adapter.language_models:
             if llm.adapter_id:
                 adapter_id = tool_meta[llm.adapter_id]
@@ -363,7 +364,6 @@ class ToolInstanceHelper:
                     AdapterPropertyKey.DEFAULT_LLM_ADAPTER_ID
                 ]
             ToolInstanceHelper.validate_adapter_access(user, adapter_id)
-
         for vdb in tool.properties.adapter.vector_stores:
             if vdb.adapter_id:
                 adapter_id = tool_meta[vdb.adapter_id]
