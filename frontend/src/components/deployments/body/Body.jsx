@@ -5,9 +5,9 @@ import { useState } from "react";
 import { deploymentsStaticContent } from "../../../helpers/GetStaticData";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { LogsLabel } from "../../agency/logs-label/LogsLabel";
-import { DisplayLogs } from "../../custom-tools/display-logs/DisplayLogs";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
+import { DisplayLogs } from "../../agency/display-logs/DisplayLogs";
 
 function Body({ type, columns, tableData, isTableLoading, openAddModal }) {
   const [activeKey, setActiveKey] = useState([]);

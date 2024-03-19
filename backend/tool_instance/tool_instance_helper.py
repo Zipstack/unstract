@@ -1,19 +1,24 @@
 import logging
 import os
 import uuid
+from json import JSONDecodeError
 from typing import Any, Optional
 
+from account.constants import Common
 from account.models import User
 from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.models import AdapterInstance
 from connector.connector_instance_helper import ConnectorInstanceHelper
+from jsonschema.exceptions import UnknownType, ValidationError
 from tool_instance.constants import JsonSchemaKey
 from tool_instance.models import ToolInstance
 from tool_instance.tool_processor import ToolProcessor
 from unstract.adapters.enums import AdapterTypes
+from unstract.sdk.tool.validator import DefaultsGeneratingValidator
 from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_utils import ToolUtils
+from utils.local_context import StateStore
 from workflow_manager.workflow.constants import WorkflowKey
 
 logger = logging.getLogger(__name__)
@@ -179,6 +184,7 @@ class ToolInstanceHelper:
                 adapter_type=AdapterTypes.OCR,
             )
 
+    # TODO: Review if adding this metadata is still required
     @staticmethod
     def get_altered_metadata(
         tool_instance: ToolInstance,
@@ -327,3 +333,34 @@ class ToolInstanceHelper:
             tool_instance = ToolInstance.objects.get(pk=tool_instance_id)
             tool_instance.step = step + 1
             tool_instance.save()
+
+    @staticmethod
+    def validate_tool_settings(
+        tool_uid: str, tool_meta: dict[str, Any]
+    ) -> tuple[bool, str]:
+        """Function to validate Tools settings."""
+        tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
+        tool_name: str = (
+            tool.properties.display_name
+            if tool.properties.display_name
+            else tool_uid
+        )
+        # Getting user from local_context store
+        user: Optional[User] = StateStore.get(Common.USER_ID)
+        # FIXME: Skipping tool setting validation if user is not set.
+        # This occurs during API deployment since the API endpoint is
+        # whitelisted and `user` is not set in StateStore by the middleware.
+        if not user:
+            return True, ""
+        schema_json: dict[str, Any] = ToolProcessor.get_json_schema_for_tool(
+            tool_uid=tool_uid, user=user
+        )
+        try:
+            DefaultsGeneratingValidator(schema_json).validate(tool_meta)
+            return True, ""
+        except JSONDecodeError as e:
+            return False, str(e)
+        except ValidationError as e:
+            return False, str(tool_name + ": " + e.schema["description"])
+        except UnknownType as e:
+            return False, str(e)

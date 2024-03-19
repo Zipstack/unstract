@@ -61,7 +61,7 @@ class Spec:
 
     title: str = ""
     description: str = ""
-    type: str = ""
+    type: str = "object"
     required: list[str] = field(default_factory=list)
     properties: dict[str, dict[str, Any]] = field(
         default_factory=dict[str, dict[str, Any]]
@@ -122,7 +122,7 @@ class Spec:
         return self.get_adapter_properties(AdapterTypes.X2TEXT)
 
     def get_ocr_adapter_properties(
-            self,
+        self,
     ) -> dict[str, dict[str, Any]]:
         return self.get_adapter_properties(AdapterTypes.OCR)
 
@@ -243,7 +243,6 @@ class Adapter:
     TEXT_EXTRACTORS_KEY = "textExtractors"
     OCRS_KEY = "ocrs"
 
-
     language_models: list[AdapterProperties] = field(
         default_factory=list[AdapterProperties]
     )
@@ -284,10 +283,7 @@ class Adapter:
             AdapterProperties.from_dict(text_extractor_dict)
             for text_extractor_dict in text_extractors_list
         ]
-        ocrs = [
-            AdapterProperties.from_dict(ocr_dict)
-            for ocr_dict in ocrs_list
-        ]
+        ocrs = [AdapterProperties.from_dict(ocr_dict) for ocr_dict in ocrs_list]
 
         return cls(
             language_models=language_models,

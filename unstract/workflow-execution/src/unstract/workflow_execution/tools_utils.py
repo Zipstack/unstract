@@ -3,6 +3,8 @@ import os
 from typing import Any, Optional
 
 from redis import Redis
+
+from unstract.core.pubsub_helper import LogPublisher
 from unstract.tool_registry import ToolRegistry
 from unstract.tool_sandbox import ToolSandbox
 from unstract.workflow_execution.constants import ToolExecution
@@ -14,7 +16,6 @@ from unstract.workflow_execution.exceptions import (
     ToolExecutionException,
     ToolNotFoundException,
 )
-from unstract.workflow_execution.pubsub_helper import LogHelper
 
 logger = logging.getLogger(__name__)
 
@@ -108,9 +109,9 @@ class ToolsUtils:
 
             tool_uid = tool_instance.tool_id
 
-            LogHelper.publish(
+            LogPublisher.publish(
                 self.messaging_channel,
-                LogHelper.log(
+                LogPublisher.log_workflow(
                     "BUILD",
                     f"------ Building step {tool_instance.step}/{tool_uid}",
                 ),
@@ -121,9 +122,11 @@ class ToolsUtils:
             image_name = tool_instance.image_name
             image_tag = tool_instance.image_tag
 
-            LogHelper.publish(
+            LogPublisher.publish(
                 self.messaging_channel,
-                LogHelper.log("BUILD", f"Building the tool {tool_uid} now..."),
+                LogPublisher.log_workflow(
+                    "BUILD", f"Building the tool {tool_uid} now..."
+                ),
             )
             tool_sandbox = ToolSandbox(
                 organization_id=self.organization_id,
