@@ -40,6 +40,7 @@ from utils.local_context import StateStore
 from unstract.core.pubsub_helper import LogPublisher
 
 CHOICES_JSON = "/static/select_choices.json"
+ERROR_MSG = "User %s doesn't have access to adapter %s"
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,31 @@ class PromptStudioHelper:
             and is_embedding_model_owned
             and is_x2text_owned
         ):
+            if not is_llm_owned:
+                logger.error(
+                    ERROR_MSG,
+                    profile_manager_owner.user_id,
+                    profile_manager.llm.id,
+                )
+            if not is_vector_store_owned:
+                logger.error(
+                    ERROR_MSG,
+                    profile_manager_owner.user_id,
+                    profile_manager.vector_store.id,
+                )
+            if not is_embedding_model_owned:
+                logger.error(
+                    ERROR_MSG,
+                    profile_manager_owner.user_id,
+                    profile_manager.embedding_model.id,
+                )
+            if not is_x2text_owned:
+                logger.error(
+                    ERROR_MSG,
+                    profile_manager_owner.user_id,
+                    profile_manager.x2text.id,
+                )
+
             raise PermissionDenied(
                 "You don't have permission to perform this action."
             )

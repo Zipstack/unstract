@@ -415,9 +415,11 @@ class ToolInstanceHelper:
         user: User,
         adapter_ids: str,
     ) -> None:
-        adapter_instances = AdapterInstance.objects.filter(id__in=adapter_ids)
+        adapter_instances = AdapterInstance.objects.filter(
+            id__in=adapter_ids
+        ).all()
 
-        for adapter_instance in adapter_instances.all():
+        for adapter_instance in adapter_instances:
             if not (
                 adapter_instance.created_by == user
                 or adapter_instance.shared_users.filter(pk=user.pk).exists()
