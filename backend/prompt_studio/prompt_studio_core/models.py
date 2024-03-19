@@ -78,7 +78,14 @@ class CustomTool(BaseModel):
         blank=True,
         editable=False,
     )
-    exclude_failed = models.BooleanField(default=True)
+    exclude_failed = models.BooleanField(
+        db_comment="Flag to make the answer null if it is incorrect",
+        default=True,
+    )
+    single_pass_extraction_mode = models.BooleanField(
+        db_comment="Flag to enable or disable single pass extraction mode",
+        default=True,
+    )
 
     # TODO: Add ProfileManager to return type
     def get_default_llm_profile(self):  # type: ignore
