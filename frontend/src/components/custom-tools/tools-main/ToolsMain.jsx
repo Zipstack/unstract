@@ -1,7 +1,7 @@
+import { BarChartOutlined, PlayCircleOutlined } from "@ant-design/icons";
 import { Button, Space, Tabs, Tooltip } from "antd";
 import { useEffect, useState } from "react";
-import { BarChartOutlined, PlayCircleOutlined } from "@ant-design/icons";
-
+import { useNavigate } from "react-router-dom";
 
 import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -13,9 +13,6 @@ import { CombinedOutput } from "../combined-output/CombinedOutput";
 import { DocumentParser } from "../document-parser/DocumentParser";
 import { Footer } from "../footer/Footer";
 import "./ToolsMain.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { useNavigate } from "react-router-dom";
-
 
 function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
