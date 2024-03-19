@@ -9,7 +9,6 @@ import Sider from "antd/es/layout/Sider";
 import { useEffect, useState } from "react";
 
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
-import { DisplayLogs } from "../../custom-tools/display-logs/DisplayLogs";
 import { Actions } from "../actions/Actions";
 import { WorkflowExecution } from "../workflow-execution/WorkflowExecution";
 import "./Agency.css";
@@ -18,6 +17,7 @@ import { useSocketMessagesStore } from "../../../store/socket-messages-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
 import { LogsLabel } from "../logs-label/LogsLabel";
 import { SidePanel } from "../side-panel/SidePanel";
+import { DisplayLogs } from "../display-logs/DisplayLogs";
 
 function Agency() {
   const [isCollapsed, setIsCollapsed] = useState(false);

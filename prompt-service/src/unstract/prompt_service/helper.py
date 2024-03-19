@@ -3,23 +3,26 @@ import os
 from pathlib import Path
 from typing import Any
 
-from flask import current_app
+from dotenv import load_dotenv
+from flask import Flask
+
+load_dotenv()
 
 
-class PromptServiceHelper:
+class EnvLoader:
     @staticmethod
     def get_env_or_die(env_key: str) -> str:
         env_value = os.environ.get(env_key)
         if env_value is None or env_value == "":
-            current_app.logger.error(f"Env variable {env_key} is required")
-        return env_value  # type:ignore
+            raise ValueError(f"Env variable {env_key} is required")
+        return env_value
 
 
 class PluginException(Exception):
     """All exceptions raised from a plugin."""
 
 
-def plugin_loader() -> dict[str, dict[str, Any]]:
+def plugin_loader(app: Flask) -> dict[str, dict[str, Any]]:
     """Loads plugins found in the plugins root dir.
 
     Each plugin:
@@ -38,11 +41,11 @@ def plugin_loader() -> dict[str, dict[str, Any]]:
     plugins_pkg = "unstract.prompt_service.plugins"
 
     if not plugins_dir.exists():
-        print(f"Plugins dir not found: {plugins_dir}. Skipping.")
+        app.logger.info(f"Plugins dir not found: {plugins_dir}. Skipping.")
         return {}
 
     plugins: dict[str, dict[str, Any]] = {}
-    print(f"Loading plugins from: {plugins_dir}")
+    app.logger.info(f"Loading plugins from: {plugins_dir}")
 
     for pkg in os.listdir(os.fspath(plugins_dir)):
         if pkg.endswith(".so"):
@@ -51,16 +54,18 @@ def plugin_loader() -> dict[str, dict[str, Any]]:
         try:
             module = importlib.import_module(pkg_anchor)
         except ImportError as e:
-            print(f"Failed to load plugin ({pkg}): {str(e)}")
+            app.logger.error(f"Failed to load plugin ({pkg}): {str(e)}")
             continue
 
         if not hasattr(module, "metadata"):
-            print(f"Plugin metadata not found: {pkg}")
+            app.logger.warn(f"Plugin metadata not found: {pkg}")
             continue
 
         metadata: dict[str, Any] = module.metadata
         if metadata.get("disable", False):
-            print(f"Ignore disabled plugin: {pkg} v{metadata['version']}")
+            app.logger.info(
+                f"Ignore disabled plugin: {pkg} v{metadata['version']}"
+            )
             continue
 
         try:
@@ -69,11 +74,11 @@ def plugin_loader() -> dict[str, dict[str, Any]]:
                 "entrypoint_cls": metadata["entrypoint_cls"],
                 "exception_cls": metadata["exception_cls"],
             }
-            print(f"Loaded plugin: {pkg} v{metadata['version']}")
+            app.logger.info(f"Loaded plugin: {pkg} v{metadata['version']}")
         except KeyError as e:
-            print(f"Invalid metadata for plugin '{pkg}': {str(e)}")
+            app.logger.error(f"Invalid metadata for plugin '{pkg}': {str(e)}")
 
     if not plugins:
-        print("No plugins found.")
+        app.logger.info("No plugins found.")
 
     return plugins

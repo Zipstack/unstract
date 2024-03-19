@@ -197,7 +197,9 @@ class WorkflowHelper:
     ) -> None:
         for tool in tool_instances:
             valid, message = ToolInstanceHelper.validate_tool_settings(
-                tool_uid=tool.tool_id, tool_meta=tool.metadata
+                user=tool.workflow.created_by,
+                tool_uid=tool.tool_id,
+                tool_meta=tool.metadata,
             )
             if not valid:
                 raise ToolValidationError(message)
@@ -496,7 +498,7 @@ class WorkflowHelper:
                 workflow_execution.workflow_id,
                 workflow_execution.id,
                 workflow_execution.status,
-                log_id=workflow_execution.project_settings_id,
+                log_id=workflow_execution.execution_log_id,
                 error=workflow_execution.error_message,
                 mode=workflow_execution.execution_mode,
             )
@@ -561,7 +563,7 @@ class WorkflowHelper:
                 workflow.id,
                 execution_id,
                 workflow_execution.status,
-                log_id=workflow_execution.project_settings_id,
+                log_id=workflow_execution.execution_log_id,
                 error=workflow_execution.error_message,
                 mode=workflow_execution.execution_mode,
             )
@@ -585,7 +587,7 @@ class WorkflowHelper:
             workflow_execution.workflow_id,
             workflow_execution.id,
             workflow_execution.status,
-            log_id=workflow_execution.project_settings_id,
+            log_id=workflow_execution.execution_log_id,
             error=workflow_execution.error_message,
             mode=workflow_execution.execution_mode,
         )

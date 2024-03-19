@@ -2,11 +2,11 @@ import json
 import logging
 import re
 import sqlite3
+from enum import Enum
 from typing import Any, Optional
 
 import nltk
 import peewee
-from dotenv import load_dotenv
 from flask import Flask, request
 from llama_index import (
     QueryBundle,
@@ -34,8 +34,8 @@ from unstract.prompt_service.authentication_middleware import (
     AuthenticationMiddleware,
 )
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
-from unstract.prompt_service.constants import Query
-from unstract.prompt_service.helper import PromptServiceHelper, plugin_loader
+from unstract.prompt_service.constants import Query, RunLevel
+from unstract.prompt_service.helper import EnvLoader, plugin_loader
 from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import ToolEmbedding
@@ -47,23 +47,22 @@ from unstract.sdk.utils.service_context import (
 )
 from unstract.sdk.vector_db import ToolVectorDB
 
-load_dotenv()
+from unstract.core.pubsub_helper import LogPublisher
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s : %(message)s",
 )
-MAX_RETRIES = 3
 
-db_name = "unstract_vector_db"
 POS_TEXT_PATH = "/tmp/pos.txt"
 USE_UNSTRACT_PROMPT = True
+MAX_RETRIES = 3
 
-PG_BE_HOST = PromptServiceHelper.get_env_or_die("PG_BE_HOST")
-PG_BE_PORT = PromptServiceHelper.get_env_or_die("PG_BE_PORT")
-PG_BE_USERNAME = PromptServiceHelper.get_env_or_die("PG_BE_USERNAME")
-PG_BE_PASSWORD = PromptServiceHelper.get_env_or_die("PG_BE_PASSWORD")
-PG_BE_DATABASE = PromptServiceHelper.get_env_or_die("PG_BE_DATABASE")
+PG_BE_HOST = EnvLoader.get_env_or_die("PG_BE_HOST")
+PG_BE_PORT = EnvLoader.get_env_or_die("PG_BE_PORT")
+PG_BE_USERNAME = EnvLoader.get_env_or_die("PG_BE_USERNAME")
+PG_BE_PASSWORD = EnvLoader.get_env_or_die("PG_BE_PASSWORD")
+PG_BE_DATABASE = EnvLoader.get_env_or_die("PG_BE_DATABASE")
 
 be_db = peewee.PostgresqlDatabase(
     PG_BE_DATABASE,
@@ -79,7 +78,20 @@ AuthenticationMiddleware.be_db = be_db
 
 app = Flask("prompt-service")
 
-plugins = plugin_loader()
+plugins = plugin_loader(app)
+
+
+def _publish_log(
+    log_events_id: str,
+    component: dict[str, str],
+    level: Enum,
+    state: Enum,
+    message: str,
+) -> None:
+    LogPublisher.publish(
+        log_events_id,
+        LogPublisher.log_prompt(component, level.value, state.value, message),
+    )
 
 
 def get_keywords_from_pos(text: str) -> list[Any]:
@@ -407,10 +419,19 @@ def prompt_processor() -> Any:
             result["error"] = "Bad Request / No payload"
             return result, 400
     outputs = payload.get(PSKeys.OUTPUTS)
-    tool_id = payload.get(PSKeys.TOOL_ID)
+    tool_id: str = payload.get(PSKeys.TOOL_ID, "")
     file_hash = payload.get(PSKeys.FILE_HASH)
+    log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
+
     structured_output: dict[str, Any] = {}
     variable_names: list[str] = []
+    _publish_log(
+        log_events_id,
+        {"tool_id": tool_id},
+        LogLevel.DEBUG,
+        RunLevel.RUN,
+        "Preparing to execute all prompts",
+    )
 
     for output in outputs:  # type:ignore
         variable_names.append(output[PSKeys.NAME])
@@ -424,11 +445,25 @@ def prompt_processor() -> Any:
         )
         tool_index = ToolIndex(tool=util)
 
-        app.logger.info(f"Processing output for : {name}")
-
         if active is False:
-            app.logger.info(f"Output {name} is not active. Skipping")
+            app.logger.info(f"[{tool_id}] Skipping inactive prompt: {name}")
+            _publish_log(
+                log_events_id,
+                {"tool_id": tool_id, "prompt_key": name},
+                LogLevel.INFO,
+                RunLevel.RUN,
+                "Skipping inactive prompt",
+            )
             continue
+
+        app.logger.info(f"[{tool_id}] Executing prompt: {name}")
+        _publish_log(
+            log_events_id,
+            {"tool_id": tool_id, "prompt_key": name},
+            LogLevel.DEBUG,
+            RunLevel.RUN,
+            "Executing prompt",
+        )
 
         # Finding and replacing the variables in the prompt
         # The variables are in the form %variable_name%
@@ -446,6 +481,13 @@ def prompt_processor() -> Any:
             chunk_size=output[PSKeys.CHUNK_SIZE],
             chunk_overlap=output[PSKeys.CHUNK_OVERLAP],
         )
+        _publish_log(
+            log_events_id,
+            {"tool_id": tool_id, "prompt_key": name},
+            LogLevel.DEBUG,
+            RunLevel.RUN,
+            "Retrieved document ID",
+        )
 
         llm_helper = ToolLLM(tool=util)
         llm_li: Optional[LLM] = llm_helper.get_llm(
@@ -454,6 +496,13 @@ def prompt_processor() -> Any:
         if llm_li is None:
             msg = f"Couldn't fetch LLM {output[PSKeys.LLM]}"
             app.logger.error(msg)
+            _publish_log(
+                log_events_id,
+                {"tool_id": tool_id, "prompt_key": name},
+                LogLevel.ERROR,
+                RunLevel.RUN,
+                "Failed due to LLM error",
+            )
             result["error"] = msg
             return result, 500
         embedd_helper = ToolEmbedding(tool=util)
@@ -463,6 +512,13 @@ def prompt_processor() -> Any:
         if embedding_li is None:
             msg = f"Couldn't fetch embedding {output[PSKeys.EMBEDDING]}"
             app.logger.error(msg)
+            _publish_log(
+                log_events_id,
+                {"tool_id": tool_id, "prompt_key": name},
+                LogLevel.ERROR,
+                RunLevel.RUN,
+                "Failed due to embedding error",
+            )
             result["error"] = msg
             return result, 500
         embedding_dimension = embedd_helper.get_embedding_length(embedding_li)
@@ -481,6 +537,13 @@ def prompt_processor() -> Any:
             msg = f"Couldn't fetch vector DB {output[PSKeys.VECTOR_DB]}"
             app.logger.error(msg)
             result["error"] = msg
+            _publish_log(
+                log_events_id,
+                {"tool_id": tool_id, "prompt_key": name},
+                LogLevel.ERROR,
+                RunLevel.RUN,
+                "Failed due to vector db error",
+            )
             return result, 500
         vector_index = VectorStoreIndex.from_vector_store(
             vector_store=vector_db_li, service_context=service_context
@@ -497,10 +560,17 @@ def prompt_processor() -> Any:
 
         assertion_failed = False
         answer = "yes"
+        _publish_log(
+            log_events_id,
+            {"tool_id": tool_id, "prompt_key": name},
+            LogLevel.DEBUG,
+            RunLevel.RUN,
+            "Verifying assertion prompt",
+        )
 
         is_assert = output[PSKeys.IS_ASSERT]
         if is_assert:
-            app.logger.info(f'Asserting prompt: {output["assert_prompt"]}')
+            app.logger.debug(f'Asserting prompt: {output["assert_prompt"]}')
             answer = construct_and_run_prompt(
                 output,
                 llm_helper,
@@ -508,9 +578,16 @@ def prompt_processor() -> Any:
                 context,
                 "assert_prompt",
             )
-            app.logger.info(f"Assert response: {answer}")
+            app.logger.debug(f"Assert response: {answer}")
         if answer.startswith("No") or answer.startswith("no"):
             app.logger.info("Assert failed.")
+            _publish_log(
+                log_events_id,
+                {"tool_id": tool_id, "prompt_key": name},
+                LogLevel.DEBUG,
+                RunLevel.RUN,
+                "Assertion failed",
+            )
             assertion_failed = True
             answer = ""
             if (
@@ -546,6 +623,14 @@ def prompt_processor() -> Any:
                 )
             else:
                 answer = "NA"
+                _publish_log(
+                    log_events_id,
+                    {"tool_id": tool_id, "prompt_key": name},
+                    LogLevel.INFO,
+                    RunLevel.RUN,
+                    "Retrieving context from adapter",
+                )
+
                 if output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SIMPLE:
                     answer, context = simple_retriver(
                         output,
@@ -584,6 +669,22 @@ def prompt_processor() -> Any:
                     # print(nodes)
                 else:
                     app.logger.info("No retrieval strategy matched")
+
+                _publish_log(
+                    log_events_id,
+                    {"tool_id": tool_id, "prompt_key": name},
+                    LogLevel.DEBUG,
+                    RunLevel.RUN,
+                    "Retrieved context from adapter",
+                )
+
+        _publish_log(
+            log_events_id,
+            {"tool_id": tool_id, "prompt_key": name},
+            LogLevel.INFO,
+            RunLevel.RUN,
+            f"Processing prompt type: {output[PSKeys.TYPE]}",
+        )
 
         if output[PSKeys.TYPE] == PSKeys.NUMBER:
             if assertion_failed or answer.lower() == "na":
@@ -691,8 +792,15 @@ def prompt_processor() -> Any:
             and output[PSKeys.EVAL_SETTINGS][PSKeys.EVAL_SETTINGS_EVALUATE]
         ):
             eval_plugin: dict[str, Any] = plugins.get("evaluation", {})
-            try:
-                if eval_plugin:
+            if eval_plugin:
+                _publish_log(
+                    log_events_id,
+                    {"tool_id": tool_id, "prompt_key": name},
+                    LogLevel.INFO,
+                    RunLevel.EVAL,
+                    "Evaluating response",
+                )
+                try:
                     evaluator = eval_plugin["entrypoint_cls"](
                         "",
                         context,
@@ -705,18 +813,40 @@ def prompt_processor() -> Any:
                     )
                     # Will inline replace the structured output passed.
                     evaluator.run()
-                else:
-                    app.logger.info(
-                        f'No eval plugin found to evaluate prompt: {output["name"]}'  # noqa: E501
+                except eval_plugin["exception_cls"] as e:
+                    app.logger.error(
+                        f'Failed to evaluate prompt {output["name"]}: {str(e)}'
                     )
-            except eval_plugin["exception_cls"] as e:
-                app.logger.error(
-                    f'Failed to evaluate prompt {output["name"]}: {str(e)}'
+                    _publish_log(
+                        log_events_id,
+                        {"tool_id": tool_id, "prompt_key": name},
+                        LogLevel.ERROR,
+                        RunLevel.EVAL,
+                        "Error while evaluation",
+                    )
+                else:
+                    _publish_log(
+                        log_events_id,
+                        {"tool_id": tool_id, "prompt_key": name},
+                        LogLevel.DEBUG,
+                        RunLevel.EVAL,
+                        "Evaluation completed",
+                    )
+            else:
+                app.logger.info(
+                    f'No eval plugin found to evaluate prompt: {output["name"]}'  # noqa: E501
                 )
         #
         #
         #
 
+    _publish_log(
+        log_events_id,
+        {"tool_id": tool_id},
+        LogLevel.INFO,
+        RunLevel.RUN,
+        "Sanitizing null values",
+    )
     for k, v in structured_output.items():
         if isinstance(v, str) and v.lower() == "na":
             structured_output[k] = None
@@ -733,6 +863,13 @@ def prompt_processor() -> Any:
                 if isinstance(v1, str) and v1.lower() == "na":
                     v[k1] = None
 
+    _publish_log(
+        log_events_id,
+        {"tool_id": tool_id},
+        LogLevel.INFO,
+        RunLevel.RUN,
+        "Execution complete",
+    )
     return structured_output
 
 
@@ -929,7 +1066,7 @@ def extract_variable(
     #     f.write(json.dumps(structured_output, indent=2))
 
 
-def enable_single_pass_extraction():
+def enable_single_pass_extraction() -> None:
     """Enables single-pass-extraction plugin if available."""
     single_pass_extration_plugin: dict[str, Any] = plugins.get(
         "single-pass-extraction", {}

@@ -81,7 +81,7 @@ class BoxFS(UnstractFileSystem):
 
     @staticmethod
     def get_icon() -> str:
-        return "https://storage.googleapis.com/pandora-static/connector-icons/Box.png"
+        return "/api/v1/static/icons/connector-icons/Box.png"
 
     @staticmethod
     def get_json_schema() -> str:

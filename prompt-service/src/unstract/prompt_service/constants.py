@@ -87,6 +87,7 @@ class PromptServiceContants:
     EVAL_SETTINGS_MONITOR_LLM = "monitor_llm"
     EVAL_SETTINGS_EXCLUDE_FAILED = "exclude_failed"
     LLM_PROFILE_MANAGER = "llm_profile_manager"
+    LOG_EVENTS_ID = "log_events_id"
 
 
 class Query:
@@ -108,3 +109,13 @@ class LogLevel(Enum):
     WARN = "WARN"
     ERROR = "ERROR"
     FATAL = "FATAL"
+
+
+class RunLevel(Enum):
+    """Different stages of prompt execution.
+
+    Comprises of prompt run and response evaluation stages.
+    """
+
+    RUN = "RUN"
+    EVAL = "EVAL"

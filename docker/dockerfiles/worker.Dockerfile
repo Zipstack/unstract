@@ -6,8 +6,10 @@ LABEL maintainer="Zipstack Inc."
 ENV PYTHONDONTWRITEBYTECODE 1
 # Set to immediately flush stdout and stderr streams without first buffering
 ENV PYTHONUNBUFFERED 1
+ENV PYTHONPATH /unstract
 
 ENV BUILD_CONTEXT_PATH worker
+ENV BUILD_PACKAGES_PATH unstract
 ENV PDM_VERSION 2.12.3
 
 RUN apt-get update \
@@ -19,6 +21,8 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY ${BUILD_CONTEXT_PATH} .
+# Copy local dependency packages
+COPY ${BUILD_PACKAGES_PATH}/core /unstract/core
 
 RUN set -e; \
     \
