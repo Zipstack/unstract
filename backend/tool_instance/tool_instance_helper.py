@@ -346,7 +346,12 @@ class ToolInstanceHelper:
             else tool_uid
         )
         # Getting user from local_context store
-        user: User = StateStore.get(Common.USER_ID)
+        user: Optional[User] = StateStore.get(Common.USER_ID)
+        # FIXME: Skipping tool setting validation if user is not set.
+        # This occurs during API deployment since the API endpoint is
+        # whitelisted and `user` is not set in StateStore by the middleware.
+        if not user:
+            return True, ""
         schema_json: dict[str, Any] = ToolProcessor.get_json_schema_for_tool(
             tool_uid=tool_uid, user=user
         )
