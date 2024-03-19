@@ -1,6 +1,6 @@
-import { Button, Tabs, Tooltip } from "antd";
+import { Button, Space, Tabs, Tooltip } from "antd";
 import { useEffect, useState } from "react";
-import { PlayCircleOutlined } from "@ant-design/icons";
+import { BarChartOutlined, PlayCircleOutlined } from "@ant-design/icons";
 
 import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -12,6 +12,7 @@ import { DocumentParser } from "../document-parser/DocumentParser";
 import { Footer } from "../footer/Footer";
 import "./ToolsMain.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useNavigate } from "react-router-dom";
 
 function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
@@ -30,6 +31,7 @@ function ToolsMain() {
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const navigate = useNavigate();
 
   const items = [
     {
@@ -96,7 +98,7 @@ function ToolsMain() {
       return;
     }
     setActiveKey("2");
-    setTriggerRunSinglePass((prev) => !prev);
+    setTriggerRunSinglePass(true);
   }, [isSinglePassExtract]);
 
   const onChange = (key) => {
@@ -146,14 +148,22 @@ function ToolsMain() {
           <Tabs activeKey={activeKey} items={items} onChange={onChange} />
         </div>
         <div className="display-flex-align-center">
-          <Tooltip title="Single Pass Extraction">
-            <Button
-              onClick={handleSinglePassExtraction}
-              loading={isSinglePassExtract}
-              disabled={disableLlmOrDocChange?.length > 0}
-              icon={<PlayCircleOutlined />}
-            />
-          </Tooltip>
+          <Space>
+            <Tooltip title="Output Analyzer">
+              <Button
+                icon={<BarChartOutlined />}
+                onClick={() => navigate("outputAnalyzer")}
+              />
+            </Tooltip>
+            <Tooltip title="Single Pass Extraction">
+              <Button
+                onClick={handleSinglePassExtraction}
+                loading={isSinglePassExtract}
+                disabled={disableLlmOrDocChange?.length > 0}
+                icon={<PlayCircleOutlined />}
+              />
+            </Tooltip>
+          </Space>
         </div>
       </div>
       <div className="tools-main-body">
@@ -168,6 +178,7 @@ function ToolsMain() {
           <CombinedOutput
             docId={selectedDoc?.document_id}
             triggerRunSinglePass={triggerRunSinglePass}
+            setTriggerRunSinglePass={setTriggerRunSinglePass}
           />
         )}
       </div>

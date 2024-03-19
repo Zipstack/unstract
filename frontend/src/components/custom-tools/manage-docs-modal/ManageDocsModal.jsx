@@ -12,6 +12,7 @@ import {
   Radio,
   Space,
   Table,
+  Tag,
   Tooltip,
   Typography,
   Upload,
@@ -29,6 +30,7 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./ManageDocsModal.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 
 let SummarizeStatusTitle = null;
 try {
@@ -56,6 +58,8 @@ function ManageDocsModal({
   const [isRawDataLoading, setIsRawDataLoading] = useState(false);
   const [summarizeLlmProfile, setSummarizeLlmProfile] = useState(null);
   const [isSummarizeDataLoading, setIsSummarizeDataLoading] = useState(false);
+  const [indexMessages, setIndexMessages] = useState({});
+  const [lastMessagesUpdate, setLastMessagesUpdate] = useState("");
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const {
@@ -71,6 +75,7 @@ function ManageDocsModal({
     summarizeIndexStatus,
     isSinglePassExtract,
   } = useCustomToolStore();
+  const { messages } = useSocketCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
 
@@ -91,6 +96,23 @@ function ManageDocsModal({
       Not Indexed
     </Typography.Text>
   );
+
+  const infoIndex = (indexMessage) => {
+    let color = "default";
+    if (indexMessage?.level === "INFO") {
+      color = "processing";
+    }
+
+    if (indexMessage?.length === "ERROR") {
+      color = "error";
+    }
+
+    if (!indexMessage?.message) {
+      return;
+    }
+
+    return <Tag color={color}>{indexMessage?.message}</Tag>;
+  };
 
   const failedSummary = (
     <Typography.Text>
@@ -113,6 +135,59 @@ function ManageDocsModal({
   useEffect(() => {
     handleGetIndexStatus(summarizeLlmProfile, indexTypes.summarize);
   }, [indexDocs, summarizeLlmProfile]);
+
+  useEffect(() => {
+    // Reverse the array to have the latest logs at the beginning
+    let newMessages = [...messages].reverse();
+
+    // If there are no new messages, return early
+    if (newMessages?.length === 0) {
+      return;
+    }
+
+    // Get the index of the last message received before the last update
+    const lastIndex = [...newMessages].findIndex(
+      (item) => item?.timestamp === lastMessagesUpdate
+    );
+
+    // If the last update's message is found, keep only the new messages
+    if (lastIndex > -1) {
+      newMessages = newMessages.slice(0, lastIndex);
+    }
+
+    // Filter only INFO and ERROR logs
+    newMessages = newMessages.filter(
+      (item) => item?.level === "INFO" || item?.level === "ERROR"
+    );
+
+    // If there are no new INFO or ERROR messages, return early
+    if (newMessages?.length === 0) {
+      return;
+    }
+
+    const updatedMessages = {};
+    // Store the newly received logs in the indexMessages state
+    newMessages.forEach((item) => {
+      const docName = item?.component?.doc_name;
+
+      // If the message for this document already exists, skip
+      if (updatedMessages?.[docName] !== undefined) {
+        return;
+      }
+
+      // Update the message for this document
+      updatedMessages[docName] = {
+        message: item?.message || "",
+        level: item?.level || "INFO",
+      };
+    });
+
+    // Update indexMessages state with the newly received messages
+    setIndexMessages({ ...indexMessages, ...updatedMessages });
+
+    // Update the timestamp of the last received message
+    setLastMessagesUpdate(newMessages[0]?.timestamp);
+  }, [messages]);
 
   const handleLoading = (indexType, value) => {
     if (indexType === indexTypes.raw) {
@@ -208,10 +283,10 @@ function ManageDocsModal({
       width: 260,
     },
     {
-      title: "",
+      title: "Index",
       dataIndex: "reindex",
       key: "reindex",
-      width: 30,
+      width: 260,
     },
     {
       title: "",
@@ -264,23 +339,30 @@ function ManageDocsModal({
         summary:
           SummarizeStatusTitle &&
           getIndexStatusMessage(item?.document_id, indexTypes.summarize),
-        reindex: indexDocs.includes(item?.document_id) ? (
-          <SpinnerLoader />
-        ) : (
-          <Tooltip title="Index">
-            <Button
-              size="small"
-              icon={<ReloadOutlined />}
-              onClick={() => generateIndex(item)}
-              disabled={
-                disableLlmOrDocChange?.length > 0 ||
-                indexDocs.includes(item?.document_id) ||
-                isUploading ||
-                !defaultLlmProfile ||
-                isSinglePassExtract
-              }
-            />
-          </Tooltip>
+        reindex: (
+          <Space>
+            <div>
+              {indexDocs.includes(item?.document_id) ? (
+                <SpinnerLoader />
+              ) : (
+                <Tooltip title="Index">
+                  <Button
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={() => generateIndex(item)}
+                    disabled={
+                      disableLlmOrDocChange?.length > 0 ||
+                      indexDocs.includes(item?.document_id) ||
+                      isUploading ||
+                      !defaultLlmProfile ||
+                      isSinglePassExtract
+                    }
+                  />
+                </Tooltip>
+              )}
+            </div>
+            <div>{infoIndex(indexMessages?.[item?.document_name])}</div>
+          </Space>
         ),
         delete: (
           <ConfirmModal
@@ -325,6 +407,7 @@ function ManageDocsModal({
     summarizeIndexStatus,
     indexDocs,
     isSinglePassExtract,
+    messages,
   ]);
 
   const beforeUpload = (file) => {
@@ -410,15 +493,15 @@ function ManageDocsModal({
       centered
       footer={null}
       maskClosable={false}
-      width={1000}
+      width={1400}
     >
       <div className="pre-post-amble-body">
         <SpaceWrapper>
-          <div>
+          <Space>
             <Typography.Text className="add-cus-tool-header">
               Manage Documents
             </Typography.Text>
-          </div>
+          </Space>
           <div>
             <Upload
               name="file"

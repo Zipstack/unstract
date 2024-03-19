@@ -45,6 +45,7 @@ import { EditableText } from "../editable-text/EditableText";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 
 let EvalBtn = null;
 let EvalMetrics = null;
@@ -94,6 +95,8 @@ function PromptCard({
   const [coverageTotal, setCoverageTotal] = useState(0);
   const [isCoverageLoading, setIsCoverageLoading] = useState(false);
   const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
+  const [progressMsg, setProgressMsg] = useState({});
+  const [docOutputs, setDocOutputs] = useState({});
   const divRef = useRef(null);
   const {
     getDropdownItems,
@@ -106,10 +109,34 @@ function PromptCard({
     indexDocs,
     summarizeIndexStatus,
   } = useCustomToolStore();
+  const { messages } = useSocketCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+
+  useEffect(() => {
+    // Find the latest message that matches the criteria
+    const msg = [...messages]
+      .reverse()
+      .find(
+        (item) =>
+          (item?.component?.prompt_id === promptDetails?.prompt_id ||
+            item?.component?.prompt_key === promptKey) &&
+          (item?.level === "INFO" || item?.level === "ERROR")
+      );
+
+    // If no matching message is found, return early
+    if (!msg) {
+      return;
+    }
+
+    // Set the progress message state with the found message
+    setProgressMsg({
+      message: msg?.message || "",
+      level: msg?.level || "INFO",
+    });
+  }, [messages]);
 
   useEffect(() => {
     if (promptDetails?.is_assert) {
@@ -239,6 +266,18 @@ function PromptCard({
     );
   };
 
+  const handleDocOutputs = (docId, isLoading, output) => {
+    setDocOutputs((prev) => {
+      const updatedDocOutputs = { ...prev };
+      // Update the entry for the provided docId with isLoading and output
+      updatedDocOutputs[docId] = {
+        isLoading,
+        output,
+      };
+      return updatedDocOutputs;
+    });
+  };
+
   // Generate the result for the currently selected document
   const handleRun = () => {
     if (!promptDetails?.profile_manager?.length) {
@@ -278,6 +317,7 @@ function PromptCard({
     setCoverage(0);
     setCoverageTotal(0);
 
+    const docId = selectedDoc?.document_id;
     let method = "POST";
     let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/`;
     if (result?.promptOutputId) {
@@ -286,8 +326,7 @@ function PromptCard({
     }
 
     const isSummaryIndexed = [...summarizeIndexStatus].find(
-      (item) =>
-        item?.docId === selectedDoc?.document_id && item?.isIndexed === true
+      (item) => item?.docId === docId && item?.isIndexed === true
     );
 
     if (
@@ -296,7 +335,7 @@ function PromptCard({
       details?.summarize_llm_profile
     ) {
       // Summary needs to be indexed before running the prompt
-      handleUpdateOutput(null, selectedDoc?.document_id, [], method, url);
+      handleUpdateOutput(null, docId, [], method, url);
       handleStepsAfterRunCompletion();
       setAlertDetails({
         type: "error",
@@ -304,7 +343,9 @@ function PromptCard({
       });
       return;
     }
-    handleRunApiRequest(selectedDoc?.document_id)
+
+    handleDocOutputs(docId, true, null);
+    handleRunApiRequest(docId)
       .then((res) => {
         const data = res?.data;
         const value = data[promptDetails?.prompt_key];
@@ -318,21 +359,15 @@ function PromptCard({
           promptDetails?.prompt_key,
           data
         );
-        handleUpdateOutput(
-          value,
-          selectedDoc?.document_id,
-          evalMetrics,
-          method,
-          url
-        );
+
+        handleDocOutputs(docId, false, value);
+        handleUpdateOutput(value, docId, evalMetrics, method, url);
       })
       .catch((err) => {
-        handleUpdateOutput(null, selectedDoc?.document_id, [], method, url);
+        handleDocOutputs(docId, false, null);
+        handleUpdateOutput(null, docId, [], method, url);
         setAlertDetails(
-          handleException(
-            err,
-            `Failed to generate output for ${selectedDoc?.document_id}`
-          )
+          handleException(err, `Failed to generate output for ${docId}`)
         );
       })
       .finally(() => {
@@ -359,11 +394,10 @@ function PromptCard({
 
     let totalCoverageValue = 1;
     listOfDocsToProcess.forEach((item) => {
+      const docId = item?.document_id;
       let method = "POST";
       let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/`;
-      const outputId = outputIds.find(
-        (output) => output?.docId === item?.document_id
-      );
+      const outputId = outputIds.find((output) => output?.docId === docId);
       if (outputId?.promptOutputId?.length) {
         method = "PATCH";
         url += `${outputId?.promptOutputId}/`;
@@ -371,8 +405,7 @@ function PromptCard({
 
       const isSummaryIndexed = [...summarizeIndexStatus].find(
         (indexStatus) =>
-          indexStatus?.docId === item?.document_id &&
-          indexStatus?.isIndexed === true
+          indexStatus?.docId === docId && indexStatus?.isIndexed === true
       );
 
       if (
@@ -381,7 +414,7 @@ function PromptCard({
         details?.summarize_llm_profile
       ) {
         // Summary needs to be indexed before running the prompt
-        handleUpdateOutput(null, item?.document_id, [], method, url);
+        handleUpdateOutput(null, docId, [], method, url);
         totalCoverageValue++;
         setCoverageTotal(totalCoverageValue);
         setAlertDetails({
@@ -390,7 +423,9 @@ function PromptCard({
         });
         return;
       }
-      handleRunApiRequest(item?.document_id)
+
+      handleDocOutputs(docId, true, null);
+      handleRunApiRequest(docId)
         .then((res) => {
           const data = res?.data;
           const outputValue = data[promptDetails?.prompt_key];
@@ -404,21 +439,15 @@ function PromptCard({
             promptDetails?.prompt_key,
             data
           );
-          handleUpdateOutput(
-            outputValue,
-            item?.document_id,
-            evalMetrics,
-            method,
-            url
-          );
+
+          handleDocOutputs(docId, false, outputValue);
+          handleUpdateOutput(outputValue, docId, evalMetrics, method, url);
         })
         .catch((err) => {
-          handleUpdateOutput(null, item?.document_id, [], method, url);
+          handleDocOutputs(docId, false, null);
+          handleUpdateOutput(null, docId, [], method, url);
           setAlertDetails(
-            handleException(
-              err,
-              `Failed to generate output for ${item?.document_id}`
-            )
+            handleException(err, `Failed to generate output for ${docId}`)
           );
         })
         .finally(() => {
@@ -698,13 +727,15 @@ function PromptCard({
                   />
                 </Col>
                 <Col span={12} className="display-flex-right">
-                  {isCoverageLoading && (
+                  {progressMsg?.message && (
                     <Tag
-                      icon={<LoadingOutlined spin />}
-                      color="processing"
+                      icon={isCoverageLoading && <LoadingOutlined spin />}
+                      color={
+                        progressMsg?.level === "ERROR" ? "error" : "processing"
+                      }
                       className="display-flex-align-center"
                     >
-                      Generating Response
+                      {progressMsg?.message}
                     </Tag>
                   )}
                   {updateStatus?.promptId === promptDetails?.prompt_id && (
@@ -843,14 +874,19 @@ function PromptCard({
                   size="small"
                   type="link"
                   className="display-flex-align-center"
-                  icon={<SearchOutlined className="font-size-12" />}
-                  loading={isCoverageLoading}
                   onClick={() => setOpenOutputForDoc(true)}
                   disabled={outputIds?.length === 0}
                 >
-                  <Typography.Link className="font-size-12">
-                    Coverage: {coverage} of {listOfDocs?.length || 0} docs
-                  </Typography.Link>
+                  <Space>
+                    {isCoverageLoading ? (
+                      <SpinnerLoader size="small" />
+                    ) : (
+                      <SearchOutlined className="font-size-12" />
+                    )}
+                    <Typography.Link className="font-size-12">
+                      Coverage: {coverage} of {listOfDocs?.length || 0} docs
+                    </Typography.Link>
+                  </Space>
                 </Button>
               </Space>
               <div>
@@ -955,6 +991,7 @@ function PromptCard({
         promptId={promptDetails?.prompt_id}
         promptKey={promptDetails?.prompt_key}
         profileManagerId={promptDetails?.profile_manager}
+        docOutputs={docOutputs}
       />
     </>
   );
