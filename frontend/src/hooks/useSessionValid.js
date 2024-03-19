@@ -3,6 +3,7 @@ import axios from "axios";
 import { getSessionData } from "../helpers/GetSessionData";
 import { useSessionStore } from "../store/session-store";
 import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
+import { useNavigate } from "react-router-dom";
 
 let getTrialDetails;
 try {
@@ -14,7 +15,14 @@ try {
 function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
   const handleException = useExceptionHandler();
-
+  const navigate = useNavigate();
+  const signedInOrgId =
+    (document.cookie &&
+      document.cookie
+        .split("; ")
+        .find((row) => row.startsWith("org_id="))
+        ?.split("=")[1]) ||
+    null;
   return async () => {
     try {
       // API to get the list of organizations
@@ -27,8 +35,12 @@ function useSessionValid() {
       if (!orgs?.length) {
         throw Error("Organizations not available.");
       }
+      if (!signedInOrgId?.length) {
+        navigate("/setOrg", { state: orgs });
+        return;
+      }
       let userAndOrgDetails = null;
-      const orgId = orgs[0]?.id;
+      const orgId = signedInOrgId;
       const csrfToken = ("; " + document.cookie)
         .split(`; csrftoken=`)
         .pop()
@@ -82,6 +94,7 @@ function useSessionValid() {
         );
         userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
       }
+      userAndOrgDetails["allOrganization"] = orgs;
 
       // Set the session details
       setSessionDetails(getSessionData(userAndOrgDetails));

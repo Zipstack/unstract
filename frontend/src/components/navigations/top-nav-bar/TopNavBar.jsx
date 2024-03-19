@@ -11,7 +11,9 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
 import { useSessionStore } from "../../../store/session-store.js";
+import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import "./TopNavBar.css";
+import axios from "axios";
 
 let TrialDaysInfo;
 try {
@@ -24,7 +26,8 @@ try {
 function TopNavBar() {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { orgName, remainingTrialDays } = sessionDetails;
+  const { orgName, remainingTrialDays, allOrganization, orgId } =
+    sessionDetails;
   const baseUrl = getBaseUrl();
   const onBoardUrl = baseUrl + `/${orgName}/onboard`;
   const logout = useLogout();
@@ -55,6 +58,40 @@ function TopNavBar() {
       .finally(() => {});
   };
 
+  const cascadeOptions = allOrganization.map((org) => {
+    return {
+      key: org.id,
+      label: (
+        <ConfirmModal
+          handleConfirm={() => handleContinue(org.id)}
+          content={`Want to switch to ${org.display_name} `}
+        >
+          <div>{org.display_name}</div>
+        </ConfirmModal>
+      ),
+    };
+  });
+
+  const handleContinue = async (selectedOrg) => {
+    const requestOptions = {
+      method: "GET",
+      url: "/api/v1/organization",
+    };
+    const csrfToken = ("; " + document.cookie)
+      .split(`; csrftoken=`)
+      .pop()
+      .split(";")[0];
+
+    requestOptions.url = `/api/v1/organization/${selectedOrg}/set`;
+    requestOptions.headers = {
+      "X-CSRFToken": csrfToken,
+    };
+    requestOptions.method = "POST";
+
+    await axios(requestOptions);
+    window.location.reload();
+  };
+
   // Dropdown items
   const items = [
     {
@@ -74,6 +111,23 @@ function TopNavBar() {
         <Button onClick={logout} className="logout-button">
           Logout
         </Button>
+      ),
+    },
+    {
+      key: "3",
+      label: (
+        <Dropdown
+          placeholder="Switch Organization"
+          menu={{
+            items: cascadeOptions,
+            selectable: true,
+            selectedKeys: [orgId],
+            className: "switch-org-menu",
+          }}
+          placement="left"
+        >
+          <div>Switch Org</div>
+        </Dropdown>
       ),
     },
   ];

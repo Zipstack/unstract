@@ -1,0 +1,20 @@
+.org-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+}
+
+.select-org {
+  width: 320px;
+  margin-bottom: 16px;
+}
+
+.continue-button {
+  width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+}
