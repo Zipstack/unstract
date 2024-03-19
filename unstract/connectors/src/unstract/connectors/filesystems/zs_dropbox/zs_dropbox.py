@@ -36,8 +36,8 @@ class DropboxFS(UnstractFileSystem):
     def get_icon() -> str:
         # TODO: Add an icon to GCS and serve it
         return (
-            "https://storage.googleapis.com"
-            "/pandora-static/connector-icons/Dropbox.png"
+            "/api/v1/static"
+            "/icons/connector-icons/Dropbox.png"
         )
 
     @staticmethod
