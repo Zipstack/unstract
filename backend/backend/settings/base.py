@@ -184,7 +184,6 @@ SHARED_APPS = (
     "docs",
     # Plugins
     "plugins",
-    "log_events",
     "feature_flag",
     "django_celery_beat",
 )

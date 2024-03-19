@@ -496,7 +496,7 @@ class WorkflowHelper:
                 workflow_execution.workflow_id,
                 workflow_execution.id,
                 workflow_execution.status,
-                log_id=workflow_execution.project_settings_id,
+                log_id=workflow_execution.execution_log_id,
                 error=workflow_execution.error_message,
                 mode=workflow_execution.execution_mode,
             )
@@ -561,7 +561,7 @@ class WorkflowHelper:
                 workflow.id,
                 execution_id,
                 workflow_execution.status,
-                log_id=workflow_execution.project_settings_id,
+                log_id=workflow_execution.execution_log_id,
                 error=workflow_execution.error_message,
                 mode=workflow_execution.execution_mode,
             )
@@ -585,7 +585,7 @@ class WorkflowHelper:
             workflow_execution.workflow_id,
             workflow_execution.id,
             workflow_execution.status,
-            log_id=workflow_execution.project_settings_id,
+            log_id=workflow_execution.execution_log_id,
             error=workflow_execution.error_message,
             mode=workflow_execution.execution_mode,
         )

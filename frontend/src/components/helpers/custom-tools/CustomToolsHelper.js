@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { SocketMessages } from "../socket-messages/SocketMessages";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 
 function CustomToolsHelper() {
   const [isLoading, setIsLoading] = useState(true);
@@ -15,6 +16,7 @@ function CustomToolsHelper() {
   const { id } = useParams();
   const { sessionDetails } = useSessionStore();
   const { updateCustomTool, setDefaultCustomTool } = useCustomToolStore();
+  const { emptyCusToolMessages } = useSocketCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const navigate = useNavigate();
   const axiosPrivate = useAxiosPrivate();
@@ -42,7 +44,7 @@ function CustomToolsHelper() {
         updatedCusTool["defaultLlmProfile"] = data?.default_profile;
         updatedCusTool["details"] = data;
         selectedDocId = data?.output;
-        setLogId(data?.log_id);
+        setLogId(sessionDetails?.logEventsId);
 
         const reqOpsDocs = {
           method: "GET",
@@ -91,6 +93,7 @@ function CustomToolsHelper() {
   useEffect(() => {
     return () => {
       setDefaultCustomTool();
+      emptyCusToolMessages();
     };
   }, []);
 
