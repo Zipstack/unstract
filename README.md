@@ -7,6 +7,8 @@ Use LLMs to eliminate manual processes involving unstructured data.
 ## System Requirements
 
 - `docker` (see [instructions](https://docs.docker.com/engine/install/))
+- `docker compose` (see [instructions](https://docs.docker.com/compose/))
+- `python3`
 - `git`
 - `pdm` (see below)
 - `pyenv` (recommended to manage multiple Python versions)
@@ -46,6 +48,11 @@ The launch script does env setup with default values, pulls public docker images
 Now visit [http://frontend.unstract.localhost](http://frontend.unstract.localhost) in your browser.
 
 That's all. Enjoy!
+
+## Authentication
+
+The default username is `unstract` and the default password is `unstract`.
+More details on configuring this can be found in [backend's README.md](/backend/README.md#authentication)
 
 ## Configuring a Text Extractor
 

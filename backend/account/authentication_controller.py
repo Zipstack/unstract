@@ -7,6 +7,7 @@ from account.authentication_plugin_registry import AuthenticationPluginRegistry
 from account.authentication_service import AuthenticationService
 from account.constants import (
     AuthorizationErrorCode,
+    Common,
     Cookie,
     ErrorMessage,
     OrganizationMemberModel,
@@ -33,6 +34,7 @@ from account.serializer import (
     SetOrganizationsResponseSerializer,
 )
 from account.user import UserService
+from utils.local_context import StateStore
 from django.conf import settings
 from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
@@ -234,6 +236,7 @@ class AuthenticationController:
                 data={
                     "user": serialized_user_info,
                     "organization": organization_info,
+                    f"{Common.LOG_EVENTS_ID}": StateStore.get(Common.LOG_EVENTS_ID)
                 },
             )
             # Update user session data in redis

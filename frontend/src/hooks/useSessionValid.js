@@ -57,6 +57,7 @@ function useSessionValid() {
       userAndOrgDetails["orgName"] = setOrgRes?.data?.organization?.name;
       userAndOrgDetails["orgId"] = orgId;
       userAndOrgDetails["csrfToken"] = csrfToken;
+      userAndOrgDetails["logEventsId"] = setOrgRes?.data?.log_events_id;
 
       requestOptions["method"] = "GET";
 
@@ -92,7 +93,8 @@ function useSessionValid() {
           orgId,
           csrfToken
         );
-        userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
+        if (remainingTrialDays)
+          userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
       }
       userAndOrgDetails["allOrganization"] = orgs;
 
