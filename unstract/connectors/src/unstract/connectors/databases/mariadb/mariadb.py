@@ -31,7 +31,7 @@ class MariaDB(UnstractDB):
     @staticmethod
     def get_icon() -> str:
         return (
-            "https://storage.googleapis.com/pandora-static/connector-icons/MariaDB.png"
+            "/api/v1/static/icons/connector-icons/MariaDB.png"
         )
 
     @staticmethod

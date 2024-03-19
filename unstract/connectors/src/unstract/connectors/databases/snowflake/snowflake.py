@@ -33,8 +33,8 @@ class SnowflakeDB(UnstractDB):
     @staticmethod
     def get_icon() -> str:
         return (
-            "https://storage.googleapis.com/pandora-static"
-            "/connector-icons/Snowflake.png"
+            "/api/v1/static"
+            "/icons/connector-icons/Snowflake.png"
         )
 
     @staticmethod
