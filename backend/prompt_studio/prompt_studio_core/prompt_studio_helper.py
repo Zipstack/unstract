@@ -63,32 +63,37 @@ class PromptStudioHelper:
         """
         profile_manager_owner = profile_manager.created_by
 
+        is_llm_owned = (
+            profile_manager.llm.created_by == profile_manager_owner
+            or profile_manager.llm.shared_users.filter(
+                pk=profile_manager_owner.pk
+            ).exists()
+        )
+        is_vector_store_owned = (
+            profile_manager.vector_store.created_by == profile_manager_owner
+            or profile_manager.vector_store.shared_users.filter(
+                pk=profile_manager_owner.pk
+            ).exists()
+        )
+        is_embedding_model_owned = (
+            profile_manager.embedding_model.created_by
+            == profile_manager_owner
+            or profile_manager.embedding_model.shared_users.filter(
+                pk=profile_manager_owner.pk
+            ).exists()
+        )
+        is_x2text_owned = (
+            profile_manager.x2text.created_by == profile_manager_owner
+            or profile_manager.x2text.shared_users.filter(
+                pk=profile_manager_owner.pk
+            ).exists()
+        )
+
         if not (
-            (
-                profile_manager.llm.created_by == profile_manager_owner
-                or profile_manager.llm.shared_users.filter(
-                    pk=profile_manager_owner.pk
-                ).exists()
-            )
-            and (
-                profile_manager.vector_store.created_by == profile_manager_owner
-                or profile_manager.vector_store.shared_users.filter(
-                    pk=profile_manager_owner.pk
-                ).exists()
-            )
-            and (
-                profile_manager.embedding_model.created_by
-                == profile_manager_owner
-                or profile_manager.embedding_model.shared_users.filter(
-                    pk=profile_manager_owner.pk
-                ).exists()
-            )
-            and (
-                profile_manager.x2text.created_by == profile_manager_owner
-                or profile_manager.x2text.shared_users.filter(
-                    pk=profile_manager_owner.pk
-                ).exists()
-            )
+            is_llm_owned
+            and is_vector_store_owned
+            and is_embedding_model_owned
+            and is_x2text_owned
         ):
             raise PermissionDenied(
                 "You don't have permission to perform this action."
