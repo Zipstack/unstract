@@ -8,6 +8,7 @@ from django.http import HttpRequest
 from file_management.file_management_helper import FileManagerHelper
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from prompt_studio.processor_loader import ProcessorConfig, load_plugins
+from prompt_studio.prompt_profile_manager.constants import ProfileManagerErrors
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_profile_manager.serializers import (
     ProfileManagerSerializer,
@@ -344,6 +345,25 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             raise DuplicateData(
                 f"{ToolStudioPromptErrors.PROMPT_NAME_EXISTS}, \
                     {ToolStudioPromptErrors.DUPLICATE_API}"
+            )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def create_profile_manager(
+        self, request: HttpRequest, pk: Any = None
+    ) -> Response:
+        context = super().get_serializer_context()
+        serializer = ProfileManagerSerializer(
+            data=request.data, context=context
+        )
+        # TODO : Handle model related exceptions.
+        serializer.is_valid(raise_exception=True)
+        try:
+            self.perform_create(serializer)
+        except IntegrityError:
+            raise DuplicateData(
+                f"{ProfileManagerErrors.PROFILE_NAME_EXISTS}, \
+                    {ProfileManagerErrors.DUPLICATE_API}"
             )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
