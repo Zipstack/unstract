@@ -81,7 +81,8 @@ function useSessionValid() {
           orgId,
           csrfToken
         );
-        userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
+        if (remainingTrialDays)
+          userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
       }
 
       // Set the session details
