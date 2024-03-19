@@ -596,7 +596,8 @@ class PromptStudioHelper:
         default_profile: ProfileManager = ProfileManager.objects.get(
             prompt_studio_tool=tool, is_default=True
         )
-
+        # Need to check the user who created profile manager
+        # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(
             default_profile
         )
