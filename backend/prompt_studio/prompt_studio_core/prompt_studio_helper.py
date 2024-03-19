@@ -200,6 +200,11 @@ class PromptStudioHelper:
             LogLevels.RUN,
             "Indexing started",
         )
+        # Need to check the user who created profile manager
+        # has access to adapters configured in profile manager
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            default_profile
+        )
 
         doc_id = PromptStudioHelper.dynamic_indexer(
             profile_manager=default_profile,
