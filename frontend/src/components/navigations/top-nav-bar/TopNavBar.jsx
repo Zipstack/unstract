@@ -11,6 +11,7 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
 import { useSessionStore } from "../../../store/session-store.js";
+import { useAlertStore } from "../../../store/alert-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import "./TopNavBar.css";
 import axios from "axios";
@@ -33,6 +34,7 @@ function TopNavBar() {
   const logout = useLogout();
   const axiosPrivate = useAxiosPrivate();
   const [showOnboardBanner, setShowOnboardBanner] = useState(false);
+  const { setAlertDetails } = useAlertStore();
 
   useEffect(() => {
     getAdapters();
@@ -61,14 +63,26 @@ function TopNavBar() {
   const cascadeOptions = allOrganization.map((org) => {
     return {
       key: org.id,
-      label: (
-        <ConfirmModal
-          handleConfirm={() => handleContinue(org.id)}
-          content={`Want to switch to ${org.display_name} `}
-        >
-          <div>{org.display_name}</div>
-        </ConfirmModal>
-      ),
+      label:
+        org.id === sessionDetails?.orgId ? (
+          <div
+            onClick={() =>
+              setAlertDetails({
+                type: "error",
+                content: `You are already in ${org.display_name}`,
+              })
+            }
+          >
+            {org.display_name}
+          </div>
+        ) : (
+          <ConfirmModal
+            handleConfirm={() => handleContinue(org.id)}
+            content={`Want to switch to ${org.display_name} `}
+          >
+            <div>{org.display_name}</div>
+          </ConfirmModal>
+        ),
     };
   });
 
@@ -113,7 +127,7 @@ function TopNavBar() {
         </Button>
       ),
     },
-    {
+    allOrganization.length > 1 && {
       key: "3",
       label: (
         <Dropdown

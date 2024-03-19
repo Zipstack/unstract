@@ -35,12 +35,12 @@ function useSessionValid() {
       if (!orgs?.length) {
         throw Error("Organizations not available.");
       }
-      if (!signedInOrgId?.length) {
+      if (orgs?.length > 1 && !signedInOrgId?.length) {
         navigate("/setOrg", { state: orgs });
         return;
       }
       let userAndOrgDetails = null;
-      const orgId = signedInOrgId;
+      const orgId = signedInOrgId || orgs[0].id;
       const csrfToken = ("; " + document.cookie)
         .split(`; csrftoken=`)
         .pop()
