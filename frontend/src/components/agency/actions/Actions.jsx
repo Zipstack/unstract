@@ -79,7 +79,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   }, [source, destination]);
   useEffect(() => {
     if (apiOpsPresent) {
-      setDeploymentType("API Deployment");
+      setDeploymentType("API");
     } else if (canAddTaskPipeline) {
       setDeploymentType("Task Pipeline");
     } else if (canAddETLPipeline) {
@@ -481,7 +481,9 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
             <Alert
               message={
                 <>
-                  <span>This Workflow has been deployed as an API:</span>
+                  <span>
+                    This Workflow has been deployed as an {deploymentType}:
+                  </span>
                   <a
                     href={`/${orgName}/${deploymentType
                       .split(" ")[0]
