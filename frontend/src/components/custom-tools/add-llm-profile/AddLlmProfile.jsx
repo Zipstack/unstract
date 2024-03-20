@@ -331,7 +331,7 @@ function AddLlmProfile({
         setIsAddLlm(false);
       })
       .catch((err) => {
-        setAlertDetails(handleException(err));
+        handleException(err, "", setBackendErrors);
       })
       .finally(() => {
         setLoading(false);
