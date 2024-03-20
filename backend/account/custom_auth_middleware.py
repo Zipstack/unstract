@@ -9,7 +9,9 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from tenant_account.organization_member_service import OrganizationMemberService
 from utils.cache_service import CacheService
 from utils.local_context import StateStore
+
 from backend.constants import RequestHeader
+
 
 class CustomAuthMiddleware:
     def __init__(self, get_response: HttpResponse):
@@ -42,16 +44,11 @@ class CustomAuthMiddleware:
             self.local_authentication(request)
         elif request.COOKIES:
             self.authenticate_with_cookies(request, tenantAccessiblePublicPath)
-        if (
-            request.user
-            and request.session
-            and "user" in request.session
-        ):
+        if request.user and request.session and "user" in request.session:
             StateStore.set(Common.LOG_EVENTS_ID, request.session.session_key)
-            StateStore.set(Common.USER_ID, request.user)
             response = self.get_response(request)
             StateStore.clear(Common.LOG_EVENTS_ID)
-            StateStore.clear(Common.USER_ID)
+
             return response
         return JsonResponse({"message": "Unauthorized"}, status=401)
 

@@ -40,7 +40,7 @@ class HttpFS(UnstractFileSystem):
 
     @staticmethod
     def get_icon() -> str:
-        return "https://storage.googleapis.com/pandora-static/connector-icons/HTTP.svg"
+        return "/api/v1/static/icons/connector-icons/HTTP.svg"
 
     @staticmethod
     def get_json_schema() -> str:
