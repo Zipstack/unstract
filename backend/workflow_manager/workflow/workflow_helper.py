@@ -197,7 +197,9 @@ class WorkflowHelper:
     ) -> None:
         for tool in tool_instances:
             valid, message = ToolInstanceHelper.validate_tool_settings(
-                tool_uid=tool.tool_id, tool_meta=tool.metadata
+                user=tool.workflow.created_by,
+                tool_uid=tool.tool_id,
+                tool_meta=tool.metadata,
             )
             if not valid:
                 raise ToolValidationError(message)
