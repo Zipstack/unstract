@@ -28,6 +28,7 @@ import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
 import { UsersPage } from "../pages/UsersPage.jsx";
 import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
+import { SetOrgPage } from "../pages/SetOrgPage.jsx";
 
 let TrialRoutes;
 try {
@@ -47,6 +48,7 @@ function Router() {
           <Route path="landing" element={<LandingPage />} />
         </Route>
         {/* protected routes */}
+        <Route path="setOrg" element={<SetOrgPage />} />
         <Route path="" element={<RequireAuth />}>
           <Route path=":orgName" element={<FullPageLayout />}>
             <Route path="onboard" element={<OnBoardPage />} />
