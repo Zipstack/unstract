@@ -318,7 +318,7 @@ const onboardCompleted = (adaptersList) => {
   if (!Array.isArray(adaptersList)) {
     return false;
   }
-  const MANDATORY_ADAPTERS = ["llm", "vector_db", "embedding"];
+  const MANDATORY_ADAPTERS = ["llm", "vector_db", "embedding", "x2text"];
   adaptersList = adaptersList.map((element) => element.toLowerCase());
   return MANDATORY_ADAPTERS.every((value) => adaptersList.includes(value));
 };
