@@ -59,7 +59,7 @@ class GoogleDriveFS(UnstractFileSystem):
 
     @staticmethod
     def get_icon() -> str:
-        return "https://storage.googleapis.com/pandora-static/connector-icons/Google%20Drive.png"  # noqa
+        return "/api/v1/static/icons/connector-icons/Google%20Drive.png"  # noqa
 
     @staticmethod
     def get_json_schema() -> str:

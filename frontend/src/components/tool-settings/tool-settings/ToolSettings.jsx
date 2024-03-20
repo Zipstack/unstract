@@ -38,7 +38,7 @@ function ToolSettings({ type }) {
   const [adapterDetails, setAdapterDetails] = useState(null);
   const [userList, setUserList] = useState([]);
   const [openAddSourcesModal, setOpenAddSourcesModal] = useState(false);
-  const [openSharePermissionModal, setopenSharePermissionModal] =
+  const [openSharePermissionModal, setOpenSharePermissionModal] =
     useState(false);
   const [isPermissonEdit, setIsPermissionEdit] = useState(false);
   const [editItemId, setEditItemId] = useState(null);
@@ -131,7 +131,7 @@ function ToolSettings({ type }) {
     getAllUsers();
     axiosPrivate(requestOptions)
       .then((res) => {
-        setopenSharePermissionModal(true);
+        setOpenSharePermissionModal(true);
         setAdapterDetails(res?.data);
         setIsPermissionEdit(isEdit);
       })
@@ -179,7 +179,7 @@ function ToolSettings({ type }) {
     };
     axiosPrivate(requestOptions)
       .then((response) => {
-        setopenSharePermissionModal(false);
+        setOpenSharePermissionModal(false);
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to load"));
@@ -234,7 +234,7 @@ function ToolSettings({ type }) {
       />
       <SharePermission
         open={openSharePermissionModal}
-        setOpen={setopenSharePermissionModal}
+        setOpen={setOpenSharePermissionModal}
         adapter={adapterDetails}
         permissionEdit={isPermissonEdit}
         loading={isShareLoading}

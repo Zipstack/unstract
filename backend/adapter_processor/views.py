@@ -232,6 +232,38 @@ class AdapterInstanceViewSet(ModelViewSet):
         super().perform_destroy(adapter_instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    def partial_update(
+        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
+    ) -> Response:
+        if AdapterKeys.SHARED_USERS in request.data:
+            # find the deleted users
+            adapter = self.get_object()
+            shared_users = {
+                int(user_id) for user_id in request.data.get("shared_users", {})
+            }
+            current_users = {user.id for user in adapter.shared_users.all()}
+            removed_users = current_users.difference(shared_users)
+
+            # if removed user use this adapter as default
+            # Remove the same from his default
+            for user_id in removed_users:
+                user_default_adapter = UserDefaultAdapter.objects.get(
+                    user_id=user_id
+                )
+
+                if user_default_adapter.default_llm_adapter == adapter:
+                    user_default_adapter.default_llm_adapter = None
+                elif user_default_adapter.default_embedding_adapter == adapter:
+                    user_default_adapter.default_embedding_adapter = None
+                elif user_default_adapter.default_vector_db_adapter == adapter:
+                    user_default_adapter.default_vector_db_adapter = None
+                elif user_default_adapter.default_x2text_adapter == adapter:
+                    user_default_adapter.default_x2text_adapter = None
+
+                user_default_adapter.save()
+
+        return super().partial_update(request, *args, **kwargs)
+
     @action(detail=True, methods=["get"])
     def list_of_shared_users(
         self, request: HttpRequest, pk: Any = None
