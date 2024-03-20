@@ -8,7 +8,7 @@ import {
   StepForwardOutlined,
   StopOutlined,
 } from "@ant-design/icons";
-import { Button, Divider, Space, Tooltip, Typography } from "antd";
+import { Button, Divider, Space, Tooltip, Typography, Alert } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -41,7 +41,8 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   const [canAddETLPipeline, setCanAddETAPipeline] = useState(false);
   const [openAddTaskModal, setOpenAddTaskModal] = useState(false);
   const [openAddETLModal, setOpenAddETLModal] = useState(false);
-
+  const [deploymentName, setDeploymentName] = useState("");
+  const [deploymentType, setDeploymentType] = useState("");
   const {
     details,
     isLoading,
@@ -52,9 +53,8 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   } = useWorkflowStore();
   const { setAlertDetails } = useAlertStore();
   const { sessionDetails } = useSessionStore();
-
+  const { orgName } = sessionDetails;
   const axiosPrivate = useAxiosPrivate();
-
   useEffect(() => {
     // Enable Deploy as API only when
     // Source & Destination connection_type are selected as API
@@ -77,7 +77,15 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
         destination.connector_instance
     );
   }, [source, destination]);
-
+  useEffect(() => {
+    if (apiOpsPresent) {
+      setDeploymentType("API Deployment");
+    } else if (canAddTaskPipeline) {
+      setDeploymentType("Task Pipeline");
+    } else if (canAddETLPipeline) {
+      setDeploymentType("ETL Pipeline");
+    }
+  }, [deploymentName]);
   useEffect(() => {
     if (stepExecType === wfExecutionTypes[1]) {
       setStepExecType("");
@@ -468,6 +476,24 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
               <ApiOutlined />
             </Button>
           </Tooltip>
+          <Divider type="vertical" />
+          {deploymentName && (
+            <Alert
+              message={
+                <>
+                  <span>This Workflow has been deployed as an API:</span>
+                  <a
+                    href={`/${orgName}/${deploymentType
+                      .split(" ")[0]
+                      .toLowerCase()}`}
+                  >
+                    {deploymentName}
+                  </a>
+                </>
+              }
+              type="success"
+            />
+          )}
         </Space>
         <div className="status-bar">
           <Typography.Text>{statusBarMsg}</Typography.Text>
@@ -489,6 +515,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           setOpen={setOpenAddApiModal}
           isEdit={false}
           workflowId={details?.id}
+          setDeploymentName={setDeploymentName}
         />
       )}
       {openAddTaskModal && (
@@ -498,6 +525,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           type="task"
           title={deploymentsStaticContent["task"].modalTitle}
           workflowId={details?.id}
+          setDeploymentName={setDeploymentName}
         />
       )}
       {openAddETLModal && (
@@ -507,6 +535,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           type="etl"
           title={deploymentsStaticContent["etl"].modalTitle}
           workflowId={details?.id}
+          setDeploymentName={setDeploymentName}
         />
       )}
       <SocketMessages logId={logId} />
