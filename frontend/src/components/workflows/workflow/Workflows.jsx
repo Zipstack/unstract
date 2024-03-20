@@ -37,6 +37,7 @@ function Workflows() {
   const [openModal, toggleModal] = useState(true);
   const projectListRef = useRef();
   const filterViewRef = useRef(PROJECT_FILTER_OPTIONS[0].value);
+  const [backendErrors, setBackendErrors] = useState(null);
 
   const { setAlertDetails } = useAlertStore();
   const sessionDetails = useSessionStore((state) => state?.sessionDetails);
@@ -97,7 +98,7 @@ function Workflows() {
         getProjectList();
       })
       .catch((err) => {
-        setAlertDetails(handleException(err));
+        handleException(err, "", setBackendErrors);
       })
       .finally(() => {
         setLoading(false);
@@ -232,6 +233,8 @@ function Workflows() {
               loading={loading}
               toggleModal={toggleModal}
               openModal={openModal}
+              backendErrors={backendErrors}
+              setBackendErrors={setBackendErrors}
             />
           )}
         </div>
