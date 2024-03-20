@@ -482,7 +482,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
               message={
                 <>
                   <span>
-                    This Workflow has been deployed as an {deploymentType}:
+                    This Workflow has been deployed as an {deploymentType}:{" "}
                   </span>
                   <a
                     href={`/${orgName}/${deploymentType
