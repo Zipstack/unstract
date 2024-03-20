@@ -4,8 +4,8 @@ from account.models import User
 from django.db import models
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
-from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from prompt_studio.prompt_studio_core.models import CustomTool
+from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from utils.models.base_model import BaseModel
 
 
@@ -21,12 +21,6 @@ class PromptStudioOutputManager(BaseModel):
     output = models.CharField(
         db_comment="Field to store output", editable=True, null=True, blank=True
     )
-    document_manager = models.ForeignKey(
-        DocumentManager,
-        on_delete=models.CASCADE,
-        related_name="prompt_output_linked_document_manager",
-        editable=True,
-    )
     eval_metrics = models.JSONField(
         db_column="eval_metrics",
         null=False,
@@ -34,12 +28,10 @@ class PromptStudioOutputManager(BaseModel):
         default=list,
         db_comment="Field to store the evaluation metrics",
     )
-    tool_id = models.ForeignKey(
-        CustomTool,
-        on_delete=models.CASCADE,
-        related_name="prompt_ouput_linked_tool",
-        null=True,
-        blank=True,
+    is_single_pass_extract_mode_active = models.BooleanField(
+        default=False,
+        editable=False,
+        db_comment="Is the single pass extraction mode active",
     )
     prompt_id = models.ForeignKey(
         ToolStudioPrompt,
@@ -48,6 +40,12 @@ class PromptStudioOutputManager(BaseModel):
         null=True,
         blank=True,
     )
+    document_manager = models.ForeignKey(
+        DocumentManager,
+        on_delete=models.CASCADE,
+        related_name="prompt_output_linked_document_manager",
+        editable=True,
+    )
     profile_manager = models.ForeignKey(
         ProfileManager,
         on_delete=models.CASCADE,
@@ -55,7 +53,13 @@ class PromptStudioOutputManager(BaseModel):
         null=True,
         blank=True,
     )
-
+    tool_id = models.ForeignKey(
+        CustomTool,
+        on_delete=models.CASCADE,
+        related_name="prompt_ouput_linked_tool",
+        null=True,
+        blank=True,
+    )
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -72,3 +76,12 @@ class PromptStudioOutputManager(BaseModel):
         blank=True,
         editable=False,
     )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["prompt_id", "document_manager", "profile_manager",
+                        "tool_id", "is_single_pass_extract_mode_active"],
+                name="unique_prompt_output",
+            ),
+        ]

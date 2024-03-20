@@ -30,6 +30,9 @@ from prompt_studio.prompt_studio_core.prompt_ide_base_tool import (
 from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import (  # noqa: E501
     PromptStudioIndexHelper,
 )
+from prompt_studio.prompt_studio_output_manager.output_manager_helper import (
+    OutputManagerHelper,
+)
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import SdkError
 from unstract.sdk.index import ToolIndex
@@ -329,6 +332,15 @@ class PromptStudioHelper:
                     org_id=org_id,
                     document_id=document_id,
                 )
+
+                prompts: list[ToolStudioPrompt] = []
+                prompts.append(prompt_instance)
+                OutputManagerHelper.handle_prompt_output_update(
+                    prompts=prompts,
+                    outputs=response,
+                    document_id=document_id,
+                    is_single_pass_extract_mode_active=False
+                )
             except PermissionDenied as e:
                 raise e
             except Exception as exc:
@@ -376,6 +388,13 @@ class PromptStudioHelper:
                     prompts=prompts,
                     org_id=org_id,
                     document_id=document_id,
+                )
+
+                OutputManagerHelper.handle_prompt_output_update(
+                    prompts=prompts,
+                    outputs=response,
+                    document_id=document_id,
+                    is_single_pass_extract_mode_active=True
                 )
             except PermissionDenied as e:
                 raise e
@@ -636,7 +655,8 @@ class PromptStudioHelper:
 
         if prompt_grammar:
             for word, synonyms in prompt_grammar.items():
-                grammar.append({TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
+                grammar.append(
+                    {TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
 
         if not default_profile:
             raise DefaultProfileError()
