@@ -31,7 +31,7 @@ class MariaDB(UnstractDB):
     @staticmethod
     def get_icon() -> str:
         return (
-            "/api/v1/static/icons/connector-icons/MariaDB.png"
+            "/icons/connector-icons/MariaDB.png"
         )
 
     @staticmethod
