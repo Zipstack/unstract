@@ -359,7 +359,7 @@ class AuthenticationController:
                 user_response = {}
                 user_response["email"] = email
                 status = False
-                message = "User is already part of current organization."
+                message = "User is already part of current organization"
                 # Check if user is already part of current organization
                 if not user:
                     status = self.auth_service.invite_user(
