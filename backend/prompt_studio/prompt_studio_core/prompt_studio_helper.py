@@ -135,6 +135,7 @@ class PromptStudioHelper:
 
             raise PermissionError(error_msg)
 
+    @staticmethod
     def _publish_log(
         component: dict[str, str], level: str, state: str, message: str
     ) -> None:
@@ -215,9 +216,7 @@ class PromptStudioHelper:
             default_profile = profile_manager
             file_path = file_name
         else:
-            profile_manager = ProfileManager.objects.get(
-                prompt_studio_tool=tool, is_default=True
-            )
+            profile_manager = tool.get_default_llm_profile()
             default_profile = profile_manager
             file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                 org_id, is_create=False, user_id=user_id, tool_id=tool_id
@@ -442,13 +441,10 @@ class PromptStudioHelper:
         grammar_list = []
 
         # Using default profile manager llm if monitor_llm is None
-        if monitor_llm:
+        if monitor_llm and monitor_llm_instance:
             monitor_llm = str(monitor_llm_instance.id)
         else:
-            # TODO: Use CustomTool model to get profile_manager
-            profile_manager = ProfileManager.objects.get(
-                prompt_studio_tool=tool, is_default=True
-            )
+            profile_manager = tool.get_default_llm_profile()
             monitor_llm = str(profile_manager.llm.id)
 
         # Adding validations
@@ -635,9 +631,7 @@ class PromptStudioHelper:
         outputs: list[dict[str, Any]] = []
         grammar: list[dict[str, Any]] = []
         prompt_grammar = tool.prompt_grammer
-        default_profile: ProfileManager = ProfileManager.objects.get(
-            prompt_studio_tool=tool, is_default=True
-        )
+        default_profile: ProfileManager = tool.get_default_llm_profile()
         # Need to check the user who created profile manager
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(

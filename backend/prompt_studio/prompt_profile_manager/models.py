@@ -12,8 +12,6 @@ class ProfileManager(BaseModel):
 
     class RetrievalStrategy(models.TextChoices):
         SIMPLE = "simple", "Simple retrieval"
-        SUBQUESTION = "subquestion", "Subquestion from prompt"
-        VECTOR = "vector+keyword", "Uses vector for retrieval"
 
     profile_id = models.UUIDField(
         primary_key=True, default=uuid.uuid4, editable=False
@@ -59,7 +57,9 @@ class ProfileManager(BaseModel):
         db_comment="Field to store the retrieval strategy for prompts",
     )
     similarity_top_k = models.IntegerField(
-        blank=True, null=True, db_comment="Field to store matching count"
+        blank=True,
+        null=True,
+        db_comment="Field to store number of top embeddings to take into context",  # noqa: E501
     )
     section = models.TextField(
         blank=True, null=True, db_comment="Field to store limit to section"

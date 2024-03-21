@@ -33,9 +33,7 @@ class CustomToolSerializer(AuditSerializer):
                 str(instance.tool_id),
             )
         try:
-            profile_manager = ProfileManager.objects.get(
-                prompt_studio_tool=instance, is_default=True
-            )
+            profile_manager = instance.get_default_llm_profile()
             data[TSKeys.DEFAULT_PROFILE] = profile_manager.profile_id
         except ObjectDoesNotExist:
             logger.info(
@@ -57,9 +55,9 @@ class CustomToolSerializer(AuditSerializer):
         except Exception as e:
             logger.error(f"Error occured while appending prompts {e}")
             return data
-        
+
         data["created_by_email"] = instance.created_by.email
-        
+
         return data
 
 

@@ -180,7 +180,7 @@ class PromptStudioRegistryHelper:
         llm = ""
         embedding_model = ""
 
-        default_llm_profile = tool.get_default_llm_profile()  # type: ignore
+        default_llm_profile = tool.get_default_llm_profile()
         for prompt in prompts:
             if not prompt.profile_manager:
                 prompt.profile_manager = default_llm_profile

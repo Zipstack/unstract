@@ -413,7 +413,7 @@ class ToolInstanceHelper:
     @staticmethod
     def validate_adapter_access(
         user: User,
-        adapter_ids: str,
+        adapter_ids: set[str],
     ) -> None:
         adapter_instances = AdapterInstance.objects.filter(
             id__in=adapter_ids
