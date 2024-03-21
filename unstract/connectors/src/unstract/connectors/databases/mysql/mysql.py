@@ -30,7 +30,7 @@ class MySQL(UnstractDB):
 
     @staticmethod
     def get_icon() -> str:
-        return "/api/v1/static/icons/connector-icons/MySql.png"
+        return "/icons/connector-icons/MySql.png"
 
     @staticmethod
     def get_json_schema() -> str:
