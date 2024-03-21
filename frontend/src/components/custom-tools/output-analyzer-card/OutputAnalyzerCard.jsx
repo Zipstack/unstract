@@ -30,7 +30,7 @@ function OutputAnalyzerCard({ doc, totalFields }) {
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/fetch_contents/${details?.tool_id}?document_id=${doc?.document_id}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}?document_id=${doc?.document_id}`,
     };
 
     setIsDocLoading(true);

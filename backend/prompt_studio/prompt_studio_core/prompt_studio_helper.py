@@ -209,7 +209,10 @@ class PromptStudioHelper:
             )
             default_profile = profile_manager
             file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-                org_id, is_create=False, user_id=user_id, tool_id=tool_id
+                org_id,
+                is_create=False,
+                user_id=user_id,
+                tool_id=tool_id,
             )
             file_path = str(Path(file_path) / file_name)
 

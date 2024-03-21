@@ -198,7 +198,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=["get"])
-    def index_document(self, request: HttpRequest) -> Response:
+    def index_document(self, request: HttpRequest, pk: Any = None) -> Response:
         """API Entry point method to index input file.
 
         Args:
@@ -211,21 +211,19 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         Returns:
             Response
         """
+        tool = self.get_object()
         serializer = PromptStudioIndexSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        tool_id: str = serializer.validated_data.get(
-            ToolStudioPromptKeys.TOOL_ID
-        )
         document_id: str = serializer.validated_data.get(
             ToolStudioPromptKeys.DOCUMENT_ID
         )
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         unique_id = PromptStudioHelper.index_document(
-            tool_id=tool_id,
+            tool_id=str(tool.tool_id),
             file_name=file_name,
             org_id=request.org_id,
-            user_id=request.user.user_id,
+            user_id=tool.created_by.user_id,
             document_id=document_id,
         )
 
@@ -234,10 +232,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 ProcessorConfig.METADATA_SERVICE_CLASS
             ]
             cls.process(
-                tool_id=tool_id,
+                tool_id=str(tool.tool_id),
                 file_name=file_name,
                 org_id=request.org_id,
-                user_id=request.user.user_id,
+                user_id=tool.created_by.user_id,
                 document_id=document_id,
             )
 
@@ -449,3 +447,36 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             )
             documents.append(doc)
         return Response({"data": documents})
+
+    @action(detail=True, methods=["delete"])
+    def delete_for_ide(self, request: HttpRequest, pk: Any = None) -> Response:
+        custom_tool = self.get_object()
+        serializer = FileInfoIdeSerializer(data=request.GET)
+        serializer.is_valid(raise_exception=True)
+        document_id: str = serializer.validated_data.get("document_id")
+        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
+        file_name: str = document.document_name
+        file_path = FileManagerHelper.handle_sub_directory_for_tenants(
+            request.org_id,
+            is_create=False,
+            user_id=custom_tool.created_by.user_id,
+            tool_id=str(custom_tool.tool_id),
+        )
+        path = file_path
+        file_system = LocalStorageFS(settings={"path": path})
+        try:
+            # Delete the document record
+            document.delete()
+
+            # Delete the file
+            FileManagerHelper.delete_file(file_system, path, file_name)
+            return Response(
+                {"data": "File deleted succesfully."},
+                status=status.HTTP_200_OK,
+            )
+        except Exception as exc:
+            logger.error(f"Exception thrown from file deletion, error {exc}")
+            return Response(
+                {"data": "File deletion failed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )

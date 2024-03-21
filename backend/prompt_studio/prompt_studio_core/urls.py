@@ -43,14 +43,12 @@ prompt_studio_users = PromptStudioCoreView.as_view(
     {"get": "list_of_shared_users"}
 )
 
-prompt_studio_file_upload = PromptStudioCoreView.as_view(
+
+prompt_studio_file = PromptStudioCoreView.as_view(
     {
         "post": "upload_for_ide",
-    }
-)
-prompt_studio_fetch_content = PromptStudioCoreView.as_view(
-    {
         "get": "fetch_contents_ide",
+        "delete": "delete_for_ide",
     }
 )
 
@@ -84,7 +82,7 @@ urlpatterns = format_suffix_patterns(
             name="prompt-studio-profilemanager",
         ),
         path(
-            "prompt-studio/index-document/",
+            "prompt-studio/index-document/<uuid:pk>",
             prompt_studio_prompt_index,
             name="prompt-studio-prompt-index",
         ),
@@ -109,14 +107,9 @@ urlpatterns = format_suffix_patterns(
             name="prompt-studio-users",
         ),
         path(
-            "prompt-studio/file/upload/<uuid:pk>",
-            prompt_studio_file_upload,
-            name="prompt_studio_upload",
-        ),
-        path(
-            "prompt-studio/file/fetch_contents/<uuid:pk>",
-            prompt_studio_fetch_content,
-            name="tool_studio_fetch",
+            "prompt-studio/file/<uuid:pk>",
+            prompt_studio_file,
+            name="prompt_studio_file",
         ),
     ]
 )
