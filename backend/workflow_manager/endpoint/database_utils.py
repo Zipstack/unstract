@@ -8,8 +8,8 @@ from utils.constants import Common
 from workflow_manager.endpoint.constants import (
     BigQuery,
     DBConnectionClass,
+    DBConnectorTypeConverter,
     Snowflake,
-    SQLTypeConverter,
     TableColumns,
     TableManager,
 )
@@ -58,6 +58,13 @@ class DatabaseUtils:
                     sql_values.append(f"parse_json($${values[column]}$$)")
                 else:
                     sql_values.append(f"{values[column]}")
+            elif cls == DBConnectionClass.BIGQUERY:
+                col = column.lower()
+                type_x = column_types[col]
+                if type_x in BigQuery.COLUMN_TYPES:
+                    sql_values.append(f"{type_x}('{values[column]}')")
+                else:
+                    sql_values.append(f"'{values[column]}'")
             else:
                 # Default to Other SQL DBs
                 # TODO: Handle numeric types with no quotes
@@ -247,17 +254,11 @@ class DatabaseUtils:
             connector_id=connector_id,
             connector_settings=connector_settings,
         )
-        if class_name == DBConnectionClass.SNOWFLAKE:
-            sql_values = DatabaseUtils.make_sql_values_for_query(
-                values=values,
-                column_types=column_types,
-                cls=DBConnectionClass.SNOWFLAKE,
-            )
-        else:
-            sql_values = DatabaseUtils.make_sql_values_for_query(
-                values=values, column_types=column_types
-            )
-        return sql_values
+        return DatabaseUtils.make_sql_values_for_query(
+            values=values,
+            column_types=column_types,
+            cls=class_name,
+        )
 
     @staticmethod
     def execute_write_query(
@@ -316,13 +317,22 @@ class DatabaseUtils:
 
     @staticmethod
     def create_table_if_not_exists(
-        engine: Any, table_name: str, values: dict[str, Any]
+        engine: Any, table_name: str, database_entry: dict[str, Any]
     ) -> None:
+        """Creates table if not exists.
+
+        Args:
+            engine (Any): _description_
+            table_name (str): _description_
+            database_entry (dict[str, Any]): _description_
+
+        Raises:
+            e: _description_
+        """
         class_name = engine.__class__.__name__
         sql = DatabaseUtils.generate_create_table_query(
-            cls=class_name, table=table_name, values=values
+            cls=class_name, table=table_name, database_entry=database_entry
         )
-
         try:
             if hasattr(engine, "cursor"):
                 with engine.cursor() as cursor:
@@ -336,24 +346,67 @@ class DatabaseUtils:
 
     @staticmethod
     def generate_create_table_query(
-        cls: str, table: str, values: dict[str, Any]
+        cls: str, table: str, database_entry: dict[str, Any]
     ) -> Any:
-        if cls == DBConnectionClass.SNOWFLAKE:
-            sql_query = (
+        sql_query = ""
+        """Generate a SQL query to create a table, based on the provided
+        database entry.
+
+        Args:
+            cls (str): The database connection class.
+                Should be one of 'BIGQUERY', 'SNOWFLAKE', or other.
+            table (str): The name of the table to be created.
+            database_entry (dict[str, Any]):
+                A dictionary containing column names as keys
+                and their corresponding values.
+
+                These values are used to determine the data types,
+                for the columns in the table.
+
+        Returns:
+            str: A SQL query string to create a table with the specified name,
+              and column definitions.
+
+        Note:
+            For 'BIGQUERY', 'SNOWFLAKE', or other database connection classes,
+            the appropriate data types will be mapped based
+            on the Python types of the values in the database_entry dictionary.
+
+            Permanent columns, will always be present in table creation.
+        """
+
+        if cls == DBConnectionClass.BIGQUERY:
+            sql_query += (
+                f"CREATE TABLE IF NOT EXISTS {table} "
+                f"(id string,"
+                f"created_by string, created_at TIMESTAMP, "
+            )
+        elif cls == DBConnectionClass.SNOWFLAKE:
+            sql_query += (
                 f"CREATE TABLE {table} IF NOT EXISTS "
                 f"(id VARCHAR(36) PRIMARY KEY,"
                 f"created_by VARCHAR(255), created_at TIMESTAMP, "
             )
         else:
-            sql_query = (
+            sql_query += (
                 f"CREATE TABLE IF NOT EXISTS {table} "
                 f"(id VARCHAR(36) PRIMARY KEY, "
                 f"created_by VARCHAR(255), created_at TIMESTAMP, "
             )
-        for key, val in values.items():
+
+        for key, val in database_entry.items():
             if key not in TableManager.get_permanat_columns():
                 python_type = type(val)
-                sql_type = SQLTypeConverter.get_sql_type(python_type)
+                if cls == DBConnectionClass.BIGQUERY:
+                    sql_type = (
+                        DBConnectorTypeConverter.python_to_bigquery_mapping(
+                            python_type
+                        )
+                    )
+                else:
+                    sql_type = DBConnectorTypeConverter.python_to_sql_mapping(
+                        python_type
+                    )
                 sql_query += f"{key} {sql_type}, "
 
         return sql_query.rstrip(", ") + ");"

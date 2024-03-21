@@ -222,7 +222,7 @@ class DestinationConnector(BaseConnector):
             connector_settings=connector_settings,
         )
         DatabaseUtils.create_table_if_not_exists(
-            engine=engine, table_name=table_name, values=values
+            engine=engine, table_name=table_name, database_entry=values
         )
         sql_values = DatabaseUtils.get_sql_values_for_query(
             engine=engine,

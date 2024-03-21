@@ -98,24 +98,53 @@ class BigQuery:
     """
 
     TABLE_NAME_SIZE = 3
+    COLUMN_TYPES = [
+        "DATE",
+        "DATETIME",
+        "TIME",
+        "TIMESTAMP",
+    ]
 
 
-class SQLTypeConverter:
-    """_summary_"""
+class DBConnectorTypeConverter:
+    """_summary_
+
+    Class to convert python data type to corresponding connector data
+    type
+    """
 
     @staticmethod
-    def get_sql_type(python_type: Any) -> Optional[str]:
+    def python_to_sql_mapping(python_type: Any) -> Optional[str]:
+        """Method used to convert python to SQL datatype Used by Postgres,
+        Redshift, Snowflake."""
         mapping = {
             str: "VARCHAR(255)",
             int: "INT",
             float: "FLOAT",
-            datetime.datetime: "DATETIME",
+            datetime.datetime: "TIMESTAMP",
         }
         return mapping.get(python_type, "VARCHAR(255)")
+
+    @staticmethod
+    def python_to_bigquery_mapping(python_type: Any) -> Optional[str]:
+        """Method used to convert python to bigquery datatype."""
+        mapping = {
+            str: "string",
+            int: "INT64",
+            float: "FLOAT64",
+            datetime.datetime: "TIMESTAMP",
+        }
+        return mapping.get(python_type, "string")
 
 
 class TableManager:
     @staticmethod
     def get_permanat_columns() -> list[str]:
-        permanat_columns = ["created_by", "created_at"]
-        return permanat_columns
+        """Returns permanent columns for creating table in connector. Given
+        columns needs to be always present while creating table.
+
+        Returns:
+            list[str]: _description_
+        """
+        permanent_columns = ["created_by", "created_at"]
+        return permanent_columns
