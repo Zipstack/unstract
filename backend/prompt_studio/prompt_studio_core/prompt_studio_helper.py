@@ -7,7 +7,6 @@ from typing import Any, Optional
 from account.constants import Common
 from adapter_processor.models import AdapterInstance
 from django.conf import settings
-from django.core.exceptions import PermissionDenied
 from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
@@ -20,6 +19,7 @@ from prompt_studio.prompt_studio_core.exceptions import (
     DefaultProfileError,
     IndexingError,
     NoPromptsFound,
+    PermissionError,
     PromptNotValid,
     ToolNotValid,
 )
@@ -62,7 +62,7 @@ class PromptStudioHelper:
               validate.
 
         Raises:
-            PermissionDenied: If the owner does not have permission to perform
+            PermissionError: If the owner does not have permission to perform
               the action.
         """
         profile_manager_owner = profile_manager.created_by
@@ -98,34 +98,45 @@ class PromptStudioHelper:
             and is_embedding_model_owned
             and is_x2text_owned
         ):
+            adapter_names = set()
             if not is_llm_owned:
                 logger.error(
                     ERROR_MSG,
                     profile_manager_owner.user_id,
                     profile_manager.llm.id,
                 )
+                adapter_names.add(profile_manager.llm.adapter_name)
             if not is_vector_store_owned:
                 logger.error(
                     ERROR_MSG,
                     profile_manager_owner.user_id,
                     profile_manager.vector_store.id,
                 )
+                adapter_names.add(profile_manager.vector_store.adapter_name)
             if not is_embedding_model_owned:
                 logger.error(
                     ERROR_MSG,
                     profile_manager_owner.user_id,
                     profile_manager.embedding_model.id,
                 )
+                adapter_names.add(profile_manager.embedding_model.adapter_name)
             if not is_x2text_owned:
                 logger.error(
                     ERROR_MSG,
                     profile_manager_owner.user_id,
                     profile_manager.x2text.id,
                 )
+                adapter_names.add(profile_manager.x2text.adapter_name)
+            if len(adapter_names) > 1:
+                error_msg = (
+                    f"Multiple permission errors were encountered with {', '.join(adapter_names)}",  # noqa: E501
+                )
+            else:
+                error_msg = (
+                    f"Permission Error: You do not have access to {adapter_names.pop()}",  # noqa: E501
+                )
 
-            raise PermissionDenied(
-                "You don't have permission to perform this action."
-            )
+            raise PermissionError(error_msg)
 
     def _publish_log(
         component: dict[str, str], level: str, state: str, message: str
@@ -341,7 +352,7 @@ class PromptStudioHelper:
                     document_id=document_id,
                     is_single_pass_extract_mode_active=False
                 )
-            except PermissionDenied as e:
+            except PermissionError as e:
                 raise e
             except Exception as exc:
                 logger.error(
@@ -396,7 +407,7 @@ class PromptStudioHelper:
                     document_id=document_id,
                     is_single_pass_extract_mode_active=True
                 )
-            except PermissionDenied as e:
+            except PermissionError as e:
                 raise e
             except Exception as e:
                 logger.error(

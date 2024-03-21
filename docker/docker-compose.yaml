@@ -37,7 +37,7 @@ services:
     image: unstract/backend:${VERSION}
     container_name: unstract-execution-consumer
     restart: unless-stopped
-    entrypoint: /app/.venv/bin/celery
+    entrypoint: .venv/bin/celery
     command: "-A backend worker --loglevel=info"
     env_file:
       - ../backend/.env
