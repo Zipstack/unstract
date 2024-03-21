@@ -6,9 +6,9 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { SocketMessages } from "../socket-messages/SocketMessages";
-import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 
 function CustomToolsHelper() {
   const [isLoading, setIsLoading] = useState(true);
@@ -71,7 +71,7 @@ function CustomToolsHelper() {
 
         const reqOpsLlmProfiles = {
           method: "GET",
-          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profiles/${id}`,
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-studio-profile/${id}`,
         };
 
         return handleApiRequest(reqOpsLlmProfiles);

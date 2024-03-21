@@ -67,12 +67,12 @@ urlpatterns = format_suffix_patterns(
             name="prompt-studio-choices",
         ),
         path(
-            "prompt-studio/profiles/<uuid:pk>/",
+            "prompt-studio/prompt-studio-profile/<uuid:pk>/",
             prompt_studio_profiles,
             name="prompt-studio-profiles",
         ),
         path(
-            "prompt-studio/prompts/<uuid:pk>/",
+            "prompt-studio/prompt-studio-prompt/<uuid:pk>/",
             prompt_studio_prompts,
             name="prompt-studio-prompts",
         ),

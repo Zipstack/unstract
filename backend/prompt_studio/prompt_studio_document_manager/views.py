@@ -1,7 +1,6 @@
 from typing import Optional
 
 from django.db.models import QuerySet
-from prompt_studio.permission import IsDocumentMangerAccesible
 from prompt_studio.prompt_studio_document_manager.serializers import (
     PromptStudioDocumentManagerSerializer,
 )
@@ -19,9 +18,6 @@ class PromptStudioDocumentManagerView(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     queryset = DocumentManager.objects.all()
     serializer_class = PromptStudioDocumentManagerSerializer
-    permission_classes: list[type[IsDocumentMangerAccesible]] = [
-        IsDocumentMangerAccesible
-    ]
 
     def get_queryset(self) -> Optional[QuerySet]:
         filter_args = FilterHelper.build_filter_args(

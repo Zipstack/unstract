@@ -114,8 +114,7 @@ function ToolsMain() {
     }
     const requestOptions = {
       method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompts/${details?.tool_id}/`,
-      // url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-studio-prompt/${details?.tool_id}/`,
 
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
