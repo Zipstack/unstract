@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
@@ -21,7 +22,7 @@ class OutputManagerHelper:
         # Iterate through each prompt in the list
         for prompt in prompts:
             profile_manager = prompt.profile_manager
-            output = outputs.get(prompt.prompt_key)
+            output = json.dumps(outputs.get(prompt.prompt_key))
 
             # Attempt to retrieve an existing output manager,
             # for the given criteria,
