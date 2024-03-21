@@ -19,6 +19,7 @@ from prompt_studio.prompt_studio_core.exceptions import (
     DefaultProfileError,
     IndexingError,
     NoPromptsFound,
+    PermissionError,
     PromptNotValid,
     ToolNotValid,
 )
@@ -39,6 +40,7 @@ from utils.local_context import StateStore
 from unstract.core.pubsub_helper import LogPublisher
 
 CHOICES_JSON = "/static/select_choices.json"
+ERROR_MSG = "User %s doesn't have access to adapter %s"
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,92 @@ class PromptStudioHelper:
     """Helper class for Custom tool operations."""
 
     @staticmethod
+    def validate_profile_manager_owner_access(
+        profile_manager: ProfileManager,
+    ) -> None:
+        """Helper method to validate the owner's access to the profile manager.
+
+        Args:
+            profile_manager (ProfileManager): The profile manager instance to
+              validate.
+
+        Raises:
+            PermissionError: If the owner does not have permission to perform
+              the action.
+        """
+        profile_manager_owner = profile_manager.created_by
+
+        is_llm_owned = (
+            profile_manager.llm.created_by == profile_manager_owner
+            or profile_manager.llm.shared_users.filter(
+                pk=profile_manager_owner.pk
+            ).exists()
+        )
+        is_vector_store_owned = (
+            profile_manager.vector_store.created_by == profile_manager_owner
+            or profile_manager.vector_store.shared_users.filter(
+                pk=profile_manager_owner.pk
+            ).exists()
+        )
+        is_embedding_model_owned = (
+            profile_manager.embedding_model.created_by == profile_manager_owner
+            or profile_manager.embedding_model.shared_users.filter(
+                pk=profile_manager_owner.pk
+            ).exists()
+        )
+        is_x2text_owned = (
+            profile_manager.x2text.created_by == profile_manager_owner
+            or profile_manager.x2text.shared_users.filter(
+                pk=profile_manager_owner.pk
+            ).exists()
+        )
+
+        if not (
+            is_llm_owned
+            and is_vector_store_owned
+            and is_embedding_model_owned
+            and is_x2text_owned
+        ):
+            adapter_names = set()
+            if not is_llm_owned:
+                logger.error(
+                    ERROR_MSG,
+                    profile_manager_owner.user_id,
+                    profile_manager.llm.id,
+                )
+                adapter_names.add(profile_manager.llm.adapter_name)
+            if not is_vector_store_owned:
+                logger.error(
+                    ERROR_MSG,
+                    profile_manager_owner.user_id,
+                    profile_manager.vector_store.id,
+                )
+                adapter_names.add(profile_manager.vector_store.adapter_name)
+            if not is_embedding_model_owned:
+                logger.error(
+                    ERROR_MSG,
+                    profile_manager_owner.user_id,
+                    profile_manager.embedding_model.id,
+                )
+                adapter_names.add(profile_manager.embedding_model.adapter_name)
+            if not is_x2text_owned:
+                logger.error(
+                    ERROR_MSG,
+                    profile_manager_owner.user_id,
+                    profile_manager.x2text.id,
+                )
+                adapter_names.add(profile_manager.x2text.adapter_name)
+            if len(adapter_names) > 1:
+                error_msg = (
+                    f"Multiple permission errors were encountered with {', '.join(adapter_names)}",  # noqa: E501
+                )
+            else:
+                error_msg = (
+                    f"Permission Error: You do not have access to {adapter_names.pop()}",  # noqa: E501
+                )
+
+            raise PermissionError(error_msg)
+
     def _publish_log(
         component: dict[str, str], level: str, state: str, message: str
     ) -> None:
@@ -149,6 +237,11 @@ class PromptStudioHelper:
             LogLevels.RUN,
             "Indexing started",
         )
+        # Need to check the user who created profile manager
+        # has access to adapters configured in profile manager
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            default_profile
+        )
 
         doc_id = PromptStudioHelper.dynamic_indexer(
             profile_manager=default_profile,
@@ -247,6 +340,8 @@ class PromptStudioHelper:
                     org_id=org_id,
                     document_id=document_id,
                 )
+            except PermissionError as e:
+                raise e
             except Exception as exc:
                 logger.error(
                     f"[{tool.tool_id}] Error while fetching response for prompt {id}: {exc}"  # noqa: E501
@@ -293,6 +388,8 @@ class PromptStudioHelper:
                     org_id=org_id,
                     document_id=document_id,
                 )
+            except PermissionError as e:
+                raise e
             except Exception as e:
                 logger.error(
                     f"[{tool.tool_id}] Error while fetching single pass response: {e}"  # noqa: E501
@@ -363,6 +460,11 @@ class PromptStudioHelper:
                 grammar_list.append(grammer_dict)
                 grammer_dict = {}
         for prompt in prompts:
+            # Need to check the user who created profile manager
+            # has access to adapters
+            PromptStudioHelper.validate_profile_manager_owner_access(
+                prompt.profile_manager
+            )
             # Not checking reindex here as there might be
             # change in Profile Manager
             vector_db = str(prompt.profile_manager.vector_store.id)
@@ -535,6 +637,11 @@ class PromptStudioHelper:
         prompt_grammar = tool.prompt_grammer
         default_profile: ProfileManager = ProfileManager.objects.get(
             prompt_studio_tool=tool, is_default=True
+        )
+        # Need to check the user who created profile manager
+        # has access to adapters configured in profile manager
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            default_profile
         )
         default_profile.chunk_size = 0  # To retrive full context
 

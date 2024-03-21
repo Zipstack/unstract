@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:3dd6096205fca2c96712c0f7b2608d18526ae494feadeb3fcfb8efbba9545391"
+content_hash = "sha256:33e6e0b10667ecd0eeeab5f479102c9a7b2a785414c072d826de9b883e1b1537"
 
 [[package]]
 name = "adlfs"
@@ -310,16 +310,16 @@ files = [
 
 [[package]]
 name = "asgiref"
-version = "3.7.2"
-requires_python = ">=3.7"
+version = "3.8.0"
+requires_python = ">=3.8"
 summary = "ASGI specs, helper code, and adapters"
 groups = ["default"]
 dependencies = [
     "typing-extensions>=4; python_version < \"3.11\"",
 ]
 files = [
-    {file = "asgiref-3.7.2-py3-none-any.whl", hash = "sha256:89b2ef2247e3b562a16eef663bc0e2e703ec6468e2fa8a5cd61cd449786d4f6e"},
-    {file = "asgiref-3.7.2.tar.gz", hash = "sha256:9e0ce3aa93a819ba5b45120216b23878cf6e8525eb3848653452b4192b92afed"},
+    {file = "asgiref-3.8.0-py3-none-any.whl", hash = "sha256:30fc07797ad71a0abb8fe34aa03c8043308a8389abc7942d797ea9911540bc28"},
+    {file = "asgiref-3.8.0.tar.gz", hash = "sha256:ec75d9d0f04e2dbfedef1f20ee73a6594af80c333df47cdd31f37e6701f7c53a"},
 ]
 
 [[package]]
@@ -3947,16 +3947,16 @@ files = [
 
 [[package]]
 name = "smart-open"
-version = "7.0.1"
-requires_python = ">=3.6,<4.0"
+version = "7.0.2"
+requires_python = "<4.0,>=3.7"
 summary = "Utils for streaming large files (S3, HDFS, GCS, Azure Blob Storage, gzip, bz2...)"
 groups = ["default"]
 dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "smart_open-7.0.1-py3-none-any.whl", hash = "sha256:9507e38b43d1fd515c2085b9db2e41b592bb754b0e31395a085eb0d61d2410e5"},
-    {file = "smart_open-7.0.1.tar.gz", hash = "sha256:c03d00e49483d8e5375720d4d6c1402107f23584bf96505db0b4e17f92339e56"},
+    {file = "smart_open-7.0.2-py3-none-any.whl", hash = "sha256:361a8fadfc9c1cfb81e8d18a96b724e1d6216f8f3ad543c841e19fc0c56a003a"},
+    {file = "smart_open-7.0.2.tar.gz", hash = "sha256:f109517702453c3fa5ac60178698138b618d3670c2f1f0993ee8ce27193d3341"},
 ]
 
 [[package]]
@@ -4640,7 +4640,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.4.2"
+version = "0.5.0"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract Adapters"
 groups = ["default"]
@@ -4666,8 +4666,8 @@ dependencies = [
     "weaviate-client==3.25.3",
 ]
 files = [
-    {file = "unstract_adapters-0.4.2-py3-none-any.whl", hash = "sha256:62a8d432fb16d4c63cfc79664a7fa1c7b7c0b733b40046193be10ad790ed8a13"},
-    {file = "unstract_adapters-0.4.2.tar.gz", hash = "sha256:e77cf812b5f1870ca74f2047657fda913469b3b13c851363c19c369066ff8404"},
+    {file = "unstract_adapters-0.5.0-py3-none-any.whl", hash = "sha256:991e0ac5ba27bb2a1f8885c029543b3926171e7f6c7a98eb98efa553a02b0654"},
+    {file = "unstract_adapters-0.5.0.tar.gz", hash = "sha256:83754413af26c2668056b63590e8b2feccd95c540ad573557f70a321421a0db2"},
 ]
 
 [[package]]
@@ -4724,7 +4724,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.15.1"
+version = "0.15.2"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -4735,11 +4735,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.4.1",
+    "unstract-adapters~=0.5.0",
 ]
 files = [
-    {file = "unstract_sdk-0.15.1-py3-none-any.whl", hash = "sha256:b62460bc2054056a47f9ae01b1a2d8567273fba33725f5a8676313bfab7a2af3"},
-    {file = "unstract_sdk-0.15.1.tar.gz", hash = "sha256:9dc67b3f646b99328912ef1b703dbf8ffd710c25f181247e277433cf032ad1aa"},
+    {file = "unstract_sdk-0.15.2-py3-none-any.whl", hash = "sha256:74397d7d95b0e87933132f2123e7cfccf26b049bd819af8c96923a941d123a15"},
+    {file = "unstract_sdk-0.15.2.tar.gz", hash = "sha256:4b6b2dbfa6d2c228c8ce47dcf97312989c60908199d309e9ccddbde136f0b2bc"},
 ]
 
 [[package]]
@@ -4753,7 +4753,7 @@ dependencies = [
     "PyYAML~=6.0.1",
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
-    "unstract-adapters~=0.4.1",
+    "unstract-adapters~=0.5.0",
     "unstract-tool-sandbox",
 ]
 
@@ -4805,13 +4805,13 @@ files = [
 
 [[package]]
 name = "validators"
-version = "0.23.0"
+version = "0.23.2"
 requires_python = ">=3.8"
 summary = "Python Data Validation for Humans™"
 groups = ["default"]
 files = [
-    {file = "validators-0.23.0-py3-none-any.whl", hash = "sha256:5fad1863feb5003993e19b733beee31fc7a64f94ede4ead4bf08e1bcac8f8db6"},
-    {file = "validators-0.23.0.tar.gz", hash = "sha256:4b413f191646329cc3de65d7e54dcdffccada6301ca11d7a7e45f7b163c6ce6f"},
+    {file = "validators-0.23.2-py3-none-any.whl", hash = "sha256:cb68e489f946f4934dbd3c203f08486c53493ab1c204f39d13b13c209f60e2c1"},
+    {file = "validators-0.23.2.tar.gz", hash = "sha256:397ec4a1e86192e6e904b5afe8c12da0e6eaa3db088c0cc426e00cfee2ef07a8"},
 ]
 
 [[package]]

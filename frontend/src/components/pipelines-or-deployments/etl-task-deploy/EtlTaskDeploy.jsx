@@ -39,6 +39,7 @@ const EtlTaskDeploy = ({
   title,
   setTableData,
   workflowId,
+  setDeploymentName,
 }) => {
   const workflowStore = useWorkflowStore();
   const { updateWorkflow } = workflowStore;
@@ -270,6 +271,7 @@ const EtlTaskDeploy = ({
         if (workflowId) {
           // Update - can update workflow endpoint status in store
           updateWorkflow({ allowChangeEndpoint: false });
+          setDeploymentName(body.pipeline_name);
         } else {
           addPipeline(res?.data);
         }
@@ -406,5 +408,6 @@ EtlTaskDeploy.propTypes = {
   title: PropTypes.string.isRequired,
   setTableData: PropTypes.func,
   workflowId: PropTypes.string,
+  setDeploymentName: PropTypes.func,
 };
 export { EtlTaskDeploy };
