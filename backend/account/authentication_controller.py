@@ -34,7 +34,6 @@ from account.serializer import (
     SetOrganizationsResponseSerializer,
 )
 from account.user import UserService
-from utils.local_context import StateStore
 from django.conf import settings
 from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
@@ -49,6 +48,7 @@ from rest_framework.response import Response
 from tenant_account.models import OrganizationMember as OrganizationMember
 from tenant_account.organization_member_service import OrganizationMemberService
 from utils.cache_service import CacheService
+from utils.local_context import StateStore
 
 Logger = logging.getLogger(__name__)
 
@@ -236,7 +236,9 @@ class AuthenticationController:
                 data={
                     "user": serialized_user_info,
                     "organization": organization_info,
-                    f"{Common.LOG_EVENTS_ID}": StateStore.get(Common.LOG_EVENTS_ID)
+                    f"{Common.LOG_EVENTS_ID}": StateStore.get(
+                        Common.LOG_EVENTS_ID
+                    ),
                 },
             )
             # Update user session data in redis
@@ -400,6 +402,9 @@ class AuthenticationController:
             is_removed = False
         if is_removed:
             OrganizationMember.objects.filter(user__in=ids_list).delete()
+            # removing adapter relations on user removal
+            for user_id in ids_list:
+                User.objects.get(pk=user_id).shared_adapters.clear()
         return is_removed
 
     def add_user_role(
