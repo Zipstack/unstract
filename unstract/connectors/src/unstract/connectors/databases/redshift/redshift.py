@@ -34,7 +34,7 @@ class Redshift(UnstractDB):
     @staticmethod
     def get_icon() -> str:
         return (
-            "/api/v1/static/icons/connector-icons/Redshift.png"
+            "/icons/connector-icons/Redshift.png"
         )
 
     @staticmethod
