@@ -217,10 +217,12 @@ class DestinationConnector(BaseConnector):
             agent_name=agent_name,
             single_column_name=single_column_name,
         )
-
         engine = DatabaseUtils.get_db_engine(
             connector_id=connector_instance.connector_id,
             connector_settings=connector_settings,
+        )
+        DatabaseUtils.create_table_if_not_exists(
+            engine=engine, table_name=table_name, values=values
         )
         sql_values = DatabaseUtils.get_sql_values_for_query(
             engine=engine,

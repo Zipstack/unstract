@@ -1,3 +1,7 @@
+import datetime
+from typing import Any, Optional
+
+
 class TableColumns:
     CREATED_BY = "created_by"
     CREATED_AT = "created_at"
@@ -94,3 +98,24 @@ class BigQuery:
     """
 
     TABLE_NAME_SIZE = 3
+
+
+class SQLTypeConverter:
+    """_summary_"""
+
+    @staticmethod
+    def get_sql_type(python_type: Any) -> Optional[str]:
+        mapping = {
+            str: "VARCHAR(255)",
+            int: "INT",
+            float: "FLOAT",
+            datetime.datetime: "DATETIME",
+        }
+        return mapping.get(python_type, "VARCHAR(255)")
+
+
+class TableManager:
+    @staticmethod
+    def get_permanat_columns() -> list[str]:
+        permanat_columns = ["created_by", "created_at"]
+        return permanat_columns

@@ -1,6 +1,7 @@
 import datetime
 import json
 import logging
+import uuid
 from typing import Any, Optional
 
 from utils.constants import Common
@@ -8,7 +9,9 @@ from workflow_manager.endpoint.constants import (
     BigQuery,
     DBConnectionClass,
     Snowflake,
+    SQLTypeConverter,
     TableColumns,
+    TableManager,
 )
 from workflow_manager.endpoint.exceptions import BigQueryTableNotFound
 from workflow_manager.workflow.enums import AgentName, ColumnModes
@@ -275,9 +278,10 @@ class DatabaseUtils:
           syntax when VARIANT columns are present (JSON).
           So we need to use INSERT INTO ... SELECT ... syntax
         """
+        generate_uuid = str(uuid.uuid4())
         sql = (
-            f"INSERT INTO {table_name} ({','.join(sql_keys)}) "
-            f"SELECT {','.join(sql_values)}"
+            f"INSERT INTO {table_name} (id, {','.join(sql_keys)}) "
+            f"SELECT '{generate_uuid}',{','.join(sql_values)}"
         )
         try:
             if hasattr(engine, "cursor"):
@@ -309,3 +313,47 @@ class DatabaseUtils:
         ]
         connector_class: UnstractDB = connector(connector_settings)
         return connector_class.execute(query=query)
+
+    @staticmethod
+    def create_table_if_not_exists(
+        engine: Any, table_name: str, values: dict[str, Any]
+    ) -> None:
+        class_name = engine.__class__.__name__
+        sql = DatabaseUtils.generate_create_table_query(
+            cls=class_name, table=table_name, values=values
+        )
+
+        try:
+            if hasattr(engine, "cursor"):
+                with engine.cursor() as cursor:
+                    cursor.execute(sql)
+                engine.commit()
+            else:
+                engine.query(sql)
+        except Exception as e:
+            logger.error(f"Error while creating table: {str(e)}")
+            raise e
+
+    @staticmethod
+    def generate_create_table_query(
+        cls: str, table: str, values: dict[str, Any]
+    ) -> Any:
+        if cls == DBConnectionClass.SNOWFLAKE:
+            sql_query = (
+                f"CREATE TABLE {table} IF NOT EXISTS "
+                f"(id VARCHAR(36) PRIMARY KEY,"
+                f"created_by VARCHAR(255), created_at TIMESTAMP, "
+            )
+        else:
+            sql_query = (
+                f"CREATE TABLE IF NOT EXISTS {table} "
+                f"(id VARCHAR(36) PRIMARY KEY, "
+                f"created_by VARCHAR(255), created_at TIMESTAMP, "
+            )
+        for key, val in values.items():
+            if key not in TableManager.get_permanat_columns():
+                python_type = type(val)
+                sql_type = SQLTypeConverter.get_sql_type(python_type)
+                sql_query += f"{key} {sql_type}, "
+
+        return sql_query.rstrip(", ") + ");"
