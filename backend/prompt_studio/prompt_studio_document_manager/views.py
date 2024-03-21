@@ -28,8 +28,8 @@ class PromptStudioDocumentManagerView(viewsets.ModelViewSet):
             self.request,
             PromptStudioOutputManagerKeys.TOOL_ID,
         )
+        queryset = None
         if filter_args:
             queryset = DocumentManager.objects.filter(**filter_args)
-        else:
-            queryset = DocumentManager.objects.all()
+
         return queryset
