@@ -6,25 +6,29 @@ from django.db import migrations, models
 def delete_duplicates(apps, schema_editor):
     promptstudiooutputmanager = apps.get_model(
         "prompt_studio_output_manager", "PromptStudioOutputManager")
+
+    # Find duplicate rows based on unique constraint fields and count their occurrences
     duplicates = promptstudiooutputmanager.objects.values(
         'prompt_id', 'document_manager', 'profile_manager', 'tool_id'
     ).annotate(
         count=models.Count('prompt_output_id')
     ).filter(
-        count__gt=1
+        count__gt=1  # Filter to only get rows that have duplicates
     )
 
+    # Iterate over each set of duplicates found
     for duplicate in duplicates:
+        # Find all instances of duplicates for the current set
         duplicates_to_delete = promptstudiooutputmanager.objects.filter(
             prompt_id=duplicate['prompt_id'],
             document_manager=duplicate['document_manager'],
             profile_manager=duplicate['profile_manager'],
             tool_id=duplicate['tool_id']
-        ).order_by('-created_at')[1:]  # Keep the latest one, delete others
+        ).order_by('-created_at')[1:]  # Order by created_at descending and skip the first one (keep the latest)
 
-        # Keep the first object and delete the rest
+        # delete all the duplicate records
         for obj in duplicates_to_delete:
-            obj.delete()
+            obj.delete()    # Delete duplicate object
 
 
 class Migration(migrations.Migration):
@@ -36,6 +40,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(delete_duplicates),
         migrations.AddField(
             model_name="promptstudiooutputmanager",
             name="is_single_pass_extract_mode_active",
