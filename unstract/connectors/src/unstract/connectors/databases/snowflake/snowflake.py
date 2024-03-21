@@ -33,7 +33,6 @@ class SnowflakeDB(UnstractDB):
     @staticmethod
     def get_icon() -> str:
         return (
-            "/api/v1/static"
             "/icons/connector-icons/Snowflake.png"
         )
 
