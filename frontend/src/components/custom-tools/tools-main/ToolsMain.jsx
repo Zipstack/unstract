@@ -17,7 +17,6 @@ import { useNavigate } from "react-router-dom";
 function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
   const [prompts, setPrompts] = useState([]);
-  const [triggerRunSinglePass, setTriggerRunSinglePass] = useState(false);
   const [scrollToBottom, setScrollToBottom] = useState(false);
   const { sessionDetails } = useSessionStore();
   const {
@@ -26,7 +25,8 @@ function ToolsMain() {
     selectedDoc,
     updateCustomTool,
     disableLlmOrDocChange,
-    isSinglePassExtract,
+    singlePassExtractMode,
+    isSinglePassExtractLoading,
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -37,7 +37,6 @@ function ToolsMain() {
     {
       key: "1",
       label: "Document Parser",
-      disabled: isSinglePassExtract,
     },
     {
       key: "2",
@@ -93,14 +92,6 @@ function ToolsMain() {
     setPrompts(details?.prompts || []);
   }, [details]);
 
-  useEffect(() => {
-    if (!isSinglePassExtract) {
-      return;
-    }
-    setActiveKey("2");
-    setTriggerRunSinglePass(true);
-  }, [isSinglePassExtract]);
-
   const onChange = (key) => {
     setActiveKey(key);
   };
@@ -137,8 +128,43 @@ function ToolsMain() {
       });
   };
 
-  const handleSinglePassExtraction = () => {
-    updateCustomTool({ isSinglePassExtract: true });
+  const handleRunSinglePassExtraction = () => {
+    updateCustomTool({ isSinglePassExtractLoading: true });
+    handleSinglePassExtractionApi(selectedDoc?.document_id)
+      .then((res) => {
+        console.log(res?.data);
+      })
+      .catch((err) => {
+        setAlertDetails(
+          handleException(err, "Failed to run single pass extraction")
+        );
+      })
+      .finally(() => {
+        updateCustomTool({ isSinglePassExtractLoading: false });
+      });
+  };
+
+  const handleSinglePassExtractionApi = async (docId) => {
+    const body = {
+      document_id: docId,
+      tool_id: details?.tool_id,
+    };
+
+    const requestOptions = {
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/single-pass-extraction`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: body,
+    };
+
+    return axiosPrivate(requestOptions)
+      .then((res) => res)
+      .catch((err) => {
+        throw err;
+      });
   };
 
   return (
@@ -155,14 +181,15 @@ function ToolsMain() {
                 onClick={() => navigate("outputAnalyzer")}
               />
             </Tooltip>
-            <Tooltip title="Single Pass Extraction">
-              <Button
-                onClick={handleSinglePassExtraction}
-                loading={isSinglePassExtract}
-                disabled={disableLlmOrDocChange?.length > 0}
-                icon={<PlayCircleOutlined />}
-              />
-            </Tooltip>
+            {singlePassExtractMode && (
+              <Tooltip title="Single Pass Extraction">
+                <Button
+                  onClick={handleRunSinglePassExtraction}
+                  loading={isSinglePassExtractLoading}
+                  icon={<PlayCircleOutlined />}
+                />
+              </Tooltip>
+            )}
           </Space>
         </div>
       </div>
@@ -175,11 +202,7 @@ function ToolsMain() {
           />
         )}
         {activeKey === "2" && (
-          <CombinedOutput
-            docId={selectedDoc?.document_id}
-            triggerRunSinglePass={triggerRunSinglePass}
-            setTriggerRunSinglePass={setTriggerRunSinglePass}
-          />
+          <CombinedOutput docId={selectedDoc?.document_id} />
         )}
       </div>
       <div className="tools-main-footer">

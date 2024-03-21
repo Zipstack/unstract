@@ -18,15 +18,10 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
-function CombinedOutput({
-  docId,
-  setFilledFields,
-  triggerRunSinglePass,
-  setTriggerRunSinglePass,
-}) {
+function CombinedOutput({ docId, setFilledFields }) {
   const [combinedOutput, setCombinedOutput] = useState({});
   const [isOutputLoading, setIsOutputLoading] = useState(false);
-  const { details, isSinglePassExtract, updateCustomTool } =
+  const { details, singlePassExtractMode, isSinglePassExtractLoading } =
     useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -34,11 +29,7 @@ function CombinedOutput({
   const handleException = useExceptionHandler();
 
   useEffect(() => {
-    if (!docId) {
-      return;
-    }
-
-    if (isSinglePassExtract) {
+    if (!docId || isSinglePassExtractLoading) {
       return;
     }
 
@@ -91,24 +82,16 @@ function CombinedOutput({
       .finally(() => {
         setIsOutputLoading(false);
       });
-  }, [docId]);
+  }, [docId, singlePassExtractMode, isSinglePassExtractLoading]);
 
   useEffect(() => {
     Prism.highlightAll();
   }, [combinedOutput]);
 
-  useEffect(() => {
-    if (!triggerRunSinglePass) {
-      return;
-    }
-    setTriggerRunSinglePass(false);
-    runSinglePassExtraction();
-  }, [triggerRunSinglePass]);
-
   const handleOutputApiRequest = async () => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}&is_single_pass_extract_mode_active=${singlePassExtractMode}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -118,37 +101,6 @@ function CombinedOutput({
       .then((res) => res)
       .catch((err) => {
         throw err;
-      });
-  };
-
-  const runSinglePassExtraction = () => {
-    const body = {
-      document_id: docId,
-      tool_id: details?.tool_id,
-    };
-
-    const requestOptions = {
-      method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/single-pass-extraction`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json",
-      },
-      data: body,
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data || {};
-        setCombinedOutput(data);
-      })
-      .catch((err) => {
-        setAlertDetails(
-          handleException(err, "Failed to generate single pass extraction")
-        );
-      })
-      .finally(() => {
-        updateCustomTool({ isSinglePassExtract: false });
       });
   };
 
@@ -179,8 +131,6 @@ function CombinedOutput({
 CombinedOutput.propTypes = {
   docId: PropTypes.string,
   setFilledFields: PropTypes.func,
-  triggerRunSinglePass: PropTypes.bool.isRequired,
-  setTriggerRunSinglePass: PropTypes.func.isRequired,
 };
 
 export { CombinedOutput };

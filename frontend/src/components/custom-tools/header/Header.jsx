@@ -4,9 +4,9 @@ import {
   ExportOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
-import { Button, Tooltip, Typography } from "antd";
+import { Button, Space, Switch, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Header.css";
 
@@ -17,14 +17,36 @@ import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
-function Header({ setOpenSettings }) {
+function Header({ setOpenSettings, handleUpdateTool }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
-  const { details } = useCustomToolStore();
+  const { details, updateCustomTool } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
   const handleException = useExceptionHandler();
+
+  useEffect(() => {
+    updateCustomTool({
+      singlePassExtractMode: details?.single_pass_extraction_mode,
+    });
+  }, []);
+
+  const handleSinglePassExtractChange = (value) => {
+    updateCustomTool({
+      singlePassExtractMode: value,
+    });
+
+    handleUpdateTool({ single_pass_extraction_mode: value }).catch((err) => {
+      setAlertDetails(
+        handleException(err, "Failed to switch the single pass extraction mode")
+      );
+      // Revert the mode if the API fails
+      updateCustomTool({
+        singlePassExtractMode: !value,
+      });
+    });
+  };
 
   const handleExport = () => {
     const requestOptions = {
@@ -68,6 +90,15 @@ function Header({ setOpenSettings }) {
         </Button>
       </div>
       <div className="custom-tools-header-btns">
+        <Space>
+          <Typography.Text className="font-size-12">
+            Single Pass Extraction
+          </Typography.Text>
+          <Switch
+            size="small"
+            onChange={(value) => handleSinglePassExtractChange(value)}
+          />
+        </Space>
         <div>
           <Tooltip title="Settings">
             <Button
@@ -95,6 +126,7 @@ function Header({ setOpenSettings }) {
 
 Header.propTypes = {
   setOpenSettings: PropTypes.func.isRequired,
+  handleUpdateTool: PropTypes.func.isRequired,
 };
 
 export { Header };

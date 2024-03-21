@@ -102,6 +102,8 @@ function PromptCard({
     disableLlmOrDocChange,
     indexDocs,
     summarizeIndexStatus,
+    singlePassExtractMode,
+    isSinglePassExtractLoading,
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const { sessionDetails } = useSessionStore();
@@ -148,9 +150,19 @@ function PromptCard({
   }, [promptDetails]);
 
   useEffect(() => {
+    if (isSinglePassExtractLoading) {
+      return;
+    }
+
     handleGetOutput();
     handleGetCoverage();
-  }, [selectedLlmProfileId, selectedDoc, listOfDocs]);
+  }, [
+    selectedLlmProfileId,
+    selectedDoc,
+    listOfDocs,
+    singlePassExtractMode,
+    isSinglePassExtractLoading,
+  ]);
 
   useEffect(() => {
     let listOfIds = [...disableLlmOrDocChange];
@@ -498,11 +510,7 @@ function PromptCard({
   };
 
   const handleOutputApiRequest = async (isOutput) => {
-    let url = `/api/v1/unstract/${
-      sessionDetails?.orgId
-    }/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${
-      promptDetails?.prompt_id
-    }&profile_manager=${selectedLlmProfileId}&is_single_pass_extract_mode_active=${false}`;
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${selectedLlmProfileId}&is_single_pass_extract_mode_active=${singlePassExtractMode}`;
 
     if (isOutput) {
       url += `&document_manager=${selectedDoc?.document_id}`;
@@ -562,6 +570,7 @@ function PromptCard({
                   onChange={onSearchDebounce}
                   disabled={
                     disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    isSinglePassExtractLoading ||
                     indexDocs.includes(selectedDoc?.document_id)
                   }
                 />
@@ -578,6 +587,7 @@ function PromptCard({
                   onChange={onSearchDebounce}
                   disabled={
                     disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    isSinglePassExtractLoading ||
                     indexDocs.includes(selectedDoc?.document_id)
                   }
                 />
@@ -673,7 +683,9 @@ function PromptCard({
                       disabled={
                         disableLlmOrDocChange.includes(
                           promptDetails?.prompt_id
-                        ) || indexDocs.includes(selectedDoc?.document_id)
+                        ) ||
+                        isSinglePassExtractLoading ||
+                        indexDocs.includes(selectedDoc?.document_id)
                       }
                     >
                       <EditOutlined className="prompt-card-actions-head" />
@@ -690,24 +702,27 @@ function PromptCard({
                       <AssertionIcon className="prompt-card-actions-head" />
                     </Button>
                   </Tooltip>
-                  <Tooltip title="Run">
-                    <Button
-                      size="small"
-                      type="text"
-                      onClick={handleRun}
-                      disabled={
-                        (updateStatus?.promptId === promptDetails?.prompt_id &&
-                          updateStatus?.status ===
-                            promptStudioUpdateStatus.isUpdating) ||
-                        disableLlmOrDocChange.includes(
-                          promptDetails?.prompt_id
-                        ) ||
-                        indexDocs.includes(selectedDoc?.document_id)
-                      }
-                    >
-                      <PlayCircleOutlined className="prompt-card-actions-head" />
-                    </Button>
-                  </Tooltip>
+                  {!singlePassExtractMode && (
+                    <Tooltip title="Run">
+                      <Button
+                        size="small"
+                        type="text"
+                        onClick={handleRun}
+                        disabled={
+                          (updateStatus?.promptId ===
+                            promptDetails?.prompt_id &&
+                            updateStatus?.status ===
+                              promptStudioUpdateStatus.isUpdating) ||
+                          disableLlmOrDocChange.includes(
+                            promptDetails?.prompt_id
+                          ) ||
+                          indexDocs.includes(selectedDoc?.document_id)
+                        }
+                      >
+                        <PlayCircleOutlined className="prompt-card-actions-head" />
+                      </Button>
+                    </Tooltip>
+                  )}
                   <ConfirmModal
                     handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
                     content="The prompt will be permanently deleted."
@@ -719,7 +734,9 @@ function PromptCard({
                         disabled={
                           disableLlmOrDocChange.includes(
                             promptDetails?.prompt_id
-                          ) || indexDocs.includes(selectedDoc?.document_id)
+                          ) ||
+                          isSinglePassExtractLoading ||
+                          indexDocs.includes(selectedDoc?.document_id)
                         }
                       >
                         <DeleteOutlined className="prompt-card-actions-head" />
@@ -788,6 +805,7 @@ function PromptCard({
                   value={promptDetails?.enforce_type || null}
                   disabled={
                     disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    isSinglePassExtractLoading ||
                     indexDocs.includes(selectedDoc?.document_id)
                   }
                   onChange={(value) => handleTypeChange(value)}
@@ -827,6 +845,7 @@ function PromptCard({
                   disabled={
                     page <= 1 ||
                     disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    isSinglePassExtractLoading ||
                     indexDocs.includes(selectedDoc?.document_id)
                   }
                   onClick={handlePageLeft}
@@ -839,6 +858,7 @@ function PromptCard({
                   disabled={
                     page >= llmProfiles?.length ||
                     disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    isSinglePassExtractLoading ||
                     indexDocs.includes(selectedDoc?.document_id)
                   }
                   onClick={handlePageRight}
