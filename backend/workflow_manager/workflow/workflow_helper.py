@@ -448,9 +448,15 @@ class WorkflowHelper:
         hash_values_of_files: dict[str, str] = {},
     ) -> ExecutionResponse:
         # For scheduler workflow execution
+        logger.info(f"Workflow pipeline ID: {pipeline_id}")
         if pipeline_id:
-            return WorkflowHelper.run_workflow(workflow=workflow)
+            return WorkflowHelper.run_workflow(
+                workflow=workflow,
+                hash_values_of_files=hash_values_of_files,
+                pipeline_id=pipeline_id,
+            )
 
+        # TODO: Review required here.
         if log_required is not None and not log_required:
             # Without log and log Id
             if pipeline_id:
