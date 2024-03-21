@@ -11,11 +11,11 @@ import { useNavigate } from "react-router-dom";
 import "./Header.css";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function Header({ setOpenSettings }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
@@ -27,9 +27,18 @@ function Header({ setOpenSettings }) {
   const handleException = useExceptionHandler();
 
   const handleExport = () => {
+    const body = {
+      is_shared_with_org: true,
+      user_id: [],
+    };
     const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/?prompt_registry_id=${details?.tool_id}`,
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/${details?.tool_id}`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: body,
     };
 
     setIsExportLoading(true);

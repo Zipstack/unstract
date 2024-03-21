@@ -33,6 +33,12 @@ from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from prompt_studio.prompt_studio_document_manager.prompt_studio_document_helper import (  # noqa: E501
     PromptStudioDocumentHelper,
 )
+from prompt_studio.prompt_studio_registry.prompt_studio_registry_helper import (
+    PromptStudioRegistryHelper,
+)
+from prompt_studio.prompt_studio_registry.serializers import (
+    ExportToolRequestSerializer,
+)
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -480,3 +486,24 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 {"data": "File deletion failed."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+    @action(detail=True, methods=["post"])
+    def export_tool(self, request: Request, pk: Any = None) -> Response:
+        """API Endpoint for exporting required jsons for the custom tool."""
+        custom_tool = self.get_object()
+        serializer = ExportToolRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        is_shared_with_org: str = serializer.validated_data.get(
+            "is_shared_with_org"
+        )
+        user_ids = set(serializer.validated_data.get("user_id"))
+
+        PromptStudioRegistryHelper.update_or_create_psr_tool(
+            custom_tool=custom_tool,
+            shared_with_org=is_shared_with_org,
+            user_ids=user_ids,
+        )
+        return Response(
+            {"message": "Custom tool exported sucessfully."},
+            status=status.HTTP_200_OK,
+        )

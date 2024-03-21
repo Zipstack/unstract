@@ -52,6 +52,12 @@ prompt_studio_file = PromptStudioCoreView.as_view(
     }
 )
 
+prompt_studio_export = PromptStudioCoreView.as_view(
+    {
+        "post": "export_tool",
+    }
+)
+
 
 urlpatterns = format_suffix_patterns(
     [
@@ -110,6 +116,11 @@ urlpatterns = format_suffix_patterns(
             "prompt-studio/file/<uuid:pk>",
             prompt_studio_file,
             name="prompt_studio_file",
+        ),
+        path(
+            "prompt-studio/export/<uuid:pk>",
+            prompt_studio_export,
+            name="prompt_studio_export",
         ),
     ]
 )

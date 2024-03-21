@@ -1,5 +1,6 @@
-from backend.serializers import AuditSerializer
 from rest_framework import serializers
+
+from backend.serializers import AuditSerializer
 
 from .models import PromptStudioRegistry
 
@@ -11,4 +12,7 @@ class PromptStudioRegistrySerializer(AuditSerializer):
 
 
 class ExportToolRequestSerializer(serializers.Serializer):
-    prompt_registry_id = serializers.UUIDField(required=True)
+    is_shared_with_org = serializers.BooleanField(default=False)
+    user_id = serializers.ListField(
+        child=serializers.IntegerField(), required=False
+    )

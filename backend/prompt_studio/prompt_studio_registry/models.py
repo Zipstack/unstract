@@ -72,3 +72,12 @@ class PromptStudioRegistry(BaseModel):
         blank=True,
         editable=False,
     )
+    shared_to_org = models.BooleanField(
+        default=False,
+        db_comment="Is the exported tool shared with entire org",
+    )
+    # Introduced field to establish M2M relation between users and tools.
+    # This will introduce intermediary table which relates both the models.
+    shared_users = models.ManyToManyField(
+        User, related_name="shared_exported_tools"
+    )

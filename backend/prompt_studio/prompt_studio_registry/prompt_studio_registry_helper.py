@@ -92,7 +92,7 @@ class PromptStudioRegistryHelper:
 
     @staticmethod
     def update_or_create_psr_tool(
-        custom_tool: CustomTool,
+        custom_tool: CustomTool, shared_with_org: bool, user_ids: set[int]
     ) -> PromptStudioRegistry:
         """Updates or creates the PromptStudioRegistry record.
 
@@ -142,6 +142,10 @@ class PromptStudioRegistryHelper:
                 logger.info(f"PSR {obj.prompt_registry_id} was created")
             else:
                 logger.info(f"PSR {obj.prompt_registry_id} was updated")
+            obj.shared_to_org = shared_with_org
+
+            obj.shared_users.add(*user_ids)
+            obj.save()
             return obj
         except IntegrityError as error:
             logger.error(
