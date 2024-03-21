@@ -3,8 +3,8 @@
 
 [metadata]
 groups = ["default", "deploy", "test"]
-strategy = ["cross_platform"]
-lock_version = "4.4"
+strategy = ["cross_platform", "inherit_metadata"]
+lock_version = "4.4.1"
 content_hash = "sha256:33e6e0b10667ecd0eeeab5f479102c9a7b2a785414c072d826de9b883e1b1537"
 
 [[package]]
