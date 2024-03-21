@@ -1,7 +1,6 @@
 import { Form, Input, Modal, Select } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
@@ -25,13 +24,13 @@ const CreateApiDeploymentModal = ({
   setSelectedRow,
   workflowId,
   workflowEndpointList,
+  setDeploymentName,
 }) => {
   const workflowStore = useWorkflowStore();
   const { updateWorkflow } = workflowStore;
   const apiDeploymentsApiService = apiDeploymentsService();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
-
   const { Option } = Select;
   const [formDetails, setFormDetails] = useState(
     isEdit ? { ...selectedRow } : { ...defaultFromDetails }
@@ -40,7 +39,6 @@ const CreateApiDeploymentModal = ({
   const [form] = Form.useForm();
   const [backendErrors, setBackendErrors] = useState(null);
   const [isFormChanged, setIsFormChanged] = useState(false);
-
   const handleInputChange = (changedValues, allValues) => {
     setIsFormChanged(true);
     setFormDetails({ ...formDetails, ...allValues });
@@ -102,6 +100,7 @@ const CreateApiDeploymentModal = ({
         if (workflowId) {
           // Update - can update workflow endpoint status in store
           updateWorkflow({ allowChangeEndpoint: false });
+          setDeploymentName(body.display_name);
         } else {
           updateTableData();
           setSelectedRow(res?.data);
@@ -252,6 +251,7 @@ CreateApiDeploymentModal.propTypes = {
   setSelectedRow: PropTypes.func,
   workflowId: PropTypes.string,
   workflowEndpointList: PropTypes.object,
+  setDeploymentName: PropTypes.func,
 };
 
 export { CreateApiDeploymentModal };
