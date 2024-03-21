@@ -404,7 +404,9 @@ class AuthenticationController:
             OrganizationMember.objects.filter(user__in=ids_list).delete()
             # removing adapter relations on user removal
             for user_id in ids_list:
+
                 User.objects.get(pk=user_id).shared_custom_tool.clear()
+                User.objects.get(pk=user_id).shared_adapters.clear()
         return is_removed
 
     def add_user_role(
