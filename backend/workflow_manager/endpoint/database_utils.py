@@ -8,10 +8,8 @@ from utils.constants import Common
 from workflow_manager.endpoint.constants import (
     BigQuery,
     DBConnectionClass,
-    DBConnectorTypeConverter,
     Snowflake,
     TableColumns,
-    TableManager,
 )
 from workflow_manager.endpoint.exceptions import BigQueryTableNotFound
 from workflow_manager.workflow.enums import AgentName, ColumnModes
@@ -284,7 +282,7 @@ class DatabaseUtils:
             f"INSERT INTO {table_name} (id, {','.join(sql_keys)}) "
             f"SELECT '{generate_uuid}',{','.join(sql_values)}"
         )
-        logger.info(f"insertng into table with: {sql} query")
+        logger.debug(f"insertng into table with: {sql} query")
         try:
             if hasattr(engine, "cursor"):
                 with engine.cursor() as cursor:
@@ -332,9 +330,9 @@ class DatabaseUtils:
         """
         class_name = engine.__class__.__name__
         sql = DatabaseUtils.generate_create_table_query(
-            cls=class_name, table=table_name, database_entry=database_entry
+            conn_cls=class_name, table=table_name, database_entry=database_entry
         )
-        logger.info(f"creating table with: {sql} query")
+        logger.debug(f"creating table with: {sql} query")
         try:
             if hasattr(engine, "cursor"):
                 with engine.cursor() as cursor:
@@ -348,14 +346,14 @@ class DatabaseUtils:
 
     @staticmethod
     def generate_create_table_query(
-        cls: str, table: str, database_entry: dict[str, Any]
+        conn_cls: str, table: str, database_entry: dict[str, Any]
     ) -> Any:
         sql_query = ""
         """Generate a SQL query to create a table, based on the provided
         database entry.
 
         Args:
-            cls (str): The database connection class.
+            conn_cls (str): The database connection class.
                 Should be one of 'BIGQUERY', 'SNOWFLAKE', or other.
             table (str): The name of the table to be created.
             database_entry (dict[str, Any]):
@@ -377,13 +375,13 @@ class DatabaseUtils:
             Permanent columns, will always be present in table creation.
         """
 
-        if cls == DBConnectionClass.BIGQUERY:
+        if conn_cls == DBConnectionClass.BIGQUERY:
             sql_query += (
                 f"CREATE TABLE IF NOT EXISTS {table} "
                 f"(id string,"
                 f"created_by string, created_at TIMESTAMP, "
             )
-        elif cls == DBConnectionClass.SNOWFLAKE:
+        elif conn_cls == DBConnectionClass.SNOWFLAKE:
             sql_query += (
                 f"CREATE TABLE {table} IF NOT EXISTS "
                 f"(id VARCHAR(36) PRIMARY KEY,"
@@ -397,9 +395,9 @@ class DatabaseUtils:
             )
 
         for key, val in database_entry.items():
-            if key not in TableManager.permanat_columns:
+            if key not in TableColumns.PERMANENT_COLUMNS:
                 python_type = type(val)
-                if cls == DBConnectionClass.BIGQUERY:
+                if conn_cls == DBConnectionClass.BIGQUERY:
                     sql_type = (
                         DBConnectorTypeConverter.python_to_bigquery_mapping(
                             python_type
@@ -412,3 +410,34 @@ class DatabaseUtils:
                 sql_query += f"{key} {sql_type}, "
 
         return sql_query.rstrip(", ") + ");"
+
+
+class DBConnectorTypeConverter:
+    """_summary_
+
+    Class to convert python data type to corresponding connector
+    database data type
+    """
+
+    @staticmethod
+    def python_to_sql_mapping(python_type: Any) -> Optional[str]:
+        """Method used to convert python to SQL datatype Used by Postgres,
+        Redshift, Snowflake."""
+        mapping = {
+            str: "VARCHAR(255)",
+            int: "INT",
+            float: "FLOAT",
+            datetime.datetime: "TIMESTAMP",
+        }
+        return mapping.get(python_type, "VARCHAR(255)")
+
+    @staticmethod
+    def python_to_bigquery_mapping(python_type: Any) -> Optional[str]:
+        """Method used to convert python to bigquery datatype."""
+        mapping = {
+            str: "string",
+            int: "INT64",
+            float: "FLOAT64",
+            datetime.datetime: "TIMESTAMP",
+        }
+        return mapping.get(python_type, "string")

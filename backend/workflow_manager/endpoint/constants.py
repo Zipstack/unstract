@@ -5,6 +5,7 @@ from typing import Any, Optional
 class TableColumns:
     CREATED_BY = "created_by"
     CREATED_AT = "created_at"
+    PERMANENT_COLUMNS = ["created_by", "created_at"]
 
 
 class DBConnectionClass:
@@ -135,12 +136,3 @@ class DBConnectorTypeConverter:
             datetime.datetime: "TIMESTAMP",
         }
         return mapping.get(python_type, "string")
-
-
-class TableManager:
-    """
-    Returns:
-        list[str]:Returns permanent columns for creating table in connector.
-    """
-
-    permanat_columns = ["created_by", "created_at"]
