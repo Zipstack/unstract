@@ -69,3 +69,8 @@ class BigQueryTableNotFound(APIException):
         "Please enter correct correct bigquery table in the form "
         "{table}.{schema}.{database}."
     )
+
+
+class ClearCacheException(APIException):
+    status_code = 400
+    default_detail = "Please clear file history and try again."

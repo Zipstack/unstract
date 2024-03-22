@@ -19,6 +19,7 @@ from workflow_manager.endpoint.constants import (
 )
 from workflow_manager.endpoint.database_utils import DatabaseUtils
 from workflow_manager.endpoint.exceptions import (
+    ClearCacheException,
     DestinationConnectorNotConfigured,
     InvalidDestinationConnectionType,
     InvalidToolOutputType,
@@ -208,7 +209,8 @@ class DestinationConnector(BaseConnector):
         )
 
         data = self.get_result(file_history)
-
+        if data is None:
+            raise ClearCacheException()
         values = DatabaseUtils.get_columns_and_values(
             column_mode_str=column_mode,
             data=data,
@@ -319,7 +321,6 @@ class DestinationConnector(BaseConnector):
         """
         if file_history and file_history.result:
             return self.parse_string(file_history.result)
-
         output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         metadata = self.get_workflow_metadata()
         output_type = self.get_output_type(metadata)
