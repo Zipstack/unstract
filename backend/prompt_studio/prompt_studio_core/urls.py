@@ -53,9 +53,7 @@ prompt_studio_file = PromptStudioCoreView.as_view(
 )
 
 prompt_studio_export = PromptStudioCoreView.as_view(
-    {
-        "post": "export_tool",
-    }
+    {"post": "export_tool", "get": "export_tool_info"}
 )
 
 

@@ -1,7 +1,9 @@
 import uuid
+from typing import Any
 
 from account.models import User
 from django.db import models
+from django.db.models import QuerySet
 from prompt_studio.prompt_studio.models import CustomTool
 from utils.models.base_model import BaseModel
 
@@ -10,6 +12,18 @@ from .fields import (
     ToolPropertyJSONField,
     ToolSpecJSONField,
 )
+
+
+class PromptStudioRegistryModelManager(models.Manager):
+    def get_queryset(self) -> QuerySet[Any]:
+        return super().get_queryset()
+
+    def list_tools(self, user: User) -> QuerySet[Any]:
+        return (
+            self.get_queryset()
+            .filter(models.Q(shared_users=user) | models.Q(shared_to_org=True))
+            .distinct("prompt_registry_id")
+        )
 
 
 class PromptStudioRegistry(BaseModel):
@@ -81,3 +95,5 @@ class PromptStudioRegistry(BaseModel):
     shared_users = models.ManyToManyField(
         User, related_name="shared_exported_tools"
     )
+
+    objects = PromptStudioRegistryModelManager()

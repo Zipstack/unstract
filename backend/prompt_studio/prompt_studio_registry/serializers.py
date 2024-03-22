@@ -1,3 +1,4 @@
+from account.serializer import UserSerializer
 from rest_framework import serializers
 
 from backend.serializers import AuditSerializer
@@ -9,6 +10,14 @@ class PromptStudioRegistrySerializer(AuditSerializer):
     class Meta:
         model = PromptStudioRegistry
         fields = "__all__"
+
+
+class PromptStudioRegistryInfoSerializer(AuditSerializer):
+    shared_users = UserSerializer(many=True)
+
+    class Meta:
+        model = PromptStudioRegistry
+        fields = ("name", "shared_users", "shared_to_org")
 
 
 class ExportToolRequestSerializer(serializers.Serializer):

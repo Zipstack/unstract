@@ -38,6 +38,7 @@ from prompt_studio.prompt_studio_registry.prompt_studio_registry_helper import (
 )
 from prompt_studio.prompt_studio_registry.serializers import (
     ExportToolRequestSerializer,
+    PromptStudioRegistryInfoSerializer,
 )
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -507,3 +508,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             {"message": "Custom tool exported sucessfully."},
             status=status.HTTP_200_OK,
         )
+
+    @action(detail=True, methods=["get"])
+    def export_tool_info(self, request: Request, pk: Any = None) -> Response:
+        custom_tool = self.get_object()
+        serialized_instances = PromptStudioRegistryInfoSerializer(
+            custom_tool.prompt_studio_registry
+        ).data
+
+        return Response(serialized_instances)

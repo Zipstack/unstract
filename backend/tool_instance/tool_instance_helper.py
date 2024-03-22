@@ -10,6 +10,7 @@ from adapter_processor.models import AdapterInstance
 from connector.connector_instance_helper import ConnectorInstanceHelper
 from django.core.exceptions import PermissionDenied
 from jsonschema.exceptions import UnknownType, ValidationError
+from prompt_studio.prompt_studio_registry.models import PromptStudioRegistry
 from tool_instance.constants import JsonSchemaKey
 from tool_instance.models import ToolInstance
 from tool_instance.tool_processor import ToolProcessor
@@ -338,6 +339,9 @@ class ToolInstanceHelper:
         user: User, tool_uid: str, tool_meta: dict[str, Any]
     ) -> tuple[bool, str]:
         """Function to validate Tools settings."""
+
+        # check if exported tool is valid for the user who created workflow
+        ToolInstanceHelper.validate_tool_access(user=user, tool_uid=tool_uid)
         ToolInstanceHelper.validate_adapter_permissions(
             user=user, tool_uid=tool_uid, tool_meta=tool_meta
         )
@@ -432,3 +436,20 @@ class ToolInstanceHelper:
                 raise PermissionDenied(
                     "You don't have permission to perform this action."
                 )
+
+    @staticmethod
+    def validate_tool_access(
+        user: User,
+        tool_uid: str,
+    ) -> None:
+        prompt_regitry_tool = PromptStudioRegistry.objects.get(pk=tool_uid)
+
+        if (
+            prompt_regitry_tool.shared_to_org
+            or prompt_regitry_tool.shared_users.filter(pk=user.pk).exists()
+        ):
+            return
+        else:
+            raise PermissionDenied(
+                "You don't have permission to perform this action."
+            )

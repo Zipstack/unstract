@@ -239,7 +239,8 @@ class PromptStudioRegistryHelper:
     @staticmethod
     def fetch_json_for_registry(user: User) -> list[dict[str, Any]]:
         try:
-            prompt_studio_tools = PromptStudioRegistry.objects.all()
+            # filter the Prompt studio registry based on the users and org flag
+            prompt_studio_tools = PromptStudioRegistry.objects.list_tools(user)
             pi_serializer = PromptStudioRegistrySerializer(
                 instance=prompt_studio_tools, many=True
             )
