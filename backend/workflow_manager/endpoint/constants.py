@@ -109,8 +109,8 @@ class BigQuery:
 class DBConnectorTypeConverter:
     """_summary_
 
-    Class to convert python data type to corresponding connector data
-    type
+    Class to convert python data type to corresponding connector
+    database data type
     """
 
     @staticmethod
