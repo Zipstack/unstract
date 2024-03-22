@@ -51,6 +51,11 @@ class DeploymentExecution(views.APIView):
             file_objs=file_objs,
             timeout=timeout,
         )
+        if "error" in response and response["error"]:
+            return Response(
+                {"message": response},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
         return Response({"message": response}, status=status.HTTP_200_OK)
 
     @DeploymentHelper.validate_api_key
@@ -63,6 +68,14 @@ class DeploymentExecution(views.APIView):
         response: ExecutionResponse = DeploymentHelper.get_execution_status(
             execution_id=execution_id
         )
+        if response.execution_status != "SUCCESS":
+            return Response(
+                {
+                    "status": response.execution_status,
+                    "message": response.result,
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
         return Response(
             {"status": response.execution_status, "message": response.result},
             status=status.HTTP_200_OK,
