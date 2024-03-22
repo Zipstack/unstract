@@ -16,6 +16,7 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
+from utils.enums import CeleryTaskState
 from workflow_manager.workflow.dto import ExecutionResponse
 
 
@@ -68,7 +69,7 @@ class DeploymentExecution(views.APIView):
         response: ExecutionResponse = DeploymentHelper.get_execution_status(
             execution_id=execution_id
         )
-        if response.execution_status != "SUCCESS":
+        if response.execution_status != CeleryTaskState.SUCCESS.value:
             return Response(
                 {
                     "status": response.execution_status,
