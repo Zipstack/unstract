@@ -39,7 +39,7 @@
         "isEnabled": true,
         "adapterId": "textExtractorId",
         "title": "Text Extraction Adapter",
-        "isRequired": false,
+        "isRequired": true,
         "description": "Choose extractor adapter to extract text"
       }
     ]
