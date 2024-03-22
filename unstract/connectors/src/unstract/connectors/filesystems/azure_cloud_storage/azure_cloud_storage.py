@@ -37,7 +37,6 @@ class AzureCloudStorageFS(UnstractFileSystem):
     @staticmethod
     def get_icon() -> str:
         return (
-            "/api/v1/static"
             "/icons/connector-icons/azure_blob_storage.png"
         )
 
