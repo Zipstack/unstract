@@ -329,7 +329,7 @@ class DatabaseUtils:
             e: _description_
         """
         class_name = engine.__class__.__name__
-        sql = DatabaseUtils.generate_create_table_query(
+        sql = DBConnectorQueryHelper.create_table_query(
             conn_cls=class_name, table=table_name, database_entry=database_entry
         )
         logger.debug(f"creating table with: {sql} query")
@@ -344,8 +344,12 @@ class DatabaseUtils:
             logger.error(f"Error while creating table: {str(e)}")
             raise e
 
+
+class DBConnectorQueryHelper:
+    """A class that helps to generate query for connector table operations."""
+
     @staticmethod
-    def generate_create_table_query(
+    def create_table_query(
         conn_cls: str, table: str, database_entry: dict[str, Any]
     ) -> Any:
         sql_query = ""
@@ -365,7 +369,7 @@ class DatabaseUtils:
 
         Returns:
             str: A SQL query string to create a table with the specified name,
-              and column definitions.
+            and column definitions.
 
         Note:
             For 'BIGQUERY', 'SNOWFLAKE', or other database connection classes,
