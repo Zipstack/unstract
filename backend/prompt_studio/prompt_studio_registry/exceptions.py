@@ -14,19 +14,3 @@ class ToolDoesNotExist(APIException):
 class ToolSaveError(APIException):
     status_code = 500
     default_detail = "Error while saving the tool."
-
-
-class MandatoryFieldMissingError(APIException):
-    status_code = 400
-    default_detail = "Mandatory field missing."
-
-
-class ProfileErrors(APIException):
-    status_code = 400
-    default_detail = f"""Looks like some default values are 
-        not selected. Please check profile managers."""
-
-
-class DuplicateData(APIException):
-    status_code = 400
-    default_detail = "Duplicate Data"
