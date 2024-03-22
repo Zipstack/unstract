@@ -78,7 +78,7 @@ AuthenticationMiddleware.be_db = be_db
 
 app = Flask("prompt-service")
 
-plugins = plugin_loader(app)
+plugins: dict[str, dict[str, Any]] = plugin_loader(app)
 
 
 def _publish_log(
@@ -784,6 +784,39 @@ def prompt_processor() -> Any:
                 output[PSKeys.NAME]
             ].rstrip("\n")
 
+        # Challenge condition
+        if "enable_challenge" in output and output["enable_challenge"]:
+            challenge_plugin: dict[str, Any] = plugins.get("challenge", {})
+            try:
+                if challenge_plugin:
+                    tool_settings: dict[str, Any] = {
+                        PSKeys.PREAMBLE: output[PSKeys.PREAMBLE],
+                        PSKeys.POSTAMBLE: output[PSKeys.POSTAMBLE],
+                        PSKeys.GRAMMAR: output[PSKeys.GRAMMAR],
+                        PSKeys.LLM: output[PSKeys.LLM],
+                        PSKeys.CHALLENGE_LLM: output[PSKeys.CHALLENGE_LLM],
+                    }
+                    challenge = challenge_plugin["entrypoint_cls"](
+                        llm_helper=llm_helper,
+                        context=context,
+                        tool_settings=tool_settings,
+                        output=output,
+                        structured_output=structured_output,
+                        logger=app.logger,
+                        platform_key=platform_key,
+                    )
+                    # Will inline replace the structured output passed.
+                    challenge.run()
+                else:
+                    app.logger.info(
+                        "No challenge plugin found to evaluate prompt: %s",
+                        output["name"],
+                    )
+            except challenge_plugin["exception_cls"] as e:
+                app.logger.error(
+                    "Failed to challenge prompt %s: %s", output["name"], str(e)
+                )
+
         #
         # Evaluate the prompt.
         #
@@ -1072,7 +1105,9 @@ def enable_single_pass_extraction() -> None:
         "single-pass-extraction", {}
     )
     if single_pass_extration_plugin:
-        single_pass_extration_plugin["entrypoint_cls"](app)
+        single_pass_extration_plugin["entrypoint_cls"](
+            app=app, challenge_plugin=plugins.get("challenge", {})
+        )
 
 
 enable_single_pass_extraction()

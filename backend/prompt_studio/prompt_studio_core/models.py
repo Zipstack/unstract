@@ -61,6 +61,7 @@ class CustomTool(BaseModel):
         db_comment="Field to store monitor llm",
         null=True,
         blank=True,
+        related_name="monitor_llm",
     )
     created_by = models.ForeignKey(
         User,
@@ -78,7 +79,23 @@ class CustomTool(BaseModel):
         blank=True,
         editable=False,
     )
-    exclude_failed = models.BooleanField(default=True)
+    exclude_failed = models.BooleanField(
+        db_comment="Flag to make the answer null if it is incorrect",
+        default=True,
+    )
+    single_pass_extraction_mode = models.BooleanField(
+        db_comment="Flag to enable or disable single pass extraction mode",
+        default=True,
+    )
+    challenge_llm = models.ForeignKey(
+        AdapterInstance,
+        on_delete=models.PROTECT,
+        db_comment="Field to store challenge llm",
+        null=True,
+        blank=True,
+        related_name="challenge_llm",
+    )
+    enable_challenge = models.BooleanField(default=False)
 
     # TODO: Add ProfileManager to return type
     def get_default_llm_profile(self):  # type: ignore
