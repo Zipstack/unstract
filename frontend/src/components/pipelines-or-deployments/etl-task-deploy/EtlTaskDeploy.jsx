@@ -1,34 +1,22 @@
-import { InfoCircleOutlined, ScheduleOutlined } from "@ant-design/icons";
-import { Input, Modal, Select, Space, Tooltip } from "antd";
-import Typography from "antd/es/typography/Typography";
-import { isValidCron } from "cron-validator";
+import { Form, Input, Modal, Select, Space, Typography, Button } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { ScheduleOutlined, ClockCircleOutlined } from "@ant-design/icons";
+import cronstrue from "cronstrue";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
-import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
-import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper.jsx";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
+import CronGenerator from "./CronGenerator.jsx";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import "./EtlTaskDeploy.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useWorkflowStore } from "../../../store/workflow-store.js";
-
-const days = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
+import { getBackendErrorDetail } from "../../../helpers/GetStaticData.js";
 
 const defaultFromDetails = {
   pipeline_name: "",
-  workflow_id: "",
+  workflow: "",
   cron_string: "",
 };
 
@@ -39,7 +27,10 @@ const EtlTaskDeploy = ({
   title,
   setTableData,
   workflowId,
+  isEdit,
+  selectedRow = {},
 }) => {
+  const [form] = Form.useForm();
   const workflowStore = useWorkflowStore();
   const { updateWorkflow } = workflowStore;
   const { sessionDetails } = useSessionStore();
@@ -50,19 +41,25 @@ const EtlTaskDeploy = ({
 
   const { Option } = Select;
   const [workflowList, setWorkflowList] = useState([]);
-  const [formDetails, setFormDetails] = useState({ ...defaultFromDetails });
-  const [frequency, setFrequency] = useState("");
-  const [summary, setSummary] = useState("");
-  const [isGenerateCronLoading, setGenerateCronString] = useState(false);
-  const [isSummaryLoading, setSummaryLoading] = useState(false);
-  const [isCronStringValid, setCronStringValid] = useState(true);
+  const [formDetails, setFormDetails] = useState(
+    isEdit ? { ...selectedRow } : { ...defaultFromDetails }
+  );
   const [isLoading, setLoading] = useState(false);
+  const [openCronGenerator, setOpenCronGenerator] = useState(false);
+  const [backendErrors, setBackendErrors] = useState(null);
+  const [summary, setSummary] = useState(null);
 
   useEffect(() => {
     if (workflowId) {
-      setFormDetails({ ...formDetails, workflow_id: workflowId });
+      setFormDetails({ ...formDetails, workflow: workflowId });
     }
   }, [workflowId]);
+
+  useEffect(() => {
+    if (formDetails?.cron_string) {
+      setSummary(cronstrue.toString(formDetails.cron_string));
+    }
+  }, [formDetails]);
 
   const getWorkflowList = () => {
     workflowApiService
@@ -74,6 +71,27 @@ const EtlTaskDeploy = ({
         console.error("Unable to get workflow list");
       });
   };
+
+  const handleInputChange = (changedValues, allValues) => {
+    setFormDetails({ ...formDetails, ...allValues });
+    const changedFieldName = Object.keys(changedValues)[0];
+    form.setFields([
+      {
+        name: changedFieldName,
+        errors: [],
+      },
+    ]);
+    setBackendErrors((prevErrors) => {
+      if (prevErrors) {
+        const updatedErrors = prevErrors.errors.filter(
+          (error) => error.attr !== changedFieldName
+        );
+        return { ...prevErrors, errors: updatedErrors };
+      }
+      return null;
+    });
+  };
+
   const getWorkflows = () => {
     const connectorType = type === "task" ? "FILESYSTEM" : "DATABASE";
     workflowApiService
@@ -98,128 +116,21 @@ const EtlTaskDeploy = ({
     }
   }, [type]);
 
-  const onChangeHandler = (propertyName, value) => {
-    const body = {
-      [propertyName]: value,
-    };
-    setFormDetails({ ...formDetails, ...body });
-  };
-
-  useEffect(() => {
-    if (open) {
-      // Set default value for the form fields
-      setRandomFrequency();
-    }
-  }, [open]);
-
-  useEffect(() => {
-    const cronString = formDetails?.cron_string || "";
-    if (cronString?.length === 0 || isValidCron(cronString)) {
-      setCronStringValid(true);
-      return;
-    }
-    setCronStringValid(false);
-  }, [formDetails?.cron_string]);
-
-  useEffect(() => {
-    const cronString = formDetails?.cron_string || "";
-    if (
-      isCronStringValid &&
-      cronString?.length > 0 &&
-      isValidCron(cronString)
-    ) {
-      handleSummaryGeneration();
-    }
-  }, [isCronStringValid, formDetails?.cron_string]);
-
-  const setRandomFrequency = () => {
-    // Generate a random number between 0 (inclusive) and 7 (exclusive)
-    const randomNumber = Math.floor(Math.random() * 7);
-
-    const randomFrequency = `Every ${days[randomNumber]} at 9:00 AM`;
-    setFrequency(randomFrequency);
-  };
-
   const clearFormDetails = () => {
-    setFrequency("");
-    setSummary("");
     setFormDetails({ ...defaultFromDetails });
+  };
+
+  const showCronGenerator = () => {
+    setOpenCronGenerator(true);
+  };
+
+  const setCronValue = (value) => {
+    const updatedValues = { ["cron_string"]: value };
+    setFormDetails({ ...formDetails, ...updatedValues });
   };
 
   const handleCancel = () => {
     setOpen(false);
-  };
-
-  const handleGenerateCronString = () => {
-    if (!frequency) {
-      return;
-    }
-
-    const body = {
-      frequency,
-    };
-    const requestOptions = {
-      method: "POST",
-      url: `/api/v1/unstract/${sessionDetails.orgId}/cron/generate/`,
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-      data: body,
-    };
-
-    const newFormDetails = { ...formDetails };
-
-    setGenerateCronString(true);
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        newFormDetails["cron_string"] = data?.cron_string;
-      })
-      .catch((err) => {
-        const msg = "Failed to generate the cron schedule.";
-        setAlertDetails(handleException(err, msg));
-      })
-      .finally(() => {
-        setFormDetails({ ...formDetails, ...newFormDetails });
-        setGenerateCronString(false);
-      });
-  };
-
-  const handleSummaryGeneration = () => {
-    const cronString = formDetails?.cron_string;
-    if (!cronString) {
-      return;
-    }
-
-    const body = {
-      cron_string: cronString,
-    };
-
-    const requestOptions = {
-      method: "POST",
-      url: `/api/v1/unstract/${sessionDetails.orgId}/cron/generate/`,
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-      data: body,
-    };
-
-    setSummaryLoading(true);
-    setSummary("");
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        setSummary(data?.summary);
-      })
-      .catch((err) => {
-        const msg = "No data.";
-        setAlertDetails(handleException(err, msg));
-      })
-      .finally(() => {
-        setSummaryLoading(false);
-      });
   };
 
   const addPipeline = (pipeline) => {
@@ -230,27 +141,39 @@ const EtlTaskDeploy = ({
     });
   };
 
+  const updatePipeline = () => {
+    const body = formDetails;
+    body["pipeline_type"] = type.toUpperCase();
+
+    const requestOptions = {
+      method: "PUT",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${body?.id}/`,
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+      data: body,
+    };
+    setLoading(true);
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        addPipeline(res?.data);
+        setOpen(false);
+        clearFormDetails();
+        setAlertDetails({
+          type: "success",
+          content: "Pipeline Updated Successfully",
+        });
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "", setBackendErrors));
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  };
+
   const createPipeline = () => {
-    if (
-      !formDetails?.pipeline_name ||
-      !formDetails?.workflow_id ||
-      !formDetails?.cron_string
-    ) {
-      setAlertDetails({
-        type: "error",
-        content: "Please enter all the fields.",
-      });
-      return;
-    }
-
-    if (!isValidCron(formDetails?.cron_string)) {
-      setAlertDetails({
-        type: "error",
-        content: "Invalid cron schedule.",
-      });
-      return;
-    }
-
     const body = formDetails;
     body["pipeline_type"] = type.toUpperCase();
 
@@ -281,7 +204,7 @@ const EtlTaskDeploy = ({
         });
       })
       .catch((err) => {
-        setAlertDetails(handleException(err));
+        setAlertDetails(handleException(err, "", setBackendErrors));
       })
       .finally(() => {
         setLoading(false);
@@ -291,12 +214,12 @@ const EtlTaskDeploy = ({
   return (
     <>
       <Modal
-        title={title}
+        title={isEdit ? `Update ${title}` : `Add ${title}`}
         centered
         open={open}
-        onOk={createPipeline}
+        onOk={isEdit ? updatePipeline : createPipeline}
         onCancel={handleCancel}
-        okText="Save and Deploy"
+        okText={isEdit ? "Update and Deploy" : "Save and Deploy"}
         okButtonProps={{
           loading: isLoading,
         }}
@@ -304,74 +227,78 @@ const EtlTaskDeploy = ({
         closable={true}
         maskClosable={false}
       >
-        <SpaceWrapper>
-          <SpaceWrapper direction="vertical" style={{ width: "100%" }}>
-            <Typography>Display Name</Typography>
-            <Input
-              placeholder="Name"
-              name="pipeline_name"
-              onChange={(e) => onChangeHandler("pipeline_name", e.target.value)}
-              value={formDetails.pipeline_name || ""}
-            ></Input>
-          </SpaceWrapper>
+        <Form
+          form={form}
+          name="myForm"
+          layout="vertical"
+          initialValues={formDetails}
+          onValuesChange={handleInputChange}
+        >
+          <Form.Item
+            label="Display Name"
+            name="pipeline_name"
+            rules={[{ required: true, message: "Please enter display name" }]}
+            validateStatus={
+              getBackendErrorDetail("pipeline_name", backendErrors)
+                ? "error"
+                : ""
+            }
+            help={getBackendErrorDetail("pipeline_name", backendErrors)}
+          >
+            <Input placeholder="Name" />
+          </Form.Item>
+
           {!workflowId && (
-            <SpaceWrapper>
-              <Typography>Workflow</Typography>
-              <Select
-                placeholder="select workflow"
-                style={{
-                  width: "100%",
-                }}
-                onChange={(value) => onChangeHandler("workflow_id", value)}
-                name="workflow_id"
-                value={formDetails.workflow_id || ""}
-              >
+            <Form.Item
+              label="Workflow"
+              name="workflow"
+              rules={[{ required: true, message: "Please select an workflow" }]}
+              validateStatus={
+                getBackendErrorDetail("workflow", backendErrors) ? "error" : ""
+              }
+              help={getBackendErrorDetail("workflow", backendErrors)}
+            >
+              <Select>
                 {workflowList.map((workflow) => {
                   return (
-                    <Option value={workflow.id} key={workflow.id}>
+                    <Option value={workflow.id} key={workflow.workflow_name}>
                       {workflow.workflow_name}
                     </Option>
                   );
                 })}
               </Select>
-            </SpaceWrapper>
+            </Form.Item>
           )}
-          <SpaceWrapper>
-            <Typography>
-              Frequency of runs
-              <Tooltip title="This feature is currently in the experimental phase. Please provide a plain English description of the schedule you have in mind, and I will generate an appropriate Cron schedule for you. You can also directly edit the Cron schedule if it's generated incorrectly.">
-                <InfoCircleOutlined
-                  style={{ marginLeft: "8px", color: "#5A5A5A" }}
-                />
-              </Tooltip>
-            </Typography>
-            <Input.TextArea
-              rows={3}
-              placeholder="Frequency"
-              name="frequency"
-              onChange={(e) => setFrequency(e.target.value)}
-              value={frequency || ""}
-            />
-            <div className="display-flex-right">
-              <CustomButton
+          <Form.Item
+            label="Cron Schedule"
+            name="cron_string"
+            rules={[
+              {
+                required: true,
+                message: "Please add cron schedule",
+              },
+            ]}
+            validateStatus={
+              getBackendErrorDetail("cron_string", backendErrors) ? "error" : ""
+            }
+            help={getBackendErrorDetail("cron_string", backendErrors)}
+          >
+            <div style={{ display: "flex" }}>
+              <Input
+                readOnly={true}
+                disabled={true}
+                value={formDetails?.cron_string}
+                style={{ width: "75%" }}
+              />
+              <Button
                 type="primary"
-                onClick={handleGenerateCronString}
-                loading={isGenerateCronLoading}
-              >
-                Generate Cron Schedule
-              </CustomButton>
+                onClick={showCronGenerator}
+                icon={<ScheduleOutlined />}
+                className=""
+                style={{ marginLeft: "5%", width: "20%" }}
+              />
             </div>
-          </SpaceWrapper>
-          <SpaceWrapper>
-            <Typography>Cron Schedule</Typography>
-            <Input
-              placeholder="Cron Schedule"
-              name="cron_string"
-              value={formDetails?.cron_string || ""}
-              onChange={(e) => onChangeHandler("cron_string", e.target.value)}
-              status={isCronStringValid === false && "error"}
-            />
-          </SpaceWrapper>
+          </Form.Item>
           <Space>
             <div
               style={{
@@ -380,22 +307,23 @@ const EtlTaskDeploy = ({
                 borderRadius: "5px",
               }}
             >
-              <ScheduleOutlined />
+              <ClockCircleOutlined />
             </div>
             <div>
-              {isSummaryLoading ? (
-                <SpinnerLoader />
-              ) : (
-                <Typography.Text style={{ fontSize: "10px", opacity: 0.6 }}>
-                  {isCronStringValid && summary
-                    ? summary
-                    : "Summary not available."}
-                </Typography.Text>
-              )}
+              <Typography.Text style={{ fontSize: "10px", opacity: 0.6 }}>
+                {summary ? summary : "Summary not available."}
+              </Typography.Text>
             </div>
           </Space>
-        </SpaceWrapper>
+        </Form>
       </Modal>
+      {openCronGenerator && (
+        <CronGenerator
+          open={openCronGenerator}
+          showCronGenerator={setOpenCronGenerator}
+          setCronValue={setCronValue}
+        />
+      )}
     </>
   );
 };
@@ -406,5 +334,7 @@ EtlTaskDeploy.propTypes = {
   title: PropTypes.string.isRequired,
   setTableData: PropTypes.func,
   workflowId: PropTypes.string,
+  isEdit: PropTypes.bool,
+  selectedRow: PropTypes.object,
 };
 export { EtlTaskDeploy };

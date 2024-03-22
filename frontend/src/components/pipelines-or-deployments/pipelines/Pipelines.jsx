@@ -3,13 +3,13 @@ import {
   DeleteOutlined,
   EditOutlined,
   EllipsisOutlined,
-  EyeOutlined,
   SyncOutlined,
   HighlightOutlined,
 } from "@ant-design/icons";
 import { Dropdown, Image, Space, Switch, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import cronstrue from "cronstrue";
 
 import { deploymentsStaticContent } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
@@ -34,10 +34,16 @@ function Pipelines({ type }) {
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const [isEdit, setIsEdit] = useState(false);
 
   useEffect(() => {
     getPipelineList();
   }, [type]);
+
+  const openAddModal = (edit) => {
+    setIsEdit(edit);
+    setOpenEtlOrTaskModal(true);
+  };
 
   const getPipelineList = () => {
     setTableLoading(true);
@@ -220,7 +226,11 @@ function Pipelines({ type }) {
     {
       key: "1",
       label: (
-        <Space direction="horizontal" className="action-items">
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() => openAddModal(true)}
+        >
           <div>
             <EditOutlined />
           </div>
@@ -250,19 +260,6 @@ function Pipelines({ type }) {
     {
       key: "3",
       label: (
-        <Space direction="horizontal" className="action-items">
-          <div>
-            <EyeOutlined />
-          </div>
-          <div>
-            <Typography.Text>View Logs</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "4",
-      label: (
         <Space
           direction="horizontal"
           className="action-items"
@@ -278,7 +275,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "5",
+      key: "4",
       label: (
         <Space
           direction="horizontal"
@@ -295,7 +292,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "6",
+      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -400,7 +397,7 @@ function Pipelines({ type }) {
       render: (_, record) => (
         <div>
           <Typography.Text className="p-or-d-typography" strong>
-            {record?.cron_data?.cron_summary}
+            {cronstrue.toString(record?.cron_string)}
           </Typography.Text>
         </div>
       ),
@@ -434,9 +431,6 @@ function Pipelines({ type }) {
       ),
     },
   ];
-  const openAddModal = () => {
-    setOpenEtlOrTaskModal(true);
-  };
 
   return (
     <>
@@ -448,13 +442,18 @@ function Pipelines({ type }) {
           isTableLoading={tableLoading}
           openAddModal={openAddModal}
         />
-        <EtlTaskDeploy
-          open={openEtlOrTaskModal}
-          setOpen={setOpenEtlOrTaskModal}
-          setTableData={setTableData}
-          type={type}
-          title={deploymentsStaticContent[type].modalTitle}
-        />
+        {openEtlOrTaskModal && (
+          <EtlTaskDeploy
+            open={openEtlOrTaskModal}
+            setOpen={setOpenEtlOrTaskModal}
+            setTableData={setTableData}
+            type={type}
+            title={deploymentsStaticContent[type].modalTitle}
+            isEdit={isEdit}
+            selectedRow={selectedPorD}
+            setSelectedRow={setSelectedPorD}
+          />
+        )}
         <DeleteModal
           open={openDeleteModal}
           setOpen={setOpenDeleteModal}
