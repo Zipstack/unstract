@@ -464,7 +464,10 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
             </Button>
           </Tooltip>
           <Tooltip title="Deploy as Task Pipeline">
-            <Button onClick={() => createDeployment("TASK")}>
+            <Button
+              onClick={() => createDeployment("TASK")}
+              disabled={isIncompleteWorkflow() || !canAddTaskPipeline}
+            >
               <ApiOutlined />
             </Button>
           </Tooltip>

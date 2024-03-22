@@ -35,7 +35,6 @@ function SetOrg() {
       ?.split(`; csrftoken=`)
       ?.pop()
       ?.split(";")[0];
-    console.log(csrfToken);
 
     const requestOptions = {
       method: "POST",

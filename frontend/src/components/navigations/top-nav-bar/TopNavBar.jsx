@@ -86,14 +86,11 @@ function TopNavBar() {
   });
 
   const handleContinue = async (selectedOrg) => {
-    const csrfToken =
-      ("; " + document?.cookie)?.split(`; csrftoken=`)?.pop()?.split(";")[0] ||
-      null;
     const requestOptions = {
       method: "POST",
       url: `/api/v1/organization/${selectedOrg}/set`,
       headers: {
-        "X-CSRFToken": csrfToken,
+        "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
     await axios(requestOptions);
