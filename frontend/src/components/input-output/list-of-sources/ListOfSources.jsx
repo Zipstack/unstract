@@ -72,8 +72,7 @@ function ListOfSources({ setSelectedSourceId, type }) {
         const updatedSources = sources?.map((source) => ({
           ...source,
           isDisabled:
-            disabledIdsByType[source?.adapter_type]?.includes(source?.id) ||
-            false,
+            disabledIdsByType[source?.adapter_type]?.includes(source?.id),
         }));
         setSourcesList(updatedSources || []);
       })
