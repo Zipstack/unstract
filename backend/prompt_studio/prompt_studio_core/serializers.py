@@ -33,7 +33,7 @@ class CustomToolSerializer(AuditSerializer):
                 str(instance.tool_id),
             )
         try:
-            profile_manager = instance.get_default_llm_profile()
+            profile_manager = ProfileManager.get_default_llm_profile(instance)
             data[TSKeys.DEFAULT_PROFILE] = profile_manager.profile_id
         except ObjectDoesNotExist:
             logger.info(

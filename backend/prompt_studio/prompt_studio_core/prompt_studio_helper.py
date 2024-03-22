@@ -180,9 +180,9 @@ class PromptStudioHelper:
         Returns:
             List[ToolStudioPrompt]: List of instance of the model
         """
-        prompt_instances: list[
-            ToolStudioPrompt
-        ] = ToolStudioPrompt.objects.filter(tool_id=tool_id)
+        prompt_instances: list[ToolStudioPrompt] = (
+            ToolStudioPrompt.objects.filter(tool_id=tool_id)
+        )
         return prompt_instances
 
     @staticmethod
@@ -216,8 +216,7 @@ class PromptStudioHelper:
             default_profile = profile_manager
             file_path = file_name
         else:
-            profile_manager = tool.get_default_llm_profile()
-            default_profile = profile_manager
+            default_profile = ProfileManager.get_default_llm_profile(tool)
             file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                 org_id, is_create=False, user_id=user_id, tool_id=tool_id
             )
@@ -444,8 +443,8 @@ class PromptStudioHelper:
         if monitor_llm_instance:
             monitor_llm = str(monitor_llm_instance.id)
         else:
-            profile_manager = tool.get_default_llm_profile()
-            monitor_llm = str(profile_manager.llm.id)
+            default_profile = ProfileManager.get_default_llm_profile(tool)
+            monitor_llm = str(default_profile.llm.id)
 
         # Adding validations
         if prompt_grammer:
@@ -480,9 +479,9 @@ class PromptStudioHelper:
             )
 
             output: dict[str, Any] = {}
-            output[
-                TSPKeys.ASSERTION_FAILURE_PROMPT
-            ] = prompt.assertion_failure_prompt
+            output[TSPKeys.ASSERTION_FAILURE_PROMPT] = (
+                prompt.assertion_failure_prompt
+            )
             output[TSPKeys.ASSERT_PROMPT] = prompt.assert_prompt
             output[TSPKeys.IS_ASSERT] = prompt.is_assert
             output[TSPKeys.PROMPT] = prompt.prompt
@@ -497,12 +496,12 @@ class PromptStudioHelper:
             output[TSPKeys.GRAMMAR] = grammar_list
             output[TSPKeys.TYPE] = prompt.enforce_type
             output[TSPKeys.NAME] = prompt.prompt_key
-            output[
-                TSPKeys.RETRIEVAL_STRATEGY
-            ] = prompt.profile_manager.retrieval_strategy
-            output[
-                TSPKeys.SIMILARITY_TOP_K
-            ] = prompt.profile_manager.similarity_top_k
+            output[TSPKeys.RETRIEVAL_STRATEGY] = (
+                prompt.profile_manager.retrieval_strategy
+            )
+            output[TSPKeys.SIMILARITY_TOP_K] = (
+                prompt.profile_manager.similarity_top_k
+            )
             output[TSPKeys.SECTION] = prompt.profile_manager.section
             output[TSPKeys.X2TEXT_ADAPTER] = x2text
 
@@ -631,7 +630,7 @@ class PromptStudioHelper:
         outputs: list[dict[str, Any]] = []
         grammar: list[dict[str, Any]] = []
         prompt_grammar = tool.prompt_grammer
-        default_profile: ProfileManager = tool.get_default_llm_profile()
+        default_profile = ProfileManager.get_default_llm_profile(tool)
         # Need to check the user who created profile manager
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(
@@ -668,9 +667,9 @@ class PromptStudioHelper:
         llm_profile_manager[TSPKeys.VECTOR_DB] = vector_db
         llm_profile_manager[TSPKeys.EMBEDDING] = embedding_model
         llm_profile_manager[TSPKeys.CHUNK_SIZE] = default_profile.chunk_size
-        llm_profile_manager[
-            TSPKeys.CHUNK_OVERLAP
-        ] = default_profile.chunk_overlap
+        llm_profile_manager[TSPKeys.CHUNK_OVERLAP] = (
+            default_profile.chunk_overlap
+        )
 
         for prompt in prompts:
             output: dict[str, Any] = {}

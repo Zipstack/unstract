@@ -3,6 +3,7 @@ import uuid
 from account.models import User
 from adapter_processor.models import AdapterInstance
 from django.db import models
+from prompt_studio.prompt_studio_core.exceptions import DefaultProfileError
 from prompt_studio.prompt_studio_core.models import CustomTool
 from utils.models.base_model import BaseModel
 
@@ -101,3 +102,12 @@ class ProfileManager(BaseModel):
                 name="unique_prompt_studio_tool_profile_name",
             ),
         ]
+
+    @staticmethod
+    def get_default_llm_profile(tool: CustomTool) -> "ProfileManager":
+        try:
+            return ProfileManager.objects.get(  # type: ignore
+                prompt_studio_tool=tool, is_default=True
+            )
+        except ProfileManager.DoesNotExist:
+            raise DefaultProfileError
