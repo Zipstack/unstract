@@ -81,7 +81,7 @@ class BoxFS(UnstractFileSystem):
 
     @staticmethod
     def get_icon() -> str:
-        return "/api/v1/static/icons/connector-icons/Box.png"
+        return "/icons/connector-icons/Box.png"
 
     @staticmethod
     def get_json_schema() -> str:
