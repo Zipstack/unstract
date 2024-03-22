@@ -3,7 +3,6 @@ import {
   DeleteOutlined,
   EditOutlined,
   EllipsisOutlined,
-  EyeOutlined,
   InfoCircleOutlined,
   PlusOutlined,
   SyncOutlined,
@@ -70,19 +69,6 @@ function PipelinesOrDeployments({ type }) {
       label: (
         <Space direction="horizontal" className="action-items">
           <div>
-            <EyeOutlined />
-          </div>
-          <div>
-            <Typography.Text>View Logs</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "4",
-      label: (
-        <Space direction="horizontal" className="action-items">
-          <div>
             <InfoCircleOutlined />
           </div>
           <div>
@@ -92,7 +78,7 @@ function PipelinesOrDeployments({ type }) {
       ),
     },
     {
-      key: "5",
+      key: "4",
       label: (
         <Space direction="horizontal" className="action-items">
           <div>
@@ -105,7 +91,7 @@ function PipelinesOrDeployments({ type }) {
       ),
     },
     {
-      key: "6",
+      key: "5",
       label: (
         <Space
           direction="horizontal"

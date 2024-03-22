@@ -1,6 +1,5 @@
 import logging
 
-from cron_expression_generator.constants import CronKeys
 from django.core.exceptions import ValidationError
 from scheduler import views
 from scheduler.constants import SchedulerConstants as SC
@@ -20,7 +19,7 @@ class SchedulerHelper:
         name = f"Pipeline job-{pipeline_id}"
         job_serialize_data = {
             SC.ID: pipeline_id,
-            CronKeys.CRON_STRING: cron_string,
+            SC.CRON_STRING: cron_string,
             SC.NAME: name,
         }
         try:
