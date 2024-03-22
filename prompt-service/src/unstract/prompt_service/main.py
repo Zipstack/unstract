@@ -1,47 +1,24 @@
 import json
 import logging
-import re
-import sqlite3
 from enum import Enum
 from typing import Any, Optional
 
-import nltk
 import peewee
 from flask import Flask, request
-from llama_index import (
-    QueryBundle,
-    ServiceContext,
-    VectorStoreIndex,
-    get_response_synthesizer,
-)
-from llama_index.indices.base_retriever import BaseRetriever
+from llama_index import VectorStoreIndex
 from llama_index.llms import LLM
-from llama_index.query_engine import (
-    RetrieverQueryEngine,
-    SubQuestionQueryEngine,
-)
-from llama_index.schema import NodeWithScore
-from llama_index.tools import QueryEngineTool, ToolMetadata
-from llama_index.vector_stores.types import (
-    ExactMatchFilter,
-    MetadataFilters,
-    VectorStore,
-    VectorStoreQuery,
-    VectorStoreQueryResult,
-)
-from nltk import ngrams
+from llama_index.vector_stores.types import ExactMatchFilter, MetadataFilters
 from unstract.prompt_service.authentication_middleware import (
     AuthenticationMiddleware,
 )
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
-from unstract.prompt_service.constants import Query, RunLevel
+from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.helper import EnvLoader, plugin_loader
 from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import ToolEmbedding
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.llm import ToolLLM
-from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.utils.service_context import (
     ServiceContext as UNServiceContext,
 )
@@ -92,207 +69,6 @@ def _publish_log(
         log_events_id,
         LogPublisher.log_prompt(component, level.value, state.value, message),
     )
-
-
-def get_keywords_from_pos(text: str) -> list[Any]:
-    text = text.lower()
-    keywords = []
-    sentences = nltk.sent_tokenize(text)
-
-    words_allowed_only_in_middle = [PSKeys.AND, PSKeys.TO, PSKeys.OR, PSKeys.IS]
-    pos_lookup: dict[str, Any] = {
-        "NN": [],
-        "VB": [],
-        "JJ": [],
-        "IN": [],
-        "DT": [],
-        ".": [],
-        "X": [],
-        "PRP": [],
-        "RB": [],
-        "EX": [],
-        "WDT": [],
-        "WP": [],
-        "MD": [],
-    }
-    for sentence in sentences:
-        # TODO : Revisit pos.txt -> non generic usecase
-        with open(POS_TEXT_PATH, "w") as f:
-            f.write("***********\n")
-        pos = nltk.pos_tag(nltk.word_tokenize(str(sentence)))
-
-        for word, posx in pos:
-            if posx.startswith("NN"):
-                posx = "NN"
-            if posx.startswith("VB"):
-                posx = "VB"
-            if posx.endswith("$"):
-                posx = "X"
-            if posx.startswith("RB"):
-                posx = "RB"
-            if posx not in pos_lookup:
-                pos_lookup[posx] = []
-            pos_lookup[posx].append(word)
-        # with open("samples/pos.txt", "a") as f:
-        #     f.write(str(pos_lookup) + "\n")
-        words = nltk.word_tokenize(sentence)
-        trigrams = list(ngrams(words, 3))
-        for trigram in trigrams:
-            allowed = False
-            override_allowed = False
-            p = 0
-            for word in trigram:
-                if (
-                    word in pos_lookup["NN"]
-                    or word in pos_lookup["VB"]
-                    or word in pos_lookup["JJ"]
-                ):
-                    allowed = True
-                if (
-                    word in pos_lookup["IN"]
-                    or word in pos_lookup["DT"]
-                    or word in pos_lookup["."]
-                    or word in pos_lookup["X"]
-                    or word in pos_lookup["PRP"]
-                    or word in pos_lookup["RB"]
-                    or word in pos_lookup["EX"]
-                    or word in pos_lookup["WDT"]
-                    or word in pos_lookup["WP"]
-                    or word in pos_lookup["MD"]
-                    or word in PSKeys.disallowed_words
-                ):
-                    override_allowed = True
-                if p == 0 or p == 2:
-                    if word in words_allowed_only_in_middle:
-                        override_allowed = True
-                p += 1
-            if allowed and not override_allowed:
-                keywords.append(" ".join(trigram))
-        bigrams = list(ngrams(words, 2))
-        for bigram in bigrams:
-            allowed = False
-            override_allowed = False
-            for word in bigram:
-                if (
-                    word in pos_lookup["NN"]
-                    or word in pos_lookup["VB"]
-                    or word in pos_lookup["JJ"]
-                ):
-                    allowed = True
-                if (
-                    word in pos_lookup["IN"]
-                    or word in pos_lookup["DT"]
-                    or word in pos_lookup["."]
-                    or word in pos_lookup["X"]
-                    or word in pos_lookup["PRP"]
-                    or word in pos_lookup["RB"]
-                    or word in pos_lookup["EX"]
-                    or word in pos_lookup["WDT"]
-                    or word in pos_lookup["WP"]
-                    or word in pos_lookup["MD"]
-                    or word in PSKeys.disallowed_words
-                ):
-                    override_allowed = True
-                # In bigrams, these words cannot be in the middle
-                # so if they are preset, remove the bigram
-                if word in words_allowed_only_in_middle:
-                    override_allowed = True
-
-            if allowed and not override_allowed:
-                keywords.append(" ".join(bigram))
-    with open(POS_TEXT_PATH, "a") as f:
-        f.write(str(keywords) + "\n")
-    return keywords
-
-
-class UnstractRetriever_V_K(BaseRetriever):
-    def __init__(
-        self,
-        index: VectorStoreIndex,
-        doc_id: str,
-        vector_db: VectorStore,
-        collection: str,
-        service_context: ServiceContext,
-        tool: BaseTool,
-    ):
-        self.index = index
-        self.db_name = f"/tmp/{doc_id}.db"
-        self.service_context = service_context
-        self.doc_id = doc_id
-        self.collection = collection
-        self.vector_db = vector_db
-        self.tool = tool
-
-    def _retrieve(self, query_bundle: QueryBundle) -> list[NodeWithScore]:
-        print(f"Query: {query_bundle.query_str}")
-        # vec_retriever = self.index.as_retriever(
-        #     similarity_top_k=2,
-        #     filters=MetadataFilters(
-        #         filters=[
-        #             ExactMatchFilter(key=PSKeys.DOC_ID, value=self.doc_id)
-        #         ],
-        #     ),
-        # )
-        keywords = get_keywords_from_pos(query_bundle.query_str)
-        print(f"Keywords: {keywords}")
-
-        db = sqlite3.connect(self.db_name)
-        cursor = db.cursor()
-        cursor.execute(Query.DROP_TABLE)
-        db.commit()
-        cursor.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS nodes "
-            "USING fts5(doc_id, node_id, text, tokenize='porter unicode61');"
-        )
-        db.commit()
-
-        try:
-            embedding_li = self.service_context.embed_model
-            q = VectorStoreQuery(
-                query_embedding=embedding_li.get_query_embedding(" "),
-                doc_ids=[self.doc_id],
-                similarity_top_k=10000,
-            )
-        except Exception as e:
-            self.tool.stream_log(f"Error creating querying : {e}")
-            raise Exception(f"Error creating querying : {e}")
-
-        n: VectorStoreQueryResult = self.vector_db.query(query=q)
-        # all_nodes = n.nodes
-        all_nodes = []
-        for node in n.nodes:  # type:ignore
-            all_nodes.append(NodeWithScore(node=node, score=0.8))
-
-        if len(n.nodes) > 0:  # type:ignore
-            for node in n.nodes:  # type:ignore
-                node_chunk_text = re.sub(" +", " ", node.get_content()).replace(
-                    "\n", " "
-                )
-                node_text = node_chunk_text
-                cursor.execute(
-                    Query.INSERT_INTO,
-                    (self.doc_id, node.node_id, node_text),
-                )
-            db.commit()
-        else:
-            self.tool.stream_log(f"No nodes found for {self.doc_id}")
-
-        keyword_nodes_metadata = get_nodes_with_keywords(self.db_name, keywords)
-        keyword_node_ids = []
-        for node in keyword_nodes_metadata:
-            keyword_node_ids.append(node[1])
-
-        # Get node from index using node_id
-        keyword_nodes = []
-
-        for node in all_nodes:
-            if node.node_id in keyword_node_ids:
-                keyword_nodes.append(node)
-                # print(node)
-
-        return keyword_nodes
-        # return keyword_nodes + vec_nodes
-        # return vec_nodes
 
 
 def construct_prompt(
@@ -350,7 +126,6 @@ def construct_prompt_for_engine(
     grammar_list: list[dict[str, Any]],
 ) -> str:
     # Let's cleanup the context. Remove if 3 consecutive newlines are found
-
     prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}\n"
     if grammar_list is not None and len(grammar_list) > 0:
         prompt += "\n"
@@ -367,27 +142,6 @@ def construct_prompt_for_engine(
     prompt += f"\n\n{postamble}"
     prompt += "\n\n"
     return prompt
-
-
-def get_nodes_with_keywords(db_name: str, keywords: list[Any]) -> list[Any]:
-    if len(keywords) == 0:
-        return []
-    db = sqlite3.connect(db_name)
-    cursor = db.cursor()
-    keywords = ['"' + k + '"' for k in keywords]
-    # keywords = ['dosing schedules']
-    query = Query.SELECT
-    for i in range(len(keywords)):
-        if i == 0:
-            query += Query.NODE_MATCH
-        else:
-            query += " OR " + Query.NODE_MATCH
-    query += Query.ORDER_BY
-    res = cursor.execute(query, keywords)
-    nodes = []
-    for r in res:
-        nodes.append(r)
-    return nodes
 
 
 def authentication_middleware(func: Any) -> Any:
@@ -639,36 +393,11 @@ def prompt_processor() -> Any:
                         llm_li,
                         vector_index,
                     )
-
-                    # query_engine = vector_index.as_query_engine(
-                    #     filters=MetadataFilters(
-                    #         filters=[ExactMatchFilter(key="doc_id", value=doc_id)],  # noqa
-                    #     ),
-                    #     similarity_top_k=output['similarity-top-k'],
-                    # )
-                    # r = query_engine.query(output['promptx'])
-                    # print(r)
-                    # answer = r.response
-
-                elif output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.VECTOR_KEYWORD:
-                    # TODO: Currently the retriever is restricted to keywords only.  # noqa
-                    # TODO: We need to add the vector retriever as well (removed due to context length)  # noqa
-                    answer, context = vector_keyword_retriver(
-                        output,
-                        util,
-                        doc_id,
-                        service_context,
-                        vector_db_li,
-                        vector_index,
-                    )
-                elif output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SUBQUESTION:
-                    answer, context = subquestion_retriver(
-                        output, doc_id, service_context, vector_index
-                    )
-                    # nodes = response.source_nodes
-                    # print(nodes)
                 else:
-                    app.logger.info("No retrieval strategy matched")
+                    app.logger.info(
+                        "Invalid retrieval strategy "
+                        f"passed {output[PSKeys.RETRIEVAL_STRATEGY]}"
+                    )
 
                 _publish_log(
                     log_events_id,
@@ -869,9 +598,6 @@ def prompt_processor() -> Any:
                 app.logger.info(
                     f'No eval plugin found to evaluate prompt: {output["name"]}'  # noqa: E501
                 )
-        #
-        #
-        #
 
     _publish_log(
         log_events_id,
@@ -904,72 +630,6 @@ def prompt_processor() -> Any:
         "Execution complete",
     )
     return structured_output
-
-
-def subquestion_retriver(
-    output: dict[str, Any],
-    doc_id: str,
-    service_context: ServiceContext,
-    vector_index: VectorStoreIndex,
-) -> tuple[Any, str]:
-    query_engine = vector_index.as_query_engine(
-        filters=MetadataFilters(
-            filters=[ExactMatchFilter(key=PSKeys.DOC_ID, value=doc_id)],
-        ),
-        similarity_top_k=output[PSKeys.SIMILARITY_TOP_K],
-    )
-    query_engine_tools = [
-        QueryEngineTool(
-            query_engine=query_engine,
-            metadata=ToolMetadata(
-                name="unstract-subquestion",
-                description="Subquestion query engine",
-            ),
-        ),
-    ]
-    query_engine = SubQuestionQueryEngine.from_defaults(
-        query_engine_tools=query_engine_tools,
-        service_context=service_context,
-        use_async=True,
-    )
-
-    prompt = f"{output[PSKeys.PREAMBLE]}\n\n{output[PSKeys.PROMPTX]}"
-    response = query_engine.query(prompt)
-    answer = response.response  # type:ignore
-    # Retrieves all the source nodes contents truncated to input length.
-    sources_text = response.get_formatted_sources(10000)
-    return (answer, sources_text)
-
-
-def vector_keyword_retriver(
-    output: dict[str, Any],
-    util: BaseTool,
-    doc_id: str,
-    service_context: ServiceContext,
-    vector_db_li: VectorStore,
-    vector_index: VectorStoreIndex,
-) -> tuple[Any, str]:
-    retriever = UnstractRetriever_V_K(
-        vector_index,
-        doc_id,
-        vector_db_li,
-        "unstract_vector_db",
-        service_context,
-        util,
-    )
-    response_synthesizer = get_response_synthesizer(
-        service_context=service_context,
-        verbose=True,
-    )
-    custom_query_engine = RetrieverQueryEngine(
-        retriever=retriever,
-        response_synthesizer=response_synthesizer,
-    )
-    response = custom_query_engine.query(output[PSKeys.PROMPTX])
-    answer = response.response  # type:ignore
-    # Retrieves all the source nodes contents truncated to input length.
-    sources_text = response.get_formatted_sources(10000)
-    return (answer, sources_text)
 
 
 def simple_retriver(  # type:ignore
@@ -1094,9 +754,6 @@ def extract_variable(
     if promptx != output[PSKeys.PROMPT]:
         app.logger.info(f"Prompt after variable replacement: {promptx}")
     return promptx
-    # app.logger.info(f"Total Tokens: {total_extraction_tokens}")
-    # with open(f"/tmp/json_of_{file_name_without_path}.json", "w") as f:
-    #     f.write(json.dumps(structured_output, indent=2))
 
 
 def enable_single_pass_extraction() -> None:

@@ -2,48 +2,6 @@ from enum import Enum
 
 
 class PromptServiceContants:
-    HELP = "help"
-    disallowed_words = [
-        "which",
-        "what",
-        "how",
-        "when",
-        "where",
-        "who",
-        "why",
-        "is",
-        "are",
-        "was",
-        "were",
-        "do",
-        "does",
-        "seem",
-        "have",
-        "has",
-        "had",
-        "can",
-        "could",
-        "may",
-        "might",
-        "will",
-        "would",
-        "should",
-        "must",
-        "shall",
-        "did",
-        "would",
-        "be",
-        "many",
-        "being",
-        "(",
-        ")",
-        ",",
-    ]
-    AND = "and"
-    TO = "to"
-    OR = "or"
-    IS = "is"
-    DOC_ID = "doc_id"
     WORD = "word"
     SYNONYMS = "synonyms"
     OUTPUTS = "outputs"
@@ -64,8 +22,6 @@ class PromptServiceContants:
     ASSERTION_FAILURE_PROMPT = "assertion_failure_prompt"
     RETRIEVAL_STRATEGY = "retrieval-strategy"
     SIMPLE = "simple"
-    VECTOR_KEYWORD = "vector+keyword"
-    SUBQUESTION = "subquestion"
     TYPE = "type"
     NUMBER = "number"
     EMAIL = "email"
@@ -89,19 +45,6 @@ class PromptServiceContants:
     TOOL_SETTINGS = "tool_settings"
     LOG_EVENTS_ID = "log_events_id"
     CHALLENGE_LLM = "challenge_llm"
-
-
-class Query:
-    QUERY = "Query"
-    DROP_TABLE = "DROP TABLE IF EXISTS nodes;"
-    INSERT_INTO = "INSERT INTO nodes VALUES (?, ?, ?)"
-    SELECT = "SELECT *,rank FROM nodes WHERE "
-    NODE_MATCH = " nodes MATCH ?"
-    ORDER_BY = " ORDER BY RANK LIMIT 2;"
-
-
-class Prompt:
-    CONTEXT = "Context"
 
 
 class LogLevel(Enum):

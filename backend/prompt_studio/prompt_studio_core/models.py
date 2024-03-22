@@ -2,9 +2,7 @@ import uuid
 
 from account.models import User
 from adapter_processor.models import AdapterInstance
-from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
-from prompt_studio.prompt_studio_core.exceptions import DefaultProfileError
 from utils.models.base_model import BaseModel
 
 
