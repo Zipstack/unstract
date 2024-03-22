@@ -7,6 +7,14 @@ def delete_duplicates_and_nulls(apps, schema_editor):
     prompt_studio_output_manager = apps.get_model(
         "prompt_studio_output_manager", "PromptStudioOutputManager")
 
+    # Delete rows where prompt_id, document_manager, profile_manager, or tool_id is NULL
+    prompt_studio_output_manager.objects.filter(
+        models.Q(prompt_id=None) |
+        models.Q(document_manager=None) |
+        models.Q(profile_manager=None) |
+        models.Q(tool_id=None)
+    ).delete()
+
     # Find duplicate rows based on unique constraint fields and count their occurrences
     duplicates = prompt_studio_output_manager.objects.values(
         'prompt_id', 'document_manager', 'profile_manager', 'tool_id'
@@ -29,14 +37,6 @@ def delete_duplicates_and_nulls(apps, schema_editor):
         # Keep the latest object, delete the rest
         for obj in duplicates_to_delete:
             obj.delete()
-
-    # Delete rows where prompt_id, document_manager, profile_manager, or tool_id is NULL
-    prompt_studio_output_manager.objects.filter(
-        models.Q(prompt_id=None) |
-        models.Q(document_manager=None) |
-        models.Q(profile_manager=None) |
-        models.Q(tool_id=None)
-    ).delete()
 
 
 class Migration(migrations.Migration):
