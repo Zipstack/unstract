@@ -222,8 +222,6 @@ class PromptStudioHelper:
             )
             file_path = str(Path(file_path) / file_name)
 
-        if not default_profile:
-            raise DefaultProfileError()
         if not tool:
             logger.error(f"No tool instance found for the ID {tool_id}")
             raise ToolNotValid()
