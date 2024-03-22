@@ -277,10 +277,10 @@ class DatabaseUtils:
           syntax when VARIANT columns are present (JSON).
           So we need to use INSERT INTO ... SELECT ... syntax
         """
-        generate_uuid = str(uuid.uuid4())
+        uuid_pk = str(uuid.uuid4())
         sql = (
             f"INSERT INTO {table_name} (id, {','.join(sql_keys)}) "
-            f"SELECT '{generate_uuid}',{','.join(sql_values)}"
+            f"SELECT '{uuid_pk}',{','.join(sql_values)}"
         )
         logger.debug(f"insertng into table with: {sql} query")
         try:
