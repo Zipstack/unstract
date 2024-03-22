@@ -71,6 +71,6 @@ class BigQueryTableNotFound(APIException):
     )
 
 
-class ClearCacheException(APIException):
+class ClearFileHistoryException(APIException):
     status_code = 400
     default_detail = "Please clear file history and try again."

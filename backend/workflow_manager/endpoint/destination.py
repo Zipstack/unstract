@@ -19,7 +19,7 @@ from workflow_manager.endpoint.constants import (
 )
 from workflow_manager.endpoint.database_utils import DatabaseUtils
 from workflow_manager.endpoint.exceptions import (
-    ClearCacheException,
+    ClearFileHistoryException,
     DestinationConnectorNotConfigured,
     InvalidDestinationConnectionType,
     InvalidToolOutputType,
@@ -210,7 +210,7 @@ class DestinationConnector(BaseConnector):
 
         data = self.get_result(file_history)
         if data is None:
-            raise ClearCacheException()
+            raise ClearFileHistoryException()
         values = DatabaseUtils.get_columns_and_values(
             column_mode_str=column_mode,
             data=data,
