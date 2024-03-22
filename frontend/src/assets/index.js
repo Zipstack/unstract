@@ -27,6 +27,10 @@ import { ReactComponent as SquareBg } from "./square-bg.svg";
 import { ReactComponent as TrialDoc } from "./trial-doc.svg";
 import { ReactComponent as TextExtractorIcon } from "./text-extractor.svg";
 import { ReactComponent as OcrIcon } from "./ocr.svg";
+import { ReactComponent as OrgAvatar } from "./org-selection-avatar.svg";
+import { ReactComponent as OrgSelection } from "./org-selection.svg";
+import { ReactComponent as RedGradCircle } from "./red-grad-circle.svg";
+import { ReactComponent as YellowGradCircle } from "./yellow-grad-circle.svg";
 
 export {
   SunIcon,
@@ -58,4 +62,8 @@ export {
   TrialDoc,
   TextExtractorIcon,
   OcrIcon,
+  OrgAvatar,
+  OrgSelection,
+  RedGradCircle,
+  YellowGradCircle,
 };
