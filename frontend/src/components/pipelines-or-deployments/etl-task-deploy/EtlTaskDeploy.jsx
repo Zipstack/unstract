@@ -7,7 +7,7 @@ import cronstrue from "cronstrue";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
-import CronGenerator from "./CronGenerator.jsx";
+import CronGenerator from "../../cron-generator/CronGenerator.jsx";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import "./EtlTaskDeploy.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
@@ -285,34 +285,27 @@ const EtlTaskDeploy = ({
             }
             help={getBackendErrorDetail("cron_string", backendErrors)}
           >
-            <div style={{ display: "flex" }}>
+            <div className="cron-string-div">
               <Input
                 readOnly={true}
                 disabled={true}
                 value={formDetails?.cron_string}
-                style={{ width: "75%" }}
+                className="cron-string-input"
               />
               <Button
                 type="primary"
                 onClick={showCronGenerator}
                 icon={<ScheduleOutlined />}
-                className=""
-                style={{ marginLeft: "5%", width: "20%" }}
+                className="cron-string-btn"
               />
             </div>
           </Form.Item>
           <Space>
-            <div
-              style={{
-                border: "solid 1px #cccccc",
-                padding: "4px 8px",
-                borderRadius: "5px",
-              }}
-            >
+            <div className="cron-summary-div">
               <ClockCircleOutlined />
             </div>
             <div>
-              <Typography.Text style={{ fontSize: "10px", opacity: 0.6 }}>
+              <Typography.Text className="summary-text">
                 {summary ? summary : "Summary not available."}
               </Typography.Text>
             </div>

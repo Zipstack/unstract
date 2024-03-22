@@ -2,3 +2,27 @@
 .ant-form .ant-form-item{
     margin-bottom: 12px;
 }
+
+.cron-string-div {
+    display: flex;
+}
+
+.cron-string-div .cron-string-input {
+    width: 75%;
+}
+
+.cron-string-div .cron-string-btn {
+    width: 20%;
+    margin-left: 5%;
+}
+
+.cron-summary-div {
+    border: solid 1px #cccccc;
+    padding: 4px 8px;
+    border-radius: 5px;
+}
+
+.summary-text {
+    font-size: 10px;
+    opacity: 0.6;
+}
