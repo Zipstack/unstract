@@ -26,6 +26,7 @@ import { EtlTaskDeploy } from "../../pipelines-or-deployments/etl-task-deploy/Et
 import { SocketMessages } from "../../helpers/socket-messages/SocketMessages";
 import FileUpload from "../file-upload/FileUpload.jsx";
 import "./Actions.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   const [logId, setLogId] = useState("");
@@ -43,6 +44,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   const [openAddETLModal, setOpenAddETLModal] = useState(false);
   const [deploymentName, setDeploymentName] = useState("");
   const [deploymentType, setDeploymentType] = useState("");
+  const handleException = useExceptionHandler();
   const {
     details,
     isLoading,
@@ -182,14 +184,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
       handleWfExecutionApi(body)
         .then(() => {})
         .catch((err) => {
-          const errorDetail =
-            err?.response?.data?.errors?.length > 0
-              ? err.response.data.errors[0].detail
-              : "Something went wrong";
-          setAlertDetails({
-            type: "error",
-            content: errorDetail,
-          });
+          setAlertDetails(handleException(err));
         });
     }
   };
@@ -233,7 +228,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
     return axiosPrivate(requestOptions)
       .then((res) => res)
       .catch((err) => {
-        throw err;
+        setAlertDetails(handleException(err));
       });
   };
 
@@ -469,10 +464,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
             </Button>
           </Tooltip>
           <Tooltip title="Deploy as Task Pipeline">
-            <Button
-              disabled={isIncompleteWorkflow() || !canAddTaskPipeline}
-              onClick={() => createDeployment("TASK")}
-            >
+            <Button onClick={() => createDeployment("TASK")}>
               <ApiOutlined />
             </Button>
           </Tooltip>
