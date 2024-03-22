@@ -1,7 +1,3 @@
-import datetime
-from typing import Any, Optional
-
-
 class TableColumns:
     CREATED_BY = "created_by"
     CREATED_AT = "created_at"
@@ -105,34 +101,3 @@ class BigQuery:
         "TIME",
         "TIMESTAMP",
     ]
-
-
-class DBConnectorTypeConverter:
-    """_summary_
-
-    Class to convert python data type to corresponding connector
-    database data type
-    """
-
-    @staticmethod
-    def python_to_sql_mapping(python_type: Any) -> Optional[str]:
-        """Method used to convert python to SQL datatype Used by Postgres,
-        Redshift, Snowflake."""
-        mapping = {
-            str: "VARCHAR(255)",
-            int: "INT",
-            float: "FLOAT",
-            datetime.datetime: "TIMESTAMP",
-        }
-        return mapping.get(python_type, "VARCHAR(255)")
-
-    @staticmethod
-    def python_to_bigquery_mapping(python_type: Any) -> Optional[str]:
-        """Method used to convert python to bigquery datatype."""
-        mapping = {
-            str: "string",
-            int: "INT64",
-            float: "FLOAT64",
-            datetime.datetime: "TIMESTAMP",
-        }
-        return mapping.get(python_type, "string")
