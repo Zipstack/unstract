@@ -6,6 +6,7 @@ class SchedulerConstants:
     NAME = "name"
     JOB_KWARGS = "job_kwargs"
     SCHEDULER_KWARGS = "scheduler_kwargs"
+    CRON_STRING = "cron_string"
 
     # Default strings
     DEFAULT_CRON_STRING = "0 9 * * 1"

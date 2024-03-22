@@ -2,7 +2,6 @@ import logging
 from typing import Any, Optional
 
 from account.custom_exceptions import DuplicateData
-from cron_expression_generator.constants import CronKeys
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from drf_yasg import openapi
@@ -14,7 +13,6 @@ from pipeline.constants import (
     PipelineExecutionKey,
 )
 from pipeline.constants import PipelineKey as PK
-from pipeline.exceptions import MandatoryCronSchedule, MandatoryWorkflowId
 from pipeline.manager import PipelineManager
 from pipeline.models import Pipeline
 from pipeline.pipeline_processor import PipelineProcessor
@@ -31,7 +29,6 @@ from scheduler.helper import SchedulerHelper
 from workflow_manager.workflow.constants import (
     WorkflowExecutionKey as WFExecKey,
 )
-from workflow_manager.workflow.constants import WorkflowKey
 
 logger = logging.getLogger(__name__)
 
@@ -96,14 +93,6 @@ class PipelineViewSet(viewsets.ModelViewSet):
         return Response(data=response_data, status=status.HTTP_200_OK)
 
     def create(self, request: Request) -> Response:
-        workflow_id = request.data.get(WorkflowKey.WF_ID)
-        cron_string = request.data.get(CronKeys.CRON_STRING)
-        # TODO: Remove these checks once ValidationError is handled properly
-        if not workflow_id:
-            raise MandatoryWorkflowId()
-        if not cron_string:
-            raise MandatoryCronSchedule()
-
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
