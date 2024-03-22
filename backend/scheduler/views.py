@@ -41,9 +41,7 @@ def schedule_task_job(pipeline_id: str, job_data: Any) -> Response:
         params = job_kwargs.get("params", {})
         with_logs = params.get("with_logs", False)
 
-        pipeline: Pipeline = PipelineProcessor.initialize_pipeline_sync(
-            pipeline_id
-        )
+        pipeline: Pipeline = PipelineProcessor.fetch_pipeline(pipeline_id)
 
         task_data[WorkflowKey.WF_ID] = pipeline.workflow.id
         execution_id = str(uuid.uuid4())

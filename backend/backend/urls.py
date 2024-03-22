@@ -28,7 +28,6 @@ urlpatterns = [
     path("", include("adapter_processor.urls")),
     path("", include("file_management.urls")),
     path("", include("tool_instance.urls")),
-    path("", include("cron_expression_generator.urls")),
     path("", include("pipeline.urls")),
     path("", include("apps.urls")),
     path("workflow/", include("workflow_manager.urls")),

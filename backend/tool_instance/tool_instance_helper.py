@@ -367,7 +367,7 @@ class ToolInstanceHelper:
         user: User, tool_uid: str, tool_meta: dict[str, Any]
     ) -> None:
         tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
-        adapter_ids = set()
+        adapter_ids: set[str] = set()
 
         for llm in tool.properties.adapter.language_models:
             if llm.is_enabled and llm.adapter_id:
@@ -413,7 +413,7 @@ class ToolInstanceHelper:
     @staticmethod
     def validate_adapter_access(
         user: User,
-        adapter_ids: set[str],
+        adapter_ids: list[str],
     ) -> None:
         adapter_instances = AdapterInstance.objects.filter(
             id__in=adapter_ids
