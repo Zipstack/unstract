@@ -31,7 +31,7 @@ class UnstractClassifier(BaseTool):
         if not llm_adapter_instance_id:
             self.stream_error_and_exit("Choose a llm to process the classifier")
         if not text_extraction_adapter_id:
-            self.stream_error_and_exit("Choose a llm to extract the documents")
+            self.stream_error_and_exit("Choose an LLM to extract the documents")
 
     def run(
         self,
