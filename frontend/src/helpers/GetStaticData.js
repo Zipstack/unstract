@@ -132,11 +132,9 @@ const listOfAppDeployments = [
     cron: null,
     workflow_name: "demo",
     source_name: "MinioFS/S3",
-    source_icon:
-      "https://storage.googleapis.com/pandora-static/connector-icons/S3.png",
+    source_icon: "/icons/connector-icons/S3.png",
     destination_name: "Unstract Cloud Storage",
-    destination_icon:
-      "https://storage.googleapis.com/pandora-static/connector-icons/Pandora%20Storage.png",
+    destination_icon: "/icons/connector-icons/Pandora%20Storage.png",
     goto: "https://finance-qa.pandora-demo.zipstack.io/",
   },
   {
@@ -153,11 +151,9 @@ const listOfAppDeployments = [
     cron: null,
     workflow_name: "demo",
     source_name: "MinioFS/S3",
-    source_icon:
-      "https://storage.googleapis.com/pandora-static/connector-icons/S3.png",
+    source_icon: "/icons/connector-icons/S3.png",
     destination_name: "Unstract Cloud Storage",
-    destination_icon:
-      "https://storage.googleapis.com/pandora-static/connector-icons/Pandora%20Storage.png",
+    destination_icon: "/icons/connector-icons/Pandora%20Storage.png",
     goto: "https://legal-qa.pandora-demo.zipstack.io/",
   },
 ];
@@ -320,7 +316,7 @@ const onboardCompleted = (adaptersList) => {
   if (!Array.isArray(adaptersList)) {
     return false;
   }
-  const MANDATORY_ADAPTERS = ["llm", "vector_db", "embedding"];
+  const MANDATORY_ADAPTERS = ["llm", "vector_db", "embedding", "x2text"];
   adaptersList = adaptersList.map((element) => element.toLowerCase());
   return MANDATORY_ADAPTERS.every((value) => adaptersList.includes(value));
 };

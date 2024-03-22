@@ -156,10 +156,10 @@ class AdapterProcessor:
                     )
                 )
 
-            if default_triad.get(AdapterKeys.X2TEXT, None):
+            if default_triad.get(AdapterKeys.X2TEXT_DEFAULT, None):
                 user_default_adapter.default_x2text_adapter = (
                     AdapterInstance.objects.get(
-                        pk=default_triad[AdapterKeys.X2TEXT]
+                        pk=default_triad[AdapterKeys.X2TEXT_DEFAULT]
                     )
                 )
 

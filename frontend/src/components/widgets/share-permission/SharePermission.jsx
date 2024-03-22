@@ -22,7 +22,7 @@ function SharePermission({
   const [filteredUsers, setFilteredUsers] = useState([]);
 
   useEffect(() => {
-    if (permissionEdit && adapter && adapter.shared_users) {
+    if (permissionEdit && adapter && adapter?.shared_users) {
       // If permissionEdit is true, and adapter is available,
       // set the selectedUsers to the IDs of shared users
       const users = allUsers.filter((user) => {
@@ -61,6 +61,8 @@ function SharePermission({
       prevSelectedUsers.filter((user) => user !== userId)
     );
   };
+  const filterOption = (input, option) =>
+    (option?.label ?? "").toLowerCase().includes(input.toLowerCase());
 
   return (
     adapter && (
@@ -83,6 +85,7 @@ function SharePermission({
           <>
             {permissionEdit ? (
               <Select
+                filterOption={filterOption}
                 showSearch
                 size={"middle"}
                 placeholder="Search"
@@ -99,21 +102,14 @@ function SharePermission({
                   label: user.email,
                   value: user.id,
                 }))}
-                onSearch={(searchValue) =>
-                  setFilteredUsers(
-                    allUsers.filter((user) =>
-                      user.email
-                        .toLowerCase()
-                        .includes(searchValue.toLowerCase())
-                    )
-                  )
-                }
               >
-                {filteredUsers.map((user) => (
-                  <Select.Option key={user.id} value={user.id}>
-                    {user.email}
-                  </Select.Option>
-                ))}
+                {filteredUsers.map((user) => {
+                  return (
+                    <Select.Option key={user?.id} value={user?.id}>
+                      {user?.email}
+                    </Select.Option>
+                  );
+                })}
               </Select>
             ) : (
               <>

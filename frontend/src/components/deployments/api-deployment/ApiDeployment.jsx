@@ -44,7 +44,6 @@ function ApiDeployment() {
     getApiDeploymentList();
     getWorkflows();
   }, []);
-
   const getWorkflows = () => {
     workflowApiService
       .getWorkflowEndpointList("SOURCE", "API")

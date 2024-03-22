@@ -36,8 +36,8 @@ class GoogleCloudStorageFS(UnstractFileSystem):
     @staticmethod
     def get_icon() -> str:
         return (
-            "https://storage.googleapis.com/"
-            "pandora-static/connector-icons/google_cloud_storage.png"
+            "/api/v1/static"
+            "/icons/connector-icons/google_cloud_storage.png"
         )
 
     @staticmethod

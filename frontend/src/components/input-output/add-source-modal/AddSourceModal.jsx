@@ -34,6 +34,7 @@ function AddSourceModal({
       llm: addOrEdit + " LLM",
       vector_db: addOrEdit + " Vector DB",
       embedding: addOrEdit + " Embedding",
+      x2text: addOrEdit + " Text Extractor",
     });
 
     if (editItemId?.length) {

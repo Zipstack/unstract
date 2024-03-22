@@ -29,6 +29,7 @@ const EtlTaskDeploy = ({
   workflowId,
   isEdit,
   selectedRow = {},
+  setDeploymentName,
 }) => {
   const [form] = Form.useForm();
   const workflowStore = useWorkflowStore();
@@ -193,6 +194,7 @@ const EtlTaskDeploy = ({
         if (workflowId) {
           // Update - can update workflow endpoint status in store
           updateWorkflow({ allowChangeEndpoint: false });
+          setDeploymentName(body.pipeline_name);
         } else {
           addPipeline(res?.data);
         }
@@ -336,5 +338,6 @@ EtlTaskDeploy.propTypes = {
   workflowId: PropTypes.string,
   isEdit: PropTypes.bool,
   selectedRow: PropTypes.object,
+  setDeploymentName: PropTypes.func,
 };
 export { EtlTaskDeploy };

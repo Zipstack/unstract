@@ -54,3 +54,8 @@ class ToolDeleteError(APIException):
 class NoPromptsFound(APIException):
     status_code = 404
     default_detail = "No prompts available to process"
+
+
+class PermissionError(APIException):
+    status_code = 403
+    default_detail = "You do not have permission to perform this action."
