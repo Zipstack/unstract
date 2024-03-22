@@ -23,12 +23,15 @@ class UnstractClassifier(BaseTool):
     def validate(self, input_file: str, settings: dict[str, Any]) -> None:
         bins: Optional[list[str]] = settings.get("classificationBins")
         llm_adapter_instance_id = settings.get(ToolSettingsKey.LLM_ADAPTER_ID)
+        text_extraction_adapter_id = settings.get("textExtractorId")
         if not bins:
             self.stream_error_and_exit("Classification bins are required")
         elif len(bins) < 2:
             self.stream_error_and_exit("At least two bins are required")
         if not llm_adapter_instance_id:
-            self.stream_error_and_exit("Choose a llm to process the classifier")
+            self.stream_error_and_exit("Choose an LLM to process the classifier")
+        if not text_extraction_adapter_id:
+            self.stream_error_and_exit("Choose an LLM to extract the documents")
 
     def run(
         self,
@@ -60,7 +63,7 @@ class UnstractClassifier(BaseTool):
         # Update GUI
         input_text_for_log = text
         if len(input_text_for_log) > 500:
-            input_text_for_log = input_text_for_log[:50000] + "...(truncated)"
+            input_text_for_log = input_text_for_log[:500] + "...(truncated)"
         input_log = (
             f"### Classification bins:\n```text\n{bins}\n```\n\n"
             f"### Input text:\n\n```text\n{input_text_for_log}\n```\n\n"
