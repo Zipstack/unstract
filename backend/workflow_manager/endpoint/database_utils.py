@@ -284,6 +284,7 @@ class DatabaseUtils:
             f"INSERT INTO {table_name} (id, {','.join(sql_keys)}) "
             f"SELECT '{generate_uuid}',{','.join(sql_values)}"
         )
+        logger.info(f"insertng into table with: {sql} query")
         try:
             if hasattr(engine, "cursor"):
                 with engine.cursor() as cursor:
@@ -333,6 +334,7 @@ class DatabaseUtils:
         sql = DatabaseUtils.generate_create_table_query(
             cls=class_name, table=table_name, database_entry=database_entry
         )
+        logger.info(f"creating table with: {sql} query")
         try:
             if hasattr(engine, "cursor"):
                 with engine.cursor() as cursor:
