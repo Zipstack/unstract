@@ -94,10 +94,3 @@ class CustomTool(BaseModel):
         related_name="challenge_llm",
     )
     enable_challenge = models.BooleanField(default=False)
-
-    # TODO: Add ProfileManager to return type
-    def get_default_llm_profile(self):  # type: ignore
-        try:
-            return self.profilemanager_set.filter(is_default=True).first()
-        except ObjectDoesNotExist:
-            raise DefaultProfileError
