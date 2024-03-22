@@ -441,7 +441,7 @@ class PromptStudioHelper:
         grammar_list = []
 
         # Using default profile manager llm if monitor_llm is None
-        if monitor_llm and monitor_llm_instance:
+        if monitor_llm_instance:
             monitor_llm = str(monitor_llm_instance.id)
         else:
             profile_manager = tool.get_default_llm_profile()
