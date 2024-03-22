@@ -16,6 +16,18 @@ class OutputManagerHelper:
         document_id: str,
         is_single_pass_extract_mode_active: bool
     ) -> None:
+        """Handles updating prompt outputs in the database.
+
+        Args:
+            prompts (list[ToolStudioPrompt]): List of prompts to update outputs for.
+            outputs (Any): Outputs corresponding to the prompts.
+            document_id (str): ID of the document.
+            is_single_pass_extract_mode_active (bool): Flag indicating if single pass extraction mode is active.
+        """
+        # Check if prompts list is empty
+        if not prompts:
+            return  # Return early if prompts list is empty
+
         tool = prompts[0].tool_id
         document_manager = DocumentManager.objects.get(pk=document_id)
 

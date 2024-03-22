@@ -10,6 +10,7 @@ from prompt_studio.prompt_studio_output_manager.serializers import (
 )
 from rest_framework import viewsets
 from rest_framework.versioning import URLPathVersioning
+from utils.common_utils import CommonUtils
 from utils.filtering import FilterHelper
 
 from .models import PromptStudioOutputManager
@@ -39,9 +40,8 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         )
 
         # Convert the string representation to a boolean value
-        is_single_pass_extract_mode_active = (
-            is_single_pass_extract_mode_active_param == 'true'
-        )
+        is_single_pass_extract_mode_active = CommonUtils.str_to_bool(
+            is_single_pass_extract_mode_active_param)
 
         filter_args[
             PromptStudioOutputManagerKeys.IS_SINGLE_PASS_EXTRACTION_MODE_ACTIVE
@@ -49,8 +49,8 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
             is_single_pass_extract_mode_active
         )
 
+        queryset = PromptStudioOutputManager.objects.all()
         if filter_args:
             queryset = PromptStudioOutputManager.objects.filter(**filter_args)
-        else:
-            queryset = PromptStudioOutputManager.objects.all()
+
         return queryset
