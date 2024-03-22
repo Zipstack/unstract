@@ -4,7 +4,7 @@ LABEL maintainer="Zipstack Inc."
 ENV UNSTRACT_ENTRYPOINT "python /app/src/main.py"
 
 # Install dependencies for unstructured library's partition
-RUN apt-get update && apt-get --no-install-recommends -y install libmagic-dev poppler-utils tesseract-ocr libreoffice pandoc\
+RUN apt-get update && apt-get --no-install-recommends -y install libmagic-dev poppler-utils\
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
