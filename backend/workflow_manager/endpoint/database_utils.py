@@ -395,7 +395,7 @@ class DatabaseUtils:
             )
 
         for key, val in database_entry.items():
-            if key not in TableManager.get_permanat_columns():
+            if key not in TableManager.permanat_columns:
                 python_type = type(val)
                 if cls == DBConnectionClass.BIGQUERY:
                     sql_type = (

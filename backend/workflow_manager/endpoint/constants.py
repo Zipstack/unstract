@@ -138,13 +138,9 @@ class DBConnectorTypeConverter:
 
 
 class TableManager:
-    @staticmethod
-    def get_permanat_columns() -> list[str]:
-        """Returns permanent columns for creating table in connector. Given
-        columns needs to be always present while creating table.
+    """
+    Returns:
+        list[str]:Returns permanent columns for creating table in connector.
+    """
 
-        Returns:
-            list[str]: _description_
-        """
-        permanent_columns = ["created_by", "created_at"]
-        return permanent_columns
+    permanat_columns = ["created_by", "created_at"]
