@@ -28,37 +28,29 @@ class PromptStudioOutputManager(BaseModel):
         default=list,
         db_comment="Field to store the evaluation metrics",
     )
-    is_single_pass_extract_mode_active = models.BooleanField(
+    is_single_pass_extract = models.BooleanField(
         default=False,
-        editable=False,
         db_comment="Is the single pass extraction mode active",
     )
     prompt_id = models.ForeignKey(
         ToolStudioPrompt,
         on_delete=models.CASCADE,
         related_name="prompt_output_linked_prompt",
-        null=True,
-        blank=True,
     )
     document_manager = models.ForeignKey(
         DocumentManager,
         on_delete=models.CASCADE,
         related_name="prompt_output_linked_document_manager",
-        editable=True,
     )
     profile_manager = models.ForeignKey(
         ProfileManager,
         on_delete=models.CASCADE,
         related_name="prompt_output_linked_prompt",
-        null=True,
-        blank=True,
     )
     tool_id = models.ForeignKey(
         CustomTool,
         on_delete=models.CASCADE,
         related_name="prompt_ouput_linked_tool",
-        null=True,
-        blank=True,
     )
     created_by = models.ForeignKey(
         User,
@@ -81,7 +73,7 @@ class PromptStudioOutputManager(BaseModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["prompt_id", "document_manager", "profile_manager",
-                        "tool_id", "is_single_pass_extract_mode_active"],
+                        "tool_id", "is_single_pass_extract"],
                 name="unique_prompt_output",
             ),
         ]

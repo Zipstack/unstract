@@ -510,7 +510,11 @@ function PromptCard({
   };
 
   const handleOutputApiRequest = async (isOutput) => {
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${selectedLlmProfileId}&is_single_pass_extract_mode_active=${singlePassExtractMode}`;
+    let url = `/api/v1/unstract/${
+      sessionDetails?.orgId
+    }/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${
+      promptDetails?.prompt_id
+    }&profile_manager=${selectedLlmProfileId}&is_single_pass_extract=${false}`;
 
     if (isOutput) {
       url += `&document_manager=${selectedDoc?.document_id}`;
