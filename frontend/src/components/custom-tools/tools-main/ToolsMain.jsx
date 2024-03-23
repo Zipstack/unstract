@@ -131,9 +131,7 @@ function ToolsMain() {
   const handleRunSinglePassExtraction = () => {
     updateCustomTool({ isSinglePassExtractLoading: true });
     handleSinglePassExtractionApi(selectedDoc?.document_id)
-      .then((res) => {
-        console.log(res?.data);
-      })
+      .then((res) => {})
       .catch((err) => {
         setAlertDetails(
           handleException(err, "Failed to run single pass extraction")

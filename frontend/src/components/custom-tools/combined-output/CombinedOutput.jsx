@@ -35,12 +35,10 @@ function CombinedOutput({ docId, setFilledFields }) {
 
     let filledFields = 0;
     setIsOutputLoading(true);
+    setCombinedOutput({});
     handleOutputApiRequest()
       .then((res) => {
         const data = res?.data || [];
-        data.sort((a, b) => {
-          return new Date(b.modified_at) - new Date(a.modified_at);
-        });
         const prompts = details?.prompts;
         const output = {};
         prompts.forEach((item) => {
@@ -68,6 +66,7 @@ function CombinedOutput({ docId, setFilledFields }) {
             filledFields++;
           }
         });
+
         setCombinedOutput(output);
 
         if (setFilledFields) {
@@ -91,7 +90,7 @@ function CombinedOutput({ docId, setFilledFields }) {
   const handleOutputApiRequest = async () => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}&is_single_pass_extract_mode_active=${singlePassExtractMode}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
