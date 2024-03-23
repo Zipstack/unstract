@@ -37,21 +37,14 @@ class OutputManagerHelper:
             profile_manager = prompt.profile_manager
             output = json.dumps(outputs.get(prompt.prompt_key))
 
-            # Attempt to retrieve an existing output manager,
+            # Attempt to update an existing output manager,
             # for the given criteria,
             # or create a new one if it doesn't exist
-            output_manager, created = (
-                PromptStudioOutputManager.objects.get_or_create(
-                    document_manager=document_manager,
-                    tool_id=tool,
-                    profile_manager=profile_manager,
-                    prompt_id=prompt,
-                    is_single_pass_extract=is_single_pass_extract,
-                    defaults={'output': output}
-                )
+            PromptStudioOutputManager.objects.update_or_create(
+                document_manager=document_manager,
+                tool_id=tool,
+                profile_manager=profile_manager,
+                prompt_id=prompt,
+                is_single_pass_extract=is_single_pass_extract,
+                defaults={'output': output}
             )
-
-            # Update the output if it already exists
-            if not created:
-                output_manager.output = output
-                output_manager.save()
