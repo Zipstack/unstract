@@ -27,16 +27,15 @@ def delete_duplicates_and_nulls(apps, schema_editor):
     # Iterate over each set of duplicates found
     for duplicate in duplicates:
         # Find all instances of duplicates for the current set
-        duplicates_to_delete = prompt_studio_output_manager.objects.filter(
+        pks = prompt_studio_output_manager.objects.filter(
             prompt_id=duplicate['prompt_id'],
             document_manager=duplicate['document_manager'],
             profile_manager=duplicate['profile_manager'],
             tool_id=duplicate['tool_id']
-        ).order_by('-created_at')[1:]  # Order by created_at descending and skip the first one (keep the latest)
+        ).order_by('-created_at').values_list('pk')[1:]  # Order by created_at descending and skip the first one (keep the latest)
 
-        # Keep the latest object, delete the rest
-        for obj in duplicates_to_delete:
-            obj.delete()
+        # Delete the duplicate rows
+        prompt_studio_output_manager.objects.filter(pk__in=pks).delete()
 
 
 class Migration(migrations.Migration):
