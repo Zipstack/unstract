@@ -17,7 +17,7 @@ class Migration(migrations.Migration):
             name="single_pass_extraction_mode",
             field=models.BooleanField(
                 db_comment="Flag to enable or disable single pass extraction mode",
-                default=True,
+                default=False,
             ),
         ),
         migrations.AlterField(

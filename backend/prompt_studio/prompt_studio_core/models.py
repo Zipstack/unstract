@@ -82,5 +82,5 @@ class CustomTool(BaseModel):
     )
     single_pass_extraction_mode = models.BooleanField(
         db_comment="Flag to enable or disable single pass extraction mode",
-        default=True,
+        default=False,
     )
