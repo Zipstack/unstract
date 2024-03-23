@@ -5,6 +5,7 @@ set -o errexit # exit for any command failure"
 
 # text color escape codes (\033 == \e but OSX doesn't respect the \e)
 blue_text='\033[94m'
+green_text='\033[32m'
 red_text='\033[31m'
 default_text='\033[39m'
 
@@ -18,6 +19,10 @@ debug() {
 }
 
 check_dependencies() {
+  if ! command -v git &> /dev/null; then
+    echo "$red_text""git not found. Exiting.""$default_text"
+    exit 1
+  fi
   if ! command -v docker compose &> /dev/null; then
     echo "$red_text""docker not found. Exiting.""$default_text"
     exit 1
@@ -36,17 +41,15 @@ check_dependencies() {
 display_banner() {
   # Make sure the console is huge
   if test $(tput cols) -ge 64; then
-    # Make it green!
-    echo -e "\033[32m"
-    echo -e " _    _ _   _  _____ _______ _____            _____ _______"
-    echo -e "| |  | | \ | |/ ____|__   __|  __ \     /\   / ____|__   __|"
-    echo -e "| |  | |  \| | (___    | |  | |__) |   /  \ | |       | |"
-    echo -e "| |  | | .   |\___ \   | |  |  _  /   / /\ \| |       | |"
-    echo -e "| |__| | |\  |____) |  | |  | | \ \  / ____ \ |____   | |"
-    echo -e " \____/|_| \_|_____/   |_|  |_|  \_\/_/    \_\_____|  |_|"
-    echo -e "                                                         "
-    # Make it less green
-    echo -e "\033[0m"
+    echo " █████   █████"
+    echo "░░███   ░░███ "
+    echo " ░███    ░███ "
+    echo " ░███    ░███ "
+    echo " ░███    ░███ "
+    echo " ░███    ░███ "
+    echo " ░░█████████     >UNSTRACT COMMUNITY EDITION"
+    echo "  ░░░░░░░░░   "
+    echo ""
     sleep 1
   fi
 }
@@ -56,10 +59,11 @@ display_help() {
   echo
   echo -e "Syntax: $0 [options]"
   echo -e "Options:"
-  echo -e "   -h, --help          Displays the help information"
+  echo -e "   -h, --help          Display help information"
   echo -e "   -e, --only-env      Only do env files setup"
   echo -e "   -p, --only-pull     Only do docker images pull"
   echo -e "   -b, --build-local   Build docker images locally"
+  echo -e "   -u, --upgrade       Upgrade services"
   echo -e "   -x, --trace         Enables trace mode"
   echo -e "   -V, --verbose       Print verbose logs"
   echo -e "   -v, --version       Docker images version tag (default \"latest\")"
@@ -82,6 +86,9 @@ parse_args() {
         ;;
       -b | --build-local)
         opt_build_local=true
+        ;;
+      -u | --upgrade)
+        opt_upgrade=true
         ;;
       -x | --trace)
         set -o xtrace  # display every line before execution; enables PS4
@@ -106,15 +113,28 @@ parse_args() {
   debug "OPTION only_env: $opt_only_env"
   debug "OPTION only_pull: $opt_only_pull"
   debug "OPTION build_local: $opt_build_local"
+  debug "OPTION upgrade: $opt_upgrade"
   debug "OPTION verbose: $opt_verbose"
   debug "OPTION version: $opt_version"
+}
+
+do_git_pull() {
+  if [ "$opt_upgrade" = false ]; then
+    return
+  fi
+
+  echo -e "Performing git switch to ""$blue_text""main branch""$default_text".
+  # git switch main
+
+  echo -e "Performing ""$blue_text""git pull""$default_text"" on main branch."
+  git pull
 }
 
 setup_env() {
   # Generate Fernet Key. Refer https://pypi.org/project/cryptography/. for both backend and platform-service.
   ENCRYPTION_KEY=$(python3 -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
   DEFAULT_AUTH_KEY="unstract"
-  
+
   for service in "${services[@]}"; do
     sample_env_path="$script_dir/$service/sample.env"
     env_path="$script_dir/$service/.env"
@@ -143,7 +163,11 @@ setup_env() {
       fi
       echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
     else
-      echo -e "Found existing env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
+      python $script_dir/docker/scripts/merge_env.py $sample_env_path $env_path
+      if [ $? -ne 0 ]; then
+        exit 1
+      fi
+      echo -e "Merged env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
     fi
   done
 
@@ -151,7 +175,11 @@ setup_env() {
     cp "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
     echo -e "Created env for ""$blue_text""essential services""$default_text"" at ""$blue_text""$script_dir/docker/essentials.env""$default_text""."
   else
-    echo -e "Found existing env for ""$blue_text""essential services""$default_text"" at ""$blue_text""$script_dir/docker/essentials.env""$default_text""."
+    python $script_dir/docker/scripts/merge_env.py "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
+    if [ $? -ne 0 ]; then
+      exit 1
+    fi
+    echo -e "Merged env for ""$blue_text""essential services""$default_text"" at ""$blue_text""$script_dir/docker/essentials.env""$default_text""."
   fi
 
   if [ ! -e "$script_dir/docker/proxy_overrides.yaml" ]; then
@@ -161,7 +189,7 @@ setup_env() {
   fi
 
   if [ "$opt_only_env" = true ]; then
-    echo "Done." && exit 0
+    echo -e "$green_text""Done.""$default_text" && exit 0
   fi
 }
 
@@ -169,29 +197,29 @@ build_services() {
   pushd ${script_dir}/docker 1>/dev/null
 
   if [ "$opt_build_local" = true ]; then
-    echo "Building docker images locally."
+    echo -e "$blue_text""Building""$default_text"" docker images ""$blue_text""$opt_version""$default_text"" locally."
     VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.build.yaml build || {
       echo -e "$red_text""Failed to build docker images.""$default_text"
       exit 1
     }
   else
-    for service in "${services[@]}"; do
-      if ! docker image inspect "unstract/${service}:$opt_version" &> /dev/null; then
-        echo -e "$red_text""Docker image 'unstract/${service}:$opt_version' not found. Pulling...""$default_text"
-        docker pull unstract/${service}:$opt_version || {
-          echo -e "$red_text""Failed to pull 'unstract/${service}:$opt_version'. Check if version exists.""$default_text"
-          exit 1
-        }
-      else
-        echo -e "Found docker image ""$blue_text""'unstract/${service}:$opt_version'""$default_text""."
-      fi
-    done
+    echo -e "$blue_text""Pulling""$default_text"" docker images ""$blue_text""$opt_version""$default_text""."
+
+    pull_policy="missing"
+    if [ "$opt_upgrade" = true ] && [ "$opt_version" = "latest" ]; then
+      pull_policy="always"
+    fi
+
+    VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.build.yaml pull --policy $pull_policy || {
+      echo -e "$red_text""Failed to pull docker images. Check version or try again.""$default_text"
+      exit 1
+    }
   fi
 
   popd 1>/dev/null
 
   if [ "$opt_only_pull" = true ]; then
-    echo "Done." && exit 0
+    echo -e "$green_text""Done.""$default_text" && exit 0
   fi
 }
 
@@ -216,6 +244,7 @@ check_dependencies
 opt_only_env=false
 opt_only_pull=false
 opt_build_local=false
+opt_upgrade=false
 opt_verbose=false
 opt_version="latest"
 
@@ -226,6 +255,7 @@ services=($(VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docke
 display_banner
 parse_args $*
 
+do_git_pull
 setup_env
 build_services
 run_services

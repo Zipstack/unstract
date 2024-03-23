@@ -144,43 +144,6 @@ repos:
         entry: pyupgrade --py38-plus --keep-runtime-typing
         types:
           - python
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.8.0
-    hooks:
-      - id: mypy
-        language: system
-        entry: mypy .
-        pass_filenames: false
-        # IMPORTANT!
-        # Keep args same as tool.mypy section in pyproject.toml
-        args:
-          [
-            --allow-subclassing-any,
-            --allow-untyped-decorators,
-            --check-untyped-defs,
-            --exclude, ".*migrations/.*.py",
-            --exclude, "backend/prompt/.*",
-            --exclude, "document-service/.*",
-            --exclude, "unstract/connectors/tests/.*",
-            --exclude, "unstract/core/.*",
-            --exclude, "unstract/flags/src/unstract/flags/.*",
-            --exclude, "__pypackages__/.*",
-            --follow-imports, "silent",
-            --ignore-missing-imports,
-            --implicit-reexport,
-            --pretty,
-            --python-version=3.9,
-            --show-column-numbers,
-            --show-error-codes,
-            --strict,
-            --warn-redundant-casts,
-            --warn-return-any,
-            --warn-unreachable,
-            --warn-unused-configs,
-            --warn-unused-ignores,
-            # To use Unpack for typing kwargs
-            --enable-incomplete-feature=Unpack
-          ]
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.39.0
     hooks:
@@ -194,9 +157,14 @@ repos:
       - id: pdm-lock-check
   - repo: local
     hooks:
+      - id: run-mypy
+        name: Run mypy
+        entry: sh -c 'pdm run mypy .'
+        language: system
+        pass_filenames: false
       - id: check-django-migrations
         name: Check django migrations
-        entry: sh -c 'pdm run `find . -name "manage.py" -not -path "*/.venv/*"` makemigrations --check --dry-run --no-input'
+        entry: sh -c 'pdm run docker/scripts/check_django_migrations.sh'
         language: system
         types: [python] # hook only runs if a python file is staged
         pass_filenames: false
