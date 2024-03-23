@@ -4,7 +4,7 @@ import {
   ExportOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
-import { Button, Space, Switch, Tooltip, Typography } from "antd";
+import { Button, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -17,31 +17,21 @@ import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
+let SinglePassToggleSwitch;
+try {
+  SinglePassToggleSwitch =
+    require("../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch").SinglePassToggleSwitch;
+} catch {
+  // The variable will remain undefined if the component is not available.
+}
 function Header({ setOpenSettings, handleUpdateTool }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
-  const { details, updateCustomTool, singlePassExtractMode } =
-    useCustomToolStore();
+  const { details } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
   const handleException = useExceptionHandler();
-
-  const handleSinglePassExtractChange = (value) => {
-    updateCustomTool({
-      singlePassExtractMode: value,
-    });
-
-    handleUpdateTool({ single_pass_extraction_mode: value }).catch((err) => {
-      setAlertDetails(
-        handleException(err, "Failed to switch the single pass extraction mode")
-      );
-      // Revert the mode if the API fails
-      updateCustomTool({
-        singlePassExtractMode: !value,
-      });
-    });
-  };
 
   const handleExport = () => {
     const requestOptions = {
@@ -85,16 +75,9 @@ function Header({ setOpenSettings, handleUpdateTool }) {
         </Button>
       </div>
       <div className="custom-tools-header-btns">
-        <Space>
-          <Typography.Text className="font-size-12">
-            Single Pass Extraction
-          </Typography.Text>
-          <Switch
-            size="small"
-            checked={singlePassExtractMode}
-            onChange={(value) => handleSinglePassExtractChange(value)}
-          />
-        </Space>
+        {SinglePassToggleSwitch && (
+          <SinglePassToggleSwitch handleUpdateTool={handleUpdateTool} />
+        )}
         <div>
           <Tooltip title="Settings">
             <Button

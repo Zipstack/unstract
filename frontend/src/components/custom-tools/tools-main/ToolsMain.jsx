@@ -1,6 +1,6 @@
 import { Button, Space, Tabs, Tooltip } from "antd";
 import { useEffect, useState } from "react";
-import { BarChartOutlined, PlayCircleOutlined } from "@ant-design/icons";
+import { BarChartOutlined } from "@ant-design/icons";
 
 import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -14,6 +14,14 @@ import "./ToolsMain.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useNavigate } from "react-router-dom";
 
+let RunSinglePassBtn;
+try {
+  RunSinglePassBtn =
+    require("../../../plugins/run-single-pass-btn/RunSinglePassBtn").RunSinglePassBtn;
+} catch {
+  // The variable is remain undefined if the component is not available
+}
+
 function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
   const [prompts, setPrompts] = useState([]);
@@ -26,7 +34,6 @@ function ToolsMain() {
     updateCustomTool,
     disableLlmOrDocChange,
     singlePassExtractMode,
-    isSinglePassExtractLoading,
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -128,43 +135,6 @@ function ToolsMain() {
       });
   };
 
-  const handleRunSinglePassExtraction = () => {
-    updateCustomTool({ isSinglePassExtractLoading: true });
-    handleSinglePassExtractionApi(selectedDoc?.document_id)
-      .then((res) => {})
-      .catch((err) => {
-        setAlertDetails(
-          handleException(err, "Failed to run single pass extraction")
-        );
-      })
-      .finally(() => {
-        updateCustomTool({ isSinglePassExtractLoading: false });
-      });
-  };
-
-  const handleSinglePassExtractionApi = async (docId) => {
-    const body = {
-      document_id: docId,
-      tool_id: details?.tool_id,
-    };
-
-    const requestOptions = {
-      method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/single-pass-extraction`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json",
-      },
-      data: body,
-    };
-
-    return axiosPrivate(requestOptions)
-      .then((res) => res)
-      .catch((err) => {
-        throw err;
-      });
-  };
-
   return (
     <div className="tools-main-layout">
       <div className="doc-manager-header">
@@ -179,15 +149,7 @@ function ToolsMain() {
                 onClick={() => navigate("outputAnalyzer")}
               />
             </Tooltip>
-            {singlePassExtractMode && (
-              <Tooltip title="Single Pass Extraction">
-                <Button
-                  onClick={handleRunSinglePassExtraction}
-                  loading={isSinglePassExtractLoading}
-                  icon={<PlayCircleOutlined />}
-                />
-              </Tooltip>
-            )}
+            {singlePassExtractMode && <RunSinglePassBtn />}
           </Space>
         </div>
       </div>
