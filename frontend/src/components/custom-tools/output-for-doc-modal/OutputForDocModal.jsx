@@ -172,7 +172,9 @@ function OutputForDocModal({
                     <CloseCircleFilled style={{ color: "#FF4D4F" }} />
                   )}
                 </span>{" "}
-                {isSuccess ? displayPromptResult(output?.output) : "Failed"}
+                {isSuccess
+                  ? displayPromptResult(output?.output, true)
+                  : "Failed"}
               </Typography.Text>
             )}
           </>

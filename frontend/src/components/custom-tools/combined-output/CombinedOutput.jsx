@@ -6,7 +6,10 @@ import "prismjs/themes/prism.css";
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 
-import { promptType } from "../../../helpers/GetStaticData";
+import {
+  displayPromptResult,
+  promptType,
+} from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -65,11 +68,10 @@ function CombinedOutput({
             return;
           }
 
-          try {
-            output[item?.prompt_key] = JSON.parse(outputDetails?.output);
-          } catch (err) {
-            output[item?.prompt_key] = outputDetails?.output || "";
-          }
+          output[item?.prompt_key] = displayPromptResult(
+            outputDetails?.output,
+            false
+          );
 
           if (outputDetails?.output?.length > 0) {
             filledFields++;
