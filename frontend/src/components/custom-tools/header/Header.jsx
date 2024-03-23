@@ -6,7 +6,7 @@ import {
 } from "@ant-design/icons";
 import { Button, Space, Switch, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Header.css";
 
@@ -19,18 +19,13 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function Header({ setOpenSettings, handleUpdateTool }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
-  const { details, updateCustomTool } = useCustomToolStore();
+  const { details, updateCustomTool, singlePassExtractMode } =
+    useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
   const handleException = useExceptionHandler();
-
-  useEffect(() => {
-    updateCustomTool({
-      singlePassExtractMode: details?.single_pass_extraction_mode,
-    });
-  }, []);
 
   const handleSinglePassExtractChange = (value) => {
     updateCustomTool({
@@ -96,6 +91,7 @@ function Header({ setOpenSettings, handleUpdateTool }) {
           </Typography.Text>
           <Switch
             size="small"
+            checked={singlePassExtractMode}
             onChange={(value) => handleSinglePassExtractChange(value)}
           />
         </Space>
