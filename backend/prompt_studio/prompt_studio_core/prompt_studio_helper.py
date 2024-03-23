@@ -344,8 +344,6 @@ class PromptStudioHelper:
                     document_id=document_id,
                 )
 
-                prompts: list[ToolStudioPrompt] = []
-                prompts.append(prompt_instance)
                 OutputManagerHelper.handle_prompt_output_update(
                     prompts=prompts,
                     outputs=response,
