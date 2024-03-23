@@ -36,7 +36,7 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         # Get the query parameter for "is_single_pass_extract"
         is_single_pass_extract_param = (
             self.request.GET.get(
-                PromptStudioOutputManagerKeys.IS_SINGLE_PASS_EXTRACT, False)
+                PromptStudioOutputManagerKeys.IS_SINGLE_PASS_EXTRACT, "false")
         )
 
         # Convert the string representation to a boolean value
