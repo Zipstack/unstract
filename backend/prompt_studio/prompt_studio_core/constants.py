@@ -78,6 +78,7 @@ class ToolStudioPromptKeys:
     DOCUMENT_ID = "document_id"
     EXTRACT = "extract"
     LLM_PROFILE_MANAGER = "llm_profile_manager"
+    SINGLE_PASS_EXTRACTION_MODE = "single_pass_extraction_mode"
 
 
 class LogLevels:

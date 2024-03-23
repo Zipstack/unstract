@@ -447,31 +447,17 @@ class PromptStudioHelper:
         """
         monitor_llm_instance: Optional[AdapterInstance] = tool.monitor_llm
         monitor_llm: Optional[str] = None
-        if monitor_llm_instance:
-            monitor_llm = str(monitor_llm_instance.id)
-        challenge_llm_instance: Optional[AdapterInstance] = tool.challenge_llm
-        challenge_llm: Optional[str] = None
         prompt_grammer = tool.prompt_grammer
         outputs: list[dict[str, Any]] = []
         grammer_dict = {}
         grammar_list = []
 
-        # Using default profile manager llm if monitor_llm is None
         if monitor_llm_instance:
             monitor_llm = str(monitor_llm_instance.id)
         else:
+            # Using default profile manager llm if monitor_llm is None
             default_profile = ProfileManager.get_default_llm_profile(tool)
             monitor_llm = str(default_profile.llm.id)
-
-        # Using default profile manager llm if challenge_llm is None
-        if challenge_llm_instance:
-            challenge_llm = str(challenge_llm_instance.id)
-        else:
-            # TODO: Use CustomTool model to get profile_manager
-            profile_manager = ProfileManager.objects.get(
-                prompt_studio_tool=tool, is_default=True
-            )
-            challenge_llm = str(profile_manager.llm.id)
 
         # Adding validations
         if prompt_grammer:
@@ -542,11 +528,9 @@ class PromptStudioHelper:
             output[TSPKeys.EVAL_SETTINGS][
                 TSPKeys.EVAL_SETTINGS_EXCLUDE_FAILED
             ] = tool.exclude_failed
-            output[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
             output[
-                "single_pass_extraction_mode"
+                TSPKeys.SINGLE_PASS_EXTRACTION_MODE
             ] = tool.single_pass_extraction_mode
-            output[TSPKeys.CHALLENGE_LLM] = challenge_llm
             for attr in dir(prompt):
                 if attr.startswith(TSPKeys.EVAL_METRIC_PREFIX):
                     attr_val = getattr(prompt, attr)
@@ -662,17 +646,6 @@ class PromptStudioHelper:
         grammar: list[dict[str, Any]] = []
         prompt_grammar = tool.prompt_grammer
         default_profile = ProfileManager.get_default_llm_profile(tool)
-        challenge_llm_instance: Optional[AdapterInstance] = tool.challenge_llm
-        challenge_llm: Optional[str] = None
-        # Using default profile manager llm if challenge_llm is None
-        if challenge_llm_instance:
-            challenge_llm = str(challenge_llm_instance.id)
-        else:
-            # TODO: Use CustomTool model to get profile_manager
-            profile_manager = ProfileManager.objects.get(
-                prompt_studio_tool=tool, is_default=True
-            )
-            challenge_llm = str(profile_manager.llm.id)
         # Need to check the user who created profile manager
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(
@@ -700,18 +673,18 @@ class PromptStudioHelper:
         embedding_model = str(default_profile.embedding_model.id)
         llm = str(default_profile.llm.id)
         x2text = str(default_profile.x2text.id)
-        tool_settings = {}
-        tool_settings[TSPKeys.PREAMBLE] = tool.preamble
-        tool_settings[TSPKeys.POSTAMBLE] = tool.postamble
-        tool_settings[TSPKeys.GRAMMAR] = grammar
-        tool_settings[TSPKeys.LLM] = llm
-        tool_settings[TSPKeys.X2TEXT_ADAPTER] = x2text
-        tool_settings[TSPKeys.VECTOR_DB] = vector_db
-        tool_settings[TSPKeys.EMBEDDING] = embedding_model
-        tool_settings[TSPKeys.CHUNK_SIZE] = default_profile.chunk_size
-        tool_settings[TSPKeys.CHUNK_OVERLAP] = default_profile.chunk_overlap
-        tool_settings[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
-        tool_settings[TSPKeys.CHALLENGE_LLM] = challenge_llm
+        llm_profile_manager = {}
+        llm_profile_manager[TSPKeys.PREAMBLE] = tool.preamble
+        llm_profile_manager[TSPKeys.POSTAMBLE] = tool.postamble
+        llm_profile_manager[TSPKeys.GRAMMAR] = grammar
+        llm_profile_manager[TSPKeys.LLM] = llm
+        llm_profile_manager[TSPKeys.X2TEXT_ADAPTER] = x2text
+        llm_profile_manager[TSPKeys.VECTOR_DB] = vector_db
+        llm_profile_manager[TSPKeys.EMBEDDING] = embedding_model
+        llm_profile_manager[TSPKeys.CHUNK_SIZE] = default_profile.chunk_size
+        llm_profile_manager[
+            TSPKeys.CHUNK_OVERLAP
+        ] = default_profile.chunk_overlap
 
         for prompt in prompts:
             output: dict[str, Any] = {}
@@ -729,7 +702,7 @@ class PromptStudioHelper:
         file_hash = ToolUtils.get_hash_from_file(file_path=file_path)
 
         payload = {
-            TSPKeys.TOOL_SETTINGS: tool_settings,
+            TSPKeys.LLM_PROFILE_MANAGER: llm_profile_manager,
             TSPKeys.OUTPUTS: outputs,
             TSPKeys.TOOL_ID: tool_id,
             TSPKeys.FILE_HASH: file_hash,
