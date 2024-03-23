@@ -301,9 +301,9 @@ const isJson = (text) => {
 
 const displayPromptResult = (output, isFormat = false) => {
   let i = 0;
-  let parsedData = JSON.parse(output);
+  let parsedData = output;
 
-  while (i < 2) {
+  while (i < 3) {
     i++;
     try {
       parsedData = JSON.parse(parsedData);

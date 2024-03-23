@@ -46,6 +46,7 @@ import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
+import { TokenCount } from "../token-count/TokenCount";
 
 let EvalBtn = null;
 let EvalMetrics = null;
@@ -91,6 +92,7 @@ function PromptCard({
   const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
   const [progressMsg, setProgressMsg] = useState({});
   const [docOutputs, setDocOutputs] = useState({});
+  const [tokenCount, setTokenCount] = useState({});
   const divRef = useRef(null);
   const {
     getDropdownItems,
@@ -348,6 +350,13 @@ function PromptCard({
         }
         handleDocOutputs(docId, false, value);
         handleGetOutput();
+
+        const usage = data[`${promptDetails?.prompt_key}__usage`] || {
+          prompt_token_count: 30,
+          completion_token_count: 10,
+          total_token_count: 10,
+        };
+        setTokenCount(usage);
       })
       .catch((err) => {
         setIsRunLoading(false);
@@ -791,7 +800,8 @@ function PromptCard({
                   </Space>
                 </Button>
               </Space>
-              <div>
+              <Space>
+                <TokenCount tokenCount={tokenCount} />
                 <Select
                   className="prompt-card-select-type"
                   size="small"
@@ -806,7 +816,7 @@ function PromptCard({
                   }
                   onChange={(value) => handleTypeChange(value)}
                 />
-              </div>
+              </Space>
             </div>
             <div className="prompt-card-llm-profiles">
               {llmProfiles?.length > 0 &&

@@ -149,7 +149,7 @@ function ToolsMain() {
                 onClick={() => navigate("outputAnalyzer")}
               />
             </Tooltip>
-            {singlePassExtractMode && <RunSinglePassBtn />}
+            {singlePassExtractMode && RunSinglePassBtn && <RunSinglePassBtn />}
           </Space>
         </div>
       </div>
