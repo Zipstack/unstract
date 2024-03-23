@@ -30,23 +30,23 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
             PromptStudioOutputManagerKeys.PROMPT_ID,
             PromptStudioOutputManagerKeys.PROFILE_MANAGER,
             PromptStudioOutputManagerKeys.DOCUMENT_MANAGER,
-            PromptStudioOutputManagerKeys.IS_SINGLE_PASS_EXTRACTION_MODE_ACTIVE,
+            PromptStudioOutputManagerKeys.IS_SINGLE_PASS_EXTRACT,
         )
 
-        # Get the query parameter for "is_single_pass_extract_mode_active"
-        is_single_pass_extract_mode_active_param = (
+        # Get the query parameter for "is_single_pass_extract"
+        is_single_pass_extract_param = (
             self.request.GET.get(
-                PromptStudioOutputManagerKeys.IS_SINGLE_PASS_EXTRACTION_MODE_ACTIVE, False)
+                PromptStudioOutputManagerKeys.IS_SINGLE_PASS_EXTRACT, False)
         )
 
         # Convert the string representation to a boolean value
-        is_single_pass_extract_mode_active = CommonUtils.str_to_bool(
-            is_single_pass_extract_mode_active_param)
+        is_single_pass_extract = CommonUtils.str_to_bool(
+            is_single_pass_extract_param)
 
         filter_args[
-            PromptStudioOutputManagerKeys.IS_SINGLE_PASS_EXTRACTION_MODE_ACTIVE
+            PromptStudioOutputManagerKeys.IS_SINGLE_PASS_EXTRACT
         ] = (
-            is_single_pass_extract_mode_active
+            is_single_pass_extract
         )
 
         queryset = PromptStudioOutputManager.objects.all()

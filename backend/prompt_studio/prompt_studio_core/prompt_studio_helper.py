@@ -348,7 +348,7 @@ class PromptStudioHelper:
                     prompts=prompts,
                     outputs=response,
                     document_id=document_id,
-                    is_single_pass_extract_mode_active=False
+                    is_single_pass_extract=False
                 )
             except PermissionError as e:
                 raise e
@@ -403,7 +403,7 @@ class PromptStudioHelper:
                     prompts=prompts,
                     outputs=response,
                     document_id=document_id,
-                    is_single_pass_extract_mode_active=True
+                    is_single_pass_extract=True
                 )
             except PermissionError as e:
                 raise e

@@ -28,7 +28,7 @@ class PromptStudioOutputManager(BaseModel):
         default=list,
         db_comment="Field to store the evaluation metrics",
     )
-    is_single_pass_extract_mode_active = models.BooleanField(
+    is_single_pass_extract = models.BooleanField(
         default=False,
         db_comment="Is the single pass extraction mode active",
     )
@@ -73,7 +73,7 @@ class PromptStudioOutputManager(BaseModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["prompt_id", "document_manager", "profile_manager",
-                        "tool_id", "is_single_pass_extract_mode_active"],
+                        "tool_id", "is_single_pass_extract"],
                 name="unique_prompt_output",
             ),
         ]
