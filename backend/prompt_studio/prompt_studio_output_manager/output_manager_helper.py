@@ -36,6 +36,7 @@ class OutputManagerHelper:
         for prompt in prompts:
             profile_manager = prompt.profile_manager
             output = json.dumps(outputs.get(prompt.prompt_key))
+            eval_metrics = outputs.get(f"{prompt.prompt_key}__evaluation", [])
 
             # Attempt to update an existing output manager,
             # for the given criteria,
@@ -46,5 +47,5 @@ class OutputManagerHelper:
                 profile_manager=profile_manager,
                 prompt_id=prompt,
                 is_single_pass_extract=is_single_pass_extract,
-                defaults={"output": output},
+                defaults={"output": output, "eval_metrics": eval_metrics},
             )

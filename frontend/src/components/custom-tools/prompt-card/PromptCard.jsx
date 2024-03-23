@@ -51,7 +51,7 @@ import { TokenCount } from "../token-count/TokenCount";
 let EvalBtn = null;
 let EvalMetrics = null;
 let EvalModal = null;
-let getEvalMetrics = (param1, param2, param3) => {
+let getEvalMetrics = (param1, param2) => {
   return [];
 };
 try {
@@ -485,7 +485,6 @@ function PromptCard({
           output: outputResult?.output,
           evalMetrics: getEvalMetrics(
             promptDetails?.evaluate,
-            promptDetails?.prompt_key,
             outputResult?.eval_metrics || []
           ),
         });
