@@ -351,11 +351,7 @@ function PromptCard({
         handleDocOutputs(docId, false, value);
         handleGetOutput();
 
-        const usage = data[`${promptDetails?.prompt_key}__usage`] || {
-          prompt_token_count: 30,
-          completion_token_count: 10,
-          total_token_count: 10,
-        };
+        const usage = data[`${promptDetails?.prompt_key}__usage`] || {};
         setTokenCount(usage);
       })
       .catch((err) => {
