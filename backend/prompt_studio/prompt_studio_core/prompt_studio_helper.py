@@ -7,7 +7,6 @@ from typing import Any, Optional
 from account.constants import Common
 from adapter_processor.models import AdapterInstance
 from django.conf import settings
-from django.core.exceptions import PermissionDenied
 from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
@@ -20,6 +19,7 @@ from prompt_studio.prompt_studio_core.exceptions import (
     DefaultProfileError,
     IndexingError,
     NoPromptsFound,
+    PermissionError,
     PromptNotValid,
     ToolNotValid,
 )
@@ -62,7 +62,7 @@ class PromptStudioHelper:
               validate.
 
         Raises:
-            PermissionDenied: If the owner does not have permission to perform
+            PermissionError: If the owner does not have permission to perform
               the action.
         """
         profile_manager_owner = profile_manager.created_by
@@ -98,35 +98,47 @@ class PromptStudioHelper:
             and is_embedding_model_owned
             and is_x2text_owned
         ):
+            adapter_names = set()
             if not is_llm_owned:
                 logger.error(
                     ERROR_MSG,
                     profile_manager_owner.user_id,
                     profile_manager.llm.id,
                 )
+                adapter_names.add(profile_manager.llm.adapter_name)
             if not is_vector_store_owned:
                 logger.error(
                     ERROR_MSG,
                     profile_manager_owner.user_id,
                     profile_manager.vector_store.id,
                 )
+                adapter_names.add(profile_manager.vector_store.adapter_name)
             if not is_embedding_model_owned:
                 logger.error(
                     ERROR_MSG,
                     profile_manager_owner.user_id,
                     profile_manager.embedding_model.id,
                 )
+                adapter_names.add(profile_manager.embedding_model.adapter_name)
             if not is_x2text_owned:
                 logger.error(
                     ERROR_MSG,
                     profile_manager_owner.user_id,
                     profile_manager.x2text.id,
                 )
+                adapter_names.add(profile_manager.x2text.adapter_name)
+            if len(adapter_names) > 1:
+                error_msg = (
+                    f"Multiple permission errors were encountered with {', '.join(adapter_names)}",  # noqa: E501
+                )
+            else:
+                error_msg = (
+                    f"Permission Error: You do not have access to {adapter_names.pop()}",  # noqa: E501
+                )
 
-            raise PermissionDenied(
-                "You don't have permission to perform this action."
-            )
+            raise PermissionError(error_msg)
 
+    @staticmethod
     def _publish_log(
         component: dict[str, str], level: str, state: str, message: str
     ) -> None:
@@ -207,17 +219,12 @@ class PromptStudioHelper:
             default_profile = profile_manager
             file_path = file_name
         else:
-            profile_manager = ProfileManager.objects.get(
-                prompt_studio_tool=tool, is_default=True
-            )
-            default_profile = profile_manager
+            default_profile = ProfileManager.get_default_llm_profile(tool)
             file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                 org_id, is_create=False, user_id=user_id, tool_id=tool_id
             )
             file_path = str(Path(file_path) / file_name)
 
-        if not default_profile:
-            raise DefaultProfileError()
         if not tool:
             logger.error(f"No tool instance found for the ID {tool_id}")
             raise ToolNotValid()
@@ -339,9 +346,9 @@ class PromptStudioHelper:
                     prompts=prompts,
                     outputs=response,
                     document_id=document_id,
-                    is_single_pass_extract_mode_active=False
+                    is_single_pass_extract_mode_active=False,
                 )
-            except PermissionDenied as e:
+            except PermissionError as e:
                 raise e
             except Exception as exc:
                 logger.error(
@@ -394,9 +401,9 @@ class PromptStudioHelper:
                     prompts=prompts,
                     outputs=response,
                     document_id=document_id,
-                    is_single_pass_extract_mode_active=True
+                    is_single_pass_extract_mode_active=True,
                 )
-            except PermissionDenied as e:
+            except PermissionError as e:
                 raise e
             except Exception as e:
                 logger.error(
@@ -450,14 +457,11 @@ class PromptStudioHelper:
         grammar_list = []
 
         # Using default profile manager llm if monitor_llm is None
-        if monitor_llm:
+        if monitor_llm_instance:
             monitor_llm = str(monitor_llm_instance.id)
         else:
-            # TODO: Use CustomTool model to get profile_manager
-            profile_manager = ProfileManager.objects.get(
-                prompt_studio_tool=tool, is_default=True
-            )
-            monitor_llm = str(profile_manager.llm.id)
+            default_profile = ProfileManager.get_default_llm_profile(tool)
+            monitor_llm = str(default_profile.llm.id)
 
         # Adding validations
         if prompt_grammer:
@@ -643,9 +647,7 @@ class PromptStudioHelper:
         outputs: list[dict[str, Any]] = []
         grammar: list[dict[str, Any]] = []
         prompt_grammar = tool.prompt_grammer
-        default_profile: ProfileManager = ProfileManager.objects.get(
-            prompt_studio_tool=tool, is_default=True
-        )
+        default_profile = ProfileManager.get_default_llm_profile(tool)
         # Need to check the user who created profile manager
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(
@@ -655,8 +657,7 @@ class PromptStudioHelper:
 
         if prompt_grammar:
             for word, synonyms in prompt_grammar.items():
-                grammar.append(
-                    {TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
+                grammar.append({TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
 
         if not default_profile:
             raise DefaultProfileError()
