@@ -49,7 +49,6 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
             is_single_pass_extract
         )
 
-        queryset = PromptStudioOutputManager.objects.all()
         if filter_args:
             queryset = PromptStudioOutputManager.objects.filter(**filter_args)
 
