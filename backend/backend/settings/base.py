@@ -205,7 +205,6 @@ TENANT_APPS = (
     "workflow_manager.workflow",
     "tool_instance",
     "pipeline",
-    "cron_expression_generator",
     "platform_settings",
     "api",
     "prompt_studio.prompt_profile_manager",
