@@ -34,22 +34,19 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         )
 
         # Get the query parameter for "is_single_pass_extract"
-        is_single_pass_extract_param = (
-            self.request.GET.get(
-                PromptStudioOutputManagerKeys.IS_SINGLE_PASS_EXTRACT, False)
+        is_single_pass_extract_param = self.request.GET.get(
+            PromptStudioOutputManagerKeys.IS_SINGLE_PASS_EXTRACT, "false"
         )
 
         # Convert the string representation to a boolean value
         is_single_pass_extract = CommonUtils.str_to_bool(
-            is_single_pass_extract_param)
+            is_single_pass_extract_param
+        )
 
         filter_args[
             PromptStudioOutputManagerKeys.IS_SINGLE_PASS_EXTRACT
-        ] = (
-            is_single_pass_extract
-        )
+        ] = is_single_pass_extract
 
-        queryset = PromptStudioOutputManager.objects.all()
         if filter_args:
             queryset = PromptStudioOutputManager.objects.filter(**filter_args)
 
