@@ -17,7 +17,7 @@ from prompt_studio.prompt_studio_core.constants import (
 from prompt_studio.prompt_studio_core.exceptions import (
     AnswerFetchError,
     DefaultProfileError,
-    IndexingError,
+    IndexingAPIError,
     NoPromptsFound,
     PermissionError,
     PromptNotValid,
@@ -33,8 +33,9 @@ from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import
 from prompt_studio.prompt_studio_output_manager.output_manager_helper import (
     OutputManagerHelper,
 )
+from rest_framework.exceptions import APIException
 from unstract.sdk.constants import LogLevel
-from unstract.sdk.exceptions import SdkError
+from unstract.sdk.exceptions import IndexingError
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
@@ -183,9 +184,9 @@ class PromptStudioHelper:
         Returns:
             List[ToolStudioPrompt]: List of instance of the model
         """
-        prompt_instances: list[ToolStudioPrompt] = (
-            ToolStudioPrompt.objects.filter(tool_id=tool_id)
-        )
+        prompt_instances: list[
+            ToolStudioPrompt
+        ] = ToolStudioPrompt.objects.filter(tool_id=tool_id)
         return prompt_instances
 
     @staticmethod
@@ -344,7 +345,7 @@ class PromptStudioHelper:
                     prompts=prompts,
                     outputs=response,
                     document_id=document_id,
-                    is_single_pass_extract=False
+                    is_single_pass_extract=False,
                 )
             except PermissionError as e:
                 raise e
@@ -358,6 +359,9 @@ class PromptStudioHelper:
                     LogLevels.RUN,
                     "Failed to fetch prompt response",
                 )
+                # TODO: Catch specific exceptions and remove this
+                if isinstance(exc, APIException):
+                    raise exc
                 raise AnswerFetchError()
 
             logger.info(
@@ -399,7 +403,7 @@ class PromptStudioHelper:
                     prompts=prompts,
                     outputs=response,
                     document_id=document_id,
-                    is_single_pass_extract=True
+                    is_single_pass_extract=True,
                 )
             except PermissionError as e:
                 raise e
@@ -494,9 +498,9 @@ class PromptStudioHelper:
             )
 
             output: dict[str, Any] = {}
-            output[TSPKeys.ASSERTION_FAILURE_PROMPT] = (
-                prompt.assertion_failure_prompt
-            )
+            output[
+                TSPKeys.ASSERTION_FAILURE_PROMPT
+            ] = prompt.assertion_failure_prompt
             output[TSPKeys.ASSERT_PROMPT] = prompt.assert_prompt
             output[TSPKeys.IS_ASSERT] = prompt.is_assert
             output[TSPKeys.PROMPT] = prompt.prompt
@@ -511,12 +515,12 @@ class PromptStudioHelper:
             output[TSPKeys.GRAMMAR] = grammar_list
             output[TSPKeys.TYPE] = prompt.enforce_type
             output[TSPKeys.NAME] = prompt.prompt_key
-            output[TSPKeys.RETRIEVAL_STRATEGY] = (
-                prompt.profile_manager.retrieval_strategy
-            )
-            output[TSPKeys.SIMILARITY_TOP_K] = (
-                prompt.profile_manager.similarity_top_k
-            )
+            output[
+                TSPKeys.RETRIEVAL_STRATEGY
+            ] = prompt.profile_manager.retrieval_strategy
+            output[
+                TSPKeys.SIMILARITY_TOP_K
+            ] = prompt.profile_manager.similarity_top_k
             output[TSPKeys.SECTION] = prompt.profile_manager.section
             output[TSPKeys.X2TEXT_ADAPTER] = x2text
 
@@ -596,7 +600,7 @@ class PromptStudioHelper:
             tool_index = ToolIndex(tool=util)
         except Exception as e:
             logger.error(f"Error while instatiating SDKs {e}")
-            raise IndexingError()
+            raise IndexingAPIError()
         embedding_model = str(profile_manager.embedding_model.id)
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
@@ -630,8 +634,8 @@ class PromptStudioHelper:
                 doc_id=doc_id,
             )
             return doc_id
-        except SdkError as e:
-            raise IndexingError(str(e))
+        except IndexingError as e:
+            raise IndexingAPIError(str(e)) from e
 
     @staticmethod
     def _fetch_single_pass_response(
@@ -655,8 +659,7 @@ class PromptStudioHelper:
 
         if prompt_grammar:
             for word, synonyms in prompt_grammar.items():
-                grammar.append(
-                    {TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
+                grammar.append({TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
 
         if not default_profile:
             raise DefaultProfileError()
@@ -683,9 +686,9 @@ class PromptStudioHelper:
         llm_profile_manager[TSPKeys.VECTOR_DB] = vector_db
         llm_profile_manager[TSPKeys.EMBEDDING] = embedding_model
         llm_profile_manager[TSPKeys.CHUNK_SIZE] = default_profile.chunk_size
-        llm_profile_manager[TSPKeys.CHUNK_OVERLAP] = (
-            default_profile.chunk_overlap
-        )
+        llm_profile_manager[
+            TSPKeys.CHUNK_OVERLAP
+        ] = default_profile.chunk_overlap
 
         for prompt in prompts:
             output: dict[str, Any] = {}
