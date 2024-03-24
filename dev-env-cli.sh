@@ -19,6 +19,10 @@ debug() {
 }
 
 check_dependencies() {
+  if ! command -v python3 &> /dev/null; then
+    echo "$red_text""python3 not found. Exiting.""$default_text"
+    exit 1
+  fi
   if ! command -v docker compose &> /dev/null; then
     echo "$red_text""docker not found. Exiting.""$default_text"
     exit 1
@@ -30,6 +34,10 @@ check_dependencies() {
     docker_compose_cmd="docker-compose"
   else
     echo "$red_text""Both 'docker compose' and 'docker-compose' not found. Exiting.""$default_text"
+    exit 1
+  fi
+  if ! command -v pdm &> /dev/null; then
+    echo "$red_text""pdm not found. Exiting.""$default_text"
     exit 1
   fi
 }

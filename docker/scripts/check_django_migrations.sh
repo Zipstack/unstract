@@ -6,7 +6,7 @@ cd $script_dir/../../backend
 
 # Check Django default db connectivity.
 # Use Python for cross-platform compatibility.
-python << EOF
+python3 << EOF
 import os
 import socket
 import sys
@@ -35,14 +35,14 @@ else:
 EOF
 if [ $? -ne 0 ]; then
     echo ""
-    echo "Check DB_HOST, DB_PORT settings for Django default db."
-    echo "If db is running in a container, add DB_HOST to /etc/hosts."
+    echo "Verify DB_HOST, DB_PORT settings for backend Django default db."
+    echo "If db is running in a container, add DB_HOST value to /etc/hosts."
     echo ""
     exit 1
 fi
 
 # Check Django migrations.
-python manage.py makemigrations --check --dry-run --no-input
+python3 manage.py makemigrations --check --dry-run --no-input
 # ! IMPORTANT !
 # Above command does not return error exit code
 # on network error when connecting to db.

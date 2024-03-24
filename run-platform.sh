@@ -23,7 +23,11 @@ check_dependencies() {
     echo "$red_text""git not found. Exiting.""$default_text"
     exit 1
   fi
-  if ! command -v docker compose &> /dev/null; then
+  if ! command -v python3 &> /dev/null; then
+    echo "$red_text""python3 not found. Exiting.""$default_text"
+    exit 1
+  fi
+  if ! command -v docker &> /dev/null; then
     echo "$red_text""docker not found. Exiting.""$default_text"
     exit 1
   fi
@@ -163,7 +167,7 @@ setup_env() {
       fi
       echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
     else
-      python $script_dir/docker/scripts/merge_env.py $sample_env_path $env_path
+      python3 $script_dir/docker/scripts/merge_env.py $sample_env_path $env_path
       if [ $? -ne 0 ]; then
         exit 1
       fi
@@ -175,7 +179,7 @@ setup_env() {
     cp "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
     echo -e "Created env for ""$blue_text""essential services""$default_text"" at ""$blue_text""$script_dir/docker/essentials.env""$default_text""."
   else
-    python $script_dir/docker/scripts/merge_env.py "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
+    python3 $script_dir/docker/scripts/merge_env.py "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
     if [ $? -ne 0 ]; then
       exit 1
     fi
