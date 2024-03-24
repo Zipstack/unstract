@@ -397,7 +397,7 @@ class PromptStudioHelper:
 
                 OutputManagerHelper.handle_prompt_output_update(
                     prompts=prompts,
-                    outputs=response["single_pass_extraction"],
+                    outputs=response[TSPKeys.SINGLE_PASS_EXTRACTION],
                     document_id=document_id,
                     is_single_pass_extract=True,
                 )
@@ -454,10 +454,10 @@ class PromptStudioHelper:
         grammer_dict = {}
         grammar_list = []
 
+        # Using default profile manager llm if monitor_llm is None
         if monitor_llm_instance:
             monitor_llm = str(monitor_llm_instance.id)
         else:
-            # Using default profile manager llm if monitor_llm is None
             default_profile = ProfileManager.get_default_llm_profile(tool)
             monitor_llm = str(default_profile.llm.id)
 

@@ -25,7 +25,7 @@ class Migration(migrations.Migration):
                 db_comment="Field to store challenge llm",
                 null=True,
                 on_delete=django.db.models.deletion.PROTECT,
-                related_name="challenge_llm",
+                related_name="challenge_customtools",
                 to="adapter_processor.adapterinstance",
             ),
         ),
@@ -44,7 +44,7 @@ class Migration(migrations.Migration):
                 db_comment="Field to store monitor llm",
                 null=True,
                 on_delete=django.db.models.deletion.PROTECT,
-                related_name="monitor_llm",
+                related_name="monitor_customtoos",
                 to="adapter_processor.adapterinstance",
             ),
         ),
@@ -53,7 +53,7 @@ class Migration(migrations.Migration):
             name="single_pass_extraction_mode",
             field=models.BooleanField(
                 db_comment="Flag to enable or disable single pass extraction mode",
-                default=True,
+                default=False,
             ),
         ),
     ]
