@@ -24,8 +24,8 @@ class DatabaseUtils:
     @staticmethod
     def make_sql_values_for_query(
         values: dict[str, Any], column_types: dict[str, str], cls: Any = None
-    ) -> list[str]:
-        """Making Sql Values for Query.
+    ) -> dict[str, str]:
+        """Making Sql Columns and Values for Query.
 
         Args:
             values (dict[str, Any]): dictionary of columns and values
@@ -43,31 +43,40 @@ class DatabaseUtils:
                 Default SQL database and makes values accordingly.
             - If `cls` is provided and matches DBConnectionClass.SNOWFLAKE,
                 the function makes values using Snowflake-specific syntax.
+
+            - Unstract creates id by default if table not exists.
+                If there is column 'id' in db table, it will insert
+                    'id' as uuid into the db table.
+                Else it will GET table details from INFORMATION SCHEMA and
+                    insert into the table accordingly
         """
-        sql_values: list[str] = []
+        sql_values: dict[str, Any] = {}
+
         for column in values:
             if cls == DBConnectionClass.SNOWFLAKE:
                 col = column.lower()
                 type_x = column_types[col]
                 if type_x in Snowflake.COLUMN_TYPES:
-                    sql_values.append(f"'{values[column]}'")
+                    sql_values[column] = f"'{values[column]}'"
                 elif type_x == "VARIANT":
                     values[column] = values[column].replace("'", "\\'")
-                    sql_values.append(f"parse_json($${values[column]}$$)")
+                    sql_values[column] = f"parse_json($${values[column]}$$)"
                 else:
-                    sql_values.append(f"{values[column]}")
+                    sql_values[column] = f"{values[column]}"
             elif cls == DBConnectionClass.BIGQUERY:
                 col = column.lower()
                 type_x = column_types[col]
                 if type_x in BigQuery.COLUMN_TYPES:
-                    sql_values.append(f"{type_x}('{values[column]}')")
+                    sql_values[column] = f"{type_x}('{values[column]}')"
                 else:
-                    sql_values.append(f"'{values[column]}'")
+                    sql_values[column] = f"'{values[column]}'"
             else:
                 # Default to Other SQL DBs
                 # TODO: Handle numeric types with no quotes
-                sql_values.append(f"'{values[column]}'")
-
+                sql_values[column] = f"'{values[column]}'"
+        if column_types.get("id"):
+            uuid_id = str(uuid.uuid4())
+            sql_values["id"] = f"'{uuid_id}'"
         return sql_values
 
     @staticmethod
@@ -216,15 +225,15 @@ class DatabaseUtils:
         return values
 
     @staticmethod
-    def get_sql_values_for_query(
+    def get_sql_columns_and_values_for_query(
         engine: Any,
         connector_id: str,
         connector_settings: dict[str, Any],
         table_name: str,
         values: dict[str, Any],
-    ) -> list[str]:
-        """Generate SQL values for an insert query based on the provided values
-        and table schema.
+    ) -> dict[str, Any]:
+        """Generate SQL columns and values for an insert query based on the
+        provided values and table schema.
 
         Args:
             engine (Any): The database engine.
@@ -252,11 +261,12 @@ class DatabaseUtils:
             connector_id=connector_id,
             connector_settings=connector_settings,
         )
-        return DatabaseUtils.make_sql_values_for_query(
+        sql_columns_and_values = DatabaseUtils.make_sql_values_for_query(
             values=values,
             column_types=column_types,
             cls=class_name,
         )
+        return sql_columns_and_values
 
     @staticmethod
     def execute_write_query(
@@ -277,12 +287,11 @@ class DatabaseUtils:
           syntax when VARIANT columns are present (JSON).
           So we need to use INSERT INTO ... SELECT ... syntax
         """
-        uuid_pk = str(uuid.uuid4())
         sql = (
-            f"INSERT INTO {table_name} (id, {','.join(sql_keys)}) "
-            f"SELECT '{uuid_pk}',{','.join(sql_values)}"
+            f"INSERT INTO {table_name} ({','.join(sql_keys)}) "
+            f"SELECT {','.join(sql_values)}"
         )
-        logger.debug(f"insertng into table with: {sql} query")
+        logger.info(f"insertng into table with: {sql} query")
         try:
             if hasattr(engine, "cursor"):
                 with engine.cursor() as cursor:
@@ -332,7 +341,7 @@ class DatabaseUtils:
         sql = DBConnectorQueryHelper.create_table_query(
             conn_cls=class_name, table=table_name, database_entry=database_entry
         )
-        logger.debug(f"creating table with: {sql} query")
+        logger.info(f"creating table with: {sql} query")
         try:
             if hasattr(engine, "cursor"):
                 with engine.cursor() as cursor:
@@ -388,14 +397,14 @@ class DBConnectorQueryHelper:
         elif conn_cls == DBConnectionClass.SNOWFLAKE:
             sql_query += (
                 f"CREATE TABLE {table} IF NOT EXISTS "
-                f"(id VARCHAR(36) PRIMARY KEY,"
-                f"created_by VARCHAR(255), created_at TIMESTAMP, "
+                f"(id TEXT ,"
+                f"created_by TEXT, created_at TIMESTAMP, "
             )
         else:
             sql_query += (
                 f"CREATE TABLE IF NOT EXISTS {table} "
-                f"(id VARCHAR(36) PRIMARY KEY, "
-                f"created_by VARCHAR(255), created_at TIMESTAMP, "
+                f"(id TEXT , "
+                f"created_by TEXT, created_at TIMESTAMP, "
             )
 
         for key, val in database_entry.items():
@@ -428,12 +437,12 @@ class DBConnectorTypeConverter:
         """Method used to convert python to SQL datatype Used by Postgres,
         Redshift, Snowflake."""
         mapping = {
-            str: "VARCHAR(255)",
+            str: "TEXT",
             int: "INT",
             float: "FLOAT",
             datetime.datetime: "TIMESTAMP",
         }
-        return mapping.get(python_type, "VARCHAR(255)")
+        return mapping.get(python_type, "TEXT")
 
     @staticmethod
     def python_to_bigquery_mapping(python_type: Any) -> Optional[str]:

@@ -19,7 +19,6 @@ from workflow_manager.endpoint.constants import (
 )
 from workflow_manager.endpoint.database_utils import DatabaseUtils
 from workflow_manager.endpoint.exceptions import (
-    ClearFileHistoryException,
     DestinationConnectorNotConfigured,
     InvalidDestinationConnectionType,
     InvalidToolOutputType,
@@ -209,8 +208,6 @@ class DestinationConnector(BaseConnector):
         )
 
         data = self.get_result(file_history)
-        if data is None:
-            raise ClearFileHistoryException()
         values = DatabaseUtils.get_columns_and_values(
             column_mode_str=column_mode,
             data=data,
@@ -223,22 +220,26 @@ class DestinationConnector(BaseConnector):
             connector_id=connector_instance.connector_id,
             connector_settings=connector_settings,
         )
+        # If data is None, don't execute CREATE or INSERT query
+        if data is None:
+            return
         DatabaseUtils.create_table_if_not_exists(
             engine=engine, table_name=table_name, database_entry=values
         )
-        sql_values = DatabaseUtils.get_sql_values_for_query(
-            engine=engine,
-            connector_id=connector_instance.connector_id,
-            connector_settings=connector_settings,
-            table_name=table_name,
-            values=values,
+        sql_columns_and_values = (
+            DatabaseUtils.get_sql_columns_and_values_for_query(
+                engine=engine,
+                connector_id=connector_instance.connector_id,
+                connector_settings=connector_settings,
+                table_name=table_name,
+                values=values,
+            )
         )
-
         DatabaseUtils.execute_write_query(
             engine=engine,
             table_name=table_name,
-            sql_keys=list(values.keys()),
-            sql_values=sql_values,
+            sql_keys=list(sql_columns_and_values.keys()),
+            sql_values=list(sql_columns_and_values.values()),
         )
 
     def _handle_api_result(
