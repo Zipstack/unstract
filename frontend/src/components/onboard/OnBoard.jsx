@@ -81,7 +81,7 @@ function OnBoard() {
         <div>
           <img src={logo} alt="Logo" className="landing-logo" />
           <h1 className="uppercase-text">
-            You&apos;re 3 steps away from nirvana
+            You&apos;re 4 steps away from nirvana
           </h1>
           <Space direction="vertical">
             {steps.map((step, index) => (
