@@ -5,7 +5,7 @@
 groups = ["default", "hook-check-django-migrations", "lint"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:1f5c8bf00fa79bf197a4ab92f87cebd3f008a684b29a4a8ee2763680a85566c4"
+content_hash = "sha256:8f0ed82cbbbffa272795b941dfcec9ae77711e31c83c8b9047ccb1c15cd04186"
 
 [[package]]
 name = "absolufy-imports"
@@ -321,7 +321,7 @@ files = [
 
 [[package]]
 name = "asgiref"
-version = "3.8.0"
+version = "3.8.1"
 requires_python = ">=3.8"
 summary = "ASGI specs, helper code, and adapters"
 groups = ["hook-check-django-migrations"]
@@ -329,8 +329,8 @@ dependencies = [
     "typing-extensions>=4; python_version < \"3.11\"",
 ]
 files = [
-    {file = "asgiref-3.8.0-py3-none-any.whl", hash = "sha256:30fc07797ad71a0abb8fe34aa03c8043308a8389abc7942d797ea9911540bc28"},
-    {file = "asgiref-3.8.0.tar.gz", hash = "sha256:ec75d9d0f04e2dbfedef1f20ee73a6594af80c333df47cdd31f37e6701f7c53a"},
+    {file = "asgiref-3.8.1-py3-none-any.whl", hash = "sha256:3e1e3ecc849832fe52ccf2cb6686b7a55f82bb1d6aee72a58826471390335e47"},
+    {file = "asgiref-3.8.1.tar.gz", hash = "sha256:c343bd80a0bec947a9860adb4c432ffa7db769836c64238fc34bdc3fec84d590"},
 ]
 
 [[package]]
@@ -818,16 +818,16 @@ files = [
 
 [[package]]
 name = "click-didyoumean"
-version = "0.3.0"
-requires_python = ">=3.6.2,<4.0.0"
+version = "0.3.1"
+requires_python = ">=3.6.2"
 summary = "Enables git-like *did-you-mean* feature in click"
 groups = ["hook-check-django-migrations"]
 dependencies = [
     "click>=7",
 ]
 files = [
-    {file = "click-didyoumean-0.3.0.tar.gz", hash = "sha256:f184f0d851d96b6d29297354ed981b7dd71df7ff500d82fa6d11f0856bee8035"},
-    {file = "click_didyoumean-0.3.0-py3-none-any.whl", hash = "sha256:a0713dc7a1de3f06bc0df5a9567ad19ead2d3d5689b434768a6145bff77c0667"},
+    {file = "click_didyoumean-0.3.1-py3-none-any.whl", hash = "sha256:5c4bb6007cfea5f2fd6583a2fb6701a22a41eb98957e63d0fac41c10e7c3117c"},
+    {file = "click_didyoumean-0.3.1.tar.gz", hash = "sha256:4f82fdff0dbe64ef8ab2279bd6aa3f6a99c3b28c05aa09cbfc07c9d7fbb5a463"},
 ]
 
 [[package]]
@@ -1458,43 +1458,44 @@ files = [
 
 [[package]]
 name = "google-api-core"
-version = "2.17.1"
+version = "2.18.0"
 requires_python = ">=3.7"
 summary = "Google API client core library"
 groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-auth<3.0.dev0,>=2.14.1",
     "googleapis-common-protos<2.0.dev0,>=1.56.2",
+    "proto-plus<2.0.0dev,>=1.22.3",
     "protobuf!=3.20.0,!=3.20.1,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<5.0.0.dev0,>=3.19.5",
     "requests<3.0.0.dev0,>=2.18.0",
 ]
 files = [
-    {file = "google-api-core-2.17.1.tar.gz", hash = "sha256:9df18a1f87ee0df0bc4eea2770ebc4228392d8cc4066655b320e2cfccb15db95"},
-    {file = "google_api_core-2.17.1-py3-none-any.whl", hash = "sha256:610c5b90092c360736baccf17bd3efbcb30dd380e7a6dc28a71059edb8bd0d8e"},
+    {file = "google-api-core-2.18.0.tar.gz", hash = "sha256:62d97417bfc674d6cef251e5c4d639a9655e00c45528c4364fbfebb478ce72a9"},
+    {file = "google_api_core-2.18.0-py3-none-any.whl", hash = "sha256:5a63aa102e0049abe85b5b88cb9409234c1f70afcda21ce1e40b285b9629c1d6"},
 ]
 
 [[package]]
 name = "google-api-core"
-version = "2.17.1"
+version = "2.18.0"
 extras = ["grpc"]
 requires_python = ">=3.7"
 summary = "Google API client core library"
 groups = ["hook-check-django-migrations"]
 dependencies = [
-    "google-api-core==2.17.1",
+    "google-api-core==2.18.0",
     "grpcio-status<2.0.dev0,>=1.33.2",
     "grpcio-status<2.0.dev0,>=1.49.1; python_version >= \"3.11\"",
     "grpcio<2.0dev,>=1.33.2",
     "grpcio<2.0dev,>=1.49.1; python_version >= \"3.11\"",
 ]
 files = [
-    {file = "google-api-core-2.17.1.tar.gz", hash = "sha256:9df18a1f87ee0df0bc4eea2770ebc4228392d8cc4066655b320e2cfccb15db95"},
-    {file = "google_api_core-2.17.1-py3-none-any.whl", hash = "sha256:610c5b90092c360736baccf17bd3efbcb30dd380e7a6dc28a71059edb8bd0d8e"},
+    {file = "google-api-core-2.18.0.tar.gz", hash = "sha256:62d97417bfc674d6cef251e5c4d639a9655e00c45528c4364fbfebb478ce72a9"},
+    {file = "google_api_core-2.18.0-py3-none-any.whl", hash = "sha256:5a63aa102e0049abe85b5b88cb9409234c1f70afcda21ce1e40b285b9629c1d6"},
 ]
 
 [[package]]
 name = "google-api-python-client"
-version = "2.122.0"
+version = "2.123.0"
 requires_python = ">=3.7"
 summary = "Google API Client Library for Python"
 groups = ["hook-check-django-migrations"]
@@ -1506,8 +1507,8 @@ dependencies = [
     "uritemplate<5,>=3.0.1",
 ]
 files = [
-    {file = "google-api-python-client-2.122.0.tar.gz", hash = "sha256:77447bf2d6b6ea9e686fd66fc2f12ee7a63e3889b7427676429ebf09fcb5dcf9"},
-    {file = "google_api_python_client-2.122.0-py2.py3-none-any.whl", hash = "sha256:a5953e60394b77b98bcc7ff7c4971ed784b3b693e9a569c176eaccb1549330f2"},
+    {file = "google-api-python-client-2.123.0.tar.gz", hash = "sha256:a17226b02f71de581afe045437b441844110a9cd91580b73549d41108cf1b9f0"},
+    {file = "google_api_python_client-2.123.0-py2.py3-none-any.whl", hash = "sha256:1c2bcaa846acf5bac4d6f244d8373d4de9de73d64eb6e77b56767ab4cf681419"},
 ]
 
 [[package]]
@@ -2586,8 +2587,6 @@ files = [
 
 [[package]]
 name = "mypy"
-version = "1.9.0"
-requires_python = ">=3.8"
 version = "1.9.0"
 requires_python = ">=3.8"
 summary = "Optional static typing for Python"
@@ -3928,8 +3927,8 @@ files = [
 
 [[package]]
 name = "requests-oauthlib"
-version = "1.4.0"
-requires_python = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
+version = "2.0.0"
+requires_python = ">=3.4"
 summary = "OAuthlib authentication support for Requests."
 groups = ["hook-check-django-migrations"]
 dependencies = [
@@ -3937,8 +3936,8 @@ dependencies = [
     "requests>=2.0.0",
 ]
 files = [
-    {file = "requests-oauthlib-1.4.0.tar.gz", hash = "sha256:acee623221e4a39abcbb919312c8ff04bd44e7e417087fb4bd5e2a2f53d5e79a"},
-    {file = "requests_oauthlib-1.4.0-py2.py3-none-any.whl", hash = "sha256:7a3130d94a17520169e38db6c8d75f2c974643788465ecc2e4b36d288bf13033"},
+    {file = "requests-oauthlib-2.0.0.tar.gz", hash = "sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9"},
+    {file = "requests_oauthlib-2.0.0-py2.py3-none-any.whl", hash = "sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36"},
 ]
 
 [[package]]
@@ -4243,7 +4242,7 @@ files = [
 
 [[package]]
 name = "smart-open"
-version = "7.0.2"
+version = "7.0.3"
 requires_python = "<4.0,>=3.7"
 summary = "Utils for streaming large files (S3, HDFS, GCS, Azure Blob Storage, gzip, bz2...)"
 groups = ["hook-check-django-migrations"]
@@ -4251,8 +4250,8 @@ dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "smart_open-7.0.2-py3-none-any.whl", hash = "sha256:361a8fadfc9c1cfb81e8d18a96b724e1d6216f8f3ad543c841e19fc0c56a003a"},
-    {file = "smart_open-7.0.2.tar.gz", hash = "sha256:f109517702453c3fa5ac60178698138b618d3670c2f1f0993ee8ce27193d3341"},
+    {file = "smart_open-7.0.3-py3-none-any.whl", hash = "sha256:7969ac4f1a04fd829d50f086fd106c6b84c8f68786666a4fac7bdc208f24f3b6"},
+    {file = "smart_open-7.0.3.tar.gz", hash = "sha256:dfea0d6815798f843fd2f4dbeb2ddf2d4a2304ece749c5251a97ac5f2dcb1a8e"},
 ]
 
 [[package]]
@@ -4524,18 +4523,18 @@ files = [
 
 [[package]]
 name = "storage3"
-version = "0.7.3"
-requires_python = ">=3.8,<4.0"
+version = "0.7.4"
+requires_python = "<4.0,>=3.8"
 summary = "Supabase Storage client for Python."
 groups = ["hook-check-django-migrations"]
 dependencies = [
-    "httpx<0.26,>=0.24",
+    "httpx<0.28,>=0.24",
     "python-dateutil<3.0.0,>=2.8.2",
     "typing-extensions<5.0.0,>=4.2.0",
 ]
 files = [
-    {file = "storage3-0.7.3-py3-none-any.whl", hash = "sha256:dc6a59da801ee6fc00015da4967ac0b5c3e5508d31ffd796f0e4c83957e5c6a0"},
-    {file = "storage3-0.7.3.tar.gz", hash = "sha256:943c31de4a7c7490ad7960d963a6b410979ebd0e1b3d320d76cb61564ab0b528"},
+    {file = "storage3-0.7.4-py3-none-any.whl", hash = "sha256:0b8e8839b10a64063796ce55a41462c7ffd6842e0ada74f25f5dcf37e1d1bade"},
+    {file = "storage3-0.7.4.tar.gz", hash = "sha256:61fcbf836f566405981722abb7d56caa57025b261e7a316e73316701abf0c040"},
 ]
 
 [[package]]
@@ -5246,13 +5245,13 @@ files = [
 
 [[package]]
 name = "validators"
-version = "0.23.2"
+version = "0.24.0"
 requires_python = ">=3.8"
 summary = "Python Data Validation for Humans™"
 groups = ["hook-check-django-migrations"]
 files = [
-    {file = "validators-0.23.2-py3-none-any.whl", hash = "sha256:cb68e489f946f4934dbd3c203f08486c53493ab1c204f39d13b13c209f60e2c1"},
-    {file = "validators-0.23.2.tar.gz", hash = "sha256:397ec4a1e86192e6e904b5afe8c12da0e6eaa3db088c0cc426e00cfee2ef07a8"},
+    {file = "validators-0.24.0-py3-none-any.whl", hash = "sha256:4a99eb368747e60900bae947418eb21e230ff4ff5e7b7944b9308c456d86da32"},
+    {file = "validators-0.24.0.tar.gz", hash = "sha256:cd23defb36de42d14e7559cf0757f761bb46b10d9de2998e6ef805f769d859e3"},
 ]
 
 [[package]]
