@@ -27,6 +27,7 @@
   margin-left: 20px;
   z-index: 20;
   color: #092c4c;
+  flex: content;
 }
 
 .cur-pointer .ant-list-item-meta {
@@ -77,10 +78,6 @@
   gap: 5px;
 }
 
-.action-icon-buttons {
-  flex: content;
-}
-
 .list-view-content {
   display: flex;
   width: 80%;
@@ -89,4 +86,8 @@
 .adapters-list-title-container {
   width: 50%;
   padding-right: 12px;
+}
+
+.list-item-desc {
+  padding-bottom: 10px;
 }
