@@ -81,6 +81,7 @@ class ToolStudioPromptKeys:
     ENABLE_CHALLENGE = "enable_challenge"
     CHALLENGE_LLM = "challenge_llm"
     SINGLE_PASS_EXTRACTION_MODE = "single_pass_extraction_mode"
+    SINGLE_PASS_EXTRACTION = "single_pass_extraction"
 
 
 class LogLevels:

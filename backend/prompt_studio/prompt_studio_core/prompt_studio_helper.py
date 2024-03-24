@@ -397,7 +397,7 @@ class PromptStudioHelper:
 
                 OutputManagerHelper.handle_prompt_output_update(
                     prompts=prompts,
-                    outputs=response["single_pass_extraction"],
+                    outputs=response[TSPKeys.SINGLE_PASS_EXTRACTION],
                     document_id=document_id,
                     is_single_pass_extract=True,
                 )
