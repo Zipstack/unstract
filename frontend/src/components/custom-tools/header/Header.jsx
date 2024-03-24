@@ -1,7 +1,6 @@
 import {
   ArrowLeftOutlined,
   EditOutlined,
-  ExportOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
 import { Button, Tooltip, Typography } from "antd";
@@ -16,6 +15,7 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { ExportToolIcon } from "../../../assets";
 
 let SinglePassToggleSwitch;
 try {
@@ -88,13 +88,13 @@ function Header({ setOpenSettings, handleUpdateTool }) {
         </div>
         <div className="custom-tools-header-v-divider" />
         <div>
-          <Tooltip title="Export">
+          <Tooltip title="Export as tool">
             <CustomButton
               type="primary"
               onClick={handleExport}
               loading={isExportLoading}
             >
-              <ExportOutlined />
+              <ExportToolIcon />
             </CustomButton>
           </Tooltip>
         </div>
