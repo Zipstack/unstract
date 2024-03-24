@@ -27,6 +27,7 @@ import { ReactComponent as SquareBg } from "./square-bg.svg";
 import { ReactComponent as TrialDoc } from "./trial-doc.svg";
 import { ReactComponent as TextExtractorIcon } from "./text-extractor.svg";
 import { ReactComponent as OcrIcon } from "./ocr.svg";
+import { ReactComponent as ExportToolIcon } from "./export-tool.svg";
 
 export {
   SunIcon,
@@ -58,4 +59,5 @@ export {
   TrialDoc,
   TextExtractorIcon,
   OcrIcon,
+  ExportToolIcon,
 };

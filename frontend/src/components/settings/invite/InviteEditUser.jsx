@@ -129,7 +129,7 @@ function InviteEditUser() {
 
   useEffect(() => {
     if (!isInvite && !location.state) {
-      navigate(`/${sessionDetails?.orgName}/etl`);
+      navigate(`/${sessionDetails?.orgName}/tools`);
     }
     getUserRoles();
   }, []);
