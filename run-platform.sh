@@ -214,7 +214,7 @@ build_services() {
       exit 1
     }
   else
-    echo -e "$blue_text""Pulling""$default_text"" docker images ""$blue_text""$opt_version""$default_text""."
+    echo -e "$blue_text""Pulling""$default_text"" docker images tag ""$blue_text""$opt_version""$default_text""."
 
     pull_policy="missing"
     if [ "$opt_upgrade" = true ] && [ "$opt_version" = "latest" ]; then
