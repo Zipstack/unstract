@@ -77,8 +77,11 @@ class ToolStudioPromptKeys:
     SUMMARIZED_RESULT = "summarized_result"
     DOCUMENT_ID = "document_id"
     EXTRACT = "extract"
-    LLM_PROFILE_MANAGER = "llm_profile_manager"
+    TOOL_SETTINGS = "tool_settings"
+    ENABLE_CHALLENGE = "enable_challenge"
+    CHALLENGE_LLM = "challenge_llm"
     SINGLE_PASS_EXTRACTION_MODE = "single_pass_extraction_mode"
+    SINGLE_PASS_EXTRACTION = "single_pass_extraction"
 
 
 class LogLevels:

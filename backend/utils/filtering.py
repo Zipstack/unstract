@@ -1,9 +1,11 @@
+from typing import Any
+
 from rest_framework.request import Request
 
 
 class FilterHelper:
     @staticmethod
-    def build_filter_args(request: Request, *params: str) -> dict[str, str]:
+    def build_filter_args(request: Request, *params: str) -> dict[str, Any]:
         """Builds a dict of filter to pass to the QueryManager from the
         request.
 
@@ -11,9 +13,9 @@ class FilterHelper:
             request (Request): Request to obtain query from
 
         Returns:
-            dict[str, str]: Filter dict to pass to request
+            dict[str, Any]: Filter dict to pass to request
         """
-        filter_args: dict[str, str] = {}
+        filter_args: dict[str, Any] = {}
         for queryParam in params:
             paramValue = request.query_params.get(queryParam)
             if paramValue is not None:
