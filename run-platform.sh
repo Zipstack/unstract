@@ -221,8 +221,9 @@ build_services() {
       pull_policy="always"
     fi
 
-    VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.build.yaml pull --policy $pull_policy || {
-      echo -e "$red_text""Failed to pull docker images. Check version or try again.""$default_text"
+    VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.yaml pull --policy $pull_policy || {
+      echo -e "$red_text""Failed to pull docker images. Check the version.""$default_text"
+      echo -e "$red_text""Also make sure docker is running and try again.""$default_text"
       exit 1
     }
   fi
