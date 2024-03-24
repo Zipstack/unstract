@@ -320,6 +320,7 @@ function PromptCard({
     setIsCoverageLoading(true);
     setCoverage(0);
     setCoverageTotal(0);
+    setDocOutputs({});
 
     const docId = selectedDoc?.document_id;
     const isSummaryIndexed = [...summarizeIndexStatus].find(
