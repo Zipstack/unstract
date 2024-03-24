@@ -151,8 +151,13 @@ function ListView({
             className={`cur-pointer ${centered ? "centered" : ""}`}
           >
             <List.Item.Meta
+              style={{ padding: "10px 0px" }}
               title={renderTitle(item)}
-              description={item[descriptionProp]}
+              description={
+                <Typography.Text type="secondary" ellipsis>
+                  {item[descriptionProp]}
+                </Typography.Text>
+              }
             ></List.Item.Meta>
           </List.Item>
         );

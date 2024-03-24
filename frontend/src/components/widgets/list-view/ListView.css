@@ -6,6 +6,7 @@
   width: 70%;
   min-width: 800px;
   max-width: 1400px;
+  padding: 0px 10px;
 }
 
 .list-view-item {
@@ -17,7 +18,6 @@
 
 .cur-pointer {
   padding: 10px 0 !important;
-  height: 85px;
   z-index: 1;
   overflow: hidden;
 }
@@ -88,4 +88,5 @@
 
 .adapters-list-title-container {
   width: 50%;
+  padding-right: 12px;
 }
