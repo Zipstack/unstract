@@ -38,7 +38,13 @@ function OutputForDocModal({
   const [promptOutputs, setPromptOutputs] = useState([]);
   const [rows, setRows] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const { details, listOfDocs, selectedDoc } = useCustomToolStore();
+  const {
+    details,
+    listOfDocs,
+    selectedDoc,
+    singlePassExtractMode,
+    isSinglePassExtractLoading,
+  } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
@@ -46,11 +52,11 @@ function OutputForDocModal({
   const { handleException } = useExceptionHandler();
 
   useEffect(() => {
-    if (!open) {
+    if (!open || isSinglePassExtractLoading) {
       return;
     }
     handleGetOutputForDocs();
-  }, [open]);
+  }, [open, singlePassExtractMode, isSinglePassExtractLoading]);
 
   useEffect(() => {
     updatePromptOutput();
@@ -122,7 +128,7 @@ function OutputForDocModal({
     }
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profileManagerId}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profileManagerId}&is_single_pass_extract=${singlePassExtractMode}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },

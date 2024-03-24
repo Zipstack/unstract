@@ -17,7 +17,14 @@ import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
-function Header({ setOpenSettings }) {
+let SinglePassToggleSwitch;
+try {
+  SinglePassToggleSwitch =
+    require("../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch").SinglePassToggleSwitch;
+} catch {
+  // The variable will remain undefined if the component is not available.
+}
+function Header({ setOpenSettings, handleUpdateTool }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
   const { details } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
@@ -68,6 +75,9 @@ function Header({ setOpenSettings }) {
         </Button>
       </div>
       <div className="custom-tools-header-btns">
+        {SinglePassToggleSwitch && (
+          <SinglePassToggleSwitch handleUpdateTool={handleUpdateTool} />
+        )}
         <div>
           <Tooltip title="Settings">
             <Button
@@ -95,6 +105,7 @@ function Header({ setOpenSettings }) {
 
 Header.propTypes = {
   setOpenSettings: PropTypes.func.isRequired,
+  handleUpdateTool: PropTypes.func.isRequired,
 };
 
 export { Header };
