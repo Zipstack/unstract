@@ -91,7 +91,7 @@ class InviteUserSerializer(serializers.Serializer):
     def get_users(
         self, validated_data: dict[str, Any]
     ) -> list[dict[str, Union[str, None]]]:
-        return validated_data.get("users", [])  # type: ignore
+        return validated_data.get("users", [])
 
 
 class RemoveUserFromOrganizationSerializer(serializers.Serializer):
