@@ -1,56 +1,60 @@
 /* Styles for TopNavBar */
 
 .top-navbar-dp {
-    height: 25px;
-    width: 25px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: #184772;
-    border-radius: 5px;
-    cursor: pointer;
+  height: 25px;
+  width: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #184772;
+  border-radius: 5px;
+  cursor: pointer;
 }
 
 .top-navbar-dp .navbar-img {
-    border-radius: 5px;
+  border-radius: 5px;
 }
 
 .top-navbar-dp .initials {
-    font-size: 12px;
-    font-weight: bold;
-    color: white;
+  font-size: 12px;
+  font-weight: bold;
+  color: white;
 }
 
 .topbar-logo {
-    width: 120px;
-    height: auto;
-    margin-inline-end: 12px;
+  width: 120px;
+  height: auto;
+  margin-inline-end: 12px;
 }
-.logout-button{
-    color: inherit;
-    background: inherit;
-    box-shadow: none;
-    text-align: left;
-    padding: 0;
-    height: auto;
-    border-radius: 0;
-    border-color: transparent;
+.logout-button {
+  color: inherit;
+  background: inherit;
+  box-shadow: none;
+  text-align: left;
+  padding: 0;
+  height: auto;
+  border-radius: 0;
+  border-color: transparent;
 }
 
-.logout-button:active{
-    color: inherit !important;
-    border-color: transparent !important;
+.logout-button:active {
+  color: inherit !important;
+  border-color: transparent !important;
 }
 
 .top-nav-alert-col {
-    display: flex;
-    justify-content: center;
+  display: flex;
+  justify-content: center;
 }
 
 .top-nav-alert-col .top-nav-alert-msg {
-    margin-right: 6px;
+  margin-right: 6px;
 }
 
 .top-nav-alert-col .top-nav-alert-link {
-    text-decoration: underline;
+  text-decoration: underline;
+}
+
+.switch-org-menu .ant-dropdown-menu-title-content .ant-space {
+  display: block;
 }

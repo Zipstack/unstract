@@ -41,8 +41,7 @@ class PostgreSQL(UnstractDB):
     @staticmethod
     def get_icon() -> str:
         return (
-            "https://storage.googleapis.com/pandora-static"
-            "/connector-icons/Postgresql.png"
+            "/icons/connector-icons/Postgresql.png"
         )
 
     @staticmethod

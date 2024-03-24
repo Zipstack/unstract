@@ -30,8 +30,7 @@ class BigQuery(UnstractDB):
     @staticmethod
     def get_icon() -> str:
         return (
-            "https://storage.googleapis.com/pandora-static"
-            "/connector-icons/Bigquery.png"
+            "/icons/connector-icons/Bigquery.png"
         )
 
     @staticmethod

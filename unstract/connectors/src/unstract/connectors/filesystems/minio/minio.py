@@ -48,8 +48,7 @@ class MinioFS(UnstractFileSystem):
     @staticmethod
     def get_icon() -> str:
         return (
-            "https://storage.googleapis.com/"
-            "pandora-static/connector-icons/S3.png"
+            "/icons/connector-icons/S3.png"
         )
 
     @staticmethod

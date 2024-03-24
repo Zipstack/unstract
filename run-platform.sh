@@ -101,7 +101,14 @@ parse_args() {
         opt_verbose=true
         ;;
       -v | --version)
-        opt_version="$2"
+        if [ -z "${2-}" ]; then
+          echo "No version specified."
+          echo
+          display_help
+          exit
+        else
+          opt_version="$2"
+        fi
         shift
         ;;
       *)

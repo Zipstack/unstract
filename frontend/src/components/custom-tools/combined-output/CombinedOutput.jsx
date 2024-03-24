@@ -6,7 +6,10 @@ import "prismjs/themes/prism.css";
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 
-import { promptType } from "../../../helpers/GetStaticData";
+import {
+  displayPromptResult,
+  promptType,
+} from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -15,7 +18,12 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
-function CombinedOutput({ docId, setFilledFields, triggerRunSinglePass }) {
+function CombinedOutput({
+  docId,
+  setFilledFields,
+  triggerRunSinglePass,
+  setTriggerRunSinglePass,
+}) {
   const [combinedOutput, setCombinedOutput] = useState({});
   const [isOutputLoading, setIsOutputLoading] = useState(false);
   const { details, isSinglePassExtract, updateCustomTool } =
@@ -60,11 +68,10 @@ function CombinedOutput({ docId, setFilledFields, triggerRunSinglePass }) {
             return;
           }
 
-          try {
-            output[item?.prompt_key] = JSON.parse(outputDetails?.output);
-          } catch (err) {
-            output[item?.prompt_key] = outputDetails?.output || "";
-          }
+          output[item?.prompt_key] = displayPromptResult(
+            outputDetails?.output,
+            false
+          );
 
           if (outputDetails?.output?.length > 0) {
             filledFields++;
@@ -91,6 +98,10 @@ function CombinedOutput({ docId, setFilledFields, triggerRunSinglePass }) {
   }, [combinedOutput]);
 
   useEffect(() => {
+    if (!triggerRunSinglePass) {
+      return;
+    }
+    setTriggerRunSinglePass(false);
     runSinglePassExtraction();
   }, [triggerRunSinglePass]);
 
@@ -169,6 +180,7 @@ CombinedOutput.propTypes = {
   docId: PropTypes.string,
   setFilledFields: PropTypes.func,
   triggerRunSinglePass: PropTypes.bool.isRequired,
+  setTriggerRunSinglePass: PropTypes.func.isRequired,
 };
 
 export { CombinedOutput };

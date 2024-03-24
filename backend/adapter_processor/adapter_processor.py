@@ -99,18 +99,18 @@ class AdapterProcessor:
                 adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE)
                 == AdapterKeys.X2TEXT
             ):
-                adapter_metadata[X2TextConstants.X2TEXT_HOST] = (
-                    settings.X2TEXT_HOST
-                )
-                adapter_metadata[X2TextConstants.X2TEXT_PORT] = (
-                    settings.X2TEXT_PORT
-                )
+                adapter_metadata[
+                    X2TextConstants.X2TEXT_HOST
+                ] = settings.X2TEXT_HOST
+                adapter_metadata[
+                    X2TextConstants.X2TEXT_PORT
+                ] = settings.X2TEXT_PORT
                 platform_key = (
                     PlatformAuthenticationService.get_active_platform_key()
                 )
-                adapter_metadata[X2TextConstants.PLATFORM_SERVICE_API_KEY] = (
-                    str(platform_key.key)
-                )
+                adapter_metadata[
+                    X2TextConstants.PLATFORM_SERVICE_API_KEY
+                ] = str(platform_key.key)
 
             adapter_instance = adapter_class(adapter_metadata)
             test_result: bool = adapter_instance.test_connection()
@@ -156,10 +156,10 @@ class AdapterProcessor:
                     )
                 )
 
-            if default_triad.get(AdapterKeys.X2TEXT, None):
+            if default_triad.get(AdapterKeys.X2TEXT_DEFAULT, None):
                 user_default_adapter.default_x2text_adapter = (
                     AdapterInstance.objects.get(
-                        pk=default_triad[AdapterKeys.X2TEXT]
+                        pk=default_triad[AdapterKeys.X2TEXT_DEFAULT]
                     )
                 )
 
@@ -272,7 +272,10 @@ class AdapterProcessor:
             return adapters
         except ObjectDoesNotExist as e:
             logger.error(f"No default adapters found: {e}")
-            raise InternalServiceError("No default adapters found")
+            raise InternalServiceError(
+                "No default adapters found, "
+                "configure them through Platform Settings"
+            )
         except Exception as e:
             logger.error(f"Error occurred while fetching default adapters: {e}")
             raise InternalServiceError("Error fetching default adapters")

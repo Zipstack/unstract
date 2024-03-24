@@ -65,6 +65,9 @@ class AdapterPropertyKey:
     ADAPTER_ID_KEY = "adapterIdKey"
     ADAPTER_ID = "adapterId"
     ADAPTER_TYPE = "adapterType"
-    LLM_ADAPTER_ID = "llmAdapterId"
-    EMBEDDING_ADAPTER_ID = "embeddingAdapterId"
-    VECTOR_DB_ADAPTER_ID = "vectorDbAdapterId"
+    # TODO: Define defaults in SDK and use within tools
+    DEFAULT_LLM_ADAPTER_ID = "llmAdapterId"
+    DEFAULT_EMBEDDING_ADAPTER_ID = "embeddingAdapterId"
+    DEFAULT_VECTOR_DB_ADAPTER_ID = "vectorDbAdapterId"
+    DEFAULT_X2TEXT_ADAPTER_ID = "x2TextAdapterId"
+    DEFAULT_OCR_ADAPTER_ID = "ocrAdapterId"

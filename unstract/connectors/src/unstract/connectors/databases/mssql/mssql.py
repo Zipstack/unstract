@@ -30,7 +30,7 @@ class MSSQL(UnstractDB):
 
     @staticmethod
     def get_icon() -> str:
-        return "https://storage.googleapis.com/pandora-static/connector-icons/MSSQL.png"
+        return "/icons/connector-icons/MSSQL.png"
 
     @staticmethod
     def get_json_schema() -> str:

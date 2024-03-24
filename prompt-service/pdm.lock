@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:2506bd5ad75643e2af3328ad7e8b5babc3a21dea2f7bdec19a4ce1c0952a1e8f"
+content_hash = "sha256:23bb6c9e21af766f411ed8287c9d4fe9d17ee8ad87b3fa15281623d798f8365f"
 
 [[package]]
 name = "aiohttp"
@@ -330,24 +330,24 @@ files = [
 
 [[package]]
 name = "boto3"
-version = "1.34.61"
-requires_python = ">= 3.8"
+version = "1.28.85"
+requires_python = ">= 3.7"
 summary = "The AWS SDK for Python"
 groups = ["default"]
 dependencies = [
-    "botocore<1.35.0,>=1.34.61",
+    "botocore<1.32.0,>=1.31.85",
     "jmespath<2.0.0,>=0.7.1",
-    "s3transfer<0.11.0,>=0.10.0",
+    "s3transfer<0.8.0,>=0.7.0",
 ]
 files = [
-    {file = "boto3-1.34.61-py3-none-any.whl", hash = "sha256:992e994c7e481a5d3259c699574882b79d631a46f7c369bea350b7ccb0651317"},
-    {file = "boto3-1.34.61.tar.gz", hash = "sha256:4b40bf2c8494647c9e88c180537dc9fc0c1047a9fffbb1e5b0da6596f1e59b7b"},
+    {file = "boto3-1.28.85-py3-none-any.whl", hash = "sha256:1fb7e7ba32a6701990168eb7a08e1fb624ae48130784dfab25904ed47deabb31"},
+    {file = "boto3-1.28.85.tar.gz", hash = "sha256:96b4cb2708933cef7dbe1177df37ef0593839942978784147aade0e49511eb2b"},
 ]
 
 [[package]]
 name = "botocore"
-version = "1.34.61"
-requires_python = ">= 3.8"
+version = "1.31.85"
+requires_python = ">= 3.7"
 summary = "Low-level, data-driven core of boto 3."
 groups = ["default"]
 dependencies = [
@@ -357,8 +357,8 @@ dependencies = [
     "urllib3<2.1,>=1.25.4; python_version >= \"3.10\"",
 ]
 files = [
-    {file = "botocore-1.34.61-py3-none-any.whl", hash = "sha256:079f3288d38f97fd5656c25c44a94bea0e7090b938abfdeea463eaadb210c4a0"},
-    {file = "botocore-1.34.61.tar.gz", hash = "sha256:72df4af7e4e6392552c882d48c74e4be9bf7be4cd8d829711b312fbae13d7034"},
+    {file = "botocore-1.31.85-py3-none-any.whl", hash = "sha256:b8f35d65f2b45af50c36fc25cc1844d6bd61d38d2148b2ef133b8f10e198555d"},
+    {file = "botocore-1.31.85.tar.gz", hash = "sha256:ce58e688222df73ec5691f934be1a2122a52c9d11d3037b586b3fff16ed6d25f"},
 ]
 
 [[package]]
@@ -1922,6 +1922,160 @@ files = [
 ]
 
 [[package]]
+name = "nvidia-cublas-cu12"
+version = "12.1.3.1"
+requires_python = ">=3"
+summary = "CUBLAS native runtime libraries"
+groups = ["default"]
+marker = "platform_system == \"Linux\" and platform_machine == \"x86_64\""
+files = [
+    {file = "nvidia_cublas_cu12-12.1.3.1-py3-none-manylinux1_x86_64.whl", hash = "sha256:ee53ccca76a6fc08fb9701aa95b6ceb242cdaab118c3bb152af4e579af792728"},
+    {file = "nvidia_cublas_cu12-12.1.3.1-py3-none-win_amd64.whl", hash = "sha256:2b964d60e8cf11b5e1073d179d85fa340c120e99b3067558f3cf98dd69d02906"},
+]
+
+[[package]]
+name = "nvidia-cuda-cupti-cu12"
+version = "12.1.105"
+requires_python = ">=3"
+summary = "CUDA profiling tools runtime libs."
+groups = ["default"]
+marker = "platform_system == \"Linux\" and platform_machine == \"x86_64\""
+files = [
+    {file = "nvidia_cuda_cupti_cu12-12.1.105-py3-none-manylinux1_x86_64.whl", hash = "sha256:e54fde3983165c624cb79254ae9818a456eb6e87a7fd4d56a2352c24ee542d7e"},
+    {file = "nvidia_cuda_cupti_cu12-12.1.105-py3-none-win_amd64.whl", hash = "sha256:bea8236d13a0ac7190bd2919c3e8e6ce1e402104276e6f9694479e48bb0eb2a4"},
+]
+
+[[package]]
+name = "nvidia-cuda-nvrtc-cu12"
+version = "12.1.105"
+requires_python = ">=3"
+summary = "NVRTC native runtime libraries"
+groups = ["default"]
+marker = "platform_system == \"Linux\" and platform_machine == \"x86_64\""
+files = [
+    {file = "nvidia_cuda_nvrtc_cu12-12.1.105-py3-none-manylinux1_x86_64.whl", hash = "sha256:339b385f50c309763ca65456ec75e17bbefcbbf2893f462cb8b90584cd27a1c2"},
+    {file = "nvidia_cuda_nvrtc_cu12-12.1.105-py3-none-win_amd64.whl", hash = "sha256:0a98a522d9ff138b96c010a65e145dc1b4850e9ecb75a0172371793752fd46ed"},
+]
+
+[[package]]
+name = "nvidia-cuda-runtime-cu12"
+version = "12.1.105"
+requires_python = ">=3"
+summary = "CUDA Runtime native Libraries"
+groups = ["default"]
+marker = "platform_system == \"Linux\" and platform_machine == \"x86_64\""
+files = [
+    {file = "nvidia_cuda_runtime_cu12-12.1.105-py3-none-manylinux1_x86_64.whl", hash = "sha256:6e258468ddf5796e25f1dc591a31029fa317d97a0a94ed93468fc86301d61e40"},
+    {file = "nvidia_cuda_runtime_cu12-12.1.105-py3-none-win_amd64.whl", hash = "sha256:dfb46ef84d73fababab44cf03e3b83f80700d27ca300e537f85f636fac474344"},
+]
+
+[[package]]
+name = "nvidia-cudnn-cu12"
+version = "8.9.2.26"
+requires_python = ">=3"
+summary = "cuDNN runtime libraries"
+groups = ["default"]
+marker = "platform_system == \"Linux\" and platform_machine == \"x86_64\""
+dependencies = [
+    "nvidia-cublas-cu12",
+]
+files = [
+    {file = "nvidia_cudnn_cu12-8.9.2.26-py3-none-manylinux1_x86_64.whl", hash = "sha256:5ccb288774fdfb07a7e7025ffec286971c06d8d7b4fb162525334616d7629ff9"},
+]
+
+[[package]]
+name = "nvidia-cufft-cu12"
+version = "11.0.2.54"
+requires_python = ">=3"
+summary = "CUFFT native runtime libraries"
+groups = ["default"]
+marker = "platform_system == \"Linux\" and platform_machine == \"x86_64\""
+files = [
+    {file = "nvidia_cufft_cu12-11.0.2.54-py3-none-manylinux1_x86_64.whl", hash = "sha256:794e3948a1aa71fd817c3775866943936774d1c14e7628c74f6f7417224cdf56"},
+    {file = "nvidia_cufft_cu12-11.0.2.54-py3-none-win_amd64.whl", hash = "sha256:d9ac353f78ff89951da4af698f80870b1534ed69993f10a4cf1d96f21357e253"},
+]
+
+[[package]]
+name = "nvidia-curand-cu12"
+version = "10.3.2.106"
+requires_python = ">=3"
+summary = "CURAND native runtime libraries"
+groups = ["default"]
+marker = "platform_system == \"Linux\" and platform_machine == \"x86_64\""
+files = [
+    {file = "nvidia_curand_cu12-10.3.2.106-py3-none-manylinux1_x86_64.whl", hash = "sha256:9d264c5036dde4e64f1de8c50ae753237c12e0b1348738169cd0f8a536c0e1e0"},
+    {file = "nvidia_curand_cu12-10.3.2.106-py3-none-win_amd64.whl", hash = "sha256:75b6b0c574c0037839121317e17fd01f8a69fd2ef8e25853d826fec30bdba74a"},
+]
+
+[[package]]
+name = "nvidia-cusolver-cu12"
+version = "11.4.5.107"
+requires_python = ">=3"
+summary = "CUDA solver native runtime libraries"
+groups = ["default"]
+marker = "platform_system == \"Linux\" and platform_machine == \"x86_64\""
+dependencies = [
+    "nvidia-cublas-cu12",
+    "nvidia-cusparse-cu12",
+    "nvidia-nvjitlink-cu12",
+]
+files = [
+    {file = "nvidia_cusolver_cu12-11.4.5.107-py3-none-manylinux1_x86_64.whl", hash = "sha256:8a7ec542f0412294b15072fa7dab71d31334014a69f953004ea7a118206fe0dd"},
+    {file = "nvidia_cusolver_cu12-11.4.5.107-py3-none-win_amd64.whl", hash = "sha256:74e0c3a24c78612192a74fcd90dd117f1cf21dea4822e66d89e8ea80e3cd2da5"},
+]
+
+[[package]]
+name = "nvidia-cusparse-cu12"
+version = "12.1.0.106"
+requires_python = ">=3"
+summary = "CUSPARSE native runtime libraries"
+groups = ["default"]
+marker = "platform_system == \"Linux\" and platform_machine == \"x86_64\""
+dependencies = [
+    "nvidia-nvjitlink-cu12",
+]
+files = [
+    {file = "nvidia_cusparse_cu12-12.1.0.106-py3-none-manylinux1_x86_64.whl", hash = "sha256:f3b50f42cf363f86ab21f720998517a659a48131e8d538dc02f8768237bd884c"},
+    {file = "nvidia_cusparse_cu12-12.1.0.106-py3-none-win_amd64.whl", hash = "sha256:b798237e81b9719373e8fae8d4f091b70a0cf09d9d85c95a557e11df2d8e9a5a"},
+]
+
+[[package]]
+name = "nvidia-nccl-cu12"
+version = "2.19.3"
+requires_python = ">=3"
+summary = "NVIDIA Collective Communication Library (NCCL) Runtime"
+groups = ["default"]
+marker = "platform_system == \"Linux\" and platform_machine == \"x86_64\""
+files = [
+    {file = "nvidia_nccl_cu12-2.19.3-py3-none-manylinux1_x86_64.whl", hash = "sha256:a9734707a2c96443331c1e48c717024aa6678a0e2a4cb66b2c364d18cee6b48d"},
+]
+
+[[package]]
+name = "nvidia-nvjitlink-cu12"
+version = "12.4.99"
+requires_python = ">=3"
+summary = "Nvidia JIT LTO Library"
+groups = ["default"]
+marker = "platform_system == \"Linux\" and platform_machine == \"x86_64\""
+files = [
+    {file = "nvidia_nvjitlink_cu12-12.4.99-py3-none-manylinux2014_aarch64.whl", hash = "sha256:75d6498c96d9adb9435f2bbdbddb479805ddfb97b5c1b32395c694185c20ca57"},
+    {file = "nvidia_nvjitlink_cu12-12.4.99-py3-none-manylinux2014_x86_64.whl", hash = "sha256:c6428836d20fe7e327191c175791d38570e10762edc588fb46749217cd444c74"},
+    {file = "nvidia_nvjitlink_cu12-12.4.99-py3-none-win_amd64.whl", hash = "sha256:991905ffa2144cb603d8ca7962d75c35334ae82bf92820b6ba78157277da1ad2"},
+]
+
+[[package]]
+name = "nvidia-nvtx-cu12"
+version = "12.1.105"
+requires_python = ">=3"
+summary = "NVIDIA Tools Extension"
+groups = ["default"]
+marker = "platform_system == \"Linux\" and platform_machine == \"x86_64\""
+files = [
+    {file = "nvidia_nvtx_cu12-12.1.105-py3-none-manylinux1_x86_64.whl", hash = "sha256:dc21cf308ca5691e7c04d962e213f8a4aa9bbfa23d95412f452254c2caeb09e5"},
+    {file = "nvidia_nvtx_cu12-12.1.105-py3-none-win_amd64.whl", hash = "sha256:65f4d98982b31b60026e0e6de73fbdfc09d08a96f4656dd3665ca616a11e1e82"},
+]
+
+[[package]]
 name = "oauth2client"
 version = "4.1.3"
 summary = "OAuth 2.0 client library"
@@ -2644,6 +2798,20 @@ files = [
 ]
 
 [[package]]
+name = "redis"
+version = "5.0.3"
+requires_python = ">=3.7"
+summary = "Python client for Redis database and key-value store"
+groups = ["default"]
+dependencies = [
+    "async-timeout>=4.0.3; python_full_version < \"3.11.3\"",
+]
+files = [
+    {file = "redis-5.0.3-py3-none-any.whl", hash = "sha256:5da9b8fe9e1254293756c16c008e8620b3d15fcc6dde6babde9541850e72a32d"},
+    {file = "redis-5.0.3.tar.gz", hash = "sha256:4973bae7444c0fbed64a06b87446f79361cb7e4ec1538c022d696ed7a5015580"},
+]
+
+[[package]]
 name = "referencing"
 version = "0.33.0"
 requires_python = ">=3.8"
@@ -2862,16 +3030,16 @@ files = [
 
 [[package]]
 name = "s3transfer"
-version = "0.10.0"
-requires_python = ">= 3.8"
+version = "0.7.0"
+requires_python = ">= 3.7"
 summary = "An Amazon S3 Transfer Manager"
 groups = ["default"]
 dependencies = [
-    "botocore<2.0a.0,>=1.33.2",
+    "botocore<2.0a.0,>=1.12.36",
 ]
 files = [
-    {file = "s3transfer-0.10.0-py3-none-any.whl", hash = "sha256:3cdb40f5cfa6966e812209d0994f2a4709b561c88e90cf00c2696d2df4e56b2e"},
-    {file = "s3transfer-0.10.0.tar.gz", hash = "sha256:d0c8bbf672d5eebbe4e57945e23b972d963f07d82f661cabf678a5c88831595b"},
+    {file = "s3transfer-0.7.0-py3-none-any.whl", hash = "sha256:10d6923c6359175f264811ef4bf6161a3156ce8e350e705396a7557d6293c33a"},
+    {file = "s3transfer-0.7.0.tar.gz", hash = "sha256:fd3889a66f5fe17299fe75b82eae6cf722554edca744ca5d5fe308b104883d2e"},
 ]
 
 [[package]]
@@ -2949,13 +3117,13 @@ files = [
 
 [[package]]
 name = "setuptools"
-version = "69.1.1"
+version = "69.2.0"
 requires_python = ">=3.8"
 summary = "Easily download, build, install, upgrade, and uninstall Python packages"
 groups = ["default"]
 files = [
-    {file = "setuptools-69.1.1-py3-none-any.whl", hash = "sha256:02fa291a0471b3a18b2b2481ed902af520c69e8ae0919c13da936542754b4c56"},
-    {file = "setuptools-69.1.1.tar.gz", hash = "sha256:5c0806c7d9af348e6dd3777b4f4dbb42c7ad85b190104837488eab9a7c945cf8"},
+    {file = "setuptools-69.2.0-py3-none-any.whl", hash = "sha256:c21c49fb1042386df081cb5d86759792ab89efca84cf114889191cd09aacc80c"},
+    {file = "setuptools-69.2.0.tar.gz", hash = "sha256:0ff4183f8f42cd8fa3acea16c45205521a4ef28f73c6391d8a25e92893134f2e"},
 ]
 
 [[package]]
@@ -3368,6 +3536,50 @@ files = [
 ]
 
 [[package]]
+name = "torch"
+version = "2.2.1"
+requires_python = ">=3.8.0"
+summary = "Tensors and Dynamic neural networks in Python with strong GPU acceleration"
+groups = ["default"]
+dependencies = [
+    "filelock",
+    "fsspec",
+    "jinja2",
+    "networkx",
+    "nvidia-cublas-cu12==12.1.3.1; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "nvidia-cuda-cupti-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "nvidia-cuda-nvrtc-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "nvidia-cuda-runtime-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "nvidia-cudnn-cu12==8.9.2.26; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "nvidia-cufft-cu12==11.0.2.54; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "nvidia-curand-cu12==10.3.2.106; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "nvidia-cusolver-cu12==11.4.5.107; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "nvidia-cusparse-cu12==12.1.0.106; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "nvidia-nccl-cu12==2.19.3; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "nvidia-nvtx-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "sympy",
+    "triton==2.2.0; platform_system == \"Linux\" and platform_machine == \"x86_64\" and python_version < \"3.12\"",
+    "typing-extensions>=4.8.0",
+]
+files = [
+    {file = "torch-2.2.1-cp310-cp310-manylinux1_x86_64.whl", hash = "sha256:8d3bad336dd2c93c6bcb3268e8e9876185bda50ebde325ef211fb565c7d15273"},
+    {file = "torch-2.2.1-cp310-cp310-manylinux2014_aarch64.whl", hash = "sha256:5297f13370fdaca05959134b26a06a7f232ae254bf2e11a50eddec62525c9006"},
+    {file = "torch-2.2.1-cp310-cp310-win_amd64.whl", hash = "sha256:5f5dee8433798888ca1415055f5e3faf28a3bad660e4c29e1014acd3275ab11a"},
+    {file = "torch-2.2.1-cp310-none-macosx_10_9_x86_64.whl", hash = "sha256:b6d78338acabf1fb2e88bf4559d837d30230cf9c3e4337261f4d83200df1fcbe"},
+    {file = "torch-2.2.1-cp310-none-macosx_11_0_arm64.whl", hash = "sha256:6ab3ea2e29d1aac962e905142bbe50943758f55292f1b4fdfb6f4792aae3323e"},
+    {file = "torch-2.2.1-cp311-cp311-manylinux1_x86_64.whl", hash = "sha256:d86664ec85902967d902e78272e97d1aff1d331f7619d398d3ffab1c9b8e9157"},
+    {file = "torch-2.2.1-cp311-cp311-manylinux2014_aarch64.whl", hash = "sha256:d6227060f268894f92c61af0a44c0d8212e19cb98d05c20141c73312d923bc0a"},
+    {file = "torch-2.2.1-cp311-cp311-win_amd64.whl", hash = "sha256:77e990af75fb1675490deb374d36e726f84732cd5677d16f19124934b2409ce9"},
+    {file = "torch-2.2.1-cp311-none-macosx_10_9_x86_64.whl", hash = "sha256:46085e328d9b738c261f470231e987930f4cc9472d9ffb7087c7a1343826ac51"},
+    {file = "torch-2.2.1-cp311-none-macosx_11_0_arm64.whl", hash = "sha256:2d9e7e5ecbb002257cf98fae13003abbd620196c35f85c9e34c2adfb961321ec"},
+    {file = "torch-2.2.1-cp39-cp39-manylinux1_x86_64.whl", hash = "sha256:f1b90ac61f862634039265cd0f746cc9879feee03ff962c803486301b778714b"},
+    {file = "torch-2.2.1-cp39-cp39-manylinux2014_aarch64.whl", hash = "sha256:ed9e29eb94cd493b36bca9cb0b1fd7f06a0688215ad1e4b3ab4931726e0ec092"},
+    {file = "torch-2.2.1-cp39-cp39-win_amd64.whl", hash = "sha256:c47bc25744c743f3835831a20efdcfd60aeb7c3f9804a213f61e45803d16c2a5"},
+    {file = "torch-2.2.1-cp39-none-macosx_10_9_x86_64.whl", hash = "sha256:0952549bcb43448c8d860d5e3e947dd18cbab491b14638e21750cb3090d5ad3e"},
+    {file = "torch-2.2.1-cp39-none-macosx_11_0_arm64.whl", hash = "sha256:26bd2272ec46fc62dcf7d24b2fb284d44fcb7be9d529ebf336b9860350d674ed"},
+]
+
+[[package]]
 name = "tqdm"
 version = "4.66.2"
 requires_python = ">=3.7"
@@ -3402,6 +3614,21 @@ dependencies = [
 files = [
     {file = "transformers-4.37.0-py3-none-any.whl", hash = "sha256:669d4e2c12661e71c464eb18d6a9b9a2c74d4cba0f4648bb9323896bdd046826"},
     {file = "transformers-4.37.0.tar.gz", hash = "sha256:5a0fdee36168f751770f7036ce7a8787be14f8b0d8f29806c493b6cb819c6c83"},
+]
+
+[[package]]
+name = "triton"
+version = "2.2.0"
+summary = "A language and compiler for custom Deep Learning operations"
+groups = ["default"]
+marker = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and python_version < \"3.12\""
+dependencies = [
+    "filelock",
+]
+files = [
+    {file = "triton-2.2.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a2294514340cfe4e8f4f9e5c66c702744c4a117d25e618bd08469d0bfed1e2e5"},
+    {file = "triton-2.2.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:da58a152bddb62cafa9a857dd2bc1f886dbf9f9c90a2b5da82157cd2b34392b0"},
+    {file = "triton-2.2.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:227cc6f357c5efcb357f3867ac2a8e7ecea2298cd4606a8ba1e931d1d5a947df"},
 ]
 
 [[package]]
@@ -3510,7 +3737,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.4.1"
+version = "0.6.0"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract Adapters"
 groups = ["default"]
@@ -3532,17 +3759,33 @@ dependencies = [
     "qdrant-client==1.7.0",
     "replicate==0.22.0",
     "supabase==2.2.1",
+    "torch==2.2.1",
     "vecs==0.4.3",
     "weaviate-client==3.25.3",
 ]
 files = [
-    {file = "unstract_adapters-0.4.1-py3-none-any.whl", hash = "sha256:d8be73fe96f37f347274b62360e2a99b69e83b93e4be4c93797e383e0a0cafbb"},
-    {file = "unstract_adapters-0.4.1.tar.gz", hash = "sha256:1f0ceaa8a26af51dd46713ec73b029a115c2a9f43a00e10ae73e8dedee7e1069"},
+    {file = "unstract_adapters-0.6.0-py3-none-any.whl", hash = "sha256:6b16655c27115ced06d2ab36a1779d357a00e986a8c8a47f997011271c4e5436"},
+    {file = "unstract_adapters-0.6.0.tar.gz", hash = "sha256:29ef970d5f7c06b80093fc8984adc5c8eb440606e87cc2733dc85bfa331ca7ce"},
+]
+
+[[package]]
+name = "unstract-core"
+version = "0.0.1"
+requires_python = ">=3.9,<3.11.1"
+path = "../unstract/core"
+summary = "Core library that helps with executing workflows."
+groups = ["default"]
+dependencies = [
+    "boto3~=1.28.17",
+    "botocore~=1.31.17",
+    "llama-index==0.9.28",
+    "redis~=5.0.1",
+    "requests==2.31.0",
 ]
 
 [[package]]
 name = "unstract-sdk"
-version = "0.15.1"
+version = "0.16.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3553,11 +3796,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.4.1",
+    "unstract-adapters~=0.6.0",
 ]
 files = [
-    {file = "unstract_sdk-0.15.1-py3-none-any.whl", hash = "sha256:b62460bc2054056a47f9ae01b1a2d8567273fba33725f5a8676313bfab7a2af3"},
-    {file = "unstract_sdk-0.15.1.tar.gz", hash = "sha256:9dc67b3f646b99328912ef1b703dbf8ffd710c25f181247e277433cf032ad1aa"},
+    {file = "unstract_sdk-0.16.0-py3-none-any.whl", hash = "sha256:7c067116d1a7677913844ebab3ea31c3bbc10bdab4bbf38044c53700f5d3c651"},
+    {file = "unstract_sdk-0.16.0.tar.gz", hash = "sha256:4c5c79eda151c3efd3cfa6e7ea2b87fb6aad7c74b1917a67b5b1e3a4c6ed0675"},
 ]
 
 [[package]]
@@ -3802,12 +4045,12 @@ files = [
 
 [[package]]
 name = "zipp"
-version = "3.18.0"
+version = "3.18.1"
 requires_python = ">=3.8"
 summary = "Backport of pathlib-compatible object wrapper for zip files"
 groups = ["default"]
 marker = "python_version < \"3.10\""
 files = [
-    {file = "zipp-3.18.0-py3-none-any.whl", hash = "sha256:c1bb803ed69d2cce2373152797064f7e79bc43f0a3748eb494096a867e0ebf79"},
-    {file = "zipp-3.18.0.tar.gz", hash = "sha256:df8d042b02765029a09b157efd8e820451045890acc30f8e37dd2f94a060221f"},
+    {file = "zipp-3.18.1-py3-none-any.whl", hash = "sha256:206f5a15f2af3dbaee80769fb7dc6f249695e940acca08dfb2a4769fe61e538b"},
+    {file = "zipp-3.18.1.tar.gz", hash = "sha256:2884ed22e7d8961de1c9a05142eb69a247f120291bc0206a00a7642f09b5b715"},
 ]

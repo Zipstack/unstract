@@ -132,11 +132,9 @@ const listOfAppDeployments = [
     cron: null,
     workflow_name: "demo",
     source_name: "MinioFS/S3",
-    source_icon:
-      "https://storage.googleapis.com/pandora-static/connector-icons/S3.png",
+    source_icon: "/icons/connector-icons/S3.png",
     destination_name: "Unstract Cloud Storage",
-    destination_icon:
-      "https://storage.googleapis.com/pandora-static/connector-icons/Pandora%20Storage.png",
+    destination_icon: "/icons/connector-icons/Pandora%20Storage.png",
     goto: "https://finance-qa.pandora-demo.zipstack.io/",
   },
   {
@@ -153,11 +151,9 @@ const listOfAppDeployments = [
     cron: null,
     workflow_name: "demo",
     source_name: "MinioFS/S3",
-    source_icon:
-      "https://storage.googleapis.com/pandora-static/connector-icons/S3.png",
+    source_icon: "/icons/connector-icons/S3.png",
     destination_name: "Unstract Cloud Storage",
-    destination_icon:
-      "https://storage.googleapis.com/pandora-static/connector-icons/Pandora%20Storage.png",
+    destination_icon: "/icons/connector-icons/Pandora%20Storage.png",
     goto: "https://legal-qa.pandora-demo.zipstack.io/",
   },
 ];
@@ -245,6 +241,26 @@ const getTimeForLogs = () => {
   return formattedDate;
 };
 
+const getDateTimeString = (timestamp) => {
+  // Convert to milliseconds
+  const timestampInMilliseconds = timestamp * 1000;
+
+  // Create a new Date object
+  const date = new Date(timestampInMilliseconds);
+
+  // Extract date components
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, "0"); // Months are zero-indexed
+  const day = date.getDate().toString().padStart(2, "0");
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  const seconds = date.getSeconds().toString().padStart(2, "0");
+  const milliseconds = date.getMilliseconds().toString().padStart(3, "0");
+
+  // Formatted date-time string
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+};
+
 const base64toBlob = (data) => {
   const bytes = atob(data);
   let length = bytes.length;
@@ -283,14 +299,13 @@ const isJson = (text) => {
   }
 };
 
-const displayPromptResult = (output) => {
+const displayPromptResult = (output, isFormat = false) => {
   try {
-    if (isJson(output)) {
-      return JSON.stringify(JSON.parse(output), null, 4);
+    const parsedData = JSON.parse(output.replace(/'/g, '"'));
+    if (Array.isArray(parsedData) || typeof parsedData === "object") {
+      return isFormat ? JSON.stringify(parsedData, null, 4) : parsedData;
     }
-
-    const outputParsed = JSON.parse(output);
-    return outputParsed;
+    return output;
   } catch (err) {
     return output;
   }
@@ -300,7 +315,7 @@ const onboardCompleted = (adaptersList) => {
   if (!Array.isArray(adaptersList)) {
     return false;
   }
-  const MANDATORY_ADAPTERS = ["llm", "vector_db", "embedding"];
+  const MANDATORY_ADAPTERS = ["llm", "vector_db", "embedding", "x2text"];
   adaptersList = adaptersList.map((element) => element.toLowerCase());
   return MANDATORY_ADAPTERS.every((value) => adaptersList.includes(value));
 };
@@ -367,6 +382,7 @@ export {
   getOrgNameFromPathname,
   getReadableDateAndTime,
   getTimeForLogs,
+  getDateTimeString,
   listOfAppDeployments,
   onboardCompleted,
   promptStudioUpdateStatus,

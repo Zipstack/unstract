@@ -45,13 +45,11 @@ import { EditableText } from "../editable-text/EditableText";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 
 let EvalBtn = null;
 let EvalMetrics = null;
 let EvalModal = null;
-let sortEvalMetricsByType = (param) => {
-  return [];
-};
 let getEvalMetrics = (param1, param2, param3) => {
   return [];
 };
@@ -60,8 +58,6 @@ try {
   EvalMetrics =
     require("../../../plugins/eval-metrics/EvalMetrics").EvalMetrics;
   EvalModal = require("../../../plugins/eval-modal/EvalModal").EvalModal;
-  sortEvalMetricsByType =
-    require("../../../plugins/eval-helper/EvalHelper").sortEvalMetricsByType;
   getEvalMetrics =
     require("../../../plugins/eval-helper/EvalHelper").getEvalMetrics;
 } catch {
@@ -89,11 +85,12 @@ function PromptCard({
     promptOutputId: null,
     output: "",
   });
-  const [outputIds, setOutputIds] = useState([]);
   const [coverage, setCoverage] = useState(0);
   const [coverageTotal, setCoverageTotal] = useState(0);
   const [isCoverageLoading, setIsCoverageLoading] = useState(false);
   const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
+  const [progressMsg, setProgressMsg] = useState({});
+  const [docOutputs, setDocOutputs] = useState({});
   const divRef = useRef(null);
   const {
     getDropdownItems,
@@ -106,10 +103,34 @@ function PromptCard({
     indexDocs,
     summarizeIndexStatus,
   } = useCustomToolStore();
+  const { messages } = useSocketCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+
+  useEffect(() => {
+    // Find the latest message that matches the criteria
+    const msg = [...messages]
+      .reverse()
+      .find(
+        (item) =>
+          (item?.component?.prompt_id === promptDetails?.prompt_id ||
+            item?.component?.prompt_key === promptKey) &&
+          (item?.level === "INFO" || item?.level === "ERROR")
+      );
+
+    // If no matching message is found, return early
+    if (!msg) {
+      return;
+    }
+
+    // Set the progress message state with the found message
+    setProgressMsg({
+      message: msg?.message || "",
+      level: msg?.level || "INFO",
+    });
+  }, [messages]);
 
   useEffect(() => {
     if (promptDetails?.is_assert) {
@@ -239,6 +260,18 @@ function PromptCard({
     );
   };
 
+  const handleDocOutputs = (docId, isLoading, output) => {
+    setDocOutputs((prev) => {
+      const updatedDocOutputs = { ...prev };
+      // Update the entry for the provided docId with isLoading and output
+      updatedDocOutputs[docId] = {
+        isLoading,
+        output,
+      };
+      return updatedDocOutputs;
+    });
+  };
+
   // Generate the result for the currently selected document
   const handleRun = () => {
     if (!promptDetails?.profile_manager?.length) {
@@ -278,16 +311,9 @@ function PromptCard({
     setCoverage(0);
     setCoverageTotal(0);
 
-    let method = "POST";
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/`;
-    if (result?.promptOutputId) {
-      method = "PATCH";
-      url += `${result?.promptOutputId}/`;
-    }
-
+    const docId = selectedDoc?.document_id;
     const isSummaryIndexed = [...summarizeIndexStatus].find(
-      (item) =>
-        item?.docId === selectedDoc?.document_id && item?.isIndexed === true
+      (item) => item?.docId === docId && item?.isIndexed === true
     );
 
     if (
@@ -296,7 +322,6 @@ function PromptCard({
       details?.summarize_llm_profile
     ) {
       // Summary needs to be indexed before running the prompt
-      handleUpdateOutput(null, selectedDoc?.document_id, [], method, url);
       handleStepsAfterRunCompletion();
       setAlertDetails({
         type: "error",
@@ -304,35 +329,23 @@ function PromptCard({
       });
       return;
     }
-    handleRunApiRequest(selectedDoc?.document_id)
+
+    handleDocOutputs(docId, true, null);
+    handleRunApiRequest(docId)
       .then((res) => {
         const data = res?.data;
         const value = data[promptDetails?.prompt_key];
         if (value || value === 0) {
           setCoverage((prev) => prev + 1);
         }
-
-        // Handle Eval
-        const evalMetrics = getEvalMetrics(
-          promptDetails?.evaluate,
-          promptDetails?.prompt_key,
-          data
-        );
-        handleUpdateOutput(
-          value,
-          selectedDoc?.document_id,
-          evalMetrics,
-          method,
-          url
-        );
+        handleDocOutputs(docId, false, value);
+        handleGetOutput();
       })
       .catch((err) => {
-        handleUpdateOutput(null, selectedDoc?.document_id, [], method, url);
+        setIsRunLoading(false);
+        handleDocOutputs(docId, false, null);
         setAlertDetails(
-          handleException(
-            err,
-            `Failed to generate output for ${selectedDoc?.document_id}`
-          )
+          handleException(err, `Failed to generate output for ${docId}`)
         );
       })
       .finally(() => {
@@ -341,7 +354,6 @@ function PromptCard({
   };
 
   const handleStepsAfterRunCompletion = () => {
-    setIsRunLoading(false);
     setCoverageTotal(1);
     handleCoverage();
   };
@@ -359,20 +371,10 @@ function PromptCard({
 
     let totalCoverageValue = 1;
     listOfDocsToProcess.forEach((item) => {
-      let method = "POST";
-      let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/`;
-      const outputId = outputIds.find(
-        (output) => output?.docId === item?.document_id
-      );
-      if (outputId?.promptOutputId?.length) {
-        method = "PATCH";
-        url += `${outputId?.promptOutputId}/`;
-      }
-
+      const docId = item?.document_id;
       const isSummaryIndexed = [...summarizeIndexStatus].find(
         (indexStatus) =>
-          indexStatus?.docId === item?.document_id &&
-          indexStatus?.isIndexed === true
+          indexStatus?.docId === docId && indexStatus?.isIndexed === true
       );
 
       if (
@@ -381,7 +383,6 @@ function PromptCard({
         details?.summarize_llm_profile
       ) {
         // Summary needs to be indexed before running the prompt
-        handleUpdateOutput(null, item?.document_id, [], method, url);
         totalCoverageValue++;
         setCoverageTotal(totalCoverageValue);
         setAlertDetails({
@@ -390,35 +391,21 @@ function PromptCard({
         });
         return;
       }
-      handleRunApiRequest(item?.document_id)
+
+      handleDocOutputs(docId, true, null);
+      handleRunApiRequest(docId)
         .then((res) => {
           const data = res?.data;
           const outputValue = data[promptDetails?.prompt_key];
           if (outputValue || outputValue === 0) {
             setCoverage((prev) => prev + 1);
           }
-
-          // Handle Eval
-          const evalMetrics = getEvalMetrics(
-            promptDetails?.evaluate,
-            promptDetails?.prompt_key,
-            data
-          );
-          handleUpdateOutput(
-            outputValue,
-            item?.document_id,
-            evalMetrics,
-            method,
-            url
-          );
+          handleDocOutputs(docId, false, outputValue);
         })
         .catch((err) => {
-          handleUpdateOutput(null, item?.document_id, [], method, url);
+          handleDocOutputs(docId, false, null);
           setAlertDetails(
-            handleException(
-              err,
-              `Failed to generate output for ${item?.document_id}`
-            )
+            handleException(err, `Failed to generate output for ${docId}`)
           );
         })
         .finally(() => {
@@ -454,56 +441,6 @@ function PromptCard({
       });
   };
 
-  const handleUpdateOutput = (outputValue, docId, evalMetrics, method, url) => {
-    let output = outputValue;
-    if (output !== null && typeof output !== "string") {
-      output = JSON.stringify(output);
-    }
-    const body = {
-      output: output !== null ? output : null,
-      tool_id: details?.tool_id,
-      prompt_id: promptDetails?.prompt_id,
-      profile_manager: promptDetails?.profile_manager,
-      document_manager: docId,
-      eval_metrics: evalMetrics,
-    };
-
-    const requestOptions = {
-      method,
-      url,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json",
-      },
-      data: body,
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        const promptOutputId = data?.prompt_output_id || null;
-        if (docId === selectedDoc?.document_id) {
-          setResult({
-            promptOutputId: promptOutputId,
-            output: data?.output,
-            evalMetrics: sortEvalMetricsByType(data?.eval_metrics || []),
-          });
-        }
-
-        const isOutputIdAvailable = outputIds.find(
-          (item) => item?.promptOutputId === promptOutputId
-        );
-        if (!isOutputIdAvailable) {
-          const listOfOutputIds = [...outputIds];
-          listOfOutputIds.push({ promptOutputId, docId });
-          setOutputIds(listOfOutputIds);
-        }
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to persist the result"));
-      });
-  };
-
   const handleGetOutput = () => {
     if (!selectedDoc || !selectedLlmProfileId) {
       setResult({
@@ -515,7 +452,8 @@ function PromptCard({
 
     setIsRunLoading(true);
     handleOutputApiRequest(true)
-      .then((data) => {
+      .then((res) => {
+        const data = res?.data;
         if (!data || data?.length === 0) {
           setResult({
             promptOutputId: null,
@@ -528,11 +466,15 @@ function PromptCard({
         setResult({
           promptOutputId: outputResult?.prompt_output_id,
           output: outputResult?.output,
-          evalMetrics: sortEvalMetricsByType(outputResult?.eval_metrics || []),
+          evalMetrics: getEvalMetrics(
+            promptDetails?.evaluate,
+            promptDetails?.prompt_key,
+            outputResult?.eval_metrics || []
+          ),
         });
       })
       .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to generate the output"));
+        setAlertDetails(handleException(err, "Failed to generate the result"));
       })
       .finally(() => {
         setIsRunLoading(false);
@@ -545,21 +487,27 @@ function PromptCard({
     }
 
     setCoverage(0);
-    handleOutputApiRequest()
-      .then((data) => {
+    handleOutputApiRequest(false)
+      .then((res) => {
+        const data = res?.data;
         handleGetCoverageData(data);
       })
       .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to generate result"));
+        setAlertDetails(handleException(err, "Failed to generate the result"));
       });
   };
 
   const handleOutputApiRequest = async (isOutput) => {
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${selectedLlmProfileId}`;
+    let url = `/api/v1/unstract/${
+      sessionDetails?.orgId
+    }/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${
+      promptDetails?.prompt_id
+    }&profile_manager=${selectedLlmProfileId}&is_single_pass_extract=${false}`;
 
     if (isOutput) {
       url += `&document_manager=${selectedDoc?.document_id}`;
     }
+
     const requestOptions = {
       method: "GET",
       url,
@@ -569,47 +517,20 @@ function PromptCard({
     };
 
     return axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        data.sort((a, b) => {
-          return new Date(b.modified_at) - new Date(a.modified_at);
-        });
-        return data;
-      })
+      .then((res) => res)
       .catch((err) => {
         throw err;
       });
   };
 
   const handleGetCoverageData = (data) => {
-    const ids = [];
-    let coverageValue = 0;
-    data.forEach((item) => {
-      const isOutputAdded = ids.findIndex(
-        (output) => output?.docId === item?.document_manager
-      );
-
-      if (isOutputAdded > -1) {
-        return;
+    const coverageValue = data.reduce((acc, item) => {
+      if (item?.output || item?.output === 0) {
+        return acc + 1;
+      } else {
+        return acc;
       }
-
-      if (
-        item?.output !== undefined &&
-        [...listOfDocs].find(
-          (doc) => doc?.document_id === item?.document_manager
-        )
-      ) {
-        ids.push({
-          promptOutputId: item?.prompt_output_id,
-          docId: item?.document_manager,
-        });
-
-        if (item?.output || item?.output === 0) {
-          coverageValue++;
-        }
-      }
-    });
-    setOutputIds(ids);
+    }, 0);
     setCoverage(coverageValue);
   };
 
@@ -698,13 +619,15 @@ function PromptCard({
                   />
                 </Col>
                 <Col span={12} className="display-flex-right">
-                  {isCoverageLoading && (
+                  {progressMsg?.message && (
                     <Tag
-                      icon={<LoadingOutlined spin />}
-                      color="processing"
+                      icon={isCoverageLoading && <LoadingOutlined spin />}
+                      color={
+                        progressMsg?.level === "ERROR" ? "error" : "processing"
+                      }
                       className="display-flex-align-center"
                     >
-                      Generating Response
+                      {progressMsg?.message}
                     </Tag>
                   )}
                   {updateStatus?.promptId === promptDetails?.prompt_id && (
@@ -824,10 +747,8 @@ function PromptCard({
           <Space
             direction="vertical"
             className={`prompt-card-comp-layout ${
-              !(
-                isRunLoading ||
-                (result?.output !== undefined && outputIds?.length > 0)
-              ) && "prompt-card-comp-layout-border"
+              !(isRunLoading || result?.output || result?.output === 0) &&
+              "prompt-card-comp-layout-border"
             }`}
           >
             <div className="prompt-card-llm-profiles">
@@ -843,14 +764,18 @@ function PromptCard({
                   size="small"
                   type="link"
                   className="display-flex-align-center"
-                  icon={<SearchOutlined className="font-size-12" />}
-                  loading={isCoverageLoading}
                   onClick={() => setOpenOutputForDoc(true)}
-                  disabled={outputIds?.length === 0}
                 >
-                  <Typography.Link className="font-size-12">
-                    Coverage: {coverage} of {listOfDocs?.length || 0} docs
-                  </Typography.Link>
+                  <Space>
+                    {isCoverageLoading ? (
+                      <SpinnerLoader size="small" />
+                    ) : (
+                      <SearchOutlined className="font-size-12" />
+                    )}
+                    <Typography.Link className="font-size-12">
+                      Coverage: {coverage} of {listOfDocs?.length || 0} docs
+                    </Typography.Link>
+                  </Space>
                 </Button>
               </Space>
               <div>
@@ -925,8 +850,7 @@ function PromptCard({
             {EvalMetrics && <EvalMetrics result={result} />}
           </Space>
         </>
-        {(isRunLoading ||
-          (result?.output !== undefined && outputIds?.length > 0)) && (
+        {(isRunLoading || result?.output || result?.output === 0) && (
           <>
             <Divider className="prompt-card-divider" />
             <div className="prompt-card-result prompt-card-div">
@@ -934,7 +858,7 @@ function PromptCard({
                 <Spin indicator={<SpinnerLoader size="small" />} />
               ) : (
                 <Typography.Paragraph className="prompt-card-res font-size-12">
-                  <div>{displayPromptResult(result?.output)}</div>
+                  <div>{displayPromptResult(result?.output, true)}</div>
                 </Typography.Paragraph>
               )}
             </div>
@@ -955,6 +879,7 @@ function PromptCard({
         promptId={promptDetails?.prompt_id}
         promptKey={promptDetails?.prompt_key}
         profileManagerId={promptDetails?.profile_manager}
+        docOutputs={docOutputs}
       />
     </>
   );
