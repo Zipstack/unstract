@@ -94,3 +94,19 @@ class LogLevel(Enum):
     WARN = "WARN"
     ERROR = "ERROR"
     FATAL = "FATAL"
+
+
+class DefaultPrompts:
+    PREAMBLE = (
+        "Your ability to extract and summarize this context accurately "
+        "is essential for effective analysis. "
+        "Pay close attention to the context's language, structure, and any "
+        "cross-references to ensure a comprehensive and precise extraction "
+        "of information. Do not use prior knowledge or information from "
+        "outside the context to answer the questions. Only use the "
+        "information provided in the context to answer the questions."
+    )
+    POSTAMBLE = (
+        "Do not include any explanation in the reply. "
+        "Only include the extracted information in the reply."
+    )
