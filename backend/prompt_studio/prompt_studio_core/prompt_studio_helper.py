@@ -344,7 +344,7 @@ class PromptStudioHelper:
                     prompts=prompts,
                     outputs=response,
                     document_id=document_id,
-                    is_single_pass_extract=False
+                    is_single_pass_extract=False,
                 )
             except PermissionError as e:
                 raise e
@@ -397,9 +397,9 @@ class PromptStudioHelper:
 
                 OutputManagerHelper.handle_prompt_output_update(
                     prompts=prompts,
-                    outputs=response,
+                    outputs=response["single_pass_extraction"],
                     document_id=document_id,
-                    is_single_pass_extract=True
+                    is_single_pass_extract=True,
                 )
             except PermissionError as e:
                 raise e
@@ -447,8 +447,6 @@ class PromptStudioHelper:
         """
         monitor_llm_instance: Optional[AdapterInstance] = tool.monitor_llm
         monitor_llm: Optional[str] = None
-        if monitor_llm_instance:
-            monitor_llm = str(monitor_llm_instance.id)
         challenge_llm_instance: Optional[AdapterInstance] = tool.challenge_llm
         challenge_llm: Optional[str] = None
         prompt_grammer = tool.prompt_grammer
@@ -456,10 +454,10 @@ class PromptStudioHelper:
         grammer_dict = {}
         grammar_list = []
 
-        # Using default profile manager llm if monitor_llm is None
         if monitor_llm_instance:
             monitor_llm = str(monitor_llm_instance.id)
         else:
+            # Using default profile manager llm if monitor_llm is None
             default_profile = ProfileManager.get_default_llm_profile(tool)
             monitor_llm = str(default_profile.llm.id)
 
@@ -467,11 +465,8 @@ class PromptStudioHelper:
         if challenge_llm_instance:
             challenge_llm = str(challenge_llm_instance.id)
         else:
-            # TODO: Use CustomTool model to get profile_manager
-            profile_manager = ProfileManager.objects.get(
-                prompt_studio_tool=tool, is_default=True
-            )
-            challenge_llm = str(profile_manager.llm.id)
+            default_profile = ProfileManager.get_default_llm_profile(tool)
+            challenge_llm = str(default_profile.llm.id)
 
         # Adding validations
         if prompt_grammer:
@@ -543,10 +538,10 @@ class PromptStudioHelper:
                 TSPKeys.EVAL_SETTINGS_EXCLUDE_FAILED
             ] = tool.exclude_failed
             output[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
-            output[
-                "single_pass_extraction_mode"
-            ] = tool.single_pass_extraction_mode
             output[TSPKeys.CHALLENGE_LLM] = challenge_llm
+            output[
+                TSPKeys.SINGLE_PASS_EXTRACTION_MODE
+            ] = tool.single_pass_extraction_mode
             for attr in dir(prompt):
                 if attr.startswith(TSPKeys.EVAL_METRIC_PREFIX):
                     attr_val = getattr(prompt, attr)
@@ -668,11 +663,7 @@ class PromptStudioHelper:
         if challenge_llm_instance:
             challenge_llm = str(challenge_llm_instance.id)
         else:
-            # TODO: Use CustomTool model to get profile_manager
-            profile_manager = ProfileManager.objects.get(
-                prompt_studio_tool=tool, is_default=True
-            )
-            challenge_llm = str(profile_manager.llm.id)
+            challenge_llm = str(default_profile.llm.id)
         # Need to check the user who created profile manager
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(
@@ -682,8 +673,7 @@ class PromptStudioHelper:
 
         if prompt_grammar:
             for word, synonyms in prompt_grammar.items():
-                grammar.append(
-                    {TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
+                grammar.append({TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
 
         if not default_profile:
             raise DefaultProfileError()

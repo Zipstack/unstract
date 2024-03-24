@@ -65,7 +65,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     disableLlmOrDocChange,
     details,
     indexDocs,
-    isSinglePassExtract,
+    isSinglePassExtractLoading,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
@@ -227,8 +227,8 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
               disabled={
                 !selectedDoc ||
                 disableLlmOrDocChange?.length > 0 ||
-                page <= 1 ||
-                isSinglePassExtract
+                isSinglePassExtractLoading ||
+                page <= 1
               }
               onClick={handlePageLeft}
             >
@@ -240,8 +240,8 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
               disabled={
                 !selectedDoc ||
                 disableLlmOrDocChange?.length > 0 ||
-                page >= listOfDocs?.length ||
-                isSinglePassExtract
+                isSinglePassExtractLoading ||
+                page >= listOfDocs?.length
               }
               onClick={handlePageRight}
             >

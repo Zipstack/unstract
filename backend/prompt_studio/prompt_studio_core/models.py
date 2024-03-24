@@ -93,4 +93,6 @@ class CustomTool(BaseModel):
         blank=True,
         related_name="challenge_llm",
     )
-    enable_challenge = models.BooleanField(default=False)
+    enable_challenge = models.BooleanField(
+        db_comment="Flag to enable or disable challenge", default=False
+    )
