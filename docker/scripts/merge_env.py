@@ -41,20 +41,22 @@ def _extract_from_env_file(file_path: str) -> dict[str, str]:
     return env
 
 
-def _merge_to_env_file(file_path: str, env: dict[str, str] = {}) -> str:
-    """Generates file contents after merging input base env file with input
-    env.
+def _merge_to_env_file(
+    base_env_file_path: str, target_env: dict[str, str] = {}
+) -> str:
+    """Generates file contents after merging input base env file path with
+    target env.
 
     Args:
-        file_path (string): Env file path to use as base.
-        env (dict, optional): Env to use for merge.
+        base_env_path (string): Base env file path.
+        target_env (dict, optional): Target env to use for merge.
 
     Returns:
         string: File contents after merge.
     """
     merged_contents = []
 
-    with open(file_path) as file:
+    with open(base_env_file_path) as file:
         for line in file:
             # Preserve location of empty lines and comments
             # for easy diff.
@@ -64,13 +66,13 @@ def _merge_to_env_file(file_path: str, env: dict[str, str] = {}) -> str:
 
             key, value = _extract_kv_from_line(line)
 
-            # Preserve following keys in base env:
+            # Preserve following keys at base env file path:
             # - preferred keys
             # - newly added keys
             # Everything else, take existing configured values
-            # from input env.
-            if key not in PREFERRED_BASE_ENV_KEYS and key in env:
-                value = env.get(key, value)
+            # from target env.
+            if key not in PREFERRED_BASE_ENV_KEYS and key in target_env:
+                value = target_env.get(key, value)
 
             merged_contents.append(f"{key} = {value}\n")
 
@@ -90,11 +92,15 @@ def _save_merged_contents(
 
 
 def merge_env(
-    base_env_path: str, target_env_path: str, dry_run: bool = False
+    base_env_file_path: str, target_env_file_path: str, dry_run: bool = False
 ) -> None:
-    target_env = _extract_from_env_file(target_env_path)
-    merged_contents = _merge_to_env_file(base_env_path, env=target_env)
-    _save_merged_contents(target_env_path, merged_contents, dry_run=dry_run)
+    target_env = _extract_from_env_file(target_env_file_path)
+    merged_contents = _merge_to_env_file(
+        base_env_file_path, target_env=target_env
+    )
+    _save_merged_contents(
+        target_env_file_path, merged_contents, dry_run=dry_run
+    )
 
 
 if __name__ == "__main__":
