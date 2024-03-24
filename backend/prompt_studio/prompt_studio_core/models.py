@@ -3,6 +3,7 @@ import uuid
 from account.models import User
 from adapter_processor.models import AdapterInstance
 from django.db import models
+from prompt_studio.prompt_studio_core.constants import DefaultPrompts
 from utils.models.base_model import BaseModel
 
 
@@ -43,6 +44,16 @@ class CustomTool(BaseModel):
         blank=True,
         db_comment="Field to store the summarize prompt",
         unique=False,
+    )
+    preamble = models.TextField(
+        blank=True,
+        db_comment="Preamble to the prompts",
+        default=DefaultPrompts.PREAMBLE
+    )
+    postamble = models.TextField(
+        blank=True,
+        db_comment="Appended as postable to prompts.",
+        default=DefaultPrompts.POSTAMBLE
     )
     prompt_grammer = models.JSONField(
         null=True, blank=True, db_comment="Synonymous words used in prompt"
