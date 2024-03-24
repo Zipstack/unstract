@@ -325,7 +325,7 @@ def prompt_processor() -> Any:
         is_assert = output[PSKeys.IS_ASSERT]
         if is_assert:
             app.logger.debug(f'Asserting prompt: {output["assert_prompt"]}')
-            answer = construct_and_run_prompt(
+            answer, usage = construct_and_run_prompt(
                 output,
                 llm_helper,
                 llm_li,
@@ -359,7 +359,7 @@ def prompt_processor() -> Any:
                     ]
                 app.logger.info(f"[Assigning] {answer} to the output")
             else:
-                answer = construct_and_run_prompt(
+                answer, usage = construct_and_run_prompt(
                     output,
                     llm_helper,
                     llm_li,
@@ -368,7 +368,7 @@ def prompt_processor() -> Any:
                 )
         else:
             if chunk_size == 0:
-                answer = construct_and_run_prompt(
+                answer, usage = construct_and_run_prompt(
                     output,
                     llm_helper,
                     llm_li,
@@ -377,6 +377,7 @@ def prompt_processor() -> Any:
                 )
             else:
                 answer = "NA"
+                usage = {}
                 _publish_log(
                     log_events_id,
                     {"tool_id": tool_id, "prompt_key": name},
@@ -386,7 +387,7 @@ def prompt_processor() -> Any:
                 )
 
                 if output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SIMPLE:
-                    answer, context = simple_retriver(
+                    answer, context, usage = simple_retriver(
                         output,
                         doc_id,
                         llm_helper,
@@ -430,7 +431,7 @@ def prompt_processor() -> Any:
                     percentages or other grouping \
                     characters. No explanation is required.\
                     If you cannot extract the number, output 0."
-                answer = run_completion(
+                answer, usage = run_completion(
                     llm_helper,
                     llm_li,
                     prompt,
@@ -450,7 +451,7 @@ def prompt_processor() -> Any:
                 prompt = f'Extract the email from the following text:\n{answer}\n\nOutput just the email. \
                     The email should be directly assignable to a string variable. \
                         No explanation is required. If you cannot extract the email, output "NA".'  # noqa
-                answer = run_completion(
+                answer, usage = run_completion(
                     llm_helper,
                     llm_li,
                     prompt,
@@ -464,7 +465,7 @@ def prompt_processor() -> Any:
                       The date should be in ISO date time format. No explanation is required. \
                         The date should be directly assignable to a date variable. \
                             If you cannot convert the string into a date, output "NA".'  # noqa
-                answer = run_completion(
+                answer, usage = run_completion(
                     llm_helper,
                     llm_li,
                     prompt,
@@ -629,6 +630,7 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         "Execution complete",
     )
+    structured_output[f"{name}__usage"] = usage
     return structured_output
 
 
@@ -649,7 +651,7 @@ def simple_retriver(  # type:ignore
         f"Generate a sub-question from the following verbose prompt that will"
         f" help extract relevant documents from a vector store:\n\n{prompt}"
     )
-    answer: str = run_completion(
+    answer, usage = run_completion(
         llm_helper,
         llm_li,
         subq_prompt,
@@ -676,14 +678,14 @@ def simple_retriver(  # type:ignore
                 "Node score is less than 0.6. " f"Ignored: {node.score}"
             )
 
-    answer: str = construct_and_run_prompt(  # type:ignore
+    answer, usage = construct_and_run_prompt(  # type:ignore
         output,
         llm_helper,
         llm_li,
         text,
         "promptx",
     )
-    return (answer, text)
+    return (answer, text, usage)
 
 
 def construct_and_run_prompt(
@@ -692,7 +694,7 @@ def construct_and_run_prompt(
     llm_li: Optional[LLM],
     context: str,
     prompt: str,
-) -> str:
+) -> tuple[str, dict[str, Any]]:
     prompt = construct_prompt(
         preamble=output[PSKeys.PREAMBLE],
         prompt=output[prompt],
@@ -700,23 +702,18 @@ def construct_and_run_prompt(
         grammar_list=output[PSKeys.GRAMMAR],
         context=context,
     )
-    try:
-        answer: str = run_completion(
-            llm_helper,
-            llm_li,
-            prompt,
-        )
-        return answer
-    except Exception as e:
-        app.logger.info(f"Error completing prompt: {e}.")
-        raise e
+    return run_completion(
+        llm_helper,
+        llm_li,
+        prompt,
+    )
 
 
 def run_completion(
     llm_helper: ToolLLM,
     llm_li: Optional[LLM],
     prompt: str,
-) -> str:
+) -> tuple[str, dict[str, Any]]:
     try:
         platform_api_key = llm_helper.tool.get_env_or_die(
             PSKeys.PLATFORM_SERVICE_API_KEY
@@ -726,7 +723,10 @@ def run_completion(
         )
 
         answer: str = completion[PSKeys.RESPONSE].text
-        return answer
+        usage = {}
+        if PSKeys.USAGE in completion:
+            usage = completion[PSKeys.USAGE]
+        return answer, usage
     except Exception as e:
         app.logger.info(f"Error completing prompt: {e}.")
         raise e
