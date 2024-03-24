@@ -3,7 +3,6 @@ import uuid
 from account.models import User
 from adapter_processor.models import AdapterInstance
 from django.db import models
-from prompt_studio.prompt_studio_core.constants import DefaultPrompts
 from utils.models.base_model import BaseModel
 
 
@@ -32,16 +31,6 @@ class CustomTool(BaseModel):
     log_id = models.UUIDField(
         default=uuid.uuid4,
         db_comment="Field to store unique log_id for polling",
-    )
-    preamble = models.TextField(
-        blank=True,
-        db_comment="Preamble to the prompts",
-        default=DefaultPrompts.PREAMBLE
-    )
-    postamble = models.TextField(
-        blank=True,
-        db_comment="Appended as postable to prompts.",
-        default=DefaultPrompts.POSTAMBLE
     )
 
     summarize_context = models.BooleanField(
