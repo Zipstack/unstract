@@ -299,14 +299,13 @@ const isJson = (text) => {
   }
 };
 
-const displayPromptResult = (output) => {
+const displayPromptResult = (output, isFormat = false) => {
   try {
-    if (isJson(output)) {
-      return JSON.stringify(JSON.parse(output), null, 4);
+    const parsedData = JSON.parse(output.replace(/'/g, '"'));
+    if (Array.isArray(parsedData) || typeof parsedData === "object") {
+      return isFormat ? JSON.stringify(parsedData, null, 4) : parsedData;
     }
-
-    const outputParsed = JSON.parse(output);
-    return outputParsed;
+    return output;
   } catch (err) {
     return output;
   }
