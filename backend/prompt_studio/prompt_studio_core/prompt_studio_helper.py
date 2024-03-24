@@ -183,9 +183,9 @@ class PromptStudioHelper:
         Returns:
             List[ToolStudioPrompt]: List of instance of the model
         """
-        prompt_instances: list[ToolStudioPrompt] = (
-            ToolStudioPrompt.objects.filter(tool_id=tool_id)
-        )
+        prompt_instances: list[
+            ToolStudioPrompt
+        ] = ToolStudioPrompt.objects.filter(tool_id=tool_id)
         return prompt_instances
 
     @staticmethod
@@ -344,7 +344,7 @@ class PromptStudioHelper:
                     prompts=prompts,
                     outputs=response,
                     document_id=document_id,
-                    is_single_pass_extract=False
+                    is_single_pass_extract=False,
                 )
             except PermissionError as e:
                 raise e
@@ -397,9 +397,9 @@ class PromptStudioHelper:
 
                 OutputManagerHelper.handle_prompt_output_update(
                     prompts=prompts,
-                    outputs=response,
+                    outputs=response["single_pass_extraction"],
                     document_id=document_id,
-                    is_single_pass_extract=True
+                    is_single_pass_extract=True,
                 )
             except PermissionError as e:
                 raise e
@@ -447,17 +447,15 @@ class PromptStudioHelper:
         """
         monitor_llm_instance: Optional[AdapterInstance] = tool.monitor_llm
         monitor_llm: Optional[str] = None
-        if monitor_llm_instance:
-            monitor_llm = str(monitor_llm_instance.id)
         prompt_grammer = tool.prompt_grammer
         outputs: list[dict[str, Any]] = []
         grammer_dict = {}
         grammar_list = []
 
-        # Using default profile manager llm if monitor_llm is None
         if monitor_llm_instance:
             monitor_llm = str(monitor_llm_instance.id)
         else:
+            # Using default profile manager llm if monitor_llm is None
             default_profile = ProfileManager.get_default_llm_profile(tool)
             monitor_llm = str(default_profile.llm.id)
 
@@ -494,9 +492,9 @@ class PromptStudioHelper:
             )
 
             output: dict[str, Any] = {}
-            output[TSPKeys.ASSERTION_FAILURE_PROMPT] = (
-                prompt.assertion_failure_prompt
-            )
+            output[
+                TSPKeys.ASSERTION_FAILURE_PROMPT
+            ] = prompt.assertion_failure_prompt
             output[TSPKeys.ASSERT_PROMPT] = prompt.assert_prompt
             output[TSPKeys.IS_ASSERT] = prompt.is_assert
             output[TSPKeys.PROMPT] = prompt.prompt
@@ -511,15 +509,14 @@ class PromptStudioHelper:
             output[TSPKeys.GRAMMAR] = grammar_list
             output[TSPKeys.TYPE] = prompt.enforce_type
             output[TSPKeys.NAME] = prompt.prompt_key
-            output[TSPKeys.RETRIEVAL_STRATEGY] = (
-                prompt.profile_manager.retrieval_strategy
-            )
-            output[TSPKeys.SIMILARITY_TOP_K] = (
-                prompt.profile_manager.similarity_top_k
-            )
+            output[
+                TSPKeys.RETRIEVAL_STRATEGY
+            ] = prompt.profile_manager.retrieval_strategy
+            output[
+                TSPKeys.SIMILARITY_TOP_K
+            ] = prompt.profile_manager.similarity_top_k
             output[TSPKeys.SECTION] = prompt.profile_manager.section
             output[TSPKeys.X2TEXT_ADAPTER] = x2text
-
             # Eval settings for the prompt
             output[TSPKeys.EVAL_SETTINGS] = {}
             output[TSPKeys.EVAL_SETTINGS][
@@ -531,6 +528,9 @@ class PromptStudioHelper:
             output[TSPKeys.EVAL_SETTINGS][
                 TSPKeys.EVAL_SETTINGS_EXCLUDE_FAILED
             ] = tool.exclude_failed
+            output[
+                TSPKeys.SINGLE_PASS_EXTRACTION_MODE
+            ] = tool.single_pass_extraction_mode
             for attr in dir(prompt):
                 if attr.startswith(TSPKeys.EVAL_METRIC_PREFIX):
                     attr_val = getattr(prompt, attr)
@@ -655,8 +655,7 @@ class PromptStudioHelper:
 
         if prompt_grammar:
             for word, synonyms in prompt_grammar.items():
-                grammar.append(
-                    {TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
+                grammar.append({TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
 
         if not default_profile:
             raise DefaultProfileError()
@@ -683,9 +682,9 @@ class PromptStudioHelper:
         llm_profile_manager[TSPKeys.VECTOR_DB] = vector_db
         llm_profile_manager[TSPKeys.EMBEDDING] = embedding_model
         llm_profile_manager[TSPKeys.CHUNK_SIZE] = default_profile.chunk_size
-        llm_profile_manager[TSPKeys.CHUNK_OVERLAP] = (
-            default_profile.chunk_overlap
-        )
+        llm_profile_manager[
+            TSPKeys.CHUNK_OVERLAP
+        ] = default_profile.chunk_overlap
 
         for prompt in prompts:
             output: dict[str, Any] = {}

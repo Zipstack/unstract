@@ -76,4 +76,11 @@ class CustomTool(BaseModel):
         blank=True,
         editable=False,
     )
-    exclude_failed = models.BooleanField(default=True)
+    exclude_failed = models.BooleanField(
+        db_comment="Flag to make the answer null if it is incorrect",
+        default=True,
+    )
+    single_pass_extraction_mode = models.BooleanField(
+        db_comment="Flag to enable or disable single pass extraction mode",
+        default=False,
+    )
