@@ -15,6 +15,7 @@ import "./TopNavBar.css";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import axios from "axios";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 let TrialDaysInfo;
 try {
@@ -33,7 +34,8 @@ function TopNavBar() {
   const onBoardUrl = baseUrl + `/${orgName}/onboard`;
   const logout = useLogout();
   const axiosPrivate = useAxiosPrivate();
-  const setAlertDetails = useAlertStore();
+  const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
   const [showOnboardBanner, setShowOnboardBanner] = useState(false);
 
   useEffect(() => {
@@ -56,7 +58,9 @@ function TopNavBar() {
           setShowOnboardBanner(true);
         }
       })
-      .catch((err) => {});
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
   };
 
   const cascadeOptions = allOrganization.map((org) => {
@@ -93,8 +97,13 @@ function TopNavBar() {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
-    await axios(requestOptions);
-    window.location.reload();
+    await axios(requestOptions)
+      .then(() => {
+        window.location.reload();
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
   };
 
   // Dropdown items

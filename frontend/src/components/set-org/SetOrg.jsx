@@ -11,12 +11,17 @@ import {
   YellowGradCircle,
   UnstractBlackLogo,
 } from "../../assets/index";
+import { useExceptionHandler } from "../../hooks/useExceptionHandler";
+import { useAlertStore } from "../../store/alert-store";
 
 function SetOrg() {
   const { state } = useLocation();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [loadingOrgId, setLoadingOrgId] = useState(null);
+  const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
+
   useEffect(() => {
     if (state === null || signedInOrgId) {
       navigate("/");
@@ -28,7 +33,7 @@ function SetOrg() {
       ?.split("; ")
       ?.find((row) => row.startsWith("org_id="))
       ?.split("=")[1] || null;
-  const handleContinue = async (id) => {
+  const handleContinue = (id) => {
     setLoading(true);
     setLoadingOrgId(id);
     const csrfToken = ("; " + document.cookie)
@@ -44,11 +49,13 @@ function SetOrg() {
       },
     };
 
-    await axios(requestOptions)
+    axios(requestOptions)
       .then(() => {
         window.location.reload();
       })
-      .catch(() => {})
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      })
       .finally(() => {
         setLoading(false);
         setLoadingOrgId(null);
