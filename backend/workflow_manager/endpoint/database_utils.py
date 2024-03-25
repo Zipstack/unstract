@@ -291,7 +291,7 @@ class DatabaseUtils:
             f"INSERT INTO {table_name} ({','.join(sql_keys)}) "
             f"SELECT {','.join(sql_values)}"
         )
-        logger.info(f"insertng into table with: {sql} query")
+        logger.debug(f"insertng into table with: {sql} query")
         try:
             if hasattr(engine, "cursor"):
                 with engine.cursor() as cursor:
@@ -341,7 +341,7 @@ class DatabaseUtils:
         sql = DBConnectorQueryHelper.create_table_query(
             conn_cls=class_name, table=table_name, database_entry=database_entry
         )
-        logger.info(f"creating table with: {sql} query")
+        logger.debug(f"creating table with: {sql} query")
         try:
             if hasattr(engine, "cursor"):
                 with engine.cursor() as cursor:
