@@ -374,8 +374,15 @@ class PromptStudioHelper:
             return response
         else:
             prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
+            prompts = [
+                prompt
+                for prompt in prompts
+                if prompt.prompt_type != TSPKeys.NOTES
+            ]
             if not prompts:
-                logger.error(f"[{tool_id or 'NA'}] No prompts found id: {id}")
+                logger.error(
+                    f"[{tool_id or 'NA'}] No prompts found for id: {id}"
+                )
                 raise NoPromptsFound()
 
             logger.info(f"[{tool_id}] Executing prompts in single pass")
@@ -706,8 +713,6 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.CHALLENGE_LLM] = challenge_llm
 
         for prompt in prompts:
-            if prompt.prompt_type == TSPKeys.NOTES:
-                continue
             if not prompt.prompt:
                 raise EmptyPromptError()
             output: dict[str, Any] = {}
