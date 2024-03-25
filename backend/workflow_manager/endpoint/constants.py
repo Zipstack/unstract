@@ -1,6 +1,7 @@
 class TableColumns:
     CREATED_BY = "created_by"
     CREATED_AT = "created_at"
+    PERMANENT_COLUMNS = ["created_by", "created_at"]
 
 
 class DBConnectionClass:
@@ -94,3 +95,9 @@ class BigQuery:
     """
 
     TABLE_NAME_SIZE = 3
+    COLUMN_TYPES = [
+        "DATE",
+        "DATETIME",
+        "TIME",
+        "TIMESTAMP",
+    ]
