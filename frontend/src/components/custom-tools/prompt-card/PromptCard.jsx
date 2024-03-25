@@ -496,11 +496,14 @@ function PromptCard({
   };
 
   const handleGetCoverage = () => {
-    if (!selectedLlmProfileId) {
+    if (
+      (singlePassExtractMode && !defaultLlmProfile) ||
+      (!singlePassExtractMode && !selectedLlmProfileId)
+    ) {
+      setCoverage(0);
       return;
     }
 
-    setCoverage(0);
     handleOutputApiRequest(false)
       .then((res) => {
         const data = res?.data;
