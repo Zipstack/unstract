@@ -73,7 +73,7 @@ function ManageDocsModal({
     indexDocs,
     rawIndexStatus,
     summarizeIndexStatus,
-    isSinglePassExtract,
+    isSinglePassExtractLoading,
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
@@ -352,10 +352,10 @@ function ManageDocsModal({
                     onClick={() => generateIndex(item)}
                     disabled={
                       disableLlmOrDocChange?.length > 0 ||
+                      isSinglePassExtractLoading ||
                       indexDocs.includes(item?.document_id) ||
                       isUploading ||
-                      !defaultLlmProfile ||
-                      isSinglePassExtract
+                      !defaultLlmProfile
                     }
                   />
                 </Tooltip>
@@ -375,9 +375,9 @@ function ManageDocsModal({
                 className="display-flex-align-center"
                 disabled={
                   disableLlmOrDocChange?.length > 0 ||
+                  isSinglePassExtractLoading ||
                   indexDocs.includes(item?.document_id) ||
-                  isUploading ||
-                  isSinglePassExtract
+                  isUploading
                 }
               >
                 <DeleteOutlined className="manage-llm-pro-icon" />
@@ -391,8 +391,8 @@ function ManageDocsModal({
             onClick={() => handleDocChange(item?.document_id)}
             disabled={
               disableLlmOrDocChange?.length > 0 ||
-              indexDocs.includes(item?.document_id) ||
-              isSinglePassExtract
+              isSinglePassExtractLoading ||
+              indexDocs.includes(item?.document_id)
             }
           />
         ),
@@ -406,8 +406,8 @@ function ManageDocsModal({
     rawIndexStatus,
     summarizeIndexStatus,
     indexDocs,
-    isSinglePassExtract,
     messages,
+    isSinglePassExtractLoading,
   ]);
 
   const beforeUpload = (file) => {
@@ -530,7 +530,7 @@ function ManageDocsModal({
                   disabled={
                     !defaultLlmProfile ||
                     disableLlmOrDocChange?.length > 0 ||
-                    isSinglePassExtract
+                    isSinglePassExtractLoading
                   }
                 >
                   Upload New File

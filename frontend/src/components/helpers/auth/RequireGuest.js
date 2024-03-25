@@ -10,7 +10,7 @@ const RequireGuest = () => {
   const pathname = location.pathname;
   let navigateTo = `/${orgName}/onboard`;
   if (onboardCompleted(adapters)) {
-    navigateTo = `/${orgName}/etl`;
+    navigateTo = `/${orgName}/tools`;
   }
 
   return !sessionDetails?.isLoggedIn && publicRoutes.includes(pathname) ? (

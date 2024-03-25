@@ -1,7 +1,11 @@
 import { Button, Modal, Table, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { CheckCircleFilled, CloseCircleFilled } from "@ant-design/icons";
+import {
+  CheckCircleFilled,
+  CloseCircleFilled,
+  InfoCircleFilled,
+} from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -27,6 +31,12 @@ const columns = [
   },
 ];
 
+const outputStatus = {
+  yet_to_process: "YET_TO_PROCESS",
+  success: "SUCCESS",
+  fail: "FAIL",
+};
+
 function OutputForDocModal({
   open,
   setOpen,
@@ -38,7 +48,13 @@ function OutputForDocModal({
   const [promptOutputs, setPromptOutputs] = useState([]);
   const [rows, setRows] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const { details, listOfDocs, selectedDoc } = useCustomToolStore();
+  const {
+    details,
+    listOfDocs,
+    selectedDoc,
+    singlePassExtractMode,
+    isSinglePassExtractLoading,
+  } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
@@ -46,11 +62,11 @@ function OutputForDocModal({
   const { handleException } = useExceptionHandler();
 
   useEffect(() => {
-    if (!open) {
+    if (!open || isSinglePassExtractLoading) {
       return;
     }
     handleGetOutputForDocs();
-  }, [open]);
+  }, [open, singlePassExtractMode, isSinglePassExtractLoading]);
 
   useEffect(() => {
     updatePromptOutput();
@@ -95,20 +111,23 @@ function OutputForDocModal({
           (promptOutput) => promptOutput?.document_manager === key
         );
 
+        let promptOutputInstance = {};
         // If the prompt output for the current key doesn't exist, skip it
-        if (index === -1) {
-          return;
+        if (index > -1) {
+          promptOutputInstance = updatedPromptOutput[index];
+          promptOutputInstance["output"] = docOutputs[key]?.output || null;
         }
 
-        // Retrieve the prompt output instance
-        const promptOutputInstance = updatedPromptOutput[index];
-
         // Update output and isLoading properties based on docOutputs
-        promptOutputInstance["output"] = docOutputs[key]?.output || null;
+        promptOutputInstance["document_manager"] = key;
         promptOutputInstance["isLoading"] = docOutputs[key]?.isLoading || false;
 
         // Update the prompt output instance in the array
-        updatedPromptOutput[index] = promptOutputInstance;
+        if (index > -1) {
+          updatedPromptOutput[index] = promptOutputInstance;
+        } else {
+          updatedPromptOutput.push(promptOutputInstance);
+        }
       });
 
       return updatedPromptOutput;
@@ -122,7 +141,7 @@ function OutputForDocModal({
     }
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profileManagerId}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profileManagerId}&is_single_pass_extract=${singlePassExtractMode}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -132,9 +151,6 @@ function OutputForDocModal({
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data || [];
-        data.sort((a, b) => {
-          return new Date(b.modified_at) - new Date(a.modified_at);
-        });
         updatePromptOutput(data);
       })
       .catch((err) => {
@@ -154,7 +170,18 @@ function OutputForDocModal({
       const output = data.find(
         (outputValue) => outputValue?.document_manager === item?.document_id
       );
-      const isSuccess = output?.output || output?.output === 0;
+      let status = outputStatus.fail;
+      let message = "Failed";
+
+      if (output?.output || output?.output === 0) {
+        status = outputStatus.success;
+        message = displayPromptResult(output?.output, true);
+      }
+
+      if (output?.output === undefined) {
+        status = outputStatus.yet_to_process;
+        message = "Yet to process";
+      }
 
       const result = {
         key: item,
@@ -166,15 +193,17 @@ function OutputForDocModal({
             ) : (
               <Typography.Text>
                 <span style={{ marginRight: "8px" }}>
-                  {isSuccess ? (
-                    <CheckCircleFilled style={{ color: "#52C41A" }} />
-                  ) : (
+                  {status === outputStatus.yet_to_process && (
+                    <InfoCircleFilled style={{ color: "#F0AD4E" }} />
+                  )}
+                  {status === outputStatus.fail && (
                     <CloseCircleFilled style={{ color: "#FF4D4F" }} />
                   )}
+                  {status === outputStatus.success && (
+                    <CheckCircleFilled style={{ color: "#52C41A" }} />
+                  )}
                 </span>{" "}
-                {isSuccess
-                  ? displayPromptResult(output?.output, true)
-                  : "Failed"}
+                {message}
               </Typography.Text>
             )}
           </>
