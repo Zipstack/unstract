@@ -153,11 +153,11 @@ function PromptCard({
   }, [promptDetails]);
 
   useEffect(() => {
+    resetInfoMsgs();
     if (isSinglePassExtractLoading) {
       return;
     }
 
-    resetInfoMsgs();
     handleGetOutput();
     handleGetCoverage();
   }, [
@@ -222,6 +222,11 @@ function PromptCard({
     }
   }, [coverageTotal]);
 
+  const resetInfoMsgs = () => {
+    setProgressMsg({}); // Reset Progress Message
+    setTokenCount({}); // Reset Token Count
+  };
+
   const onSearchDebounce = useCallback(
     debounce((event) => {
       handleChange(event, promptDetails?.prompt_id, false, true);
@@ -249,11 +254,6 @@ function PromptCard({
     );
     setPage(index + 1);
   }, [llmProfiles]);
-
-  const resetInfoMsgs = () => {
-    setTokenCount({}); // Reset Token Count
-    setProgressMsg({}); // Reset Progress Message
-  };
 
   const handlePageLeft = () => {
     if (page <= 1) {
