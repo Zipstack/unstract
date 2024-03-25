@@ -1,6 +1,7 @@
 import { Menu, Tooltip } from "antd";
 import PropTypes from "prop-types";
 import comingSoon from "../../../assets/coming-soon.png";
+import "./ListOfConnectors.css";
 
 function ListOfConnectors({ listOfConnectors, selectedId, handleSelectItem }) {
   return (
@@ -15,23 +16,11 @@ function ListOfConnectors({ listOfConnectors, selectedId, handleSelectItem }) {
             <>
               {item?.isDisabled ? (
                 <Tooltip title="Coming Soon">
-                  <div
-                    style={{
-                      position: "relative",
-                      display: "inline-block",
-                      width: "100%",
-                    }}
-                  >
+                  <div className="coming-soon-container">
                     <img
                       src={comingSoon}
                       alt="Coming Soon"
-                      style={{
-                        position: "absolute",
-                        top: 0,
-                        right: 0,
-                        width: "40px", // Adjust width and height according to your image size
-                        height: "40px",
-                      }}
+                      className="coming-soon-img"
                     />
                     {item?.label}
                   </div>
