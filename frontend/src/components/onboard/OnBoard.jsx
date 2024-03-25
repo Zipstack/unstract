@@ -22,7 +22,7 @@ function OnBoard() {
   const [openAddSourcesModal, setOpenAddSourcesModal] = useState(false);
   const [editItemId, setEditItemId] = useState(null);
   const [type, setType] = useState(null);
-  const homePageUrl = `/${orgName}/etl`;
+  const homePageUrl = `/${orgName}/tools`;
   const [adaptersList, setAdaptersList] = useState(adapters || []);
   useEffect(() => {
     if (onboardCompleted(adaptersList)) {
