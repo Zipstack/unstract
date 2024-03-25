@@ -157,7 +157,6 @@ function PromptCard({
       return;
     }
 
-    resetInfoMsgs();
     handleGetOutput();
     handleGetCoverage();
   }, [
@@ -222,6 +221,17 @@ function PromptCard({
     }
   }, [coverageTotal]);
 
+  useEffect(() => {
+    if (isSinglePassExtractLoading) {
+      resetInfoMsg();
+    }
+  }, [isSinglePassExtractLoading]);
+
+  const resetInfoMsg = () => {
+    setProgressMsg({}); // Reset Progress Message
+    setTokenCount({}); // Reset Token Count
+  };
+
   const onSearchDebounce = useCallback(
     debounce((event) => {
       handleChange(event, promptDetails?.prompt_id, false, true);
@@ -249,11 +259,6 @@ function PromptCard({
     );
     setPage(index + 1);
   }, [llmProfiles]);
-
-  const resetInfoMsgs = () => {
-    setTokenCount({}); // Reset Token Count
-    setProgressMsg({}); // Reset Progress Message
-  };
 
   const handlePageLeft = () => {
     if (page <= 1) {
@@ -328,7 +333,7 @@ function PromptCard({
     setCoverage(0);
     setCoverageTotal(0);
     setDocOutputs({});
-    resetInfoMsgs();
+    resetInfoMsg();
 
     const docId = selectedDoc?.document_id;
     const isSummaryIndexed = [...summarizeIndexStatus].find(
