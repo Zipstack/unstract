@@ -43,6 +43,8 @@ function CustomToolsHelper() {
         const data = res?.data;
         updatedCusTool["defaultLlmProfile"] = data?.default_profile;
         updatedCusTool["details"] = data;
+        updatedCusTool["singlePassExtractMode"] =
+          data?.single_pass_extraction_mode;
         selectedDocId = data?.output;
         setLogId(sessionDetails?.logEventsId);
 

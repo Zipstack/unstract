@@ -52,7 +52,13 @@ function useSessionValid() {
       requestOptions["headers"] = {
         "X-CSRFToken": csrfToken,
       };
-      const setOrgRes = await axios(requestOptions);
+      const setOrgRes = await axios(requestOptions).catch((error) => {
+        if (error?.response && error?.response?.status === 403) {
+          // Remove cookie from the browser
+          document.cookie = "org_id=;";
+          navigate("/", { state: null });
+        }
+      });
       userAndOrgDetails = setOrgRes?.data?.user;
       userAndOrgDetails["orgName"] = setOrgRes?.data?.organization?.name;
       userAndOrgDetails["orgId"] = orgId;

@@ -3,10 +3,12 @@ from typing import Any
 
 from account.models import User
 from adapter_processor.models import AdapterInstance
-from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 from django.db.models import QuerySet
 from prompt_studio.prompt_studio_core.exceptions import DefaultProfileError
+
+from prompt_studio.prompt_studio_core.constants import DefaultPrompts
+
 from utils.models.base_model import BaseModel
 
 
@@ -48,12 +50,6 @@ class CustomTool(BaseModel):
         default=uuid.uuid4,
         db_comment="Field to store unique log_id for polling",
     )
-    preamble = models.TextField(
-        blank=True, db_comment="Preamble to the prompts"
-    )
-    postamble = models.TextField(
-        blank=True, db_comment="Appended as postable to prompts."
-    )
 
     summarize_context = models.BooleanField(
         default=False, db_comment="Flag to summarize content"
@@ -66,6 +62,16 @@ class CustomTool(BaseModel):
         db_comment="Field to store the summarize prompt",
         unique=False,
     )
+    preamble = models.TextField(
+        blank=True,
+        db_comment="Preamble to the prompts",
+        default=DefaultPrompts.PREAMBLE
+    )
+    postamble = models.TextField(
+        blank=True,
+        db_comment="Appended as postable to prompts.",
+        default=DefaultPrompts.POSTAMBLE
+    )
     prompt_grammer = models.JSONField(
         null=True, blank=True, db_comment="Synonymous words used in prompt"
     )
@@ -75,6 +81,7 @@ class CustomTool(BaseModel):
         db_comment="Field to store monitor llm",
         null=True,
         blank=True,
+        related_name="monitor_customtools",
     )
     created_by = models.ForeignKey(
         User,
@@ -92,9 +99,28 @@ class CustomTool(BaseModel):
         blank=True,
         editable=False,
     )
-    exclude_failed = models.BooleanField(default=True)
 
-    # Introduced field to establish M2M relation between users and custom_tool.
+    exclude_failed = models.BooleanField(
+        db_comment="Flag to make the answer null if it is incorrect",
+        default=True,
+    )
+    single_pass_extraction_mode = models.BooleanField(
+        db_comment="Flag to enable or disable single pass extraction mode",
+        default=False,
+    )
+    challenge_llm = models.ForeignKey(
+        AdapterInstance,
+        on_delete=models.PROTECT,
+        db_comment="Field to store challenge llm",
+        null=True,
+        blank=True,
+        related_name="challenge_customtools",
+    )
+    enable_challenge = models.BooleanField(
+        db_comment="Flag to enable or disable challenge", default=False
+    )
+    
+     # Introduced field to establish M2M relation between users and custom_tool.
     # This will introduce intermediary table which relates both the models.
     shared_users = models.ManyToManyField(
         User, related_name="shared_custom_tool"
@@ -102,9 +128,3 @@ class CustomTool(BaseModel):
 
     objects = CustomToolModelManager()
 
-    # TODO: Add ProfileManager to return type
-    def get_default_llm_profile(self):  # type: ignore
-        try:
-            return self.profilemanager_set.filter(is_default=True).first()
-        except ObjectDoesNotExist:
-            raise DefaultProfileError

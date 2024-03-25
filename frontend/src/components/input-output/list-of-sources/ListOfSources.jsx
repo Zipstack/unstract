@@ -23,6 +23,14 @@ function ListOfSources({ setSelectedSourceId, type }) {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
 
+  const disabledIdsByType = {
+    EMBEDDING: ["huggingface|90ec9ec2-1768-4d69-8fb1-c88b95de5e5a"],
+    LLM: [
+      "replicate|2715ce84-05af-4ab4-b8e9-67ac3211b81e",
+      "anthropic|90ebd4cd-2f19-4cef-a884-9eeb6ac0f203",
+    ],
+  };
+
   useEffect(() => {
     if (searchText?.length === 0) {
       setFilteredSourcesList(sourcesList);
@@ -60,7 +68,14 @@ function ListOfSources({ setSelectedSourceId, type }) {
     setSourcesList([]);
     axiosPrivate(requestOptions)
       .then((res) => {
-        setSourcesList(res?.data || []);
+        const sources = res?.data || [];
+        const updatedSources = sources?.map((source) => ({
+          ...source,
+          isDisabled: disabledIdsByType[source?.adapter_type]?.includes(
+            source?.id
+          ),
+        }));
+        setSourcesList(updatedSources || []);
       })
       .catch((err) => {
         setAlertDetails(handleException(err));

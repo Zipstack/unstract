@@ -4,6 +4,7 @@ from typing import Any, Optional
 from account.models import User
 from django.conf import settings
 from django.db import IntegrityError
+from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.models import CustomTool
 from prompt_studio.prompt_studio_core.prompt_studio_helper import (
@@ -114,10 +115,10 @@ class PromptStudioRegistryHelper:
                 PromptStudioRegistryHelper.frame_properties(tool=custom_tool)
             )
             spec: Spec = PromptStudioRegistryHelper.frame_spec(tool=custom_tool)
-            prompts: list[
-                ToolStudioPrompt
-            ] = PromptStudioHelper.fetch_prompt_from_tool(
-                tool_id=custom_tool.tool_id
+            prompts: list[ToolStudioPrompt] = (
+                PromptStudioHelper.fetch_prompt_from_tool(
+                    tool_id=custom_tool.tool_id
+                )
             )
             metadata = PromptStudioRegistryHelper.frame_export_json(
                 tool=custom_tool, prompts=prompts
@@ -184,7 +185,7 @@ class PromptStudioRegistryHelper:
         llm = ""
         embedding_model = ""
 
-        default_llm_profile = tool.get_default_llm_profile()  # type: ignore
+        default_llm_profile = ProfileManager.get_default_llm_profile(tool)
         for prompt in prompts:
             if not prompt.profile_manager:
                 prompt.profile_manager = default_llm_profile
@@ -196,9 +197,9 @@ class PromptStudioRegistryHelper:
             adapter_id = str(prompt.profile_manager.embedding_model.adapter_id)
             embedding_suffix = adapter_id.split("|")[0]
 
-            output[
-                JsonSchemaKey.ASSERTION_FAILURE_PROMPT
-            ] = prompt.assertion_failure_prompt
+            output[JsonSchemaKey.ASSERTION_FAILURE_PROMPT] = (
+                prompt.assertion_failure_prompt
+            )
             output[JsonSchemaKey.ASSERT_PROMPT] = prompt.assert_prompt
             output[JsonSchemaKey.IS_ASSERT] = prompt.is_assert
             output[JsonSchemaKey.PROMPT] = prompt.prompt
@@ -207,21 +208,21 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.VECTOR_DB] = vector_db
             output[JsonSchemaKey.EMBEDDING] = embedding_model
             output[JsonSchemaKey.X2TEXT_ADAPTER] = x2text
-            output[
-                JsonSchemaKey.CHUNK_OVERLAP
-            ] = prompt.profile_manager.chunk_overlap
+            output[JsonSchemaKey.CHUNK_OVERLAP] = (
+                prompt.profile_manager.chunk_overlap
+            )
             output[JsonSchemaKey.LLM] = llm
             output[JsonSchemaKey.PREAMBLE] = tool.preamble
             output[JsonSchemaKey.POSTAMBLE] = tool.postamble
             output[JsonSchemaKey.GRAMMAR] = grammar_list
             output[JsonSchemaKey.TYPE] = prompt.enforce_type
             output[JsonSchemaKey.NAME] = prompt.prompt_key
-            output[
-                JsonSchemaKey.RETRIEVAL_STRATEGY
-            ] = prompt.profile_manager.retrieval_strategy
-            output[
-                JsonSchemaKey.SIMILARITY_TOP_K
-            ] = prompt.profile_manager.similarity_top_k
+            output[JsonSchemaKey.RETRIEVAL_STRATEGY] = (
+                prompt.profile_manager.retrieval_strategy
+            )
+            output[JsonSchemaKey.SIMILARITY_TOP_K] = (
+                prompt.profile_manager.similarity_top_k
+            )
             output[JsonSchemaKey.SECTION] = prompt.profile_manager.section
             output[JsonSchemaKey.REINDEX] = prompt.profile_manager.reindex
             output[JsonSchemaKey.EMBEDDING_SUFFIX] = embedding_suffix

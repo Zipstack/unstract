@@ -167,7 +167,6 @@ function ToolIde() {
     <div className="tool-ide-layout">
       <div>
         <Header
-          setOpenCusSynonymsModal={setOpenCusSynonymsModal}
           handleUpdateTool={handleUpdateTool}
           setOpenSettings={setOpenSettings}
         />

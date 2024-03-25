@@ -12,15 +12,15 @@ build-backend = "pdm.backend"
 lint = [
     "absolufy-imports~=0.3.1",
     "autopep8~=2.0.2",
-    "black~=23.3.0",
+    "black~=24.3.0",
     "docutils~=0.20.1",
-    "flake8~=6.0.0",
+    "flake8~=7.0.0",
     "flake8-pyproject~=1.2.2",
-    "isort~=5.12.0",
-    "mypy~=1.2.0",
-    "pre-commit~=3.3.1",
+    "isort~=5.13.2",
+    "mypy~=1.9.0",
+    "pre-commit~=3.6.2",
     "types-PyMySQL~=1.1.0.1",
-    "types-pyOpenSSL~=23.2.0.2",
+    "types-pyOpenSSL~=24.0.0.20240311",
     "types-PyYAML~=6.0.12.12",
     "types-redis~=4.6.0.3",
     "types-requests~=2.31.0.6",
@@ -41,8 +41,8 @@ hook-check-django-migrations = [
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.0.0",
     "python-magic==0.4.27",
-    "unstract-sdk~=0.15.2",
-    "unstract-adapters~=0.5.0",
+    "unstract-sdk~=0.16.0",
+    "unstract-adapters~=0.6.0",
     "-e unstract-connectors @ file:///${PROJECT_ROOT}/unstract/connectors",
     "-e unstract-core @ file:///${PROJECT_ROOT}/unstract/core",
     "-e unstract-flags @ file:///${PROJECT_ROOT}/unstract/flags",
@@ -58,13 +58,6 @@ target-version = ['py39']
 [tool.pycln]
 all = true
 
-[tool.pyupgrade]
-keep_dict_typing = true
-
-[tool.flake8]
-max-line-length = 80
-exclude = "pyproject.toml"
-
 [tool.isort]
 line_length = 80
 multi_line_output = 3
@@ -78,14 +71,10 @@ profile = "black"
 DJANGO_SETTINGS_MODULE = "backend.settings.test_cases"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
 
-# IMPORTANT!
-# Keep this same as mypy hook args in .pre-commit-config.yaml
 [tool.mypy]
 allow_subclassing_any = true
 allow_untyped_decorators = true
 check_untyped_defs = true
-# To use Unpack for typing kwargs
-enable_incomplete_feature = "Unpack"
 exclude = '''(?x)^(
     .*migrations/.*\.py|
     backend/prompt/.*|
