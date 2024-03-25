@@ -53,6 +53,7 @@ function OutputForDocModal({
     listOfDocs,
     selectedDoc,
     defaultLlmProfile,
+    disableLlmOrDocChange,
     singlePassExtractMode,
     isSinglePassExtractLoading,
   } = useCustomToolStore();
@@ -238,7 +239,13 @@ function OutputForDocModal({
         </div>
         <div className="output-doc-gap" />
         <div className="display-flex-right">
-          <Button size="small" onClick={() => navigate("outputAnalyzer")}>
+          <Button
+            size="small"
+            onClick={() => navigate("outputAnalyzer")}
+            disabled={
+              disableLlmOrDocChange?.length > 0 || isSinglePassExtractLoading
+            }
+          >
             View in Output Analyzer
           </Button>
         </div>

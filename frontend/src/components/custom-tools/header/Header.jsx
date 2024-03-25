@@ -26,7 +26,8 @@ try {
 }
 function Header({ setOpenSettings, handleUpdateTool }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
-  const { details } = useCustomToolStore();
+  const { details, disableLlmOrDocChange, isSinglePassExtractLoading } =
+    useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -83,6 +84,9 @@ function Header({ setOpenSettings, handleUpdateTool }) {
             <Button
               icon={<SettingOutlined />}
               onClick={() => setOpenSettings(true)}
+              disabled={
+                disableLlmOrDocChange?.length > 0 || isSinglePassExtractLoading
+              }
             />
           </Tooltip>
         </div>
