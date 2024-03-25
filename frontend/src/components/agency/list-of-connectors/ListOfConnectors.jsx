@@ -33,8 +33,8 @@ function ListOfConnectors({ listOfConnectors, selectedId, handleSelectItem }) {
           ),
           disabled: item?.isDisabled,
           icon: item?.icon,
-          onClick: () => handleSelectItem(item?.key),
         }))}
+        onClick={handleSelectItem}
       />
     </div>
   );
