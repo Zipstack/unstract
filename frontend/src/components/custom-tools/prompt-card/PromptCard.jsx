@@ -334,6 +334,7 @@ function PromptCard({
       details?.summarize_llm_profile
     ) {
       // Summary needs to be indexed before running the prompt
+      setIsRunLoading(false);
       handleStepsAfterRunCompletion();
       setAlertDetails({
         type: "error",
