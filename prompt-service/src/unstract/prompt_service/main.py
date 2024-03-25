@@ -630,7 +630,7 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         "Execution complete",
     )
-    structured_output[f"{name}__usage"] = usage
+    app.logger.info("Usage details : %s", str(usage))
     return structured_output
 
 

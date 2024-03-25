@@ -15,8 +15,6 @@ import { useSessionStore } from "../../../store/session-store";
 import { base64toBlob, docIndexStatus } from "../../../helpers/GetStaticData";
 import { DocumentViewer } from "../document-viewer/DocumentViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
-import { useAlertStore } from "../../../store/alert-store";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 const items = [
   {
@@ -73,8 +71,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
-  const { setAlertDetails } = useAlertStore();
-  const handleException = useExceptionHandler();
 
   useEffect(() => {
     setFileUrl("");
@@ -150,7 +146,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
         }
       })
       .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to fetch"));
         if (err?.response?.status === 404) {
           setErrorMessage(viewType);
         }

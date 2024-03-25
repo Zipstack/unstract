@@ -157,6 +157,7 @@ function PromptCard({
       return;
     }
 
+    resetInfoMsgs();
     handleGetOutput();
     handleGetCoverage();
   }, [
@@ -249,6 +250,11 @@ function PromptCard({
     setPage(index + 1);
   }, [llmProfiles]);
 
+  const resetInfoMsgs = () => {
+    setTokenCount({}); // Reset Token Count
+    setProgressMsg({}); // Reset Progress Message
+  };
+
   const handlePageLeft = () => {
     if (page <= 1) {
       return;
@@ -322,6 +328,7 @@ function PromptCard({
     setCoverage(0);
     setCoverageTotal(0);
     setDocOutputs({});
+    resetInfoMsgs();
 
     const docId = selectedDoc?.document_id;
     const isSummaryIndexed = [...summarizeIndexStatus].find(
