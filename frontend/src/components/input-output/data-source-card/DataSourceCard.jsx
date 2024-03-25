@@ -24,7 +24,7 @@ function DataSourceCard({ srcDetails, setSelectedSourceId }) {
         <div className="cover-img">
           <Image
             src={srcDetails?.icon}
-            width="100%"
+            width="80%"
             height="auto"
             preview={false}
           />
