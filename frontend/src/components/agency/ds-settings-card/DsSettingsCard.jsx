@@ -26,6 +26,7 @@ import { useWorkflowStore } from "../../../store/workflow-store";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { ConfigureConnectorModal } from "../configure-connector-modal/ConfigureConnectorModal";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import "./DsSettingsCard.css";
 
 const tooltip = {
   input: "Data Source Settings",
