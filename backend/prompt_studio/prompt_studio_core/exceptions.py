@@ -59,3 +59,8 @@ class NoPromptsFound(APIException):
 class PermissionError(APIException):
     status_code = 403
     default_detail = "You do not have permission to perform this action."
+
+
+class EmptyPromptError(APIException):
+    status_code = 422
+    default_detail = "Prompt(s) cannot be empty"

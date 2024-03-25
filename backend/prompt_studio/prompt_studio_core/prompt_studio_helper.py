@@ -17,6 +17,7 @@ from prompt_studio.prompt_studio_core.constants import (
 from prompt_studio.prompt_studio_core.exceptions import (
     AnswerFetchError,
     DefaultProfileError,
+    EmptyPromptError,
     IndexingError,
     NoPromptsFound,
     PermissionError,
@@ -707,6 +708,8 @@ class PromptStudioHelper:
         for prompt in prompts:
             if prompt.prompt_type == TSPKeys.NOTES:
                 continue
+            if not prompt.prompt:
+                raise EmptyPromptError()
             output: dict[str, Any] = {}
             output[TSPKeys.PROMPT] = prompt.prompt
             output[TSPKeys.ACTIVE] = prompt.active
