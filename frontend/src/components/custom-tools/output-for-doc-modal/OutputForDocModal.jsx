@@ -64,7 +64,7 @@ function OutputForDocModal({
   const { handleException } = useExceptionHandler();
 
   useEffect(() => {
-    if (!open || isSinglePassExtractLoading) {
+    if (!open) {
       return;
     }
     handleGetOutputForDocs();
