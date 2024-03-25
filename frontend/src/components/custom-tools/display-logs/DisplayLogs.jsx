@@ -22,7 +22,7 @@ function DisplayLogs() {
         return (
           <div key={message?.timestamp}>
             <Row>
-              <Col span={3}>
+              <Col span={5}>
                 <Typography className="display-logs-col-first">
                   {getDateTimeString(message?.timestamp)}
                 </Typography>
@@ -47,7 +47,7 @@ function DisplayLogs() {
                   {message?.component?.doc_name}
                 </Typography>
               </Col>
-              <Col span={10}>
+              <Col span={8}>
                 <Typography className="display-logs-col">
                   {message?.message}
                 </Typography>

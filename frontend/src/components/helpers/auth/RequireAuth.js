@@ -17,7 +17,7 @@ const RequireAuth = () => {
 
   let navigateTo = `/${orgName}/onboard`;
   if (onboardCompleted(adapters)) {
-    navigateTo = `/${orgName}/etl`;
+    navigateTo = `/${orgName}/tools`;
   }
 
   if (!isLoggedIn) {

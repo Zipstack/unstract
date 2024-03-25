@@ -22,7 +22,7 @@ function OnBoard() {
   const [openAddSourcesModal, setOpenAddSourcesModal] = useState(false);
   const [editItemId, setEditItemId] = useState(null);
   const [type, setType] = useState(null);
-  const homePageUrl = `/${orgName}/etl`;
+  const homePageUrl = `/${orgName}/tools`;
   const [adaptersList, setAdaptersList] = useState(adapters || []);
   useEffect(() => {
     if (onboardCompleted(adaptersList)) {
@@ -81,7 +81,7 @@ function OnBoard() {
         <div>
           <img src={logo} alt="Logo" className="landing-logo" />
           <h1 className="uppercase-text">
-            You&apos;re 3 steps away from nirvana
+            You&apos;re 4 steps away from nirvana
           </h1>
           <Space direction="vertical">
             {steps.map((step, index) => (

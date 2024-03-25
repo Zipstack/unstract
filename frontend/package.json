@@ -28,6 +28,7 @@
     "moment": "^2.29.4",
     "moment-timezone": "^0.5.45",
     "pdfjs-dist": "^3.4.120",
+    "posthog-js": "^1.116.5",
     "prismjs": "^1.29.0",
     "react": "^18.2.0",
     "react-dnd": "^16.0.1",
