@@ -52,6 +52,8 @@ function OutputForDocModal({
     details,
     listOfDocs,
     selectedDoc,
+    defaultLlmProfile,
+    disableLlmOrDocChange,
     singlePassExtractMode,
     isSinglePassExtractLoading,
   } = useCustomToolStore();
@@ -62,7 +64,7 @@ function OutputForDocModal({
   const { handleException } = useExceptionHandler();
 
   useEffect(() => {
-    if (!open || isSinglePassExtractLoading) {
+    if (!open) {
       return;
     }
     handleGetOutputForDocs();
@@ -135,13 +137,18 @@ function OutputForDocModal({
   };
 
   const handleGetOutputForDocs = () => {
-    if (!profileManagerId) {
+    let profile = profileManagerId;
+    if (singlePassExtractMode) {
+      profile = defaultLlmProfile;
+    }
+
+    if (!profile) {
       setRows([]);
       return;
     }
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profileManagerId}&is_single_pass_extract=${singlePassExtractMode}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -232,7 +239,13 @@ function OutputForDocModal({
         </div>
         <div className="output-doc-gap" />
         <div className="display-flex-right">
-          <Button size="small" onClick={() => navigate("outputAnalyzer")}>
+          <Button
+            size="small"
+            onClick={() => navigate("outputAnalyzer")}
+            disabled={
+              disableLlmOrDocChange?.length > 0 || isSinglePassExtractLoading
+            }
+          >
             View in Output Analyzer
           </Button>
         </div>
