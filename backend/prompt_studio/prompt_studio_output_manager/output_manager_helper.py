@@ -3,6 +3,9 @@ from typing import Any
 
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_document_manager.models import DocumentManager
+from prompt_studio.prompt_studio_output_manager.constants import (
+    PromptStudioOutputManagerKeys as PSOMKeys,
+)
 from prompt_studio.prompt_studio_output_manager.models import (
     PromptStudioOutputManager,
 )
@@ -34,6 +37,8 @@ class OutputManagerHelper:
 
         # Iterate through each prompt in the list
         for prompt in prompts:
+            if prompt.prompt_type == PSOMKeys.NOTES:
+                continue
             profile_manager = prompt.profile_manager
             output = json.dumps(outputs.get(prompt.prompt_key))
             eval_metrics = outputs.get(f"{prompt.prompt_key}__evaluation", [])

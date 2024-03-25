@@ -705,6 +705,8 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.CHALLENGE_LLM] = challenge_llm
 
         for prompt in prompts:
+            if prompt.prompt_type == TSPKeys.NOTES:
+                continue
             output: dict[str, Any] = {}
             output[TSPKeys.PROMPT] = prompt.prompt
             output[TSPKeys.ACTIVE] = prompt.active
