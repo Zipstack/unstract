@@ -157,9 +157,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             Response: Reponse of dropdown dict
         """
         try:
-            select_choices: dict[
-                str, Any
-            ] = PromptStudioHelper.get_select_fields()
+            select_choices: dict[str, Any] = (
+                PromptStudioHelper.get_select_fields()
+            )
             return Response(select_choices, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error(f"Error occured while fetching select fields {e}")
@@ -396,13 +396,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 f"{filename_without_extension}.txt"
             )
 
-        file_path = (
-            file_path
-        ) = FileManagerHelper.handle_sub_directory_for_tenants(
-            request.org_id,
-            is_create=True,
-            user_id=custom_tool.created_by.user_id,
-            tool_id=str(custom_tool.tool_id),
+        file_path = file_path = (
+            FileManagerHelper.handle_sub_directory_for_tenants(
+                request.org_id,
+                is_create=True,
+                user_id=custom_tool.created_by.user_id,
+                tool_id=str(custom_tool.tool_id),
+            )
         )
         file_system = LocalStorageFS(settings={"path": file_path})
         if not file_path.endswith("/"):
@@ -494,7 +494,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         custom_tool = self.get_object()
         serializer = ExportToolRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        is_shared_with_org: str = serializer.validated_data.get(
+        is_shared_with_org: bool = serializer.validated_data.get(
             "is_shared_with_org"
         )
         user_ids = set(serializer.validated_data.get("user_id"))
@@ -512,8 +512,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def export_tool_info(self, request: Request, pk: Any = None) -> Response:
         custom_tool = self.get_object()
-        serialized_instances = PromptStudioRegistryInfoSerializer(
-            custom_tool.prompt_studio_registry
-        ).data
+        serialized_instances = None
+        if hasattr(custom_tool, "prompt_studio_registry"):
+            serialized_instances = PromptStudioRegistryInfoSerializer(
+                custom_tool.prompt_studio_registry
+            ).data
 
-        return Response(serialized_instances)
+            return Response(serialized_instances)
+        else:
+            return Response(status=status.HTTP_404_NOT_FOUND)
