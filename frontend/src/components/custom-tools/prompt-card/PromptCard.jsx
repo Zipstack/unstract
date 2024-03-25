@@ -153,6 +153,7 @@ function PromptCard({
   }, [promptDetails]);
 
   useEffect(() => {
+    resetInfoMsgs();
     if (isSinglePassExtractLoading) {
       return;
     }
@@ -221,13 +222,7 @@ function PromptCard({
     }
   }, [coverageTotal]);
 
-  useEffect(() => {
-    if (isSinglePassExtractLoading) {
-      resetInfoMsg();
-    }
-  }, [isSinglePassExtractLoading]);
-
-  const resetInfoMsg = () => {
+  const resetInfoMsgs = () => {
     setProgressMsg({}); // Reset Progress Message
     setTokenCount({}); // Reset Token Count
   };
@@ -333,7 +328,7 @@ function PromptCard({
     setCoverage(0);
     setCoverageTotal(0);
     setDocOutputs({});
-    resetInfoMsg();
+    resetInfoMsgs();
 
     const docId = selectedDoc?.document_id;
     const isSummaryIndexed = [...summarizeIndexStatus].find(
