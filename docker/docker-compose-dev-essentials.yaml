@@ -4,7 +4,7 @@ services:
   db:
     image: 'postgres:15.6'
     container_name: unstract-db
-    restart: always 
+    restart: always
     # set shared memory limit when using docker-compose
     shm_size: 128mb
     ports:
@@ -16,7 +16,7 @@ services:
       - ./essentials.env
     labels:
       - traefik.enable=false
-    
+
   redis:
     image: "redis:7.2.3"
     container_name: unstract-redis
@@ -110,7 +110,7 @@ services:
 
   qdrant:
     # Vector DB for doc indexer
-    image: 'qdrant/qdrant'
+    image: qdrant/qdrant:v1.8.2
     container_name: unstract-vector-db
     restart: always
     ports:
