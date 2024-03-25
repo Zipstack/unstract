@@ -13,7 +13,7 @@ function ListOfConnectors({ listOfConnectors, selectedId, handleSelectItem }) {
         items={listOfConnectors.map((item) => ({
           label: (
             <>
-              {item.isDisabled ? (
+              {item?.isDisabled ? (
                 <Tooltip title="Coming Soon">
                   <div
                     style={{
@@ -33,16 +33,16 @@ function ListOfConnectors({ listOfConnectors, selectedId, handleSelectItem }) {
                         height: "40px",
                       }}
                     />
-                    {item.label}
+                    {item?.label}
                   </div>
                 </Tooltip>
               ) : (
-                item.label
+                item?.label
               )}
             </>
           ),
-          disabled: item.isDisabled,
-          icon: item.icon,
+          disabled: item?.isDisabled,
+          icon: item?.icon,
         }))}
         onClick={handleSelectItem}
       />
