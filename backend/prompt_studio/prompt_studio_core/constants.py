@@ -82,6 +82,7 @@ class ToolStudioPromptKeys:
     CHALLENGE_LLM = "challenge_llm"
     SINGLE_PASS_EXTRACTION_MODE = "single_pass_extraction_mode"
     SINGLE_PASS_EXTRACTION = "single_pass_extraction"
+    NOTES = "NOTES"
 
 
 class FileViewTypes:

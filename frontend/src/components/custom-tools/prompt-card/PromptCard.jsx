@@ -102,6 +102,7 @@ function PromptCard({
     listOfDocs,
     updateCustomTool,
     details,
+    defaultLlmProfile,
     disableLlmOrDocChange,
     indexDocs,
     summarizeIndexStatus,
@@ -334,6 +335,7 @@ function PromptCard({
       details?.summarize_llm_profile
     ) {
       // Summary needs to be indexed before running the prompt
+      setIsRunLoading(false);
       handleStepsAfterRunCompletion();
       setAlertDetails({
         type: "error",
@@ -456,7 +458,7 @@ function PromptCard({
   };
 
   const handleGetOutput = () => {
-    if (!selectedDoc || !selectedLlmProfileId) {
+    if (!selectedDoc || (!singlePassExtractMode && !selectedLlmProfileId)) {
       setResult({
         promptOutputId: null,
         output: "",
@@ -495,11 +497,14 @@ function PromptCard({
   };
 
   const handleGetCoverage = () => {
-    if (!selectedLlmProfileId) {
+    if (
+      (singlePassExtractMode && !defaultLlmProfile) ||
+      (!singlePassExtractMode && !selectedLlmProfileId)
+    ) {
+      setCoverage(0);
       return;
     }
 
-    setCoverage(0);
     handleOutputApiRequest(false)
       .then((res) => {
         const data = res?.data;
@@ -511,7 +516,11 @@ function PromptCard({
   };
 
   const handleOutputApiRequest = async (isOutput) => {
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${selectedLlmProfileId}&is_single_pass_extract=${singlePassExtractMode}`;
+    let profileManager = selectedLlmProfileId;
+    if (singlePassExtractMode) {
+      profileManager = defaultLlmProfile;
+    }
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${profileManager}&is_single_pass_extract=${singlePassExtractMode}`;
 
     if (isOutput) {
       url += `&document_manager=${selectedDoc?.document_id}`;
@@ -815,59 +824,70 @@ function PromptCard({
               </Space>
             </div>
             <div className="prompt-card-llm-profiles">
-              {llmProfiles?.length > 0 &&
-              promptDetails?.profile_manager?.length > 0 &&
-              selectedLlmProfileId ? (
-                <div>
-                  {llmProfiles
-                    .filter(
-                      (profile) => profile.profile_id === selectedLlmProfileId
-                    )
-                    .map((profile, index) => (
-                      <div key={index}>
-                        <Tag>{profile.llm}</Tag>
-                        <Tag>{profile.vector_store}</Tag>
-                        <Tag>{profile.embedding_model}</Tag>
-                        <Tag>{profile.x2text}</Tag>
-                        <Tag>{`${profile.chunk_size}/${profile.chunk_overlap}/${profile.retrieval_strategy}/${profile.similarity_top_k}/${profile.section}`}</Tag>
-                      </div>
-                    ))}
-                </div>
-              ) : (
-                <div>
-                  <Typography.Text className="font-size-12">
-                    No LLM Profile Selected
-                  </Typography.Text>
+              {!singlePassExtractMode && (
+                <>
+                  {llmProfiles?.length > 0 &&
+                  promptDetails?.profile_manager?.length > 0 &&
+                  selectedLlmProfileId ? (
+                    <div>
+                      {llmProfiles
+                        .filter(
+                          (profile) =>
+                            profile.profile_id === selectedLlmProfileId
+                        )
+                        .map((profile, index) => (
+                          <div key={index}>
+                            <Tag>{profile.llm}</Tag>
+                            <Tag>{profile.vector_store}</Tag>
+                            <Tag>{profile.embedding_model}</Tag>
+                            <Tag>{profile.x2text}</Tag>
+                            <Tag>{`${profile.chunk_size}/${profile.chunk_overlap}/${profile.retrieval_strategy}/${profile.similarity_top_k}/${profile.section}`}</Tag>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
+                    <div>
+                      <Typography.Text className="font-size-12">
+                        No LLM Profile Selected
+                      </Typography.Text>
+                    </div>
+                  )}
+                </>
+              )}
+              {!singlePassExtractMode && (
+                <div className="display-flex-right prompt-card-paginate-div">
+                  <Button
+                    type="text"
+                    size="small"
+                    disabled={
+                      page <= 1 ||
+                      disableLlmOrDocChange.includes(
+                        promptDetails?.prompt_id
+                      ) ||
+                      isSinglePassExtractLoading ||
+                      indexDocs.includes(selectedDoc?.document_id)
+                    }
+                    onClick={handlePageLeft}
+                  >
+                    <LeftOutlined className="prompt-card-paginate" />
+                  </Button>
+                  <Button
+                    type="text"
+                    size="small"
+                    disabled={
+                      page >= llmProfiles?.length ||
+                      disableLlmOrDocChange.includes(
+                        promptDetails?.prompt_id
+                      ) ||
+                      isSinglePassExtractLoading ||
+                      indexDocs.includes(selectedDoc?.document_id)
+                    }
+                    onClick={handlePageRight}
+                  >
+                    <RightOutlined className="prompt-card-paginate" />
+                  </Button>
                 </div>
               )}
-              <div className="display-flex-right prompt-card-paginate-div">
-                <Button
-                  type="text"
-                  size="small"
-                  disabled={
-                    page <= 1 ||
-                    disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
-                    isSinglePassExtractLoading ||
-                    indexDocs.includes(selectedDoc?.document_id)
-                  }
-                  onClick={handlePageLeft}
-                >
-                  <LeftOutlined className="prompt-card-paginate" />
-                </Button>
-                <Button
-                  type="text"
-                  size="small"
-                  disabled={
-                    page >= llmProfiles?.length ||
-                    disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
-                    isSinglePassExtractLoading ||
-                    indexDocs.includes(selectedDoc?.document_id)
-                  }
-                  onClick={handlePageRight}
-                >
-                  <RightOutlined className="prompt-card-paginate" />
-                </Button>
-              </div>
             </div>
             {EvalMetrics && <EvalMetrics result={result} />}
           </Space>

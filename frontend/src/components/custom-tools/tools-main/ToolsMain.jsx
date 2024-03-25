@@ -34,6 +34,7 @@ function ToolsMain() {
     updateCustomTool,
     disableLlmOrDocChange,
     singlePassExtractMode,
+    isSinglePassExtractLoading,
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -148,6 +149,10 @@ function ToolsMain() {
               <Button
                 icon={<BarChartOutlined />}
                 onClick={() => navigate("outputAnalyzer")}
+                disabled={
+                  disableLlmOrDocChange?.length > 0 ||
+                  isSinglePassExtractLoading
+                }
               />
             </Tooltip>
             {singlePassExtractMode && RunSinglePassBtn && <RunSinglePassBtn />}
