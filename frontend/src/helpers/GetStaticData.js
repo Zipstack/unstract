@@ -299,17 +299,28 @@ const isJson = (text) => {
   }
 };
 
-const displayPromptResult = (output) => {
-  try {
-    if (isJson(output)) {
-      return JSON.stringify(JSON.parse(output), null, 4);
-    }
+const displayPromptResult = (output, isFormat = false) => {
+  let i = 0;
+  let parsedData = output;
 
-    const outputParsed = JSON.parse(output);
-    return outputParsed;
-  } catch (err) {
-    return output;
+  while (i < 3) {
+    i++;
+    try {
+      parsedData = JSON.parse(parsedData);
+    } catch {
+      break;
+    }
   }
+
+  if (
+    (Array.isArray(parsedData) || typeof parsedData === "object") &&
+    isFormat
+  ) {
+    // If isFormat is true, return the formatted JSON string
+    return JSON.stringify(parsedData, null, 4);
+  }
+
+  return parsedData;
 };
 
 const onboardCompleted = (adaptersList) => {

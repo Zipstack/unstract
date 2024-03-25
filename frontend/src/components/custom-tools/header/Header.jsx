@@ -1,7 +1,6 @@
 import {
   ArrowLeftOutlined,
   EditOutlined,
-  ExportOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
 import { Button, Tooltip, Typography } from "antd";
@@ -16,8 +15,16 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { ExportToolIcon } from "../../../assets";
 
-function Header({ setOpenSettings }) {
+let SinglePassToggleSwitch;
+try {
+  SinglePassToggleSwitch =
+    require("../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch").SinglePassToggleSwitch;
+} catch {
+  // The variable will remain undefined if the component is not available.
+}
+function Header({ setOpenSettings, handleUpdateTool }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
   const { details } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
@@ -68,6 +75,9 @@ function Header({ setOpenSettings }) {
         </Button>
       </div>
       <div className="custom-tools-header-btns">
+        {SinglePassToggleSwitch && (
+          <SinglePassToggleSwitch handleUpdateTool={handleUpdateTool} />
+        )}
         <div>
           <Tooltip title="Settings">
             <Button
@@ -78,13 +88,13 @@ function Header({ setOpenSettings }) {
         </div>
         <div className="custom-tools-header-v-divider" />
         <div>
-          <Tooltip title="Export">
+          <Tooltip title="Export as tool">
             <CustomButton
               type="primary"
               onClick={handleExport}
               loading={isExportLoading}
             >
-              <ExportOutlined />
+              <ExportToolIcon />
             </CustomButton>
           </Tooltip>
         </div>
@@ -95,6 +105,7 @@ function Header({ setOpenSettings }) {
 
 Header.propTypes = {
   setOpenSettings: PropTypes.func.isRequired,
+  handleUpdateTool: PropTypes.func.isRequired,
 };
 
 export { Header };

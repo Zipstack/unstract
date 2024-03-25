@@ -5,6 +5,7 @@ import { THEME } from "./helpers/GetStaticData.js";
 import { Router } from "./routes/Router.jsx";
 import { useAlertStore } from "./store/alert-store.js";
 import { useSessionStore } from "./store/session-store.js";
+import PostHogPageviewTracker from "./PostHogPageviewTracker.js";
 
 function App() {
   const [messageApi, contextHolder] = message.useMessage();
@@ -32,6 +33,7 @@ function App() {
       }}
     >
       <BrowserRouter>
+        <PostHogPageviewTracker />
         {contextHolder}
         <Router />
       </BrowserRouter>
