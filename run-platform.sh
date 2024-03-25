@@ -32,9 +32,9 @@ check_dependencies() {
     exit 1
   fi
   # For 'docker compose' vs 'docker-compose', see https://stackoverflow.com/a/66526176.
-  if command -v docker compose &> /dev/null; then
+  if command -v "docker compose" &> /dev/null; then
     docker_compose_cmd="docker compose"
-  elif command -v docker-compose &> /dev/null; then
+  elif command -v "docker-compose" &> /dev/null; then
     docker_compose_cmd="docker-compose"
   else
     echo "$red_text""Both 'docker compose' and 'docker-compose' not found. Exiting.""$default_text"
