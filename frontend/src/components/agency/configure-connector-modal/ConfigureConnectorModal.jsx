@@ -40,8 +40,7 @@ function ConfigureConnectorModal({
     },
   ];
 
-  const handleSelectItem = (e) => {
-    const id = e.key;
+  const handleSelectItem = (id) => {
     setSelectedId(id?.toString());
     setActiveKey("1");
   };
