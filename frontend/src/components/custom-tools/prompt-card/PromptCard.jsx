@@ -457,7 +457,7 @@ function PromptCard({
   };
 
   const handleGetOutput = () => {
-    if (!selectedDoc || !selectedLlmProfileId) {
+    if (!selectedDoc || (!singlePassExtractMode && !selectedLlmProfileId)) {
       setResult({
         promptOutputId: null,
         output: "",
