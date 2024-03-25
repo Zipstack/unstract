@@ -1,9 +1,7 @@
-import { BarChartOutlined, PlayCircleOutlined } from "@ant-design/icons";
+import { BarChartOutlined } from "@ant-design/icons";
 import { Button, Space, Tabs, Tooltip } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChartOutlined } from "@ant-design/icons";
-
 
 import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

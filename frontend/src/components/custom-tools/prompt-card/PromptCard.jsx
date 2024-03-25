@@ -46,10 +46,8 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
-import { TokenCount } from "../token-count/TokenCount";
 
+import { TokenCount } from "../token-count/TokenCount";
 
 let EvalBtn = null;
 let EvalMetrics = null;

@@ -9,15 +9,13 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Header.css";
 
+import { ExportToolIcon } from "../../../assets";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { ExportToolIcon } from "../../../assets";
-
 
 let SinglePassToggleSwitch;
 try {
