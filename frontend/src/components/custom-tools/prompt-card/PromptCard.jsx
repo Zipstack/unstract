@@ -48,22 +48,12 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { TokenCount } from "../token-count/TokenCount";
 
-let EvalBtn = null;
-let EvalMetrics = null;
-let EvalModal = null;
-let getEvalMetrics = (param1, param2) => {
+const EvalBtn = null;
+const EvalMetrics = null;
+const EvalModal = null;
+const getEvalMetrics = (param1, param2) => {
   return [];
 };
-try {
-  EvalBtn = require("../../../plugins/eval-btn/EvalBtn").EvalBtn;
-  EvalMetrics =
-    require("../../../plugins/eval-metrics/EvalMetrics").EvalMetrics;
-  EvalModal = require("../../../plugins/eval-modal/EvalModal").EvalModal;
-  getEvalMetrics =
-    require("../../../plugins/eval-helper/EvalHelper").getEvalMetrics;
-} catch {
-  // The components will remain null of it is not available
-}
 
 function PromptCard({
   promptDetails,
@@ -153,6 +143,7 @@ function PromptCard({
   }, [promptDetails]);
 
   useEffect(() => {
+    resetInfoMsgs();
     if (isSinglePassExtractLoading) {
       return;
     }
@@ -220,6 +211,11 @@ function PromptCard({
       setCoverageTotal(0);
     }
   }, [coverageTotal]);
+
+  const resetInfoMsgs = () => {
+    setProgressMsg({}); // Reset Progress Message
+    setTokenCount({}); // Reset Token Count
+  };
 
   const onSearchDebounce = useCallback(
     debounce((event) => {
@@ -322,6 +318,7 @@ function PromptCard({
     setCoverage(0);
     setCoverageTotal(0);
     setDocOutputs({});
+    resetInfoMsgs();
 
     const docId = selectedDoc?.document_id;
     const isSummaryIndexed = [...summarizeIndexStatus].find(
