@@ -14,10 +14,6 @@ on:
         type: choice
         options: # Define available options
           - tool-classifier
-          - tool-doc-pii-redactor
-          - tool-indexer
-          - tool-ocr
-          - tool-translate
           - tool-structure
           - tool-text-extractor
 
