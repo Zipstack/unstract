@@ -37,12 +37,102 @@ function ApiDeployment() {
   const [tableData, setTableData] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
   const [isEdit, setIsEdit] = useState(false);
+  const [columns, setColumns] = useState(false);
   const [workflowEndpointList, setWorkflowEndpointList] = useState([]);
   const handleException = useExceptionHandler();
+  const columnsStatic = [
+    {
+      title: "API Name",
+      key: "display_name",
+      render: (_, record) => (
+        <Typography.Text strong>{record?.display_name}</Typography.Text>
+      ),
+      align: "left",
+    },
+    {
+      title: "Description",
+      key: "description",
+      render: (_, record) => <Space>{record?.description}</Space>,
+      align: "left",
+    },
+    {
+      title: "API Endpoint",
+      key: "api_endpoint",
+      render: (_, record) => (
+        <Space direction="horizontal" className="display-flex-space-between">
+          <div>
+            <Typography.Text>
+              {displayURL(record?.api_endpoint)}
+            </Typography.Text>
+          </div>
+          <div>
+            <Tooltip title="click to copy">
+              <Button
+                size="small"
+                onClick={() => copyUrl(record?.api_endpoint)}
+              >
+                <CopyOutlined />
+              </Button>
+            </Tooltip>
+          </div>
+        </Space>
+      ),
+      align: "left",
+    },
+    {
+      title: "Workflow",
+      key: "workflow_name",
+      render: (_, record) => (
+        <Tooltip title="view workflow">
+          <Space
+            className="workflowName"
+            onClick={() =>
+              navigate(
+                `/${sessionDetails?.orgId}/workflows/${record?.workflow}`
+              )
+            }
+          >
+            {record?.workflow_name}
+          </Space>
+        </Tooltip>
+      ),
+      align: "left",
+    },
+    {
+      title: "Enabled",
+      key: "active",
+      dataIndex: "active",
+      align: "center",
+      render: (_, record) => (
+        <Switch
+          size="small"
+          checked={record.is_active}
+          onChange={(e) => {
+            updateStatus(record);
+          }}
+        />
+      ),
+    },
+    {
+      title: "Actions",
+      key: "pipeline_id",
+      align: "center",
+      render: (_, record) => (
+        <Dropdown
+          menu={{ items: actionItems }}
+          placement="bottomLeft"
+          onOpenChange={() => setSelectedRow(record)}
+        >
+          <EllipsisOutlined className="cur-pointer" />
+        </Dropdown>
+      ),
+    },
+  ];
 
   useEffect(() => {
     getApiDeploymentList();
     getWorkflows();
+    setColumns(columnsStatic);
   }, []);
   const getWorkflows = () => {
     workflowApiService
@@ -217,95 +307,6 @@ function ApiDeployment() {
             <Typography.Text>Delete</Typography.Text>
           </div>
         </Space>
-      ),
-    },
-  ];
-
-  const columns = [
-    {
-      title: "API Name",
-      key: "display_name",
-      render: (_, record) => (
-        <Typography.Text strong>{record?.display_name}</Typography.Text>
-      ),
-      align: "left",
-    },
-    {
-      title: "Description",
-      key: "description",
-      render: (_, record) => <Space>{record?.description}</Space>,
-      align: "left",
-    },
-    {
-      title: "API Endpoint",
-      key: "api_endpoint",
-      render: (_, record) => (
-        <Space direction="horizontal" className="display-flex-space-between">
-          <div>
-            <Typography.Text>
-              {displayURL(record?.api_endpoint)}
-            </Typography.Text>
-          </div>
-          <div>
-            <Tooltip title="click to copy">
-              <Button
-                size="small"
-                onClick={() => copyUrl(record?.api_endpoint)}
-              >
-                <CopyOutlined />
-              </Button>
-            </Tooltip>
-          </div>
-        </Space>
-      ),
-      align: "left",
-    },
-    {
-      title: "Workflow",
-      key: "workflow_name",
-      render: (_, record) => (
-        <Tooltip title="view workflow">
-          <Space
-            className="workflowName"
-            onClick={() =>
-              navigate(
-                `/${sessionDetails?.orgId}/workflows/${record?.workflow}`
-              )
-            }
-          >
-            {record?.workflow_name}
-          </Space>
-        </Tooltip>
-      ),
-      align: "left",
-    },
-    {
-      title: "Enabled",
-      key: "active",
-      dataIndex: "active",
-      align: "center",
-      render: (_, record) => (
-        <Switch
-          size="small"
-          checked={record.is_active}
-          onChange={(e) => {
-            updateStatus(record);
-          }}
-        />
-      ),
-    },
-    {
-      title: "Actions",
-      key: "pipeline_id",
-      align: "center",
-      render: (_, record) => (
-        <Dropdown
-          menu={{ items: actionItems }}
-          placement="bottomLeft"
-          onOpenChange={() => setSelectedRow(record)}
-        >
-          <EllipsisOutlined className="cur-pointer" />
-        </Dropdown>
       ),
     },
   ];
