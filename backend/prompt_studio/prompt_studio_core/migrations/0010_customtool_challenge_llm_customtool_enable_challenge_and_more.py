@@ -44,7 +44,7 @@ class Migration(migrations.Migration):
                 db_comment="Field to store monitor llm",
                 null=True,
                 on_delete=django.db.models.deletion.PROTECT,
-                related_name="monitor_customtoos",
+                related_name="monitor_customtools",
                 to="adapter_processor.adapterinstance",
             ),
         ),
