@@ -42,18 +42,6 @@ jobs:
         - name: Build tool-classifier
           if: github.event.inputs.service_name=='tool-classifier'
           run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/classifier
-        - name: Build tool-doc-pii-redactor
-          if: github.event.inputs.service_name=='tool-doc-pii-redactor'
-          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/doc_pii_redactor
-        - name: Build tool-indexer
-          if: github.event.inputs.service_name=='tool-indexer'
-          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/indexer
-        - name: Build tool-ocr
-          if: github.event.inputs.service_name=='tool-ocr'
-          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/ocr
-        - name: Build tool-translate
-          if: github.event.inputs.service_name=='tool-translate'
-          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/translate
         - name: Build tool-structure
           if: github.event.inputs.service_name=='tool-structure'
           run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/structure
