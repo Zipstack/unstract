@@ -12,6 +12,7 @@ function ListOfConnectors({ listOfConnectors, selectedId, handleSelectItem }) {
         selectedKeys={[selectedId]}
         mode="inline"
         items={listOfConnectors.map((item) => ({
+          key: item?.key,
           label: (
             <>
               {item?.isDisabled ? (

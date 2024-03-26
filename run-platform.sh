@@ -32,7 +32,8 @@ check_dependencies() {
     exit 1
   fi
   # For 'docker compose' vs 'docker-compose', see https://stackoverflow.com/a/66526176.
-  if command -v docker compose &> /dev/null; then
+  docker compose >/dev/null 2>&1
+  if [ $? -eq 0 ]; then
     docker_compose_cmd="docker compose"
   elif command -v docker-compose &> /dev/null; then
     docker_compose_cmd="docker-compose"

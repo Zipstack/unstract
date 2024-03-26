@@ -154,6 +154,7 @@ function PromptCard({
   }, [promptDetails]);
 
   useEffect(() => {
+    resetInfoMsgs();
     if (isSinglePassExtractLoading) {
       return;
     }
@@ -221,6 +222,11 @@ function PromptCard({
       setCoverageTotal(0);
     }
   }, [coverageTotal]);
+
+  const resetInfoMsgs = () => {
+    setProgressMsg({}); // Reset Progress Message
+    setTokenCount({}); // Reset Token Count
+  };
 
   const onSearchDebounce = useCallback(
     debounce((event) => {
@@ -323,6 +329,7 @@ function PromptCard({
     setCoverage(0);
     setCoverageTotal(0);
     setDocOutputs({});
+    resetInfoMsgs();
 
     const docId = selectedDoc?.document_id;
     const isSummaryIndexed = [...summarizeIndexStatus].find(
