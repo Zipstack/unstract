@@ -223,11 +223,13 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           />
         </div>
         <Space>
-          <div>
+          <div className="doc-main-title-div">
             {selectedDoc ? (
-              <Typography.Text className="doc-main-title" ellipsis>
-                {selectedDoc?.document_name}
-              </Typography.Text>
+              <Tooltip title={selectedDoc?.document_name}>
+                <Typography.Text className="doc-main-title" ellipsis>
+                  {selectedDoc?.document_name}
+                </Typography.Text>
+              </Tooltip>
             ) : null}
           </div>
           <div>

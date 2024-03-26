@@ -33,6 +33,7 @@ function ListOfSources({ setSelectedSourceId, type }) {
       "unstructuredenterprise|eb1b6c58-221f-4db0-a4a5-e5f9cdca44e1",
       "unstructuredcommunity|eeed506f-1875-457f-9101-846fc7115676",
     ],
+    VECTOR_DB: ["milvus|3f42f6f9-4b8e-4546-95f3-22ecc9aca442"],
   };
 
   useEffect(() => {
