@@ -1,4 +1,12 @@
-import { Avatar, List, Modal, Popconfirm, Select, Typography } from "antd";
+import {
+  Avatar,
+  Checkbox,
+  List,
+  Modal,
+  Popconfirm,
+  Select,
+  Typography,
+} from "antd";
 import "./SharePermission.css";
 import PropTypes from "prop-types";
 import {
@@ -17,9 +25,11 @@ function SharePermission({
   loading,
   allUsers,
   onApply,
+  isSharableToOrg = false,
 }) {
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
+  const [shareWithEveryone, setShareWithEveryone] = useState(false);
 
   useEffect(() => {
     if (permissionEdit && adapter && adapter?.shared_users) {
@@ -27,29 +37,30 @@ function SharePermission({
       // set the selectedUsers to the IDs of shared users
       const users = allUsers.filter((user) => {
         if (adapter?.created_by?.id !== undefined) {
-          return (
-            user?.id !== adapter?.created_by?.id?.toString() &&
-            !selectedUsers.includes(user.id.toString())
-          );
+          return isSharableToOrg
+            ? !selectedUsers.includes(user?.id?.toString())
+            : user?.id !== adapter?.created_by?.id?.toString() &&
+                !selectedUsers.includes(user?.id?.toString());
         } else {
-          return (
-            user?.id !== adapter?.created_by?.toString() &&
-            !selectedUsers.includes(user.id.toString())
-          );
+          return isSharableToOrg
+            ? !selectedUsers.includes(user?.id?.toString())
+            : user?.id !== adapter?.created_by?.toString() &&
+                !selectedUsers.includes(user?.id?.toString());
         }
       });
       setFilteredUsers(users);
+      setShareWithEveryone(adapter?.shared_to_org || false);
     }
   }, [permissionEdit, adapter, allUsers, selectedUsers]);
 
   useEffect(() => {
-    if (adapter && adapter.shared_users) {
+    if (adapter && adapter?.shared_users) {
       setSelectedUsers(
         adapter.shared_users.map((user) => {
           if (user?.id !== undefined) {
             return user.id.toString();
           } else {
-            return user.toString();
+            return user?.toString();
           }
         })
       );
@@ -64,6 +75,10 @@ function SharePermission({
   const filterOption = (input, option) =>
     (option?.label ?? "").toLowerCase().includes(input.toLowerCase());
 
+  const handleShareWithEveryone = (checked) => {
+    setShareWithEveryone(checked);
+  };
+
   return (
     adapter && (
       <Modal
@@ -74,7 +89,7 @@ function SharePermission({
         centered
         closable={true}
         okText={"Apply"}
-        onOk={() => onApply(selectedUsers, adapter)}
+        onOk={() => onApply(selectedUsers, adapter, shareWithEveryone)}
         cancelButtonProps={!permissionEdit && { style: { display: "none" } }}
         okButtonProps={!permissionEdit && { style: { display: "none" } }}
         className="share-permission-modal"
@@ -83,7 +98,16 @@ function SharePermission({
           <SpinnerLoader />
         ) : (
           <>
-            {permissionEdit ? (
+            {isSharableToOrg && allUsers.length > 1 && (
+              <Checkbox
+                checked={shareWithEveryone}
+                onChange={(e) => handleShareWithEveryone(e.target.checked)}
+                className="share-per-checkbox"
+              >
+                Share with everyone
+              </Checkbox>
+            )}
+            {permissionEdit && !shareWithEveryone && (
               <Select
                 filterOption={filterOption}
                 showSearch
@@ -111,43 +135,19 @@ function SharePermission({
                   );
                 })}
               </Select>
-            ) : (
-              <>
-                <Typography.Title level={5}>Owned By</Typography.Title>
-                <List
-                  dataSource={[adapter.created_by]}
-                  renderItem={(item) => {
-                    return (
-                      <List.Item>
-                        <List.Item.Meta
-                          title={
-                            <>
-                              <Avatar
-                                className="shared-user-avatar"
-                                icon={<UserOutlined />}
-                              />
-                              <Typography.Text className="shared-username">
-                                {item?.username || item}
-                              </Typography.Text>
-                            </>
-                          }
-                        />
-                      </List.Item>
-                    );
-                  }}
-                />
-              </>
             )}
             <Typography.Title level={5}>Shared with</Typography.Title>
-            {selectedUsers.length > 0 ? (
+            {shareWithEveryone ? (
+              <Typography.Text>Shared with everyone</Typography.Text>
+            ) : selectedUsers.length > 0 ? (
               <List
                 dataSource={selectedUsers.map((userId) => {
                   const user = allUsers.find(
-                    (u) => u.id.toString() === userId.toString()
+                    (u) => u?.id.toString() === userId.toString()
                   );
                   return {
-                    id: user.id,
-                    email: user.email,
+                    id: user?.id,
+                    email: user?.email,
                   };
                 })}
                 renderItem={(item) => {
@@ -162,11 +162,11 @@ function SharePermission({
                             <Popconfirm
                               key={`${item.id}-delete`}
                               title="Delete the User"
-                              description={`Are you sure to remove ${item.email}?`}
+                              description={`Are you sure to remove ${item?.email}?`}
                               okText="Yes"
                               cancelText="No"
                               icon={<QuestionCircleOutlined />}
-                              onConfirm={(event) => handleDeleteUser(item.id)}
+                              onConfirm={(event) => handleDeleteUser(item?.id)}
                             >
                               <Typography.Text>
                                 <DeleteOutlined className="action-icon-buttons" />
@@ -211,6 +211,7 @@ SharePermission.propTypes = {
   loading: PropTypes.bool,
   allUsers: PropTypes.array,
   onApply: PropTypes.func,
+  isSharableToOrg: PropTypes.bool,
 };
 
 export { SharePermission };
