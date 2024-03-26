@@ -24,11 +24,21 @@ function OnBoard() {
   const [type, setType] = useState(null);
   const homePageUrl = `/${orgName}/tools`;
   const [adaptersList, setAdaptersList] = useState(adapters || []);
+  const updateSessionDetails = useSessionStore(
+    (state) => state.updateSessionDetails
+  );
   useEffect(() => {
+    updateSession(adaptersList);
     if (onboardCompleted(adaptersList)) {
       navigate(homePageUrl);
     }
   }, [adaptersList]);
+
+  const updateSession = (adaptersList) => {
+    const userAndOrgDetails = {};
+    userAndOrgDetails["adapters"] = adaptersList;
+    updateSessionDetails(userAndOrgDetails);
+  };
 
   const steps = [
     {

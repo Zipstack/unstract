@@ -1,20 +1,19 @@
 import { Alert, Button, Col, Dropdown, Image, Row, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 import { UnstractLogo } from "../../../assets/index.js";
 import {
   getBaseUrl,
   onboardCompleted,
 } from "../../../helpers/GetStaticData.js";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
 import { useSessionStore } from "../../../store/session-store.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import "./TopNavBar.css";
-import axios from "axios";
 
 let TrialDaysInfo;
 try {
@@ -32,32 +31,19 @@ function TopNavBar() {
   const baseUrl = getBaseUrl();
   const onBoardUrl = baseUrl + `/${orgName}/onboard`;
   const logout = useLogout();
-  const axiosPrivate = useAxiosPrivate();
   const [showOnboardBanner, setShowOnboardBanner] = useState(false);
   const { setAlertDetails } = useAlertStore();
 
   useEffect(() => {
-    getAdapters();
-  }, []);
+    updateOnBoardBannerStatus();
+  }, [sessionDetails]);
 
-  const getAdapters = () => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        const adapterTypes = [
-          ...new Set(data?.map((obj) => obj.adapter_type.toLowerCase())),
-        ];
-        if (!onboardCompleted(adapterTypes)) {
-          setShowOnboardBanner(true);
-        }
-      })
-      .catch((err) => {})
-      .finally(() => {});
+  const updateOnBoardBannerStatus = () => {
+    if (onboardCompleted(sessionDetails?.adapters)) {
+      setShowOnboardBanner(false);
+    } else {
+      setShowOnboardBanner(true);
+    }
   };
 
   const cascadeOptions = allOrganization.map((org) => {
