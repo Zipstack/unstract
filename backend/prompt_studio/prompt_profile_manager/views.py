@@ -45,15 +45,14 @@ class ProfileManagerView(viewsets.ModelViewSet):
     def create(
         self, request: HttpRequest, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        serializer: ProfileManagerSerializer = self.get_serializer(data=request.data)
+        serializer: ProfileManagerSerializer = self.get_serializer(
+            data=request.data
+        )
         # Overriding default exception behaviour
         # TO DO : Handle model related exceptions.
         serializer.is_valid(raise_exception=True)
         try:
             self.perform_create(serializer)
         except IntegrityError:
-            raise DuplicateData(
-                f"{ProfileManagerErrors.PROFILE_NAME_EXISTS}, \
-                    {ProfileManagerErrors.DUPLICATE_API}"
-            )
+            raise DuplicateData(ProfileManagerErrors.PROFILE_NAME_EXISTS)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
