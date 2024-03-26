@@ -81,16 +81,16 @@ function Header({ setOpenSettings, handleUpdateTool }) {
     setIsExportLoading(true);
     getAllUsers().then((users) => {
       if (users.length < 2) {
-        handleExport([details.created_by], details, false);
+        handleExport([details?.created_by], details, false);
         return;
       } else {
         axiosPrivate(requestOptions)
           .then((res) => {
             setOpenSharePermissionModal(true);
-            setToolDetails({ ...res?.data, created_by: details.created_by });
+            setToolDetails({ ...res?.data, created_by: details?.created_by });
           })
           .catch((err) => {
-            if (err.response.status === 404) {
+            if (err?.response?.status === 404) {
               setToolDetails(details);
               setOpenSharePermissionModal(true);
               setAlertDetails(handleException(err, "Tool not exported yet"));

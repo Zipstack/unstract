@@ -38,14 +38,14 @@ function SharePermission({
       const users = allUsers.filter((user) => {
         if (adapter?.created_by?.id !== undefined) {
           return isSharableToOrg
-            ? !selectedUsers.includes(user.id.toString())
+            ? !selectedUsers.includes(user?.id?.toString())
             : user?.id !== adapter?.created_by?.id?.toString() &&
-                !selectedUsers.includes(user.id.toString());
+                !selectedUsers.includes(user?.id?.toString());
         } else {
           return isSharableToOrg
-            ? !selectedUsers.includes(user.id.toString())
+            ? !selectedUsers.includes(user?.id?.toString())
             : user?.id !== adapter?.created_by?.toString() &&
-                !selectedUsers.includes(user.id.toString());
+                !selectedUsers.includes(user?.id?.toString());
         }
       });
       setFilteredUsers(users);
@@ -54,13 +54,13 @@ function SharePermission({
   }, [permissionEdit, adapter, allUsers, selectedUsers]);
 
   useEffect(() => {
-    if (adapter && adapter.shared_users) {
+    if (adapter && adapter?.shared_users) {
       setSelectedUsers(
         adapter.shared_users.map((user) => {
           if (user?.id !== undefined) {
             return user.id.toString();
           } else {
-            return user.toString();
+            return user?.toString();
           }
         })
       );
@@ -143,11 +143,11 @@ function SharePermission({
               <List
                 dataSource={selectedUsers.map((userId) => {
                   const user = allUsers.find(
-                    (u) => u.id.toString() === userId.toString()
+                    (u) => u?.id.toString() === userId.toString()
                   );
                   return {
-                    id: user.id,
-                    email: user.email,
+                    id: user?.id,
+                    email: user?.email,
                   };
                 })}
                 renderItem={(item) => {
@@ -162,11 +162,11 @@ function SharePermission({
                             <Popconfirm
                               key={`${item.id}-delete`}
                               title="Delete the User"
-                              description={`Are you sure to remove ${item.email}?`}
+                              description={`Are you sure to remove ${item?.email}?`}
                               okText="Yes"
                               cancelText="No"
                               icon={<QuestionCircleOutlined />}
-                              onConfirm={(event) => handleDeleteUser(item.id)}
+                              onConfirm={(event) => handleDeleteUser(item?.id)}
                             >
                               <Typography.Text>
                                 <DeleteOutlined className="action-icon-buttons" />
