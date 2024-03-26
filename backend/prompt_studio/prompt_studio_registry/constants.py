@@ -62,8 +62,6 @@ class JsonSchemaKey:
     ASSERTION_FAILURE_PROMPT = "assertion_failure_prompt"
     RETRIEVAL_STRATEGY = "retrieval-strategy"
     SIMPLE = "simple"
-    VECTOR_KEYWORD = "vector+keyword"
-    SUBQUESTION = "subquestion"
     TYPE = "type"
     NUMBER = "number"
     EMAIL = "email"
@@ -91,6 +89,7 @@ class JsonSchemaKey:
     EMBEDDING_SUFFIX = "embedding_suffix"
     FUNCTION_NAME = "function_name"
     PROMPT_REGISTRY_ID = "prompt_registry_id"
+    NOTES = "NOTES"
 
 
 class SpecKey:

@@ -25,13 +25,13 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
   useEffect(() => {
     if (type === fieldNames.preamble) {
       setTitle("Preamble");
-      setText(details?.preamble || DefaultPrompts.preamble);
+      setText(details?.preamble || "");
       return;
     }
 
     if (type === fieldNames.postamble) {
       setTitle("Postamble");
-      setText(details?.postamble || DefaultPrompts.postamble);
+      setText(details?.postamble || "");
     }
   }, [type]);
 
@@ -94,7 +94,7 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
             onChange={(e) => setText(e.target.value)}
           />
           <Button size="small" type="link" onClick={setDefaultPrompt}>
-            Add default prompt
+            Reset with default prompt
           </Button>
         </div>
         <div className="display-flex-right">

@@ -6,7 +6,7 @@ function LogsLabel() {
   return (
     <div className="pl-5">
       <Row className="logs-label-row">
-        <Col className="logs-label-col" span={3}>
+        <Col className="logs-label-col" span={5}>
           <Typography>Time</Typography>
         </Col>
         <Col className="logs-label-col" span={2}>
@@ -21,7 +21,7 @@ function LogsLabel() {
         <Col className="logs-label-col" span={3}>
           <Typography className="pl-5">Document Name</Typography>
         </Col>
-        <Col className="logs-label-col" span={10}>
+        <Col className="logs-label-col" span={8}>
           <Typography className="pl-5">Message</Typography>
         </Col>
       </Row>

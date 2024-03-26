@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:c580d96285837b8deea3bf3eda6af2cb773cb4acb33bcf6bef0bc136fe7753a6"
+content_hash = "sha256:30a01026f73edba50cb1ea9ec619c5f68a7df7d0f61096ef0414d440d12c39d6"
 
 [[package]]
 name = "aiohttp"
@@ -687,6 +687,16 @@ groups = ["default"]
 files = [
     {file = "filelock-3.13.1-py3-none-any.whl", hash = "sha256:57dbda9b35157b05fb3e58ee91448612eb674172fab98ee235ccb0b5bee19a1c"},
     {file = "filelock-3.13.1.tar.gz", hash = "sha256:521f5f56c50f8426f5e03ad3b281b490a87ef15bc6c526f168290f0c7148d44e"},
+]
+
+[[package]]
+name = "filetype"
+version = "1.2.0"
+summary = "Infer file type and MIME type of any file/buffer. No external dependencies."
+groups = ["default"]
+files = [
+    {file = "filetype-1.2.0-py2.py3-none-any.whl", hash = "sha256:7ce71b6880181241cf7ac8697a2f1eb6a8bd9b429f7ad6d27b8db9ba5f1c2d25"},
+    {file = "filetype-1.2.0.tar.gz", hash = "sha256:66b56cd6474bf41d8c54660347d37afcc3f7d1970648de365c102ef77548aadb"},
 ]
 
 [[package]]
@@ -3524,7 +3534,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.4.2"
+version = "0.7.0"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract Adapters"
 groups = ["default"]
@@ -3534,6 +3544,7 @@ dependencies = [
     "anyscale==0.5.165",
     "asyncpg==0.29.0",
     "fastembed==0.1.3",
+    "filetype~=1.2.0",
     "google-cloud-aiplatform==1.40.0",
     "google-generativeai==0.3.1",
     "huggingface==0.0.1",
@@ -3550,8 +3561,8 @@ dependencies = [
     "weaviate-client==3.25.3",
 ]
 files = [
-    {file = "unstract_adapters-0.4.2-py3-none-any.whl", hash = "sha256:62a8d432fb16d4c63cfc79664a7fa1c7b7c0b733b40046193be10ad790ed8a13"},
-    {file = "unstract_adapters-0.4.2.tar.gz", hash = "sha256:e77cf812b5f1870ca74f2047657fda913469b3b13c851363c19c369066ff8404"},
+    {file = "unstract_adapters-0.7.0-py3-none-any.whl", hash = "sha256:d0da2881b57787508a2821a02b575ed2e0eb1953bf2dc3462455214a3b1eb9a6"},
+    {file = "unstract_adapters-0.7.0.tar.gz", hash = "sha256:bc7b12fe3e5f9d58a1b7bd6a902b3a545116901590c0c8a4e98dd05081bdab1a"},
 ]
 
 [[package]]
@@ -3571,7 +3582,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.15.1"
+version = "0.17.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3582,11 +3593,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.4.1",
+    "unstract-adapters~=0.7.0",
 ]
 files = [
-    {file = "unstract_sdk-0.15.1-py3-none-any.whl", hash = "sha256:b62460bc2054056a47f9ae01b1a2d8567273fba33725f5a8676313bfab7a2af3"},
-    {file = "unstract_sdk-0.15.1.tar.gz", hash = "sha256:9dc67b3f646b99328912ef1b703dbf8ffd710c25f181247e277433cf032ad1aa"},
+    {file = "unstract_sdk-0.17.0-py3-none-any.whl", hash = "sha256:047f4110fa480ce6d5e761d8eef2ff64fcd405e9a068d9280d25568c7b2a9046"},
+    {file = "unstract_sdk-0.17.0.tar.gz", hash = "sha256:ac021e2544bddee321d5d3bcea1c0dea1058c0e951954bb0ab828090ebcfd83e"},
 ]
 
 [[package]]

@@ -2,7 +2,7 @@
   "schemaVersion": "0.0.1",
   "displayName": "File Classifier",
   "functionName": "classify",
-  "toolVersion": "0.0.2",
+  "toolVersion": "0.0.4",
   "description": "Classifies a file into a bin based on its contents",
   "input": {
     "description": "File to be classified"
@@ -39,7 +39,7 @@
         "isEnabled": true,
         "adapterId": "textExtractorId",
         "title": "Text Extraction Adapter",
-        "isRequired": false,
+        "isRequired": true,
         "description": "Choose extractor adapter to extract text"
       }
     ]

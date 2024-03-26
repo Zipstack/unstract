@@ -4,6 +4,7 @@ from typing import Any, Optional
 from account.models import User
 from django.conf import settings
 from django.db import IntegrityError
+from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.models import CustomTool
 from prompt_studio.prompt_studio_core.prompt_studio_helper import (
@@ -180,8 +181,10 @@ class PromptStudioRegistryHelper:
         llm = ""
         embedding_model = ""
 
-        default_llm_profile = tool.get_default_llm_profile()  # type: ignore
+        default_llm_profile = ProfileManager.get_default_llm_profile(tool)
         for prompt in prompts:
+            if prompt.prompt_type == JsonSchemaKey.NOTES:
+                continue
             if not prompt.profile_manager:
                 prompt.profile_manager = default_llm_profile
 
