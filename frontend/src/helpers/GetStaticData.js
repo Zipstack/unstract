@@ -364,13 +364,14 @@ const titleCase = (str) => {
   return words.join(" ");
 };
 
-const getMenuItem = (label, key, icon, children, type) => {
+const getMenuItem = (label, key, icon, children, type, isDisabled) => {
   return {
     key,
     icon,
     children,
     label,
     type,
+    isDisabled,
   };
 };
 

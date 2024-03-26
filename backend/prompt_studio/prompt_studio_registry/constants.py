@@ -89,6 +89,7 @@ class JsonSchemaKey:
     EMBEDDING_SUFFIX = "embedding_suffix"
     FUNCTION_NAME = "function_name"
     PROMPT_REGISTRY_ID = "prompt_registry_id"
+    NOTES = "NOTES"
 
 
 class SpecKey:

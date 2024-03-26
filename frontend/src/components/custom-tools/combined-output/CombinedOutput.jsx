@@ -21,8 +21,12 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 function CombinedOutput({ docId, setFilledFields }) {
   const [combinedOutput, setCombinedOutput] = useState({});
   const [isOutputLoading, setIsOutputLoading] = useState(false);
-  const { details, singlePassExtractMode, isSinglePassExtractLoading } =
-    useCustomToolStore();
+  const {
+    details,
+    defaultLlmProfile,
+    singlePassExtractMode,
+    isSinglePassExtractLoading,
+  } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -47,10 +51,14 @@ function CombinedOutput({ docId, setFilledFields }) {
           }
           output[item?.prompt_key] = "";
 
+          let profileManager = item?.profile_manager;
+          if (singlePassExtractMode) {
+            profileManager = defaultLlmProfile;
+          }
           const outputDetails = data.find(
             (outputValue) =>
               outputValue?.prompt_id === item?.prompt_id &&
-              outputValue?.profile_manager === item?.profile_manager
+              outputValue?.profile_manager === profileManager
           );
 
           if (!outputDetails) {

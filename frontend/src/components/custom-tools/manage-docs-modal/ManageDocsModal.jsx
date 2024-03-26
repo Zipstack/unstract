@@ -129,12 +129,20 @@ function ManageDocsModal({
   }, [defaultLlmProfile, details]);
 
   useEffect(() => {
+    if (!open) {
+      return;
+    }
+
     handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
-  }, [indexDocs, rawLlmProfile]);
+  }, [indexDocs, rawLlmProfile, open]);
 
   useEffect(() => {
+    if (!open) {
+      return;
+    }
+
     handleGetIndexStatus(summarizeLlmProfile, indexTypes.summarize);
-  }, [indexDocs, summarizeLlmProfile]);
+  }, [indexDocs, summarizeLlmProfile, open]);
 
   useEffect(() => {
     // Reverse the array to have the latest logs at the beginning
