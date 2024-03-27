@@ -22,6 +22,7 @@ services:
       - prompt-service
       - x2text-service
     volumes:
+      - prompt_studio_data:/app/prompt-studio-data
       - ./workflow_data:/data
     environment:
       - ENVIRONMENT=development
@@ -37,7 +38,7 @@ services:
     image: unstract/backend:${VERSION}
     container_name: unstract-execution-consumer
     restart: unless-stopped
-    entrypoint: /app/.venv/bin/celery
+    entrypoint: .venv/bin/celery
     command: "-A backend worker --loglevel=info"
     env_file:
       - ../backend/.env
@@ -176,6 +177,7 @@ services:
       - traefik.enable=false
 
 volumes:
+  prompt_studio_data:
   unstract_data:
 
 networks:

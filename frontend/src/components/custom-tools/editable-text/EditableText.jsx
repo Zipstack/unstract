@@ -20,8 +20,12 @@ function EditableText({
   const [triggerHandleChange, setTriggerHandleChange] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const divRef = useRef(null);
-  const { disableLlmOrDocChange, indexDocs, selectedDoc } =
-    useCustomToolStore();
+  const {
+    disableLlmOrDocChange,
+    indexDocs,
+    selectedDoc,
+    isSinglePassExtractLoading,
+  } = useCustomToolStore();
 
   useEffect(() => {
     setText(defaultText);
@@ -85,7 +89,9 @@ function EditableText({
         onMouseOut={() => setIsHovered(false)}
         onBlur={handleBlur}
         onClick={() => setIsEditing(true)}
-        disabled={disableLlmOrDocChange.includes(promptId)}
+        disabled={
+          disableLlmOrDocChange.includes(promptId) || isSinglePassExtractLoading
+        }
       />
     );
   }
@@ -107,7 +113,8 @@ function EditableText({
       onClick={() => setIsEditing(true)}
       disabled={
         disableLlmOrDocChange.includes(promptId) ||
-        indexDocs.includes(selectedDoc?.document_id)
+        indexDocs.includes(selectedDoc?.document_id) ||
+        isSinglePassExtractLoading
       }
     />
   );

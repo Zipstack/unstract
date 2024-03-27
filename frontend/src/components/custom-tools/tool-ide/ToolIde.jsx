@@ -3,18 +3,18 @@ import { Col, Collapse, Modal, Row } from "antd";
 import { useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomSynonymsModal } from "../custom-synonyms-modal/CustomSynonymsModal";
-import { DisplayLogs } from "../display-logs/DisplayLogs";
 import { DocumentManager } from "../document-manager/DocumentManager";
 import { Header } from "../header/Header";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { SettingsModal } from "../settings-modal/SettingsModal";
+import { DisplayLogs } from "../display-logs/DisplayLogs";
+import { LogsLabel } from "../logs-label/LogsLabel";
 
 function ToolIde() {
   const [showLogsModal, setShowLogsModal] = useState(false);
@@ -56,12 +56,10 @@ function ToolIde() {
   const getItems = () => [
     {
       key: "1",
-      label: !activeKey?.length > 0 && "Logs",
+      label: activeKey?.length > 0 ? <LogsLabel /> : "Logs",
       children: (
         <div className="tool-ide-logs">
-          <IslandLayout>
-            <DisplayLogs />
-          </IslandLayout>
+          <DisplayLogs />
         </div>
       ),
       extra: genExtra(),
@@ -170,7 +168,6 @@ function ToolIde() {
     <div className="tool-ide-layout">
       <div>
         <Header
-          setOpenCusSynonymsModal={setOpenCusSynonymsModal}
           handleUpdateTool={handleUpdateTool}
           setOpenSettings={setOpenSettings}
         />
@@ -204,12 +201,12 @@ function ToolIde() {
             />
           </div>
           <Modal
-            title="Logs"
+            title={<LogsLabel />}
             open={showLogsModal}
             onCancel={closeLogsModal}
             className="agency-ide-log-modal"
             footer={null}
-            width={1000}
+            width={1400}
             closeIcon={<FullscreenExitOutlined />}
           >
             <div className="agency-ide-logs">

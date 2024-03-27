@@ -38,6 +38,7 @@ from workflow_manager.workflow.enums import (
 from workflow_manager.workflow.exceptions import (
     InvalidRequest,
     TaskDoesNotExistError,
+    ToolValidationError,
     WorkflowDoesNotExistError,
     WorkflowExecutionNotExist,
 )
@@ -191,6 +192,19 @@ class WorkflowHelper:
         )
 
     @staticmethod
+    def validate_tool_instances_meta(
+        tool_instances: list[ToolInstance],
+    ) -> None:
+        for tool in tool_instances:
+            valid, message = ToolInstanceHelper.validate_tool_settings(
+                user=tool.workflow.created_by,
+                tool_uid=tool.tool_id,
+                tool_meta=tool.metadata,
+            )
+            if not valid:
+                raise ToolValidationError(message)
+
+    @staticmethod
     def run_workflow(
         workflow: Workflow,
         hash_values_of_files: dict[str, str] = {},
@@ -201,10 +215,14 @@ class WorkflowHelper:
         workflow_execution: Optional[WorkflowExecution] = None,
         execution_mode: Optional[tuple[str, str]] = None,
     ) -> ExecutionResponse:
-        tool_instances: list[
-            ToolInstance
-        ] = ToolInstanceHelper.get_tool_instances_by_workflow(
-            workflow.id, ToolInstanceKey.STEP
+        tool_instances: list[ToolInstance] = (
+            ToolInstanceHelper.get_tool_instances_by_workflow(
+                workflow.id, ToolInstanceKey.STEP
+            )
+        )
+
+        WorkflowHelper.validate_tool_instances_meta(
+            tool_instances=tool_instances
         )
         execution_mode = execution_mode or WorkflowExecution.Mode.INSTANT
         execution_service = WorkflowHelper.build_workflow_execution_service(
@@ -430,9 +448,15 @@ class WorkflowHelper:
         hash_values_of_files: dict[str, str] = {},
     ) -> ExecutionResponse:
         # For scheduler workflow execution
+        logger.info(f"Workflow pipeline ID: {pipeline_id}")
         if pipeline_id:
-            return WorkflowHelper.run_workflow(workflow=workflow)
+            return WorkflowHelper.run_workflow(
+                workflow=workflow,
+                hash_values_of_files=hash_values_of_files,
+                pipeline_id=pipeline_id,
+            )
 
+        # TODO: Review required here.
         if log_required is not None and not log_required:
             # Without log and log Id
             if pipeline_id:
@@ -480,7 +504,7 @@ class WorkflowHelper:
                 workflow_execution.workflow_id,
                 workflow_execution.id,
                 workflow_execution.status,
-                log_id=workflow_execution.project_settings_id,
+                log_id=workflow_execution.execution_log_id,
                 error=workflow_execution.error_message,
                 mode=workflow_execution.execution_mode,
             )
@@ -545,7 +569,7 @@ class WorkflowHelper:
                 workflow.id,
                 execution_id,
                 workflow_execution.status,
-                log_id=workflow_execution.project_settings_id,
+                log_id=workflow_execution.execution_log_id,
                 error=workflow_execution.error_message,
                 mode=workflow_execution.execution_mode,
             )
@@ -569,7 +593,7 @@ class WorkflowHelper:
             workflow_execution.workflow_id,
             workflow_execution.id,
             workflow_execution.status,
-            log_id=workflow_execution.project_settings_id,
+            log_id=workflow_execution.execution_log_id,
             error=workflow_execution.error_message,
             mode=workflow_execution.execution_mode,
         )

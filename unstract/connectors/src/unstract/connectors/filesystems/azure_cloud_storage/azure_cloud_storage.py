@@ -36,10 +36,7 @@ class AzureCloudStorageFS(UnstractFileSystem):
 
     @staticmethod
     def get_icon() -> str:
-        return (
-            "https://storage.googleapis.com/"
-            "pandora-static/connector-icons/azure_blob_storage.png"
-        )
+        return "/icons/connector-icons/azure_blob_storage.png"
 
     @staticmethod
     def get_json_schema() -> str:

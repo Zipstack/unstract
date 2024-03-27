@@ -14,7 +14,8 @@ from unstract.workflow_execution.exceptions import (
     ToolExecutionException,
     ToolNotFoundException,
 )
-from unstract.workflow_execution.pubsub_helper import LogHelper
+
+from unstract.core.pubsub_helper import LogPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +79,9 @@ class ToolsUtils:
             dict[str, dict[str, Any]]: tools
         """
         tool_uids = [tool_instance.tool_id for tool_instance in tool_instances]
-        tools: dict[
-            str, dict[str, Any]
-        ] = self.tool_registry.get_available_tools(tool_uids)
+        tools: dict[str, dict[str, Any]] = (
+            self.tool_registry.get_available_tools(tool_uids)
+        )
         if not (
             all(tool_uid in tools for tool_uid in tool_uids)
             and len(tool_uids) == len(tools)
@@ -108,9 +109,9 @@ class ToolsUtils:
 
             tool_uid = tool_instance.tool_id
 
-            LogHelper.publish(
+            LogPublisher.publish(
                 self.messaging_channel,
-                LogHelper.log(
+                LogPublisher.log_workflow(
                     "BUILD",
                     f"------ Building step {tool_instance.step}/{tool_uid}",
                 ),
@@ -121,9 +122,11 @@ class ToolsUtils:
             image_name = tool_instance.image_name
             image_tag = tool_instance.image_tag
 
-            LogHelper.publish(
+            LogPublisher.publish(
                 self.messaging_channel,
-                LogHelper.log("BUILD", f"Building the tool {tool_uid} now..."),
+                LogPublisher.log_workflow(
+                    "BUILD", f"Building the tool {tool_uid} now..."
+                ),
             )
             tool_sandbox = ToolSandbox(
                 organization_id=self.organization_id,

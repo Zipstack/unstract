@@ -25,9 +25,13 @@ class TestToolRegistry(unittest.TestCase):
             "tools": [self.TEST_IMAGE_URL],
         }
         directory = os.path.dirname(os.path.abspath(__file__))
-        registry_file_path = os.path.join(directory, TestToolRegistry.REGISTRY_FILE)
+        registry_file_path = os.path.join(
+            directory, TestToolRegistry.REGISTRY_FILE
+        )
         with open(registry_file_path, "w") as yaml_file:
-            yaml.dump(test_registry_content, yaml_file, default_flow_style=False)
+            yaml.dump(
+                test_registry_content, yaml_file, default_flow_style=False
+            )
 
         # Apply the patch to 'run_tool_and_get_logs' before each test method
         self.mock_run_tool_and_get_logs = patch.object(
@@ -87,7 +91,9 @@ class TestToolRegistry(unittest.TestCase):
 
     def test_get_tool_properties_by_tool_id(self) -> None:
         tool_id = "document_indexer"
-        properties = self.registry.get_tool_properties_by_tool_id(tool_id=tool_id)
+        properties = self.registry.get_tool_properties_by_tool_id(
+            tool_id=tool_id
+        )
         self.assertIsNotNone(properties)
         self.assertEqual(properties.get("function_name"), tool_id)
 

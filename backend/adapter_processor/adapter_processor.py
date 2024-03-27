@@ -156,10 +156,10 @@ class AdapterProcessor:
                     )
                 )
 
-            if default_triad.get(AdapterKeys.X2TEXT, None):
+            if default_triad.get(AdapterKeys.X2TEXT_DEFAULT, None):
                 user_default_adapter.default_x2text_adapter = (
                     AdapterInstance.objects.get(
-                        pk=default_triad[AdapterKeys.X2TEXT]
+                        pk=default_triad[AdapterKeys.X2TEXT_DEFAULT]
                     )
                 )
 
@@ -272,7 +272,10 @@ class AdapterProcessor:
             return adapters
         except ObjectDoesNotExist as e:
             logger.error(f"No default adapters found: {e}")
-            raise InternalServiceError("No default adapters found")
+            raise InternalServiceError(
+                "No default adapters found, "
+                "configure them through Platform Settings"
+            )
         except Exception as e:
             logger.error(f"Error occurred while fetching default adapters: {e}")
             raise InternalServiceError("Error fetching default adapters")

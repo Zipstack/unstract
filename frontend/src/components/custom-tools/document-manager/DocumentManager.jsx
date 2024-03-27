@@ -53,7 +53,9 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [page, setPage] = useState(1);
   const [activeKey, setActiveKey] = useState("1");
   const [fileUrl, setFileUrl] = useState("");
+  const [fileErrMsg, setFileErrMsg] = useState("");
   const [extractTxt, setExtractTxt] = useState("");
+  const [extractErrMsg, setExtractErrMsg] = useState("");
   const [isDocLoading, setIsDocLoading] = useState(false);
   const [isExtractLoading, setIsExtractLoading] = useState(false);
   const [currDocIndexStatus, setCurrDocIndexStatus] = useState(
@@ -65,7 +67,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     disableLlmOrDocChange,
     details,
     indexDocs,
-    isSinglePassExtract,
+    isSinglePassExtractLoading,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
@@ -111,10 +113,12 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const handleFetchContent = (viewType) => {
     if (viewType === viewTypes.original) {
       setFileUrl("");
+      setFileErrMsg("");
     }
 
     if (viewType === viewTypes.extract) {
       setExtractTxt("");
+      setExtractErrMsg("");
     }
 
     if (!selectedDoc?.document_id) {
@@ -141,7 +145,11 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           setExtractTxt(data);
         }
       })
-      .catch((err) => {})
+      .catch((err) => {
+        if (err?.response?.status === 404) {
+          setErrorMessage(viewType);
+        }
+      })
       .finally(() => {
         handleLoadingStateUpdate(viewType, false);
       });
@@ -159,6 +167,18 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
   const handleActiveKeyChange = (key) => {
     setActiveKey(key);
+  };
+
+  const setErrorMessage = (viewType) => {
+    if (viewType === viewTypes.original) {
+      setFileErrMsg("Document not found.");
+    }
+
+    if (viewType === viewTypes.extract) {
+      setExtractErrMsg(
+        "Raw content is not available. Please index or re-index to generate it."
+      );
+    }
   };
 
   useEffect(() => {
@@ -203,11 +223,13 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           />
         </div>
         <Space>
-          <div>
+          <div className="doc-main-title-div">
             {selectedDoc ? (
-              <Typography.Text className="doc-main-title" ellipsis>
-                {selectedDoc?.document_name}
-              </Typography.Text>
+              <Tooltip title={selectedDoc?.document_name}>
+                <Typography.Text className="doc-main-title" ellipsis>
+                  {selectedDoc?.document_name}
+                </Typography.Text>
+              </Tooltip>
             ) : null}
           </div>
           <div>
@@ -227,8 +249,8 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
               disabled={
                 !selectedDoc ||
                 disableLlmOrDocChange?.length > 0 ||
-                page <= 1 ||
-                isSinglePassExtract
+                isSinglePassExtractLoading ||
+                page <= 1
               }
               onClick={handlePageLeft}
             >
@@ -240,8 +262,8 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
               disabled={
                 !selectedDoc ||
                 disableLlmOrDocChange?.length > 0 ||
-                page >= listOfDocs?.length ||
-                isSinglePassExtract
+                isSinglePassExtractLoading ||
+                page >= listOfDocs?.length
               }
               onClick={handlePageRight}
             >
@@ -256,6 +278,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           isLoading={isDocLoading}
           isContentAvailable={fileUrl?.length > 0}
           setOpenManageDocsModal={setOpenManageDocsModal}
+          errMsg={fileErrMsg}
         >
           <PdfViewer fileUrl={fileUrl} />
         </DocumentViewer>
@@ -266,6 +289,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           isLoading={isExtractLoading}
           isContentAvailable={extractTxt?.length > 0}
           setOpenManageDocsModal={setOpenManageDocsModal}
+          errMsg={extractErrMsg}
         >
           <TextViewerPre text={extractTxt} />
         </DocumentViewer>

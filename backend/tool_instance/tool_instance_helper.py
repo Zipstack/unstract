@@ -1,16 +1,20 @@
 import logging
 import os
 import uuid
+from json import JSONDecodeError
 from typing import Any, Optional
 
 from account.models import User
 from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.models import AdapterInstance
 from connector.connector_instance_helper import ConnectorInstanceHelper
+from django.core.exceptions import PermissionDenied
+from jsonschema.exceptions import UnknownType, ValidationError
 from tool_instance.constants import JsonSchemaKey
 from tool_instance.models import ToolInstance
 from tool_instance.tool_processor import ToolProcessor
 from unstract.adapters.enums import AdapterTypes
+from unstract.sdk.tool.validator import DefaultsGeneratingValidator
 from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_utils import ToolUtils
@@ -179,6 +183,7 @@ class ToolInstanceHelper:
                 adapter_type=AdapterTypes.OCR,
             )
 
+    # TODO: Review if adding this metadata is still required
     @staticmethod
     def get_altered_metadata(
         tool_instance: ToolInstance,
@@ -327,3 +332,103 @@ class ToolInstanceHelper:
             tool_instance = ToolInstance.objects.get(pk=tool_instance_id)
             tool_instance.step = step + 1
             tool_instance.save()
+
+    @staticmethod
+    def validate_tool_settings(
+        user: User, tool_uid: str, tool_meta: dict[str, Any]
+    ) -> tuple[bool, str]:
+        """Function to validate Tools settings."""
+        ToolInstanceHelper.validate_adapter_permissions(
+            user=user, tool_uid=tool_uid, tool_meta=tool_meta
+        )
+
+        tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
+        tool_name: str = (
+            tool.properties.display_name
+            if tool.properties.display_name
+            else tool_uid
+        )
+        schema_json: dict[str, Any] = ToolProcessor.get_json_schema_for_tool(
+            tool_uid=tool_uid, user=user
+        )
+        try:
+            DefaultsGeneratingValidator(schema_json).validate(tool_meta)
+            return True, ""
+        except JSONDecodeError as e:
+            return False, str(e)
+        except ValidationError as e:
+            logger.error(e)
+            return False, str(tool_name + ": " + e.schema["description"])
+        except UnknownType as e:
+            return False, str(e)
+
+    @staticmethod
+    def validate_adapter_permissions(
+        user: User, tool_uid: str, tool_meta: dict[str, Any]
+    ) -> None:
+        tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
+        adapter_ids: set[str] = set()
+
+        for llm in tool.properties.adapter.language_models:
+            if llm.is_enabled and llm.adapter_id:
+                adapter_id = tool_meta[llm.adapter_id]
+            elif llm.is_enabled:
+                adapter_id = tool_meta[
+                    AdapterPropertyKey.DEFAULT_LLM_ADAPTER_ID
+                ]
+
+            adapter_ids.add(adapter_id)
+        for vdb in tool.properties.adapter.vector_stores:
+            if vdb.is_enabled and vdb.adapter_id:
+                adapter_id = tool_meta[vdb.adapter_id]
+            elif vdb.is_enabled:
+                adapter_id = tool_meta[
+                    AdapterPropertyKey.DEFAULT_VECTOR_DB_ADAPTER_ID
+                ]
+
+            adapter_ids.add(adapter_id)
+        for embedding in tool.properties.adapter.embedding_services:
+            if embedding.is_enabled and embedding.adapter_id:
+                adapter_id = tool_meta[embedding.adapter_id]
+            elif embedding.is_enabled:
+                adapter_id = tool_meta[
+                    AdapterPropertyKey.DEFAULT_EMBEDDING_ADAPTER_ID
+                ]
+
+            adapter_ids.add(adapter_id)
+        for text_extractor in tool.properties.adapter.text_extractors:
+            if text_extractor.is_enabled and text_extractor.adapter_id:
+                adapter_id = tool_meta[text_extractor.adapter_id]
+            elif text_extractor.is_enabled:
+                adapter_id = tool_meta[
+                    AdapterPropertyKey.DEFAULT_X2TEXT_ADAPTER_ID
+                ]
+
+            adapter_ids.add(adapter_id)
+
+        ToolInstanceHelper.validate_adapter_access(
+            user=user, adapter_ids=adapter_ids
+        )
+
+    @staticmethod
+    def validate_adapter_access(
+        user: User,
+        adapter_ids: set[str],
+    ) -> None:
+        adapter_instances = AdapterInstance.objects.filter(
+            id__in=adapter_ids
+        ).all()
+
+        for adapter_instance in adapter_instances:
+            if not (
+                adapter_instance.created_by == user
+                or adapter_instance.shared_users.filter(pk=user.pk).exists()
+            ):
+                logger.error(
+                    "User %s doesn't have access to adapter %s",
+                    user.user_id,
+                    adapter_instance.id,
+                )
+                raise PermissionDenied(
+                    "You don't have permission to perform this action."
+                )

@@ -3,6 +3,7 @@ from typing import Any
 
 import pymysql
 from pymysql.connections import Connection
+
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 
@@ -30,7 +31,7 @@ class MySQL(UnstractDB):
 
     @staticmethod
     def get_icon() -> str:
-        return "https://storage.googleapis.com/pandora-static/connector-icons/MySql.png"
+        return "/icons/connector-icons/MySql.png"
 
     @staticmethod
     def get_json_schema() -> str:

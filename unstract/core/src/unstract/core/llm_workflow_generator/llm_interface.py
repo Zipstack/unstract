@@ -6,7 +6,7 @@ import time
 import uuid
 
 import redis
-from llama_index.embeddings.azure_openai import AzureOpenAI
+from llama_index.llms import AzureOpenAI
 from unstract.tool_registry.dto import Properties, Tool
 
 from unstract.core.llm_helper.config import AzureOpenAIConfig

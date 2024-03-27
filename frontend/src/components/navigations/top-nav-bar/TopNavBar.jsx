@@ -12,6 +12,10 @@ import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
 import { useSessionStore } from "../../../store/session-store.js";
 import "./TopNavBar.css";
+import { useAlertStore } from "../../../store/alert-store.js";
+import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
+import axios from "axios";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 let TrialDaysInfo;
 try {
@@ -24,11 +28,14 @@ try {
 function TopNavBar() {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { orgName, remainingTrialDays } = sessionDetails;
+  const { orgName, remainingTrialDays, allOrganization, orgId } =
+    sessionDetails;
   const baseUrl = getBaseUrl();
   const onBoardUrl = baseUrl + `/${orgName}/onboard`;
   const logout = useLogout();
   const axiosPrivate = useAxiosPrivate();
+  const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
   const [showOnboardBanner, setShowOnboardBanner] = useState(false);
 
   useEffect(() => {
@@ -45,14 +52,58 @@ function TopNavBar() {
       .then((res) => {
         const data = res?.data;
         const adapterTypes = [
-          ...new Set(data?.map((obj) => obj.adapter_type.toLowerCase())),
+          ...new Set(data?.map((obj) => obj?.adapter_type.toLowerCase())),
         ];
         if (!onboardCompleted(adapterTypes)) {
           setShowOnboardBanner(true);
         }
       })
-      .catch((err) => {})
-      .finally(() => {});
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
+  };
+
+  const cascadeOptions = allOrganization.map((org) => {
+    return {
+      key: org?.id,
+      label:
+        org?.id === sessionDetails?.orgId ? (
+          <div
+            onClick={() =>
+              setAlertDetails({
+                type: "error",
+                content: `You are already in ${org?.display_name}`,
+              })
+            }
+          >
+            {org?.display_name}
+          </div>
+        ) : (
+          <ConfirmModal
+            handleConfirm={() => handleContinue(org?.id)}
+            content={`Want to switch to ${org?.display_name} `}
+          >
+            <div>{org?.display_name}</div>
+          </ConfirmModal>
+        ),
+    };
+  });
+
+  const handleContinue = async (selectedOrg) => {
+    const requestOptions = {
+      method: "POST",
+      url: `/api/v1/organization/${selectedOrg}/set`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+    };
+    await axios(requestOptions)
+      .then(() => {
+        window.location.reload();
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
   };
 
   // Dropdown items
@@ -76,15 +127,32 @@ function TopNavBar() {
         </Button>
       ),
     },
+    allOrganization.length > 1 && {
+      key: "3",
+      label: (
+        <Dropdown
+          placeholder="Switch Organization"
+          menu={{
+            items: cascadeOptions,
+            selectable: true,
+            selectedKeys: [orgId],
+            className: "switch-org-menu",
+          }}
+          placement="left"
+        >
+          <div>Switch Org</div>
+        </Dropdown>
+      ),
+    },
   ];
 
   // Function to get the initials from the user name
   const getInitials = (name) => {
-    const names = name.split(" ");
+    const names = name?.split(" ");
     const initials = names
-      .map((n) => n.charAt(0))
-      .join("")
-      .toUpperCase();
+      ?.map((n) => n.charAt(0))
+      ?.join("")
+      ?.toUpperCase();
     return initials;
   };
 

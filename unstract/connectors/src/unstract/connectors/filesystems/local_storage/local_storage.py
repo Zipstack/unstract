@@ -3,6 +3,7 @@ import os
 from typing import Any, Optional
 
 from fsspec.implementations.local import LocalFileSystem
+
 from unstract.connectors.filesystems.unstract_file_system import (
     UnstractFileSystem,
 )
@@ -31,8 +32,7 @@ class LocalStorageFS(UnstractFileSystem):
     @staticmethod
     def get_icon() -> str:
         # TO DO: Add an icon for local storage
-        return "https://storage.googleapis.com/\
-            pandora-static/connector-icons/S3.png"
+        return "/icons/connector-icons/S3.png"
 
     @staticmethod
     def get_json_schema() -> str:

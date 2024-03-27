@@ -37,6 +37,7 @@ class InvalidRequest(APIException):
     status_code = 400
     default_detail = "Invalid Request"
 
+
 class MissingEnvException(APIException):
     status_code = 500
     default_detail = "At least one active platform key should be available."
@@ -69,3 +70,8 @@ class WorkflowExecutionBadRequestException(APIException):
         if code is not None:
             self.code = code
         super().__init__(detail, code)
+
+
+class ToolValidationError(APIException):
+    status_code = 400
+    default_detail = "Tool validation error"

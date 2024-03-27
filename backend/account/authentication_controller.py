@@ -7,6 +7,7 @@ from account.authentication_plugin_registry import AuthenticationPluginRegistry
 from account.authentication_service import AuthenticationService
 from account.constants import (
     AuthorizationErrorCode,
+    Common,
     Cookie,
     ErrorMessage,
     OrganizationMemberModel,
@@ -47,6 +48,7 @@ from rest_framework.response import Response
 from tenant_account.models import OrganizationMember as OrganizationMember
 from tenant_account.organization_member_service import OrganizationMemberService
 from utils.cache_service import CacheService
+from utils.local_context import StateStore
 
 Logger = logging.getLogger(__name__)
 
@@ -119,10 +121,10 @@ class AuthenticationController:
             return redirect(f"{settings.ERROR_URL}")
 
         if member.organization_id and member.role and len(member.role) > 0:
-            organization: Optional[
-                Organization
-            ] = OrganizationService.get_organization_by_org_id(
-                member.organization_id
+            organization: Optional[Organization] = (
+                OrganizationService.get_organization_by_org_id(
+                    member.organization_id
+                )
             )
             if organization:
                 try:
@@ -190,9 +192,9 @@ class AuthenticationController:
         new_organization = False
         organization_ids = CacheService.get_user_organizations(user.user_id)
         if not organization_ids:
-            z_organizations: list[
-                OrganizationData
-            ] = self.auth_service.get_organizations_by_user_id(user.user_id)
+            z_organizations: list[OrganizationData] = (
+                self.auth_service.get_organizations_by_user_id(user.user_id)
+            )
             organization_ids = {org.id for org in z_organizations}
         if organization_id and organization_id in organization_ids:
             organization = OrganizationService.get_organization_by_org_id(
@@ -234,12 +236,15 @@ class AuthenticationController:
                 data={
                     "user": serialized_user_info,
                     "organization": organization_info,
+                    f"{Common.LOG_EVENTS_ID}": StateStore.get(
+                        Common.LOG_EVENTS_ID
+                    ),
                 },
             )
             # Update user session data in redis
-            user_session_info: dict[
-                str, Any
-            ] = CacheService.get_user_session_info(user.email)
+            user_session_info: dict[str, Any] = (
+                CacheService.get_user_session_info(user.email)
+            )
             user_session_info["current_org"] = organization_id
             CacheService.set_user_session_info(user_session_info)
             response.set_cookie(Cookie.ORG_ID, organization_id)
@@ -355,22 +360,15 @@ class AuthenticationController:
                 )
                 user_response = {}
                 user_response["email"] = email
-                message: str = "User invitation successful"
-                if user:
-                    # Already in organization
-                    status = False
-                    message = "User is already part of current organization."
-                else:
-                    try:
-                        self.auth_service.check_user_organization_association(
-                            user_email=email
-                        )
-                        status = self.auth_service.invite_user(
-                            admin_user, org_id, email, role=role
-                        )
-                    except Exception as exception:
-                        status = False
-                        message = exception.message  # type: ignore
+                status = False
+                message = "User is already part of current organization"
+                # Check if user is already part of current organization
+                if not user:
+                    status = self.auth_service.invite_user(
+                        admin_user, org_id, email, role=role
+                    )
+                    message = "User invitation successful."
+
                 response.append(
                     UserInviteResponse(
                         email=email,
@@ -404,6 +402,9 @@ class AuthenticationController:
             is_removed = False
         if is_removed:
             OrganizationMember.objects.filter(user__in=ids_list).delete()
+            # removing adapter relations on user removal
+            for user_id in ids_list:
+                User.objects.get(pk=user_id).shared_adapters.clear()
         return is_removed
 
     def add_user_role(

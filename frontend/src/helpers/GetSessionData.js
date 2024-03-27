@@ -19,7 +19,9 @@ function getSessionData(sessionData) {
     isLoggedIn: true,
     isAdmin: sessionData.isAdmin,
     adapters: sessionData?.adapters,
+    logEventsId: sessionData?.logEventsId,
     remainingTrialDays: sessionData?.remainingTrialDays,
+    allOrganization: sessionData?.allOrganization,
   };
 }
 

@@ -1,6 +1,4 @@
 # Add your dependencies here
-filetype==1.2.0
-unstructured[all-docs]==0.10.10
 
 # Required for all unstract tools
-unstract-sdk~=0.10.0
+unstract-sdk~=0.17.0

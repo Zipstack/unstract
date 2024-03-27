@@ -6,25 +6,32 @@ import "./DataSourceCard.css";
 function DataSourceCard({ srcDetails, setSelectedSourceId }) {
   return (
     <Card
-      hoverable
+      hoverable={!srcDetails?.isDisabled}
       size="small"
       type="inner"
       bordered={true}
-      className="ds-card"
-      cover={
+      className={`ds-card ${srcDetails?.isDisabled ? "disabled" : ""}`}
+      onClick={() =>
+        !srcDetails?.isDisabled && setSelectedSourceId(srcDetails?.id)
+      }
+    >
+      <div className="cover-container">
+        {srcDetails?.isDisabled && (
+          <div className="disabled-overlay">
+            <Typography.Text strong>Coming Soon</Typography.Text>
+          </div>
+        )}
         <div className="cover-img">
           <Image
             src={srcDetails?.icon}
-            width="100%"
+            width="80%"
             height="auto"
             preview={false}
           />
         </div>
-      }
-      onClick={() => setSelectedSourceId(srcDetails?.id)}
-    >
-      <div className="ds-card-name display-flex-center">
-        <Typography>{srcDetails?.name}</Typography>
+        <div className="ds-card-name display-flex-center">
+          <Typography>{srcDetails?.name}</Typography>
+        </div>
       </div>
     </Card>
   );

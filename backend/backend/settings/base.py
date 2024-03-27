@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote_plus
 
 from dotenv import find_dotenv, load_dotenv
 
@@ -140,6 +141,7 @@ WORKFLOW_DATA_DIR = os.environ.get("WORKFLOW_DATA_DIR")
 API_STORAGE_DIR = os.environ.get("API_STORAGE_DIR")
 CACHE_TTL_SEC = os.environ.get("CACHE_TTL_SEC", 10800)
 
+DEFAULT_AUTH_USERNAME = os.environ.get("DEFAULT_AUTH_USERNAME", "unstract")
 DEFAULT_AUTH_PASSWORD = os.environ.get("DEFAULT_AUTH_PASSWORD", "unstract")
 
 # Quick-start development settings - unsuitable for production
@@ -183,7 +185,6 @@ SHARED_APPS = (
     "docs",
     # Plugins
     "plugins",
-    "log_events",
     "feature_flag",
     "django_celery_beat",
 )
@@ -205,7 +206,6 @@ TENANT_APPS = (
     "workflow_manager.workflow",
     "tool_instance",
     "pipeline",
-    "cron_expression_generator",
     "platform_settings",
     "api",
     "prompt_studio.prompt_profile_manager",
@@ -316,7 +316,8 @@ CELERY_BROKER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
 # CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/1"
 # Postgres as result backend
 CELERY_RESULT_BACKEND = (
-    f"db+postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    f"db+postgresql://{DB_USER}:{quote_plus(DB_PASSWORD)}"
+    f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"

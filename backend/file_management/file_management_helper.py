@@ -126,9 +126,9 @@ class FileManagerHelper:
             response = StreamingHttpResponse(
                 file, content_type=file_content_type
             )
-            response[
-                "Content-Disposition"
-            ] = f"attachment; filename={base_name}"
+            response["Content-Disposition"] = (
+                f"attachment; filename={base_name}"
+            )
             return response
         except ApiRequestError as exception:
             FileManagerHelper.logger.error(
@@ -194,8 +194,7 @@ class FileManagerHelper:
 
         elif file_content_type == "text/plain":
             with fs.open(file_path, "r") as file:
-                FileManagerHelper.logger.info(
-                    f"Reading text file: {file_path}")
+                FileManagerHelper.logger.info(f"Reading text file: {file_path}")
                 text_content = file.read()
                 return text_content
         else:

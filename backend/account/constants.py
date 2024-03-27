@@ -17,6 +17,7 @@ class Common:
     USER_IDS = "user_ids"
     USER_ROLE = "role"
     MAX_EMAIL_IN_REQUEST = 10
+    LOG_EVENTS_ID = "log_events_id"
 
 
 class UserModel:
@@ -44,7 +45,7 @@ class ErrorMessage:
 class DefaultOrg:
     ORGANIZATION_NAME = "mock_org"
     MOCK_ORG = "mock_org"
-    MOCK_USER = "unstract"
+    MOCK_USER = settings.DEFAULT_AUTH_USERNAME
     MOCK_USER_ID = "mock_user_id"
     MOCK_USER_EMAIL = "email@mock.com"
     MOCK_USER_PASSWORD = settings.DEFAULT_AUTH_PASSWORD

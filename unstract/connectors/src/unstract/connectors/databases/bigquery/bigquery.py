@@ -4,6 +4,7 @@ from typing import Any
 
 from google.cloud import bigquery
 from google.cloud.bigquery import Client
+
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
 
@@ -29,10 +30,7 @@ class BigQuery(UnstractDB):
 
     @staticmethod
     def get_icon() -> str:
-        return (
-            "https://storage.googleapis.com/pandora-static"
-            "/connector-icons/Bigquery.png"
-        )
+        return "/icons/connector-icons/Bigquery.png"
 
     @staticmethod
     def get_json_schema() -> str:

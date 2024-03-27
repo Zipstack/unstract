@@ -3,6 +3,7 @@ import axios from "axios";
 import { getSessionData } from "../helpers/GetSessionData";
 import { useSessionStore } from "../store/session-store";
 import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
+import { useNavigate } from "react-router-dom";
 
 let getTrialDetails;
 try {
@@ -14,7 +15,14 @@ try {
 function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
   const handleException = useExceptionHandler();
-
+  const navigate = useNavigate();
+  const signedInOrgId =
+    (document.cookie &&
+      document.cookie
+        .split("; ")
+        .find((row) => row.startsWith("org_id="))
+        ?.split("=")[1]) ||
+    null;
   return async () => {
     try {
       // API to get the list of organizations
@@ -27,8 +35,12 @@ function useSessionValid() {
       if (!orgs?.length) {
         throw Error("Organizations not available.");
       }
+      if (orgs?.length > 1 && !signedInOrgId?.length) {
+        navigate("/setOrg", { state: orgs });
+        return;
+      }
       let userAndOrgDetails = null;
-      const orgId = orgs[0]?.id;
+      const orgId = signedInOrgId || orgs[0].id;
       const csrfToken = ("; " + document.cookie)
         .split(`; csrftoken=`)
         .pop()
@@ -40,11 +52,18 @@ function useSessionValid() {
       requestOptions["headers"] = {
         "X-CSRFToken": csrfToken,
       };
-      const setOrgRes = await axios(requestOptions);
+      const setOrgRes = await axios(requestOptions).catch((error) => {
+        if (error?.response && error?.response?.status === 403) {
+          // Remove cookie from the browser
+          document.cookie = "org_id=;";
+          navigate("/", { state: null });
+        }
+      });
       userAndOrgDetails = setOrgRes?.data?.user;
       userAndOrgDetails["orgName"] = setOrgRes?.data?.organization?.name;
       userAndOrgDetails["orgId"] = orgId;
       userAndOrgDetails["csrfToken"] = csrfToken;
+      userAndOrgDetails["logEventsId"] = setOrgRes?.data?.log_events_id;
 
       requestOptions["method"] = "GET";
 
@@ -80,8 +99,10 @@ function useSessionValid() {
           orgId,
           csrfToken
         );
-        userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
+        if (remainingTrialDays)
+          userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
       }
+      userAndOrgDetails["allOrganization"] = orgs;
 
       // Set the session details
       setSessionDetails(getSessionData(userAndOrgDetails));
