@@ -15,9 +15,7 @@ class Exceptions:
 
 class StateStore:
 
-    mode = os.environ.get(
-        "CONCURRENCY_MODE", ConcurrencyMode.THREAD
-    )
+    mode = os.environ.get("CONCURRENCY_MODE", ConcurrencyMode.THREAD)
     # Thread-safe storage.
     thread_local = threading.local()
 

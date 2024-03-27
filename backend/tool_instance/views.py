@@ -55,7 +55,8 @@ def get_tool_list(request: Request) -> Response:
         try:
             logger.info("Fetching tools from the tool registry...")
             return Response(
-                data=ToolProcessor.get_tool_list(request.user), status=status.HTTP_200_OK
+                data=ToolProcessor.get_tool_list(request.user),
+                status=status.HTTP_200_OK,
             )
         except Exception as exc:
             logger.error(f"Failed to fetch tools: {exc}")
@@ -121,10 +122,10 @@ class ToolInstanceViewSet(viewsets.ModelViewSet):
             instance (ToolInstance): Instance being deleted.
         """
         lookup = {"step__gt": instance.step}
-        next_tool_instances: list[
-            ToolInstance
-        ] = ToolInstanceHelper.get_tool_instances_by_workflow(
-            instance.workflow.id, TIKey.STEP, lookup=lookup
+        next_tool_instances: list[ToolInstance] = (
+            ToolInstanceHelper.get_tool_instances_by_workflow(
+                instance.workflow.id, TIKey.STEP, lookup=lookup
+            )
         )
         super().perform_destroy(instance)
 

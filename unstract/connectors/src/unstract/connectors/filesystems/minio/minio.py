@@ -48,9 +48,7 @@ class MinioFS(UnstractFileSystem):
 
     @staticmethod
     def get_icon() -> str:
-        return (
-            "/icons/connector-icons/S3.png"
-        )
+        return "/icons/connector-icons/S3.png"
 
     @staticmethod
     def get_json_schema() -> str:

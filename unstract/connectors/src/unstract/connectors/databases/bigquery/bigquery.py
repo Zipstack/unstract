@@ -30,9 +30,7 @@ class BigQuery(UnstractDB):
 
     @staticmethod
     def get_icon() -> str:
-        return (
-            "/icons/connector-icons/Bigquery.png"
-        )
+        return "/icons/connector-icons/Bigquery.png"
 
     @staticmethod
     def get_json_schema() -> str:

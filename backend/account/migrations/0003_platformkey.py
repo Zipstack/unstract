@@ -28,7 +28,9 @@ class Migration(migrations.Migration):
                 ("key", models.UUIDField(default=uuid.uuid4)),
                 (
                     "key_name",
-                    models.CharField(blank=True, max_length=64, null=True, unique=True),
+                    models.CharField(
+                        blank=True, max_length=64, null=True, unique=True
+                    ),
                 ),
                 ("is_active", models.BooleanField(default=False)),
                 (

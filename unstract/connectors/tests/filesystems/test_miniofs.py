@@ -31,7 +31,9 @@ class TestMinoFS(unittest.TestCase):
         access_key = os.environ.get("MINIO_ACCESS_KEY_ID")
         secret_key = os.environ.get("MINIO_SECRET_ACCESS_KEY")
         print(access_key, secret_key)
-        bucket_name = os.environ.get("FREE_STORAGE_AWS_BUCKET_NAME", "minio-test")
+        bucket_name = os.environ.get(
+            "FREE_STORAGE_AWS_BUCKET_NAME", "minio-test"
+        )
         s3 = MinioFS(
             {
                 "key": access_key,

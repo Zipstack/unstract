@@ -26,8 +26,9 @@ class TestPrompts(APITestCase):
 
     def test_prompts_detail_throw_404(self):
         """Tests whether a 404 error is thrown on retrieving a prompt."""
-        url = reverse("prompts-detail",
-                      kwargs={"pk": 200})  # Prompt doesn't exist
+        url = reverse(
+            "prompts-detail", kwargs={"pk": 200}
+        )  # Prompt doesn't exist
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 

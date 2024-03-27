@@ -31,9 +31,7 @@ class MariaDB(UnstractDB):
 
     @staticmethod
     def get_icon() -> str:
-        return (
-            "/icons/connector-icons/MariaDB.png"
-        )
+        return "/icons/connector-icons/MariaDB.png"
 
     @staticmethod
     def get_json_schema() -> str:

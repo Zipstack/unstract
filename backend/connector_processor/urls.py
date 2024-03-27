@@ -6,7 +6,11 @@ from . import views
 connector_test = ConnectorViewSet.as_view({"post": "test"})
 
 urlpatterns = [
-    path("connector_schema/", views.get_connector_schema, name="get_connector_schema"),
+    path(
+        "connector_schema/",
+        views.get_connector_schema,
+        name="get_connector_schema",
+    ),
     path(
         "supported_connectors/",
         views.get_supported_connectors,

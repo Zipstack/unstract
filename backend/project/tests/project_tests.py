@@ -79,7 +79,8 @@ class TestProjects(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
-            project_name, Project.objects.get(project_name=project_name).project_name
+            project_name,
+            Project.objects.get(project_name=project_name).project_name,
         )
 
     def test_projects_update_pk(self) -> None:
@@ -107,7 +108,8 @@ class TestProjects(APITestCase):
         project_name = response.data["project_name"]
 
         self.assertEqual(
-            project_name, Project.objects.get(project_name=project_name).project_name
+            project_name,
+            Project.objects.get(project_name=project_name).project_name,
         )
 
     def test_projects_delete(self) -> None:

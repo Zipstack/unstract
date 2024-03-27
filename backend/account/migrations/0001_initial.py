@@ -29,7 +29,10 @@ class Migration(migrations.Migration):
                         verbose_name="ID",
                     ),
                 ),
-                ("password", models.CharField(max_length=128, verbose_name="password")),
+                (
+                    "password",
+                    models.CharField(max_length=128, verbose_name="password"),
+                ),
                 (
                     "last_login",
                     models.DateTimeField(
@@ -96,7 +99,8 @@ class Migration(migrations.Migration):
                 (
                     "date_joined",
                     models.DateTimeField(
-                        default=django.utils.timezone.now, verbose_name="date joined"
+                        default=django.utils.timezone.now,
+                        verbose_name="date joined",
                     ),
                 ),
                 ("user_id", models.CharField()),
@@ -218,9 +222,14 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "domain",
-                    models.CharField(db_index=True, max_length=253, unique=True),
+                    models.CharField(
+                        db_index=True, max_length=253, unique=True
+                    ),
                 ),
-                ("is_primary", models.BooleanField(db_index=True, default=True)),
+                (
+                    "is_primary",
+                    models.BooleanField(db_index=True, default=True),
+                ),
                 (
                     "tenant",
                     models.ForeignKey(
