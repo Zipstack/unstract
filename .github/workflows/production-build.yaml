@@ -9,7 +9,7 @@ run-name: "[${{ github.event.release.tag_name }}] Docker Image Build and Push (P
 
 jobs:
   build-and-push:
-    runs-on: custom-k8s-runner
+    runs-on: ubuntu-latest
     strategy:
       matrix:          
         service_name: [backend, frontend, document-service, platform-service, prompt-service, worker, x2text-service]
