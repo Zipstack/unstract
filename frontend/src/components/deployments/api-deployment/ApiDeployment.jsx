@@ -37,7 +37,7 @@ function ApiDeployment() {
   const [tableData, setTableData] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
   const [isEdit, setIsEdit] = useState(false);
-  const [columns, setColumns] = useState(false);
+  const [columns, setColumns] = useState([]);
   const [workflowEndpointList, setWorkflowEndpointList] = useState([]);
   const handleException = useExceptionHandler();
   const columnsStatic = [
