@@ -40,7 +40,7 @@ repos:
     hooks:
       - id: yamllint
         args: ["-d", "relaxed"]
-        language: system
+        # language: system
   - repo: https://github.com/rhysd/actionlint
     rev: v1.6.27
     hooks:
@@ -51,7 +51,7 @@ repos:
     hooks:
       - id: black
         args: [--config=pyproject.toml, -l 80]
-        language: system
+        # language: system
         exclude: |
           (?x)^(
               unstract/flags/src/unstract/flags/evaluation_.*\.py|
@@ -160,11 +160,11 @@ repos:
       - id: run-mypy
         name: Run mypy
         entry: sh -c 'pdm run mypy .'
-        language: system
+        # language: system
         pass_filenames: false
       - id: check-django-migrations
         name: Check django migrations
         entry: sh -c 'pdm run docker/scripts/check_django_migrations.sh'
-        language: system
+        # language: system
         types: [python] # hook only runs if a python file is staged
         pass_filenames: false
