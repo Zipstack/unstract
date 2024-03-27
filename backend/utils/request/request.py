@@ -28,11 +28,15 @@ def make_http_request(
         if verb == HTTPMethod.GET:
             response = pyrequests.get(url, params=params, headers=headers)
         elif verb == HTTPMethod.POST:
-            response = pyrequests.post(url, json=data, params=params, headers=headers)
+            response = pyrequests.post(
+                url, json=data, params=params, headers=headers
+            )
         elif verb == HTTPMethod.DELETE:
             response = pyrequests.delete(url, params=params, headers=headers)
         else:
-            raise ValueError("Invalid HTTP verb. Supported verbs: GET, POST, DELETE")
+            raise ValueError(
+                "Invalid HTTP verb. Supported verbs: GET, POST, DELETE"
+            )
 
         response.raise_for_status()
         return_val: str = (

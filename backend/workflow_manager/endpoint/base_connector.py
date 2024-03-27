@@ -4,14 +4,15 @@ from typing import Any
 from django.conf import settings
 from django.db import connection
 from fsspec import AbstractFileSystem
-from unstract.connectors.filesystems import connectors
-from unstract.connectors.filesystems.unstract_file_system import (
-    UnstractFileSystem,
-)
 from unstract.workflow_execution.execution_file_handler import (
     ExecutionFileHandler,
 )
 from utils.constants import Common
+
+from unstract.connectors.filesystems import connectors
+from unstract.connectors.filesystems.unstract_file_system import (
+    UnstractFileSystem,
+)
 
 
 class BaseConnector(ExecutionFileHandler):
