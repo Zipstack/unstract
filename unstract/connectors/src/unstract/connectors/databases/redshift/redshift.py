@@ -3,6 +3,7 @@ from typing import Any
 
 import psycopg2
 from psycopg2.extensions import connection
+
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 

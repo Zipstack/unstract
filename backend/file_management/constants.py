@@ -11,4 +11,3 @@ class FileViewTypes:
     ORIGINAL = "ORIGINAL"
     EXTRACT = "EXTRACT"
     SUMMARIZE = "SUMMARIZE"
-    

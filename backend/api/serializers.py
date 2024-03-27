@@ -3,7 +3,6 @@ from typing import Any, Union
 
 from api.constants import ApiExecution
 from api.models import APIDeployment, APIKey
-from backend.serializers import AuditSerializer
 from django.core.validators import RegexValidator
 from rest_framework.serializers import (
     CharField,
@@ -13,6 +12,8 @@ from rest_framework.serializers import (
     Serializer,
     ValidationError,
 )
+
+from backend.serializers import AuditSerializer
 
 
 class APIDeploymentSerializer(AuditSerializer):
