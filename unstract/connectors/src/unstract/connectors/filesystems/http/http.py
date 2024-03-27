@@ -25,7 +25,9 @@ class HttpFS(UnstractFileSystem):
             "base_url": settings["base_url"],
         }
         if all(settings.get(key) for key in ("username", "password")):
-            basic_auth = aiohttp.BasicAuth(settings["username"], settings["password"])
+            basic_auth = aiohttp.BasicAuth(
+                settings["username"], settings["password"]
+            )
             client_kwargs.update({"auth": basic_auth})
         self.http_fs = HTTPFileSystem(client_kwargs=client_kwargs)
 

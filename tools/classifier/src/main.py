@@ -29,7 +29,9 @@ class UnstractClassifier(BaseTool):
         elif len(bins) < 2:
             self.stream_error_and_exit("At least two bins are required")
         if not llm_adapter_instance_id:
-            self.stream_error_and_exit("Choose an LLM to process the classifier")
+            self.stream_error_and_exit(
+                "Choose an LLM to process the classifier"
+            )
         if not text_extraction_adapter_id:
             self.stream_error_and_exit("Choose an LLM to extract the documents")
 

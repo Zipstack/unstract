@@ -32,7 +32,10 @@ class Migration(migrations.Migration):
                         serialize=False,
                     ),
                 ),
-                ("output", models.CharField(db_comment="Field to store output")),
+                (
+                    "output",
+                    models.CharField(db_comment="Field to store output"),
+                ),
                 (
                     "created_by",
                     models.ForeignKey(

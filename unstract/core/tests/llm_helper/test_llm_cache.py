@@ -18,7 +18,9 @@ class LLMCacheTests(unittest.TestCase):
         cache.set_for_prompt("prompt1", "response1")
         cache.set_for_prompt("prompt2", "response2")
         cache.clear_by_prefix()
-        self.assertEqual(cache.get_for_prompt("prompt1"), "", "Cache is not cleared")
+        self.assertEqual(
+            cache.get_for_prompt("prompt1"), "", "Cache is not cleared"
+        )
 
 
 if __name__ == "__main__":

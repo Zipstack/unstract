@@ -76,10 +76,10 @@ class ConnectorInstanceSerializer(AuditSerializer):
         if SerializerUtils.check_context_for_GET_or_POST(context=self.context):
             rep.pop(CIKey.CONNECTOR_AUTH)
             # set icon fields for UI
-            rep[
-                ConnectorKeys.ICON
-            ] = ConnectorProcessor.get_connector_data_with_key(
-                instance.connector_id, ConnectorKeys.ICON
+            rep[ConnectorKeys.ICON] = (
+                ConnectorProcessor.get_connector_data_with_key(
+                    instance.connector_id, ConnectorKeys.ICON
+                )
             )
         encryption_secret: str = settings.ENCRYPTION_KEY
         f: Fernet = Fernet(encryption_secret.encode("utf-8"))
