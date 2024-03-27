@@ -24,7 +24,9 @@ def register_connectors(connectors: dict[str, Any]) -> None:
                 module = import_module(full_module_path)
                 metadata = getattr(module, Common.METADATA, {})
                 if metadata.get("is_active", False):
-                    connector_class: UnstractFileSystem = metadata[Common.CONNECTOR]
+                    connector_class: UnstractFileSystem = metadata[
+                        Common.CONNECTOR
+                    ]
                     connector_id = connector_class.get_id()
                     if not connector_id or (connector_id in connectors):
                         logger.warning(f"Duplicate Id : {connector_id}")

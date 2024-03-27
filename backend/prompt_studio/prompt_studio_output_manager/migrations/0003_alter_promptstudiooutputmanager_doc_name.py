@@ -6,7 +6,10 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("prompt_studio_output_manager", "0002_promptstudiooutputmanager_doc_name"),
+        (
+            "prompt_studio_output_manager",
+            "0002_promptstudiooutputmanager_doc_name",
+        ),
     ]
 
     operations = [

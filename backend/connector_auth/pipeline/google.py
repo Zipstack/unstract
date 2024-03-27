@@ -26,9 +26,9 @@ class GoogleAuthHelper:
         )
 
         # Used by Unstract
-        kwargs[
-            ConnectorKeys.PATH
-        ] = GDriveConstants.ROOT_PREFIX  # Acts as a prefix for all paths
+        kwargs[ConnectorKeys.PATH] = (
+            GDriveConstants.ROOT_PREFIX
+        )  # Acts as a prefix for all paths
         kwargs[AuthConstants.REFRESH_AFTER] = token_expiry.strftime(
             AuthConstants.REFRESH_AFTER_FORMAT
         )

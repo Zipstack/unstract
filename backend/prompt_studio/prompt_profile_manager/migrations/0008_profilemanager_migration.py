@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
         (
             "prompt_studio_core",
             "0007_remove_customtool_default_profile_and_more",
-        )
+        ),
     ]
 
     def MigrateProfileManager(apps: Any, schema_editor: Any) -> None:

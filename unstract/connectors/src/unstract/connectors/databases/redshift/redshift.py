@@ -34,9 +34,7 @@ class Redshift(UnstractDB):
 
     @staticmethod
     def get_icon() -> str:
-        return (
-            "/icons/connector-icons/Redshift.png"
-        )
+        return "/icons/connector-icons/Redshift.png"
 
     @staticmethod
     def get_json_schema() -> str:

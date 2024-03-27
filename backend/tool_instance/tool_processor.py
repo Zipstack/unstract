@@ -134,12 +134,12 @@ class ToolProcessor:
     def get_tool_list(user: User) -> list[dict[str, Any]]:
         """Function to get a list of tools."""
         tool_registry = ToolRegistry()
-        prompt_studio_tools: list[
-            dict[str, Any]
-        ] = PromptStudioRegistryHelper.fetch_json_for_registry(user)
-        tool_list: list[
-            dict[str, Any]
-        ] = tool_registry.fetch_tools_descriptions()
+        prompt_studio_tools: list[dict[str, Any]] = (
+            PromptStudioRegistryHelper.fetch_json_for_registry(user)
+        )
+        tool_list: list[dict[str, Any]] = (
+            tool_registry.fetch_tools_descriptions()
+        )
         tool_list = tool_list + prompt_studio_tools
         return tool_list
 

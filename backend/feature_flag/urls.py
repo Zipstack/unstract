@@ -2,6 +2,7 @@
 
 This module defines the URL patterns for the feature_flags app.
 """
+
 import feature_flag.views as views
 from django.urls import path
 

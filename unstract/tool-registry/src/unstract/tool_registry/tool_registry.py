@@ -211,9 +211,9 @@ class ToolRegistry:
                 )
                 if not tool_meta:
                     continue
-                properties: Optional[
-                    dict[str, Any]
-                ] = self.helper.get_tool_properties(tool_meta=tool_meta)
+                properties: Optional[dict[str, Any]] = (
+                    self.helper.get_tool_properties(tool_meta=tool_meta)
+                )
                 spec: Optional[dict[str, Any]] = self.helper.get_tool_spec(
                     tool_meta=tool_meta
                 )
@@ -235,9 +235,9 @@ class ToolRegistry:
                         "icon": icon,
                     }
         else:
-            tools: dict[
-                str, dict[str, Any]
-            ] = self.helper.get_all_tools_from_disk()
+            tools: dict[str, dict[str, Any]] = (
+                self.helper.get_all_tools_from_disk()
+            )
             for tool, configuration in tools.items():
                 properties = configuration.get("properties")
                 spec = configuration.get("spec")

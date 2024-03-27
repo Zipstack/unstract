@@ -36,9 +36,7 @@ class DropboxFS(UnstractFileSystem):
     @staticmethod
     def get_icon() -> str:
         # TODO: Add an icon to GCS and serve it
-        return (
-            "/icons/connector-icons/Dropbox.png"
-        )
+        return "/icons/connector-icons/Dropbox.png"
 
     @staticmethod
     def get_json_schema() -> str:
