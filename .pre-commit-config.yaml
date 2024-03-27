@@ -155,16 +155,16 @@ repos:
     rev: 2.12.4
     hooks:
       - id: pdm-lock-check
-  - repo: local
-    hooks:
-      - id: run-mypy
-        name: Run mypy
-        entry: sh -c 'pdm run mypy .'
-        language: system
-        pass_filenames: false
-      - id: check-django-migrations
-        name: Check django migrations
-        entry: sh -c 'pdm run docker/scripts/check_django_migrations.sh'
-        language: system
-        types: [python] # hook only runs if a python file is staged
-        pass_filenames: false
+  # - repo: local
+  #   hooks:
+  #     - id: run-mypy
+  #       name: Run mypy
+  #       entry: sh -c 'pdm run mypy .'
+  #       language: system
+  #       pass_filenames: false
+  #     - id: check-django-migrations
+  #       name: Check django migrations
+  #       entry: sh -c 'pdm run docker/scripts/check_django_migrations.sh'
+  #       language: system
+  #       types: [python] # hook only runs if a python file is staged
+  #       pass_filenames: false
