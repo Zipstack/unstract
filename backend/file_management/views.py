@@ -118,7 +118,6 @@ class FileManagementViewSet(viewsets.ModelViewSet):
             )
         return Response({"message": "Files are uploaded successfully!"})
 
-
     @action(detail=True, methods=["get"])
     def delete(self, request: HttpRequest) -> Response:
         serializer = FileInfoIdeSerializer(data=request.GET)
