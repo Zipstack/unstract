@@ -6,9 +6,14 @@ from typing import Any
 from oauth2client.client import OAuth2Credentials
 from pydrive2.auth import GoogleAuth
 from pydrive2.fs import GDriveFileSystem
+
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.google_drive.constants import GDriveConstants
-from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+from unstract.connectors.filesystems.google_drive.constants import (
+    GDriveConstants,
+)
+from unstract.connectors.filesystems.unstract_file_system import (
+    UnstractFileSystem,
+)
 from unstract.connectors.gcs_helper import GCSHelper
 
 logger = logging.getLogger(__name__)
@@ -59,7 +64,7 @@ class GoogleDriveFS(UnstractFileSystem):
 
     @staticmethod
     def get_icon() -> str:
-        return "/icons/connector-icons/Google%20Drive.png"  # noqa
+        return "/icons/connector-icons/Google%20Drive.png"
 
     @staticmethod
     def get_json_schema() -> str:

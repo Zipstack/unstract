@@ -1,9 +1,8 @@
 import pytest
 from django.urls import reverse
+from prompt.models import Prompt
 from rest_framework import status
 from rest_framework.test import APITestCase
-
-from prompt.models import Prompt
 
 pytestmark = pytest.mark.django_db
 

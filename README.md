@@ -128,4 +128,3 @@ Contributions are welcome! Please read [CONTRIBUTE.md](CONTRIBUTE.md) for furthe
 ## 📊 A note on analytics
 
 In full disclosure, Unstract integrates Posthog to track usage analytics. As you can inspect the relevant code here, we collect the minimum possible metrics.
-

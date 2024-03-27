@@ -2,7 +2,6 @@ import logging
 from typing import Any, Optional
 
 from account.custom_exceptions import DuplicateData
-from backend.constants import RequestKey
 from connector.constants import ConnectorInstanceKey as CIKey
 from connector_auth.constants import ConnectorAuthKey
 from connector_auth.exceptions import CacheMissException, MissingParamException
@@ -14,6 +13,8 @@ from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.filtering import FilterHelper
+
+from backend.constants import RequestKey
 
 from .models import ConnectorInstance
 from .serializers import ConnectorInstanceSerializer

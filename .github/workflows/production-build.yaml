@@ -11,7 +11,7 @@ jobs:
   build-and-push:
     runs-on: custom-k8s-runner
     strategy:
-      matrix:          
+      matrix:
         service_name: [backend, frontend, document-service, platform-service, prompt-service, worker, x2text-service]
 
     steps:
