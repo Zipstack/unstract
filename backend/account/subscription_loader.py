@@ -24,13 +24,17 @@ def load_plugins() -> list[Any]:
     """Iterate through the subscription plugins and register them."""
     plugins_app = apps.get_app_config(SubscriptionConfig.PLUGINS_APP)
     package_path = plugins_app.module.__package__
-    subscription_dir = os.path.join(plugins_app.path, SubscriptionConfig.PLUGIN_DIR)
-    subscription_package_path = f"{package_path}.{SubscriptionConfig.PLUGIN_DIR}"
+    subscription_dir = os.path.join(
+        plugins_app.path, SubscriptionConfig.PLUGIN_DIR
+    )
+    subscription_package_path = (
+        f"{package_path}.{SubscriptionConfig.PLUGIN_DIR}"
+    )
     subscription_plugins: list[Any] = []
 
     if not os.path.exists(subscription_dir):
         return subscription_plugins
-    
+
     for item in os.listdir(subscription_dir):
         # Loads a plugin if it is in a directory.
         if os.path.isdir(os.path.join(subscription_dir, item)):

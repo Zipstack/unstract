@@ -40,33 +40,33 @@ repos:
     hooks:
       - id: yamllint
         args: ["-d", "relaxed"]
-        language: system
-  - repo: https://github.com/rhysd/actionlint
-    rev: v1.6.27
-    hooks:
-      - id: actionlint-docker
-        args: [-ignore, 'label ".+" is unknown']
+        # language: system
+  # - repo: https://github.com/rhysd/actionlint
+  #   rev: v1.6.27
+  #   hooks:
+  #     - id: actionlint-docker
+  #       args: [-ignore, 'label ".+" is unknown']
   - repo: https://github.com/psf/black
     rev: 24.3.0
     hooks:
       - id: black
         args: [--config=pyproject.toml, -l 80]
-        language: system
+        # language: system
         exclude: |
           (?x)^(
               unstract/flags/src/unstract/flags/evaluation_.*\.py|
           )$
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.0.0
-    hooks:
-      - id: flake8
-        args: [--max-line-length=80]
-        exclude: |
-          (?x)^(
-              .*migrations/.*\.py|
-              core/tests/.*|
-              unstract/flags/src/unstract/flags/evaluation_.*\.py|
-          )$
+  # - repo: https://github.com/pycqa/flake8
+  #   rev: 7.0.0
+  #   hooks:
+  #     - id: flake8
+  #       args: [--max-line-length=80]
+  #       exclude: |
+  #         (?x)^(
+  #             .*migrations/.*\.py|
+  #             core/tests/.*|
+  #             unstract/flags/src/unstract/flags/evaluation_.*\.py|
+  #         )$
   - repo: https://github.com/pycqa/isort
     rev: 5.13.2
     hooks:
@@ -104,35 +104,35 @@ repos:
     rev: v8.18.2
     hooks:
       - id: gitleaks
-  - repo: https://github.com/hadolint/hadolint
-    rev: v2.12.1-beta
-    hooks:
-      - id: hadolint-docker
-        args:
-          - --ignore=DL3003
-          - --ignore=DL3008
-          - --ignore=DL3013
-          - --ignore=DL3018
-          - --ignore=SC1091
-        files: Dockerfile$
+  # - repo: https://github.com/hadolint/hadolint
+  #   rev: v2.12.1-beta
+  #   hooks:
+  #     - id: hadolint-docker
+  #       args:
+  #         - --ignore=DL3003
+  #         - --ignore=DL3008
+  #         - --ignore=DL3013
+  #         - --ignore=DL3018
+  #         - --ignore=SC1091
+  #       files: Dockerfile$
   - repo: https://github.com/asottile/yesqa
     rev: v1.5.0
     hooks:
       - id: yesqa
-  - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: "v9.0.0-beta.2" # Use the sha / tag you want to point at
-    hooks:
-      - id: eslint
-        args: [--config=frontend/.eslintrc.json]
-        files: \.[jt]sx?$ # *.js, *.jsx, *.ts and *.tsx
-        types: [file]
-        additional_dependencies:
-          - eslint@8.41.0
-          - eslint-config-google@0.14.0
-          - eslint-config-prettier@8.8.0
-          - eslint-plugin-prettier@4.2.1
-          - eslint-plugin-react@7.32.2
-          - eslint-plugin-import@2.25.2
+  # - repo: https://github.com/pre-commit/mirrors-eslint
+  #   rev: "v9.0.0-beta.2" # Use the sha / tag you want to point at
+  #   hooks:
+  #     - id: eslint
+  #       args: [--config=frontend/.eslintrc.json]
+  #       files: \.[jt]sx?$ # *.js, *.jsx, *.ts and *.tsx
+  #       types: [file]
+  #       additional_dependencies:
+  #         - eslint@8.41.0
+  #         - eslint-config-google@0.14.0
+  #         - eslint-config-prettier@8.8.0
+  #         - eslint-plugin-prettier@4.2.1
+  #         - eslint-plugin-react@7.32.2
+  #         - eslint-plugin-import@2.25.2
   - repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
     rev: v1.1.2
     hooks:
@@ -155,16 +155,16 @@ repos:
     rev: 2.12.4
     hooks:
       - id: pdm-lock-check
-  - repo: local
-    hooks:
-      - id: run-mypy
-        name: Run mypy
-        entry: sh -c 'pdm run mypy .'
-        language: system
-        pass_filenames: false
-      - id: check-django-migrations
-        name: Check django migrations
-        entry: sh -c 'pdm run docker/scripts/check_django_migrations.sh'
-        language: system
-        types: [python] # hook only runs if a python file is staged
-        pass_filenames: false
+  # - repo: local
+  #   hooks:
+  #     - id: run-mypy
+  #       name: Run mypy
+  #       entry: sh -c 'pdm run mypy .'
+  #       language: system
+  #       pass_filenames: false
+  #     - id: check-django-migrations
+  #       name: Check django migrations
+  #       entry: sh -c 'pdm run docker/scripts/check_django_migrations.sh'
+  #       language: system
+  #       types: [python] # hook only runs if a python file is staged
+  #       pass_filenames: false

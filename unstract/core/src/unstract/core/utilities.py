@@ -4,7 +4,9 @@ from typing import Optional
 
 class UnstractUtils:
     @staticmethod
-    def get_env(env_key: str, default: Optional[str] = None, raise_err=False) -> str:
+    def get_env(
+        env_key: str, default: Optional[str] = None, raise_err=False
+    ) -> str:
         """Returns the value of an env variable.
 
         If its empty or None, raises an error

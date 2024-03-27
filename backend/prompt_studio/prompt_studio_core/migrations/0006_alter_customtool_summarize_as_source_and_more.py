@@ -5,7 +5,10 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("prompt_studio_core", "0005_alter_customtool_default_profile_and_more"),
+        (
+            "prompt_studio_core",
+            "0005_alter_customtool_default_profile_and_more",
+        ),
     ]
 
     operations = [
@@ -13,7 +16,8 @@ class Migration(migrations.Migration):
             model_name="customtool",
             name="summarize_as_source",
             field=models.BooleanField(
-                db_comment="Flag to use summarized content as source", default=False
+                db_comment="Flag to use summarized content as source",
+                default=False,
             ),
         ),
         migrations.AlterField(

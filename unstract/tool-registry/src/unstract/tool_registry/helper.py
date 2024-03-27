@@ -104,9 +104,9 @@ class ToolRegistryHelper:
             image_tag=tool_meta.tag,
         )
 
-        tool_properties: Optional[
-            dict[str, Any]
-        ] = tool_sandbox.get_properties()
+        tool_properties: Optional[dict[str, Any]] = (
+            tool_sandbox.get_properties()
+        )
         if not tool_properties:
             return {}
         return tool_properties
