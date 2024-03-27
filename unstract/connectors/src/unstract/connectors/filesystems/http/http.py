@@ -4,8 +4,11 @@ from typing import Any
 
 import aiohttp
 from fsspec.implementations.http import HTTPFileSystem
+
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+from unstract.connectors.filesystems.unstract_file_system import (
+    UnstractFileSystem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +25,9 @@ class HttpFS(UnstractFileSystem):
             "base_url": settings["base_url"],
         }
         if all(settings.get(key) for key in ("username", "password")):
-            basic_auth = aiohttp.BasicAuth(settings["username"], settings["password"])
+            basic_auth = aiohttp.BasicAuth(
+                settings["username"], settings["password"]
+            )
             client_kwargs.update({"auth": basic_auth})
         self.http_fs = HTTPFileSystem(client_kwargs=client_kwargs)
 

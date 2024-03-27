@@ -5,7 +5,12 @@ from .views import ConnectorInstanceViewSet as CIViewSet
 
 connector_list = CIViewSet.as_view({"get": "list", "post": "create"})
 connector_detail = CIViewSet.as_view(
-    {"get": "retrieve", "put": "update", "patch": "partial_update", "delete": "destroy"}
+    {
+        "get": "retrieve",
+        "put": "update",
+        "patch": "partial_update",
+        "delete": "destroy",
+    }
 )
 
 urlpatterns = format_suffix_patterns(

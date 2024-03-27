@@ -1,7 +1,8 @@
 from typing import Any
 
-from backend.constants import RequestKey
 from rest_framework.serializers import ModelSerializer
+
+from backend.constants import RequestKey
 
 
 class AuditSerializer(ModelSerializer):

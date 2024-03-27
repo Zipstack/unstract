@@ -131,9 +131,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             Response: Reponse of dropdown dict
         """
         try:
-            select_choices: dict[
-                str, Any
-            ] = PromptStudioHelper.get_select_fields()
+            select_choices: dict[str, Any] = (
+                PromptStudioHelper.get_select_fields()
+            )
             return Response(select_choices, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error(f"Error occured while fetching select fields {e}")

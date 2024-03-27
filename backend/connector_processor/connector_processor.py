@@ -15,6 +15,7 @@ from connector_processor.exceptions import (
     TestConnectorException,
     TestConnectorInputException,
 )
+
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.connectorkit import Connectorkit
 from unstract.connectors.enums import ConnectorMode

@@ -121,10 +121,10 @@ class AuthenticationController:
             return redirect(f"{settings.ERROR_URL}")
 
         if member.organization_id and member.role and len(member.role) > 0:
-            organization: Optional[
-                Organization
-            ] = OrganizationService.get_organization_by_org_id(
-                member.organization_id
+            organization: Optional[Organization] = (
+                OrganizationService.get_organization_by_org_id(
+                    member.organization_id
+                )
             )
             if organization:
                 try:
@@ -192,9 +192,9 @@ class AuthenticationController:
         new_organization = False
         organization_ids = CacheService.get_user_organizations(user.user_id)
         if not organization_ids:
-            z_organizations: list[
-                OrganizationData
-            ] = self.auth_service.get_organizations_by_user_id(user.user_id)
+            z_organizations: list[OrganizationData] = (
+                self.auth_service.get_organizations_by_user_id(user.user_id)
+            )
             organization_ids = {org.id for org in z_organizations}
         if organization_id and organization_id in organization_ids:
             organization = OrganizationService.get_organization_by_org_id(
@@ -242,9 +242,9 @@ class AuthenticationController:
                 },
             )
             # Update user session data in redis
-            user_session_info: dict[
-                str, Any
-            ] = CacheService.get_user_session_info(user.email)
+            user_session_info: dict[str, Any] = (
+                CacheService.get_user_session_info(user.email)
+            )
             user_session_info["current_org"] = organization_id
             CacheService.set_user_session_info(user_session_info)
             response.set_cookie(Cookie.ORG_ID, organization_id)

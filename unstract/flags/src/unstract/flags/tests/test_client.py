@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import grpc
+
 from unstract.flags.client import EvaluationClient
 
 
