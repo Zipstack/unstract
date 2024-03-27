@@ -3,6 +3,7 @@ from typing import Any
 
 import snowflake.connector
 from snowflake.connector.connection import SnowflakeConnection
+
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 

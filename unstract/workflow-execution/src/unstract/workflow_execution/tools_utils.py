@@ -3,8 +3,6 @@ import os
 from typing import Any, Optional
 
 from redis import Redis
-
-from unstract.core.pubsub_helper import LogPublisher
 from unstract.tool_registry import ToolRegistry
 from unstract.tool_sandbox import ToolSandbox
 from unstract.workflow_execution.constants import ToolExecution
@@ -16,6 +14,8 @@ from unstract.workflow_execution.exceptions import (
     ToolExecutionException,
     ToolNotFoundException,
 )
+
+from unstract.core.pubsub_helper import LogPublisher
 
 logger = logging.getLogger(__name__)
 

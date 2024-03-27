@@ -1,7 +1,7 @@
 import os
 import threading
-from typing import Any
 from enum import Enum
+from typing import Any
 
 
 class ConcurrencyMode(Enum):
@@ -14,7 +14,7 @@ class Exceptions:
 
 
 class StateStore:
-    
+
     mode = os.environ.get(
         "CONCURRENCY_MODE", ConcurrencyMode.THREAD
     )

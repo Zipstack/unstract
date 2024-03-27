@@ -4,8 +4,11 @@ from typing import Any
 
 import aiohttp
 from fsspec.implementations.http import HTTPFileSystem
+
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+from unstract.connectors.filesystems.unstract_file_system import (
+    UnstractFileSystem,
+)
 
 logger = logging.getLogger(__name__)
 

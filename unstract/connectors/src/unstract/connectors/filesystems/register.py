@@ -4,7 +4,9 @@ from importlib import import_module
 from typing import Any
 
 from unstract.connectors.constants import Common
-from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+from unstract.connectors.filesystems.unstract_file_system import (
+    UnstractFileSystem,
+)
 
 logger = logging.getLogger(__name__)
 

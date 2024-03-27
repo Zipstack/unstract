@@ -4,8 +4,6 @@ import time
 from typing import Any, Optional, Union
 
 import redis
-
-from unstract.core.pubsub_helper import LogPublisher
 from unstract.tool_sandbox import ToolSandbox
 from unstract.workflow_execution.constants import StepExecution, ToolExecution
 from unstract.workflow_execution.dto import ToolInstance, WorkflowDto
@@ -26,6 +24,8 @@ from unstract.workflow_execution.execution_file_handler import (
     ExecutionFileHandler,
 )
 from unstract.workflow_execution.tools_utils import ToolsUtils
+
+from unstract.core.pubsub_helper import LogPublisher
 
 logger = logging.getLogger(__name__)
 
