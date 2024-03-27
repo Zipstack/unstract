@@ -326,7 +326,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def list_of_shared_users(
         self, request: HttpRequest, pk: Any = None
     ) -> Response:
-        # self.permission_classes = [IsOwnerOrSharedUser]
+
         custom_tool = (
             self.get_object()
         )  # Assuming you have a get_object method in your viewset
@@ -341,7 +341,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = ToolStudioPromptSerializer(
             data=request.data, context=context
         )
-        # TODO : Handle model related exceptions.
         serializer.is_valid(raise_exception=True)
         try:
             # serializer.save()
@@ -361,7 +360,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = ProfileManagerSerializer(
             data=request.data, context=context
         )
-        # TODO : Handle model related exceptions.
+
         serializer.is_valid(raise_exception=True)
         try:
             self.perform_create(serializer)
