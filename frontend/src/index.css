@@ -59,6 +59,12 @@ body {
   justify-content: right;
 }
 
+/* Justify content to the left */
+.display-flex-left {
+  display: flex;
+  justify-content: left;
+}
+
 /* Justify content to the center */
 .display-flex-center {
   display: flex;
