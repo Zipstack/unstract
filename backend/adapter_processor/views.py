@@ -247,20 +247,33 @@ class AdapterInstanceViewSet(ModelViewSet):
             # if removed user use this adapter as default
             # Remove the same from his default
             for user_id in removed_users:
-                user_default_adapter = UserDefaultAdapter.objects.get(
-                    user_id=user_id
-                )
+                try:
+                    user_default_adapter = UserDefaultAdapter.objects.get(
+                        user_id=user_id
+                    )
 
-                if user_default_adapter.default_llm_adapter == adapter:
-                    user_default_adapter.default_llm_adapter = None
-                elif user_default_adapter.default_embedding_adapter == adapter:
-                    user_default_adapter.default_embedding_adapter = None
-                elif user_default_adapter.default_vector_db_adapter == adapter:
-                    user_default_adapter.default_vector_db_adapter = None
-                elif user_default_adapter.default_x2text_adapter == adapter:
-                    user_default_adapter.default_x2text_adapter = None
+                    if user_default_adapter.default_llm_adapter == adapter:
+                        user_default_adapter.default_llm_adapter = None
+                    elif (
+                        user_default_adapter.default_embedding_adapter
+                        == adapter
+                    ):
+                        user_default_adapter.default_embedding_adapter = None
+                    elif (
+                        user_default_adapter.default_vector_db_adapter
+                        == adapter
+                    ):
+                        user_default_adapter.default_vector_db_adapter = None
+                    elif user_default_adapter.default_x2text_adapter == adapter:
+                        user_default_adapter.default_x2text_adapter = None
 
-                user_default_adapter.save()
+                    user_default_adapter.save()
+                except UserDefaultAdapter.DoesNotExist:
+                    logger.debug(
+                        "User id : %s doesnt have default adapters configured",
+                        user_id,
+                    )
+                    continue
 
         return super().partial_update(request, *args, **kwargs)
 
