@@ -3,8 +3,6 @@ import os
 from typing import Any, Optional
 
 from redis import Redis
-
-from unstract.core.pubsub_helper import LogPublisher
 from unstract.tool_registry import ToolRegistry
 from unstract.tool_sandbox import ToolSandbox
 from unstract.workflow_execution.constants import ToolExecution
@@ -16,6 +14,8 @@ from unstract.workflow_execution.exceptions import (
     ToolExecutionException,
     ToolNotFoundException,
 )
+
+from unstract.core.pubsub_helper import LogPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +79,9 @@ class ToolsUtils:
             dict[str, dict[str, Any]]: tools
         """
         tool_uids = [tool_instance.tool_id for tool_instance in tool_instances]
-        tools: dict[
-            str, dict[str, Any]
-        ] = self.tool_registry.get_available_tools(tool_uids)
+        tools: dict[str, dict[str, Any]] = (
+            self.tool_registry.get_available_tools(tool_uids)
+        )
         if not (
             all(tool_uid in tools for tool_uid in tool_uids)
             and len(tool_uids) == len(tools)

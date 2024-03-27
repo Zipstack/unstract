@@ -6,7 +6,10 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("prompt_studio_core", "0008_customtool_exclude_failed_customtool_monitor_llm"),
+        (
+            "prompt_studio_core",
+            "0008_customtool_exclude_failed_customtool_monitor_llm",
+        ),
         ("prompt_profile_manager", "0008_profilemanager_migration"),
     ]
 
