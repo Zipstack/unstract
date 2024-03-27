@@ -76,9 +76,10 @@ def _merge_to_env_file(
 
             merged_contents.append(f"{key}={value}\n")
 
+    # Allow extras from target_env which is not present in base_env
     base_env = _extract_from_env_file(base_env_file_path)
     additional_env_header_added = False
-    # Allow extras from target_env which is not present in base_env
+
     for key in target_env:
         if key not in base_env:
             if not additional_env_header_added:
