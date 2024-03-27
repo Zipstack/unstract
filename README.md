@@ -7,6 +7,9 @@
 
 </div>
 
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/Zipstack/unstract/main.svg)](https://results.pre-commit.ci/latest/github/Zipstack/unstract/main)
+
+
 ## 🤖 Go beyond co-pilots
 
 While co-pilots enable machine-to-human automation, with Unstract, you can go beyond co-pilots by enabling machine-to-machine automation. You can launch APIs that take in complex documents and return structured JSON all with a simple no-code approach. You can also launch unstructured data ETL Pipelines that can read complex documents from a variety of cloud file / object storage systems and write structured data into popular data warehouses and databases.
