@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote_plus
 
 from dotenv import find_dotenv, load_dotenv
 
@@ -315,7 +316,8 @@ CELERY_BROKER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
 # CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/1"
 # Postgres as result backend
 CELERY_RESULT_BACKEND = (
-    f"db+postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    f"db+postgresql://{DB_USER}:{quote_plus(DB_PASSWORD)}"
+    f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"

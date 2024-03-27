@@ -25,7 +25,13 @@ Automate critical business processes that involve complex documents with a human
 
 ## 🚀 Getting started
 
-The easiest way to get started is with Docker. Either download a release or clone this repo and do the following:
+### Prerequisites
+
+- Linux or MacOS (Intel or M-series)
+- Docker
+- Docker Compose (if you need to install it separately)
+
+Next, either download a release or clone this repo and do the following:
 
 ✅ `./run-platform.sh`<br>
 ✅ Now visit [http://frontend.unstract.localhost](http://frontend.unstract.localhost) in your browser <br>
@@ -42,6 +48,7 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 ## 🤝 Ecosystem support
 
 ### LLM Providers
+
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/3rd_party/openai.png" width="32"/>| OpenAI | ✅ Working |
@@ -49,21 +56,23 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure OpenAI | ✅ Working  |
 |<img src="docs/assets/3rd_party/palm.png" width="32"/>| Google PaLM | ✅ Working  |
 |<img src="docs/assets/3rd_party/anyscale.png" width="32"/>| Anyscale | ✅ Working |
+|<img src="docs/assets/3rd_party/mistral_ai.png" width="32"/>| Mistral AI | ✅ Working |
 |<img src="docs/assets/3rd_party/replicate.png" width="32"/>| Replicate | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/anthropic.png" width="32"/>| Anthropic | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/mistral_ai.png" width="32"/>| Mistral AI | 🗓️ Coming soon! |
 
 ### Vector Databases
+
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/3rd_party/qdrant.png" width="32"/>| Qdrant | ✅ Working |
-|<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | ✅ Working |
+|<img src="docs/assets/3rd_party/milvus.png" width="32"/>| Milvus | ✅ Working |
+|<img src="docs/assets/3rd_party/weaviate.png" width="32"/>| Weaviate | ✅ Working |
+|<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/supabase.png" width="32"/>| Supabase | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/milvus.png" width="32"/>| Milvus | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/weaviate.png" width="32"/>| Weaviate | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/pinecone.png" width="32"/>| Pinecone | 🗓️ Coming soon! |
 
 ### Embeddings
+
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/3rd_party/openai.png" width="32"/>| OpenAI | ✅ Working |
@@ -73,26 +82,29 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |<img src="docs/assets/3rd_party/huggingface.png" width="32"/>| Huggingface | 🗓️ Coming soon! |
 
 ### Text Extractors
+
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/unstract_u_logo.png" width="32"/>| Unstract LLMWhisperer | ✅ Working |
-|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Community | ✅ Working  |
-|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Enterprise | ✅ Working  |
+|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Community | 🗓️ Coming soon!  |
+|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Enterprise | 🗓️ Coming soon!  |
 |<img src="docs/assets/3rd_party/llamaindex.png" width="32"/>| LlamaIndex Parse | 🗓️ Coming soon! |
 
 ### ETL Sources
+
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/3rd_party/s3.png" width="32"/>| AWS S3 | ✅ Working |
 |<img src="docs/assets/3rd_party/minio.png" width="32"/>| Minio | ✅ Working |
 |<img src="docs/assets/3rd_party/dropbox.png" width="32"/>| Dropbox | ✅ Working |
-|<img src="docs/assets/3rd_party/google_drive.png" width="32"/>| Google Drive | ✅ Working |
+|<img src="docs/assets/3rd_party/google_drive.png" width="32"/>| Google Drive | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/box.png" width="32"/>| Box | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/gcp.png" width="32"/>| Google Cloud Storage | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure Cloud Storage | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/http.png" width="32"/>| HTTP/HTTPS | 🗓️ Coming soon! |
 
 ### ETL Destinations
+
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/3rd_party/snowflake.png" width="32"/>| Snowflake | ✅ Working |
@@ -108,3 +120,5 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 Contributions are welcome! Please read [CONTRIBUTE.md](CONTRIBUTE.md) for further details on setting up the development environment, etc. It also points you to other detailed documents as needed.
 
 ## 👋 Join the LLM-powered automation community
+
+[Join great conversations](https://join-slack.unstract.com) around LLMs, their ecosystem and leveraging them to automate the previously unautomatable!
