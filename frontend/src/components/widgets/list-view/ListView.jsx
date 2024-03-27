@@ -70,7 +70,9 @@ function ListView({
         className="list-view-container"
       >
         <div className="list-view-content">
-          <div className="adapters-list-title-container">{title}</div>
+          <div className="adapters-list-title-container display-flex-left">
+            {title}
+          </div>
           {showOwner && (
             <div className="adapters-list-profile-container">
               <Avatar

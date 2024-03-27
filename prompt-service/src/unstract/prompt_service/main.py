@@ -166,6 +166,7 @@ def authentication_middleware(func: Any) -> Any:
 @authentication_middleware
 def prompt_processor() -> Any:
     result: dict[str, Any] = {}
+    usage = {}
     platform_key = AuthenticationMiddleware.get_token_from_auth_header(request)
     if request.method == "POST":
         payload: dict[Any, Any] = request.json
@@ -377,7 +378,6 @@ def prompt_processor() -> Any:
                 )
             else:
                 answer = "NA"
-                usage = {}
                 _publish_log(
                     log_events_id,
                     {"tool_id": tool_id, "prompt_key": name},

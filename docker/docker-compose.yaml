@@ -22,6 +22,7 @@ services:
       - prompt-service
       - x2text-service
     volumes:
+      - prompt_studio_data:/app/prompt-studio-data
       - ./workflow_data:/data
     environment:
       - ENVIRONMENT=development
@@ -176,6 +177,7 @@ services:
       - traefik.enable=false
 
 volumes:
+  prompt_studio_data:
   unstract_data:
 
 networks:

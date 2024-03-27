@@ -40,3 +40,7 @@
     color: darkgray;
     font-size: 12px;
 }
+
+.doc-main-title-div {
+    max-width: 150px;
+}
