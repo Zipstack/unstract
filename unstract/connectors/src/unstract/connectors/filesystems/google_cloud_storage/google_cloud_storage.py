@@ -35,9 +35,7 @@ class GoogleCloudStorageFS(UnstractFileSystem):
 
     @staticmethod
     def get_icon() -> str:
-        return (
-            "/icons/connector-icons/google_cloud_storage.png"
-        )
+        return "/icons/connector-icons/google_cloud_storage.png"
 
     @staticmethod
     def get_json_schema() -> str:

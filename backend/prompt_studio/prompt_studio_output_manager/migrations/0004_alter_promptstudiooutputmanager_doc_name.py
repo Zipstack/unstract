@@ -15,6 +15,8 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name="promptstudiooutputmanager",
             name="doc_name",
-            field=models.CharField(db_comment="Field to store the document name"),
+            field=models.CharField(
+                db_comment="Field to store the document name"
+            ),
         ),
     ]
