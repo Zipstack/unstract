@@ -79,7 +79,8 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             # z_code = request.COOKIES.get(Cookie.Z_CODE)
             user_info = auth_controller.get_user_info(request)
             role = auth_controller.get_organization_members_by_user(
-                request.user)
+                request.user
+            )
             if not user_info:
                 return Response(
                     status=status.HTTP_404_NOT_FOUND,
@@ -89,10 +90,10 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             # Temporary fix for getting user role along with user info.
             # Proper implementation would be adding role field to UserInfo.
             serialized_user_info["is_admin"] = auth_controller.is_admin_by_role(
-                role.role)
+                role.role
+            )
             return Response(
-                status=status.HTTP_200_OK, data={
-                    "user": serialized_user_info}
+                status=status.HTTP_200_OK, data={"user": serialized_user_info}
             )
         except Exception as error:
             Logger.error(f"Error while get User : {error}")
@@ -112,7 +113,6 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         )
 
         response_serializer = UserInviteResponseSerializer(
-
             invite_response, many=True
         )
 
@@ -157,11 +157,12 @@ class OrganizationUserViewSet(viewsets.ViewSet):
     def get_organization_members(self, request: Request) -> Response:
         auth_controller = AuthenticationController()
         if request.org_id:
-            members: list[
-                OrganizationMember
-            ] = auth_controller.get_organization_members_by_org_id()
+            members: list[OrganizationMember] = (
+                auth_controller.get_organization_members_by_org_id()
+            )
             serialized_members = OrganizationMemberSerializer(
-                members, many=True).data
+                members, many=True
+            ).data
             return Response(
                 status=status.HTTP_200_OK,
                 data={"message": "success", "members": serialized_members},

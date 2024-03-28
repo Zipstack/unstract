@@ -7,8 +7,9 @@ import uuid
 
 import redis
 from llama_index.llms import AzureOpenAI
-from unstract.core.llm_helper.config import AzureOpenAIConfig
 from unstract.tool_registry.dto import Properties, Tool
+
+from unstract.core.llm_helper.config import AzureOpenAIConfig
 
 # Refactor dated: 19/12/2023 ( Removal of Appkit removal)
 
