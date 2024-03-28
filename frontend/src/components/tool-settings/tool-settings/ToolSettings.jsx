@@ -46,9 +46,6 @@ function ToolSettings({ type }) {
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
-  const updateSessionDetails = useSessionStore(
-    (state) => state.updateSessionDetails
-  );
 
   useEffect(() => {
     setTableRows([]);
@@ -78,16 +75,6 @@ function ToolSettings({ type }) {
       });
   };
 
-  const updateSession = () => {
-    const adaptersList = sessionDetails?.adapters;
-    if (adaptersList && !adaptersList.includes(type)) {
-      const userAndOrgDetails = {};
-      adaptersList.push(type);
-      userAndOrgDetails["adapters"] = adaptersList;
-      updateSessionDetails(userAndOrgDetails);
-    }
-  };
-
   const addNewItem = (row, isEdit) => {
     if (isEdit) {
       const rowsModified = [...tableRows].map((tableRow) => {
@@ -102,7 +89,6 @@ function ToolSettings({ type }) {
       const rowsModified = [...tableRows];
       rowsModified.push(row);
       setTableRows(rowsModified);
-      updateSession();
     }
   };
 
