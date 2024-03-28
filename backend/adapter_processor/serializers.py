@@ -80,7 +80,7 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
         # If adapter_instance is a LLM send
         # additional parameter of context_window
         if isinstance(adapter_instance, LLMAdapter):
-            adapter_metadata["context_window_size"] = (
+            adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
                 adapter_instance.get_context_window_size()
             )
 
@@ -89,7 +89,7 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
         rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
             instance.adapter_id, common.ICON
         )
-        rep["created_by_email"] = instance.created_by.email
+        rep[AdapterKeys.ADAPTER_CREATED_BY] = instance.created_by.email
 
         return rep
 
