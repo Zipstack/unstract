@@ -136,7 +136,7 @@ do_git_pull() {
   fi
 
   echo -e "Performing git switch to ""$blue_text""main branch""$default_text".
-  # git switch main
+  git switch main
 
   echo -e "Performing ""$blue_text""git pull""$default_text"" on main branch."
   git pull
@@ -152,6 +152,7 @@ setup_env() {
     env_path="$script_dir/$service/.env"
 
     if [ -e "$sample_env_path" ] && [ ! -e "$env_path" ]; then
+      first_setup=true
       cp "$sample_env_path" "$env_path"
       # Add encryption secret for backend and platform-service.
       if [[ "$service" == "backend" || "$service" == "platform-service" ]]; then
@@ -178,7 +179,7 @@ setup_env() {
         fi
       fi
       echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
-    else
+    elif [ "$opt_upgrade" = true ]; then
       python3 $script_dir/docker/scripts/merge_env.py $sample_env_path $env_path
       if [ $? -ne 0 ]; then
         exit 1
@@ -190,7 +191,7 @@ setup_env() {
   if [ ! -e "$script_dir/docker/essentials.env" ]; then
     cp "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
     echo -e "Created env for ""$blue_text""essential services""$default_text"" at ""$blue_text""$script_dir/docker/essentials.env""$default_text""."
-  else
+  elif [ "$opt_upgrade" = true ]; then
     python3 $script_dir/docker/scripts/merge_env.py "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
     if [ $? -ne 0 ]; then
       exit 1
@@ -198,6 +199,7 @@ setup_env() {
     echo -e "Merged env for ""$blue_text""essential services""$default_text"" at ""$blue_text""$script_dir/docker/essentials.env""$default_text""."
   fi
 
+  # Not part of an upgrade.
   if [ ! -e "$script_dir/docker/proxy_overrides.yaml" ]; then
     echo -e "NOTE: Proxy behaviour can be overridden via ""$blue_text""$script_dir/docker/proxy_overrides.yaml""$default_text""."
   else
@@ -218,17 +220,12 @@ build_services() {
       echo -e "$red_text""Failed to build docker images.""$default_text"
       exit 1
     }
-  else
+  elif [ "$first_setup" = true ] || [ "$opt_upgrade" = true ]; then
     echo -e "$blue_text""Pulling""$default_text"" docker images tag ""$blue_text""$opt_version""$default_text""."
-
-    pull_policy="missing"
-    if [ "$opt_upgrade" = true ] && [ "$opt_version" = "latest" ]; then
-      pull_policy="always"
-    fi
-
-    VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.yaml pull --policy $pull_policy || {
-      echo -e "$red_text""Failed to pull docker images. Check the version.""$default_text"
-      echo -e "$red_text""Also make sure docker is running and try again.""$default_text"
+    VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.yaml pull || {
+      echo -e "$red_text""Failed to pull docker images.""$default_text"
+      echo -e "$red_text""Either version not found or docker is not running.""$default_text"
+      echo -e "$red_text""Please check and try again.""$default_text"
       exit 1
     }
   fi
@@ -270,6 +267,7 @@ opt_verbose=false
 opt_version="latest"
 
 script_dir=$(dirname "$(readlink -f "$BASH_SOURCE")")
+first_setup=false
 # Extract service names from docker compose file.
 services=($(VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.build.yaml config --services))
 

@@ -12,7 +12,10 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ("prompt_studio_core", "0007_remove_customtool_default_profile_and_more"),
+        (
+            "prompt_studio_core",
+            "0007_remove_customtool_default_profile_and_more",
+        ),
     ]
 
     operations = [
@@ -33,7 +36,8 @@ class Migration(migrations.Migration):
                 (
                     "document_name",
                     models.CharField(
-                        db_comment="Field to store the document name", editable=False
+                        db_comment="Field to store the document name",
+                        editable=False,
                     ),
                 ),
                 (
@@ -71,7 +75,8 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="documentmanager",
             constraint=models.UniqueConstraint(
-                fields=("document_name", "tool"), name="unique_document_name_tool"
+                fields=("document_name", "tool"),
+                name="unique_document_name_tool",
             ),
         ),
     ]

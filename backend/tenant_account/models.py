@@ -5,7 +5,10 @@ from django.db import models
 class OrganizationMember(models.Model):
     member_id = models.BigAutoField(primary_key=True)
     user = models.OneToOneField(
-        User, on_delete=models.CASCADE, default=None, related_name="organization_member"
+        User,
+        on_delete=models.CASCADE,
+        default=None,
+        related_name="organization_member",
     )
     role = models.CharField()
 

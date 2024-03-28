@@ -3,12 +3,14 @@
 Returns:
     evaluate response
 """
+
 import logging
 
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
+
 from unstract.flags.client import EvaluationClient
 
 logger = logging.getLogger(__name__)
