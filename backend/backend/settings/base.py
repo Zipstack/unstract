@@ -143,6 +143,14 @@ CACHE_TTL_SEC = os.environ.get("CACHE_TTL_SEC", 10800)
 
 DEFAULT_AUTH_USERNAME = os.environ.get("DEFAULT_AUTH_USERNAME", "unstract")
 DEFAULT_AUTH_PASSWORD = os.environ.get("DEFAULT_AUTH_PASSWORD", "unstract")
+SYSTEM_ADMIN_USER = os.environ.get("SYSTEM_ADMIN_USER", "unstract_admin")
+SYSTEM_ADMIN_PASSWORD = os.environ.get(
+    "SYSTEM_ADMIN_PASSWORD", "unstract_admin"
+)
+SYSTEM_ADMIN_EMAIL = os.environ.get("SYSTEM_ADMIN_EMAIL", "admin@abc.com")
+
+# Flag to Enable django admin
+ADMIN_ENABLED = False
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/

@@ -17,18 +17,14 @@ Including another URLconf
 from account.admin import admin
 from django.conf import settings
 from django.conf.urls import *  # noqa: F401, F403
-from django.urls import include, path
 from django.conf.urls.static import static
-from django.conf import settings
+from django.urls import include, path
 
 path_prefix = settings.PATH_PREFIX
 api_path_prefix = settings.API_DEPLOYMENT_PATH_PREFIX
 
 urlpatterns = [
     path(f"{path_prefix}/", include("account.urls")),
-    # Admin URLs
-    path(f"{path_prefix}/admin/doc/", include("django.contrib.admindocs.urls")),
-    path(f"{path_prefix}/admin/", admin.site.urls),
     # Connector OAuth
     path(f"{path_prefix}/", include("connector_auth.urls")),
     # Docs
@@ -38,4 +34,13 @@ urlpatterns = [
     # Feature flags
     path(f"{path_prefix}/flags/", include("feature_flag.urls")),
 ]
+if settings.ADMIN_ENABLED is True:
+    # Admin URLs
+    urlpatterns += [
+        path(f"{path_prefix}/admin/", admin.site.urls),
+        path(
+            f"{path_prefix}/admin/doc/",
+            include("django.contrib.admindocs.urls"),
+        ),
+    ]
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
