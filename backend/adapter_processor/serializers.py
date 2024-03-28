@@ -8,10 +8,12 @@ from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
+from unstract.adapters.adapterkit import Adapterkit
 from unstract.adapters.constants import Common as common
 
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
+from unstract.adapters.llm.llm_adapter import LLMAdapter
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -70,7 +72,17 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
         adapter_metadata = json.loads(
             f.decrypt(bytes(instance.adapter_metadata_b).decode("utf-8"))
         )
+        # Get the adapter_instance
+        adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
+            instance.adapter_id
+        )
+        adapter_instance = adapter_class(adapter_metadata)
+        #If adapter_instance is a LLM send additional parameter of context_window
+        if isinstance(adapter_instance, LLMAdapter):
+            adapter_metadata["context_window_size"] = adapter_instance.get_context_window_size()
+
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
+
         rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
             instance.adapter_id, common.ICON
         )
