@@ -34,7 +34,7 @@ urlpatterns = [
     # Feature flags
     path(f"{path_prefix}/flags/", include("feature_flag.urls")),
 ]
-if settings.ADMIN_ENABLED is True:
+if settings.ADMIN_ENABLED:
     # Admin URLs
     urlpatterns += [
         path(f"{path_prefix}/admin/", admin.site.urls),

@@ -21,7 +21,7 @@ def create_public_tenant_and_domain(apps, schema_editor):
     user_model = apps.get_model("account", "User")
     # public User admin
     user = user_model(
-        username=settings.SYSTEM_ADMIN_USER,
+        username=settings.SYSTEM_ADMIN_USERNAME,
         email=settings.SYSTEM_ADMIN_EMAIL,
         is_superuser=True,
         is_staff=True,
