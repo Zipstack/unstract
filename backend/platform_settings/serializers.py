@@ -1,8 +1,9 @@
 # serializers.py
 
 from account.models import PlatformKey
-from backend.serializers import AuditSerializer
 from rest_framework import serializers
+
+from backend.serializers import AuditSerializer
 
 
 class PlatformKeySerializer(AuditSerializer):

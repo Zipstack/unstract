@@ -6,12 +6,11 @@ import uuid
 from typing import Any, Optional
 
 from dotenv import load_dotenv
-
-from unstract.core.pubsub_helper import LogPublisher
 from unstract.worker.constants import Env, LogType, ToolKey
 
 import docker
 from docker import DockerClient  # type: ignore[attr-defined]
+from unstract.core.pubsub_helper import LogPublisher
 
 load_dotenv()
 

@@ -10,7 +10,12 @@ pipeline_list = PipelineViewSet.as_view(
     }
 )
 pipeline_detail = PipelineViewSet.as_view(
-    {"get": "retrieve", "put": "update", "patch": "partial_update", "delete": "destroy"}
+    {
+        "get": "retrieve",
+        "put": "update",
+        "patch": "partial_update",
+        "delete": "destroy",
+    }
 )
 
 pipeline_execute = PipelineViewSet.as_view({"post": "execute"})

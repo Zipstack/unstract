@@ -72,8 +72,13 @@ class PromptStudioOutputManager(BaseModel):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["prompt_id", "document_manager", "profile_manager",
-                        "tool_id", "is_single_pass_extract"],
+                fields=[
+                    "prompt_id",
+                    "document_manager",
+                    "profile_manager",
+                    "tool_id",
+                    "is_single_pass_extract",
+                ],
                 name="unique_prompt_output",
             ),
         ]

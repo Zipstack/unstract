@@ -7,8 +7,8 @@ class FileInformationKey:
     FILE_UPLOAD_ALLOWED_EXT = ["pdf"]
     FILE_UPLOAD_ALLOWED_MIME = ["application/pdf"]
 
+
 class FileViewTypes:
     ORIGINAL = "ORIGINAL"
     EXTRACT = "EXTRACT"
     SUMMARIZE = "SUMMARIZE"
-    
