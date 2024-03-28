@@ -33,11 +33,16 @@ Automate critical business processes that involve complex documents with a human
 
 ## 🚀 Getting started
 
+### System Requirements
+
+- 8GB RAM (recommended)
+
 ### Prerequisites
 
 - Linux or MacOS (Intel or M-series)
 - Docker
 - Docker Compose (if you need to install it separately)
+- Git
 
 Next, either download a release or clone this repo and do the following:
 
