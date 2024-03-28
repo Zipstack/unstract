@@ -3,7 +3,6 @@ import uuid
 from typing import Any
 
 from account.custom_exceptions import DuplicateData
-from backend.constants import RequestKey
 from django.db import IntegrityError
 from django.db.models.query import QuerySet
 from rest_framework import serializers, status, viewsets
@@ -14,7 +13,10 @@ from rest_framework.versioning import URLPathVersioning
 from tool_instance.constants import ToolInstanceErrors
 from tool_instance.constants import ToolInstanceKey as TIKey
 from tool_instance.constants import ToolKey
-from tool_instance.exceptions import FetchToolListFailed, ToolFunctionIsMandatory
+from tool_instance.exceptions import (
+    FetchToolListFailed,
+    ToolFunctionIsMandatory,
+)
 from tool_instance.models import ToolInstance
 from tool_instance.serializers import (
     ToolInstanceReorderSerializer as TIReorderSerializer,
@@ -24,6 +26,8 @@ from tool_instance.tool_instance_helper import ToolInstanceHelper
 from tool_instance.tool_processor import ToolProcessor
 from utils.filtering import FilterHelper
 from workflow_manager.workflow.constants import WorkflowKey
+
+from backend.constants import RequestKey
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +55,8 @@ def get_tool_list(request: Request) -> Response:
         try:
             logger.info("Fetching tools from the tool registry...")
             return Response(
-                data=ToolProcessor.get_tool_list(request.user), status=status.HTTP_200_OK
+                data=ToolProcessor.get_tool_list(request.user),
+                status=status.HTTP_200_OK,
             )
         except Exception as exc:
             logger.error(f"Failed to fetch tools: {exc}")
@@ -117,10 +122,10 @@ class ToolInstanceViewSet(viewsets.ModelViewSet):
             instance (ToolInstance): Instance being deleted.
         """
         lookup = {"step__gt": instance.step}
-        next_tool_instances: list[
-            ToolInstance
-        ] = ToolInstanceHelper.get_tool_instances_by_workflow(
-            instance.workflow.id, TIKey.STEP, lookup=lookup
+        next_tool_instances: list[ToolInstance] = (
+            ToolInstanceHelper.get_tool_instances_by_workflow(
+                instance.workflow.id, TIKey.STEP, lookup=lookup
+            )
         )
         super().perform_destroy(instance)
 

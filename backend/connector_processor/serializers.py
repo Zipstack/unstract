@@ -1,5 +1,6 @@
-from backend.constants import FieldLengthConstants as FLC
 from rest_framework import serializers
+
+from backend.constants import FieldLengthConstants as FLC
 
 
 class TestConnectorSerializer(serializers.Serializer):

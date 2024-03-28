@@ -208,7 +208,6 @@ class DestinationConnector(BaseConnector):
         )
 
         data = self.get_result(file_history)
-
         values = DatabaseUtils.get_columns_and_values(
             column_mode_str=column_mode,
             data=data,
@@ -217,24 +216,30 @@ class DestinationConnector(BaseConnector):
             agent_name=agent_name,
             single_column_name=single_column_name,
         )
-
         engine = DatabaseUtils.get_db_engine(
             connector_id=connector_instance.connector_id,
             connector_settings=connector_settings,
         )
-        sql_values = DatabaseUtils.get_sql_values_for_query(
-            engine=engine,
-            connector_id=connector_instance.connector_id,
-            connector_settings=connector_settings,
-            table_name=table_name,
-            values=values,
+        # If data is None, don't execute CREATE or INSERT query
+        if data is None:
+            return
+        DatabaseUtils.create_table_if_not_exists(
+            engine=engine, table_name=table_name, database_entry=values
         )
-
+        sql_columns_and_values = (
+            DatabaseUtils.get_sql_columns_and_values_for_query(
+                engine=engine,
+                connector_id=connector_instance.connector_id,
+                connector_settings=connector_settings,
+                table_name=table_name,
+                values=values,
+            )
+        )
         DatabaseUtils.execute_write_query(
             engine=engine,
             table_name=table_name,
-            sql_keys=list(values.keys()),
-            sql_values=sql_values,
+            sql_keys=list(sql_columns_and_values.keys()),
+            sql_values=list(sql_columns_and_values.values()),
         )
 
     def _handle_api_result(
@@ -317,7 +322,6 @@ class DestinationConnector(BaseConnector):
         """
         if file_history and file_history.result:
             return self.parse_string(file_history.result)
-
         output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         metadata = self.get_workflow_metadata()
         output_type = self.get_output_type(metadata)

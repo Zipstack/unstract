@@ -1,5 +1,4 @@
-"""This module contains the Celery configuration for the backend
-project."""
+"""This module contains the Celery configuration for the backend project."""
 
 import os
 

@@ -11,9 +11,10 @@ import {
 import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
 import { useSessionStore } from "../../../store/session-store.js";
-import { useAlertStore } from "../../../store/alert-store";
-import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import "./TopNavBar.css";
+import { useAlertStore } from "../../../store/alert-store.js";
+import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 let TrialDaysInfo;
 try {
@@ -33,6 +34,7 @@ function TopNavBar() {
   const logout = useLogout();
   const [showOnboardBanner, setShowOnboardBanner] = useState(false);
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     updateOnBoardBannerStatus();
@@ -48,25 +50,25 @@ function TopNavBar() {
 
   const cascadeOptions = allOrganization.map((org) => {
     return {
-      key: org.id,
+      key: org?.id,
       label:
-        org.id === sessionDetails?.orgId ? (
+        org?.id === sessionDetails?.orgId ? (
           <div
             onClick={() =>
               setAlertDetails({
                 type: "error",
-                content: `You are already in ${org.display_name}`,
+                content: `You are already in ${org?.display_name}`,
               })
             }
           >
-            {org.display_name}
+            {org?.display_name}
           </div>
         ) : (
           <ConfirmModal
-            handleConfirm={() => handleContinue(org.id)}
-            content={`Want to switch to ${org.display_name} `}
+            handleConfirm={() => handleContinue(org?.id)}
+            content={`Want to switch to ${org?.display_name} `}
           >
-            <div>{org.display_name}</div>
+            <div>{org?.display_name}</div>
           </ConfirmModal>
         ),
     };
@@ -74,22 +76,19 @@ function TopNavBar() {
 
   const handleContinue = async (selectedOrg) => {
     const requestOptions = {
-      method: "GET",
-      url: "/api/v1/organization",
+      method: "POST",
+      url: `/api/v1/organization/${selectedOrg}/set`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
     };
-    const csrfToken = ("; " + document.cookie)
-      .split(`; csrftoken=`)
-      .pop()
-      .split(";")[0];
-
-    requestOptions.url = `/api/v1/organization/${selectedOrg}/set`;
-    requestOptions.headers = {
-      "X-CSRFToken": csrfToken,
-    };
-    requestOptions.method = "POST";
-
-    await axios(requestOptions);
-    window.location.reload();
+    await axios(requestOptions)
+      .then(() => {
+        window.location.reload();
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
   };
 
   // Dropdown items
@@ -134,11 +133,11 @@ function TopNavBar() {
 
   // Function to get the initials from the user name
   const getInitials = (name) => {
-    const names = name.split(" ");
+    const names = name?.split(" ");
     const initials = names
-      .map((n) => n.charAt(0))
-      .join("")
-      .toUpperCase();
+      ?.map((n) => n.charAt(0))
+      ?.join("")
+      ?.toUpperCase();
     return initials;
   };
 

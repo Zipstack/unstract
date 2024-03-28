@@ -26,6 +26,7 @@ import { useWorkflowStore } from "../../../store/workflow-store";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { ConfigureConnectorModal } from "../configure-connector-modal/ConfigureConnectorModal";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import "./DsSettingsCard.css";
 
 const tooltip = {
   input: "Data Source Settings",
@@ -46,6 +47,24 @@ const inputOptions = [
     label: "Database",
   },
 ];
+
+const disabledIdsByType = {
+  FILE_SYSTEM: [
+    "box|4d94d237-ce4b-45d8-8f34-ddeefc37c0bf",
+    "google_cloud_storage|109bbe7b-8861-45eb-8841-7244e833d97b",
+    "azure_cloud_storage|1476a54a-ed17-4a01-9f8f-cb7e4cf91c8a",
+    "http|6fdea346-86e4-4383-9a21-132db7c9a576",
+  ],
+  DATABASE: [
+    "mariadb|146b0124-b9fc-466f-8e68-098ff60703e8",
+    "mysql|db709852-fa51-4aa6-9b91-afc45f111bec",
+    "mssql|6c6af35c-9498-4bd6-9258-23b5337e068b",
+  ],
+};
+
+const needToRemove = {
+  FILE_SYSTEM: ["pcs|b8cd25cd-4452-4d54-bd5e-e7d71459b702"],
+};
 
 function DsSettingsCard({ type, endpointDetails, message }) {
   const workflowStore = useWorkflowStore();
@@ -125,7 +144,16 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       ) {
         return;
       }
-      menuItems.push(getMenuItem(item?.name, item?.id, sourceIcon(item?.icon)));
+      menuItems.push(
+        getMenuItem(
+          item?.name,
+          item?.id,
+          sourceIcon(item?.icon),
+          undefined,
+          undefined,
+          item?.isDisabled
+        )
+      );
     });
     setSelectedId("");
     setFilteredList(menuItems);
@@ -168,8 +196,26 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
     axiosPrivate(requestOptions)
       .then((res) => {
-        const data = res?.data;
-        setListOfConnectors(data || []);
+        let data = res?.data;
+        // Remove items specified in needToRemove from data
+        Object.keys(needToRemove).forEach((mode) => {
+          const idsToRemove = needToRemove[mode];
+          data = data.filter(
+            (source) =>
+              !(
+                source.connector_mode === mode &&
+                idsToRemove.includes(source.id)
+              )
+          );
+        });
+
+        const updatedSources = data?.map((source) => ({
+          ...source,
+          isDisabled: disabledIdsByType[source?.connector_mode]?.includes(
+            source?.id
+          ),
+        }));
+        setListOfConnectors(updatedSources || []);
       })
       .catch((err) => {
         setAlertDetails(handleException(err));

@@ -18,13 +18,11 @@ import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbl
 import "./SettingsModal.css";
 
 let SummarizeManager = null;
-let EvaluationManager = null;
+const EvaluationManager = null;
 let ChallengeManager = null;
 try {
   SummarizeManager =
     require("../../../plugins/summarize-manager/SummarizeManager").SummarizeManager;
-  EvaluationManager =
-    require("../../../plugins/evaluation-manager/EvaluationManager").EvaluationManager;
   ChallengeManager =
     require("../../../plugins/challenge-manager/ChallengeManager").ChallengeManager;
 } catch {
@@ -62,16 +60,12 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       ),
     };
 
-    if (SummarizeManager && EvaluationManager && ChallengeManager) {
-      // Add Summary Manager menu item to the existing list
+    let position = 1;
+    if (SummarizeManager) {
       items.splice(
-        1,
+        position,
         0,
-        ...[
-          getMenuItem("Summary Manager", 2, <FileTextOutlined />),
-          getMenuItem("Evaluation Manager", 3, <FileTextOutlined />),
-          getMenuItem("Challenge Manager", 4, <FileTextOutlined />),
-        ]
+        getMenuItem("Summary Manager", 2, <FileTextOutlined />)
       );
       listOfComponents[2] = (
         <SummarizeManager
@@ -79,8 +73,26 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
           handleUpdateTool={handleUpdateTool}
         />
       );
+      position++;
+    }
+
+    if (EvaluationManager) {
+      items.splice(
+        position,
+        0,
+        getMenuItem("Evaluation Manager", 3, <FileTextOutlined />)
+      );
       listOfComponents[3] = (
         <EvaluationManager handleUpdateTool={handleUpdateTool} />
+      );
+      position++;
+    }
+
+    if (ChallengeManager) {
+      items.splice(
+        position,
+        0,
+        getMenuItem("Challenge Manager", 4, <FileTextOutlined />)
       );
       listOfComponents[4] = (
         <ChallengeManager handleUpdateTool={handleUpdateTool} />
