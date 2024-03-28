@@ -10,10 +10,10 @@ from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
 from unstract.adapters.adapterkit import Adapterkit
 from unstract.adapters.constants import Common as common
+from unstract.adapters.llm.llm_adapter import LLMAdapter
 
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
-from unstract.adapters.llm.llm_adapter import LLMAdapter
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -77,9 +77,12 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
             instance.adapter_id
         )
         adapter_instance = adapter_class(adapter_metadata)
-        #If adapter_instance is a LLM send additional parameter of context_window
+        # If adapter_instance is a LLM send
+        # additional parameter of context_window
         if isinstance(adapter_instance, LLMAdapter):
-            adapter_metadata["context_window_size"] = adapter_instance.get_context_window_size()
+            adapter_metadata["context_window_size"] = (
+                adapter_instance.get_context_window_size()
+            )
 
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
 
