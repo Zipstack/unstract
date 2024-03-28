@@ -87,7 +87,7 @@ function AddLlmProfile({
       embedding_model: "",
       x2text: "",
       retrieval_strategy: "simple",
-      similarity_top_k: 1,
+      similarity_top_k: 3,
       section: "Default",
       prompt_studio_tool: details?.tool_id,
     });
