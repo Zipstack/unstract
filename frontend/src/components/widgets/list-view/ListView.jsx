@@ -41,7 +41,7 @@ function ListView({
     let title = null;
     if (iconProp && item[iconProp].length > 4) {
       title = (
-        <div className="cover-img">
+        <div className="adapter-cover-img">
           <Image src={item[iconProp]} preview={false} className="fit-cover" />
           <Typography.Text className="adapters-list-title">
             {item[titleProp]}
