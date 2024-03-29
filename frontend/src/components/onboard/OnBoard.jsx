@@ -129,6 +129,18 @@ function OnBoard() {
             ))}
           </Space>
           <div className="later-div-style">
+            <div className="help-text">
+              Need help? Here&apos;s our&nbsp;
+              <a
+                href="https://docs.unstract.com/"
+                target="_blank"
+                rel="noreferrer"
+                className="link-color"
+              >
+                quick start guide&nbsp;
+              </a>
+              to help you get going.
+            </div>
             <CustomButton type="primary" onClick={() => navigate(homePageUrl)}>
               Complete Later &gt;
             </CustomButton>
