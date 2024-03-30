@@ -5,6 +5,7 @@
   "required": [
     "connectorName",
     "server",
+    "port",
     "database",
     "user",
     "password"
@@ -17,8 +18,7 @@
     },
     "server": {
       "type": "string",
-      "title": "Server",
-      "default": "mydbserver.mycompany.com"
+      "title": "Server"
     },
     "port": {
       "type": "string",
@@ -33,8 +33,7 @@
     },
     "user": {
       "type": "string",
-      "title": "User",
-      "default": "sa"
+      "title": "User"
     },
     "password": {
       "type": "string",
