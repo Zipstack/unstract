@@ -391,7 +391,6 @@ class DBConnectorQueryHelper:
 
             Permanent columns, will always be present in table creation.
         """
-
         if conn_cls == UnstractDBConnectorClass.BIGQUERY:
             sql_query += (
                 f"CREATE TABLE IF NOT EXISTS {table} "
@@ -486,8 +485,7 @@ class DBConnectorTypeConverter:
 
     @staticmethod
     def to_redshift_mapping(python_type: Any) -> Optional[str]:
-        """Method used to convert python to SQL datatype Used by Postgres,
-        Redshift, Snowflake."""
+        """Method to convert python to datatype Used by Redshift."""
         mapping = {
             str: "VARCHAR(65535)",
             int: "BIGINT",
@@ -498,8 +496,7 @@ class DBConnectorTypeConverter:
 
     @staticmethod
     def to_mysql_mariadb_mapping(python_type: Any) -> Optional[str]:
-        """Method used to convert python to SQL datatype Used by Postgres,
-        Redshift, Snowflake."""
+        """Method to convert python to datatype Used by Maria-db, Mysql."""
         mapping = {
             str: "LONGTEXT",
             int: "BIGINT",
