@@ -334,6 +334,7 @@ class DatabaseUtils:
         """Creates table if not exists.
 
         Args:
+            class_name (UnstractDB): Type of Unstract DB connector
             engine (Any): _description_
             table_name (str): _description_
             database_entry (dict[str, Any]): _description_
