@@ -92,7 +92,7 @@
 .later-div-style {
   align-items: center;
   display: flex;
-  justify-content: right;
+  justify-content: space-between;
   margin-top: 25px;
 }
 
@@ -161,4 +161,14 @@
 
 .ant-card .ant-card-body {
   padding: 6px;
+}
+
+.help-text {
+  flex: 1;
+  color: #3D6182;
+  font-family: 'SF Pro Text', sans-serif;
+}
+
+.link-color {
+  color: #00A6ED;
 }
