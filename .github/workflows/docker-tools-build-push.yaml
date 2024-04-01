@@ -21,7 +21,7 @@ run-name: "[${{ inputs.service_name }}] Docker Image Build and Push (Development
 
 jobs:
     build-and-push:
-      runs-on: custom-k8s-runner
+      runs-on: ubuntu-latest
       steps:
         - name: Output Inputs
           run: echo "${{ toJSON(github.event.inputs) }}"

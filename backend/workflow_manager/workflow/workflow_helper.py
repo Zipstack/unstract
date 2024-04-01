@@ -215,10 +215,10 @@ class WorkflowHelper:
         workflow_execution: Optional[WorkflowExecution] = None,
         execution_mode: Optional[tuple[str, str]] = None,
     ) -> ExecutionResponse:
-        tool_instances: list[
-            ToolInstance
-        ] = ToolInstanceHelper.get_tool_instances_by_workflow(
-            workflow.id, ToolInstanceKey.STEP
+        tool_instances: list[ToolInstance] = (
+            ToolInstanceHelper.get_tool_instances_by_workflow(
+                workflow.id, ToolInstanceKey.STEP
+            )
         )
 
         WorkflowHelper.validate_tool_instances_meta(

@@ -27,7 +27,9 @@ class JsonSchemaValidator:
             logger.error(f"Validation error: {e}")
             raise InvalidSchemaInput
 
-    def validate_and_filter(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    def validate_and_filter(
+        self, data: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         """Validates the input data against the schema and filters the data
         based on the schema's properties.
 

@@ -33,7 +33,12 @@ function ListOfSources({ setSelectedSourceId, type }) {
       "unstructuredenterprise|eb1b6c58-221f-4db0-a4a5-e5f9cdca44e1",
       "unstructuredcommunity|eeed506f-1875-457f-9101-846fc7115676",
     ],
-    VECTOR_DB: ["milvus|3f42f6f9-4b8e-4546-95f3-22ecc9aca442"],
+    VECTOR_DB: [
+      "supabase|e6998e3c-3595-48c0-a190-188dbd803858",
+      "pinecone|83881133-485d-4ecc-b1f7-0009f96dc74a",
+      "milvus|3f42f6f9-4b8e-4546-95f3-22ecc9aca442",
+      "postgres|70ab6cc2-e86a-4e5a-896f-498a95022d34",
+    ],
   };
 
   useEffect(() => {
