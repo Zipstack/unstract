@@ -29,7 +29,7 @@ function ListOfTools() {
     useState(false);
   const [isPermissionEdit, setIsPermissionEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
-  const [userList, setUserList] = useState([]);
+  const [allUserList, setAllUserList] = useState([]);
   useEffect(() => {
     getListOfTools();
   }, []);
@@ -211,7 +211,7 @@ function ListOfTools() {
     axiosPrivate(requestOptions)
       .then((response) => {
         const users = response?.data?.members || [];
-        setUserList(
+        setAllUserList(
           users.map((user) => ({
             id: user?.id,
             email: user?.email,
@@ -289,7 +289,7 @@ function ListOfTools() {
         adapter={promptDetails}
         permissionEdit={isPermissionEdit}
         loading={isShareLoading}
-        allUsers={userList}
+        allUsers={allUserList}
         onApply={onShare}
       />
     </>
