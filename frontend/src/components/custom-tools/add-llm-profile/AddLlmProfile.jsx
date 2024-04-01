@@ -448,7 +448,15 @@ function AddLlmProfile({
               <Col span={1} />
               <Col span={8}>
                 <Form.Item
-                  label="Chunk Size"
+                  label={
+                    <>
+                      Chunk Size
+                      <Typography.Text type="secondary">
+                        {" "}
+                        (Set to 0 if documents are small)
+                      </Typography.Text>
+                    </>
+                  }
                   name="chunk_size"
                   rules={[
                     {
