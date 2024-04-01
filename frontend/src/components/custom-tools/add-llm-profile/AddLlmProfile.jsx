@@ -363,7 +363,7 @@ function AddLlmProfile({
         const data = res?.data;
         const contextWindowSize = data.adapter_metadata.context_window_size;
         const chunkSize = form.getFieldValue("chunk_size");
-        setTokenSize(chunkSize > 0 ? chunkSize : 0);
+        setTokenSize(chunkSize > 0 ? calcTokenSize(chunkSize) : 0);
         setMaxTokenSize(contextWindowSize);
       })
       .catch((err) => {
@@ -378,9 +378,14 @@ function AddLlmProfile({
 
   const handleChunkSizeChange = async (event) => {
     const value = event.target.value;
-    const tokenSize = (value / 4 / 1024).toFixed(1);
+    const tokenSize = calcTokenSize(value);
     setTokenSize(tokenSize);
   };
+
+  function calcTokenSize(chunkSize) {
+    const tokenSize = (chunkSize / 4 / 1024).toFixed(1);
+    return tokenSize;
+  }
 
   return (
     <div className="settings-body-pad-top">
