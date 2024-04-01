@@ -37,7 +37,9 @@ def get_roles(request: Request) -> Response:
 @api_view(["POST"])
 def reset_password(request: Request) -> Response:
     auth_controller = AuthenticationController()
-    data: ResetUserPasswordDto = auth_controller.reset_user_password(request.user)
+    data: ResetUserPasswordDto = auth_controller.reset_user_password(
+        request.user
+    )
     if data.status:
         return Response(
             status=status.HTTP_200_OK,

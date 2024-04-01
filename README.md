@@ -5,6 +5,15 @@
 
 ## No-code LLM Platform to launch APIs and ETL Pipelines to structure unstructured documents
 
+[![pdm-managed](https://img.shields.io/badge/pdm-managed-blueviolet)](https://pdm-project.org)
+[![CLA assistant](https://cla-assistant.io/readme/badge/Zipstack/unstract)](https://cla-assistant.io/Zipstack/unstract)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/Zipstack/unstract/main.svg)](https://results.pre-commit.ci/latest/github/Zipstack/unstract/main)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=bugs)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=coverage)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
+[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
+
 </div>
 
 ## 🤖 Go beyond co-pilots
@@ -25,11 +34,16 @@ Automate critical business processes that involve complex documents with a human
 
 ## 🚀 Getting started
 
+### System Requirements
+
+- 8GB RAM (recommended)
+
 ### Prerequisites
 
 - Linux or MacOS (Intel or M-series)
 - Docker
 - Docker Compose (if you need to install it separately)
+- Git
 
 Next, either download a release or clone this repo and do the following:
 
@@ -65,8 +79,8 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/3rd_party/qdrant.png" width="32"/>| Qdrant | ✅ Working |
-|<img src="docs/assets/3rd_party/milvus.png" width="32"/>| Milvus | ✅ Working |
 |<img src="docs/assets/3rd_party/weaviate.png" width="32"/>| Weaviate | ✅ Working |
+|<img src="docs/assets/3rd_party/milvus.png" width="32"/>| Milvus | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/supabase.png" width="32"/>| Supabase | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/pinecone.png" width="32"/>| Pinecone | 🗓️ Coming soon! |
@@ -121,4 +135,10 @@ Contributions are welcome! Please read [CONTRIBUTE.md](CONTRIBUTE.md) for furthe
 
 ## 👋 Join the LLM-powered automation community
 
-[Join great conversations](https://join-slack.unstract.com) around LLMs, their ecosystem and leveraging them to automate the previously unautomatable!
+- On Slack, [join great conversations](https://join-slack.unstract.com) around LLMs, their ecosystem and leveraging them to automate the previously unautomatable!
+- [Follow us on X/Twitter](https://twitter.com/GetUnstract)
+- [Follow us on LinkedIn](https://www.linkedin.com/showcase/unstract/)
+
+## 📊 A note on analytics
+
+In full disclosure, Unstract integrates Posthog to track usage analytics. As you can inspect the relevant code here, we collect the minimum possible metrics.
