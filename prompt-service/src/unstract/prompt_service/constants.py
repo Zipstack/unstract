@@ -42,8 +42,10 @@ class PromptServiceContants:
     EVAL_SETTINGS_EVALUATE = "evaluate"
     EVAL_SETTINGS_MONITOR_LLM = "monitor_llm"
     EVAL_SETTINGS_EXCLUDE_FAILED = "exclude_failed"
-    LLM_PROFILE_MANAGER = "llm_profile_manager"
+    TOOL_SETTINGS = "tool_settings"
     LOG_EVENTS_ID = "log_events_id"
+    CHALLENGE_LLM = "challenge_llm"
+    USAGE = "usage"
 
 
 class LogLevel(Enum):

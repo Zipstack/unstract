@@ -32,7 +32,9 @@ class PlatformAuthHelper:
             )
             raise error
         if not auth_controller.is_admin_by_role(member.role):
-            logger.error("User is not having right access to perform this operation.")
+            logger.error(
+                "User is not having right access to perform this operation."
+            )
             raise UserForbidden()
         else:
             pass

@@ -6,6 +6,7 @@
   width: 70%;
   min-width: 800px;
   max-width: 1400px;
+  padding: 0px 10px;
 }
 
 .list-view-item {
@@ -17,7 +18,6 @@
 
 .cur-pointer {
   padding: 10px 0 !important;
-  height: 85px;
   z-index: 1;
   overflow: hidden;
 }
@@ -27,6 +27,7 @@
   margin-left: 20px;
   z-index: 20;
   color: #092c4c;
+  flex: content;
 }
 
 .cur-pointer .ant-list-item-meta {
@@ -50,7 +51,7 @@
   height: 20px;
 }
 
-.cover-img .fit-cover {
+.adapter-cover-img .fit-cover {
   width: 120px;
   height: 90px;
   object-fit: contain;
@@ -71,14 +72,10 @@
   font-size: 16px;
 }
 
-.cover-img {
+.adapter-cover-img {
   display: flex;
   align-items: center;
   gap: 5px;
-}
-
-.action-icon-buttons {
-  flex: content;
 }
 
 .list-view-content {
@@ -88,4 +85,9 @@
 
 .adapters-list-title-container {
   width: 50%;
+  padding-right: 12px;
+}
+
+.list-item-desc {
+  padding-bottom: 10px;
 }

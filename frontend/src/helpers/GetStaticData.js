@@ -300,15 +300,27 @@ const isJson = (text) => {
 };
 
 const displayPromptResult = (output, isFormat = false) => {
-  try {
-    const parsedData = JSON.parse(output.replace(/'/g, '"'));
-    if (Array.isArray(parsedData) || typeof parsedData === "object") {
-      return isFormat ? JSON.stringify(parsedData, null, 4) : parsedData;
+  let i = 0;
+  let parsedData = output;
+
+  while (i < 3) {
+    i++;
+    try {
+      parsedData = JSON.parse(parsedData);
+    } catch {
+      break;
     }
-    return output;
-  } catch (err) {
-    return output;
   }
+
+  if (
+    (Array.isArray(parsedData) || typeof parsedData === "object") &&
+    isFormat
+  ) {
+    // If isFormat is true, return the formatted JSON string
+    return JSON.stringify(parsedData, null, 4);
+  }
+
+  return parsedData;
 };
 
 const onboardCompleted = (adaptersList) => {
@@ -352,13 +364,14 @@ const titleCase = (str) => {
   return words.join(" ");
 };
 
-const getMenuItem = (label, key, icon, children, type) => {
+const getMenuItem = (label, key, icon, children, type, isDisabled) => {
   return {
     key,
     icon,
     children,
     label,
     type,
+    isDisabled,
   };
 };
 

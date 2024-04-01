@@ -18,12 +18,13 @@ import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbl
 import "./SettingsModal.css";
 
 let SummarizeManager = null;
-let EvaluationManager = null;
+const EvaluationManager = null;
+let ChallengeManager = null;
 try {
   SummarizeManager =
     require("../../../plugins/summarize-manager/SummarizeManager").SummarizeManager;
-  EvaluationManager =
-    require("../../../plugins/evaluation-manager/EvaluationManager").EvaluationManager;
+  ChallengeManager =
+    require("../../../plugins/challenge-manager/ChallengeManager").ChallengeManager;
 } catch {
   // Component will remain null if it is not present.
 }
@@ -37,21 +38,21 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
   useEffect(() => {
     const items = [
       getMenuItem("Manage LLM Profiles", 1, <CodeOutlined />),
-      getMenuItem("Manage Grammar", 4, <MessageOutlined />),
-      getMenuItem("Preamble", 5, <DiffOutlined />),
-      getMenuItem("Postamble", 6, <DiffOutlined />),
+      getMenuItem("Manage Grammar", 5, <MessageOutlined />),
+      getMenuItem("Preamble", 6, <DiffOutlined />),
+      getMenuItem("Postamble", 7, <DiffOutlined />),
     ];
 
     const listOfComponents = {
       1: <ManageLlmProfiles />,
-      4: <CustomSynonyms />,
-      5: (
+      5: <CustomSynonyms />,
+      6: (
         <PreAndPostAmbleModal
           type="PREAMBLE"
           handleUpdateTool={handleUpdateTool}
         />
       ),
-      6: (
+      7: (
         <PreAndPostAmbleModal
           type="POSTAMBLE"
           handleUpdateTool={handleUpdateTool}
@@ -59,15 +60,12 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       ),
     };
 
-    if (SummarizeManager && EvaluationManager) {
-      // Add Summary Manager menu item to the existing list
+    let position = 1;
+    if (SummarizeManager) {
       items.splice(
-        1,
+        position,
         0,
-        ...[
-          getMenuItem("Summary Manager", 2, <FileTextOutlined />),
-          getMenuItem("Evaluation Manager", 3, <FileTextOutlined />),
-        ]
+        getMenuItem("Summary Manager", 2, <FileTextOutlined />)
       );
       listOfComponents[2] = (
         <SummarizeManager
@@ -75,8 +73,29 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
           handleUpdateTool={handleUpdateTool}
         />
       );
+      position++;
+    }
+
+    if (EvaluationManager) {
+      items.splice(
+        position,
+        0,
+        getMenuItem("Evaluation Manager", 3, <FileTextOutlined />)
+      );
       listOfComponents[3] = (
         <EvaluationManager handleUpdateTool={handleUpdateTool} />
+      );
+      position++;
+    }
+
+    if (ChallengeManager) {
+      items.splice(
+        position,
+        0,
+        getMenuItem("Challenge Manager", 4, <FileTextOutlined />)
+      );
+      listOfComponents[4] = (
+        <ChallengeManager handleUpdateTool={handleUpdateTool} />
       );
     }
 

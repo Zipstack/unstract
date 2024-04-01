@@ -55,7 +55,7 @@ AuthenticationMiddleware.be_db = be_db
 
 app = Flask("prompt-service")
 
-plugins = plugin_loader(app)
+plugins: dict[str, dict[str, Any]] = plugin_loader(app)
 
 
 def _publish_log(
@@ -166,6 +166,7 @@ def authentication_middleware(func: Any) -> Any:
 @authentication_middleware
 def prompt_processor() -> Any:
     result: dict[str, Any] = {}
+    usage = {}
     platform_key = AuthenticationMiddleware.get_token_from_auth_header(request)
     if request.method == "POST":
         payload: dict[Any, Any] = request.json
@@ -325,7 +326,7 @@ def prompt_processor() -> Any:
         is_assert = output[PSKeys.IS_ASSERT]
         if is_assert:
             app.logger.debug(f'Asserting prompt: {output["assert_prompt"]}')
-            answer = construct_and_run_prompt(
+            answer, usage = construct_and_run_prompt(
                 output,
                 llm_helper,
                 llm_li,
@@ -359,7 +360,7 @@ def prompt_processor() -> Any:
                     ]
                 app.logger.info(f"[Assigning] {answer} to the output")
             else:
-                answer = construct_and_run_prompt(
+                answer, usage = construct_and_run_prompt(
                     output,
                     llm_helper,
                     llm_li,
@@ -368,7 +369,7 @@ def prompt_processor() -> Any:
                 )
         else:
             if chunk_size == 0:
-                answer = construct_and_run_prompt(
+                answer, usage = construct_and_run_prompt(
                     output,
                     llm_helper,
                     llm_li,
@@ -386,7 +387,7 @@ def prompt_processor() -> Any:
                 )
 
                 if output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SIMPLE:
-                    answer, context = simple_retriver(
+                    answer, context, usage = simple_retriver(
                         output,
                         doc_id,
                         llm_helper,
@@ -430,7 +431,7 @@ def prompt_processor() -> Any:
                     percentages or other grouping \
                     characters. No explanation is required.\
                     If you cannot extract the number, output 0."
-                answer = run_completion(
+                answer, usage = run_completion(
                     llm_helper,
                     llm_li,
                     prompt,
@@ -450,7 +451,7 @@ def prompt_processor() -> Any:
                 prompt = f'Extract the email from the following text:\n{answer}\n\nOutput just the email. \
                     The email should be directly assignable to a string variable. \
                         No explanation is required. If you cannot extract the email, output "NA".'  # noqa
-                answer = run_completion(
+                answer, usage = run_completion(
                     llm_helper,
                     llm_li,
                     prompt,
@@ -464,7 +465,7 @@ def prompt_processor() -> Any:
                       The date should be in ISO date time format. No explanation is required. \
                         The date should be directly assignable to a date variable. \
                             If you cannot convert the string into a date, output "NA".'  # noqa
-                answer = run_completion(
+                answer, usage = run_completion(
                     llm_helper,
                     llm_li,
                     prompt,
@@ -512,6 +513,39 @@ def prompt_processor() -> Any:
             structured_output[output[PSKeys.NAME]] = structured_output[
                 output[PSKeys.NAME]
             ].rstrip("\n")
+
+        # Challenge condition
+        if "enable_challenge" in output and output["enable_challenge"]:
+            challenge_plugin: dict[str, Any] = plugins.get("challenge", {})
+            try:
+                if challenge_plugin:
+                    tool_settings: dict[str, Any] = {
+                        PSKeys.PREAMBLE: output[PSKeys.PREAMBLE],
+                        PSKeys.POSTAMBLE: output[PSKeys.POSTAMBLE],
+                        PSKeys.GRAMMAR: output[PSKeys.GRAMMAR],
+                        PSKeys.LLM: output[PSKeys.LLM],
+                        PSKeys.CHALLENGE_LLM: output[PSKeys.CHALLENGE_LLM],
+                    }
+                    challenge = challenge_plugin["entrypoint_cls"](
+                        llm_helper=llm_helper,
+                        context=context,
+                        tool_settings=tool_settings,
+                        output=output,
+                        structured_output=structured_output,
+                        logger=app.logger,
+                        platform_key=platform_key,
+                    )
+                    # Will inline replace the structured output passed.
+                    challenge.run()
+                else:
+                    app.logger.info(
+                        "No challenge plugin found to evaluate prompt: %s",
+                        output["name"],
+                    )
+            except challenge_plugin["exception_cls"] as e:
+                app.logger.error(
+                    "Failed to challenge prompt %s: %s", output["name"], str(e)
+                )
 
         #
         # Evaluate the prompt.
@@ -596,6 +630,7 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         "Execution complete",
     )
+    app.logger.info("Usage details : %s", str(usage))
     return structured_output
 
 
@@ -616,7 +651,7 @@ def simple_retriver(  # type:ignore
         f"Generate a sub-question from the following verbose prompt that will"
         f" help extract relevant documents from a vector store:\n\n{prompt}"
     )
-    answer: str = run_completion(
+    answer, usage = run_completion(
         llm_helper,
         llm_li,
         subq_prompt,
@@ -643,14 +678,14 @@ def simple_retriver(  # type:ignore
                 "Node score is less than 0.6. " f"Ignored: {node.score}"
             )
 
-    answer: str = construct_and_run_prompt(  # type:ignore
+    answer, usage = construct_and_run_prompt(  # type:ignore
         output,
         llm_helper,
         llm_li,
         text,
         "promptx",
     )
-    return (answer, text)
+    return (answer, text, usage)
 
 
 def construct_and_run_prompt(
@@ -659,7 +694,7 @@ def construct_and_run_prompt(
     llm_li: Optional[LLM],
     context: str,
     prompt: str,
-) -> str:
+) -> tuple[str, dict[str, Any]]:
     prompt = construct_prompt(
         preamble=output[PSKeys.PREAMBLE],
         prompt=output[prompt],
@@ -667,23 +702,18 @@ def construct_and_run_prompt(
         grammar_list=output[PSKeys.GRAMMAR],
         context=context,
     )
-    try:
-        answer: str = run_completion(
-            llm_helper,
-            llm_li,
-            prompt,
-        )
-        return answer
-    except Exception as e:
-        app.logger.info(f"Error completing prompt: {e}.")
-        raise e
+    return run_completion(
+        llm_helper,
+        llm_li,
+        prompt,
+    )
 
 
 def run_completion(
     llm_helper: ToolLLM,
     llm_li: Optional[LLM],
     prompt: str,
-) -> str:
+) -> tuple[str, dict[str, Any]]:
     try:
         platform_api_key = llm_helper.tool.get_env_or_die(
             PSKeys.PLATFORM_SERVICE_API_KEY
@@ -693,7 +723,10 @@ def run_completion(
         )
 
         answer: str = completion[PSKeys.RESPONSE].text
-        return answer
+        usage = {}
+        if PSKeys.USAGE in completion:
+            usage = completion[PSKeys.USAGE]
+        return answer, usage
     except Exception as e:
         app.logger.info(f"Error completing prompt: {e}.")
         raise e
@@ -729,7 +762,9 @@ def enable_single_pass_extraction() -> None:
         "single-pass-extraction", {}
     )
     if single_pass_extration_plugin:
-        single_pass_extration_plugin["entrypoint_cls"](app)
+        single_pass_extration_plugin["entrypoint_cls"](
+            app=app, challenge_plugin=plugins.get("challenge", {})
+        )
 
 
 enable_single_pass_extraction()

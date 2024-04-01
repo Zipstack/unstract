@@ -52,7 +52,13 @@ function useSessionValid() {
       requestOptions["headers"] = {
         "X-CSRFToken": csrfToken,
       };
-      const setOrgRes = await axios(requestOptions);
+      const setOrgRes = await axios(requestOptions).catch((error) => {
+        if (error?.response && error?.response?.status === 403) {
+          // Remove cookie from the browser
+          document.cookie = "org_id=;";
+          navigate("/", { state: null });
+        }
+      });
       userAndOrgDetails = setOrgRes?.data?.user;
       userAndOrgDetails["orgName"] = setOrgRes?.data?.organization?.name;
       userAndOrgDetails["orgId"] = orgId;
@@ -106,7 +112,7 @@ function useSessionValid() {
         handleException(err);
       }
 
-      if (err.request.status === 412) {
+      if (err.request?.status === 412) {
         const domainName = JSON.parse(err.request.response).domain;
         window.location.href = `/error?code=USF&domain=${domainName}`;
         // May be need a logout button there or auto logout

@@ -41,7 +41,7 @@ function ListView({
     let title = null;
     if (iconProp && item[iconProp].length > 4) {
       title = (
-        <div className="cover-img">
+        <div className="adapter-cover-img">
           <Image src={item[iconProp]} preview={false} className="fit-cover" />
           <Typography.Text className="adapters-list-title">
             {item[titleProp]}
@@ -70,7 +70,9 @@ function ListView({
         className="list-view-container"
       >
         <div className="list-view-content">
-          <div className="adapters-list-title-container">{title}</div>
+          <div className="adapters-list-title-container display-flex-left">
+            {title}
+          </div>
           {showOwner && (
             <div className="adapters-list-profile-container">
               <Avatar
@@ -151,8 +153,13 @@ function ListView({
             className={`cur-pointer ${centered ? "centered" : ""}`}
           >
             <List.Item.Meta
+              className="list-item-desc"
               title={renderTitle(item)}
-              description={item[descriptionProp]}
+              description={
+                <Typography.Text type="secondary" ellipsis>
+                  {item[descriptionProp]}
+                </Typography.Text>
+              }
             ></List.Item.Meta>
           </List.Item>
         );

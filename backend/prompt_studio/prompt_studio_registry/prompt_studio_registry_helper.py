@@ -183,6 +183,8 @@ class PromptStudioRegistryHelper:
 
         default_llm_profile = ProfileManager.get_default_llm_profile(tool)
         for prompt in prompts:
+            if prompt.prompt_type == JsonSchemaKey.NOTES:
+                continue
             if not prompt.profile_manager:
                 prompt.profile_manager = default_llm_profile
 
