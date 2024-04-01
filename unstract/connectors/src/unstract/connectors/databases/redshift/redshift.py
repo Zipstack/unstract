@@ -1,3 +1,4 @@
+import datetime
 import os
 from typing import Any
 
@@ -60,3 +61,24 @@ class Redshift(UnstractDB):
             password=self.password,
             options=f"-c search_path={self.schema}",
         )
+
+    @staticmethod
+    def sql_to_db_mapping(value: str) -> str:
+        """
+        Gets the python datatype of value and converts python datatype
+        to corresponding DB datatype
+        Args:
+            value (str): _description_
+
+        Returns:
+            str: _description_
+        """
+        python_type = type(value)
+
+        mapping = {
+            str: "VARCHAR(65535)",
+            int: "BIGINT",
+            float: "DOUBLE PRECISION",
+            datetime.datetime: "TIMESTAMP",
+        }
+        return mapping.get(python_type, "VARCHAR(65535)")

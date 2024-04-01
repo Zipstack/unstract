@@ -342,9 +342,8 @@ class DatabaseUtils:
         Raises:
             e: _description_
         """
-        class_name = type(db_class).__name__
         sql = DBConnectorQueryHelper.create_table_query(
-            conn_cls=class_name, table=table_name, database_entry=database_entry
+            conn_cls=db_class, table=table_name, database_entry=database_entry
         )
         logger.debug(f"creating table with: {sql} query")
         try:
@@ -364,14 +363,16 @@ class DBConnectorQueryHelper:
 
     @staticmethod
     def create_table_query(
-        conn_cls: str, table: str, database_entry: dict[str, Any]
+        conn_cls: UnstractDB, table: str, database_entry: dict[str, Any]
     ) -> Any:
+        class_type = type(conn_cls).__name__
+        print("*** database_entry *** ", database_entry)
         sql_query = ""
         """Generate a SQL query to create a table, based on the provided
         database entry.
 
         Args:
-            conn_cls (str): The database connection class.
+            conn_cls (str): The database connector class.
                 Should be one of 'BIGQUERY', 'SNOWFLAKE', or other.
             table (str): The name of the table to be created.
             database_entry (dict[str, Any]):
@@ -392,25 +393,25 @@ class DBConnectorQueryHelper:
 
             Permanent columns, will always be present in table creation.
         """
-        if conn_cls == UnstractDBConnectorClass.BIGQUERY:
+        if class_type == UnstractDBConnectorClass.BIGQUERY:
             sql_query += (
                 f"CREATE TABLE IF NOT EXISTS {table} "
                 f"(id string,"
                 f"created_by string, created_at TIMESTAMP, "
             )
-        elif conn_cls == UnstractDBConnectorClass.SNOWFLAKE:
+        elif class_type == UnstractDBConnectorClass.SNOWFLAKE:
             sql_query += (
                 f"CREATE TABLE {table} IF NOT EXISTS "
                 f"(id TEXT ,"
                 f"created_by TEXT, created_at TIMESTAMP, "
             )
-        elif conn_cls == UnstractDBConnectorClass.REDSHIFT:
+        elif class_type == UnstractDBConnectorClass.REDSHIFT:
             sql_query += (
                 f"CREATE TABLE IF NOT EXISTS {table} "
                 f"(id VARCHAR(65535) ,"
                 f"created_by VARCHAR(65535), created_at TIMESTAMP, "
             )
-        elif conn_cls == UnstractDBConnectorClass.MSSQL:
+        elif class_type == UnstractDBConnectorClass.MSSQL:
             sql_query += (
                 f"IF NOT EXISTS ("
                 f"SELECT * FROM sysobjects WHERE name='{table}' and xtype='U')"
@@ -427,81 +428,7 @@ class DBConnectorQueryHelper:
 
         for key, val in database_entry.items():
             if key not in TableColumns.PERMANENT_COLUMNS:
-                python_type = type(val)
-                if conn_cls == UnstractDBConnectorClass.BIGQUERY:
-                    sql_type = DBConnectorTypeConverter.to_bigquery_mapping(
-                        python_type
-                    )
-                elif conn_cls == UnstractDBConnectorClass.REDSHIFT:
-                    sql_type = DBConnectorTypeConverter.to_redshift_mapping(
-                        python_type
-                    )
-                elif (
-                    conn_cls == UnstractDBConnectorClass.MYSQL
-                    or conn_cls == UnstractDBConnectorClass.MARIADB
-                ):
-                    sql_type = (
-                        DBConnectorTypeConverter.to_mysql_mariadb_mapping(
-                            python_type
-                        )
-                    )
-                else:
-                    sql_type = DBConnectorTypeConverter.to_sql_mapping(
-                        python_type
-                    )
+                sql_type = conn_cls.sql_to_db_mapping(val)
                 sql_query += f"{key} {sql_type}, "
 
         return sql_query.rstrip(", ") + ");"
-
-
-class DBConnectorTypeConverter:
-    """_summary_
-
-    Class to convert python data type to corresponding connector
-    database data type
-    """
-
-    @staticmethod
-    def to_sql_mapping(python_type: Any) -> Optional[str]:
-        """Method used to convert python to SQL datatype Used by Postgres,
-        Redshift, Snowflake."""
-        mapping = {
-            str: "TEXT",
-            int: "INT",
-            float: "FLOAT",
-            datetime.datetime: "TIMESTAMP",
-        }
-        return mapping.get(python_type, "TEXT")
-
-    @staticmethod
-    def to_bigquery_mapping(python_type: Any) -> Optional[str]:
-        """Method used to convert python to bigquery datatype."""
-        mapping = {
-            str: "string",
-            int: "INT64",
-            float: "FLOAT64",
-            datetime.datetime: "TIMESTAMP",
-        }
-        return mapping.get(python_type, "string")
-
-    @staticmethod
-    def to_redshift_mapping(python_type: Any) -> Optional[str]:
-        """Method to convert python to datatype Used by Redshift."""
-        mapping = {
-            str: "VARCHAR(65535)",
-            int: "BIGINT",
-            float: "DOUBLE PRECISION",
-            datetime.datetime: "TIMESTAMP",
-        }
-        return mapping.get(python_type, "VARCHAR(65535)")
-
-    @staticmethod
-    def to_mysql_mariadb_mapping(python_type: Any) -> Optional[str]:
-        """Method to convert python to datatype Used by Maria-db, Mysql."""
-        mapping = {
-            str: "LONGTEXT",
-            int: "BIGINT",
-            float: "FLOAT",
-            datetime.datetime: "TIMESTAMP",
-        }
-        return mapping.get(python_type, "LONGTEXT")

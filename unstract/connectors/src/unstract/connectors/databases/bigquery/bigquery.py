@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 from typing import Any
@@ -58,3 +59,24 @@ class BigQuery(UnstractDB):
             return query_job.result()
         except Exception as e:
             raise ConnectorError(str(e))
+
+    @staticmethod
+    def sql_to_db_mapping(value: str) -> str:
+        """
+        Gets the python datatype of value and converts python datatype
+        to corresponding DB datatype
+        Args:
+            value (str): _description_
+
+        Returns:
+            str: _description_
+        """
+        python_type = type(value)
+
+        mapping = {
+            str: "string",
+            int: "INT64",
+            float: "FLOAT64",
+            datetime.datetime: "TIMESTAMP",
+        }
+        return mapping.get(python_type, "string")
