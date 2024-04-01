@@ -14,8 +14,9 @@ import {
   QuestionCircleOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { SpinnerLoader } from "../spinner-loader/SpinnerLoader";
 import { useEffect, useState } from "react";
+
+import { SpinnerLoader } from "../spinner-loader/SpinnerLoader";
 
 function SharePermission({
   open,
@@ -54,7 +55,7 @@ function SharePermission({
   }, [permissionEdit, adapter, allUsers, selectedUsers]);
 
   useEffect(() => {
-    if (adapter && adapter?.shared_users) {
+    if (adapter?.shared_users) {
       setSelectedUsers(
         adapter.shared_users.map((user) => {
           if (user?.id !== undefined) {
@@ -78,6 +79,64 @@ function SharePermission({
   const handleShareWithEveryone = (checked) => {
     setShareWithEveryone(checked);
   };
+
+  let sharedWithContent;
+  if (shareWithEveryone) {
+    sharedWithContent = <Typography.Text>Shared with everyone</Typography.Text>;
+  } else if (selectedUsers.length > 0) {
+    sharedWithContent = (
+      <List
+        dataSource={selectedUsers.map((userId) => {
+          const user = allUsers.find(
+            (u) => u?.id.toString() === userId.toString()
+          );
+          return {
+            id: user?.id,
+            email: user?.email,
+          };
+        })}
+        renderItem={(item) => (
+          <List.Item
+            extra={
+              permissionEdit && (
+                <div onClick={(event) => event.stopPropagation()} role="none">
+                  <Popconfirm
+                    key={`${item.id}-delete`}
+                    title="Delete the User"
+                    description={`Are you sure to remove ${item?.email}?`}
+                    okText="Yes"
+                    cancelText="No"
+                    icon={<QuestionCircleOutlined />}
+                    onConfirm={(event) => handleDeleteUser(item?.id)}
+                  >
+                    <Typography.Text>
+                      <DeleteOutlined className="action-icon-buttons" />
+                    </Typography.Text>
+                  </Popconfirm>
+                </div>
+              )
+            }
+          >
+            <List.Item.Meta
+              title={
+                <>
+                  <Avatar
+                    className="shared-user-avatar"
+                    icon={<UserOutlined />}
+                  />
+                  <Typography.Text className="shared-username">
+                    {item.email}
+                  </Typography.Text>
+                </>
+              }
+            />
+          </List.Item>
+        )}
+      />
+    );
+  } else {
+    sharedWithContent = <Typography>Not shared with anyone yet</Typography>;
+  }
 
   return (
     adapter && (
@@ -137,65 +196,7 @@ function SharePermission({
               </Select>
             )}
             <Typography.Title level={5}>Shared with</Typography.Title>
-            {shareWithEveryone ? (
-              <Typography.Text>Shared with everyone</Typography.Text>
-            ) : selectedUsers.length > 0 ? (
-              <List
-                dataSource={selectedUsers.map((userId) => {
-                  const user = allUsers.find(
-                    (u) => u?.id.toString() === userId.toString()
-                  );
-                  return {
-                    id: user?.id,
-                    email: user?.email,
-                  };
-                })}
-                renderItem={(item) => {
-                  return (
-                    <List.Item
-                      extra={
-                        permissionEdit && (
-                          <div
-                            onClick={(event) => event.stopPropagation()}
-                            role="none"
-                          >
-                            <Popconfirm
-                              key={`${item.id}-delete`}
-                              title="Delete the User"
-                              description={`Are you sure to remove ${item?.email}?`}
-                              okText="Yes"
-                              cancelText="No"
-                              icon={<QuestionCircleOutlined />}
-                              onConfirm={(event) => handleDeleteUser(item?.id)}
-                            >
-                              <Typography.Text>
-                                <DeleteOutlined className="action-icon-buttons" />
-                              </Typography.Text>
-                            </Popconfirm>
-                          </div>
-                        )
-                      }
-                    >
-                      <List.Item.Meta
-                        title={
-                          <>
-                            <Avatar
-                              className="shared-user-avatar"
-                              icon={<UserOutlined />}
-                            />
-                            <Typography.Text className="shared-username">
-                              {item.email}
-                            </Typography.Text>
-                          </>
-                        }
-                      />
-                    </List.Item>
-                  );
-                }}
-              />
-            ) : (
-              <Typography>Not shared with anyone yet</Typography>
-            )}
+            {sharedWithContent}
           </>
         )}
       </Modal>

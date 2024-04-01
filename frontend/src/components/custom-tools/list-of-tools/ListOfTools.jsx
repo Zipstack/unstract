@@ -27,7 +27,7 @@ function ListOfTools() {
   const [promptDetails, setPromptDetails] = useState(null);
   const [openSharePermissionModal, setOpenSharePermissionModal] =
     useState(false);
-  const [isPermissonEdit, setIsPermissionEdit] = useState(false);
+  const [isPermissionEdit, setIsPermissionEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [userList, setUserList] = useState([]);
   useEffect(() => {
@@ -287,7 +287,7 @@ function ListOfTools() {
         open={openSharePermissionModal}
         setOpen={setOpenSharePermissionModal}
         adapter={promptDetails}
-        permissionEdit={isPermissonEdit}
+        permissionEdit={isPermissionEdit}
         loading={isShareLoading}
         allUsers={userList}
         onApply={onShare}

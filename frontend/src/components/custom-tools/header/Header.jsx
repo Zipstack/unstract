@@ -82,7 +82,6 @@ function Header({ setOpenSettings, handleUpdateTool }) {
     getAllUsers().then((users) => {
       if (users.length < 2) {
         handleExport([details?.created_by], details, false);
-        return;
       } else {
         axiosPrivate(requestOptions)
           .then((res) => {
