@@ -1,5 +1,7 @@
 from typing import Any
 
+from requests import Response
+
 
 class X2TextUtil:
     @staticmethod
@@ -13,3 +15,10 @@ class X2TextUtil:
             item["text"] for item in json_response  # type:ignore
         )
         return combined_text
+
+    @staticmethod
+    def read_response(response: Response) -> dict[str, Any]:
+        if response.headers.get("Content-Type") == "application/json":
+            return response.json()  # type: ignore
+        else:
+            return {"message": response.text}

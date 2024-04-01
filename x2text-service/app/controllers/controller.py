@@ -144,11 +144,7 @@ def process() -> Any:
         )
     x2_text_audit.status = "Failed"
     x2_text_audit.save()
-    return_val = ""
-    if response.headers.get("Content-Type") == "application/json":
-        return_val = response.json()
-    else:
-        return_val = response.text
+    return_val = X2TextUtil.read_response(response=response)
     logging.error(
         "Text extraction failed: [%s] %s", response.status_code, return_val
     )
