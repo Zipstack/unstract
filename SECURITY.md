@@ -10,7 +10,7 @@ The following versions are currently being supported with security updates.
 | 0.43.x  | :white_check_mark: |
 | > 0.43  | :white_check_mark: |
 
-## Reporting a Vulnerability or Security Issues
+## Reporting a Vulnerability or Security Issue
 
 The Unstract team and community take security issues very seriously. We appreciate your efforts to responsibly disclose your findings, and will make every effort to acknowledge your contributions.
 
