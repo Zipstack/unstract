@@ -12,7 +12,8 @@
                 "type": "string",
                 "enum": [
                     "PDF documents",
-                    "Text documents"
+                    "Text documents",
+                    "Images"
                 ]
             }
         }
