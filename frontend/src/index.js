@@ -8,7 +8,7 @@ import { LazyLoader } from "./components/widgets/lazy-loader/LazyLoader.jsx";
 import { SocketProvider } from "./helpers/SocketContext.js";
 import "./index.css";
 
-const API_KEY = "phc_f1kLKkipCK3kBtA9bT0SfAChvFrlUxYSMD91GBNbwr1";
+const API_KEY = "phc_f1kLKkipCK3kBtA9bT0SfAChvFrlUxYSMD91GBNbwr1"; // gitleaks:allow
 const API_HOST = "https://app.posthog.com";
 posthog.init(API_KEY, {
   api_host: API_HOST,
