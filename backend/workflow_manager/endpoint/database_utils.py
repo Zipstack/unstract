@@ -366,7 +366,6 @@ class DBConnectorQueryHelper:
         conn_cls: UnstractDB, table: str, database_entry: dict[str, Any]
     ) -> Any:
         class_type = type(conn_cls).__name__
-        print("*** database_entry *** ", database_entry)
         sql_query = ""
         """Generate a SQL query to create a table, based on the provided
         database entry.
@@ -387,11 +386,14 @@ class DBConnectorQueryHelper:
             and column definitions.
 
         Note:
-            For 'BIGQUERY', 'SNOWFLAKE', or other database connection classes,
-            the appropriate data types will be mapped based
-            on the Python types of the values in the database_entry dictionary.
-
-            Permanent columns, will always be present in table creation.
+            - A base CREATE SQL query will be created for
+            db-connection class.
+            - Each column name in database_entry will be mapped to
+            db-connection datatype based on thier implementation.
+            - base CREATE SQL query will keep on appending based on
+            db-connection datatype (column key)
+            and database_entry value (column value)
+            - Permanent columns, will always be present in table creation.
         """
         if class_type == UnstractDBConnectorClass.BIGQUERY:
             sql_query += (
