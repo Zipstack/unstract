@@ -74,7 +74,18 @@ def _merge_to_env_file(
             if key not in PREFERRED_BASE_ENV_KEYS and key in target_env:
                 value = target_env.get(key, value)
 
-            merged_contents.append(f"{key} = {value}\n")
+            merged_contents.append(f"{key}={value}\n")
+
+    # Allow extras from target_env which is not present in base_env
+    base_env = _extract_from_env_file(base_env_file_path)
+    additional_env_header_added = False
+
+    for key in target_env:
+        if key not in base_env:
+            if not additional_env_header_added:
+                additional_env_header_added = True
+                merged_contents.append("\n\n# Additional envs\n")
+            merged_contents.append(f"{key}={target_env.get(key)}\n")
 
     return "".join(merged_contents)
 

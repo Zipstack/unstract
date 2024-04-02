@@ -112,7 +112,7 @@ function useSessionValid() {
         handleException(err);
       }
 
-      if (err.request.status === 412) {
+      if (err.request?.status === 412) {
         const domainName = JSON.parse(err.request.response).domain;
         window.location.href = `/error?code=USF&domain=${domainName}`;
         // May be need a logout button there or auto logout
