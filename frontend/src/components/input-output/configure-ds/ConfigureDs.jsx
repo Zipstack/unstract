@@ -39,9 +39,7 @@ function ConfigureDs({
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
-  const updateSessionDetails = useSessionStore(
-    (state) => state.updateSessionDetails
-  );
+  const { updateSessionDetails } = useSessionStore();
 
   const { id } = useParams();
 
@@ -242,9 +240,8 @@ function ConfigureDs({
     const adapterType = type.toLowerCase();
     const adaptersList = sessionDetails?.adapters;
     if (adaptersList && !adaptersList.includes(adapterType)) {
-      const adaptersListInSession = {};
       adaptersList.push(adapterType);
-      adaptersListInSession["adapters"] = adaptersList;
+      const adaptersListInSession = { adapters: adaptersList };
       updateSessionDetails(adaptersListInSession);
     }
   };
