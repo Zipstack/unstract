@@ -18,7 +18,7 @@ class PromptNotValid(APIException):
           Seems it is either empty or no prompt is mapped."
 
 
-class IndexingError(APIException):
+class IndexingAPIError(APIException):
     status_code = 400
     default_detail = "Error while indexing file"
 
