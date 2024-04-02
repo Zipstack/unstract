@@ -46,7 +46,6 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance.models import ToolInstance
-from utils.filtering import FilterHelper
 
 from unstract.connectors.filesystems.local_storage.local_storage import (
     LocalStorageFS,
@@ -80,17 +79,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         return [IsOwnerOrSharedUser()]
 
     def get_queryset(self) -> Optional[QuerySet]:
-        filter_args = FilterHelper.build_filter_args(
-            self.request,
-            ToolStudioKeys.CREATED_BY,
-        )
-        if filter_args:
-            queryset = CustomTool.objects.for_user(self.request.user).filter(
-                **filter_args
-            )
-        else:
-            queryset = CustomTool.objects.for_user(self.request.user)
-        return queryset
+        return CustomTool.objects.for_user(self.request.user)
 
     def create(self, request: HttpRequest) -> Response:
         serializer = self.get_serializer(data=request.data)
