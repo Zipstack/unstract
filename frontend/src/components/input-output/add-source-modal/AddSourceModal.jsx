@@ -31,7 +31,7 @@ function AddSourceModal({
     setTitles({
       input: addOrEdit + " Data Source",
       output: addOrEdit + " Data Destination",
-      llm: addOrEdit + " LLM",
+      llm: addOrEdit + " " + metadata["adapter_name"],
       vector_db: addOrEdit + " Vector DB",
       embedding: addOrEdit + " Embedding",
       x2text: addOrEdit + " Text Extractor",
