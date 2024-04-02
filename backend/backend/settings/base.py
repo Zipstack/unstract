@@ -44,6 +44,9 @@ def get_required_setting(
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Load default log from env
+DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -59,14 +62,15 @@ LOGGING = {
     },
     "handlers": {
         "console": {
-            "level": "INFO",  # Set the desired logging level here
+            "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
             "class": "logging.StreamHandler",
             "formatter": "verbose",
         },
     },
     "root": {
         "handlers": ["console"],
-        "level": "INFO",  # Set the desired logging level here as well
+        "level": DEFAULT_LOG_LEVEL,
+        # Set the desired logging level here as well
     },
 }
 
