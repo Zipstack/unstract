@@ -1,7 +1,7 @@
 import { Typography, Button } from "antd";
 
 import logo from "../../assets/UnstractLogoBlack.svg";
-import loginBG from "../../assets/login-page-bg.svg";
+import loginRightBanner from "../../assets/login_page_right_banner.svg";
 import { getBaseUrl } from "../../helpers/GetStaticData";
 import "./Login.css";
 
@@ -17,27 +17,40 @@ function Login() {
   const handleLogin = () => {
     window.location.href = newURL;
   };
+  const handleSignin = () => {
+    window.location.href = newURL;
+  };
 
   return (
     <div className="login-main">
       <div className="login-left-section">
         <div className="button-wraper">
           <img src={logo} alt="Logo" className="logo" />
-          {LoginForm && <LoginForm handleLogin={handleLogin} newURL={newURL} />}
+          {LoginForm && (
+            <LoginForm handleLogin={handleLogin} handleSignin={handleSignin} />
+          )}
           {!LoginForm && (
-            <Button
-              className="login-button button-margin"
-              onClick={handleLogin}
-            >
-              Login
-            </Button>
+            <div>
+              <Button
+                className="login-button button-margin"
+                onClick={handleLogin}
+              >
+                Login
+              </Button>
+              <Button
+                className="signin-button button-margin"
+                onClick={handleSignin}
+              >
+                Sign in
+              </Button>
+            </div>
           )}
         </div>
       </div>
       <div className="login-right-section">
         <div className="right-section-text-wrapper">
           <div className="right-title-cover">
-            <Typography.Title align="center">
+            <Typography.Title className="right-section-title">
               UNLOCK VALUE FROM UNSTRUCTURED DATA.
             </Typography.Title>
           </div>
@@ -48,12 +61,12 @@ function Login() {
               time, money, and automation headaches.
             </Typography>
           </div>
+          <img
+            src={loginRightBanner}
+            alt="login background"
+            className="login-background"
+          />
         </div>
-        <img
-          src={loginBG}
-          alt="login background"
-          className="login-background"
-        />
       </div>
     </div>
   );
