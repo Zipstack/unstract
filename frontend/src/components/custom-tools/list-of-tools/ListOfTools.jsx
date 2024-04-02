@@ -133,7 +133,7 @@ function ListOfTools() {
         setListOfTools(tools);
         setAlertDetails({
           type: "success",
-          content: "Deleted successfully",
+          content: `${tool?.tool_name} - Deleted successfully`,
         });
       })
       .catch((err) => {
