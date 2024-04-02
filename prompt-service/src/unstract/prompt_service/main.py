@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 import peewee
 from flask import Flask, request
-from llama_index.core import Settings, VectorStoreIndex
+from llama_index.core import VectorStoreIndex
 from llama_index.core.llms import LLM
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 from unstract.prompt_service.authentication_middleware import (
@@ -299,10 +299,8 @@ def prompt_processor() -> Any:
             return result, 500
         # Set up llm, embedding and callback manager to collect usage stats
         # for this context
-        Settings.llm = llm_li
-        Settings.embed_model = embedding_li
-        Settings.callback_manager = UNCallbackManager.get_callback_manager(
-            platform_api_key=platform_key, llm=llm_li, embed_model=embedding_li
+        UNCallbackManager.set_callback_manager(
+            platform_api_key=platform_key, llm=llm_li, embedding=embedding_li
         )
         vector_index = VectorStoreIndex.from_vector_store(
             vector_store=vector_db_li, embed_model=embedding_li
