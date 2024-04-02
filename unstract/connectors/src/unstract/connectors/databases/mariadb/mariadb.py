@@ -1,10 +1,10 @@
-import datetime
 import os
 from typing import Any
 
 import pymysql
 from pymysql.connections import Connection
 
+from unstract.connectors.databases.mysql import MySQL
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 
@@ -68,13 +68,9 @@ class MariaDB(UnstractDB):
             value (str): _description_
 
         Returns:
-            str: _description_
+            str: returns Mysql.sql_to_db_mapping
+
+        Note:
+            Mysql and Mariadb share same SQL column type
         """
-        python_type = type(value)
-        mapping = {
-            str: "LONGTEXT",
-            int: "BIGINT",
-            float: "FLOAT",
-            datetime.datetime: "TIMESTAMP",
-        }
-        return mapping.get(python_type, "LONGTEXT")
+        return str(MySQL.sql_to_db_mapping(value=value))
