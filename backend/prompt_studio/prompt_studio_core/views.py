@@ -18,7 +18,7 @@ from prompt_studio.prompt_studio_core.constants import (
     ToolStudioPromptKeys,
 )
 from prompt_studio.prompt_studio_core.exceptions import (
-    IndexingError,
+    IndexingAPIError,
     ToolDeleteError,
 )
 from prompt_studio.prompt_studio_core.prompt_studio_helper import (
@@ -231,7 +231,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             logger.error(
                 "Error occured while indexing. Unique ID is not valid."
             )
-            raise IndexingError()
+            raise IndexingAPIError()
 
     @action(detail=True, methods=["post"])
     def fetch_response(self, request: HttpRequest) -> Response:
