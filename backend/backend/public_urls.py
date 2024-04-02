@@ -25,9 +25,6 @@ api_path_prefix = settings.API_DEPLOYMENT_PATH_PREFIX
 
 urlpatterns = [
     path(f"{path_prefix}/", include("account.urls")),
-    # Admin URLs
-    path(f"{path_prefix}/admin/doc/", include("django.contrib.admindocs.urls")),
-    path(f"{path_prefix}/admin/", admin.site.urls),
     # Connector OAuth
     path(f"{path_prefix}/", include("connector_auth.urls")),
     # Docs
@@ -37,4 +34,13 @@ urlpatterns = [
     # Feature flags
     path(f"{path_prefix}/flags/", include("feature_flag.urls")),
 ]
+if settings.ADMIN_ENABLED:
+    # Admin URLs
+    urlpatterns += [
+        path(f"{path_prefix}/admin/", admin.site.urls),
+        path(
+            f"{path_prefix}/admin/doc/",
+            include("django.contrib.admindocs.urls"),
+        ),
+    ]
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
