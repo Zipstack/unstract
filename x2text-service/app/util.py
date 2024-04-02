@@ -1,12 +1,9 @@
 from typing import Any
 
+from requests import Response
+
 
 class X2TextUtil:
-    @staticmethod
-    def get_url_from_form_data(form_data: dict[str, Any]) -> str:
-        url: str = form_data.pop("unstructured-url")
-        return url
-
     @staticmethod
     def get_value_for_key(key: str, form_data: dict[str, Any]) -> str:
         value: str = form_data.pop(key, None)
@@ -18,3 +15,10 @@ class X2TextUtil:
             item["text"] for item in json_response  # type:ignore
         )
         return combined_text
+
+    @staticmethod
+    def read_response(response: Response) -> dict[str, Any]:
+        if response.headers.get("Content-Type") == "application/json":
+            return response.json()  # type: ignore
+        else:
+            return {"message": response.text}
