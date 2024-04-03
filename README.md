@@ -5,6 +5,7 @@
 
 ## No-code LLM Platform to launch APIs and ETL Pipelines to structure unstructured documents
 
+[![pdm-managed](https://img.shields.io/badge/pdm-managed-blueviolet)](https://pdm-project.org)
 [![CLA assistant](https://cla-assistant.io/readme/badge/Zipstack/unstract)](https://cla-assistant.io/Zipstack/unstract)
 [![pre-commit.ci status](https://results.pre-commit.ci/badge/github/Zipstack/unstract/main.svg)](https://results.pre-commit.ci/latest/github/Zipstack/unstract/main)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
@@ -33,11 +34,16 @@ Automate critical business processes that involve complex documents with a human
 
 ## 🚀 Getting started
 
+### System Requirements
+
+- 8GB RAM (recommended)
+
 ### Prerequisites
 
 - Linux or MacOS (Intel or M-series)
 - Docker
 - Docker Compose (if you need to install it separately)
+- Git
 
 Next, either download a release or clone this repo and do the following:
 
@@ -47,7 +53,7 @@ Next, either download a release or clone this repo and do the following:
 
 That's all there is to it!
 
-Another really quick way to experience Unstract is by signing up for our [hosted version](https://us-central-1.gcp.unstract.com/).
+Another really quick way to experience Unstract is by signing up for our [hosted version](https://us-central.unstract.com/).
 
 ## ⏩ Quick Start Guide
 
