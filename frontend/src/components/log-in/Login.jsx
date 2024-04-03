@@ -26,9 +26,7 @@ function Login() {
       <div className="login-left-section">
         <div className="button-wraper">
           <img src={logo} alt="Logo" className="logo" />
-          {LoginForm && (
-            <LoginForm handleLogin={handleLogin} handleSignin={handleSignin} />
-          )}
+          {LoginForm && <LoginForm handleLogin={handleLogin} newURL={newURL} />}
           {!LoginForm && (
             <div>
               <Button
