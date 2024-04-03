@@ -21,24 +21,35 @@
     justify-content: center;
     height: 50%;
     flex-direction: column;
+    gap: 30px;
+}
+.right-section-title {
+    font-size: 38px !important;
+    font-weight: 500 !important;
+    line-height: 50px !important;
+    text-align: center;
+    color: #05182A;
 }
 .right-title-cover{
     width: 75%;
     margin: 0 auto;
 }
 .right-subtitle-cover{
-    width: 60%;
+    width: 58%;
     margin: 0 auto;
 }
 .right-subtitle{
     color:#3D6182;
     font-size: 20px;
+    font-weight: 400;
+    line-height: 30px;
+    text-align: center;
 }
 .login-background{
-    width: 20%;
+    width: 45%;
     position: absolute;
-    bottom: 12%;
-    right: 14%;
+    bottom: 3%;
+    right: 0;
     border-radius: 5px;
 }
 
@@ -48,7 +59,7 @@
     position: fixed;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 20px;
     justify-content: center;
 }
 
@@ -66,12 +77,14 @@
 }
 
 .login-button {
-    width: 80%;
+    width: 100%;
     margin: 0 auto;
     height: 50px;
     background-color: #2F93F6;
     color: #fff;
-    font-size: 18px;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 24px;
 }
 
 .signin-text-wrapper{
@@ -80,4 +93,23 @@
 }
 .button-margin {
     margin-top: 60px;
+}
+
+.login-trial-info {
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 22px;
+    text-align: left;
+    color: #949CA9;
+}
+
+.signin-button {
+    width: 100%;
+    margin: 0 auto;
+    height: 50px;
+    background-color: #90A4B7;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 24px;
 }

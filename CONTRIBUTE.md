@@ -169,7 +169,7 @@ If you require a different config, make sure the necessary envs from [backend/sa
 
 ### Pre-commit hooks
 
-- We use pre-commit to run some hooks whenever code is pushed to perform linting and static code analysis among other checks.
+- We use `pre-commit` to run some hooks whenever code is pushed to perform linting and static code analysis among other checks.
 - Ensure dev dependencies are installed and you're in the virtual env
 - Install hooks with `pre-commit install` or `pdm run pre-commit install`
 - Manually trigger pre-commit hooks in following ways:
