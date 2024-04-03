@@ -109,6 +109,7 @@ function ListOfSources({ setSelectedSourceId, type }) {
           placeholder="Search"
           prefix={<SearchOutlined className="search-outlined" />}
           onChange={onSearchDebounce}
+          value={searchText}
         />
       </div>
       <div className="list">
