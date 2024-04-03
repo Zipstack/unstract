@@ -232,11 +232,12 @@ class AdapterInstanceViewSet(ModelViewSet):
 
         try:
             super().perform_destroy(adapter_instance)
-        except ProtectedError as e:
+        except ProtectedError:
             logger.error(
                 f"Failed to delete adapter: {adapter_instance.adapter_id}"
                 f" named {adapter_instance.adapter_name}"
             )
+            # TODO: Provide details of adpter usage with exception object
             raise DeleteAdapterInUseError(
                 adapter_name=adapter_instance.adapter_name
             )
