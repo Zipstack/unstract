@@ -37,16 +37,8 @@ function TopNavBar() {
   const handleException = useExceptionHandler();
 
   useEffect(() => {
-    updateOnBoardBannerStatus();
+    setShowOnboardBanner(!onboardCompleted(sessionDetails?.adapters));
   }, [sessionDetails]);
-
-  const updateOnBoardBannerStatus = () => {
-    if (onboardCompleted(sessionDetails?.adapters)) {
-      setShowOnboardBanner(false);
-    } else {
-      setShowOnboardBanner(true);
-    }
-  };
 
   const cascadeOptions = allOrganization.map((org) => {
     return {
