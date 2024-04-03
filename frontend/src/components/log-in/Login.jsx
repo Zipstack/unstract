@@ -17,18 +17,13 @@ function Login() {
   const handleLogin = () => {
     window.location.href = newURL;
   };
-  const handleSignin = () => {
-    window.location.href = newURL;
-  };
 
   return (
     <div className="login-main">
       <div className="login-left-section">
         <div className="button-wraper">
           <img src={logo} alt="Logo" className="logo" />
-          {LoginForm && (
-            <LoginForm handleLogin={handleLogin} handleSignin={handleSignin} />
-          )}
+          {LoginForm && <LoginForm handleLogin={handleLogin} />}
           {!LoginForm && (
             <div>
               <Button
