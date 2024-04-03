@@ -15,6 +15,7 @@ from account.constants import (
 from account.custom_exceptions import (
     DuplicateData,
     Forbidden,
+    MethodNotImplemented,
     UserNotExistError,
 )
 from account.dto import (
@@ -222,6 +223,15 @@ class AuthenticationController:
                             {ErrorMessage.DUPLICATE_API}"
                     )
             self.create_tenant_user(organization=organization, user=user)
+
+            if new_organization:
+                try:
+                    self.auth_service.frictionless_onboarding(
+                        organization=organization, user=user
+                    )
+                except MethodNotImplemented:
+                    Logger.info("Method not implemented")
+
             if new_organization:
                 self.authentication_helper.create_initial_platform_key(
                     user=user, organization=organization

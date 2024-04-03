@@ -1,7 +1,10 @@
+import json
 import uuid
 from typing import Any
 
 from account.models import User
+from cryptography.fernet import Fernet
+from django.conf import settings
 from django.db import models
 from django.db.models import QuerySet
 from unstract.adapters.enums import AdapterTypes
@@ -92,6 +95,19 @@ class AdapterInstance(BaseModel):
                 name="unique_adapter",
             ),
         ]
+
+    def create_adapter(self) -> None:
+
+        encryption_secret: str = settings.ENCRYPTION_KEY
+        f: Fernet = Fernet(encryption_secret.encode("utf-8"))
+
+        self.adapter_metadata_b = f.encrypt(
+            json.dumps(self.adapter_metadata).encode("utf-8")
+        )
+
+        self.adapter_metadata = {}
+        print("test")
+        self.save()
 
 
 class UserDefaultAdapter(BaseModel):
