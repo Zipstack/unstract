@@ -37,12 +37,6 @@ function Login() {
               >
                 Login
               </Button>
-              <Button
-                className="signin-button button-margin"
-                onClick={handleSignin}
-              >
-                Sign in
-              </Button>
             </div>
           )}
         </div>
