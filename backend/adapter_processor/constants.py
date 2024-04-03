@@ -24,3 +24,5 @@ class AdapterKeys:
         "Configuration with this ID already exists. "
         "Please try with a different ID"
     )
+    ADAPTER_CREATED_BY = "created_by_email"
+    ADAPTER_CONTEXT_WINDOW_SIZE = "context_window_size"
