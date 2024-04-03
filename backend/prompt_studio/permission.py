@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 
 
 class PromptAcesssToUser(permissions.BasePermission):
-    """Does the crud to Prompt/Notes allowed to user."""
+    """Is the crud to Prompt/Notes allowed to user."""
 
     def has_object_permission(
         self, request: Request, view: APIView, obj: Any
