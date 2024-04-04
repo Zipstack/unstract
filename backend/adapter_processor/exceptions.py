@@ -1,3 +1,5 @@
+from typing import Optional
+
 from rest_framework.exceptions import APIException
 
 from backend.exceptions import UnstractBaseException
@@ -18,11 +20,6 @@ class InValidAdapterId(APIException):
     default_detail = "Adapter ID is not Valid."
 
 
-class JSONParseException(APIException):
-    status_code = 500
-    default_detail = "Exception occured while Parsing JSON Schema."
-
-
 class InternalServiceError(APIException):
     status_code = 500
     default_detail = "Internal Service error"
@@ -41,16 +38,23 @@ class UniqueConstraintViolation(APIException):
     default_detail = "Unique constraint violated"
 
 
-class TestAdapterException(UnstractBaseException):
+class TestAdapterError(UnstractBaseException):
     status_code = 500
-    default_detail = "Error while testing adapter."
+    default_detail = "Error while testing adapter"
 
 
-class TestAdapterInputException(UnstractBaseException):
-    status_code = 400
-    default_detail = "Connection test failed using the given configuration data"
+class DeleteAdapterInUseError(APIException):
+    status_code = 409
 
-
-class ErrorFetchingAdapterData(UnstractBaseException):
-    status_code = 400
-    default_detail = "Error while fetching adapter data."
+    def __init__(
+        self,
+        detail: Optional[str] = None,
+        code: Optional[str] = None,
+        adapter_name: str = "adapter",
+    ):
+        if detail is None:
+            detail = (
+                f"Cannot delete {adapter_name}. "
+                "It is used in a workflow or a prompt studio project"
+            )
+        super().__init__(detail, code)
