@@ -49,9 +49,13 @@ function ConfigureDs({
   }, [formData]);
 
   useEffect(() => {
-    if (connDetails && connDetails.connector_id !== selectedSourceId) {
+    if (
+      connDetails &&
+      connDetails?.connector_id !== undefined &&
+      connDetails?.connector_id !== selectedSourceId
+    ) {
       setFormData({});
-    } else {
+    } else if (metadata) {
       setFormData(metadata);
     }
   }, [selectedSourceId]);
