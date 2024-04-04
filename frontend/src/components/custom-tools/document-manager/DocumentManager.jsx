@@ -209,7 +209,9 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const updatePageAndDoc = (newPage) => {
     setPage(newPage);
     const newSelectedDoc = listOfDocs[newPage - 1];
-    handleDocChange(newSelectedDoc?.document_id);
+    if (newSelectedDoc) {
+      handleDocChange(newSelectedDoc);
+    }
   };
 
   return (
