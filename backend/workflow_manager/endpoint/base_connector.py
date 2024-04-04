@@ -76,9 +76,7 @@ class BaseConnector(ExecutionFileHandler):
         return schema
 
     @classmethod
-    def get_api_storage_dir_path(
-        cls, workflow_id: str, execution_id: str
-    ) -> str:
+    def get_api_storage_dir_path(cls, workflow_id: str, execution_id: str) -> str:
         """Get the directory path for storing api files.
 
         Parameters:

@@ -45,9 +45,7 @@ class PromptStudioRegistry(BaseModel):
         blank=False,
         default=dict,
     )
-    icon = models.CharField(
-        db_comment="Tool icon in svg format", editable=False
-    )
+    icon = models.CharField(db_comment="Tool icon in svg format", editable=False)
     url = models.CharField(editable=False)
     custom_tool = models.OneToOneField(
         CustomTool,

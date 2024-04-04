@@ -38,9 +38,7 @@ class FileManagerHelper:
         """Creates the `UnstractFileSystem` for the corresponding connector."""
         metadata = connector.metadata
         if connector.connector_id in fs_connectors:
-            connector = fs_connectors[connector.connector_id]["metadata"][
-                "connector"
-            ]
+            connector = fs_connectors[connector.connector_id]["metadata"]["connector"]
             connector_class: UnstractFileSystem = connector(metadata)
             return connector_class
         else:
@@ -50,9 +48,7 @@ class FileManagerHelper:
             raise ConnectorClassNotFound
 
     @staticmethod
-    def list_files(
-        file_system: UnstractFileSystem, path: str
-    ) -> list[FileInformation]:
+    def list_files(file_system: UnstractFileSystem, path: str) -> list[FileInformation]:
         fs = file_system.get_fsspec_fs()
         file_path = f"{path}"
         # TODO: Add below logic by checking each connector?
@@ -73,9 +69,7 @@ class FileManagerHelper:
             raise FileListError()
 
     @staticmethod
-    def get_files(
-        fs: AbstractFileSystem, file_path: str
-    ) -> list[FileInformation]:
+    def get_files(fs: AbstractFileSystem, file_path: str) -> list[FileInformation]:
         """Iterate through the directories and make a list of
         FileInformation."""
         if not file_path.endswith("/"):
@@ -89,10 +83,7 @@ class FileManagerHelper:
                 continue
 
             # Call fs.info() to get file size if its missing
-            if (
-                file_info.get("type") == "file"
-                and file_info.get("size") is None
-            ):
+            if file_info.get("type") == "file" and file_info.get("size") is None:
                 file_info = fs.info(file_name)
 
             file_content_type = file_info.get("ContentType")
@@ -123,12 +114,8 @@ class FileManagerHelper:
                 file.close()
 
             file = fs.open(file_path, "rb")
-            response = StreamingHttpResponse(
-                file, content_type=file_content_type
-            )
-            response["Content-Disposition"] = (
-                f"attachment; filename={base_name}"
-            )
+            response = StreamingHttpResponse(file, content_type=file_content_type)
+            response["Content-Disposition"] = f"attachment; filename={base_name}"
             return response
         except ApiRequestError as exception:
             FileManagerHelper.logger.error(
@@ -150,9 +137,7 @@ class FileManagerHelper:
             if fs.path and (not path or path == "/"):
                 file_path = f"{fs.path}/"
 
-        file_path = (
-            file_path + "/" if not file_path.endswith("/") else file_path
-        )
+        file_path = file_path + "/" if not file_path.endswith("/") else file_path
 
         # adding filename with path
         file_path += file_name
@@ -160,9 +145,7 @@ class FileManagerHelper:
             remote_file.write(file.read())
 
     @staticmethod
-    def fetch_file_contents(
-        file_system: UnstractFileSystem, file_path: str
-    ) -> Any:
+    def fetch_file_contents(file_system: UnstractFileSystem, file_path: str) -> Any:
         fs = file_system.get_fsspec_fs()
         try:
             file_info = fs.info(file_path)
@@ -201,9 +184,7 @@ class FileManagerHelper:
             raise InvalidFileType
 
     @staticmethod
-    def delete_file(
-        file_system: UnstractFileSystem, path: str, file_name: str
-    ) -> bool:
+    def delete_file(file_system: UnstractFileSystem, path: str, file_name: str) -> bool:
         fs = file_system.get_fsspec_fs()
 
         file_path = f"{path}"
@@ -214,9 +195,7 @@ class FileManagerHelper:
             if fs.path and (not path or path == "/"):
                 file_path = f"{fs.path}/"
 
-        file_path = (
-            file_path + "/" if not file_path.endswith("/") else file_path
-        )
+        file_path = file_path + "/" if not file_path.endswith("/") else file_path
 
         # adding filename with path
         file_path += file_name
@@ -254,8 +233,6 @@ class FileManagerHelper:
                 os.makedirs(extract_file_path, exist_ok=True)
                 os.makedirs(summarize_file_path, exist_ok=True)
             except OSError as e:
-                FileManagerHelper.logger.error(
-                    f"Error while creating {file_path}: {e}"
-                )
+                FileManagerHelper.logger.error(f"Error while creating {file_path}: {e}")
                 raise TenantDirCreationError
         return str(file_path)

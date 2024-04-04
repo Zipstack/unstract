@@ -80,9 +80,7 @@ class BoxFS(UnstractFileSystem):
 
     @staticmethod
     def get_description() -> str:
-        return (
-            "Fetch and store data to and from the Box content management system"
-        )
+        return "Fetch and store data to and from the Box content management system"
 
     @staticmethod
     def get_icon() -> str:

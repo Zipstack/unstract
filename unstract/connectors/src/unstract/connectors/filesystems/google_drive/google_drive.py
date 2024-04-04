@@ -39,9 +39,7 @@ class GoogleDriveFS(UnstractFileSystem):
             "invalid": False,
             "access_token": settings["access_token"],
             "refresh_token": settings["refresh_token"],
-            GDriveConstants.TOKEN_EXPIRY: settings[
-                GDriveConstants.TOKEN_EXPIRY
-            ],
+            GDriveConstants.TOKEN_EXPIRY: settings[GDriveConstants.TOKEN_EXPIRY],
         }
         gauth = GoogleAuth(
             settings_file=f"{os.path.dirname(__file__)}/static/settings.yaml",

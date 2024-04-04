@@ -51,8 +51,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             tool_instances_as_dto.append(
                 self.convert_tool_instance_model_to_data_class(tool_instance)
             )
-        workflow_as_dto: WorkflowDto = (
-            self.convert_workflow_model_to_data_class(workflow=workflow)
+        workflow_as_dto: WorkflowDto = self.convert_workflow_model_to_data_class(
+            workflow=workflow
         )
         organization_id = organization_id or connection.tenant.schema_name
         if not organization_id:
@@ -71,9 +71,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             # Use pipline_id for pipelines / API deployment
             # since session might not be present.
             log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
-            self.execution_log_id = (
-                log_events_id if log_events_id else pipeline_id
-            )
+            self.execution_log_id = log_events_id if log_events_id else pipeline_id
             self.execution_mode = mode
             self.execution_method: tuple[str, str] = (
                 WorkflowExecution.Method.SCHEDULED
@@ -103,17 +101,13 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
         self.set_messaging_channel(str(self.execution_log_id))
         project_settings = {}
-        project_settings[WorkflowKey.WF_PROJECT_GUID] = str(
-            self.execution_log_id
-        )
+        project_settings[WorkflowKey.WF_PROJECT_GUID] = str(self.execution_log_id)
         self.workflow_id = workflow.id
         self.project_settings = project_settings
         self.pipeline_id = pipeline_id
         self.execution_id = str(workflow_execution.id)
 
-        self.compilation_result = self.compile_workflow(
-            execution_id=self.execution_id
-        )
+        self.compilation_result = self.compile_workflow(execution_id=self.execution_id)
 
     def _initiate_api_execution(
         self, tool_instance: ToolInstance, execution_path: Optional[str]
@@ -250,18 +244,14 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                     end_time = time.time()
                     execution_time = end_time - start_time
                     message = str(exception)[:EXECUTION_ERROR_LENGTH]
-                    logger.info(
-                        f"Execution {self.execution_id} Error {exception}"
-                    )
+                    logger.info(f"Execution {self.execution_id} Error {exception}")
                     raise self.__execution_error(
                         error_message=message,
                         detailed_message=message,
                         execution_time=execution_time,
                     )
             else:
-                error_message = (
-                    f"Unknown Execution Method {self.execution_mode}"
-                )
+                error_message = f"Unknown Execution Method {self.execution_mode}"
                 raise self.__execution_error(
                     error_message=error_message, detailed_message=error_message
                 )
@@ -282,9 +272,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             None
         """
         self.publish_log(f"Total matched files: {total_files}")
-        self.publish_update_log(
-            LogState.BEGIN_WORKFLOW, "1", LogComponent.STATUS_BAR
-        )
+        self.publish_update_log(LogState.BEGIN_WORKFLOW, "1", LogComponent.STATUS_BAR)
         self.publish_update_log(
             LogState.RUNNING, "Ready for execution", LogComponent.WORKFLOW
         )
@@ -295,9 +283,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         Returns:
             None
         """
-        self.publish_update_log(
-            LogState.END_WORKFLOW, "1", LogComponent.STATUS_BAR
-        )
+        self.publish_update_log(LogState.END_WORKFLOW, "1", LogComponent.STATUS_BAR)
         self.publish_update_log(
             LogState.SUCCESS, "Executed successfully", LogComponent.WORKFLOW
         )
@@ -344,9 +330,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         if single_step:
             execution_type = ExecutionType.STEP
         if not (file_history and file_history.is_completed()):
-            self.execute_uncached_input(
-                file_name=file_name, single_step=single_step
-            )
+            self.execute_uncached_input(file_name=file_name, single_step=single_step)
         else:
             self.publish_log(
                 f"Skipping file {file_name} as it is already processed."
@@ -400,9 +384,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         execution_type = ExecutionType.COMPLETE
         if single_step:
             execution_type = ExecutionType.STEP
-        self.publish_initial_tool_execution_logs(
-            current_step, total_step, file_name
-        )
+        self.publish_initial_tool_execution_logs(current_step, total_step, file_name)
         self._handle_execution_type(execution_type)
 
         source_status_message = (
@@ -416,9 +398,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.publish_log("Trying to fetch results from cache")
 
     @staticmethod
-    def update_execution_status(
-        execution_id: str, status: ExecutionStatus
-    ) -> None:
+    def update_execution_status(execution_id: str, status: ExecutionStatus) -> None:
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
             execution.status = status.value

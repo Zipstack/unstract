@@ -99,8 +99,7 @@ class PipelineViewSet(viewsets.ModelViewSet):
             serializer.save()
         except IntegrityError:
             raise DuplicateData(
-                f"{PipelineErrors.PIPELINE_EXISTS}, "
-                f"{PipelineErrors.DUPLICATE_API}"
+                f"{PipelineErrors.PIPELINE_EXISTS}, " f"{PipelineErrors.DUPLICATE_API}"
             )
         return Response(data=serializer.data, status=status.HTTP_201_CREATED)
 
@@ -134,6 +133,4 @@ class PipelineViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK,
             )
         else:
-            return Response(
-                serializer.errors, status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

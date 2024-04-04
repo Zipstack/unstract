@@ -111,14 +111,12 @@ class PromptStudioRegistryHelper:
             obj: PromptStudioRegistry instance that was updated or created
         """
         try:
-            properties: Properties = (
-                PromptStudioRegistryHelper.frame_properties(tool=custom_tool)
+            properties: Properties = PromptStudioRegistryHelper.frame_properties(
+                tool=custom_tool
             )
             spec: Spec = PromptStudioRegistryHelper.frame_spec(tool=custom_tool)
-            prompts: list[ToolStudioPrompt] = (
-                PromptStudioHelper.fetch_prompt_from_tool(
-                    tool_id=custom_tool.tool_id
-                )
+            prompts: list[ToolStudioPrompt] = PromptStudioHelper.fetch_prompt_from_tool(
+                tool_id=custom_tool.tool_id
             )
             metadata = PromptStudioRegistryHelper.frame_export_json(
                 tool=custom_tool, prompts=prompts
@@ -206,9 +204,7 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.VECTOR_DB] = vector_db
             output[JsonSchemaKey.EMBEDDING] = embedding_model
             output[JsonSchemaKey.X2TEXT_ADAPTER] = x2text
-            output[JsonSchemaKey.CHUNK_OVERLAP] = (
-                prompt.profile_manager.chunk_overlap
-            )
+            output[JsonSchemaKey.CHUNK_OVERLAP] = prompt.profile_manager.chunk_overlap
             output[JsonSchemaKey.LLM] = llm
             output[JsonSchemaKey.PREAMBLE] = tool.preamble
             output[JsonSchemaKey.POSTAMBLE] = tool.postamble
@@ -243,9 +239,7 @@ class PromptStudioRegistryHelper:
                 instance=prompt_studio_tools, many=True
             )
         except Exception as error:
-            logger.error(
-                f"Error occured while fetching tool for tool_id: {error}"
-            )
+            logger.error(f"Error occured while fetching tool for tool_id: {error}")
             raise InternalError()
         tool_metadata: dict[str, Any] = {}
         tool_list = []

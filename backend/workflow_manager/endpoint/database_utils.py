@@ -159,9 +159,7 @@ class DatabaseUtils:
                 )
                 column_types = DatabaseUtils.get_column_types_util(results)
         except Exception as e:
-            logger.error(
-                f"Error getting column types for {table_name}: {str(e)}"
-            )
+            logger.error(f"Error getting column types for {table_name}: {str(e)}")
             raise e
         return column_types
 
@@ -304,12 +302,8 @@ class DatabaseUtils:
             raise e
 
     @staticmethod
-    def get_db_engine(
-        connector_id: str, connector_settings: dict[str, Any]
-    ) -> Any:
-        connector = db_connectors[connector_id][Common.METADATA][
-            Common.CONNECTOR
-        ]
+    def get_db_engine(connector_id: str, connector_settings: dict[str, Any]) -> Any:
+        connector = db_connectors[connector_id][Common.METADATA][Common.CONNECTOR]
         connector_class: UnstractDB = connector(connector_settings)
         return connector_class.get_engine()
 
@@ -317,9 +311,7 @@ class DatabaseUtils:
     def execute_and_fetch_data(
         connector_id: str, connector_settings: dict[str, Any], query: str
     ) -> Any:
-        connector = db_connectors[connector_id][Common.METADATA][
-            Common.CONNECTOR
-        ]
+        connector = db_connectors[connector_id][Common.METADATA][Common.CONNECTOR]
         connector_class: UnstractDB = connector(connector_settings)
         return connector_class.execute(query=query)
 
@@ -411,10 +403,8 @@ class DBConnectorQueryHelper:
             if key not in TableColumns.PERMANENT_COLUMNS:
                 python_type = type(val)
                 if conn_cls == DBConnectionClass.BIGQUERY:
-                    sql_type = (
-                        DBConnectorTypeConverter.python_to_bigquery_mapping(
-                            python_type
-                        )
+                    sql_type = DBConnectorTypeConverter.python_to_bigquery_mapping(
+                        python_type
                     )
                 else:
                     sql_type = DBConnectorTypeConverter.python_to_sql_mapping(

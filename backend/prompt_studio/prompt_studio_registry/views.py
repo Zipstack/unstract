@@ -62,9 +62,7 @@ class PromptStudioRegistryView(viewsets.ModelViewSet):
                     for tool_id:{custom_tool_id} {error}"
             )
             raise ToolDoesNotExist from error
-        PromptStudioRegistryHelper.update_or_create_psr_tool(
-            custom_tool=custom_tool
-        )
+        PromptStudioRegistryHelper.update_or_create_psr_tool(custom_tool=custom_tool)
         return Response(
             {"message": "Custom tool exported sucessfully."},
             status=status.HTTP_200_OK,

@@ -10,9 +10,7 @@ from utils.models.base_model import BaseModel
 class CustomTool(BaseModel):
     """Model to store the custom tools designed in the tool studio."""
 
-    tool_id = models.UUIDField(
-        primary_key=True, default=uuid.uuid4, editable=False
-    )
+    tool_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tool_name = models.TextField(unique=True, blank=False, null=False)
     description = models.TextField(blank=False, null=False)
     author = models.TextField(

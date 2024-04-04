@@ -29,9 +29,7 @@ def drf_logging_exc_handler(exc: Exception, context: Any) -> Optional[Response]:
             handled by another method in the middleware
     """
     request = context.get("request")
-    ExceptionLoggingMiddleware.format_exc_and_log(
-        request=request, exception=exc
-    )
+    ExceptionLoggingMiddleware.format_exc_and_log(request=request, exception=exc)
     return exception_handler(exc=exc, context=context)
 
 

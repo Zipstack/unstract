@@ -110,12 +110,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if summarize_llm_profile_id:
             prompt_tool = self.get_object()
 
-            ProfileManager.objects.filter(
-                prompt_studio_tool=prompt_tool
-            ).update(is_summarize_llm=False)
-            profile_manager = ProfileManager.objects.get(
-                pk=summarize_llm_profile_id
+            ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
+                is_summarize_llm=False
             )
+            profile_manager = ProfileManager.objects.get(pk=summarize_llm_profile_id)
             profile_manager.is_summarize_llm = True
             profile_manager.save()
 
@@ -131,9 +129,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             Response: Reponse of dropdown dict
         """
         try:
-            select_choices: dict[str, Any] = (
-                PromptStudioHelper.get_select_fields()
-            )
+            select_choices: dict[str, Any] = PromptStudioHelper.get_select_fields()
             return Response(select_choices, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error(f"Error occured while fetching select fields {e}")
@@ -156,9 +152,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         return Response(serialized_instances)
 
     @action(detail=True, methods=["patch"])
-    def make_profile_default(
-        self, request: HttpRequest, pk: Any = None
-    ) -> Response:
+    def make_profile_default(self, request: HttpRequest, pk: Any = None) -> Response:
         prompt_tool = (
             self.get_object()
         )  # Assuming you have a get_object method in your viewset
@@ -167,9 +161,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             is_default=False
         )
 
-        profile_manager = ProfileManager.objects.get(
-            pk=request.data["default_profile"]
-        )
+        profile_manager = ProfileManager.objects.get(pk=request.data["default_profile"])
         profile_manager.is_default = True
         profile_manager.save()
 
@@ -194,9 +186,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         """
         serializer = PromptStudioIndexSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        tool_id: str = serializer.validated_data.get(
-            ToolStudioPromptKeys.TOOL_ID
-        )
+        tool_id: str = serializer.validated_data.get(ToolStudioPromptKeys.TOOL_ID)
         document_id: str = serializer.validated_data.get(
             ToolStudioPromptKeys.DOCUMENT_ID
         )
@@ -228,9 +218,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK,
             )
         else:
-            logger.error(
-                "Error occured while indexing. Unique ID is not valid."
-            )
+            logger.error("Error occured while indexing. Unique ID is not valid.")
             raise IndexingAPIError()
 
     @action(detail=True, methods=["post"])

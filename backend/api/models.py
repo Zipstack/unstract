@@ -87,9 +87,7 @@ class APIDeployment(BaseModel):
             except APIDeployment.DoesNotExist:
                 org_schema = connection.get_tenant().schema_name
 
-                self.api_endpoint = (
-                    f"{ApiExecution.PATH}/{org_schema}/{self.api_name}/"
-                )
+                self.api_endpoint = f"{ApiExecution.PATH}/{org_schema}/{self.api_name}/"
         super().save(*args, **kwargs)
 
 

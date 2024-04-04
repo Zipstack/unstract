@@ -41,9 +41,7 @@ def _extract_from_env_file(file_path: str) -> dict[str, str]:
     return env
 
 
-def _merge_to_env_file(
-    base_env_file_path: str, target_env: dict[str, str] = {}
-) -> str:
+def _merge_to_env_file(base_env_file_path: str, target_env: dict[str, str] = {}) -> str:
     """Generates file contents after merging input base env file path with
     target env.
 
@@ -106,12 +104,8 @@ def merge_env(
     base_env_file_path: str, target_env_file_path: str, dry_run: bool = False
 ) -> None:
     target_env = _extract_from_env_file(target_env_file_path)
-    merged_contents = _merge_to_env_file(
-        base_env_file_path, target_env=target_env
-    )
-    _save_merged_contents(
-        target_env_file_path, merged_contents, dry_run=dry_run
-    )
+    merged_contents = _merge_to_env_file(base_env_file_path, target_env=target_env)
+    _save_merged_contents(target_env_file_path, merged_contents, dry_run=dry_run)
 
 
 if __name__ == "__main__":

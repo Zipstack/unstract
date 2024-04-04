@@ -73,9 +73,7 @@ class AuthService(ABC):
     def get_user_id_from_token(self, token: dict[str, Any]) -> Response:
         return token["userinfo"]["sub"]
 
-    def get_organization_members_by_org_id(
-        self, organization_id: str
-    ) -> Response:
+    def get_organization_members_by_org_id(self, organization_id: str) -> Response:
         raise MethodNotImplemented()
 
     def reset_user_password(self, user: User) -> ResetUserPasswordDto:

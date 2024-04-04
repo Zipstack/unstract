@@ -61,9 +61,7 @@ class AdapterProcessor:
                 {
                     AdapterKeys.ID: each_adapter.get(AdapterKeys.ID),
                     AdapterKeys.NAME: each_adapter.get(AdapterKeys.NAME),
-                    AdapterKeys.DESCRIPTION: each_adapter.get(
-                        AdapterKeys.DESCRIPTION
-                    ),
+                    AdapterKeys.DESCRIPTION: each_adapter.get(AdapterKeys.DESCRIPTION),
                     AdapterKeys.ICON: each_adapter.get(AdapterKeys.ICON),
                     AdapterKeys.ADAPTER_TYPE: each_adapter.get(
                         AdapterKeys.ADAPTER_TYPE
@@ -79,37 +77,24 @@ class AdapterProcessor:
             "id", adapter_id
         )
         if len(updated_adapters) == 0:
-            logger.error(
-                f"Invalid adapter ID {adapter_id} while invoking utility"
-            )
+            logger.error(f"Invalid adapter ID {adapter_id} while invoking utility")
             raise InValidAdapterId()
-        return AdapterProcessor.__fetch_adapters_by_key_value("id", adapter_id)[
-            0
-        ].get(key_value)
+        return AdapterProcessor.__fetch_adapters_by_key_value("id", adapter_id)[0].get(
+            key_value
+        )
 
     @staticmethod
     def test_adapter(adapter_id: str, adapter_metadata: dict[str, Any]) -> bool:
         logger.info(f"Testing adapter: {adapter_id}")
         try:
-            adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
-                adapter_id
-            )
+            adapter_class = Adapterkit().get_adapter_class_by_adapter_id(adapter_id)
 
-            if (
-                adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE)
-                == AdapterKeys.X2TEXT
-            ):
-                adapter_metadata[X2TextConstants.X2TEXT_HOST] = (
-                    settings.X2TEXT_HOST
-                )
-                adapter_metadata[X2TextConstants.X2TEXT_PORT] = (
-                    settings.X2TEXT_PORT
-                )
-                platform_key = (
-                    PlatformAuthenticationService.get_active_platform_key()
-                )
-                adapter_metadata[X2TextConstants.PLATFORM_SERVICE_API_KEY] = (
-                    str(platform_key.key)
+            if adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE) == AdapterKeys.X2TEXT:
+                adapter_metadata[X2TextConstants.X2TEXT_HOST] = settings.X2TEXT_HOST
+                adapter_metadata[X2TextConstants.X2TEXT_PORT] = settings.X2TEXT_PORT
+                platform_key = PlatformAuthenticationService.get_active_platform_key()
+                adapter_metadata[X2TextConstants.PLATFORM_SERVICE_API_KEY] = str(
+                    platform_key.key
                 )
 
             adapter_instance = adapter_class(adapter_metadata)
@@ -137,10 +122,8 @@ class AdapterProcessor:
             ) = UserDefaultAdapter.objects.get_or_create(user=user)
 
             if default_triad.get(AdapterKeys.LLM_DEFAULT, None):
-                user_default_adapter.default_llm_adapter = (
-                    AdapterInstance.objects.get(
-                        pk=default_triad[AdapterKeys.LLM_DEFAULT]
-                    )
+                user_default_adapter.default_llm_adapter = AdapterInstance.objects.get(
+                    pk=default_triad[AdapterKeys.LLM_DEFAULT]
                 )
             if default_triad.get(AdapterKeys.EMBEDDING_DEFAULT, None):
                 user_default_adapter.default_embedding_adapter = (
@@ -209,9 +192,7 @@ class AdapterProcessor:
             the specified adapter type.
         """
 
-        adapters: list[AdapterInstance] = AdapterInstance.objects.for_user(
-            user
-        ).filter(
+        adapters: list[AdapterInstance] = AdapterInstance.objects.for_user(user).filter(
             adapter_type=adapter_type.value,
         )
         return adapters
@@ -273,8 +254,7 @@ class AdapterProcessor:
         except ObjectDoesNotExist as e:
             logger.error(f"No default adapters found: {e}")
             raise InternalServiceError(
-                "No default adapters found, "
-                "configure them through Platform Settings"
+                "No default adapters found, " "configure them through Platform Settings"
             )
         except Exception as e:
             logger.error(f"Error occurred while fetching default adapters: {e}")

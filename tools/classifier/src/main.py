@@ -29,9 +29,7 @@ class UnstractClassifier(BaseTool):
         elif len(bins) < 2:
             self.stream_error_and_exit("At least two bins are required")
         if not llm_adapter_instance_id:
-            self.stream_error_and_exit(
-                "Choose an LLM to process the classifier"
-            )
+            self.stream_error_and_exit("Choose an LLM to process the classifier")
         if not text_extraction_adapter_id:
             self.stream_error_and_exit("Choose an LLM to extract the documents")
 
@@ -85,12 +83,8 @@ class UnstractClassifier(BaseTool):
 
         max_tokens = tool_llm.get_max_tokens(reserved_for_output=50 + 1000)
         max_bytes = int(max_tokens * 1.3)
-        self.stream_log(
-            f"LLM Max tokens: {max_tokens} ==> Max bytes: {max_bytes}"
-        )
-        self.stream_log(
-            f"LLM Max tokens: {max_tokens} ==> Max bytes: {max_bytes}"
-        )
+        self.stream_log(f"LLM Max tokens: {max_tokens} ==> Max bytes: {max_bytes}")
+        self.stream_log(f"LLM Max tokens: {max_tokens} ==> Max bytes: {max_bytes}")
         limited_text = ""
         for byte in text.encode():
             if len(limited_text.encode()) < max_bytes:

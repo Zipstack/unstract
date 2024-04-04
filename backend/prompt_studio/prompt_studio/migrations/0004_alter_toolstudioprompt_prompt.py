@@ -12,8 +12,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name="toolstudioprompt",
             name="prompt",
-            field=models.TextField(
-                blank=True, db_comment="Field to store the prompt"
-            ),
+            field=models.TextField(blank=True, db_comment="Field to store the prompt"),
         ),
     ]

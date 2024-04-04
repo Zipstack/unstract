@@ -3,9 +3,7 @@ from rest_framework.urlpatterns import format_suffix_patterns
 
 from .views import PromptStudioCoreView
 
-prompt_studio_list = PromptStudioCoreView.as_view(
-    {"get": "list", "post": "create"}
-)
+prompt_studio_list = PromptStudioCoreView.as_view({"get": "list", "post": "create"})
 prompt_studio_detail = PromptStudioCoreView.as_view(
     {
         "get": "retrieve",
@@ -14,19 +12,13 @@ prompt_studio_detail = PromptStudioCoreView.as_view(
         "delete": "destroy",
     }
 )
-prompt_studio_choices = PromptStudioCoreView.as_view(
-    {"get": "get_select_choices"}
-)
+prompt_studio_choices = PromptStudioCoreView.as_view({"get": "get_select_choices"})
 prompt_studio_profiles = PromptStudioCoreView.as_view(
     {"get": "list_profiles", "patch": "make_profile_default"}
 )
 
-prompt_studio_prompt_index = PromptStudioCoreView.as_view(
-    {"post": "index_document"}
-)
-prompt_studio_prompt_response = PromptStudioCoreView.as_view(
-    {"post": "fetch_response"}
-)
+prompt_studio_prompt_index = PromptStudioCoreView.as_view({"post": "index_document"})
+prompt_studio_prompt_response = PromptStudioCoreView.as_view({"post": "fetch_response"})
 prompt_studio_adapter_choices = PromptStudioCoreView.as_view(
     {"get": "get_adapter_choices"}
 )
