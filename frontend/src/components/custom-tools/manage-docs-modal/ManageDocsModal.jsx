@@ -21,16 +21,16 @@ import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
-import "./ManageDocsModal.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
-import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
+import "./ManageDocsModal.css";
 
 let SummarizeStatusTitle = null;
 try {
@@ -99,11 +99,11 @@ function ManageDocsModal({
 
   const infoIndex = (indexMessage) => {
     let color = "default";
+
     if (indexMessage?.level === "INFO") {
       color = "processing";
     }
-
-    if (indexMessage?.length === "ERROR") {
+    if (indexMessage?.level === "ERROR") {
       color = "error";
     }
 
