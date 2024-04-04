@@ -82,3 +82,12 @@ class Redshift(UnstractDB):
             datetime.datetime: "TIMESTAMP",
         }
         return mapping.get(python_type, "VARCHAR(65535)")
+
+    @staticmethod
+    def get_create_table_query(table: str) -> str:
+        sql_query = (
+            f"CREATE TABLE IF NOT EXISTS {table} "
+            f"(id VARCHAR(65535) ,"
+            f"created_by VARCHAR(65535), created_at TIMESTAMP, "
+        )
+        return sql_query

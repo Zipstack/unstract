@@ -80,3 +80,12 @@ class BigQuery(UnstractDB):
             datetime.datetime: "TIMESTAMP",
         }
         return mapping.get(python_type, "string")
+
+    @staticmethod
+    def get_create_table_query(table: str) -> str:
+        sql_query = (
+            f"CREATE TABLE IF NOT EXISTS {table} "
+            f"(id string,"
+            f"created_by string, created_at TIMESTAMP, "
+        )
+        return sql_query

@@ -9,15 +9,6 @@ class DBConnectionClass:
     BIGQUERY = "Client"
 
 
-class UnstractDBConnectorClass:
-    BIGQUERY = "BigQuery"
-    SNOWFLAKE = "SnowflakeDB"
-    REDSHIFT = "Redshift"
-    MSSQL = "MSSQL"
-    MYSQL = "MySQL"
-    MARIADB = "MariaDB"
-
-
 class Snowflake:
     COLUMN_TYPES = [
         "VARCHAR",

@@ -10,7 +10,6 @@ from workflow_manager.endpoint.constants import (
     DBConnectionClass,
     Snowflake,
     TableColumns,
-    UnstractDBConnectorClass,
 )
 from workflow_manager.endpoint.exceptions import BigQueryTableNotFound
 from workflow_manager.workflow.enums import AgentName, ColumnModes
@@ -365,7 +364,6 @@ class DBConnectorQueryHelper:
     def create_table_query(
         conn_cls: UnstractDB, table: str, database_entry: dict[str, Any]
     ) -> Any:
-        class_type = type(conn_cls).__name__
         sql_query = ""
         """Generate a SQL query to create a table, based on the provided
         database entry.
@@ -386,47 +384,18 @@ class DBConnectorQueryHelper:
             and column definitions.
 
         Note:
-            - A base CREATE SQL query will be created for
-            db-connection class.
-            - Each column name in database_entry will be mapped to
-            db-connection datatype based on thier implementation.
-            - base CREATE SQL query will keep on appending based on
-            db-connection datatype (column key)
-            and database_entry value (column value)
-            - Permanent columns, will always be present in table creation.
+            - Each conn_cls have it's implementation for SQL create table query
+            Based on the implementation, a base SQL create table query will be
+            created containing Permanent columns
+            - Each conn_cls also has a mapping to convert python datatype to
+            corresponding column type (string, VARCHAR etc)
+            - keys in database_entry will be converted to column type, and
+            column values will be the valus in database_entry
+            - base SQL create table will be appended based column type and
+            values, and generates a complete SQL create table query
         """
-        if class_type == UnstractDBConnectorClass.BIGQUERY:
-            sql_query += (
-                f"CREATE TABLE IF NOT EXISTS {table} "
-                f"(id string,"
-                f"created_by string, created_at TIMESTAMP, "
-            )
-        elif class_type == UnstractDBConnectorClass.SNOWFLAKE:
-            sql_query += (
-                f"CREATE TABLE {table} IF NOT EXISTS "
-                f"(id TEXT ,"
-                f"created_by TEXT, created_at TIMESTAMP, "
-            )
-        elif class_type == UnstractDBConnectorClass.REDSHIFT:
-            sql_query += (
-                f"CREATE TABLE IF NOT EXISTS {table} "
-                f"(id VARCHAR(65535) ,"
-                f"created_by VARCHAR(65535), created_at TIMESTAMP, "
-            )
-        elif class_type == UnstractDBConnectorClass.MSSQL:
-            sql_query += (
-                f"IF NOT EXISTS ("
-                f"SELECT * FROM sysobjects WHERE name='{table}' and xtype='U')"
-                f" CREATE TABLE {table} "
-                f"(id TEXT ,"
-                f"created_by TEXT, created_at DATETIMEOFFSET, "
-            )
-        else:
-            sql_query += (
-                f"CREATE TABLE IF NOT EXISTS {table} "
-                f"(id TEXT , "
-                f"created_by TEXT, created_at TIMESTAMP, "
-            )
+        create_table_query = conn_cls.get_create_table_query(table=table)
+        sql_query += create_table_query
 
         for key, val in database_entry.items():
             if key not in TableColumns.PERMANENT_COLUMNS:
