@@ -5,6 +5,7 @@ from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.constants import AdapterKeys
 from adapter_processor.exceptions import (
     CannotDeleteDefaultAdapter,
+    DeleteAdapterInUseError,
     IdIsMandatory,
     InValidType,
     UniqueConstraintViolation,
@@ -18,7 +19,7 @@ from adapter_processor.serializers import (
     UserDefaultAdapterSerializer,
 )
 from django.db import IntegrityError
-from django.db.models import QuerySet
+from django.db.models import ProtectedError, QuerySet
 from django.http import HttpRequest
 from django.http.response import HttpResponse
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
@@ -229,7 +230,17 @@ class AdapterInstanceViewSet(ModelViewSet):
             logger.error("Cannot delete a default adapter")
             raise CannotDeleteDefaultAdapter()
 
-        super().perform_destroy(adapter_instance)
+        try:
+            super().perform_destroy(adapter_instance)
+        except ProtectedError:
+            logger.error(
+                f"Failed to delete adapter: {adapter_instance.adapter_id}"
+                f" named {adapter_instance.adapter_name}"
+            )
+            # TODO: Provide details of adpter usage with exception object
+            raise DeleteAdapterInUseError(
+                adapter_name=adapter_instance.adapter_name
+            )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def partial_update(
