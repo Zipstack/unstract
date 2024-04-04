@@ -101,7 +101,7 @@ function ListView({
           <EditOutlined
             key={`${item.id}-edit`}
             onClick={(event) => handleEdit(event, item)}
-            className="action-icon-buttons"
+            className="action-icon-buttons edit-icon"
           />
           {handleShare && (
             <ShareAltOutlined
@@ -122,7 +122,7 @@ function ListView({
             }}
           >
             <Typography.Text>
-              <DeleteOutlined className="action-icon-buttons" />
+              <DeleteOutlined className="action-icon-buttons delete-icon" />
             </Typography.Text>
           </Popconfirm>
         </div>
