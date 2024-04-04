@@ -29,10 +29,6 @@ function ListOfSources({ setSelectedSourceId, type }) {
       "replicate|2715ce84-05af-4ab4-b8e9-67ac3211b81e",
       "anthropic|90ebd4cd-2f19-4cef-a884-9eeb6ac0f203",
     ],
-    X2TEXT: [
-      "unstructuredenterprise|eb1b6c58-221f-4db0-a4a5-e5f9cdca44e1",
-      "unstructuredcommunity|eeed506f-1875-457f-9101-846fc7115676",
-    ],
     VECTOR_DB: [
       "supabase|e6998e3c-3595-48c0-a190-188dbd803858",
       "pinecone|83881133-485d-4ecc-b1f7-0009f96dc74a",
@@ -113,6 +109,7 @@ function ListOfSources({ setSelectedSourceId, type }) {
           placeholder="Search"
           prefix={<SearchOutlined className="search-outlined" />}
           onChange={onSearchDebounce}
+          value={searchText}
         />
       </div>
       <div className="list">

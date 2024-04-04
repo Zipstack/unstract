@@ -1,3 +1,4 @@
+import datetime
 import logging
 from abc import ABC, abstractmethod
 from typing import Any
@@ -77,3 +78,32 @@ class UnstractDB(UnstractConnector, ABC):
                 return cursor.fetchall()
         except Exception as e:
             raise ConnectorError(str(e))
+
+    @staticmethod
+    def sql_to_db_mapping(value: str) -> str:
+        """
+        Gets the python datatype of value and converts python datatype
+        to corresponding DB datatype
+        Args:
+            value (str): _description_
+
+        Returns:
+            str: _description_
+        """
+        python_type = type(value)
+        mapping = {
+            str: "TEXT",
+            int: "INT",
+            float: "FLOAT",
+            datetime.datetime: "TIMESTAMP",
+        }
+        return mapping.get(python_type, "TEXT")
+
+    @staticmethod
+    def get_create_table_query(table: str) -> str:
+        sql_query = (
+            f"CREATE TABLE IF NOT EXISTS {table} "
+            f"(id TEXT , "
+            f"created_by TEXT, created_at TIMESTAMP, "
+        )
+        return sql_query
