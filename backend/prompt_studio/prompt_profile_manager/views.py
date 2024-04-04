@@ -50,8 +50,5 @@ class ProfileManagerView(viewsets.ModelViewSet):
         try:
             self.perform_create(serializer)
         except IntegrityError:
-            raise DuplicateData(
-                f"{ProfileManagerErrors.PROFILE_NAME_EXISTS}, \
-                    {ProfileManagerErrors.DUPLICATE_API}"
-            )
+            raise DuplicateData(ProfileManagerErrors.PROFILE_NAME_EXISTS)
         return Response(serializer.data, status=status.HTTP_201_CREATED)

@@ -18,7 +18,7 @@ from prompt_studio.prompt_studio_core.exceptions import (
     AnswerFetchError,
     DefaultProfileError,
     EmptyPromptError,
-    IndexingError,
+    IndexingAPIError,
     NoPromptsFound,
     PermissionError,
     PromptNotValid,
@@ -34,8 +34,9 @@ from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import
 from prompt_studio.prompt_studio_output_manager.output_manager_helper import (
     OutputManagerHelper,
 )
+from rest_framework.exceptions import APIException
 from unstract.sdk.constants import LogLevel
-from unstract.sdk.exceptions import SdkError
+from unstract.sdk.exceptions import IndexingError
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
@@ -362,6 +363,9 @@ class PromptStudioHelper:
                     LogLevels.RUN,
                     "Failed to fetch prompt response",
                 )
+                # TODO: Catch specific exceptions and remove this
+                if isinstance(exc, APIException):
+                    raise exc
                 raise AnswerFetchError()
 
             logger.info(
@@ -618,7 +622,7 @@ class PromptStudioHelper:
             tool_index = ToolIndex(tool=util)
         except Exception as e:
             logger.error(f"Error while instatiating SDKs {e}")
-            raise IndexingError()
+            raise IndexingAPIError()
         embedding_model = str(profile_manager.embedding_model.id)
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
@@ -652,8 +656,8 @@ class PromptStudioHelper:
                 doc_id=doc_id,
             )
             return doc_id
-        except SdkError as e:
-            raise IndexingError(str(e))
+        except IndexingError as e:
+            raise IndexingAPIError(str(e)) from e
 
     @staticmethod
     def _fetch_single_pass_response(

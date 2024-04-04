@@ -147,6 +147,9 @@ function AddLlmProfile({
     }
   }, [formDetails]);
 
+  const [tokenSize, setTokenSize] = useState(0);
+  const [maxTokenSize, setMaxTokenSize] = useState(0);
+
   const validateEmptyOrWhitespace = (_, value) => {
     if (value && value.trim() === "") {
       return Promise.reject(new Error("Please enter a non-whitespace value"));
@@ -332,7 +335,7 @@ function AddLlmProfile({
         setIsAddLlm(false);
       })
       .catch((err) => {
-        handleException(err, "", setBackendErrors);
+        setAlertDetails(handleException(err, "", setBackendErrors));
       })
       .finally(() => {
         setLoading(false);
@@ -346,6 +349,44 @@ function AddLlmProfile({
   const handleCaretIcon = (isActive) => {
     return <CaretRightOutlined rotate={isActive ? 90 : 0} />;
   };
+
+  const handleLlmChangeForTokens = async (value) => {
+    if (!value) {
+      return null;
+    }
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/mock_org/adapter/` + value,
+    };
+
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const data = res?.data;
+        const contextWindowSize = data.adapter_metadata.context_window_size;
+        const chunkSize = form.getFieldValue("chunk_size");
+        setTokenSize(chunkSize > 0 ? calcTokenSize(chunkSize) : 0);
+        setMaxTokenSize(contextWindowSize);
+      })
+      .catch((err) => {
+        setAlertDetails(
+          handleException(
+            err,
+            "Failed to get the dropdown list for LLM Adaptors"
+          )
+        );
+      });
+  };
+
+  const handleChunkSizeChange = async (event) => {
+    const value = event.target.value;
+    const tokenSize = calcTokenSize(value);
+    setTokenSize(tokenSize);
+  };
+
+  function calcTokenSize(chunkSize) {
+    const tokenSize = (chunkSize / 4 / 1024).toFixed(1);
+    return tokenSize;
+  }
 
   return (
     <div className="settings-body-pad-top">
@@ -399,13 +440,24 @@ function AddLlmProfile({
                   }
                   help={getBackendErrorDetail("llm", backendErrors)}
                 >
-                  <Select options={llmItems} />
+                  <Select
+                    options={llmItems}
+                    onSelect={handleLlmChangeForTokens}
+                  />
                 </Form.Item>
               </Col>
               <Col span={1} />
               <Col span={8}>
                 <Form.Item
-                  label="Chunk Size"
+                  label={
+                    <>
+                      Chunk Size
+                      <Typography.Text type="secondary">
+                        {" "}
+                        (Set to 0 if documents are small)
+                      </Typography.Text>
+                    </>
+                  }
                   name="chunk_size"
                   rules={[
                     {
@@ -419,8 +471,9 @@ function AddLlmProfile({
                       : ""
                   }
                   help={getBackendErrorDetail("chunk_size", backendErrors)}
+                  extra={`~= ${tokenSize}k tokens, Max: ${maxTokenSize}`}
                 >
-                  <Input type="number" />
+                  <Input type="number" onChange={handleChunkSizeChange} />
                 </Form.Item>
               </Col>
             </Row>

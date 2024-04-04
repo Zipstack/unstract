@@ -53,7 +53,7 @@ Next, either download a release or clone this repo and do the following:
 
 That's all there is to it!
 
-Another really quick way to experience Unstract is by signing up for our [hosted version](https://us-central-1.gcp.unstract.com/).
+Another really quick way to experience Unstract is by signing up for our [hosted version](https://us-central.unstract.com/).
 
 ## ⏩ Quick Start Guide
 
