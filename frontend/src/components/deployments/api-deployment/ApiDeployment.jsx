@@ -37,10 +37,9 @@ function ApiDeployment() {
   const [tableData, setTableData] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
   const [isEdit, setIsEdit] = useState(false);
-  const [columns, setColumns] = useState([]);
   const [workflowEndpointList, setWorkflowEndpointList] = useState([]);
   const handleException = useExceptionHandler();
-  const columnsStatic = [
+  const columns = [
     {
       title: "API Name",
       key: "display_name",
@@ -88,7 +87,7 @@ function ApiDeployment() {
             className="workflowName"
             onClick={() =>
               navigate(
-                `/${sessionDetails?.orgId}/workflows/${record?.workflow}`
+                `/${sessionDetails?.orgName}/workflows/${record?.workflow}`
               )
             }
           >
@@ -132,7 +131,6 @@ function ApiDeployment() {
   useEffect(() => {
     getApiDeploymentList();
     getWorkflows();
-    setColumns(columnsStatic);
   }, []);
   const getWorkflows = () => {
     workflowApiService
