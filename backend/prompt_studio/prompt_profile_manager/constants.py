@@ -11,6 +11,6 @@ class ProfileManagerKeys:
 
 class ProfileManagerErrors:
     SERIALIZATION_FAILED = "Data Serialization Failed."
-    PROFILE_NAME_EXISTS = "Profile with the name already exists"
+    PROFILE_NAME_EXISTS = "A profile with this name already exists."
     DUPLICATE_API = "It appears that a duplicate call may have been made."
     PLATFORM_ERROR = "Seems an error occured in Platform Service."
