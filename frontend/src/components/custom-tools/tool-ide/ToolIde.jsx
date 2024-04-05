@@ -26,7 +26,6 @@ function ToolIde() {
     updateCustomTool,
     disableLlmOrDocChange,
     selectedDoc,
-    listOfDocs,
     indexDocs,
     pushIndexDoc,
     deleteIndexDoc,
@@ -134,7 +133,7 @@ function ToolIde() {
       });
   };
 
-  const handleDocChange = (docId) => {
+  const handleDocChange = (doc) => {
     if (disableLlmOrDocChange?.length > 0) {
       setAlertDetails({
         type: "error",
@@ -143,8 +142,6 @@ function ToolIde() {
       return;
     }
 
-    const doc = [...listOfDocs].find((item) => item?.document_id === docId);
-
     const prevSelectedDoc = selectedDoc;
     const data = {
       selectedDoc: doc,
@@ -152,7 +149,7 @@ function ToolIde() {
     updateCustomTool(data);
 
     const body = {
-      output: docId,
+      output: doc?.document_id,
     };
 
     handleUpdateTool(body).catch((err) => {
