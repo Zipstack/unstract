@@ -81,9 +81,9 @@ def _merge_to_env_file(
             if key not in PREFERRED_BASE_ENV_KEYS and key in target_env:
                 value = target_env.get(key, value)
 
-                # Set default value for these keys always.
-                if not value and key in SET_DEFAULT_KEYS:
-                    value = DEFAULT_AUTH_KEY
+            # Set default value for these keys always.
+            if not value and key in SET_DEFAULT_KEYS:
+                value = DEFAULT_AUTH_KEY
 
             merged_contents.append(f"{key}={value}\n")
 
