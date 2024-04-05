@@ -199,15 +199,19 @@ class DestinationConnector(BaseConnector):
             agent_name=agent_name,
             single_column_name=single_column_name,
         )
-        engine = DatabaseUtils.get_db_engine(
+        db_class = DatabaseUtils.get_db_class(
             connector_id=connector_instance.connector_id,
             connector_settings=connector_settings,
         )
+        engine = db_class.get_engine()
         # If data is None, don't execute CREATE or INSERT query
         if data is None:
             return
         DatabaseUtils.create_table_if_not_exists(
-            engine=engine, table_name=table_name, database_entry=values
+            db_class=db_class,
+            engine=engine,
+            table_name=table_name,
+            database_entry=values,
         )
         sql_columns_and_values = DatabaseUtils.get_sql_columns_and_values_for_query(
             engine=engine,

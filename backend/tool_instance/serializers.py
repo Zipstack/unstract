@@ -2,15 +2,8 @@ import logging
 import uuid
 from typing import Any
 
-from prompt_studio.prompt_studio_registry.constants import (
-    PromptStudioRegistryKeys,
-)
-from rest_framework.serializers import (
-    ListField,
-    Serializer,
-    UUIDField,
-    ValidationError,
-)
+from prompt_studio.prompt_studio_registry.constants import PromptStudioRegistryKeys
+from rest_framework.serializers import ListField, Serializer, UUIDField, ValidationError
 from tool_instance.constants import ToolInstanceKey as TIKey
 from tool_instance.constants import ToolKey
 from tool_instance.exceptions import ToolDoesNotExist

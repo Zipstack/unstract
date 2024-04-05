@@ -7,13 +7,11 @@ from adapter_processor.constants import AdapterKeys
 from adapter_processor.exceptions import (
     InternalServiceError,
     InValidAdapterId,
-    TestAdapterException,
+    TestAdapterError,
 )
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
-from platform_settings.platform_auth_service import (
-    PlatformAuthenticationService,
-)
+from platform_settings.platform_auth_service import PlatformAuthenticationService
 from unstract.adapters.adapterkit import Adapterkit
 from unstract.adapters.base import Adapter
 from unstract.adapters.enums import AdapterTypes
@@ -102,7 +100,7 @@ class AdapterProcessor:
             logger.info(f"{adapter_id} test result: {test_result}")
             return test_result
         except AdapterError as e:
-            raise TestAdapterException(str(e))
+            raise TestAdapterError(str(e))
 
     @staticmethod
     def __fetch_adapters_by_key_value(key: str, value: Any) -> Adapter:

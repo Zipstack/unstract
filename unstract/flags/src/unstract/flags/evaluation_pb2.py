@@ -12,9 +12,7 @@ from google.protobuf.internal import enum_type_wrapper
 _sym_db = _symbol_database.Default()
 
 
-from google.protobuf import (
-    timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2,
-)
+from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 DESCRIPTOR = _descriptor.FileDescriptor(
     name="protos/evaluation.proto",

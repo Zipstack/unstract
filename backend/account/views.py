@@ -2,10 +2,7 @@ import logging
 from typing import Any
 
 from account.authentication_controller import AuthenticationController
-from account.dto import (
-    OrganizationSignupRequestBody,
-    OrganizationSignupResponse,
-)
+from account.dto import OrganizationSignupRequestBody, OrganizationSignupResponse
 from account.models import Organization
 from account.organization import OrganizationService
 from account.serializer import (

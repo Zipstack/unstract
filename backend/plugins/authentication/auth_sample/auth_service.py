@@ -7,13 +7,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from .auth_helper import AuthHelper
-from .dto import (
-    AuthOrganization,
-    ResetUserPasswordDto,
-    TokenData,
-    User,
-    UserInfo,
-)
+from .dto import AuthOrganization, ResetUserPasswordDto, TokenData, User, UserInfo
 from .enums import Region
 from .exceptions import MethodNotImplemented
 

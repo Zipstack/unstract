@@ -9,9 +9,7 @@ from boxsdk import JWTAuth
 from boxsdk.exception import BoxOAuthException
 
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.unstract_file_system import (
-    UnstractFileSystem,
-)
+from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 logger = logging.getLogger(__name__)
 logging.getLogger("boxsdk").setLevel(logging.ERROR)

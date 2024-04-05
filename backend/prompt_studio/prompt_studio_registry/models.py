@@ -5,11 +5,7 @@ from django.db import models
 from prompt_studio.prompt_studio.models import CustomTool
 from utils.models.base_model import BaseModel
 
-from .fields import (
-    ToolMetadataJSONField,
-    ToolPropertyJSONField,
-    ToolSpecJSONField,
-)
+from .fields import ToolMetadataJSONField, ToolPropertyJSONField, ToolSpecJSONField
 
 
 class PromptStudioRegistry(BaseModel):

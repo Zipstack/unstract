@@ -4,12 +4,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from helper import ClassifierHelper  # type: ignore
-from unstract.sdk.constants import (
-    LogLevel,
-    LogState,
-    MetadataKey,
-    ToolSettingsKey,
-)
+from unstract.sdk.constants import LogLevel, LogState, MetadataKey, ToolSettingsKey
 from unstract.sdk.llm import ToolLLM
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint

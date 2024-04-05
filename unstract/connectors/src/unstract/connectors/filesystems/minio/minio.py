@@ -5,9 +5,7 @@ from typing import Any
 from s3fs.core import S3FileSystem
 
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.unstract_file_system import (
-    UnstractFileSystem,
-)
+from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 logger = logging.getLogger(__name__)
 

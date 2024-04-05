@@ -7,13 +7,8 @@ from pipeline.models import Pipeline
 from pipeline.pipeline_processor import PipelineProcessor
 from rest_framework.response import Response
 from scheduler.tasks import create_periodic_task
-from workflow_manager.workflow.constants import (
-    WorkflowExecutionKey,
-    WorkflowKey,
-)
-from workflow_manager.workflow.exceptions import (
-    WorkflowExecutionBadRequestException,
-)
+from workflow_manager.workflow.constants import WorkflowExecutionKey, WorkflowKey
+from workflow_manager.workflow.exceptions import WorkflowExecutionBadRequestException
 from workflow_manager.workflow.serializers import ExecuteWorkflowSerializer
 from workflow_manager.workflow.views import WorkflowViewSet
 

@@ -31,9 +31,7 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.local_storage.local_storage import (
-    LocalStorageFS,
-)
+from unstract.connectors.filesystems.local_storage.local_storage import LocalStorageFS
 
 logger = logging.getLogger(__name__)
 

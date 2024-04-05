@@ -10,10 +10,7 @@ from pipeline.pipeline_processor import PipelineProcessor
 from rest_framework.request import Request
 from rest_framework.response import Response
 from utils.request.constants import RequestConstants
-from workflow_manager.workflow.constants import (
-    WorkflowExecutionKey,
-    WorkflowKey,
-)
+from workflow_manager.workflow.constants import WorkflowExecutionKey, WorkflowKey
 from workflow_manager.workflow.views import WorkflowViewSet
 
 from backend.constants import RequestHeader

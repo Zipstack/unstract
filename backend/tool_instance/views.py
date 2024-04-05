@@ -13,10 +13,7 @@ from rest_framework.versioning import URLPathVersioning
 from tool_instance.constants import ToolInstanceErrors
 from tool_instance.constants import ToolInstanceKey as TIKey
 from tool_instance.constants import ToolKey
-from tool_instance.exceptions import (
-    FetchToolListFailed,
-    ToolFunctionIsMandatory,
-)
+from tool_instance.exceptions import FetchToolListFailed, ToolFunctionIsMandatory
 from tool_instance.models import ToolInstance
 from tool_instance.serializers import (
     ToolInstanceReorderSerializer as TIReorderSerializer,

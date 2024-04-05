@@ -5,23 +5,15 @@ from typing import Optional
 from account.constants import Common
 from api.exceptions import InvalidAPIRequest
 from django.db import connection
-from platform_settings.platform_auth_service import (
-    PlatformAuthenticationService,
-)
+from platform_settings.platform_auth_service import PlatformAuthenticationService
 from tool_instance.constants import JsonSchemaKey
 from tool_instance.models import ToolInstance
 from tool_instance.tool_processor import ToolProcessor
 from unstract.tool_registry.dto import Tool
 from unstract.workflow_execution import WorkflowExecutionService
-from unstract.workflow_execution.dto import (
-    ToolInstance as ToolInstanceDataClass,
-)
+from unstract.workflow_execution.dto import ToolInstance as ToolInstanceDataClass
 from unstract.workflow_execution.dto import WorkflowDto
-from unstract.workflow_execution.enums import (
-    ExecutionType,
-    LogComponent,
-    LogState,
-)
+from unstract.workflow_execution.enums import ExecutionType, LogComponent, LogState
 from unstract.workflow_execution.exceptions import StopExecution
 from utils.local_context import StateStore
 from workflow_manager.workflow.constants import WorkflowKey

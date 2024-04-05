@@ -25,9 +25,7 @@ from fsspec import AbstractFileSystem
 from pydrive2.files import ApiRequestError
 
 from unstract.connectors.filesystems import connectors as fs_connectors
-from unstract.connectors.filesystems.unstract_file_system import (
-    UnstractFileSystem,
-)
+from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 
 class FileManagerHelper:

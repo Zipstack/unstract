@@ -8,9 +8,7 @@ from flask import Flask, request
 from llama_index import VectorStoreIndex
 from llama_index.llms import LLM
 from llama_index.vector_stores.types import ExactMatchFilter, MetadataFilters
-from unstract.prompt_service.authentication_middleware import (
-    AuthenticationMiddleware,
-)
+from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.helper import EnvLoader, plugin_loader
@@ -19,9 +17,7 @@ from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import ToolEmbedding
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.llm import ToolLLM
-from unstract.sdk.utils.service_context import (
-    ServiceContext as UNServiceContext,
-)
+from unstract.sdk.utils.service_context import ServiceContext as UNServiceContext
 from unstract.sdk.vector_db import ToolVectorDB
 
 from unstract.core.pubsub_helper import LogPublisher

@@ -3,9 +3,7 @@ from typing import Optional
 
 from django.db.models import QuerySet
 from prompt_studio.prompt_studio_core.models import CustomTool
-from prompt_studio.prompt_studio_registry.constants import (
-    PromptStudioRegistryKeys,
-)
+from prompt_studio.prompt_studio_registry.constants import PromptStudioRegistryKeys
 from prompt_studio.prompt_studio_registry.exceptions import ToolDoesNotExist
 from prompt_studio.prompt_studio_registry.prompt_studio_registry_helper import (
     PromptStudioRegistryHelper,

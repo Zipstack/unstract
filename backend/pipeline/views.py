@@ -7,28 +7,20 @@ from django.db.models import QuerySet
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from permissions.permission import IsOwner
-from pipeline.constants import (
-    PipelineConstants,
-    PipelineErrors,
-    PipelineExecutionKey,
-)
+from pipeline.constants import PipelineConstants, PipelineErrors, PipelineExecutionKey
 from pipeline.constants import PipelineKey as PK
 from pipeline.manager import PipelineManager
 from pipeline.models import Pipeline
 from pipeline.pipeline_processor import PipelineProcessor
 from pipeline.serializers.crud import PipelineSerializer
-from pipeline.serializers.execute import (
-    PipelineExecuteSerializer as ExecuteSerializer,
-)
+from pipeline.serializers.execute import PipelineExecuteSerializer as ExecuteSerializer
 from pipeline.serializers.update import PipelineUpdateSerializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from scheduler.helper import SchedulerHelper
-from workflow_manager.workflow.constants import (
-    WorkflowExecutionKey as WFExecKey,
-)
+from workflow_manager.workflow.constants import WorkflowExecutionKey as WFExecKey
 
 logger = logging.getLogger(__name__)
 

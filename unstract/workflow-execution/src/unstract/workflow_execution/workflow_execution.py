@@ -20,9 +20,7 @@ from unstract.workflow_execution.exceptions import (
     StopExecution,
     ToolOutputNotFoundException,
 )
-from unstract.workflow_execution.execution_file_handler import (
-    ExecutionFileHandler,
-)
+from unstract.workflow_execution.execution_file_handler import ExecutionFileHandler
 from unstract.workflow_execution.tools_utils import ToolsUtils
 
 from unstract.core.pubsub_helper import LogPublisher

@@ -30,11 +30,7 @@ from workflow_manager.workflow.constants import (
     WorkflowMessages,
 )
 from workflow_manager.workflow.dto import AsyncResultData, ExecutionResponse
-from workflow_manager.workflow.enums import (
-    ExecutionStatus,
-    SchemaEntity,
-    SchemaType,
-)
+from workflow_manager.workflow.enums import ExecutionStatus, SchemaEntity, SchemaType
 from workflow_manager.workflow.exceptions import (
     InvalidRequest,
     TaskDoesNotExistError,

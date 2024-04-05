@@ -8,9 +8,7 @@ from django.http import HttpRequest
 from permissions.permission import IsOwner
 from prompt_studio.processor_loader import ProcessorConfig, load_plugins
 from prompt_studio.prompt_profile_manager.models import ProfileManager
-from prompt_studio.prompt_profile_manager.serializers import (
-    ProfileManagerSerializer,
-)
+from prompt_studio.prompt_profile_manager.serializers import ProfileManagerSerializer
 from prompt_studio.prompt_studio.exceptions import FilenameMissingError
 from prompt_studio.prompt_studio_core.constants import (
     ToolStudioErrors,
@@ -21,9 +19,7 @@ from prompt_studio.prompt_studio_core.exceptions import (
     IndexingAPIError,
     ToolDeleteError,
 )
-from prompt_studio.prompt_studio_core.prompt_studio_helper import (
-    PromptStudioHelper,
-)
+from prompt_studio.prompt_studio_core.prompt_studio_helper import PromptStudioHelper
 from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from rest_framework import status, viewsets
 from rest_framework.decorators import action

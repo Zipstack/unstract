@@ -11,9 +11,7 @@ from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.constants import LogLevels
-from prompt_studio.prompt_studio_core.constants import (
-    ToolStudioPromptKeys as TSPKeys,
-)
+from prompt_studio.prompt_studio_core.constants import ToolStudioPromptKeys as TSPKeys
 from prompt_studio.prompt_studio_core.exceptions import (
     AnswerFetchError,
     DefaultProfileError,
@@ -25,9 +23,7 @@ from prompt_studio.prompt_studio_core.exceptions import (
     ToolNotValid,
 )
 from prompt_studio.prompt_studio_core.models import CustomTool
-from prompt_studio.prompt_studio_core.prompt_ide_base_tool import (
-    PromptIdeBaseTool,
-)
+from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
 from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import (  # noqa: E501
     PromptStudioIndexHelper,
 )
@@ -604,13 +600,20 @@ class PromptStudioHelper:
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = ToolIndex(tool=util)
         except Exception as e:
-            logger.error(f"Error while instatiating SDKs {e}")
-            raise IndexingAPIError()
+            PromptStudioHelper._publish_log(
+                {"tool_id": tool_id, "doc_name": os.path.split(file_path)[1]},
+                LogLevels.ERROR,
+                LogLevels.RUN,
+                "Indexing failed",
+            )
+            raise IndexingAPIError(str(e)) from e
+
         embedding_model = str(profile_manager.embedding_model.id)
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
         file_hash = ToolUtils.get_hash_from_file(file_path=file_path)
         extract_file_path: Optional[str] = None
+
         if not is_summary:
             directory, filename = os.path.split(file_path)
             extract_file_path = os.path.join(
@@ -618,6 +621,7 @@ class PromptStudioHelper:
             )
         else:
             profile_manager.chunk_size = 0
+
         try:
             doc_id: str = tool_index.index_file(
                 tool_id=tool_id,
@@ -640,6 +644,12 @@ class PromptStudioHelper:
             )
             return doc_id
         except IndexingError as e:
+            PromptStudioHelper._publish_log(
+                {"tool_id": tool_id, "doc_name": os.path.split(file_path)[1]},
+                LogLevels.ERROR,
+                LogLevels.RUN,
+                "Indexing failed",
+            )
             raise IndexingAPIError(str(e)) from e
 
     @staticmethod

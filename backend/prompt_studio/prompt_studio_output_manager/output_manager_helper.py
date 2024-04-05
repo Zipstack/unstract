@@ -7,9 +7,7 @@ from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from prompt_studio.prompt_studio_output_manager.constants import (
     PromptStudioOutputManagerKeys as PSOMKeys,
 )
-from prompt_studio.prompt_studio_output_manager.models import (
-    PromptStudioOutputManager,
-)
+from prompt_studio.prompt_studio_output_manager.models import PromptStudioOutputManager
 
 
 class OutputManagerHelper:
