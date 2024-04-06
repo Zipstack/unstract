@@ -146,6 +146,7 @@ setup_env() {
   # Generate Fernet Key. Refer https://pypi.org/project/cryptography/. for both backend and platform-service.
   ENCRYPTION_KEY=$(python3 -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
   DEFAULT_AUTH_KEY="unstract"
+  DEFAULT_ADMIN_KEY="admin"
 
   for service in "${services[@]}"; do
     sample_env_path="$script_dir/$service/sample.env"
@@ -169,13 +170,13 @@ setup_env() {
         if [[ "$OSTYPE" == "darwin"* ]]; then
           sed -i '' "s/DEFAULT_AUTH_USERNAME.*/DEFAULT_AUTH_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
           sed -i '' "s/DEFAULT_AUTH_PASSWORD.*/DEFAULT_AUTH_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
-#          sed -i '' "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
-#          sed -i '' "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
+          sed -i '' "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_ADMIN_KEY\"/" $env_path
+          sed -i '' "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_ADMIN_KEY\"/" $env_path
         else
           sed -i "s/DEFAULT_AUTH_USERNAME.*/DEFAULT_AUTH_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
           sed -i "s/DEFAULT_AUTH_PASSWORD.*/DEFAULT_AUTH_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
-#          sed -i "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
-#          sed -i "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
+          sed -i "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_ADMIN_KEY\"/" $env_path
+          sed -i "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_ADMIN_KEY\"/" $env_path
         fi
       fi
       echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
