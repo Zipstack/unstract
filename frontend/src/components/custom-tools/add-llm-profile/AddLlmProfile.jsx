@@ -373,7 +373,7 @@ function AddLlmProfile({
         setAlertDetails(
           handleException(
             err,
-            "Failed to get the chunk size info for LLM Adaptor. Please proceed with default."
+            "Failed to get chunk size information for the requested LLM. Please proceed with a sane default."
           )
         );
       });
