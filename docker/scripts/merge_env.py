@@ -14,13 +14,14 @@ PREFERRED_BASE_ENV_KEYS = [
     "STRUCTURE_TOOL_IMAGE_URL",
     "STRUCTURE_TOOL_IMAGE_TAG",
 ]
-SET_DEFAULT_KEYS = [
-    "DEFAULT_AUTH_USERNAME",
-    "DEFAULT_AUTH_PASSWORD",
-    "SYSTEM_ADMIN_USERNAME",
-    "SYSTEM_ADMIN_PASSWORD",
-]
 DEFAULT_AUTH_KEY = "unstract"
+DEFAULT_ADMIN_KEY = "admin"
+SET_DEFAULT_KEYS = {
+    "DEFAULT_AUTH_USERNAME": DEFAULT_AUTH_KEY,
+    "DEFAULT_AUTH_PASSWORD": DEFAULT_AUTH_KEY,
+    "SYSTEM_ADMIN_USERNAME": DEFAULT_ADMIN_KEY,
+    "SYSTEM_ADMIN_PASSWORD": DEFAULT_ADMIN_KEY,
+}
 
 
 def _extract_kv_from_line(line: str) -> tuple[str, str]:
@@ -83,7 +84,7 @@ def _merge_to_env_file(
 
             # Set default value for these keys always.
             if not value and key in SET_DEFAULT_KEYS:
-                value = DEFAULT_AUTH_KEY
+                value = SET_DEFAULT_KEYS[key]
 
             merged_contents.append(f"{key}={value}\n")
 
