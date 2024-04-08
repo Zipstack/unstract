@@ -162,9 +162,14 @@ class AuthenticationController:
             if ex.code == AuthorizationErrorCode.USF:  # type: ignore
                 response = Response(
                     status=status.HTTP_412_PRECONDITION_FAILED,
-                    data={"domain": ex.data.get("domain")},  # type: ignore
+                    data={"domain": ex.data.get("domain"), "code": ex.code},  # type: ignore
                 )
-                return response
+            elif ex.code == AuthorizationErrorCode.USR:  # type: ignore
+                response = Response(
+                    status=status.HTTP_412_PRECONDITION_FAILED,
+                    data={"domain": ex.data.get("domain"), "code": ex.code},  # type: ignore
+                )
+            return response
         user: User = request.user
         org_ids = {org.id for org in organizations}
         CacheService.set_user_organizations(user.user_id, list(org_ids))
