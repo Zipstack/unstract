@@ -1,8 +1,7 @@
 import { SearchOutlined } from "@ant-design/icons";
 import { Input, List } from "antd";
-import debounce from "lodash/debounce";
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { sourceTypes } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -40,13 +39,14 @@ function ListOfSources({ setSelectedSourceId, type }) {
   useEffect(() => {
     if (searchText?.length === 0) {
       setFilteredSourcesList(sourcesList);
+    } else {
+      const filteredList = [...sourcesList].filter((source) => {
+        const name = source?.name?.toUpperCase();
+        const searchUpperCase = searchText.toUpperCase();
+        return name.includes(searchUpperCase);
+      });
+      setFilteredSourcesList(filteredList);
     }
-    const filteredList = [...sourcesList].filter((source) => {
-      const name = source?.name?.toUpperCase();
-      const searchUpperCase = searchText.toUpperCase();
-      return name.includes(searchUpperCase);
-    });
-    setFilteredSourcesList(filteredList);
   }, [sourcesList, searchText]);
 
   useEffect(() => {
@@ -91,12 +91,10 @@ function ListOfSources({ setSelectedSourceId, type }) {
       });
   };
 
-  const onSearchDebounce = useCallback(
-    debounce(({ target: { value } }) => {
-      setSearchText(value);
-    }, 600),
-    []
-  );
+  const onSearch = (event) => {
+    const { value } = event.target;
+    setSearchText(value);
+  };
 
   if (isLoading) {
     return <SpinnerLoader />;
@@ -108,7 +106,7 @@ function ListOfSources({ setSelectedSourceId, type }) {
         <Input
           placeholder="Search"
           prefix={<SearchOutlined className="search-outlined" />}
-          onChange={onSearchDebounce}
+          onChange={onSearch}
           value={searchText}
         />
       </div>
