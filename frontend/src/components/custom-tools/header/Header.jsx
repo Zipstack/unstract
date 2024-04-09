@@ -9,13 +9,14 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Header.css";
 
+import { ExportToolIcon } from "../../../assets";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { ExportToolIcon } from "../../../assets";
+import { SharePermission } from "../../widgets/share-permission/SharePermission";
 
 let SinglePassToggleSwitch;
 try {
@@ -32,13 +33,26 @@ function Header({ setOpenSettings, handleUpdateTool }) {
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
   const handleException = useExceptionHandler();
+  const [userList, setUserList] = useState([]);
+  const [openSharePermissionModal, setOpenSharePermissionModal] =
+    useState(false);
 
-  const handleExport = () => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/?prompt_registry_id=${details?.tool_id}`,
+  const [toolDetails, setToolDetails] = useState(null);
+
+  const handleExport = (selectedUsers, toolDetail, isSharedWithEveryone) => {
+    const body = {
+      is_shared_with_org: isSharedWithEveryone,
+      user_id: isSharedWithEveryone ? [] : selectedUsers,
     };
-
+    const requestOptions = {
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/${details?.tool_id}`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: body,
+    };
     setIsExportLoading(true);
     axiosPrivate(requestOptions)
       .then(() => {
@@ -52,7 +66,70 @@ function Header({ setOpenSettings, handleUpdateTool }) {
       })
       .finally(() => {
         setIsExportLoading(false);
+        setOpenSharePermissionModal(false);
       });
+  };
+
+  const handleShare = (isEdit) => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/${details?.tool_id}`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+    };
+    setIsExportLoading(true);
+    getAllUsers().then((users) => {
+      if (users.length < 2) {
+        handleExport([details?.created_by], details, false);
+      } else {
+        axiosPrivate(requestOptions)
+          .then((res) => {
+            setOpenSharePermissionModal(true);
+            setToolDetails({ ...res?.data, created_by: details?.created_by });
+          })
+          .catch((err) => {
+            if (err?.response?.status === 404) {
+              setToolDetails(details);
+              setOpenSharePermissionModal(true);
+              setAlertDetails(handleException(err, "Tool not exported yet"));
+            } else {
+              setAlertDetails(handleException(err));
+            }
+          })
+          .finally(() => {
+            setIsExportLoading(false);
+          });
+      }
+    });
+  };
+
+  const getAllUsers = async () => {
+    setIsExportLoading(true);
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
+    };
+
+    const userList = axiosPrivate(requestOptions)
+      .then((response) => {
+        const users = response?.data?.members || [];
+        setUserList(
+          users.map((user) => ({
+            id: user?.id,
+            email: user?.email,
+          }))
+        );
+        return users;
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to load"));
+      })
+      .finally(() => {
+        setIsExportLoading(false);
+      });
+
+    return userList;
   };
 
   return (
@@ -91,13 +168,23 @@ function Header({ setOpenSettings, handleUpdateTool }) {
           <Tooltip title="Export as tool">
             <CustomButton
               type="primary"
-              onClick={handleExport}
+              onClick={() => handleShare(true)}
               loading={isExportLoading}
             >
               <ExportToolIcon />
             </CustomButton>
           </Tooltip>
         </div>
+        <SharePermission
+          allUsers={userList}
+          open={openSharePermissionModal}
+          setOpen={setOpenSharePermissionModal}
+          onApply={handleExport}
+          loading={isExportLoading}
+          adapter={toolDetails}
+          permissionEdit={true}
+          isSharableToOrg={true}
+        />
       </div>
     </div>
   );
