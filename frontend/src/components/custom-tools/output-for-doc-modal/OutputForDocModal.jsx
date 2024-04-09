@@ -178,7 +178,7 @@ function OutputForDocModal({
         (outputValue) => outputValue?.document_manager === item?.document_id
       );
       let status = outputStatus.fail;
-      let message = "Failed";
+      let message = displayPromptResult(output?.output, true);
 
       if (output?.output || output?.output === 0) {
         status = outputStatus.success;
