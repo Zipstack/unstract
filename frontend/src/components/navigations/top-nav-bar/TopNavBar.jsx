@@ -1,20 +1,19 @@
 import { Alert, Button, Col, Dropdown, Image, Row, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 import { UnstractLogo } from "../../../assets/index.js";
 import {
   getBaseUrl,
   onboardCompleted,
 } from "../../../helpers/GetStaticData.js";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
 import { useSessionStore } from "../../../store/session-store.js";
 import "./TopNavBar.css";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
-import axios from "axios";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 let TrialDaysInfo;
@@ -33,35 +32,13 @@ function TopNavBar() {
   const baseUrl = getBaseUrl();
   const onBoardUrl = baseUrl + `/${orgName}/onboard`;
   const logout = useLogout();
-  const axiosPrivate = useAxiosPrivate();
+  const [showOnboardBanner, setShowOnboardBanner] = useState(false);
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
-  const [showOnboardBanner, setShowOnboardBanner] = useState(false);
 
   useEffect(() => {
-    getAdapters();
-  }, []);
-
-  const getAdapters = () => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        const adapterTypes = [
-          ...new Set(data?.map((obj) => obj?.adapter_type.toLowerCase())),
-        ];
-        if (!onboardCompleted(adapterTypes)) {
-          setShowOnboardBanner(true);
-        }
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      });
-  };
+    setShowOnboardBanner(!onboardCompleted(sessionDetails?.adapters));
+  }, [sessionDetails]);
 
   const cascadeOptions = allOrganization.map((org) => {
     return {
