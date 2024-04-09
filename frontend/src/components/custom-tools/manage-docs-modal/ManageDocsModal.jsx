@@ -520,7 +520,7 @@ function ManageDocsModal({
           <div>
             <Upload
               name="file"
-              action={`/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/upload?tool_id=${details?.tool_id}`}
+              action={`/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}`}
               headers={{
                 "X-CSRFToken": sessionDetails.csrfToken,
               }}
