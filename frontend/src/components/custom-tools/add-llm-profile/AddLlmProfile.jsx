@@ -16,13 +16,13 @@ import { useEffect, useState } from "react";
 
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./AddLlmProfile.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function AddLlmProfile({
   editLlmProfileId,
@@ -146,6 +146,9 @@ function AddLlmProfile({
       setResetForm(false);
     }
   }, [formDetails]);
+
+  const [tokenSize, setTokenSize] = useState(0);
+  const [maxTokenSize, setMaxTokenSize] = useState(0);
 
   const validateEmptyOrWhitespace = (_, value) => {
     if (value && value.trim() === "") {
@@ -287,10 +290,11 @@ function AddLlmProfile({
   const handleSubmit = () => {
     setLoading(true);
     let method = "POST";
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/`;
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profilemanager/${details?.tool_id}`;
 
     if (editLlmProfileId?.length) {
       method = "PUT";
+      url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/`;
       url += `${editLlmProfileId}/`;
     }
 
@@ -331,7 +335,7 @@ function AddLlmProfile({
         setIsAddLlm(false);
       })
       .catch((err) => {
-        handleException(err, "", setBackendErrors);
+        setAlertDetails(handleException(err, "", setBackendErrors));
       })
       .finally(() => {
         setLoading(false);
@@ -345,6 +349,47 @@ function AddLlmProfile({
   const handleCaretIcon = (isActive) => {
     return <CaretRightOutlined rotate={isActive ? 90 : 0} />;
   };
+
+  const handleLlmChangeForTokens = async (value) => {
+    if (!value) {
+      return null;
+    }
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${value}/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+    };
+
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const data = res?.data;
+        const contextWindowSize = data.adapter_metadata.context_window_size;
+        const chunkSize = form.getFieldValue("chunk_size");
+        setTokenSize(chunkSize > 0 ? calcTokenSize(chunkSize) : 0);
+        setMaxTokenSize(contextWindowSize);
+      })
+      .catch((err) => {
+        setAlertDetails(
+          handleException(
+            err,
+            "Failed to get chunk size information for the requested LLM. Please proceed with a sane default."
+          )
+        );
+      });
+  };
+
+  const handleChunkSizeChange = async (event) => {
+    const value = event.target.value;
+    const tokenSize = calcTokenSize(value);
+    setTokenSize(tokenSize);
+  };
+
+  function calcTokenSize(chunkSize) {
+    const tokenSize = (chunkSize / 4 / 1024).toFixed(1);
+    return tokenSize;
+  }
 
   return (
     <div className="settings-body-pad-top">
@@ -398,13 +443,24 @@ function AddLlmProfile({
                   }
                   help={getBackendErrorDetail("llm", backendErrors)}
                 >
-                  <Select options={llmItems} />
+                  <Select
+                    options={llmItems}
+                    onSelect={handleLlmChangeForTokens}
+                  />
                 </Form.Item>
               </Col>
               <Col span={1} />
               <Col span={8}>
                 <Form.Item
-                  label="Chunk Size"
+                  label={
+                    <>
+                      Chunk Size
+                      <Typography.Text type="secondary">
+                        {" "}
+                        (Set to 0 if documents are small)
+                      </Typography.Text>
+                    </>
+                  }
                   name="chunk_size"
                   rules={[
                     {
@@ -418,8 +474,9 @@ function AddLlmProfile({
                       : ""
                   }
                   help={getBackendErrorDetail("chunk_size", backendErrors)}
+                  extra={`~= ${tokenSize}k tokens, Max: ${maxTokenSize}`}
                 >
-                  <Input type="number" />
+                  <Input type="number" onChange={handleChunkSizeChange} />
                 </Form.Item>
               </Col>
             </Row>
