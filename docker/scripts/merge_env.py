@@ -14,6 +14,14 @@ PREFERRED_BASE_ENV_KEYS = [
     "STRUCTURE_TOOL_IMAGE_URL",
     "STRUCTURE_TOOL_IMAGE_TAG",
 ]
+DEFAULT_AUTH_KEY = "unstract"
+DEFAULT_ADMIN_KEY = "admin"
+SET_DEFAULT_KEYS = {
+    "DEFAULT_AUTH_USERNAME": DEFAULT_AUTH_KEY,
+    "DEFAULT_AUTH_PASSWORD": DEFAULT_AUTH_KEY,
+    "SYSTEM_ADMIN_USERNAME": DEFAULT_ADMIN_KEY,
+    "SYSTEM_ADMIN_PASSWORD": DEFAULT_ADMIN_KEY,
+}
 
 
 def _extract_kv_from_line(line: str) -> tuple[str, str]:
@@ -74,7 +82,22 @@ def _merge_to_env_file(
             if key not in PREFERRED_BASE_ENV_KEYS and key in target_env:
                 value = target_env.get(key, value)
 
-            merged_contents.append(f"{key} = {value}\n")
+            # Set default value for these keys always.
+            if not value and key in SET_DEFAULT_KEYS:
+                value = SET_DEFAULT_KEYS[key]
+
+            merged_contents.append(f"{key}={value}\n")
+
+    # Allow extras from target_env which is not present in base_env
+    base_env = _extract_from_env_file(base_env_file_path)
+    additional_env_header_added = False
+
+    for key in target_env:
+        if key not in base_env:
+            if not additional_env_header_added:
+                additional_env_header_added = True
+                merged_contents.append("\n\n# Additional envs\n")
+            merged_contents.append(f"{key}={target_env.get(key)}\n")
 
     return "".join(merged_contents)
 

@@ -18,7 +18,7 @@ from prompt_studio.prompt_studio_core.exceptions import (
     AnswerFetchError,
     DefaultProfileError,
     EmptyPromptError,
-    IndexingError,
+    IndexingAPIError,
     NoPromptsFound,
     PermissionError,
     PromptNotValid,
@@ -34,8 +34,9 @@ from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import
 from prompt_studio.prompt_studio_output_manager.output_manager_helper import (
     OutputManagerHelper,
 )
+from rest_framework.exceptions import APIException
 from unstract.sdk.constants import LogLevel
-from unstract.sdk.exceptions import SdkError
+from unstract.sdk.exceptions import IndexingError
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
@@ -222,7 +223,10 @@ class PromptStudioHelper:
         else:
             default_profile = ProfileManager.get_default_llm_profile(tool)
             file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-                org_id, is_create=False, user_id=user_id, tool_id=tool_id
+                org_id,
+                is_create=False,
+                user_id=user_id,
+                tool_id=tool_id,
             )
             file_path = str(Path(file_path) / file_name)
 
@@ -359,6 +363,9 @@ class PromptStudioHelper:
                     LogLevels.RUN,
                     "Failed to fetch prompt response",
                 )
+                # TODO: Catch specific exceptions and remove this
+                if isinstance(exc, APIException):
+                    raise exc
                 raise AnswerFetchError()
 
             logger.info(
@@ -614,13 +621,20 @@ class PromptStudioHelper:
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = ToolIndex(tool=util)
         except Exception as e:
-            logger.error(f"Error while instatiating SDKs {e}")
-            raise IndexingError()
+            PromptStudioHelper._publish_log(
+                {"tool_id": tool_id, "doc_name": os.path.split(file_path)[1]},
+                LogLevels.ERROR,
+                LogLevels.RUN,
+                "Indexing failed",
+            )
+            raise IndexingAPIError(str(e)) from e
+
         embedding_model = str(profile_manager.embedding_model.id)
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
         file_hash = ToolUtils.get_hash_from_file(file_path=file_path)
         extract_file_path: Optional[str] = None
+
         if not is_summary:
             directory, filename = os.path.split(file_path)
             extract_file_path = os.path.join(
@@ -628,6 +642,7 @@ class PromptStudioHelper:
             )
         else:
             profile_manager.chunk_size = 0
+
         try:
             doc_id: str = tool_index.index_file(
                 tool_id=tool_id,
@@ -649,8 +664,14 @@ class PromptStudioHelper:
                 doc_id=doc_id,
             )
             return doc_id
-        except SdkError as e:
-            raise IndexingError(str(e))
+        except IndexingError as e:
+            PromptStudioHelper._publish_log(
+                {"tool_id": tool_id, "doc_name": os.path.split(file_path)[1]},
+                LogLevels.ERROR,
+                LogLevels.RUN,
+                "Indexing failed",
+            )
+            raise IndexingAPIError(str(e)) from e
 
     @staticmethod
     def _fetch_single_pass_response(

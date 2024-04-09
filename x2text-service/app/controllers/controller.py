@@ -32,6 +32,9 @@ def health() -> str:
 @basic.route("/test-connection", methods=["POST"])
 @authentication_middleware
 def test_connection() -> Any:
+    logging.info(
+        "Received a test connection request from %s", request.remote_addr
+    )
     form_data = dict(request.form)
     unstructured_api_key = X2TextUtil.get_value_for_key(
         UNSTRUCTURED_API_KEY, form_data
@@ -60,7 +63,7 @@ def test_connection() -> Any:
         if response.status_code == 400:
             """Response is 400 as we are not sending a file to test connection.
 
-            But it has passed dcredential check and url check
+            But it has passed credential check and url check
             """
 
             return {"message": "Test connection sucessful"}, 200
@@ -77,7 +80,7 @@ def test_connection() -> Any:
 @authentication_middleware
 def process() -> Any:
     logging.info(
-        "Received a doc processing  request from %s", request.remote_addr
+        "Received a doc processing request from %s", request.remote_addr
     )
     form_data = dict(request.form)
     url = X2TextUtil.get_value_for_key(UNSTRUCTURED_URL, form_data)
@@ -130,7 +133,7 @@ def process() -> Any:
         files=files,
         timeout=None,
     )
-    if response.status_code == 200:
+    if response.ok:
         json_response = response.json()
         response_text = X2TextUtil.get_text_content(json_response)
         file_stream = BytesIO(response_text.encode("utf-8"))
@@ -141,4 +144,8 @@ def process() -> Any:
         )
     x2_text_audit.status = "Failed"
     x2_text_audit.save()
-    return response.text, response.status_code
+    return_val = X2TextUtil.read_response(response=response)
+    logging.error(
+        "Text extraction failed: [%s] %s", response.status_code, return_val
+    )
+    return return_val, response.status_code

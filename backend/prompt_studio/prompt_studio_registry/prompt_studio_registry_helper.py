@@ -93,7 +93,7 @@ class PromptStudioRegistryHelper:
 
     @staticmethod
     def update_or_create_psr_tool(
-        custom_tool: CustomTool,
+        custom_tool: CustomTool, shared_with_org: bool, user_ids: set[int]
     ) -> PromptStudioRegistry:
         """Updates or creates the PromptStudioRegistry record.
 
@@ -143,6 +143,10 @@ class PromptStudioRegistryHelper:
                 logger.info(f"PSR {obj.prompt_registry_id} was created")
             else:
                 logger.info(f"PSR {obj.prompt_registry_id} was updated")
+            obj.shared_to_org = shared_with_org
+            obj.shared_users.clear()
+            obj.shared_users.add(*user_ids)
+            obj.save()
             return obj
         except IntegrityError as error:
             logger.error(
@@ -238,7 +242,8 @@ class PromptStudioRegistryHelper:
     @staticmethod
     def fetch_json_for_registry(user: User) -> list[dict[str, Any]]:
         try:
-            prompt_studio_tools = PromptStudioRegistry.objects.all()
+            # filter the Prompt studio registry based on the users and org flag
+            prompt_studio_tools = PromptStudioRegistry.objects.list_tools(user)
             pi_serializer = PromptStudioRegistrySerializer(
                 instance=prompt_studio_tools, many=True
             )
