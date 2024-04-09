@@ -39,6 +39,7 @@ function ConfigureDs({
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
+  const { updateSessionDetails } = useSessionStore();
 
   const { id } = useParams();
 
@@ -222,6 +223,9 @@ function ConfigureDs({
             method === "POST" ? "added" : "updated"
           } connector`,
         });
+        if (sourceType === Object.keys(sourceTypes)[1] && method === "POST") {
+          updateSession(type);
+        }
         setOpen(false);
       })
       .catch((err) => {
@@ -230,6 +234,16 @@ function ConfigureDs({
       .finally(() => {
         setIsSubmitApiLoading(false);
       });
+  };
+
+  const updateSession = (type) => {
+    const adapterType = type.toLowerCase();
+    const adaptersList = sessionDetails?.adapters;
+    if (adaptersList && !adaptersList.includes(adapterType)) {
+      adaptersList.push(adapterType);
+      const adaptersListInSession = { adapters: adaptersList };
+      updateSessionDetails(adaptersListInSession);
+    }
   };
 
   return (
