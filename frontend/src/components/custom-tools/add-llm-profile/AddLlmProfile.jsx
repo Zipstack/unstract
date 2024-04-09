@@ -16,13 +16,13 @@ import { useEffect, useState } from "react";
 
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./AddLlmProfile.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function AddLlmProfile({
   editLlmProfileId,
@@ -290,10 +290,11 @@ function AddLlmProfile({
   const handleSubmit = () => {
     setLoading(true);
     let method = "POST";
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/`;
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profilemanager/${details?.tool_id}`;
 
     if (editLlmProfileId?.length) {
       method = "PUT";
+      url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/`;
       url += `${editLlmProfileId}/`;
     }
 
@@ -355,7 +356,10 @@ function AddLlmProfile({
     }
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/mock_org/adapter/` + value,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${value}/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
     };
 
     axiosPrivate(requestOptions)
@@ -370,7 +374,7 @@ function AddLlmProfile({
         setAlertDetails(
           handleException(
             err,
-            "Failed to get the dropdown list for LLM Adaptors"
+            "Failed to get chunk size information for the requested LLM. Please proceed with a sane default."
           )
         );
       });
