@@ -99,11 +99,11 @@ function ManageDocsModal({
 
   const infoIndex = (indexMessage) => {
     let color = "default";
+
     if (indexMessage?.level === "INFO") {
       color = "processing";
     }
-
-    if (indexMessage?.length === "ERROR") {
+    if (indexMessage?.level === "ERROR") {
       color = "error";
     }
 
@@ -396,7 +396,7 @@ function ManageDocsModal({
         select: (
           <Radio
             checked={selectedDoc?.document_id === item?.document_id}
-            onClick={() => handleDocChange(item?.document_id)}
+            onClick={() => handleDocChange(item)}
             disabled={
               disableLlmOrDocChange?.length > 0 ||
               isSinglePassExtractLoading ||
@@ -461,6 +461,13 @@ function ManageDocsModal({
       };
       updateCustomTool(body);
       handleUpdateTool({ output: doc?.document_id });
+
+      if (
+        newListOfDocs?.length === 1 &&
+        selectedDoc?.document_id !== doc?.document_id
+      ) {
+        handleDocChange(doc);
+      }
     } else if (info.file.status === "error") {
       setIsUploading(false);
       setAlertDetails({

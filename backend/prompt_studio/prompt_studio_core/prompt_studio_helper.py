@@ -621,13 +621,20 @@ class PromptStudioHelper:
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = ToolIndex(tool=util)
         except Exception as e:
-            logger.error(f"Error while instatiating SDKs {e}")
-            raise IndexingAPIError()
+            PromptStudioHelper._publish_log(
+                {"tool_id": tool_id, "doc_name": os.path.split(file_path)[1]},
+                LogLevels.ERROR,
+                LogLevels.RUN,
+                "Indexing failed",
+            )
+            raise IndexingAPIError(str(e)) from e
+
         embedding_model = str(profile_manager.embedding_model.id)
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
         file_hash = ToolUtils.get_hash_from_file(file_path=file_path)
         extract_file_path: Optional[str] = None
+
         if not is_summary:
             directory, filename = os.path.split(file_path)
             extract_file_path = os.path.join(
@@ -635,6 +642,7 @@ class PromptStudioHelper:
             )
         else:
             profile_manager.chunk_size = 0
+
         try:
             doc_id: str = tool_index.index_file(
                 tool_id=tool_id,
@@ -657,6 +665,12 @@ class PromptStudioHelper:
             )
             return doc_id
         except IndexingError as e:
+            PromptStudioHelper._publish_log(
+                {"tool_id": tool_id, "doc_name": os.path.split(file_path)[1]},
+                LogLevels.ERROR,
+                LogLevels.RUN,
+                "Indexing failed",
+            )
             raise IndexingAPIError(str(e)) from e
 
     @staticmethod

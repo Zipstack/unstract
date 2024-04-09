@@ -356,7 +356,10 @@ function AddLlmProfile({
     }
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/mock_org/adapter/` + value,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${value}/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
     };
 
     axiosPrivate(requestOptions)
@@ -371,7 +374,7 @@ function AddLlmProfile({
         setAlertDetails(
           handleException(
             err,
-            "Failed to get the dropdown list for LLM Adaptors"
+            "Failed to get chunk size information for the requested LLM. Please proceed with a sane default."
           )
         );
       });
