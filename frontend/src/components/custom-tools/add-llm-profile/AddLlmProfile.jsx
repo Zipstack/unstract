@@ -16,13 +16,13 @@ import { useEffect, useState } from "react";
 
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./AddLlmProfile.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function AddLlmProfile({
   editLlmProfileId,
@@ -290,10 +290,11 @@ function AddLlmProfile({
   const handleSubmit = () => {
     setLoading(true);
     let method = "POST";
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/`;
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profilemanager/${details?.tool_id}`;
 
     if (editLlmProfileId?.length) {
       method = "PUT";
+      url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/`;
       url += `${editLlmProfileId}/`;
     }
 

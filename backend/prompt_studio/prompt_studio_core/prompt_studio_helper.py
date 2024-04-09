@@ -223,7 +223,10 @@ class PromptStudioHelper:
         else:
             default_profile = ProfileManager.get_default_llm_profile(tool)
             file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-                org_id, is_create=False, user_id=user_id, tool_id=tool_id
+                org_id,
+                is_create=False,
+                user_id=user_id,
+                tool_id=tool_id,
             )
             file_path = str(Path(file_path) / file_name)
 
