@@ -9,6 +9,7 @@ import { RequireGuest } from "../components/helpers/auth/RequireGuest.js";
 import { CustomToolsHelper } from "../components/helpers/custom-tools/CustomToolsHelper.js";
 import { ProjectHelper } from "../components/helpers/project/ProjectHelper.js";
 import { OAuthStatus } from "../components/oauth-ds/oauth-status/OAuthStatus.jsx";
+import { Admin } from "../components/settings/admin/Admin.jsx";
 import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
 import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
@@ -20,15 +21,15 @@ import { DeploymentsPage } from "../pages/DeploymentsPage.jsx";
 import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
 import { LandingPage } from "../pages/LandingPage.jsx";
 import { OnBoardPage } from "../pages/OnBoardPage.jsx";
+import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 import { PipelinesOrDeploymentsPage } from "../pages/PipelinesOrDeploymentsPage.jsx";
 import { ProfilePage } from "../pages/ProfilePage.jsx";
+import { SetOrgPage } from "../pages/SetOrgPage.jsx";
 import { SettingsPage } from "../pages/SettingsPage.jsx";
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
 import { UsersPage } from "../pages/UsersPage.jsx";
 import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
-import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
-import { SetOrgPage } from "../pages/SetOrgPage.jsx";
 
 let TrialRoutes;
 try {
@@ -48,6 +49,7 @@ function Router() {
           <Route path="landing" element={<LandingPage />} />
         </Route>
         {/* protected routes */}
+        <Route path="admin" element={<Admin />} />
         <Route path="setOrg" element={<SetOrgPage />} />
         <Route path="" element={<RequireAuth />}>
           <Route path=":orgName" element={<FullPageLayout />}>

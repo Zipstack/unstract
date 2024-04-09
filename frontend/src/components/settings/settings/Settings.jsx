@@ -45,6 +45,15 @@ function Settings() {
               Default Triad
             </Typography.Link>
           </div>
+          <div className="settings-plt">
+            <Typography.Link
+              className="settings-plt-typo"
+              strong
+              onClick={() => navigate("/admin")}
+            >
+              Admin settings
+            </Typography.Link>
+          </div>
         </div>
       </IslandLayout>
     </div>
