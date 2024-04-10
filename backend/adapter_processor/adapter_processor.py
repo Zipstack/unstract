@@ -83,9 +83,7 @@ class AdapterProcessor:
                 f"Invalid adapter ID {adapter_id} while invoking utility"
             )
             raise InValidAdapterId()
-        return AdapterProcessor.__fetch_adapters_by_key_value("id", adapter_id)[
-            0
-        ].get(key_value)
+        return updated_adapters[0].get(key_value)
 
     @staticmethod
     def test_adapter(adapter_id: str, adapter_metadata: dict[str, Any]) -> bool:
