@@ -1,115 +1,123 @@
 /* Styles for PromptCard */
 
 .prompt-card {
-    border: 1px solid #D9D9D9;
+  border: 1px solid #d9d9d9;
 }
 
 .prompt-card .ant-card-body {
-    padding: 0px !important;
+  padding: 0px !important;
 }
 
 .prompt-card-div {
-    padding: 12px;
+  padding: 12px;
 }
 
 .prompt-card-bg-col1 {
-    background-color: #ECEFF3;
+  background-color: #eceff3;
 }
 
 .prompt-card-rad {
-    border-radius: 8px 8px 0px 0px;
+  border-radius: 8px 8px 0px 0px;
 }
 
 .prompt-card-head-info-icon {
-    color: #575859;
+  color: #575859;
 }
 
 .prompt-card-actions-head {
-    font-size: 12px;
-    color: #575859;
+  font-size: 12px;
+  color: #575859;
 }
 
 .prompt-card-head .ant-typography {
-    margin-bottom: 0px;
+  margin-bottom: 0px;
 }
 
 .prompt-card-divider {
-    border-color: #D9D9D9;
-    margin: 0px 0px;
+  border-color: #d9d9d9;
+  margin: 0px 0px;
 }
 
 .prompt-card-paginate-div {
-    min-width: 80px;
+  min-width: 80px;
 }
 
 .prompt-card-paginate {
-    font-size: 12px;
+  font-size: 12px;
 }
 
 .prompt-card-llm-profiles {
-    display: flex;
-    justify-content: space-between;
+  display: flex;
+  justify-content: space-between;
 }
 
 .prompt-card-comp-layout {
-    width: 100%;
-    padding: 12px;
-    background-color: #F5F7F9;
+  width: 100%;
+  padding: 12px;
+  background-color: #f5f7f9;
 }
 
 .prompt-card-comp-layout-border {
-    border-radius: 0px 0px 10px 10px;
+  border-radius: 0px 0px 10px 10px;
 }
 
 .prompt-card-actions-dropdowns {
-    display: flex;
+  display: flex;
 }
 
 .prompt-card-tags {
-    padding: 0px 14px;
+  padding: 0px 14px;
 }
 
 .prompt-card-result {
-    padding-top: 12px;
-    background-color: #FFF8E6;
-    border-radius: 0px 0px 8px 8px;
+  padding-top: 12px;
+  background-color: #fff8e6;
+  border-radius: 0px 0px 8px 8px;
 }
 
 .prompt-card-result .ant-typography {
-    margin-bottom: 0px;
+  margin-bottom: 0px;
 }
 
 .prompt-card-res {
-    white-space: pre-wrap;
+  white-space: pre-wrap;
 }
 
 .prompt-card-select-type {
-    width: 100px;
+  width: 100px;
 }
 
 .prompt-card-gap {
-    margin-bottom: 2px;
+  margin-bottom: 2px;
 }
 
 .assert-p-l-4 {
-    padding-left: 4px;
+  padding-left: 4px;
 }
 
 .assert-p-r-4 {
-    padding-right: 4px;
+  padding-right: 4px;
 }
 
 .assertion-comp {
-    background-color: #ECEFF3;
-    border-end-end-radius: 0px;
-    border-end-start-radius: 0px;
+  background-color: #eceff3;
+  border-end-end-radius: 0px;
+  border-end-start-radius: 0px;
 }
 
 .assertion-comp .ant-collapse-header {
-    display: none !important;
-    padding: 0 !important;
+  display: none !important;
+  padding: 0 !important;
 }
 
 .assertion-comp .ant-collapse-content-box {
-    padding: 0px !important;
+  padding: 0px !important;
+}
+
+.prompt-card-action-button.ant-btn-text:disabled > .prompt-card-actions-head {
+  color: rgba(0, 0, 0, 0.25);
+}
+
+.prompt-card-action-button.ant-btn-text:disabled > .assertion-icon > path {
+  fill: rgba(0, 0, 0, 0.25);
 }
