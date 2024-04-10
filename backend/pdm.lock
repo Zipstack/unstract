@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:0d836bd2572a421f5dd25b335bf4b05b9d65a679fae8b070124062389498b7a3"
+content_hash = "sha256:b4901f4b26ef751cf8b9067e1296bc48f031a1b5606a2a71ae7ba68acc2a3340"
 
 [[package]]
 name = "adlfs"
@@ -4737,7 +4737,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.18.0"
+version = "0.18.2"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -4751,8 +4751,8 @@ dependencies = [
     "unstract-adapters~=0.8.0",
 ]
 files = [
-    {file = "unstract_sdk-0.18.0-py3-none-any.whl", hash = "sha256:84462ee3fddf9e56d7954111c47308c504b1297bf6576307c183bfc1ea83c75b"},
-    {file = "unstract_sdk-0.18.0.tar.gz", hash = "sha256:ea8a7066c4510ffef82215754c72479121e2ba430541fca1a352029613a0bf83"},
+    {file = "unstract_sdk-0.18.2-py3-none-any.whl", hash = "sha256:828af7d1ed0cd3b6c7d55629c2484fde54153356de8db8bc04ca2f83b821c3d6"},
+    {file = "unstract_sdk-0.18.2.tar.gz", hash = "sha256:6666b703ae9d1391c8905bf5bfd354449e7e1b155f4d9c28e54891a8e5f73627"},
 ]
 
 [[package]]
