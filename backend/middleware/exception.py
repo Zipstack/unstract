@@ -81,7 +81,7 @@ class ExceptionLoggingMiddleware:
             request (HttpRequest): Request to get API endpoint hit
             exception (Exception): Exception that was raised to be logged
         """
-        if response.status_code >= 500:
+        if hasattr(response, "status_code") and response.status_code >= 500:
             message = (
                 "{method} {url} {status}\n\n{error}\n\n````{tb}````".format(
                     method=request.method,
