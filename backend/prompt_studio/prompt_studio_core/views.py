@@ -280,9 +280,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         return Response(response, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
-    def single_pass_extraction(
-        self, request: HttpRequest, pk: Any = None
-    ) -> Response:
+    def single_pass_extraction(self, request: HttpRequest, pk: Any) -> Response:
         """API Entry point method to fetch response to prompt.
 
         Args:
