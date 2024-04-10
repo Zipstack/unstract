@@ -2,6 +2,16 @@ from prompt_studio.prompt_studio_core.constants import ToolStudioErrors
 from rest_framework.exceptions import APIException
 
 
+class CustomAPIException(APIException):
+    default_detail = None
+
+    def __init__(self, detail=None):
+        if not detail:
+            detail = self.default_detail
+        self.detail = detail
+        super().__init__(self.detail)
+
+
 class PlatformServiceError(APIException):
     status_code = 400
     default_detail = ToolStudioErrors.PLATFORM_ERROR
@@ -23,7 +33,7 @@ class IndexingAPIError(APIException):
     default_detail = "Error while indexing file"
 
 
-class AnswerFetchError(APIException):
+class AnswerFetchError(CustomAPIException):
     status_code = 500
     default_detail = "Error occured while fetching response for the prompt"
 
