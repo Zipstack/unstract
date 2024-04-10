@@ -57,6 +57,7 @@ function useSessionValid() {
           // Remove cookie from the browser
           document.cookie = "org_id=;";
           navigate("/", { state: null });
+          window.location.reload();
         }
       });
       userAndOrgDetails = setOrgRes?.data?.user;
