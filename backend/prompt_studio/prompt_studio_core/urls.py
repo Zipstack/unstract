@@ -101,7 +101,7 @@ urlpatterns = format_suffix_patterns(
             name="prompt-studio-adapter-choices",
         ),
         path(
-            "prompt-studio/single-pass-extraction",
+            "prompt-studio/single-pass-extraction/<uuid:pk>",
             prompt_studio_single_pass_extraction,
             name="prompt-studio-single-pass-extraction",
         ),
