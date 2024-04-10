@@ -478,9 +478,17 @@ function ManageDocsModal({
   };
 
   const handleDelete = (docId) => {
+    const body = {
+      document_id: docId,
+    };
     const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/file/delete?document_id=${docId}&tool_id=${details?.tool_id}`,
+      method: "DELETE",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: body,
     };
 
     axiosPrivate(requestOptions)
