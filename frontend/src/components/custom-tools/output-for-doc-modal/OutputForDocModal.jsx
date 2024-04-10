@@ -37,6 +37,8 @@ const outputStatus = {
   fail: "FAIL",
 };
 
+const errorTypes = ["null", "undefined", "false"];
+
 function OutputForDocModal({
   open,
   setOpen,
@@ -117,7 +119,7 @@ function OutputForDocModal({
         // If the prompt output for the current key doesn't exist, skip it
         if (index > -1) {
           promptOutputInstance = updatedPromptOutput[index];
-          promptOutputInstance["output"] = docOutputs[key]?.output || null;
+          promptOutputInstance["output"] = docOutputs[key]?.output;
         }
 
         // Update output and isLoading properties based on docOutputs
@@ -177,10 +179,14 @@ function OutputForDocModal({
       const output = data.find(
         (outputValue) => outputValue?.document_manager === item?.document_id
       );
+
       let status = outputStatus.fail;
       let message = displayPromptResult(output?.output, true);
 
-      if (output?.output || output?.output === 0) {
+      if (
+        (output?.output || output?.output === 0) &&
+        !errorTypes.includes(output?.output)
+      ) {
         status = outputStatus.success;
         message = displayPromptResult(output?.output, true);
       }
