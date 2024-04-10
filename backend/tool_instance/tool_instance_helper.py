@@ -9,7 +9,9 @@ from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.models import AdapterInstance
 from connector.connector_instance_helper import ConnectorInstanceHelper
 from django.core.exceptions import PermissionDenied
-from jsonschema.exceptions import UnknownType, ValidationError
+from django.core.exceptions import ValidationError as DjangoValidationError
+from jsonschema.exceptions import UnknownType
+from jsonschema.exceptions import ValidationError as JSONValidationError
 from prompt_studio.prompt_studio_registry.models import PromptStudioRegistry
 from tool_instance.constants import JsonSchemaKey
 from tool_instance.models import ToolInstance
@@ -360,7 +362,7 @@ class ToolInstanceHelper:
             return True, ""
         except JSONDecodeError as e:
             return False, str(e)
-        except ValidationError as e:
+        except JSONValidationError as e:
             logger.error(e)
             return False, str(tool_name + ": " + e.schema["description"])
         except UnknownType as e:
@@ -442,11 +444,17 @@ class ToolInstanceHelper:
         user: User,
         tool_uid: str,
     ) -> None:
-        prompt_regitry_tool = PromptStudioRegistry.objects.get(pk=tool_uid)
+        # HACK: Assume tool_uid is a prompt studio exported tool and query it.
+        # We suppress ValidationError when tool_uid is of a static tool.
+        try:
+            prompt_registry_tool = PromptStudioRegistry.objects.get(pk=tool_uid)
+        except DjangoValidationError:
+            logger.info(f"Not validating tool access for tool: {tool_uid}")
+            return
 
         if (
-            prompt_regitry_tool.shared_to_org
-            or prompt_regitry_tool.shared_users.filter(pk=user.pk).exists()
+            prompt_registry_tool.shared_to_org
+            or prompt_registry_tool.shared_users.filter(pk=user.pk).exists()
         ):
             return
         else:
