@@ -280,11 +280,14 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         return Response(response, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
-    def single_pass_extraction(self, request: HttpRequest) -> Response:
+    def single_pass_extraction(
+        self, request: HttpRequest, pk: Any = None
+    ) -> Response:
         """API Entry point method to fetch response to prompt.
 
         Args:
             request (HttpRequest): _description_
+            pk (Any): Primary key of the CustomTool
 
         Raises:
             FilenameMissingError: _description_
@@ -294,7 +297,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         """
         # TODO: Handle fetch_response and single_pass_
         # extraction using common function
-        tool_id: str = request.data.get(ToolStudioPromptKeys.TOOL_ID)
+        custom_tool = self.get_object()
+        tool_id: str = str(custom_tool.tool_id)
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
@@ -306,7 +310,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             tool_id=tool_id,
             file_name=file_name,
             org_id=request.org_id,
-            user_id=request.user.user_id,
+            user_id=custom_tool.created_by.user_id,
             document_id=document_id,
         )
         return Response(response, status=status.HTTP_200_OK)
