@@ -782,7 +782,7 @@ class PromptStudioHelper:
         answer = responder.single_pass_extraction(payload)
         # TODO: Make use of dataclasses
         if answer["status"] == "ERROR":
-            error_message = answer.get("error", "")
+            error_message = answer.get("error", None)
             raise AnswerFetchError(error_message)
         output_response = json.loads(answer["structure_output"])
         return output_response
