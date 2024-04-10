@@ -1,3 +1,5 @@
+from typing import Any
+
 from account.serializer import UserSerializer
 from rest_framework import serializers
 
@@ -14,10 +16,21 @@ class PromptStudioRegistrySerializer(AuditSerializer):
 
 class PromptStudioRegistryInfoSerializer(AuditSerializer):
     shared_users = UserSerializer(many=True)
+    prompt_studio_users = serializers.SerializerMethodField()
 
     class Meta:
         model = PromptStudioRegistry
-        fields = ("name", "shared_users", "shared_to_org")
+        fields = (
+            "name",
+            "shared_users",
+            "shared_to_org",
+            "prompt_studio_users",
+        )
+
+    def get_prompt_studio_users(self, obj: PromptStudioRegistry) -> Any:
+
+        prompt_studio_users = obj.custom_tool.shared_users
+        return UserSerializer(prompt_studio_users, many=True).data
 
 
 class ExportToolRequestSerializer(serializers.Serializer):
