@@ -1,4 +1,5 @@
 import logging
+import uuid
 from typing import Any, Optional
 
 from account.custom_exceptions import DuplicateData
@@ -280,7 +281,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         return Response(response, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
-    def single_pass_extraction(self, request: HttpRequest, pk: Any) -> Response:
+    def single_pass_extraction(
+        self, request: HttpRequest, pk: uuid
+    ) -> Response:
         """API Entry point method to fetch response to prompt.
 
         Args:
