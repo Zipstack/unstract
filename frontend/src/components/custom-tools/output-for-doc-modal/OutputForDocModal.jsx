@@ -119,7 +119,7 @@ function OutputForDocModal({
         // If the prompt output for the current key doesn't exist, skip it
         if (index > -1) {
           promptOutputInstance = updatedPromptOutput[index];
-          promptOutputInstance["output"] = docOutputs[key]?.output || null;
+          promptOutputInstance["output"] = docOutputs[key]?.output;
         }
 
         // Update output and isLoading properties based on docOutputs
