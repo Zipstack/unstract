@@ -1428,7 +1428,7 @@ files = [
 
 [[package]]
 name = "google-api-python-client"
-version = "2.124.0"
+version = "2.125.0"
 requires_python = ">=3.7"
 summary = "Google API Client Library for Python"
 groups = ["default"]
@@ -1440,8 +1440,8 @@ dependencies = [
     "uritemplate<5,>=3.0.1",
 ]
 files = [
-    {file = "google-api-python-client-2.124.0.tar.gz", hash = "sha256:f6d3258420f7c76b0f5266b5e402e6f804e30351b018a10083f4a46c3ec33773"},
-    {file = "google_api_python_client-2.124.0-py2.py3-none-any.whl", hash = "sha256:07dc674449ed353704b1169fdee792f74438d024261dad71b6ce7bb9c683d51f"},
+    {file = "google-api-python-client-2.125.0.tar.gz", hash = "sha256:51a0385cff65ec135106e8be60ee7112557396dde5f44113ae23912baddda143"},
+    {file = "google_api_python_client-2.125.0-py2.py3-none-any.whl", hash = "sha256:0a62b60fbd61b61a455f15d925264b3301099b67cafd2d33cf8bf151f1fca4f4"},
 ]
 
 [[package]]
@@ -2142,13 +2142,13 @@ files = [
 
 [[package]]
 name = "joblib"
-version = "1.3.2"
-requires_python = ">=3.7"
+version = "1.4.0"
+requires_python = ">=3.8"
 summary = "Lightweight pipelining with Python functions"
 groups = ["default"]
 files = [
-    {file = "joblib-1.3.2-py3-none-any.whl", hash = "sha256:ef4331c65f239985f3f2220ecc87db222f08fd22097a3dd5698f693875f8cbb9"},
-    {file = "joblib-1.3.2.tar.gz", hash = "sha256:92f865e621e17784e7955080b6d042489e3b8e294949cc44c6eac304f59772b1"},
+    {file = "joblib-1.4.0-py3-none-any.whl", hash = "sha256:42942470d4062537be4d54c83511186da1fc14ba354961a2114da91efa9a4ed7"},
+    {file = "joblib-1.4.0.tar.gz", hash = "sha256:1eb0dc091919cd384490de890cb5dfd538410a6d4b3b54eef09fb8c50b409b1c"},
 ]
 
 [[package]]
@@ -4547,13 +4547,13 @@ files = [
 
 [[package]]
 name = "typing-extensions"
-version = "4.10.0"
+version = "4.11.0"
 requires_python = ">=3.8"
 summary = "Backported and Experimental Type Hints for Python 3.8+"
 groups = ["default"]
 files = [
-    {file = "typing_extensions-4.10.0-py3-none-any.whl", hash = "sha256:69b1a937c3a517342112fb4c6df7e72fc39a38e7891a5730ed4985b5214b5475"},
-    {file = "typing_extensions-4.10.0.tar.gz", hash = "sha256:b0abd7c89e8fb96f98db18d86106ff1d90ab692004eb746cf6eda2682f91b3cb"},
+    {file = "typing_extensions-4.11.0-py3-none-any.whl", hash = "sha256:c1f94d72897edaf4ce775bb7558d5b79d8126906a14ea5ed1635921406c0387a"},
+    {file = "typing_extensions-4.11.0.tar.gz", hash = "sha256:83f085bd5ca59c80295fc2a82ab5dac679cbe02b9f33f7d83af68e241bea51b0"},
 ]
 
 [[package]]
@@ -4651,7 +4651,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.8.0"
+version = "0.8.1"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract interface for LLMs, Embeddings and VectorDBs"
 groups = ["default"]
@@ -4679,8 +4679,8 @@ dependencies = [
     "weaviate-client==3.25.3",
 ]
 files = [
-    {file = "unstract_adapters-0.8.0-py3-none-any.whl", hash = "sha256:5ca04f993782be587b99b4221893260982bff1f26236aa3ea3d6e71279152ad8"},
-    {file = "unstract_adapters-0.8.0.tar.gz", hash = "sha256:d6282762e52263bd59b64d70bdb30c596ed6a4dbaf296b12a39617c9e4a2d4b4"},
+    {file = "unstract_adapters-0.8.1-py3-none-any.whl", hash = "sha256:dddb7233d033648181c1b957d784ac5148c1d8623429bc7faf41fa0b5d993247"},
+    {file = "unstract_adapters-0.8.1.tar.gz", hash = "sha256:6abb54a4bcd4df03badbfbb2c88cd1323fcef3b1a5115fc456aa22a7ec10d6d0"},
 ]
 
 [[package]]
@@ -4737,7 +4737,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.18.0"
+version = "0.18.1"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -4751,8 +4751,8 @@ dependencies = [
     "unstract-adapters~=0.8.0",
 ]
 files = [
-    {file = "unstract_sdk-0.18.0-py3-none-any.whl", hash = "sha256:84462ee3fddf9e56d7954111c47308c504b1297bf6576307c183bfc1ea83c75b"},
-    {file = "unstract_sdk-0.18.0.tar.gz", hash = "sha256:ea8a7066c4510ffef82215754c72479121e2ba430541fca1a352029613a0bf83"},
+    {file = "unstract_sdk-0.18.1-py3-none-any.whl", hash = "sha256:16b3c4e30d2c5b1c283fd89f3ec4582fc8c83db1c274cc27d2f0f2ac25d43fe2"},
+    {file = "unstract_sdk-0.18.1.tar.gz", hash = "sha256:679f0c52899f7ffed97fdbcaa8582d9a910269272022f3be6e8bedb586ac39ba"},
 ]
 
 [[package]]
@@ -4818,13 +4818,13 @@ files = [
 
 [[package]]
 name = "validators"
-version = "0.24.0"
+version = "0.28.0"
 requires_python = ">=3.8"
 summary = "Python Data Validation for Humans™"
 groups = ["default"]
 files = [
-    {file = "validators-0.24.0-py3-none-any.whl", hash = "sha256:4a99eb368747e60900bae947418eb21e230ff4ff5e7b7944b9308c456d86da32"},
-    {file = "validators-0.24.0.tar.gz", hash = "sha256:cd23defb36de42d14e7559cf0757f761bb46b10d9de2998e6ef805f769d859e3"},
+    {file = "validators-0.28.0-py3-none-any.whl", hash = "sha256:e0184691dea3ba82b52c161ba81d3ec1d8be8da9609f0137d1430b395b366521"},
+    {file = "validators-0.28.0.tar.gz", hash = "sha256:85bc82511f6ccd0800f4c15d8c0dc546c15e369640c5ea1f24349ba0b3b17815"},
 ]
 
 [[package]]
