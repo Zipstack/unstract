@@ -4,9 +4,9 @@ from typing import Any, Optional
 
 import peewee
 from flask import Flask, json, request
-from llama_index import VectorStoreIndex
-from llama_index.llms import LLM
-from llama_index.vector_stores.types import ExactMatchFilter, MetadataFilters
+from llama_index.core import VectorStoreIndex
+from llama_index.core.llms import LLM
+from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 from unstract.prompt_service.authentication_middleware import (
     AuthenticationMiddleware,
 )
@@ -18,8 +18,8 @@ from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import ToolEmbedding
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.llm import ToolLLM
-from unstract.sdk.utils.service_context import (
-    ServiceContext as UNServiceContext,
+from unstract.sdk.utils.callback_manager import (
+    CallbackManager as UNCallbackManager,
 )
 from unstract.sdk.vector_db import ToolVectorDB
 from werkzeug.exceptions import HTTPException
@@ -278,9 +278,6 @@ def prompt_processor() -> Any:
             return result, 500
         embedding_dimension = embedd_helper.get_embedding_length(embedding_li)
 
-        service_context = UNServiceContext.get_service_context(
-            platform_api_key=platform_key, llm=llm_li, embed_model=embedding_li
-        )
         vdb_helper = ToolVectorDB(
             tool=util,
         )
@@ -300,8 +297,13 @@ def prompt_processor() -> Any:
                 "Failed due to vector db error",
             )
             return result, 500
+        # Set up llm, embedding and callback manager to collect usage stats
+        # for this context
+        UNCallbackManager.set_callback_manager(
+            platform_api_key=platform_key, llm=llm_li, embedding=embedding_li
+        )
         vector_index = VectorStoreIndex.from_vector_store(
-            vector_store=vector_db_li, service_context=service_context
+            vector_store=vector_db_li, embed_model=embedding_li
         )
 
         context = ""
