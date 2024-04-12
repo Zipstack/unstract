@@ -132,13 +132,6 @@ repos:
     rev: v1.1.2
     hooks:
       - id: htmlhint
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.15.1
-    hooks:
-      - id: pyupgrade
-        entry: pyupgrade --py38-plus --keep-runtime-typing
-        types:
-          - python
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.39.0
     hooks:
