@@ -29,11 +29,10 @@ function ExportTool({
   loading,
   allUsers,
   onApply,
-  isSharableToOrg,
 }) {
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
-  const [sharingOption, setSharingOption] = useState(null);
+  const [sharingOption, setSharingOption] = useState(SHARE_ALL);
 
   useEffect(() => {
     if (permissionEdit && toolDetails?.shared_users) {
@@ -63,13 +62,18 @@ function ExportTool({
   useEffect(() => {
     if (toolDetails?.shared_users) {
       setSelectedUsers(
-        toolDetails.shared_users.map((user) => {
-          if (user?.id !== undefined) {
-            return user.id.toString();
-          } else {
-            return user?.toString();
-          }
-        })
+        toolDetails.shared_users
+          .filter((user) => {
+            const promptStudioUsers = toolDetails?.prompt_studio_users.map(
+              (user) => user?.id?.toString()
+            );
+            const userId = user?.id?.toString();
+            return (
+              !promptStudioUsers.includes(userId) &&
+              toolDetails?.created_by?.toString() !== userId
+            );
+          })
+          .map((user) => user?.id?.toString())
       );
     }
   }, [toolDetails, allUsers]);
@@ -141,8 +145,8 @@ function ExportTool({
           )}
         />
         <Typography>
-          By default tool will be shared with owner and shared users of prompt
-          studio project
+          Exported Tools are always shared with the Prompt Studio projects owner
+          and users in addition to other users it is explicitly shared with
         </Typography>
       </>
     );
@@ -176,7 +180,7 @@ function ExportTool({
                 className="export-per-radio"
               >
                 <Radio value={SHARE_ALL}>Share with everyone</Radio>
-                <Radio value={SHARE_CUSTOM}>Specify sharing option</Radio>
+                <Radio value={SHARE_CUSTOM}>Custom share</Radio>
               </Radio.Group>
             )}
             {permissionEdit && sharingOption !== SHARE_ALL && (
@@ -225,7 +229,6 @@ ExportTool.propTypes = {
   loading: PropTypes.bool,
   allUsers: PropTypes.array,
   onApply: PropTypes.func,
-  isSharableToOrg: PropTypes.bool,
 };
 
 export { ExportTool };

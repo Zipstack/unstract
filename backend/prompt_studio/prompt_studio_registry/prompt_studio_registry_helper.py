@@ -143,9 +143,20 @@ class PromptStudioRegistryHelper:
                 logger.info(f"PSR {obj.prompt_registry_id} was created")
             else:
                 logger.info(f"PSR {obj.prompt_registry_id} was updated")
+
             obj.shared_to_org = shared_with_org
-            obj.shared_users.clear()
-            obj.shared_users.add(*user_ids)
+            if not shared_with_org:
+                obj.shared_users.clear()
+                obj.shared_users.add(*user_ids)
+                # add prompt studio users
+                # for shared_user in custom_tool.shared_users:
+                obj.shared_users.add(
+                    *custom_tool.shared_users.all().values_list("id", flat=True)
+                )
+                # add prompt studio owner
+                obj.shared_users.add(custom_tool.created_by)
+            else:
+                obj.shared_users.clear()
             obj.save()
             return obj
         except IntegrityError as error:
