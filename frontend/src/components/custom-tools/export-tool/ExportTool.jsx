@@ -31,7 +31,7 @@ function ExportTool({
   onApply,
 }) {
   const [selectedUsers, setSelectedUsers] = useState([]);
-  const [filteredUsers, setFilteredUsers] = useState([]);
+  const [filteredUserList, setFilteredUserList] = useState([]);
   const [sharingOption, setSharingOption] = useState(SHARE_ALL);
 
   useEffect(() => {
@@ -52,7 +52,7 @@ function ExportTool({
         );
       });
 
-      setFilteredUsers(users);
+      setFilteredUserList(users);
       toolDetails?.shared_to_org
         ? setSharingOption(SHARE_ALL)
         : setSharingOption(SHARE_CUSTOM);
@@ -193,12 +193,12 @@ function ExportTool({
                     setSelectedUsers([...selectedUsers, selectedUser]);
                   }
                 }}
-                options={filteredUsers.map((user) => ({
+                options={filteredUserList.map((user) => ({
                   label: user.email,
                   value: user.id,
                 }))}
               >
-                {filteredUsers.map((user) => {
+                {filteredUserList.map((user) => {
                   return (
                     <Select.Option key={user?.id} value={user?.id}>
                       {user?.email}
