@@ -685,7 +685,7 @@ function PromptCard({
                     <Button
                       size="small"
                       type="text"
-                      className="display-flex-align-center"
+                      className="display-flex-align-center prompt-card-action-button"
                       onClick={enableEdit}
                       disabled={
                         disableLlmOrDocChange.includes(
@@ -702,11 +702,11 @@ function PromptCard({
                     <Button
                       size="small"
                       type="text"
-                      className="display-flex-align-center"
+                      className="display-flex-align-center prompt-card-action-button"
                       onClick={() => setDisplayAssertion(!displayAssertion)}
                       disabled={true}
                     >
-                      <AssertionIcon className="prompt-card-actions-head" />
+                      <AssertionIcon className="prompt-card-actions-head assertion-icon" />
                     </Button>
                   </Tooltip>
                   {!singlePassExtractMode && (
@@ -738,6 +738,7 @@ function PromptCard({
                       <Button
                         size="small"
                         type="text"
+                        className="prompt-card-action-button"
                         disabled={
                           disableLlmOrDocChange.includes(
                             promptDetails?.prompt_id
@@ -787,7 +788,7 @@ function PromptCard({
                 <Button
                   size="small"
                   type="link"
-                  className="display-flex-align-center"
+                  className="display-flex-align-center prompt-card-action-button"
                   onClick={() => setOpenOutputForDoc(true)}
                 >
                   <Space>
@@ -856,6 +857,7 @@ function PromptCard({
                   <Button
                     type="text"
                     size="small"
+                    className="prompt-card-action-button"
                     disabled={
                       page <= 1 ||
                       disableLlmOrDocChange.includes(
@@ -871,6 +873,7 @@ function PromptCard({
                   <Button
                     type="text"
                     size="small"
+                    className="prompt-card-action-button"
                     disabled={
                       page >= llmProfiles?.length ||
                       disableLlmOrDocChange.includes(
