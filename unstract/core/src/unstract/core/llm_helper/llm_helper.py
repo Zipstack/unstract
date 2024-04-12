@@ -60,7 +60,8 @@ class LLMHelper:
 
         Args:
             prompt (str): Prompt to generate response for
-            use_cache (bool, optional): Flag to retrieve from cache. Defaults to False.
+            use_cache (bool, optional): Flag to retrieve from cache.
+            Defaults to False.
 
         Returns:
             LLMResponse: LLM output
