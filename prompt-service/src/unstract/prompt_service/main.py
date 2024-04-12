@@ -1,10 +1,9 @@
-import json
 import logging
 from enum import Enum
 from typing import Any, Optional
 
 import peewee
-from flask import Flask, request
+from flask import Flask, json, request
 from llama_index.core import VectorStoreIndex
 from llama_index.core.llms import LLM
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
@@ -23,6 +22,7 @@ from unstract.sdk.utils.callback_manager import (
     CallbackManager as UNCallbackManager,
 )
 from unstract.sdk.vector_db import ToolVectorDB
+from werkzeug.exceptions import HTTPException
 
 from unstract.core.pubsub_helper import LogPublisher
 
@@ -770,6 +770,21 @@ def enable_single_pass_extraction() -> None:
 
 
 enable_single_pass_extraction()
+
+
+@app.errorhandler(HTTPException)
+def handle_exception(e):
+    """Return JSON instead of HTML for HTTP errors."""
+    response = e.get_response()
+    response.data = json.dumps(
+        {
+            "code": e.code,
+            "name": e.name,
+            "error": e.description,
+        }
+    )
+    response.content_type = "application/json"
+    return response
 
 
 if __name__ == "__main__":
