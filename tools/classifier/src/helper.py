@@ -1,6 +1,6 @@
 from typing import Any, Optional
 
-from llama_index.llms import LLM
+from llama_index.core.llms import LLM
 from unstract.sdk.cache import ToolCache
 from unstract.sdk.constants import ToolEnv
 from unstract.sdk.tool.base import BaseTool

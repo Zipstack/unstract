@@ -498,6 +498,11 @@ function ManageDocsModal({
         );
         updateCustomTool({ listOfDocs: newListOfDocs });
 
+        if (newListOfDocs?.length === 1 && selectedDoc?.document_id !== docId) {
+          const doc = newListOfDocs[1];
+          handleDocChange(doc);
+        }
+
         if (docId === selectedDoc?.document_id) {
           updateCustomTool({ selectedDoc: "" });
           handleUpdateTool({ output: "" });
