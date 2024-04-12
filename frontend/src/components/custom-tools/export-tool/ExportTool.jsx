@@ -187,10 +187,10 @@ function ExportTool({
                 placeholder="Search"
                 value={null}
                 className="export-permission-search"
-                onChange={(selectedValue) => {
-                  const isValueSelected = selectedUsers.includes(selectedValue);
-                  if (!isValueSelected) {
-                    setSelectedUsers([...selectedUsers, selectedValue]);
+                onChange={(selectedUser) => {
+                  const isUserSelected = selectedUsers.includes(selectedUser);
+                  if (!isUserSelected) {
+                    setSelectedUsers([...selectedUsers, selectedUser]);
                   }
                 }}
                 options={filteredUsers.map((user) => ({
