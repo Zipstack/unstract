@@ -25,7 +25,7 @@ function ExportTool({
   open,
   setOpen,
   toolDetails,
-  permissionEdit,
+
   loading,
   allUsers,
   onApply,
@@ -35,7 +35,7 @@ function ExportTool({
   const [sharingOption, setSharingOption] = useState(SHARE_ALL);
 
   useEffect(() => {
-    if (permissionEdit && toolDetails?.shared_users) {
+    if (toolDetails?.shared_users) {
       // set the selectedUsers to the IDs of shared users
       // filter owners and shared users
 
@@ -57,7 +57,7 @@ function ExportTool({
         ? setSharingOption(SHARE_ALL)
         : setSharingOption(SHARE_CUSTOM);
     }
-  }, [permissionEdit, toolDetails, allUsers, selectedUsers]);
+  }, [toolDetails, allUsers, selectedUsers]);
 
   useEffect(() => {
     if (toolDetails?.shared_users) {
@@ -109,23 +109,21 @@ function ExportTool({
           renderItem={(item) => (
             <List.Item
               extra={
-                permissionEdit && (
-                  <div onClick={(event) => event.stopPropagation()} role="none">
-                    <Popconfirm
-                      key={`${item.id}-delete`}
-                      title="Delete the User"
-                      description={`Are you sure to remove ${item?.email}?`}
-                      okText="Yes"
-                      cancelText="No"
-                      icon={<QuestionCircleOutlined />}
-                      onConfirm={(event) => handleDeleteUser(item?.id)}
-                    >
-                      <Typography.Text>
-                        <DeleteOutlined className="action-icon-buttons" />
-                      </Typography.Text>
-                    </Popconfirm>
-                  </div>
-                )
+                <div onClick={(event) => event.stopPropagation()} role="none">
+                  <Popconfirm
+                    key={`${item.id}-delete`}
+                    title="Delete the User"
+                    description={`Are you sure to remove ${item?.email}?`}
+                    okText="Yes"
+                    cancelText="No"
+                    icon={<QuestionCircleOutlined />}
+                    onConfirm={(event) => handleDeleteUser(item?.id)}
+                  >
+                    <Typography.Text>
+                      <DeleteOutlined className="action-icon-buttons" />
+                    </Typography.Text>
+                  </Popconfirm>
+                </div>
               }
             >
               <List.Item.Meta
@@ -165,8 +163,6 @@ function ExportTool({
         onOk={() =>
           onApply(selectedUsers, toolDetails, sharingOption === SHARE_ALL)
         }
-        cancelButtonProps={!permissionEdit && { style: { display: "none" } }}
-        okButtonProps={!permissionEdit && { style: { display: "none" } }}
         className="share-permission-modal"
       >
         {loading ? (
@@ -183,7 +179,7 @@ function ExportTool({
                 <Radio value={SHARE_CUSTOM}>Custom share</Radio>
               </Radio.Group>
             )}
-            {permissionEdit && sharingOption !== SHARE_ALL && (
+            {sharingOption !== SHARE_ALL && (
               <Select
                 filterOption={filterOption}
                 showSearch
@@ -225,7 +221,6 @@ ExportTool.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
   toolDetails: PropTypes.object,
-  permissionEdit: PropTypes.bool,
   loading: PropTypes.bool,
   allUsers: PropTypes.array,
   onApply: PropTypes.func,

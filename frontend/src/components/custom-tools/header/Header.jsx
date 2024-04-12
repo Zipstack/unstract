@@ -175,7 +175,6 @@ function Header({ setOpenSettings, handleUpdateTool }) {
           onApply={handleExport}
           loading={isExportLoading}
           toolDetails={toolDetails}
-          permissionEdit={true}
         />
       </div>
     </div>
