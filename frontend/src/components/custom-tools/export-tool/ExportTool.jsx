@@ -190,7 +190,6 @@ function ExportTool({
                 onChange={(selectedValue) => {
                   const isValueSelected = selectedUsers.includes(selectedValue);
                   if (!isValueSelected) {
-                    // Update the state only if the selected value is not already present
                     setSelectedUsers([...selectedUsers, selectedValue]);
                   }
                 }}
