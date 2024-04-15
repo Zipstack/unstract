@@ -35,8 +35,7 @@ class EnvManager:
             ValueError: Error mentioning envs which are not configured.
         """
         if cls.missing_settings:
-            ERROR_MESSAGE = (
-                "Below required settings are missing.\n"
-                + ",\n".join(cls.missing_settings)
+            ERROR_MESSAGE = "Below required settings are missing.\n" + ",\n".join(
+                cls.missing_settings
             )
             raise ValueError(ERROR_MESSAGE)

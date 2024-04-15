@@ -18,14 +18,10 @@ workflow_detail = WorkflowViewSet.as_view(
     }
     # fmt: on
 )
-workflow_execute = WorkflowViewSet.as_view(
-    {"post": "execute", "put": "activate"}
-)
+workflow_execute = WorkflowViewSet.as_view({"post": "execute", "put": "activate"})
 execution_entity = WorkflowViewSet.as_view({"get": "get_execution"})
 workflow_clear_cache = WorkflowViewSet.as_view({"get": "clear_cache"})
-workflow_clear_file_marker = WorkflowViewSet.as_view(
-    {"get": "clear_file_marker"}
-)
+workflow_clear_file_marker = WorkflowViewSet.as_view({"get": "clear_file_marker"})
 workflow_schema = WorkflowViewSet.as_view({"get": "get_schema"})
 can_update = WorkflowViewSet.as_view({"get": "can_update"})
 urlpatterns = format_suffix_patterns(

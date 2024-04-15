@@ -20,18 +20,14 @@ class ToolSandboxHelper:
     ) -> None:
         worker_host = os.environ.get("UNSTRACT_WORKER_HOST")
         worker_port = os.environ.get("UNSTRACT_WORKER_PORT")
-        self.base_url = (
-            f"{worker_host}:{worker_port}{UnstractWorker.BASE_API_ENDPOINT}"
-        )
+        self.base_url = f"{worker_host}:{worker_port}{UnstractWorker.BASE_API_ENDPOINT}"
         self.organization_id = str(organization_id)
         self.workflow_id = str(workflow_id)
         self.execution_id = str(execution_id)
         self.envs = environment_variables
         self.messaging_channel = str(messaging_channel)
 
-    def convert_str_to_dict(
-        self, data: Union[str, dict[str, Any]]
-    ) -> dict[str, Any]:
+    def convert_str_to_dict(self, data: Union[str, dict[str, Any]]) -> dict[str, Any]:
         if isinstance(data, str):
             output: dict[str, Any] = {}
             try:
@@ -67,8 +63,7 @@ class ToolSandboxHelper:
             )
         else:
             logger.error(
-                f"Error while calling tool {image_name} "
-                f" reason: {response.reason}"
+                f"Error while calling tool {image_name} " f" reason: {response.reason}"
             )
         return result
 
@@ -107,8 +102,7 @@ class ToolSandboxHelper:
             )
         else:
             logger.error(
-                f"Error while calling tool {image_name} "
-                f" reason: {response.reason}"
+                f"Error while calling tool {image_name} " f" reason: {response.reason}"
             )
         return result
 

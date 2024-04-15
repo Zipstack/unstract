@@ -7,9 +7,7 @@ from account.models import Organization, PlatformKey
 from django.db import connection
 from platform_settings.constants import PlatformServiceConstants
 from platform_settings.platform_auth_helper import PlatformAuthHelper
-from platform_settings.platform_auth_service import (
-    PlatformAuthenticationService,
-)
+from platform_settings.platform_auth_service import PlatformAuthenticationService
 from platform_settings.serializers import (
     PlatformKeyGenerateSerializer,
     PlatformKeyIDSerializer,

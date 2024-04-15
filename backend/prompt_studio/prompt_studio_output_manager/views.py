@@ -39,9 +39,7 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         )
 
         # Convert the string representation to a boolean value
-        is_single_pass_extract = CommonUtils.str_to_bool(
-            is_single_pass_extract_param
-        )
+        is_single_pass_extract = CommonUtils.str_to_bool(is_single_pass_extract_param)
 
         filter_args[PromptStudioOutputManagerKeys.IS_SINGLE_PASS_EXTRACT] = (
             is_single_pass_extract

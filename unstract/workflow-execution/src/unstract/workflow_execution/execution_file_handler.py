@@ -26,9 +26,7 @@ class ExecutionFileHandler:
         self.execution_dir = self.create_execution_dir_path(
             workflow_id, execution_id, organization_id
         )
-        self.source_file = os.path.join(
-            self.execution_dir, WorkflowFileType.SOURCE
-        )
+        self.source_file = os.path.join(self.execution_dir, WorkflowFileType.SOURCE)
         self.infile = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         self.metadata_file = os.path.join(
             self.execution_dir, WorkflowFileType.METADATA_JSON
@@ -80,17 +78,13 @@ class ExecutionFileHandler:
         )
         return output_type
 
-    def get_last_tool_metadata(
-        self, metadata: dict[str, Any]
-    ) -> dict[str, Any]:
+    def get_last_tool_metadata(self, metadata: dict[str, Any]) -> dict[str, Any]:
         tool_metadata = self.get_list_of_tool_metadata(metadata)
         if not tool_metadata:
             raise ToolMetadataNotFound()
         return tool_metadata[-1]
 
-    def add_metadata_to_volume(
-        self, input_file_path: str, source_hash: str
-    ) -> None:
+    def add_metadata_to_volume(self, input_file_path: str, source_hash: str) -> None:
         """Creating metadata for workflow. This method is responsible for
         creating metadata for the workflow. It takes the input file path and
         the source hash as parameters. The metadata is stored in a JSON file in
@@ -120,8 +114,7 @@ class ExecutionFileHandler:
         with fsspec.open(f"file://{destination_path}", "w") as local_file:
             json.dump(content, local_file)
         logger.info(
-            f"metadata for {input_file_path} is "
-            "added in to execution directory"
+            f"metadata for {input_file_path} is " "added in to execution directory"
         )
 
     @classmethod
