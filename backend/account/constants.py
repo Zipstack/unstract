@@ -81,3 +81,4 @@ class AuthorizationErrorCode:
     UMM = "UMM"
     INF = "INF"
     USF = "USF"
+    USR = "USR"

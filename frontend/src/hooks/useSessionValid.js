@@ -106,8 +106,10 @@ function useSessionValid() {
       }
 
       if (err.request?.status === 412) {
-        const domainName = JSON.parse(err.request.response).domain;
-        window.location.href = `/error?code=USF&domain=${domainName}`;
+        const response = JSON.parse(err.request.response);
+        const domainName = response.domain;
+        const code = response.code;
+        window.location.href = `/error?code=${code}&domain=${domainName}`;
         // May be need a logout button there or auto logout
       }
     }
