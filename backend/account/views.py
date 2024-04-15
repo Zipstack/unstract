@@ -19,6 +19,7 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 from utils.user_session import UserSessionUtils
+from django.views.decorators.http import require_GET
 
 Logger = logging.getLogger(__name__)
 
@@ -103,7 +104,7 @@ def set_organization(request: Request, id: str) -> Response:
     return auth_controller.set_user_organization(request, id)
 
 
-@api_view(["GET"])
+@require_GET
 def get_session_data(request: Request) -> Response:
     try:
         response = make_session_response(request)
