@@ -25,13 +25,9 @@ function ListOfSources({ setSelectedSourceId, type }) {
 
   const disabledIdsByType = {
     EMBEDDING: ["huggingface|90ec9ec2-1768-4d69-8fb1-c88b95de5e5a"],
-    LLM: [
-      "replicate|2715ce84-05af-4ab4-b8e9-67ac3211b81e",
-      "anthropic|90ebd4cd-2f19-4cef-a884-9eeb6ac0f203",
-    ],
+    LLM: ["replicate|2715ce84-05af-4ab4-b8e9-67ac3211b81e"],
     VECTOR_DB: [
       "supabase|e6998e3c-3595-48c0-a190-188dbd803858",
-      "pinecone|83881133-485d-4ecc-b1f7-0009f96dc74a",
       "milvus|3f42f6f9-4b8e-4546-95f3-22ecc9aca442",
     ],
   };
