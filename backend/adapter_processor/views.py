@@ -57,9 +57,7 @@ class DefaultAdapterViewSet(ModelViewSet):
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> HttpResponse:
         try:
-            user_default_adapter = UserDefaultAdapter.objects.get(
-                user=request.user
-            )
+            user_default_adapter = UserDefaultAdapter.objects.get(user=request.user)
             serializer = UserDefaultAdapterSerializer(user_default_adapter).data
             return Response(serializer)
 
@@ -98,23 +96,17 @@ class AdapterViewSet(GenericViewSet):
             adapter_name = request.GET.get(AdapterKeys.ID)
             if adapter_name is None or adapter_name == "":
                 raise IdIsMandatory()
-            json_schema = AdapterProcessor.get_json_schema(
-                adapter_id=adapter_name
-            )
+            json_schema = AdapterProcessor.get_json_schema(adapter_id=adapter_name)
             return Response(data=json_schema, status=status.HTTP_200_OK)
 
     def test(self, request: Request) -> Response:
         """Tests the connector against the credentials passed."""
-        serializer: AdapterInstanceSerializer = self.get_serializer(
-            data=request.data
-        )
+        serializer: AdapterInstanceSerializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         adapter_id = serializer.validated_data.get(AdapterKeys.ADAPTER_ID)
-        adapter_metadata = serializer.validated_data.get(
-            AdapterKeys.ADAPTER_METADATA
-        )
-        adapter_metadata[AdapterKeys.ADAPTER_TYPE] = (
-            serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+        adapter_metadata = serializer.validated_data.get(AdapterKeys.ADAPTER_METADATA)
+        adapter_metadata[AdapterKeys.ADAPTER_TYPE] = serializer.validated_data.get(
+            AdapterKeys.ADAPTER_TYPE
         )
         try:
             test_result = AdapterProcessor.test_adapter(
@@ -138,9 +130,9 @@ class AdapterInstanceViewSet(ModelViewSet):
             self.request,
             constant.ADAPTER_TYPE,
         ):
-            queryset = AdapterInstance.objects.for_user(
-                self.request.user
-            ).filter(**filter_args)
+            queryset = AdapterInstance.objects.for_user(self.request.user).filter(
+                **filter_args
+            )
         else:
             queryset = AdapterInstance.objects.for_user(self.request.user)
         return queryset
@@ -165,9 +157,7 @@ class AdapterInstanceViewSet(ModelViewSet):
                 created,
             ) = UserDefaultAdapter.objects.get_or_create(user=request.user)
 
-            adapter_type = serializer.validated_data.get(
-                AdapterKeys.ADAPTER_TYPE
-            )
+            adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
             if (adapter_type == AdapterKeys.LLM) and (
                 not user_default_adapter.default_llm_adapter
             ):
@@ -189,9 +179,7 @@ class AdapterInstanceViewSet(ModelViewSet):
             user_default_adapter.save()
 
         except IntegrityError:
-            raise UniqueConstraintViolation(
-                f"{AdapterKeys.ADAPTER_NAME_EXISTS}"
-            )
+            raise UniqueConstraintViolation(f"{AdapterKeys.ADAPTER_NAME_EXISTS}")
         except Exception as e:
             logger.error(f"Error saving adapter to DB: {e}")
             raise InternalServiceError
@@ -213,18 +201,15 @@ class AdapterInstanceViewSet(ModelViewSet):
             )
             or (
                 adapter_type == AdapterKeys.EMBEDDING
-                and adapter_instance
-                == user_default_adapter.default_embedding_adapter
+                and adapter_instance == user_default_adapter.default_embedding_adapter
             )
             or (
                 adapter_type == AdapterKeys.VECTOR_DB
-                and adapter_instance
-                == user_default_adapter.default_vector_db_adapter
+                and adapter_instance == user_default_adapter.default_vector_db_adapter
             )
             or (
                 adapter_type == AdapterKeys.X2TEXT
-                and adapter_instance
-                == user_default_adapter.default_x2text_adapter
+                and adapter_instance == user_default_adapter.default_x2text_adapter
             )
         ):
             logger.error("Cannot delete a default adapter")
@@ -238,9 +223,7 @@ class AdapterInstanceViewSet(ModelViewSet):
                 f" named {adapter_instance.adapter_name}"
             )
             # TODO: Provide details of adpter usage with exception object
-            raise DeleteAdapterInUseError(
-                adapter_name=adapter_instance.adapter_name
-            )
+            raise DeleteAdapterInUseError(adapter_name=adapter_instance.adapter_name)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def partial_update(
@@ -265,15 +248,9 @@ class AdapterInstanceViewSet(ModelViewSet):
 
                     if user_default_adapter.default_llm_adapter == adapter:
                         user_default_adapter.default_llm_adapter = None
-                    elif (
-                        user_default_adapter.default_embedding_adapter
-                        == adapter
-                    ):
+                    elif user_default_adapter.default_embedding_adapter == adapter:
                         user_default_adapter.default_embedding_adapter = None
-                    elif (
-                        user_default_adapter.default_vector_db_adapter
-                        == adapter
-                    ):
+                    elif user_default_adapter.default_vector_db_adapter == adapter:
                         user_default_adapter.default_vector_db_adapter = None
                     elif user_default_adapter.default_x2text_adapter == adapter:
                         user_default_adapter.default_x2text_adapter = None
@@ -289,9 +266,7 @@ class AdapterInstanceViewSet(ModelViewSet):
         return super().partial_update(request, *args, **kwargs)
 
     @action(detail=True, methods=["get"])
-    def list_of_shared_users(
-        self, request: HttpRequest, pk: Any = None
-    ) -> Response:
+    def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:
         self.permission_classes = [IsOwnerOrSharedUser]
         adapter = (
             self.get_object()

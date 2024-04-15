@@ -21,11 +21,7 @@ class PostgreSQL(UnstractDB):
         if not self.schema:
             self.schema = "public"
         if not self.connection_url and not (
-            self.user
-            and self.password
-            and self.host
-            and self.port
-            and self.database
+            self.user and self.password and self.host and self.port and self.database
         ):
             raise ValueError(
                 "Either ConnectionURL or connection parameters must be provided."

@@ -39,19 +39,13 @@ class ToolInstance(BaseModel):
         max_length=TOOL_ID_LENGTH,
         db_comment="Function name of the tool being used",
     )
-    input = models.JSONField(
-        null=True, db_comment="Provisional WF input to a tool"
-    )
-    output = models.JSONField(
-        null=True, db_comment="Provisional WF output to a tool"
-    )
+    input = models.JSONField(null=True, db_comment="Provisional WF input to a tool")
+    output = models.JSONField(null=True, db_comment="Provisional WF output to a tool")
     version = models.CharField(max_length=TOOL_VERSION_LENGTH)
     metadata = models.JSONField(db_comment="Stores config for a tool")
     step = models.IntegerField()
     # TODO: Make as an enum supporting fixed values once we have clarity
-    status = models.CharField(
-        max_length=TOOL_STATUS_LENGTH, default="Ready to start"
-    )
+    status = models.CharField(max_length=TOOL_STATUS_LENGTH, default="Ready to start")
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,

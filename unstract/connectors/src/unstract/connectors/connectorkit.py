@@ -40,23 +40,15 @@ class Connectorkit:
             connector_registry_metadata,
         ) in self._connectors.items():
             if (
-                connector_registry_metadata[Common.METADATA][
-                    Common.CONNECTOR
-                ].__name__
+                connector_registry_metadata[Common.METADATA][Common.CONNECTOR].__name__
                 is connector_name
             ):
-                connector_class: UnstractConnector = (
-                    connector_registry_metadata[Common.METADATA][
-                        Common.CONNECTOR
-                    ]
-                )
+                connector_class: UnstractConnector = connector_registry_metadata[
+                    Common.METADATA
+                ][Common.CONNECTOR]
                 return connector_class
-        logging.error(
-            f">> Connector '{connector_name}' not found in connectorkit"
-        )
-        logging.error(
-            f">> Connectors in connectorkit : {self._connectors.keys()}"
-        )
+        logging.error(f">> Connector '{connector_name}' not found in connectorkit")
+        logging.error(f">> Connectors in connectorkit : {self._connectors.keys()}")
         return None
 
     def get_connector_by_id(
@@ -73,8 +65,8 @@ class Connectorkit:
         Returns:
             UnstractConnector: Concrete impl of the `UnstractConnector` base
         """
-        connector_class: UnstractConnector = (
-            self.get_connector_class_by_connector_id(connector_id)
+        connector_class: UnstractConnector = self.get_connector_class_by_connector_id(
+            connector_id
         )
         return connector_class(*args, **kwargs)
 

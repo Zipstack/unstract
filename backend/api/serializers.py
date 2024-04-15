@@ -42,9 +42,7 @@ class APIKeySerializer(AuditSerializer):
         context."""
         context = self.context.get("context", {})
         deployment: APIDeployment = context.get("deployment")
-        representation: OrderedDict[str, Any] = super().to_representation(
-            instance
-        )
+        representation: OrderedDict[str, Any] = super().to_representation(instance)
         if deployment:
             representation["api"] = deployment.id
             representation["description"] = f"API Key for {deployment.name}"

@@ -65,9 +65,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "preamble",
-                    models.TextField(
-                        blank=True, db_comment="Preamble to the prompts"
-                    ),
+                    models.TextField(blank=True, db_comment="Preamble to the prompts"),
                 ),
                 (
                     "postamble",

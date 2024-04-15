@@ -267,9 +267,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "result",
-                    models.TextField(
-                        blank=True, db_comment="Result from execution"
-                    ),
+                    models.TextField(blank=True, db_comment="Result from execution"),
                 ),
                 (
                     "workflow",

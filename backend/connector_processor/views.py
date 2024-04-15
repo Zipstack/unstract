@@ -20,9 +20,7 @@ def get_connector_schema(request: HttpRequest) -> HttpResponse:
         connector_name = request.GET.get(ConnectorKeys.ID)
         if connector_name is None or connector_name == "":
             raise IdIsMandatory()
-        json_schema = ConnectorProcessor.get_json_schema(
-            connector_id=connector_name
-        )
+        json_schema = ConnectorProcessor.get_json_schema(connector_id=connector_name)
         return Response(data=json_schema, status=status.HTTP_200_OK)
 
 
@@ -42,9 +40,7 @@ def get_supported_connectors(request: HttpRequest) -> HttpResponse:
         connector_type = request.GET.get(ConnectorKeys.TYPE)
         connector_mode = request.GET.get(ConnectorKeys.CONNECTOR_MODE)
         if connector_mode:
-            connector_mode = ConnectorProcessor.validate_connector_mode(
-                connector_mode
-            )
+            connector_mode = ConnectorProcessor.validate_connector_mode(connector_mode)
 
         if (
             connector_type == ConnectorKeys.INPUT
@@ -69,9 +65,7 @@ class ConnectorViewSet(GenericViewSet):
 
     def test(self, request: Request) -> Response:
         """Tests the connector against the credentials passed."""
-        serializer: TestConnectorSerializer = self.get_serializer(
-            data=request.data
-        )
+        serializer: TestConnectorSerializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         connector_id = serializer.validated_data.get(ConnectorKeys.CONNECTOR_ID)
         cred_string = serializer.validated_data.get(CIKey.CONNECTOR_METADATA)

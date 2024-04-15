@@ -6,9 +6,7 @@ from dropbox.exceptions import DropboxException
 from dropboxdrivefs import DropboxDriveFileSystem
 
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.unstract_file_system import (
-    UnstractFileSystem,
-)
+from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 from .exceptions import handle_dropbox_exception
 
