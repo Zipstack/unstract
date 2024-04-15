@@ -464,6 +464,15 @@ def prompt_processor() -> Any:
             if assertion_failed or answer.lower() == "na":
                 structured_output[output[PSKeys.NAME]] = None
             else:
+                prompt = f'Extract yes/no from the following text:\n{answer}\n\n\
+                    Output in single word.\
+                    If the context is trying to convey that the answer is true, \
+                    then return "yes", else return "no".'
+                answer, usage = run_completion(
+                    llm_helper,
+                    llm_li,
+                    prompt,
+                )
                 if answer.lower() == "yes":
                     structured_output[output[PSKeys.NAME]] = True
                 else:
@@ -472,6 +481,14 @@ def prompt_processor() -> Any:
             if assertion_failed or answer.lower() == "[]" or answer.lower() == "na":
                 structured_output[output[PSKeys.NAME]] = None
             else:
+                prompt = (
+                    f"Convert the following text:\n{answer} into valid JSON format."
+                )
+                answer, usage = run_completion(
+                    llm_helper,
+                    llm_li,
+                    prompt,
+                )
                 # Remove any markdown code blocks
                 lines = answer.split("\n")
                 answer = ""
