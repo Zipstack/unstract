@@ -1,6 +1,8 @@
 import axios from "axios";
 
 import { getSessionData } from "../helpers/GetSessionData";
+import { getCookie } from "../helpers/GetCookie.js";
+import { userSession } from "../helpers/GetUserSession.js";
 import { useSessionStore } from "../store/session-store";
 import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
 import { useNavigate } from "react-router-dom";
@@ -16,15 +18,11 @@ function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
   const handleException = useExceptionHandler();
   const navigate = useNavigate();
-  const signedInOrgId =
-    (document.cookie &&
-      document.cookie
-        .split("; ")
-        .find((row) => row.startsWith("org_id="))
-        ?.split("=")[1]) ||
-    null;
   return async () => {
     try {
+      const userSessionData = await userSession();
+      const signedInOrgId = userSessionData?.organization_id;
+
       // API to get the list of organizations
       const requestOptions = {
         method: "GET",
@@ -35,16 +33,13 @@ function useSessionValid() {
       if (!orgs?.length) {
         throw Error("Organizations not available.");
       }
-      if (orgs?.length > 1 && !signedInOrgId?.length) {
+      if (orgs?.length > 1 && signedInOrgId && signedInOrgId === "public") {
         navigate("/setOrg", { state: orgs });
         return;
       }
       let userAndOrgDetails = null;
       const orgId = signedInOrgId || orgs[0].id;
-      const csrfToken = ("; " + document.cookie)
-        .split(`; csrftoken=`)
-        .pop()
-        .split(";")[0];
+      const csrfToken = getCookie("csrftoken");
 
       // API to set the organization and get the user details
       requestOptions["method"] = "POST";
@@ -54,8 +49,6 @@ function useSessionValid() {
       };
       const setOrgRes = await axios(requestOptions).catch((error) => {
         if (error?.response && error?.response?.status === 403) {
-          // Remove cookie from the browser
-          document.cookie = "org_id=;";
           navigate("/", { state: null });
         }
       });

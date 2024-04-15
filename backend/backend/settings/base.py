@@ -305,6 +305,8 @@ CACHES = {
     }
 }
 
+SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
+
 RQ_QUEUES = {
     "default": {"USE_REDIS_CACHE": "default"},
 }
@@ -403,11 +405,6 @@ WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
 # White lists workflow-api-deployment path
 WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
 
-# White list paths under tenant paths
-TENANT_ACCESSIBLE_PUBLIC_PATHS_LIST = ["/oauth", "/organization", "/doc"]
-TENANT_ACCESSIBLE_PUBLIC_PATHS = [
-    f"/{PATH_PREFIX}{PATH}" for PATH in TENANT_ACCESSIBLE_PUBLIC_PATHS_LIST
-]
 
 # API Doc Generator Settings
 # https://drf-yasg.readthedocs.io/en/stable/settings.html

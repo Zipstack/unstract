@@ -109,3 +109,10 @@ class LoginRequestSerializer(serializers.Serializer):
                 "Password must be at least 3 characters long."
             )
         return value
+
+
+class UserSessionResponseSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    user_id = serializers.CharField()
+    email = serializers.CharField()
+    organization_id = serializers.CharField()

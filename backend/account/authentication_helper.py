@@ -1,11 +1,13 @@
 import logging
-from typing import Any
+from typing import Any, Optional, Union
 
 from account.dto import MemberData
 from account.models import Organization, User
+from account.user import UserService
 from platform_settings.platform_auth_service import (
     PlatformAuthenticationService,
 )
+from tenant_account.models import OrganizationMember
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,39 @@ class AuthenticationHelper:
             members.append(MemberData(user_id=user_id, email=email, name=name))
 
         return members
+
+    @staticmethod
+    def get_or_create_user_by_email(
+        user_id: str, email: str
+    ) -> Union[User, OrganizationMember]:
+        user_service = UserService()
+        user = user_service.get_user_by_email(email)
+        if not user:
+            user = user_service.create_user(email, user_id)
+        return user
+
+    @staticmethod
+    def get_or_create_user(
+        user: User,
+    ) -> Optional[Union[User, OrganizationMember]]:
+        user_service = UserService()
+        if user.id:
+            account_user: Optional[User] = user_service.get_user_by_id(user.id)
+            if account_user:
+                return account_user
+            elif user.email:
+                account_user = user_service.get_user_by_email(email=user.email)
+                if account_user:
+                    return account_user
+                if user.user_id:
+                    user.save()
+                    return user
+        elif user.email and user.user_id:
+            account_user = user_service.create_user(
+                email=user.email, user_id=user.user_id
+            )
+            return account_user
+        return None
 
     def create_initial_platform_key(
         self, user: User, organization: Organization

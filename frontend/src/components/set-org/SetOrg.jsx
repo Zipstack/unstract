@@ -1,3 +1,5 @@
+import { getCookie } from "../../helpers/GetCookie.js";
+import { userSession } from "../../helpers/GetUserSession.js";
 import { useEffect, useState } from "react";
 import { Button, Card } from "antd";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -23,23 +25,29 @@ function SetOrg() {
   const handleException = useExceptionHandler();
 
   useEffect(() => {
-    if (state === null || signedInOrgId) {
-      navigate("/");
-    }
-  }, []);
+    const fetchData = async () => {
+      try {
+        const userSessionData = await userSession();
+        const signedInOrgId = userSessionData?.organization_id;
+        if (state === null || (signedInOrgId && signedInOrgId !== "public")) {
+          navigate("/");
+          return;
+        }
+      } catch (error) {
+        navigate("/");
+        return;
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const signedInOrgId =
-    document?.cookie
-      ?.split("; ")
-      ?.find((row) => row.startsWith("org_id="))
-      ?.split("=")[1] || null;
+    fetchData();
+  }, [state, navigate]);
+
   const handleContinue = (id) => {
     setLoading(true);
     setLoadingOrgId(id);
-    const csrfToken = ("; " + document.cookie)
-      ?.split(`; csrftoken=`)
-      ?.pop()
-      ?.split(";")[0];
+    const csrfToken = getCookie("csrftoken");
 
     const requestOptions = {
       method: "POST",

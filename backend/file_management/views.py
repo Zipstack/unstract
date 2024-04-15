@@ -29,6 +29,7 @@ from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
+from utils.user_session import UserSessionUtils
 
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.local_storage.local_storage import (
@@ -132,7 +133,7 @@ class FileManagementViewSet(viewsets.ModelViewSet):
         uploaded_files: Any = serializer.validated_data.get("file")
         tool_id: str = request.query_params.get("tool_id")
         file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            request.org_id,
+            UserSessionUtils.get_organization_id(request),
             is_create=True,
             user_id=request.user.user_id,
             tool_id=tool_id,
@@ -192,7 +193,7 @@ class FileManagementViewSet(viewsets.ModelViewSet):
 
         file_path = file_path = (
             FileManagerHelper.handle_sub_directory_for_tenants(
-                request.org_id,
+                UserSessionUtils.get_organization_id(request),
                 is_create=True,
                 user_id=request.user.user_id,
                 tool_id=tool_id,
@@ -211,7 +212,7 @@ class FileManagementViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         tool_id: str = serializer.validated_data.get("tool_id")
         file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            request.org_id,
+            UserSessionUtils.get_organization_id(request),
             is_create=True,
             user_id=request.user.user_id,
             tool_id=tool_id,
@@ -238,7 +239,7 @@ class FileManagementViewSet(viewsets.ModelViewSet):
         file_name: str = document.document_name
         tool_id: str = serializer.validated_data.get("tool_id")
         file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            request.org_id,
+            UserSessionUtils.get_organization_id(request),
             is_create=False,
             user_id=request.user.user_id,
             tool_id=tool_id,

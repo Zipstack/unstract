@@ -1,6 +1,5 @@
 import logging
 from typing import Any, Optional, Union
-from urllib.parse import urlencode
 
 from account.authentication_helper import AuthenticationHelper
 from account.authentication_plugin_registry import AuthenticationPluginRegistry
@@ -18,7 +17,6 @@ from account.custom_exceptions import (
     UserNotExistError,
 )
 from account.dto import (
-    CallbackData,
     MemberInvitation,
     OrganizationData,
     UserInfo,
@@ -35,13 +33,11 @@ from account.serializer import (
 )
 from account.user import UserService
 from django.conf import settings
-from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
 from django.db.utils import IntegrityError
 from django.middleware import csrf
 from django.shortcuts import redirect
 from django_tenants.utils import tenant_context
-from psycopg2.errors import UndefinedTable
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -49,6 +45,7 @@ from tenant_account.models import OrganizationMember as OrganizationMember
 from tenant_account.organization_member_service import OrganizationMemberService
 from utils.cache_service import CacheService
 from utils.local_context import StateStore
+from utils.user_session import UserSessionUtils
 
 Logger = logging.getLogger(__name__)
 
@@ -94,54 +91,13 @@ class AuthenticationController:
         Returns:
             Any: Redirect response
         """
-
-        callback_data: CallbackData = self.auth_service.get_callback_data(
-            request=request
-        )
-        user: User = self.get_or_create_user_by_email(request, callback_data)
         try:
-            member = self.auth_service.handle_invited_user_while_callback(
-                request=request, user=user
+            return self.auth_service.handle_authorization_callback(
+                request=request, backend=backend
             )
-
         except Exception as ex:
-            """Error code reference
-            frontend/src/components/error/GenericError/GenericError.jsx."""
-            if ex.code == AuthorizationErrorCode.IDM:  # type: ignore
-                query_params = {"code": AuthorizationErrorCode.IDM}
-                return redirect(
-                    f"{settings.ERROR_URL}?{urlencode(query_params)}"
-                )
-            elif ex.code == AuthorizationErrorCode.UMM:  # type: ignore
-                query_params = {"code": AuthorizationErrorCode.UMM}
-                return redirect(
-                    f"{settings.ERROR_URL}?{urlencode(query_params)}"
-                )
-
+            Logger.error(f"Error while handling authorization callback: {ex}")
             return redirect(f"{settings.ERROR_URL}")
-
-        if member.organization_id and member.role and len(member.role) > 0:
-            organization: Optional[Organization] = (
-                OrganizationService.get_organization_by_org_id(
-                    member.organization_id
-                )
-            )
-            if organization:
-                try:
-                    self.create_tenant_user(
-                        organization=organization, user=user
-                    )
-                except UndefinedTable:
-                    pass
-
-        response = self.auth_service.handle_authorization_callback(
-            user=user,
-            data=callback_data,
-            redirect_url=request.GET.get("redirect_url"),
-        )
-        django_login(request, user, backend)
-
-        return response
 
     def user_organizations(self, request: Request) -> Any:
         """List a user's organizations.
@@ -241,13 +197,7 @@ class AuthenticationController:
                     ),
                 },
             )
-            # Update user session data in redis
-            user_session_info: dict[str, Any] = (
-                CacheService.get_user_session_info(user.email)
-            )
-            user_session_info["current_org"] = organization_id
-            CacheService.set_user_session_info(user_session_info)
-            response.set_cookie(Cookie.ORG_ID, organization_id)
+            UserSessionUtils.set_organization_id(request, organization_id)
             return response
         return Response(status=status.HTTP_403_FORBIDDEN)
 
@@ -267,11 +217,9 @@ class AuthenticationController:
         return self.auth_service.is_admin_by_role(role=role)
 
     def get_organization_info(self, org_id: str) -> Optional[Organization]:
-        organization = self.auth_service.get_organization_info(org_id)
-        if not organization:
-            organization = OrganizationService.get_organization_by_org_id(
-                org_id=org_id
-            )
+        organization = OrganizationService.get_organization_by_org_id(
+            org_id=org_id
+        )
         return organization
 
     def make_organization_and_add_member(
@@ -459,8 +407,8 @@ class AuthenticationController:
         self, organization: Organization, user: User
     ) -> None:
         with tenant_context(organization):
-            existing_tenant_user = (
-                self.organization_member_service.get_user_by_id(id=user.id)
+            existing_tenant_user = OrganizationMemberService.get_user_by_id(
+                id=user.id
             )
             if existing_tenant_user:
                 Logger.info(f"{existing_tenant_user.user.email} Already exist")
@@ -480,17 +428,6 @@ class AuthenticationController:
                     tenant_user.save()
                 else:
                     raise UserNotExistError()
-
-    def get_or_create_user_by_email(
-        self, request: Request, callback_data: CallbackData
-    ) -> Union[User, OrganizationMember]:
-        email = callback_data.email
-        user_service = UserService()
-        user = user_service.get_user_by_email(email)
-        if not user:
-            user_id = callback_data.user_id
-            user = user_service.create_user(email, user_id)
-        return user
 
     def get_or_create_user(
         self, user: User
