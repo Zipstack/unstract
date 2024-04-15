@@ -14,7 +14,6 @@ from account.serializer import (
     OrganizationSignupSerializer,
     UserSessionResponseSerializer,
 )
-from django.views.decorators.http import require_GET
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
@@ -104,7 +103,7 @@ def set_organization(request: Request, id: str) -> Response:
     return auth_controller.set_user_organization(request, id)
 
 
-@require_GET
+@api_view(["GET"])
 def get_session_data(request: Request) -> Response:
     try:
         response = make_session_response(request)
