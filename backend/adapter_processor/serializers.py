@@ -94,7 +94,7 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
         return rep
 
 
-class AdapterInfoSerilazier(BaseAdapterSerializer):
+class AdapterInfoSerializer(BaseAdapterSerializer):
 
     context_window_size = serializers.SerializerMethodField()
 
@@ -117,12 +117,12 @@ class AdapterInfoSerilazier(BaseAdapterSerializer):
         adapter_metadata = json.loads(
             f.decrypt(bytes(obj.adapter_metadata_b).decode("utf-8"))
         )
+        # Get the adapter_instance
         adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
             obj.adapter_id
         )
         adapter_instance = adapter_class(adapter_metadata)
-        # If adapter_instance is a LLM send
-        # additional parameter of context_window
+
         if isinstance(adapter_instance, LLMAdapter):
 
             return adapter_instance.get_context_window_size()

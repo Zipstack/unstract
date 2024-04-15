@@ -12,7 +12,7 @@ from adapter_processor.exceptions import (
     UniqueConstraintViolation,
 )
 from adapter_processor.serializers import (
-    AdapterInfoSerilazier,
+    AdapterInfoSerializer,
     AdapterInstanceSerializer,
     AdapterListSerializer,
     DefaultAdapterSerializer,
@@ -310,6 +310,6 @@ class AdapterInstanceViewSet(ModelViewSet):
             self.get_object()
         )  # Assuming you have a get_object method in your viewset
 
-        serialized_instances = AdapterInfoSerilazier(adapter).data
+        serialized_instances = AdapterInfoSerializer(adapter).data
 
         return Response(serialized_instances)
