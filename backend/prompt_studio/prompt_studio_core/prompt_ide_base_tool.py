@@ -1,16 +1,12 @@
 import os
 
-from platform_settings.platform_auth_service import (
-    PlatformAuthenticationService,
-)
+from platform_settings.platform_auth_service import PlatformAuthenticationService
 from prompt_studio.prompt_studio_core.constants import LogLevel, ToolStudioKeys
 from unstract.sdk.tool.stream import StreamMixin
 
 
 class PromptIdeBaseTool(StreamMixin):
-    def __init__(
-        self, log_level: LogLevel = LogLevel.INFO, org_id: str = ""
-    ) -> None:
+    def __init__(self, log_level: LogLevel = LogLevel.INFO, org_id: str = "") -> None:
         """
         Args:
             tool (UnstractAbstractTool): Instance of UnstractAbstractTool
@@ -34,17 +30,13 @@ class PromptIdeBaseTool(StreamMixin):
         """
         # HACK: Adding platform key for multitenancy
         if env_key == ToolStudioKeys.PLATFORM_SERVICE_API_KEY:
-            platform_key = (
-                PlatformAuthenticationService.get_active_platform_key(
-                    self.org_id
-                )
+            platform_key = PlatformAuthenticationService.get_active_platform_key(
+                self.org_id
             )
             key: str = str(platform_key.key)
             return key
         else:
             env_value = os.environ.get(env_key)
             if env_value is None or env_value == "":
-                self.stream_error_and_exit(
-                    f"Env variable {env_key} is required"
-                )
+                self.stream_error_and_exit(f"Env variable {env_key} is required")
             return env_value  # type:ignore

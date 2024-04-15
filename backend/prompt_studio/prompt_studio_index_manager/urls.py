@@ -3,9 +3,7 @@ from rest_framework.urlpatterns import format_suffix_patterns
 
 from .views import IndexManagerView
 
-prompt_studio_index_list = IndexManagerView.as_view(
-    {"get": "list", "post": "create"}
-)
+prompt_studio_index_list = IndexManagerView.as_view({"get": "list", "post": "create"})
 
 prompt_studio_index_detail = IndexManagerView.as_view(
     {

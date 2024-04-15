@@ -57,10 +57,7 @@ class ConnectorAuth(AbstractUserSocialAuth):
 
     def set_extra_data(self, extra_data=None):  # type: ignore
         ConnectorAuth.check_credential_format(extra_data)
-        if (
-            extra_data[SocialAuthConstants.PROVIDER]
-            == SocialAuthConstants.GOOGLE_OAUTH
-        ):
+        if extra_data[SocialAuthConstants.PROVIDER] == SocialAuthConstants.GOOGLE_OAUTH:
             extra_data = GoogleAuthHelper.enrich_connector_metadata(extra_data)
         return super().set_extra_data(extra_data)
 
@@ -73,17 +70,13 @@ class ConnectorAuth(AbstractUserSocialAuth):
         backend = self.get_backend_instance(strategy)
         if token and backend and hasattr(backend, "refresh_token"):
             response = backend.refresh_token(token, *args, **kwargs)
-            extra_data = backend.extra_data(
-                self, self.uid, response, self.extra_data
-            )
+            extra_data = backend.extra_data(self, self.uid, response, self.extra_data)
             extra_data[SocialAuthConstants.PROVIDER] = backend.name
             extra_data[SocialAuthConstants.UID] = self.uid
             if self.set_extra_data(extra_data):  # type: ignore
                 self.save()
 
-    def get_and_refresh_tokens(
-        self, request: Request = None
-    ) -> tuple[JSONField, bool]:
+    def get_and_refresh_tokens(self, request: Request = None) -> tuple[JSONField, bool]:
         """Uses Social Auth's ability to refresh tokens if necessary.
 
         Returns:

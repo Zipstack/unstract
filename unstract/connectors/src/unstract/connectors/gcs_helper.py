@@ -31,10 +31,8 @@ class GCSHelper:
                 "GOOGLE_PROJECT_ID environment variable not set"
             )
 
-        self.google_credentials = (
-            service_account.Credentials.from_service_account_info(
-                json.loads(self.google_service_json)
-            )
+        self.google_credentials = service_account.Credentials.from_service_account_info(
+            json.loads(self.google_service_json)
         )
 
     def get_google_credentials(self) -> Credentials:
@@ -60,30 +58,22 @@ class GCSHelper:
             md5_hash_bytes = base64.b64decode(blob.md5_hash)
             md5_hash_hex = md5_hash_bytes.hex()
         except Exception:
-            logger.error(
-                f"Could not get blob {object_name} from bucket {bucket_name}"
-            )
+            logger.error(f"Could not get blob {object_name} from bucket {bucket_name}")
         return md5_hash_hex
 
-    def upload_file(
-        self, bucket_name: str, object_name: str, file_path: str
-    ) -> None:
+    def upload_file(self, bucket_name: str, object_name: str, file_path: str) -> None:
         client = Client(credentials=self.google_credentials)
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(object_name)
         blob.upload_from_filename(file_path)
 
-    def upload_text(
-        self, bucket_name: str, object_name: str, text: str
-    ) -> None:
+    def upload_text(self, bucket_name: str, object_name: str, text: str) -> None:
         client = Client(credentials=self.google_credentials)
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(object_name)
         blob.upload_from_string(text)
 
-    def upload_object(
-        self, bucket_name: str, object_name: str, object: Any
-    ) -> None:
+    def upload_object(self, bucket_name: str, object_name: str, object: Any) -> None:
         client = Client(credentials=self.google_credentials)
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(object_name)
@@ -101,6 +91,4 @@ class GCSHelper:
             logger.info(f"Reading file {object_name} from bucket {bucket_name}")
             return obj
         except Exception:
-            logger.error(
-                f"Could not get blob {object_name} from bucket {bucket_name}"
-            )
+            logger.error(f"Could not get blob {object_name} from bucket {bucket_name}")

@@ -8,12 +8,8 @@ from pydrive2.auth import GoogleAuth
 from pydrive2.fs import GDriveFileSystem
 
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.google_drive.constants import (
-    GDriveConstants,
-)
-from unstract.connectors.filesystems.unstract_file_system import (
-    UnstractFileSystem,
-)
+from unstract.connectors.filesystems.google_drive.constants import GDriveConstants
+from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.connectors.gcs_helper import GCSHelper
 
 logger = logging.getLogger(__name__)
@@ -39,9 +35,7 @@ class GoogleDriveFS(UnstractFileSystem):
             "invalid": False,
             "access_token": settings["access_token"],
             "refresh_token": settings["refresh_token"],
-            GDriveConstants.TOKEN_EXPIRY: settings[
-                GDriveConstants.TOKEN_EXPIRY
-            ],
+            GDriveConstants.TOKEN_EXPIRY: settings[GDriveConstants.TOKEN_EXPIRY],
         }
         gauth = GoogleAuth(
             settings_file=f"{os.path.dirname(__file__)}/static/settings.yaml",
