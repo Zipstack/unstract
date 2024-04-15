@@ -24,9 +24,7 @@ class Migration(migrations.Migration):
 
             if hasattr(obj, "connector_metadata"):
                 json_string: str = json.dumps(obj.connector_metadata)
-                obj.connector_metadata_b = f.encrypt(
-                    json_string.encode("utf-8")
-                )
+                obj.connector_metadata_b = f.encrypt(json_string.encode("utf-8"))
                 obj.save()
 
     operations = [

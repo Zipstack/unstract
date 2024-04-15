@@ -51,14 +51,14 @@ hook-check-django-migrations = [
 ]
 
 [tool.black]
-line-length = 80
+line-length = 88
 target-version = ['py39']
 
 [tool.pycln]
 all = true
 
 [tool.isort]
-line_length = 80
+line_length = 88
 multi_line_output = 3
 include_trailing_comma = true
 force_grid_wrap = 0

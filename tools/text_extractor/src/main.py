@@ -58,20 +58,14 @@ class TextExtractor(BaseTool):
         text_extraction_adapter = tool_extraction.get_x2text(
             adapter_instance_id=text_extraction_adapter_id
         )
-        self.stream_log(
-            "Text extraction adapter has been created successfully."
-        )
-        extracted_text = text_extraction_adapter.process(
-            input_file_path=input_file
-        )
+        self.stream_log("Text extraction adapter has been created successfully.")
+        extracted_text = text_extraction_adapter.process(input_file_path=input_file)
         extracted_text = self.convert_to_actual_string(extracted_text)
 
         self.stream_log("Text has been extracted successfully.")
 
         first_5_lines = "\n\n".join(extracted_text.split("\n")[:5])
-        output_log = (
-            f"### Text\n\n```text\n{first_5_lines}\n```\n\n...(truncated)"
-        )
+        output_log = f"### Text\n\n```text\n{first_5_lines}\n```\n\n...(truncated)"
         self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
 
         try:
@@ -87,9 +81,7 @@ class TextExtractor(BaseTool):
                     "Error creating/writing output file: source_name not found"
                 )
         except Exception as e:
-            self.stream_error_and_exit(
-                f"Error creating/writing output file: {e}"
-            )
+            self.stream_error_and_exit(f"Error creating/writing output file: {e}")
         self.write_tool_result(data=extracted_text)
 
     def convert_to_actual_string(self, text: Any) -> str:

@@ -7,7 +7,5 @@ import feature_flag.views as views
 from django.urls import path
 
 urlpatterns = [
-    path(
-        "evaluate/", views.evaluate_feature_flag, name="evaluate_feature_flag"
-    ),
+    path("evaluate/", views.evaluate_feature_flag, name="evaluate_feature_flag"),
 ]

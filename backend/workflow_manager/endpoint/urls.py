@@ -14,9 +14,7 @@ endpoint_settings_detail = WorkflowEndpointViewSet.as_view(
 
 urlpatterns = [
     path("", endpoint_list, name="endpoint-list"),
-    path(
-        "<str:pk>/", workflow_endpoint_detail, name="workflow-endpoint-detail"
-    ),
+    path("<str:pk>/", workflow_endpoint_detail, name="workflow-endpoint-detail"),
     path(
         "<str:pk>/settings/",
         endpoint_settings_detail,

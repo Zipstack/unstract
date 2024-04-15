@@ -82,14 +82,12 @@ class ExceptionLoggingMiddleware:
             exception (Exception): Exception that was raised to be logged
         """
         if hasattr(response, "status_code") and response.status_code >= 500:
-            message = (
-                "{method} {url} {status}\n\n{error}\n\n````{tb}````".format(
-                    method=request.method,
-                    url=request.build_absolute_uri(),
-                    status=response.status_code,
-                    error=repr(exception),
-                    tb=traceback.format_exc(),
-                )
+            message = "{method} {url} {status}\n\n{error}\n\n````{tb}````".format(
+                method=request.method,
+                url=request.build_absolute_uri(),
+                status=response.status_code,
+                error=repr(exception),
+                tb=traceback.format_exc(),
             )
         else:
             message = "{method} {url} {status} {error}".format(
