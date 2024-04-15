@@ -71,8 +71,9 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |<img src="docs/assets/3rd_party/palm.png" width="32"/>| Google PaLM | ✅ Working  |
 |<img src="docs/assets/3rd_party/anyscale.png" width="32"/>| Anyscale | ✅ Working |
 |<img src="docs/assets/3rd_party/mistral_ai.png" width="32"/>| Mistral AI | ✅ Working |
+|<img src="docs/assets/3rd_party/anthropic.png" width="32"/>| Anthropic | ✅ Working |
 |<img src="docs/assets/3rd_party/replicate.png" width="32"/>| Replicate | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/anthropic.png" width="32"/>| Anthropic | 🗓️ Coming soon! |
+
 
 ### Vector Databases
 
@@ -80,9 +81,10 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |---|---|---|
 |<img src="docs/assets/3rd_party/qdrant.png" width="32"/>| Qdrant | ✅ Working |
 |<img src="docs/assets/3rd_party/weaviate.png" width="32"/>| Weaviate | ✅ Working |
+|<img src="docs/assets/3rd_party/pinecone.png" width="32"/>| Pinecone | ✅ Working |
 |<img src="docs/assets/3rd_party/milvus.png" width="32"/>| Milvus | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/pinecone.png" width="32"/>| Pinecone | 🗓️ Coming soon! |
+
 
 ### Embeddings
 
