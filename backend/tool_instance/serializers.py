@@ -2,15 +2,8 @@ import logging
 import uuid
 from typing import Any
 
-from prompt_studio.prompt_studio_registry.constants import (
-    PromptStudioRegistryKeys,
-)
-from rest_framework.serializers import (
-    ListField,
-    Serializer,
-    UUIDField,
-    ValidationError,
-)
+from prompt_studio.prompt_studio_registry.constants import PromptStudioRegistryKeys
+from rest_framework.serializers import ListField, Serializer, UUIDField, ValidationError
 from tool_instance.constants import ToolInstanceKey as TIKey
 from tool_instance.constants import ToolKey
 from tool_instance.exceptions import ToolDoesNotExist
@@ -72,9 +65,7 @@ class ToolInstanceSerializer(AuditSerializer):
         try:
             workflow = Workflow.objects.get(pk=workflow_id)
         except Workflow.DoesNotExist:
-            raise ValidationError(
-                f"Workflow with ID {workflow_id} does not exist."
-            )
+            raise ValidationError(f"Workflow with ID {workflow_id} does not exist.")
         validated_data[TIKey.WORKFLOW] = workflow
 
         tool_uid = validated_data.get(TIKey.TOOL_ID)
@@ -113,9 +104,7 @@ class ToolInstanceReorderSerializer(Serializer):
         try:
             workflow = Workflow.objects.get(pk=workflow_id)
         except Workflow.DoesNotExist:
-            raise ValidationError(
-                f"Workflow with ID {workflow_id} does not exist."
-            )
+            raise ValidationError(f"Workflow with ID {workflow_id} does not exist.")
 
         # Check if the number of tool instances matches the actual count
         tool_instance_count = workflow.workflow_tool.count()
@@ -128,9 +117,7 @@ class ToolInstanceReorderSerializer(Serializer):
             raise ValidationError(detail=msg)
 
         # Check if each tool instance exists in the workflow
-        existing_tool_instance_ids = workflow.workflow_tool.values_list(
-            "id", flat=True
-        )
+        existing_tool_instance_ids = workflow.workflow_tool.values_list("id", flat=True)
         for tool_instance_id in tool_instances:
             if tool_instance_id not in existing_tool_instance_ids:
                 raise ValidationError(

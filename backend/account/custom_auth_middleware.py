@@ -15,9 +15,7 @@ class CustomAuthMiddleware:
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
         # Returns result without authenticated if added in whitelisted paths
-        if any(
-            request.path.startswith(path) for path in settings.WHITELISTED_PATHS
-        ):
+        if any(request.path.startswith(path) for path in settings.WHITELISTED_PATHS):
             return self.get_response(request)
 
         # Authenticating With API_KEY

@@ -79,9 +79,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         try:
             # z_code = request.COOKIES.get(Cookie.Z_CODE)
             user_info = auth_controller.get_user_info(request)
-            role = auth_controller.get_organization_members_by_user(
-                request.user
-            )
+            role = auth_controller.get_organization_members_by_user(request.user)
             if not user_info:
                 return Response(
                     status=status.HTTP_404_NOT_FOUND,
@@ -115,9 +113,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             user_list=user_list,
         )
 
-        response_serializer = UserInviteResponseSerializer(
-            invite_response, many=True
-        )
+        response_serializer = UserInviteResponseSerializer(invite_response, many=True)
 
         if invite_response and len(invite_response) != 0:
             response = Response(
@@ -163,9 +159,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             members: list[OrganizationMember] = (
                 auth_controller.get_organization_members_by_org_id()
             )
-            serialized_members = OrganizationMemberSerializer(
-                members, many=True
-            ).data
+            serialized_members = OrganizationMemberSerializer(members, many=True).data
             return Response(
                 status=status.HTTP_200_OK,
                 data={"message": "success", "members": serialized_members},

@@ -106,9 +106,7 @@ class ConnectorInstanceHelper:
         if connector_name is not None:
             filter_params["connector_name"] = connector_name
 
-        connector_instances = ConnectorInstance.objects.filter(
-            **filter_params
-        ).all()
+        connector_instances = ConnectorInstance.objects.filter(**filter_params).all()
         logger.info(f"Retrived connector instance values {connector_instances}")
         if values is not None:
             filtered_connector_instances = connector_instances.values(*values)
@@ -153,13 +151,11 @@ class ConnectorInstanceHelper:
             filter_params["connector_name"] = connector_name
 
         try:
-            connector_instance: ConnectorInstance = (
-                ConnectorInstance.objects.filter(**filter_params).first()
-            )
+            connector_instance: ConnectorInstance = ConnectorInstance.objects.filter(
+                **filter_params
+            ).first()
         except Exception as exc:
-            logger.error(
-                f"Error occured while fetching connector instances {exc}"
-            )
+            logger.error(f"Error occured while fetching connector instances {exc}")
             raise exc
 
         return connector_instance
@@ -331,8 +327,6 @@ class ConnectorInstanceHelper:
         filter_params: dict[str, Any] = {
             "workflow": workflow_id,
         }
-        connector_instances = ConnectorInstance.objects.filter(
-            **filter_params
-        ).all()
+        connector_instances = ConnectorInstance.objects.filter(**filter_params).all()
         logger.info(f"Retrived connector instance values {connector_instances}")
         return list(connector_instances)

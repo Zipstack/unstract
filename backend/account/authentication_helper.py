@@ -4,9 +4,7 @@ from typing import Any, Optional, Union
 from account.dto import MemberData
 from account.models import Organization, User
 from account.user import UserService
-from platform_settings.platform_auth_service import (
-    PlatformAuthenticationService,
-)
+from platform_settings.platform_auth_service import PlatformAuthenticationService
 from tenant_account.models import OrganizationMember
 
 logger = logging.getLogger(__name__)

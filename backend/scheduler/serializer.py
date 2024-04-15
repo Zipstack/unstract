@@ -25,9 +25,7 @@ class JobKwargsSerializer(serializers.Serializer):
 
 class SchedulerKwargsSerializer(serializers.Serializer):
     coalesce = serializers.BooleanField()
-    misfire_grace_time = serializers.IntegerField(
-        allow_null=True, required=False
-    )
+    misfire_grace_time = serializers.IntegerField(allow_null=True, required=False)
     max_instances = serializers.IntegerField()
     replace_existing = serializers.BooleanField()
 

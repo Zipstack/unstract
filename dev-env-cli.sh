@@ -259,7 +259,7 @@ install_pre_commit_hook() {
   pushd ${script_dir} 1>/dev/null
 
   echo -e "Installing ""$blue_text""Git pre-commit hook""$default_text"
-  pdm venv create -w virtualenv --with-pip --force
+  pdm venv create -w virtualenv --with-pip $opt_force
   eval $(pdm venv activate in-project)
   pdm sync --dev -G lint -G hook-check-django-migrations
   pre-commit install

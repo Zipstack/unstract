@@ -76,14 +76,10 @@ class UnstractWorker:
         try:
             # Attempt to get the image information
             self.client.images.get(image_name_with_tag)
-            logger.info(
-                f"Image '{image_name_with_tag}' found in the local system."
-            )
+            logger.info(f"Image '{image_name_with_tag}' found in the local system.")
             return True
         except docker.errors.ImageNotFound:  # type: ignore[attr-defined]
-            logger.info(
-                f"Image '{image_name_with_tag}' not found in the local system."
-            )
+            logger.info(f"Image '{image_name_with_tag}' not found in the local system.")
             return False
         except docker.errors.APIError as e:  # type: ignore[attr-defined]
             logger.error(f"An API error occurred: {e}")
@@ -119,8 +115,7 @@ class UnstractWorker:
                 return log_dict
         except json.JSONDecodeError as e:
             logger.warn(
-                f"Received invalid JSON log message: {log_message} \n "
-                f"error: {e}"
+                f"Received invalid JSON log message: {log_message} \n " f"error: {e}"
             )
         return None
 
@@ -136,8 +131,7 @@ class UnstractWorker:
         log_type = self.get_log_type(log_dict)
         if not self.is_valid_log_type(log_type):
             logger.warning(
-                f"Received invalid logType: {log_type} with log message: "
-                f"{log_dict}"
+                f"Received invalid logType: {log_type} with log message: " f"{log_dict}"
             )
             return None
         if log_type == LogType.RESULT:
@@ -301,17 +295,13 @@ class UnstractWorker:
         self.envs = envs
         self.messaging_channel = messaging_channel
         self.container_name = (
-            self.normalize_container_name(self.image_name)
-            + "-"
-            + self.workflow_id
+            self.normalize_container_name(self.image_name) + "-" + self.workflow_id
         )
         container_config = self.get_container_run_config()
         # Add labels to container for logging with Loki.
         # This only required for observability.
         try:
-            labels = ast.literal_eval(
-                os.environ.get(Env.TOOL_CONTAINER_LABELS, "")
-            )
+            labels = ast.literal_eval(os.environ.get(Env.TOOL_CONTAINER_LABELS, ""))
             container_config["labels"] = labels
         except Exception as e:
             logger.info(f"Invalid labels for logging: {e}")
