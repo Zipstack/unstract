@@ -14,12 +14,12 @@ from account.serializer import (
     OrganizationSignupSerializer,
     UserSessionResponseSerializer,
 )
+from django.views.decorators.http import require_GET
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 from utils.user_session import UserSessionUtils
-from django.views.decorators.http import require_GET
 
 Logger = logging.getLogger(__name__)
 

@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional, Union
+from typing import Any, Union
 
 from account.dto import MemberData
 from account.models import Organization, User
