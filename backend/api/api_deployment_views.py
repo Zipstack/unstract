@@ -1,8 +1,11 @@
+import json
+import logging
 from typing import Any, Optional
 
 from api.deployment_helper import DeploymentHelper
-from api.exceptions import InvalidAPIRequest
-from api.models import APIDeployment
+from api.exceptions import InvalidAPIRequest, NoActiveAPIKeyError
+from api.models import APIDeployment, APIKey
+from api.postman_collection.models import PostmanCollection
 from api.serializers import (
     APIDeploymentListSerializer,
     APIDeploymentSerializer,
@@ -10,6 +13,7 @@ from api.serializers import (
     ExecutionRequestSerializer,
 )
 from django.db.models import QuerySet
+from django.http import HttpResponse
 from permissions.permission import IsOwner
 from rest_framework import serializers, status, views, viewsets
 from rest_framework.decorators import action
@@ -17,6 +21,8 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
 from workflow_manager.workflow.dto import ExecutionResponse
+
+logger = logging.getLogger(__name__)
 
 
 class DeploymentExecution(views.APIView):
@@ -105,9 +111,27 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
             headers=headers,
         )
 
+    @action(detail=True, methods=["get"])
+    def download_postman_collection(
+        self, request: Request, pk: Optional[str] = None
+    ) -> Response:
+        """Custom action to fetch a single instance."""
+        instance = self.get_object()
+        active_api_key = ""
+        try:
+            api_key_inst = instance.apikey_set.filter(is_active=True).first()
+            active_api_key = api_key_inst.api_key
+        except APIKey.DoesNotExist:
+            logger.error(f"No active API key set for deployment {instance.pk}")
+            raise NoActiveAPIKeyError(deployment_name=instance.display_name)
 
-def get_error_from_serializer(error_details: dict[str, Any]) -> Optional[str]:
-    error_key = next(iter(error_details))
-    # Get the first error message
-    error_message: str = f"{error_details[error_key][0]} : {error_key}"
-    return error_message
+        postman_collection = PostmanCollection.create(
+            instance=instance, api_key=active_api_key
+        )
+        response = HttpResponse(
+            json.dumps(postman_collection.to_dict()), content_type="application/json"
+        )
+        response["Content-Disposition"] = (
+            f'attachment; filename="{instance.display_name}.json"'
+        )
+        return response
