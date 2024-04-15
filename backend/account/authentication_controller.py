@@ -147,13 +147,13 @@ class AuthenticationController:
         except Exception as ex:
             #
             self.user_logout(request)
-            if (
-                hasattr(ex, "code")
-                and ex.code == AuthorizationErrorCode.USF  # type: ignore
-            ):
+            if hasattr(ex, "code") and ex.code in {
+                AuthorizationErrorCode.USF,
+                AuthorizationErrorCode.USR,
+            }:  # type: ignore
                 response = Response(
                     status=status.HTTP_412_PRECONDITION_FAILED,
-                    data={"domain": ex.data.get("domain")},  # type: ignore
+                    data={"domain": ex.data.get("domain"), "code": ex.code},
                 )
                 return response
         user: User = request.user
