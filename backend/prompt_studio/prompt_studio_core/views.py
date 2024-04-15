@@ -449,11 +449,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         return Response({"data": documents})
 
     @action(detail=True, methods=["delete"])
-    def delete_for_ide(self, request: HttpRequest, pk: Any = None) -> Response:
+    def delete_for_ide(self, request: HttpRequest, pk: uuid) -> Response:
         custom_tool = self.get_object()
-        serializer = FileInfoIdeSerializer(data=request.GET)
+        serializer = FileInfoIdeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        document_id: str = serializer.validated_data.get("document_id")
+        document_id: str = serializer.validated_data.get(
+            ToolStudioPromptKeys.DOCUMENT_ID
+        )
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         file_path = FileManagerHelper.handle_sub_directory_for_tenants(
