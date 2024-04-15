@@ -23,8 +23,7 @@ class IndexManagerView(viewsets.ModelViewSet):
             IndexManagerKeys.PROFILE_MANAGER,
             IndexManagerKeys.DOCUMENT_MANAGER,
         )
+        queryset = None
         if filter_args:
             queryset = IndexManager.objects.filter(**filter_args)
-        else:
-            queryset = IndexManager.objects.all()
         return queryset

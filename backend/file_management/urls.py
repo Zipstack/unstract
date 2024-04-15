@@ -45,20 +45,5 @@ urlpatterns = format_suffix_patterns(
         path("file/download", file_downlaod, name="download"),
         path("file/upload", file_upload, name="upload"),
         path("file/delete", file_delete, name="delete"),
-        path(
-            "prompt-studio/file/upload",
-            prompt_studio_file_upload,
-            name="prompt_studio_upload",
-        ),
-        path(
-            "prompt-studio/file/fetch_contents",
-            prompt_studio_fetch_content,
-            name="tool_studio_fetch",
-        ),
-        path(
-            "prompt-studio/file",
-            prompt_studio_file_list,
-            name="prompt_studio_list",
-        ),
     ]
 )

@@ -223,7 +223,10 @@ class PromptStudioHelper:
         else:
             default_profile = ProfileManager.get_default_llm_profile(tool)
             file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-                org_id, is_create=False, user_id=user_id, tool_id=tool_id
+                org_id,
+                is_create=False,
+                user_id=user_id,
+                tool_id=tool_id,
             )
             file_path = str(Path(file_path) / file_name)
 
@@ -415,6 +418,20 @@ class PromptStudioHelper:
                 )
             except PermissionError as e:
                 raise e
+            except AnswerFetchError as e:
+                error_message = str(e)
+                logger.error(
+                    "[%s] Error while fetching single pass response: %s",
+                    tool_id,
+                    error_message,
+                )
+                PromptStudioHelper._publish_log(
+                    {"tool_id": tool_id, "prompt_id": str(id)},
+                    LogLevels.ERROR,
+                    LogLevels.RUN,
+                    error_message,
+                )
+                raise
             except Exception as e:
                 logger.error(
                     f"[{tool.tool_id}] Error while fetching single pass response: {e}"  # noqa: E501
@@ -765,6 +782,7 @@ class PromptStudioHelper:
         answer = responder.single_pass_extraction(payload)
         # TODO: Make use of dataclasses
         if answer["status"] == "ERROR":
-            raise AnswerFetchError()
+            error_message = answer.get("error", None)
+            raise AnswerFetchError(error_message)
         output_response = json.loads(answer["structure_output"])
         return output_response

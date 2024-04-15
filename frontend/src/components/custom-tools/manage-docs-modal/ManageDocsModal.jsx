@@ -478,9 +478,17 @@ function ManageDocsModal({
   };
 
   const handleDelete = (docId) => {
+    const body = {
+      document_id: docId,
+    };
     const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/file/delete?document_id=${docId}&tool_id=${details?.tool_id}`,
+      method: "DELETE",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: body,
     };
 
     axiosPrivate(requestOptions)
@@ -489,6 +497,11 @@ function ManageDocsModal({
           (item) => item?.document_id !== docId
         );
         updateCustomTool({ listOfDocs: newListOfDocs });
+
+        if (newListOfDocs?.length === 1 && selectedDoc?.document_id !== docId) {
+          const doc = newListOfDocs[1];
+          handleDocChange(doc);
+        }
 
         if (docId === selectedDoc?.document_id) {
           updateCustomTool({ selectedDoc: "" });
@@ -520,7 +533,7 @@ function ManageDocsModal({
           <div>
             <Upload
               name="file"
-              action={`/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/upload?tool_id=${details?.tool_id}`}
+              action={`/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}`}
               headers={{
                 "X-CSRFToken": sessionDetails.csrfToken,
               }}

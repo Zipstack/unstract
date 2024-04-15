@@ -159,7 +159,7 @@ class AuthenticationController:
         except Exception as ex:
             #
             self.user_logout(request)
-            if ex.code in {AuthorizationErrorCode.USF, AuthorizationErrorCode.USR}:  # type: ignore
+            if hasattr(ex, "code") and ex.code in {AuthorizationErrorCode.USF, AuthorizationErrorCode.USR}:  # type: ignore
                 response = Response(
                     status=status.HTTP_412_PRECONDITION_FAILED,
                     data={"domain": ex.data.get("domain"), "code": ex.code},  # type: ignore
@@ -402,8 +402,10 @@ class AuthenticationController:
             is_removed = False
         if is_removed:
             OrganizationMember.objects.filter(user__in=ids_list).delete()
-            # removing adapter relations on user removal
+            # removing user m2m relations , while removing user
             for user_id in ids_list:
+                User.objects.get(pk=user_id).shared_exported_tools.clear()
+                User.objects.get(pk=user_id).shared_custom_tool.clear()
                 User.objects.get(pk=user_id).shared_adapters.clear()
         return is_removed
 

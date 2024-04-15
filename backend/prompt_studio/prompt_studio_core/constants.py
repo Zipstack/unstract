@@ -85,6 +85,12 @@ class ToolStudioPromptKeys:
     NOTES = "NOTES"
 
 
+class FileViewTypes:
+    ORIGINAL = "ORIGINAL"
+    EXTRACT = "EXTRACT"
+    SUMMARIZE = "SUMMARIZE"
+
+
 class LogLevels:
     INFO = "INFO"
     ERROR = "ERROR"
