@@ -21,6 +21,7 @@ adapter_detail = AdapterInstanceViewSet.as_view(
         "delete": "destroy",
     }
 )
+test_adapter = AdapterViewSet.as_view({"post": "test_adapter"})
 
 adapter_users = AdapterInstanceViewSet.as_view({"get": "list_of_shared_users"})
 urlpatterns = format_suffix_patterns(
@@ -36,5 +37,6 @@ urlpatterns = format_suffix_patterns(
             adapter_users,
             name="adapter-users",
         ),
+        path("adapter/test", test_adapter, name="test-adapter"),
     ]
 )

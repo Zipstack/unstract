@@ -17,6 +17,9 @@ from adapter_processor.serializers import (
     TestAdapterSerializer,
     UserDefaultAdapterSerializer,
 )
+from file_management.serializer import (
+    FileUploadSerializer,
+)
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest
@@ -126,6 +129,35 @@ class AdapterViewSet(GenericViewSet):
         except Exception as e:
             logger.error(f"Error testing adapter : {str(e)}")
             raise e
+        
+    def test_adapter(self, request: Request) -> Response:
+        """Tests the adapter with sample file."""
+        serializer = FileUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        id: str = serializer.validated_data.get("adapter_id")
+
+        path: str = serializer.validated_data.get("path")
+        uploaded_files: Any = serializer.validated_data.get("file")
+        print(uploaded_files)
+        print(path)
+        print(id)
+        # connector_instance: ConnectorInstance = ConnectorInstance.objects.get(
+        #     pk=id
+        # )
+        # file_system = FileManagerHelper.get_file_system(connector_instance)
+
+        # for uploaded_file in uploaded_files:
+        #     file_name = uploaded_file.name
+        #     logger.info(
+        #         f"Uploading file: {file_name}"
+        #         if file_name
+        #         else "Uploading file"
+        #     )
+        #     FileManagerHelper.upload_file(
+        #         file_system, path, uploaded_file, file_name
+        #     )
+        return Response({"message": "Files are uploaded successfully!"})
+
 
 
 class AdapterInstanceViewSet(ModelViewSet):

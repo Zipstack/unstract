@@ -1,4 +1,13 @@
-import { Avatar, Flex, Image, List, Popconfirm, Typography } from "antd";
+import {
+  Avatar,
+  Flex,
+  Image,
+  List,
+  Popconfirm,
+  Typography,
+  Tooltip,
+} from "antd";
+import { useState } from "react";
 import PropTypes from "prop-types";
 import "./ListView.css";
 import {
@@ -7,9 +16,11 @@ import {
   QuestionCircleOutlined,
   ShareAltOutlined,
   UserOutlined,
+  PlayCircleOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useSessionStore } from "../../../store/session-store";
+import { TestExtractor } from "../../test-extractor/TestExtractor.jsx";
 
 function ListView({
   listOfTools,
@@ -27,14 +38,18 @@ function ListView({
 }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
+  const [open, setOpen] = useState(false);
   const handleDeleteClick = (event, tool) => {
     event.stopPropagation(); // Stop propagation to prevent list item click
     handleDelete(event, tool);
   };
-
   const handleShareClick = (event, tool, isEdit) => {
     event.stopPropagation(); // Stop propagation to prevent list item click
     handleShare(event, tool, isEdit);
+  };
+  const testExtractor = (event) => {
+    event.stopPropagation(); // Stop propagation to prevent list item click
+    setOpen(true);
   };
 
   const renderTitle = (item) => {
@@ -98,6 +113,11 @@ function ListView({
           onClick={(event) => event.stopPropagation()}
           role="none"
         >
+          <Tooltip title="Test">
+            <PlayCircleOutlined
+              onClick={(event) => testExtractor(event, item)}
+            />
+          </Tooltip>
           <EditOutlined
             key={`${item.id}-edit`}
             onClick={(event) => handleEdit(event, item)}
@@ -131,40 +151,43 @@ function ListView({
   };
 
   return (
-    <List
-      size="large"
-      dataSource={listOfTools}
-      style={{ marginInline: "4px" }}
-      pagination={{
-        position: "bottom",
-        align: "end",
-        size: "small",
-      }}
-      className="list-view-wrapper"
-      renderItem={(item) => {
-        return (
-          <List.Item
-            key={item?.id}
-            onClick={(event) => {
-              isClickable
-                ? navigate(`${item[idProp]}`)
-                : handleShareClick(event, item, false);
-            }}
-            className={`cur-pointer ${centered ? "centered" : ""}`}
-          >
-            <List.Item.Meta
-              className="list-item-desc"
-              title={renderTitle(item)}
-              description={
-                <Typography.Text type="secondary" ellipsis>
-                  {item[descriptionProp]}
-                </Typography.Text>
-              }
-            ></List.Item.Meta>
-          </List.Item>
-        );
-      }}
-    />
+    <>
+      <List
+        size="large"
+        dataSource={listOfTools}
+        style={{ marginInline: "4px" }}
+        pagination={{
+          position: "bottom",
+          align: "end",
+          size: "small",
+        }}
+        className="list-view-wrapper"
+        renderItem={(item) => {
+          return (
+            <List.Item
+              key={item?.id}
+              onClick={(event) => {
+                isClickable
+                  ? navigate(`${item[idProp]}`)
+                  : handleShareClick(event, item, false);
+              }}
+              className={`cur-pointer ${centered ? "centered" : ""}`}
+            >
+              <List.Item.Meta
+                className="list-item-desc"
+                title={renderTitle(item)}
+                description={
+                  <Typography.Text type="secondary" ellipsis>
+                    {item[descriptionProp]}
+                  </Typography.Text>
+                }
+              ></List.Item.Meta>
+            </List.Item>
+          );
+        }}
+      />
+      <TestExtractor open={open} setOpen={setOpen} />
+    </>
   );
 }
 
