@@ -8,7 +8,5 @@ class UserSessionUtils:
         return request.session.get("organization", Common.PUBLIC_SCHEMA_NAME)
 
     @staticmethod
-    def set_organization_id(
-        request: HttpRequest, organization_id: str
-    ) -> None:
+    def set_organization_id(request: HttpRequest, organization_id: str) -> None:
         request.session["organization"] = organization_id
