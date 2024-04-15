@@ -1,8 +1,6 @@
 import unittest
 
-from unstract.connectors.filesystems.google_drive.google_drive import (
-    GoogleDriveFS,
-)
+from unstract.connectors.filesystems.google_drive.google_drive import GoogleDriveFS
 
 
 class TestGoogleDriveFS(unittest.TestCase):

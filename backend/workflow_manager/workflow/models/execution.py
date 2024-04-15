@@ -52,18 +52,14 @@ class WorkflowExecution(BaseModel):
     execution_log_id = models.CharField(
         default="", editable=False, db_comment="Execution log events Id"
     )
-    status = models.CharField(
-        default="", db_comment="Current status of execution"
-    )
+    status = models.CharField(default="", db_comment="Current status of execution")
     error_message = models.CharField(
         max_length=EXECUTION_ERROR_LENGTH,
         blank=True,
         default="",
         db_comment="Details of encountered errors",
     )
-    attempts = models.IntegerField(
-        default=0, db_comment="number of attempts taken"
-    )
+    attempts = models.IntegerField(default=0, db_comment="number of attempts taken")
     execution_time = models.FloatField(
         default=0, db_comment="execution time in seconds"
     )

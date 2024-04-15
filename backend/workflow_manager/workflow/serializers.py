@@ -14,10 +14,7 @@ from rest_framework.serializers import (
 from tool_instance.serializers import ToolInstanceSerializer
 from tool_instance.tool_instance_helper import ToolInstanceHelper
 from workflow_manager.endpoint.models import WorkflowEndpoint
-from workflow_manager.workflow.constants import (
-    WorkflowExecutionKey,
-    WorkflowKey,
-)
+from workflow_manager.workflow.constants import WorkflowExecutionKey, WorkflowKey
 from workflow_manager.workflow.exceptions import WorkflowGenerationError
 from workflow_manager.workflow.generator import WorkflowGenerator
 from workflow_manager.workflow.models.workflow import Workflow
