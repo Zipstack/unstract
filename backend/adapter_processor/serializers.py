@@ -8,9 +8,7 @@ from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
-from unstract.adapters.adapterkit import Adapterkit
 from unstract.adapters.constants import Common as common
-from unstract.adapters.llm.llm_adapter import LLMAdapter
 
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
@@ -65,26 +63,13 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
     def to_representation(self, instance: AdapterInstance) -> dict[str, str]:
         rep: dict[str, str] = super().to_representation(instance)
 
-        encryption_secret: str = settings.ENCRYPTION_KEY
-        f: Fernet = Fernet(encryption_secret.encode("utf-8"))
-
         rep.pop(AdapterKeys.ADAPTER_METADATA_B)
-        adapter_metadata = json.loads(
-            f.decrypt(bytes(instance.adapter_metadata_b).decode("utf-8"))
-        )
-        # Get the adapter_instance
-        adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
-            instance.adapter_id
-        )
-        adapter_instance = adapter_class(adapter_metadata)
-        # If adapter_instance is a LLM send
-        # additional parameter of context_window
-        if isinstance(adapter_instance, LLMAdapter):
-            adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
-                adapter_instance.get_context_window_size()
-            )
 
+        adapter_metadata = instance.get_adapter_meta_data()
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
+        adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
+            instance.get_context_window_size()
+        )
 
         rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
             instance.adapter_id, common.ICON
@@ -109,23 +94,8 @@ class AdapterInfoSerializer(BaseAdapterSerializer):
             "context_window_size",
         )  # type: ignore
 
-    def get_context_window_size(self, obj: AdapterInstance) -> Any:
-
-        encryption_secret: str = settings.ENCRYPTION_KEY
-        f: Fernet = Fernet(encryption_secret.encode("utf-8"))
-
-        adapter_metadata = json.loads(
-            f.decrypt(bytes(obj.adapter_metadata_b).decode("utf-8"))
-        )
-        # Get the adapter_instance
-        adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
-            obj.adapter_id
-        )
-        adapter_instance = adapter_class(adapter_metadata)
-
-        if isinstance(adapter_instance, LLMAdapter):
-
-            return adapter_instance.get_context_window_size()
+    def get_context_window_size(self, obj: AdapterInstance) -> int:
+        return obj.get_context_window_size()
 
 
 class AdapterListSerializer(BaseAdapterSerializer):
