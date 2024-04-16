@@ -3,9 +3,7 @@ from rest_framework.urlpatterns import format_suffix_patterns
 
 from .views import PromptStudioCoreView
 
-prompt_studio_list = PromptStudioCoreView.as_view(
-    {"get": "list", "post": "create"}
-)
+prompt_studio_list = PromptStudioCoreView.as_view({"get": "list", "post": "create"})
 prompt_studio_detail = PromptStudioCoreView.as_view(
     {
         "get": "retrieve",
@@ -14,9 +12,7 @@ prompt_studio_detail = PromptStudioCoreView.as_view(
         "delete": "destroy",
     }
 )
-prompt_studio_choices = PromptStudioCoreView.as_view(
-    {"get": "get_select_choices"}
-)
+prompt_studio_choices = PromptStudioCoreView.as_view({"get": "get_select_choices"})
 prompt_studio_profiles = PromptStudioCoreView.as_view(
     {"get": "list_profiles", "patch": "make_profile_default"}
 )
@@ -27,21 +23,15 @@ prompt_studio_profilemanager = PromptStudioCoreView.as_view(
     {"post": "create_profile_manager"}
 )
 
-prompt_studio_prompt_index = PromptStudioCoreView.as_view(
-    {"post": "index_document"}
-)
-prompt_studio_prompt_response = PromptStudioCoreView.as_view(
-    {"post": "fetch_response"}
-)
+prompt_studio_prompt_index = PromptStudioCoreView.as_view({"post": "index_document"})
+prompt_studio_prompt_response = PromptStudioCoreView.as_view({"post": "fetch_response"})
 prompt_studio_adapter_choices = PromptStudioCoreView.as_view(
     {"get": "get_adapter_choices"}
 )
 prompt_studio_single_pass_extraction = PromptStudioCoreView.as_view(
     {"post": "single_pass_extraction"}
 )
-prompt_studio_users = PromptStudioCoreView.as_view(
-    {"get": "list_of_shared_users"}
-)
+prompt_studio_users = PromptStudioCoreView.as_view({"get": "list_of_shared_users"})
 
 
 prompt_studio_file = PromptStudioCoreView.as_view(
@@ -101,7 +91,7 @@ urlpatterns = format_suffix_patterns(
             name="prompt-studio-adapter-choices",
         ),
         path(
-            "prompt-studio/single-pass-extraction",
+            "prompt-studio/single-pass-extraction/<uuid:pk>",
             prompt_studio_single_pass_extraction,
             name="prompt-studio-single-pass-extraction",
         ),

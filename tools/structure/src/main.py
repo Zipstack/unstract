@@ -34,18 +34,12 @@ class StructureTool(BaseTool):
                 tool=self, prompt_registry_id=prompt_registry_id
             )
             tool_metadata = exported_tool[SettingsKeys.TOOL_METADATA]
-            self.stream_log(
-                f"Tool Metadata retrived succesfully: {tool_metadata}"
-            )
+            self.stream_log(f"Tool Metadata retrived succesfully: {tool_metadata}")
         except Exception as e:
-            self.stream_error_and_exit(
-                f"Error loading structure definition: {e}"
-            )
+            self.stream_error_and_exit(f"Error loading structure definition: {e}")
 
         # Update GUI
-        input_log = (
-            f"### Structure Definition:\n```json\n{tool_metadata}\n```\n\n"
-        )
+        input_log = f"### Structure Definition:\n```json\n{tool_metadata}\n```\n\n"
         output_log = "### Indexing..."
         self.stream_update(input_log, state=LogState.INPUT_UPDATE)
         self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
@@ -94,9 +88,7 @@ class StructureTool(BaseTool):
             f"### Structure Definition:\n"
             f"```json\n{json.dumps(tool_metadata, indent=2)}\n```\n\n"
         )
-        output_log = (
-            f"### Parsed output:\n```json\n{structured_output}\n```\n\n"
-        )
+        output_log = f"### Parsed output:\n```json\n{structured_output}\n```\n\n"
         self.stream_update(input_log, state=LogState.INPUT_UPDATE)
         self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
 

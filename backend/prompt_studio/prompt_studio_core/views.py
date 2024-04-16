@@ -1,4 +1,5 @@
 import logging
+import uuid
 from typing import Any, Optional
 
 from account.custom_exceptions import DuplicateData
@@ -10,9 +11,7 @@ from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from prompt_studio.processor_loader import ProcessorConfig, load_plugins
 from prompt_studio.prompt_profile_manager.constants import ProfileManagerErrors
 from prompt_studio.prompt_profile_manager.models import ProfileManager
-from prompt_studio.prompt_profile_manager.serializers import (
-    ProfileManagerSerializer,
-)
+from prompt_studio.prompt_profile_manager.serializers import ProfileManagerSerializer
 from prompt_studio.prompt_studio.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio.exceptions import FilenameMissingError
 from prompt_studio.prompt_studio.serializers import ToolStudioPromptSerializer
@@ -26,9 +25,7 @@ from prompt_studio.prompt_studio_core.exceptions import (
     IndexingAPIError,
     ToolDeleteError,
 )
-from prompt_studio.prompt_studio_core.prompt_studio_helper import (
-    PromptStudioHelper,
-)
+from prompt_studio.prompt_studio_core.prompt_studio_helper import PromptStudioHelper
 from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from prompt_studio.prompt_studio_document_manager.prompt_studio_document_helper import (  # noqa: E501
     PromptStudioDocumentHelper,
@@ -47,9 +44,7 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance.models import ToolInstance
 
-from unstract.connectors.filesystems.local_storage.local_storage import (
-    LocalStorageFS,
-)
+from unstract.connectors.filesystems.local_storage.local_storage import LocalStorageFS
 
 from .models import CustomTool
 from .serializers import (
@@ -125,12 +120,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if summarize_llm_profile_id:
             prompt_tool = self.get_object()
 
-            ProfileManager.objects.filter(
-                prompt_studio_tool=prompt_tool
-            ).update(is_summarize_llm=False)
-            profile_manager = ProfileManager.objects.get(
-                pk=summarize_llm_profile_id
+            ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
+                is_summarize_llm=False
             )
+            profile_manager = ProfileManager.objects.get(pk=summarize_llm_profile_id)
             profile_manager.is_summarize_llm = True
             profile_manager.save()
 
@@ -146,9 +139,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             Response: Reponse of dropdown dict
         """
         try:
-            select_choices: dict[str, Any] = (
-                PromptStudioHelper.get_select_fields()
-            )
+            select_choices: dict[str, Any] = PromptStudioHelper.get_select_fields()
             return Response(select_choices, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error(f"Error occured while fetching select fields {e}")
@@ -171,9 +162,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         return Response(serialized_instances)
 
     @action(detail=True, methods=["patch"])
-    def make_profile_default(
-        self, request: HttpRequest, pk: Any = None
-    ) -> Response:
+    def make_profile_default(self, request: HttpRequest, pk: Any = None) -> Response:
         prompt_tool = (
             self.get_object()
         )  # Assuming you have a get_object method in your viewset
@@ -182,9 +171,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             is_default=False
         )
 
-        profile_manager = ProfileManager.objects.get(
-            pk=request.data["default_profile"]
-        )
+        profile_manager = ProfileManager.objects.get(pk=request.data["default_profile"])
         profile_manager.is_default = True
         profile_manager.save()
 
@@ -241,9 +228,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK,
             )
         else:
-            logger.error(
-                "Error occured while indexing. Unique ID is not valid."
-            )
+            logger.error("Error occured while indexing. Unique ID is not valid.")
             raise IndexingAPIError()
 
     @action(detail=True, methods=["post"])
@@ -280,11 +265,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         return Response(response, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
-    def single_pass_extraction(self, request: HttpRequest) -> Response:
+    def single_pass_extraction(self, request: HttpRequest, pk: uuid) -> Response:
         """API Entry point method to fetch response to prompt.
 
         Args:
             request (HttpRequest): _description_
+            pk (Any): Primary key of the CustomTool
 
         Raises:
             FilenameMissingError: _description_
@@ -294,7 +280,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         """
         # TODO: Handle fetch_response and single_pass_
         # extraction using common function
-        tool_id: str = request.data.get(ToolStudioPromptKeys.TOOL_ID)
+        custom_tool = self.get_object()
+        tool_id: str = str(custom_tool.tool_id)
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
@@ -306,15 +293,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             tool_id=tool_id,
             file_name=file_name,
             org_id=request.org_id,
-            user_id=request.user.user_id,
+            user_id=custom_tool.created_by.user_id,
             document_id=document_id,
         )
         return Response(response, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])
-    def list_of_shared_users(
-        self, request: HttpRequest, pk: Any = None
-    ) -> Response:
+    def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:
 
         custom_tool = (
             self.get_object()
@@ -327,9 +312,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def create_prompt(self, request: HttpRequest, pk: Any = None) -> Response:
         context = super().get_serializer_context()
-        serializer = ToolStudioPromptSerializer(
-            data=request.data, context=context
-        )
+        serializer = ToolStudioPromptSerializer(data=request.data, context=context)
         serializer.is_valid(raise_exception=True)
         try:
             # serializer.save()
@@ -342,13 +325,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"])
-    def create_profile_manager(
-        self, request: HttpRequest, pk: Any = None
-    ) -> Response:
+    def create_profile_manager(self, request: HttpRequest, pk: Any = None) -> Response:
         context = super().get_serializer_context()
-        serializer = ProfileManagerSerializer(
-            data=request.data, context=context
-        )
+        serializer = ProfileManagerSerializer(data=request.data, context=context)
 
         serializer.is_valid(raise_exception=True)
         try:
@@ -361,9 +340,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get"])
-    def fetch_contents_ide(
-        self, request: HttpRequest, pk: Any = None
-    ) -> Response:
+    def fetch_contents_ide(self, request: HttpRequest, pk: Any = None) -> Response:
         custom_tool = self.get_object()
         serializer = FileInfoIdeSerializer(data=request.GET)
         serializer.is_valid(raise_exception=True)
@@ -375,8 +352,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         filename_without_extension = file_name.rsplit(".", 1)[0]
         if view_type == FileViewTypes.EXTRACT:
             file_name = (
-                f"{FileViewTypes.EXTRACT.lower()}/"
-                f"{filename_without_extension}.txt"
+                f"{FileViewTypes.EXTRACT.lower()}/" f"{filename_without_extension}.txt"
             )
         if view_type == FileViewTypes.SUMMARIZE:
             file_name = (
@@ -384,13 +360,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 f"{filename_without_extension}.txt"
             )
 
-        file_path = file_path = (
-            FileManagerHelper.handle_sub_directory_for_tenants(
-                request.org_id,
-                is_create=True,
-                user_id=custom_tool.created_by.user_id,
-                tool_id=str(custom_tool.tool_id),
-            )
+        file_path = file_path = FileManagerHelper.handle_sub_directory_for_tenants(
+            request.org_id,
+            is_create=True,
+            user_id=custom_tool.created_by.user_id,
+            tool_id=str(custom_tool.tool_id),
         )
         file_system = LocalStorageFS(settings={"path": file_path})
         if not file_path.endswith("/"):
@@ -430,9 +404,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             }
             # Store file
             logger.info(
-                f"Uploading file: {file_name}"
-                if file_name
-                else "Uploading file"
+                f"Uploading file: {file_name}" if file_name else "Uploading file"
             )
             FileManagerHelper.upload_file(
                 file_system,
@@ -444,11 +416,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         return Response({"data": documents})
 
     @action(detail=True, methods=["delete"])
-    def delete_for_ide(self, request: HttpRequest, pk: Any = None) -> Response:
+    def delete_for_ide(self, request: HttpRequest, pk: uuid) -> Response:
         custom_tool = self.get_object()
-        serializer = FileInfoIdeSerializer(data=request.GET)
+        serializer = FileInfoIdeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        document_id: str = serializer.validated_data.get("document_id")
+        document_id: str = serializer.validated_data.get(
+            ToolStudioPromptKeys.DOCUMENT_ID
+        )
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         file_path = FileManagerHelper.handle_sub_directory_for_tenants(
@@ -482,9 +456,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         custom_tool = self.get_object()
         serializer = ExportToolRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        is_shared_with_org: bool = serializer.validated_data.get(
-            "is_shared_with_org"
-        )
+        is_shared_with_org: bool = serializer.validated_data.get("is_shared_with_org")
         user_ids = set(serializer.validated_data.get("user_id"))
 
         PromptStudioRegistryHelper.update_or_create_psr_tool(

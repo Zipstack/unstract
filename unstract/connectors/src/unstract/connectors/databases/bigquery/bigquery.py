@@ -13,9 +13,7 @@ from unstract.connectors.exceptions import ConnectorError
 class BigQuery(UnstractDB):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("BigQuery")
-        self.json_credentials = json.loads(
-            settings.get("json_credentials", "{}")
-        )
+        self.json_credentials = json.loads(settings.get("json_credentials", "{}"))
 
     @staticmethod
     def get_id() -> str:

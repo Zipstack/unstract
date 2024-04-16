@@ -15,10 +15,6 @@ urlpatterns = [
     path("logout", logout, name="logout"),
     path("callback", callback, name="callback"),
     path("organization", get_organizations, name="get_organizations"),
-    path(
-        "organization/<str:id>/set", set_organization, name="set_organization"
-    ),
-    path(
-        "organization/create", create_organization, name="create_organization"
-    ),
+    path("organization/<str:id>/set", set_organization, name="set_organization"),
+    path("organization/create", create_organization, name="create_organization"),
 ]

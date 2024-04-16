@@ -51,9 +51,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "index_ids_history",
-                    models.JSONField(
-                        db_comment="List of index ids", default=list
-                    ),
+                    models.JSONField(db_comment="List of index ids", default=list),
                 ),
                 (
                     "created_by",

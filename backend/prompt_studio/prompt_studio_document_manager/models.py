@@ -9,9 +9,7 @@ from utils.models.base_model import BaseModel
 class DocumentManager(BaseModel):
     """Model to store the document details."""
 
-    document_id = models.UUIDField(
-        primary_key=True, default=uuid.uuid4, editable=False
-    )
+    document_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     document_name = models.CharField(
         db_comment="Field to store the document name",

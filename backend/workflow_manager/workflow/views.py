@@ -46,13 +46,9 @@ from backend.constants import RequestKey
 logger = logging.getLogger(__name__)
 
 
-def update_pipeline(
-    pipeline_guid: Optional[str], status: tuple[str, str]
-) -> Any:
+def update_pipeline(pipeline_guid: Optional[str], status: tuple[str, str]) -> Any:
     if pipeline_guid:
-        pipeline: Pipeline = PipelineProcessor.fetch_pipeline(
-            pipeline_id=pipeline_guid
-        )
+        pipeline: Pipeline = PipelineProcessor.fetch_pipeline(pipeline_id=pipeline_guid)
         PipelineProcessor.update_pipeline_status(
             pipeline=pipeline, is_end=True, status=status
         )
@@ -155,13 +151,9 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 
     def get_execution(self, request: Request, pk: str) -> Response:
         execution = WorkflowHelper.get_current_execution(pk)
-        return Response(
-            make_execution_response(execution), status=status.HTTP_200_OK
-        )
+        return Response(make_execution_response(execution), status=status.HTTP_200_OK)
 
-    def get_error_from_serializer(
-        self, error_details: dict[str, Any]
-    ) -> Optional[str]:
+    def get_error_from_serializer(self, error_details: dict[str, Any]) -> Optional[str]:
         """Validation error."""
         error_key = next(iter(error_details))
         # Get the first error message
@@ -188,9 +180,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         if workflow_id:
             workflow = WorkflowHelper.get_workflow_by_id(workflow_id)
         elif project_id:
-            workflow = WorkflowHelper.get_active_workflow_by_project_id(
-                project_id
-            )
+            workflow = WorkflowHelper.get_active_workflow_by_project_id(project_id)
         else:
             raise WorkflowDoesNotExistError()
         return workflow
@@ -211,9 +201,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         workflow_id = serializer.get_workflow_id(serializer.validated_data)
         project_id = serializer.get_project_id(serializer.validated_data)
         execution_id = serializer.get_execution_id(serializer.validated_data)
-        execution_action = serializer.get_execution_action(
-            serializer.validated_data
-        )
+        execution_action = serializer.get_execution_action(serializer.validated_data)
         file_objs = request.FILES.getlist("files")
         hashes_of_files = {}
         if file_objs and execution_id and workflow_id:
@@ -247,10 +235,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             update_pipeline(pipeline_guid, Pipeline.PipelineStatus.FAILURE)
             logger.error(f"Error while executing workflow: {exception}")
             return Response(
-                {
-                    "error": "Please check the logs for more details: "
-                    + str(exception)
-                },
+                {"error": "Please check the logs for more details: " + str(exception)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except Exception as exception:
@@ -305,13 +290,9 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])
-    def clear_cache(
-        self, request: Request, *args: Any, **kwargs: Any
-    ) -> Response:
+    def clear_cache(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         workflow = self.get_object()
-        response: dict[str, Any] = WorkflowHelper.clear_cache(
-            workflow_id=workflow.id
-        )
+        response: dict[str, Any] = WorkflowHelper.clear_cache(workflow_id=workflow.id)
         return Response(response.get("message"), status=response.get("status"))
 
     @action(detail=True, methods=["get"])
@@ -330,9 +311,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         return Response(response.get("message"), status=response.get("status"))
 
     @action(detail=False, methods=["get"])
-    def get_schema(
-        self, request: Request, *args: Any, **kwargs: Any
-    ) -> Response:
+    def get_schema(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Retrieves the JSON schema for source/destination type modules for
         entities file/API/DB.
 
@@ -343,9 +322,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             Response: JSON schema for the request made
         """
         schema_type = request.query_params.get("type", SchemaType.SRC.value)
-        schema_entity = request.query_params.get(
-            "entity", SchemaEntity.FILE.value
-        )
+        schema_entity = request.query_params.get("entity", SchemaEntity.FILE.value)
 
         WorkflowSchemaHelper.validate_request(
             schema_type=SchemaType(schema_type),

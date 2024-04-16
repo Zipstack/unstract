@@ -18,17 +18,13 @@ class ToolUtils:
     @staticmethod
     def is_valid_tool_url(image_url: str) -> bool:
         # Define a regular expression pattern for Docker image URLs
-        docker_pattern = (
-            r"^docker:[a-zA-Z0-9_.-]+(/[a-zA-Z0-9_.-]+)*/[a-zA-Z0-9_.-]+$"
-        )
+        docker_pattern = r"^docker:[a-zA-Z0-9_.-]+(/[a-zA-Z0-9_.-]+)*/[a-zA-Z0-9_.-]+$"
 
         # Define a regular expression pattern for local tool URLs
         local_pattern = r"^local:[a-zA-Z0-9_.-:]+$"
 
         # Check if the URL matches either the Docker image or local tool pattern
-        if re.match(docker_pattern, image_url) or re.match(
-            local_pattern, image_url
-        ):
+        if re.match(docker_pattern, image_url) or re.match(local_pattern, image_url):
             return True
         else:
             return False
@@ -172,9 +168,7 @@ class ToolUtils:
             list[AdapterProperties]:
                 A list of enabled AdapterProperties objects.
         """
-        enabled_adapters = [
-            adapter for adapter in adapters if adapter.is_enabled
-        ]
+        enabled_adapters = [adapter for adapter in adapters if adapter.is_enabled]
         return enabled_adapters
 
     @staticmethod
@@ -240,14 +234,10 @@ class ToolUtils:
         schema = tool.spec
         adapter = tool.properties.adapter
 
-        language_models = ToolUtils.get_enabled_adapters(
-            adapter.language_models
-        )
+        language_models = ToolUtils.get_enabled_adapters(adapter.language_models)
         embeddings = ToolUtils.get_enabled_adapters(adapter.embedding_services)
         vector_stores = ToolUtils.get_enabled_adapters(adapter.vector_stores)
-        text_extractors = ToolUtils.get_enabled_adapters(
-            adapter.text_extractors
-        )
+        text_extractors = ToolUtils.get_enabled_adapters(adapter.text_extractors)
         ocrs = ToolUtils.get_enabled_adapters(adapter.ocrs)
 
         ToolUtils.process_adapter_models(
