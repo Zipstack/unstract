@@ -8,9 +8,7 @@ def authentication_middleware(func: Any) -> Any:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         token = AuthenticationMiddleware.get_token_from_auth_header(request)
         # Check if bearer token exists and validate it
-        if not token or not AuthenticationMiddleware.validate_bearer_token(
-            token
-        ):
+        if not token or not AuthenticationMiddleware.validate_bearer_token(token):
             return "Unauthorized", 401
 
         return func(*args, **kwargs)
@@ -24,9 +22,7 @@ class AuthenticationMiddleware:
     def validate_bearer_token(cls, token: Optional[str]) -> bool:
         try:
             if token is None:
-                current_app.logger.error(
-                    "Authentication failed. Empty bearer token"
-                )
+                current_app.logger.error("Authentication failed. Empty bearer token")
                 return False
 
             query = f"SELECT * FROM account_platformkey WHERE key = '{token}'"
@@ -53,9 +49,7 @@ class AuthenticationMiddleware:
                 return False
 
         except Exception as e:
-            current_app.logger.error(
-                f"Error while validating bearer token: {e}"
-            )
+            current_app.logger.error(f"Error while validating bearer token: {e}")
             return False
         return True
 
@@ -74,13 +68,11 @@ class AuthenticationMiddleware:
     @classmethod
     def get_account_from_bearer_token(cls, token: Optional[str]) -> str:
         query = (
-            "SELECT organization_id FROM account_platformkey "
-            f"WHERE key='{token}'"
+            "SELECT organization_id FROM account_platformkey " f"WHERE key='{token}'"
         )
         organization = AuthenticationMiddleware.execute_query(query)
         query_org = (
-            "SELECT schema_name FROM account_organization "
-            f"WHERE id='{organization}'"
+            "SELECT schema_name FROM account_organization " f"WHERE id='{organization}'"
         )
         schema_name: str = AuthenticationMiddleware.execute_query(query_org)
         return schema_name

@@ -8,11 +8,13 @@ from unstract.sdk.constants import (
     LogLevel,
     LogState,
     MetadataKey,
+    ToolEnv,
     ToolSettingsKey,
 )
 from unstract.sdk.llm import ToolLLM
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
+from unstract.sdk.utils.callback_manager import CallbackManager as UNCallbackManager
 
 
 class UnstractClassifier(BaseTool):
@@ -80,15 +82,17 @@ class UnstractClassifier(BaseTool):
         llm = tool_llm.get_llm(adapter_instance_id=llm_adapter_instance_id)
         if not llm:
             self.stream_error_and_exit("Unable to get llm instance")
-
+        # Setting the callback_manager to be used
+        UNCallbackManager.set_callback_manager(
+            platform_api_key=self.get_env_or_die(ToolEnv.PLATFORM_API_KEY),
+            llm=llm,
+            workflow_id=self.workflow_id,
+            execution_id=self.execution_id,
+        )
         max_tokens = tool_llm.get_max_tokens(reserved_for_output=50 + 1000)
         max_bytes = int(max_tokens * 1.3)
-        self.stream_log(
-            f"LLM Max tokens: {max_tokens} ==> Max bytes: {max_bytes}"
-        )
-        self.stream_log(
-            f"LLM Max tokens: {max_tokens} ==> Max bytes: {max_bytes}"
-        )
+        self.stream_log(f"LLM Max tokens: {max_tokens} ==> Max bytes: {max_bytes}")
+        self.stream_log(f"LLM Max tokens: {max_tokens} ==> Max bytes: {max_bytes}")
         limited_text = ""
         for byte in text.encode():
             if len(limited_text.encode()) < max_bytes:

@@ -99,9 +99,7 @@ class PlatformKey(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     key = models.UUIDField(default=uuid.uuid4)
-    key_name = models.CharField(
-        max_length=KEY_SIZE, null=False, blank=True, default=""
-    )
+    key_name = models.CharField(max_length=KEY_SIZE, null=False, blank=True, default="")
     is_active = models.BooleanField(default=False)
     organization = models.ForeignKey(
         "Organization",

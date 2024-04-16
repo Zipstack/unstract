@@ -4,7 +4,7 @@ services:
   db:
     image: 'postgres:15.6'
     container_name: unstract-db
-    restart: always
+    restart: unless-stopped
     # set shared memory limit when using docker-compose
     shm_size: 128mb
     ports:
@@ -20,7 +20,7 @@ services:
   redis:
     image: "redis:7.2.3"
     container_name: unstract-redis
-    restart: always
+    restart: unless-stopped
     # uncomment below command if persistance required.
     #command: redis-server --save 20 1 --loglevel warning --
     ports:
@@ -34,7 +34,7 @@ services:
     image: 'minio/minio:latest'
     container_name: unstract-minio
     hostname: minio
-    restart: always
+    restart: unless-stopped
     ports:
       - '9000:9000'
       - '9001:9001'
@@ -52,7 +52,7 @@ services:
     # The official v2 Traefik docker image
     image: traefik:v2.10
     container_name: unstract-proxy
-    restart: always
+    restart: unless-stopped
     # - Enables the web UI.
     # - Tells Traefik to use docker and file providers.
     # - Direct Traefik to the correct network for docker provider.
@@ -82,7 +82,7 @@ services:
   feature-flag:
     image: flipt/flipt:v1.34.0 # Dated(05/01/2024) Latest stable version. Ref:https://github.com/flipt-io/flipt/releases
     container_name: unstract-flipt
-    restart: always
+    restart: unless-stopped
     ports: # Forwarded to available host ports
       - "8082:8080"  # REST API port
       - "9005:9000"  # gRPC port
@@ -102,7 +102,7 @@ services:
       - optional
     image: downloads.unstructured.io/unstructured-io/unstructured-api:0.0.61
     container_name: unstract-unstructured-io
-    restart: always
+    restart: unless-stopped
     ports: # Forwarded to available host ports
       - "8083:8000"
     labels:
@@ -110,9 +110,9 @@ services:
 
   qdrant:
     # Vector DB for doc indexer
-    image: 'qdrant/qdrant:v1.7.4'
+    image: 'qdrant/qdrant:v1.8.3'
     container_name: unstract-vector-db
-    restart: always
+    restart: unless-stopped
     ports:
       - "6333:6333"
     volumes:

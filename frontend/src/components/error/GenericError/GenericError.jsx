@@ -30,6 +30,11 @@ function GenericError() {
         subtitle:
           "You'll need to contact the admin of your organization's account to get access or you'll need to use a different email address to sign up.",
       },
+      USR: {
+        title: `Sign-up not allowed.`,
+        subtitle:
+          "You'll need to contact the admin of your organization's account to get access.",
+      },
 
       // Add more key-value pairs as needed
     };

@@ -3,6 +3,7 @@ from typing import Any
 
 import snowflake.connector
 from snowflake.connector.connection import SnowflakeConnection
+
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 
@@ -32,9 +33,7 @@ class SnowflakeDB(UnstractDB):
 
     @staticmethod
     def get_icon() -> str:
-        return (
-            "/icons/connector-icons/Snowflake.png"
-        )
+        return "/icons/connector-icons/Snowflake.png"
 
     @staticmethod
     def get_json_schema() -> str:
@@ -62,3 +61,12 @@ class SnowflakeDB(UnstractDB):
             role=self.role,
         )
         return con
+
+    @staticmethod
+    def get_create_table_query(table: str) -> str:
+        sql_query = (
+            f"CREATE TABLE {table} IF NOT EXISTS "
+            f"(id TEXT ,"
+            f"created_by TEXT, created_at TIMESTAMP, "
+        )
+        return sql_query

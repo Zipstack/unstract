@@ -51,7 +51,7 @@
   height: 20px;
 }
 
-.cover-img .fit-cover {
+.adapter-cover-img .fit-cover {
   width: 120px;
   height: 90px;
   object-fit: contain;
@@ -72,7 +72,7 @@
   font-size: 16px;
 }
 
-.cover-img {
+.adapter-cover-img {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -90,4 +90,16 @@
 
 .list-item-desc {
   padding-bottom: 10px;
+}
+
+.edit-icon {
+  margin-right: 10px;
+}
+
+.edit-icon:hover {
+  color: #1890ff;
+}
+
+.delete-icon:hover {
+  color: #ff4d4f;
 }

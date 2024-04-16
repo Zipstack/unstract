@@ -7,6 +7,7 @@ from typing import Any
 from boxfs import BoxFileSystem
 from boxsdk import JWTAuth
 from boxsdk.exception import BoxOAuthException
+
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 

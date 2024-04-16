@@ -1,7 +1,6 @@
 import logging
 from typing import Any, Optional
 
-from backend.constants import RequestHeader
 from django.conf import settings
 from django.urls import reverse
 from pipeline.constants import PipelineKey, PipelineURL
@@ -13,6 +12,8 @@ from rest_framework.response import Response
 from utils.request.constants import RequestConstants
 from workflow_manager.workflow.constants import WorkflowExecutionKey, WorkflowKey
 from workflow_manager.workflow.views import WorkflowViewSet
+
+from backend.constants import RequestHeader
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +42,7 @@ class PipelineManager:
             f"with_log = {with_log}"
         )
         try:
-            pipeline: Pipeline = PipelineProcessor.initialize_pipeline_sync(
-                pipeline_id
-            )
+            pipeline: Pipeline = PipelineProcessor.initialize_pipeline_sync(pipeline_id)
             # TODO: Use DRF's request and as_view() instead
             request.data[WorkflowKey.WF_ID] = pipeline.workflow.id
             if execution_id is not None:
@@ -65,12 +64,8 @@ class PipelineManager:
     ) -> Optional[dict[str, Any]]:
         """Gets the required data to be passed while executing a pipeline Any
         changes to pipeline execution needs to be propagated here."""
-        callback_url = settings.DJANGO_APP_BACKEND_URL + reverse(
-            PipelineURL.EXECUTE
-        )
-        job_headers = {
-            RequestHeader.X_API_KEY: settings.INTERNAL_SERVICE_API_KEY
-        }
+        callback_url = settings.DJANGO_APP_BACKEND_URL + reverse(PipelineURL.EXECUTE)
+        job_headers = {RequestHeader.X_API_KEY: settings.INTERNAL_SERVICE_API_KEY}
         job_params = {WorkflowExecutionKey.WITH_LOG: "False"}
         job_kwargs = {
             RequestConstants.VERB: "POST",

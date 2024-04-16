@@ -2,6 +2,7 @@ import os
 from typing import Optional
 
 import grpc
+
 from unstract.flags import evaluation_pb2, evaluation_pb2_grpc
 
 

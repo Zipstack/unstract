@@ -6,9 +6,7 @@ from typing import Any
 from gcsfs import GCSFileSystem
 
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.unstract_file_system import (
-    UnstractFileSystem,
-)
+from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +33,7 @@ class GoogleCloudStorageFS(UnstractFileSystem):
 
     @staticmethod
     def get_icon() -> str:
-        return (
-            "/icons/connector-icons/google_cloud_storage.png"
-        )
+        return "/icons/connector-icons/google_cloud_storage.png"
 
     @staticmethod
     def get_json_schema() -> str:

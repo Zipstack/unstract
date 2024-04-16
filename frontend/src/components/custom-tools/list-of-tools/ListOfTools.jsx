@@ -10,6 +10,7 @@ import { ViewTools } from "../view-tools/ViewTools";
 import "./ListOfTools.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
+import { SharePermission } from "../../widgets/share-permission/SharePermission";
 
 function ListOfTools() {
   const [isListLoading, setIsListLoading] = useState(false);
@@ -23,7 +24,12 @@ function ListOfTools() {
   const [filteredListOfTools, setFilteredListOfTools] = useState([]);
   const handleException = useExceptionHandler();
   const [isEdit, setIsEdit] = useState(false);
-
+  const [promptDetails, setPromptDetails] = useState(null);
+  const [openSharePermissionModal, setOpenSharePermissionModal] =
+    useState(false);
+  const [isPermissionEdit, setIsPermissionEdit] = useState(false);
+  const [isShareLoading, setIsShareLoading] = useState(false);
+  const [allUserList, setAllUserList] = useState([]);
   useEffect(() => {
     getListOfTools();
   }, []);
@@ -133,7 +139,7 @@ function ListOfTools() {
         setListOfTools(tools);
         setAlertDetails({
           type: "success",
-          console: "Deleted successfully",
+          content: `${tool?.tool_name} - Deleted successfully`,
         });
       })
       .catch((err) => {
@@ -171,6 +177,73 @@ function ListOfTools() {
     );
   };
 
+  const handleShare = (_event, promptProject, isEdit) => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/users/${promptProject?.tool_id}`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+    };
+    setIsShareLoading(true);
+    getAllUsers();
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        setOpenSharePermissionModal(true);
+        setPromptDetails(res?.data);
+        setIsPermissionEdit(isEdit);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      })
+      .finally(() => {
+        setIsShareLoading(false);
+      });
+  };
+
+  const getAllUsers = () => {
+    setIsShareLoading(true);
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
+    };
+
+    axiosPrivate(requestOptions)
+      .then((response) => {
+        const users = response?.data?.members || [];
+        setAllUserList(
+          users.map((user) => ({
+            id: user?.id,
+            email: user?.email,
+          }))
+        );
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to load"));
+      })
+      .finally(() => {
+        setIsShareLoading(false);
+      });
+  };
+
+  const onShare = (userIds, adapter) => {
+    const requestOptions = {
+      method: "PATCH",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${adapter?.tool_id}`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+      data: { shared_users: userIds },
+    };
+    axiosPrivate(requestOptions)
+      .then((response) => {
+        setOpenSharePermissionModal(false);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to load"));
+      });
+  };
+
   return (
     <>
       <ToolNavBar
@@ -196,6 +269,7 @@ function ListOfTools() {
               iconProp="icon"
               idProp="tool_id"
               type="Prompt Project"
+              handleShare={handleShare}
             />
           </div>
         </div>
@@ -209,6 +283,15 @@ function ListOfTools() {
           handleAddNewTool={handleAddNewTool}
         />
       )}
+      <SharePermission
+        open={openSharePermissionModal}
+        setOpen={setOpenSharePermissionModal}
+        adapter={promptDetails}
+        permissionEdit={isPermissionEdit}
+        loading={isShareLoading}
+        allUsers={allUserList}
+        onApply={onShare}
+      />
     </>
   );
 }

@@ -41,7 +41,7 @@ function ListView({
     let title = null;
     if (iconProp && item[iconProp].length > 4) {
       title = (
-        <div className="cover-img">
+        <div className="adapter-cover-img">
           <Image src={item[iconProp]} preview={false} className="fit-cover" />
           <Typography.Text className="adapters-list-title">
             {item[titleProp]}
@@ -70,7 +70,9 @@ function ListView({
         className="list-view-container"
       >
         <div className="list-view-content">
-          <div className="adapters-list-title-container">{title}</div>
+          <div className="adapters-list-title-container display-flex-left">
+            {title}
+          </div>
           {showOwner && (
             <div className="adapters-list-profile-container">
               <Avatar
@@ -99,7 +101,7 @@ function ListView({
           <EditOutlined
             key={`${item.id}-edit`}
             onClick={(event) => handleEdit(event, item)}
-            className="action-icon-buttons"
+            className="action-icon-buttons edit-icon"
           />
           {handleShare && (
             <ShareAltOutlined
@@ -120,7 +122,7 @@ function ListView({
             }}
           >
             <Typography.Text>
-              <DeleteOutlined className="action-icon-buttons" />
+              <DeleteOutlined className="action-icon-buttons delete-icon" />
             </Typography.Text>
           </Popconfirm>
         </div>

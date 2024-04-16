@@ -11,7 +11,8 @@ from odf import teletype, text
 from odf.opendocument import load
 
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s : %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s : %(message)s",
 )
 
 UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", "/tmp/document_service/upload")

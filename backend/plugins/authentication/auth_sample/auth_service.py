@@ -36,7 +36,10 @@ class AuthService(ABC):
         self, user: User, token: Optional[dict[str, Any]] = None
     ) -> Optional[UserInfo]:
         return UserInfo(
-            id=user.id, name=user.username, display_name=user.username, email=user.email
+            id=user.id,
+            name=user.username,
+            display_name=user.username,
+            email=user.email,
         )
 
     def get_organization_info(self, org_id: str) -> Any:

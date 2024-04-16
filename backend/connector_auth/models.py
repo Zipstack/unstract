@@ -41,7 +41,10 @@ class ConnectorAuth(AbstractUserSocialAuth):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
-        User, related_name="connector_auth", on_delete=models.SET_NULL, null=True
+        User,
+        related_name="connector_auth",
+        on_delete=models.SET_NULL,
+        null=True,
     )
 
     def __str__(self) -> str:

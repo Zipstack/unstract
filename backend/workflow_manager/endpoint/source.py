@@ -102,10 +102,7 @@ class SourceConnector(BaseConnector):
             raise MissingSourceConnectionType()
         if connection_type not in WorkflowEndpoint.ConnectionType.values:
             raise InvalidSourceConnectionType()
-        if (
-            connection_type != WorkflowEndpoint.ConnectionType.API
-            and connector is None
-        ):
+        if connection_type != WorkflowEndpoint.ConnectionType.API and connector is None:
             raise SourceConnectorNotConfigured()
 
     def valid_file_patterns(self, required_patterns: list[Any]) -> list[str]:
@@ -147,9 +144,7 @@ class SourceConnector(BaseConnector):
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
         source_configurations: dict[str, Any] = self.endpoint.configuration
-        required_patterns = source_configurations.get(
-            SourceKey.FILE_EXTENSIONS, []
-        )
+        required_patterns = source_configurations.get(SourceKey.FILE_EXTENSIONS, [])
         recursive = bool(
             source_configurations.get(SourceKey.PROCESS_SUB_DIRECTORIES, False)
         )
@@ -159,13 +154,9 @@ class SourceConnector(BaseConnector):
             )
         )
         root_dir_path = connector_settings.get(ConnectorKeys.PATH, "")
-        input_directory = str(
-            source_configurations.get(SourceKey.ROOT_FOLDER, "")
-        )
+        input_directory = str(source_configurations.get(SourceKey.ROOT_FOLDER, ""))
         if root_dir_path:  # user needs to manually type the optional file path
-            input_directory = str(
-                Path(root_dir_path, input_directory.lstrip("/"))
-            )
+            input_directory = str(Path(root_dir_path, input_directory.lstrip("/")))
         if not isinstance(required_patterns, list):
             required_patterns = [required_patterns]
 
@@ -187,9 +178,7 @@ class SourceConnector(BaseConnector):
     ) -> None:
         if not self.execution_service:
             return None
-        input_log = (
-            f"##Input folder:\n\n `{os.path.basename(input_directory)}`\n\n"
-        )
+        input_log = f"##Input folder:\n\n `{os.path.basename(input_directory)}`\n\n"
         self.execution_service.publish_update_log(
             state=LogState.INPUT_UPDATE, message=input_log
         )
@@ -198,13 +187,9 @@ class SourceConnector(BaseConnector):
             state=LogState.OUTPUT_UPDATE, message=output_log
         )
 
-    def publish_input_file_content(
-        self, input_file_path: str, input_text: str
-    ) -> None:
+    def publish_input_file_content(self, input_file_path: str, input_text: str) -> None:
         if self.execution_service:
-            output_log_message = (
-                f"##Input text:\n\n```text\n{input_text}\n```\n\n"
-            )
+            output_log_message = f"##Input text:\n\n```text\n{input_text}\n```\n\n"
             input_log_message = (
                 "##Input file:\n\n```text\n"
                 f"{os.path.basename(input_file_path)}\n```\n\n"
@@ -254,9 +239,7 @@ class SourceConnector(BaseConnector):
         count = 0
         max_depth = int(SourceConstant.MAX_RECURSIVE_DEPTH) if recursive else 1
 
-        for root, dirs, files in source_fs.walk(
-            input_directory, maxdepth=max_depth
-        ):
+        for root, dirs, files in source_fs.walk(input_directory, maxdepth=max_depth):
             if count >= limit:
                 break
             for file in files:
@@ -326,9 +309,7 @@ class SourceConnector(BaseConnector):
         """
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
-        source_file_path = os.path.join(
-            self.execution_dir, WorkflowFileType.SOURCE
-        )
+        source_file_path = os.path.join(self.execution_dir, WorkflowFileType.SOURCE)
         infile_path = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         source_file = f"file://{source_file_path}"
 
@@ -346,8 +327,7 @@ class SourceConnector(BaseConnector):
                 f": {hash_value_of_file_content}"
             )
             input_log = (
-                file_content[:500].decode("utf-8", errors="replace")
-                + "...(truncated)"
+                file_content[:500].decode("utf-8", errors="replace") + "...(truncated)"
             )
             self.publish_input_file_content(input_file_path, input_log)
 
@@ -356,9 +336,7 @@ class SourceConnector(BaseConnector):
         logger.info(f"{input_file_path} is added in to execution directory")
         return hash_value_of_file_content
 
-    def add_input_from_api_storage_to_volume(
-        self, input_file_path: str
-    ) -> None:
+    def add_input_from_api_storage_to_volume(self, input_file_path: str) -> None:
         """Add input file to execution directory from api storage."""
         infile_path = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         source_path = os.path.join(self.execution_dir, WorkflowFileType.SOURCE)
@@ -386,9 +364,7 @@ class SourceConnector(BaseConnector):
                 input_file_path=input_file_path,
             )
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
-            self.add_input_from_api_storage_to_volume(
-                input_file_path=input_file_path
-            )
+            self.add_input_from_api_storage_to_volume(input_file_path=input_file_path)
             if file_name not in hash_values_of_files:
                 raise FileHashNotFound()
             file_content_hash = hash_values_of_files[file_name]

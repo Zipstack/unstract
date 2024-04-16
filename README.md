@@ -5,6 +5,15 @@
 
 ## No-code LLM Platform to launch APIs and ETL Pipelines to structure unstructured documents
 
+[![pdm-managed](https://img.shields.io/badge/pdm-managed-blueviolet)](https://pdm-project.org)
+[![CLA assistant](https://cla-assistant.io/readme/badge/Zipstack/unstract)](https://cla-assistant.io/Zipstack/unstract)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/Zipstack/unstract/main.svg)](https://results.pre-commit.ci/latest/github/Zipstack/unstract/main)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=bugs)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=coverage)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
+[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
+
 </div>
 
 ## 🤖 Go beyond co-pilots
@@ -25,7 +34,18 @@ Automate critical business processes that involve complex documents with a human
 
 ## 🚀 Getting started
 
-The easiest way to get started is with Docker. Either download a release or clone this repo and do the following:
+### System Requirements
+
+- 8GB RAM (recommended)
+
+### Prerequisites
+
+- Linux or MacOS (Intel or M-series)
+- Docker
+- Docker Compose (if you need to install it separately)
+- Git
+
+Next, either download a release or clone this repo and do the following:
 
 ✅ `./run-platform.sh`<br>
 ✅ Now visit [http://frontend.unstract.localhost](http://frontend.unstract.localhost) in your browser <br>
@@ -33,7 +53,7 @@ The easiest way to get started is with Docker. Either download a release or clon
 
 That's all there is to it!
 
-Another really quick way to experience Unstract is by signing up for our [hosted version](https://us-central-1.gcp.unstract.com/).
+Another really quick way to experience Unstract is by signing up for our [hosted version](https://us-central.unstract.com/).
 
 ## ⏩ Quick Start Guide
 
@@ -42,6 +62,7 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 ## 🤝 Ecosystem support
 
 ### LLM Providers
+
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/3rd_party/openai.png" width="32"/>| OpenAI | ✅ Working |
@@ -49,50 +70,55 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure OpenAI | ✅ Working  |
 |<img src="docs/assets/3rd_party/palm.png" width="32"/>| Google PaLM | ✅ Working  |
 |<img src="docs/assets/3rd_party/anyscale.png" width="32"/>| Anyscale | ✅ Working |
+|<img src="docs/assets/3rd_party/mistral_ai.png" width="32"/>| Mistral AI | ✅ Working |
+|<img src="docs/assets/3rd_party/anthropic.png" width="32"/>| Anthropic | ✅ Working |
 |<img src="docs/assets/3rd_party/replicate.png" width="32"/>| Replicate | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/anthropic.png" width="32"/>| Anthropic | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/mistral_ai.png" width="32"/>| Mistral AI | 🗓️ Coming soon! |
+
 
 ### Vector Databases
+
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/3rd_party/qdrant.png" width="32"/>| Qdrant | ✅ Working |
+|<img src="docs/assets/3rd_party/weaviate.png" width="32"/>| Weaviate | ✅ Working |
+|<img src="docs/assets/3rd_party/pinecone.png" width="32"/>| Pinecone | ✅ Working |
 |<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | ✅ Working |
-|<img src="docs/assets/3rd_party/supabase.png" width="32"/>| Supabase | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/milvus.png" width="32"/>| Milvus | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/weaviate.png" width="32"/>| Weaviate | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/pinecone.png" width="32"/>| Pinecone | 🗓️ Coming soon! |
+
+
 
 ### Embeddings
+
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/3rd_party/openai.png" width="32"/>| OpenAI | ✅ Working |
 |<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure OpenAI | ✅ Working  |
 |<img src="docs/assets/3rd_party/palm.png" width="32"/>| Google PaLM | ✅ Working  |
-|<img src="docs/assets/3rd_party/qdrant.png" width="32"/>| Qdrant | ✅ Working |
-|<img src="docs/assets/3rd_party/huggingface.png" width="32"/>| Huggingface | 🗓️ Coming soon! |
 
 ### Text Extractors
+
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/unstract_u_logo.png" width="32"/>| Unstract LLMWhisperer | ✅ Working |
-|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Community | ✅ Working  |
-|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Enterprise | ✅ Working  |
+|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Community | 🗓️ Coming soon!  |
+|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Enterprise | 🗓️ Coming soon!  |
 |<img src="docs/assets/3rd_party/llamaindex.png" width="32"/>| LlamaIndex Parse | 🗓️ Coming soon! |
 
 ### ETL Sources
+
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/3rd_party/s3.png" width="32"/>| AWS S3 | ✅ Working |
 |<img src="docs/assets/3rd_party/minio.png" width="32"/>| Minio | ✅ Working |
 |<img src="docs/assets/3rd_party/dropbox.png" width="32"/>| Dropbox | ✅ Working |
-|<img src="docs/assets/3rd_party/google_drive.png" width="32"/>| Google Drive | ✅ Working |
+|<img src="docs/assets/3rd_party/google_drive.png" width="32"/>| Google Drive | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/box.png" width="32"/>| Box | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/gcp.png" width="32"/>| Google Cloud Storage | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure Cloud Storage | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/http.png" width="32"/>| HTTP/HTTPS | 🗓️ Coming soon! |
 
 ### ETL Destinations
+
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/3rd_party/snowflake.png" width="32"/>| Snowflake | ✅ Working |
@@ -108,3 +134,11 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 Contributions are welcome! Please read [CONTRIBUTE.md](CONTRIBUTE.md) for further details on setting up the development environment, etc. It also points you to other detailed documents as needed.
 
 ## 👋 Join the LLM-powered automation community
+
+- On Slack, [join great conversations](https://join-slack.unstract.com) around LLMs, their ecosystem and leveraging them to automate the previously unautomatable!
+- [Follow us on X/Twitter](https://twitter.com/GetUnstract)
+- [Follow us on LinkedIn](https://www.linkedin.com/showcase/unstract/)
+
+## 📊 A note on analytics
+
+In full disclosure, Unstract integrates Posthog to track usage analytics. As you can inspect the relevant code here, we collect the minimum possible metrics.

@@ -1,19 +1,19 @@
-import { Button, Space, Tabs, Tooltip, Typography } from "antd";
+import { LeftOutlined, RightOutlined } from "@ant-design/icons";
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
+import { Button, Space, Tabs, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
-import { LeftOutlined, RightOutlined } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import "./DocumentManager.css";
 
-import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { PdfViewer } from "../pdf-viewer/PdfViewer";
-import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useSessionStore } from "../../../store/session-store";
 import { base64toBlob, docIndexStatus } from "../../../helpers/GetStaticData";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { useSessionStore } from "../../../store/session-store";
 import { DocumentViewer } from "../document-viewer/DocumentViewer";
+import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
+import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 
 const items = [
@@ -127,7 +127,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/fetch_contents?document_id=${selectedDoc?.document_id}&view_type=${viewType}&tool_id=${details?.tool_id}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}?document_id=${selectedDoc?.document_id}&view_type=${viewType}`,
     };
 
     handleLoadingStateUpdate(viewType, true);
@@ -209,7 +209,9 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const updatePageAndDoc = (newPage) => {
     setPage(newPage);
     const newSelectedDoc = listOfDocs[newPage - 1];
-    handleDocChange(newSelectedDoc?.document_id);
+    if (newSelectedDoc) {
+      handleDocChange(newSelectedDoc);
+    }
   };
 
   return (
@@ -223,11 +225,13 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           />
         </div>
         <Space>
-          <div>
+          <div className="doc-main-title-div">
             {selectedDoc ? (
-              <Typography.Text className="doc-main-title" ellipsis>
-                {selectedDoc?.document_name}
-              </Typography.Text>
+              <Tooltip title={selectedDoc?.document_name}>
+                <Typography.Text className="doc-main-title" ellipsis>
+                  {selectedDoc?.document_name}
+                </Typography.Text>
+              </Tooltip>
             ) : null}
           </div>
           <div>

@@ -60,11 +60,9 @@ class ToolProcessor:
         )
         schema_json: dict[str, Any] = schema.to_dict()
         return schema_json
- 
+
     @staticmethod
-    def update_schema_with_adapter_configurations(
-        schema: Spec, user: User
-    ) -> None:
+    def update_schema_with_adapter_configurations(schema: Spec, user: User) -> None:
         """Updates the JSON schema with the available adapter configurations
         for the LLM, embedding, and vector DB adapters.
 
@@ -85,9 +83,7 @@ class ToolProcessor:
                 AdapterTypes.LLM, user=user
             )
             for key in llm_keys:
-                adapter_names = map(
-                    lambda adapter: str(adapter.adapter_name), adapters
-                )
+                adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
                 schema.properties[key]["enum"] = list(adapter_names)
 
         if embedding_keys:
@@ -95,9 +91,7 @@ class ToolProcessor:
                 AdapterTypes.EMBEDDING, user=user
             )
             for key in embedding_keys:
-                adapter_names = map(
-                    lambda adapter: str(adapter.adapter_name), adapters
-                )
+                adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
                 schema.properties[key]["enum"] = list(adapter_names)
 
         if vector_db_keys:
@@ -105,9 +99,7 @@ class ToolProcessor:
                 AdapterTypes.VECTOR_DB, user=user
             )
             for key in vector_db_keys:
-                adapter_names = map(
-                    lambda adapter: str(adapter.adapter_name), adapters
-                )
+                adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
                 schema.properties[key]["enum"] = list(adapter_names)
 
         if x2text_keys:
@@ -115,9 +107,7 @@ class ToolProcessor:
                 AdapterTypes.X2TEXT, user=user
             )
             for key in x2text_keys:
-                adapter_names = map(
-                    lambda adapter: str(adapter.adapter_name), adapters
-                )
+                adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
                 schema.properties[key]["enum"] = list(adapter_names)
 
         if ocr_keys:
@@ -125,21 +115,17 @@ class ToolProcessor:
                 AdapterTypes.OCR, user=user
             )
             for key in ocr_keys:
-                adapter_names = map(
-                    lambda adapter: str(adapter.adapter_name), adapters
-                )
+                adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
                 schema.properties[key]["enum"] = list(adapter_names)
 
     @staticmethod
     def get_tool_list(user: User) -> list[dict[str, Any]]:
         """Function to get a list of tools."""
         tool_registry = ToolRegistry()
-        prompt_studio_tools: list[
-            dict[str, Any]
-        ] = PromptStudioRegistryHelper.fetch_json_for_registry(user)
-        tool_list: list[
-            dict[str, Any]
-        ] = tool_registry.fetch_tools_descriptions()
+        prompt_studio_tools: list[dict[str, Any]] = (
+            PromptStudioRegistryHelper.fetch_json_for_registry(user)
+        )
+        tool_list: list[dict[str, Any]] = tool_registry.fetch_tools_descriptions()
         tool_list = tool_list + prompt_studio_tools
         return tool_list
 

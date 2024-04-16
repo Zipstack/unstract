@@ -4,8 +4,6 @@ import time
 from typing import Any, Optional, Union
 
 import redis
-
-from unstract.core.pubsub_helper import LogPublisher
 from unstract.tool_sandbox import ToolSandbox
 from unstract.workflow_execution.constants import StepExecution, ToolExecution
 from unstract.workflow_execution.dto import ToolInstance, WorkflowDto
@@ -22,10 +20,10 @@ from unstract.workflow_execution.exceptions import (
     StopExecution,
     ToolOutputNotFoundException,
 )
-from unstract.workflow_execution.execution_file_handler import (
-    ExecutionFileHandler,
-)
+from unstract.workflow_execution.execution_file_handler import ExecutionFileHandler
 from unstract.workflow_execution.tools_utils import ToolsUtils
+
+from unstract.core.pubsub_helper import LogPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -242,8 +240,7 @@ class WorkflowExecutionService:
         """
         with self.redis_con as red:
             logger.info(
-                f"Setting single stepping flag to "
-                f"{ExecutionAction.START.value}"
+                f"Setting single stepping flag to " f"{ExecutionAction.START.value}"
             )
             red.setex(
                 self.execution_id,
@@ -272,8 +269,7 @@ class WorkflowExecutionService:
                     execution_action = ExecutionAction(execution_value)
                 if execution_action == ExecutionAction.NEXT:
                     log_message = (
-                        f"Execution '{self.execution_id}' Executing "
-                        "NEXT step"
+                        f"Execution '{self.execution_id}' Executing " "NEXT step"
                     )
                     self.publish_log(log_message)
                     break
@@ -336,17 +332,12 @@ class WorkflowExecutionService:
         Args:
             execution_type (ExecutionType): ExecutionType
         """
-        if (
-            execution_type == ExecutionType.STEP
-            and not self.override_single_step
-        ):
+        if execution_type == ExecutionType.STEP and not self.override_single_step:
             self._handling_step_execution()
 
     def validate_execution_result(self, step: int) -> bool:
         workflow_metadata = self.file_handler.get_workflow_metadata()
-        metadata_list = self.file_handler.get_list_of_tool_metadata(
-            workflow_metadata
-        )
+        metadata_list = self.file_handler.get_list_of_tool_metadata(workflow_metadata)
         if len(metadata_list) == step:
             return True
         return False
@@ -406,7 +397,5 @@ class WorkflowExecutionService:
         if isinstance(component, LogComponent):
             component = component.value
 
-        log_details = LogPublisher.log_workflow_update(
-            state.value, message, component
-        )
+        log_details = LogPublisher.log_workflow_update(state.value, message, component)
         LogPublisher.publish(self.messaging_channel, log_details)

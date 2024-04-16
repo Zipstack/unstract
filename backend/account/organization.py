@@ -8,6 +8,8 @@ from django.db import IntegrityError
 Logger = logging.getLogger(__name__)
 
 subscription_loader = load_plugins()
+
+
 class OrganizationService:
     def __init__(self):  # type: ignore
         pass
@@ -36,8 +38,7 @@ class OrganizationService:
                 cls = subscription_plugin[SubscriptionConfig.METADATA][
                     SubscriptionConfig.METADATA_SERVICE_CLASS
                 ]
-                cls.add(
-                    organization_id=organization_id)
+                cls.add(organization_id=organization_id)
 
         except IntegrityError as error:
             Logger.info(f"[Duplicate Id] Failed to create Organization Error: {error}")

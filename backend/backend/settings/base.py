@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote_plus
 
 from dotenv import find_dotenv, load_dotenv
 
@@ -43,6 +44,9 @@ def get_required_setting(
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Load default log from env
+DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -58,14 +62,15 @@ LOGGING = {
     },
     "handlers": {
         "console": {
-            "level": "INFO",  # Set the desired logging level here
+            "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
             "class": "logging.StreamHandler",
             "formatter": "verbose",
         },
     },
     "root": {
         "handlers": ["console"],
-        "level": "INFO",  # Set the desired logging level here as well
+        "level": DEFAULT_LOG_LEVEL,
+        # Set the desired logging level here as well
     },
 }
 
@@ -79,9 +84,7 @@ if ENV_FILE:
 WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND", 10800
 )
-WEB_APP_ORIGIN_URL = os.environ.get(
-    "WEB_APP_ORIGIN_URL", "http://localhost:3000"
-)
+WEB_APP_ORIGIN_URL = os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
 
 LOGIN_NEXT_URL = os.environ.get("LOGIN_NEXT_URL", "http://localhost:3000/org")
 LANDING_URL = os.environ.get("LANDING_URL", "http://localhost:3000/landing")
@@ -93,9 +96,7 @@ DJANGO_APP_BACKEND_URL = os.environ.get(
 INTERNAL_SERVICE_API_KEY = os.environ.get("INTERNAL_SERVICE_API_KEY")
 
 GOOGLE_STORAGE_ACCESS_KEY_ID = os.environ.get("GOOGLE_STORAGE_ACCESS_KEY_ID")
-GOOGLE_STORAGE_SECRET_ACCESS_KEY = os.environ.get(
-    "GOOGLE_STORAGE_SECRET_ACCESS_KEY"
-)
+GOOGLE_STORAGE_SECRET_ACCESS_KEY = os.environ.get("GOOGLE_STORAGE_SECRET_ACCESS_KEY")
 UNSTRACT_FREE_STORAGE_BUCKET_NAME = os.environ.get(
     "UNSTRACT_FREE_STORAGE_BUCKET_NAME", "pandora-user-storage"
 )
@@ -142,6 +143,12 @@ CACHE_TTL_SEC = os.environ.get("CACHE_TTL_SEC", 10800)
 
 DEFAULT_AUTH_USERNAME = os.environ.get("DEFAULT_AUTH_USERNAME", "unstract")
 DEFAULT_AUTH_PASSWORD = os.environ.get("DEFAULT_AUTH_PASSWORD", "unstract")
+SYSTEM_ADMIN_USERNAME = get_required_setting("SYSTEM_ADMIN_USERNAME")
+SYSTEM_ADMIN_PASSWORD = get_required_setting("SYSTEM_ADMIN_PASSWORD")
+SYSTEM_ADMIN_EMAIL = get_required_setting("SYSTEM_ADMIN_EMAIL")
+
+# Flag to Enable django admin
+ADMIN_ENABLED = False
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
@@ -315,7 +322,8 @@ CELERY_BROKER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
 # CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/1"
 # Postgres as result backend
 CELERY_RESULT_BACKEND = (
-    f"db+postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    f"db+postgresql://{DB_USER}:{quote_plus(DB_PASSWORD)}"
+    f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
@@ -325,9 +333,7 @@ CELERY_TASK_MAX_RETRIES = 3
 CELERY_TASK_RETRY_BACKOFF = 60  # Time in seconds before retrying the task
 
 # Feature Flag
-FEATURE_FLAG_SERVICE_URL = {
-    "evaluate": f"{FLIPT_BASE_URL}/api/v1/flags/evaluate/"
-}
+FEATURE_FLAG_SERVICE_URL = {"evaluate": f"{FLIPT_BASE_URL}/api/v1/flags/evaluate/"}
 
 SCHEDULER_KWARGS = {
     "coalesce": True,
@@ -345,16 +351,13 @@ AUTH_PASSWORD_VALIDATORS = [
         "UserAttributeSimilarityValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation."
-        "MinimumLengthValidator",
+        "NAME": "django.contrib.auth.password_validation." "MinimumLengthValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation."
-        "CommonPasswordValidator",
+        "NAME": "django.contrib.auth.password_validation." "CommonPasswordValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation."
-        "NumericPasswordValidator",
+        "NAME": "django.contrib.auth.password_validation." "NumericPasswordValidator",
     },
 ]
 
@@ -415,9 +418,7 @@ REDOC_SETTINGS = {
 }
 
 # Social Auth Settings
-SOCIAL_AUTH_LOGIN_REDIRECT_URL = (
-    f"{WEB_APP_ORIGIN_URL}/oauth-status/?status=success"
-)
+SOCIAL_AUTH_LOGIN_REDIRECT_URL = f"{WEB_APP_ORIGIN_URL}/oauth-status/?status=success"
 SOCIAL_AUTH_LOGIN_ERROR_URL = f"{WEB_APP_ORIGIN_URL}/oauth-status/?status=error"
 SOCIAL_AUTH_EXTRA_DATA_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "SOCIAL_AUTH_EXTRA_DATA_EXPIRATION_TIME_IN_SECOND", 3600

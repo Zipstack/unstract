@@ -6,9 +6,10 @@ import time
 import uuid
 
 import redis
-from llama_index.llms import AzureOpenAI
-from unstract.core.llm_helper.config import AzureOpenAIConfig
+from llama_index.llms.azure_openai import AzureOpenAI
 from unstract.tool_registry.dto import Properties, Tool
+
+from unstract.core.llm_helper.config import AzureOpenAIConfig
 
 # Refactor dated: 19/12/2023 ( Removal of Appkit removal)
 
@@ -69,9 +70,7 @@ class LLMInterface:
                         port=int(redis_port),
                         password=redis_password,
                     )
-                    redis_key = (
-                        f"cache:{workflow_id}:workflow_prompt:{hash_hex}"
-                    )
+                    redis_key = f"cache:{workflow_id}:workflow_prompt:{hash_hex}"
                     workflow_bin = r.get(redis_key)
                     if workflow_bin is not None:
                         logging.info("Cache hit")

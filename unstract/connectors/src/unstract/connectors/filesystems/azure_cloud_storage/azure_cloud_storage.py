@@ -5,9 +5,7 @@ from typing import Any
 from adlfs import AzureBlobFileSystem
 
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.unstract_file_system import (
-    UnstractFileSystem,
-)
+from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +34,7 @@ class AzureCloudStorageFS(UnstractFileSystem):
 
     @staticmethod
     def get_icon() -> str:
-        return (
-            "/icons/connector-icons/azure_blob_storage.png"
-        )
+        return "/icons/connector-icons/azure_blob_storage.png"
 
     @staticmethod
     def get_json_schema() -> str:

@@ -45,7 +45,10 @@ class TestConnector(APITestCase):
             "modified_by": 2,
             "modified_at": "2023-06-14T05:28:47.759Z",
             "connector_id": "e3a4512m-efgb-48d5-98a9-3983nd77f",
-            "connector_metadata": {"drive_link": "sample_url", "sharable_link": True},
+            "connector_metadata": {
+                "drive_link": "sample_url",
+                "sharable_link": True,
+            },
         }
         response = self.client.post(url, data, format="json")
 
@@ -304,7 +307,10 @@ class TestConnector(APITestCase):
             "connector_metadata": {
                 "drive_link": "patch_update_url",
                 "sharable_link": True,
-                "sample_metadata_json": {"key1": "patch_update1", "key2": "value2"},
+                "sample_metadata_json": {
+                    "key1": "patch_update1",
+                    "key2": "value2",
+                },
             }
         }
 

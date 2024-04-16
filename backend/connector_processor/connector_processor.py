@@ -15,6 +15,7 @@ from connector_processor.exceptions import (
     TestConnectorException,
     TestConnectorInputException,
 )
+
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.connectorkit import Connectorkit
 from unstract.connectors.enums import ConnectorMode
@@ -47,9 +48,7 @@ class ConnectorProcessor:
         )
         if len(updated_connectors) != 0:
             connector = updated_connectors[0]
-            schema_details[ConnectorKeys.OAUTH] = connector.get(
-                ConnectorKeys.OAUTH
-            )
+            schema_details[ConnectorKeys.OAUTH] = connector.get(ConnectorKeys.OAUTH)
             schema_details[ConnectorKeys.SOCIAL_AUTH_URL] = connector.get(
                 ConnectorKeys.SOCIAL_AUTH_URL
             )
@@ -94,9 +93,7 @@ class ConnectorProcessor:
                         ConnectorKeys.DESCRIPTION
                     ),
                     ConnectorKeys.ICON: each_connector.get(ConnectorKeys.ICON),
-                    CIKey.CONNECTOR_MODE: each_connector.get(
-                        CIKey.CONNECTOR_MODE
-                    ).name,
+                    CIKey.CONNECTOR_MODE: each_connector.get(CIKey.CONNECTOR_MODE).name,
                 }
             )
 
@@ -139,13 +136,9 @@ class ConnectorProcessor:
         """Generic Function to get connector data with provided key."""
         updated_connectors = fetch_connectors_by_key_value("id", connector_id)
         if len(updated_connectors) == 0:
-            logger.error(
-                f"Invalid connector ID {connector_id} while invoking utility"
-            )
+            logger.error(f"Invalid connector ID {connector_id} while invoking utility")
             raise InValidConnectorId()
-        return fetch_connectors_by_key_value("id", connector_id)[0].get(
-            key_value
-        )
+        return fetch_connectors_by_key_value("id", connector_id)[0].get(key_value)
 
     @staticmethod
     def validate_connector_mode(connector_mode: str) -> ConnectorMode:

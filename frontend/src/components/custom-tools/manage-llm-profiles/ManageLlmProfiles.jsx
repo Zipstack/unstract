@@ -3,15 +3,15 @@ import { Button, Radio, Table, Typography } from "antd";
 import { useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
-import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
-import "./ManageLlmProfiles.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { AddLlmProfile } from "../add-llm-profile/AddLlmProfile";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
+import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
+import { AddLlmProfile } from "../add-llm-profile/AddLlmProfile";
+import "./ManageLlmProfiles.css";
 
 const columns = [
   {
@@ -76,7 +76,7 @@ function ManageLlmProfiles() {
 
     const requestOptions = {
       method: "PATCH",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profiles/${details?.tool_id}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-studio-profile/${details?.tool_id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",

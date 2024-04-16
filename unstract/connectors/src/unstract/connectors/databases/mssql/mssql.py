@@ -3,6 +3,7 @@ from typing import Any
 
 import pymssql
 from pymssql import Connection
+
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 
@@ -62,3 +63,14 @@ class MSSQL(UnstractDB):
             password=self.password,
             database=self.database,
         )
+
+    @staticmethod
+    def get_create_table_query(table: str) -> str:
+        sql_query = (
+            f"IF NOT EXISTS ("
+            f"SELECT * FROM sysobjects WHERE name='{table}' and xtype='U')"
+            f" CREATE TABLE {table} "
+            f"(id TEXT ,"
+            f"created_by TEXT, created_at DATETIMEOFFSET, "
+        )
+        return sql_query

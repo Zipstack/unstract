@@ -1,6 +1,0 @@
-# Add your dependencies here
-google-cloud-translate~=3.14.0
-unstructured[all-docs]==0.10.10
-
-# Required for all unstract tools
-unstract-sdk~=0.10.0

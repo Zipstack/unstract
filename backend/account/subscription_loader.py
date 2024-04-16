@@ -30,7 +30,7 @@ def load_plugins() -> list[Any]:
 
     if not os.path.exists(subscription_dir):
         return subscription_plugins
-    
+
     for item in os.listdir(subscription_dir):
         # Loads a plugin if it is in a directory.
         if os.path.isdir(os.path.join(subscription_dir, item)):
@@ -44,9 +44,7 @@ def load_plugins() -> list[Any]:
         else:
             continue
         try:
-            full_module_path = (
-                f"{subscription_package_path}.{subscription_module_name}"
-            )
+            full_module_path = f"{subscription_package_path}.{subscription_module_name}"
             module = import_module(full_module_path)
             metadata = getattr(module, SubscriptionConfig.METADATA, {})
 

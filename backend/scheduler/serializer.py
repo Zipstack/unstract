@@ -1,11 +1,12 @@
 import logging
 from typing import Any
 
-from backend.constants import FieldLengthConstants as FieldLength
 from django.conf import settings
 from pipeline.manager import PipelineManager
 from rest_framework import serializers
 from scheduler.constants import SchedulerConstants as SC
+
+from backend.constants import FieldLengthConstants as FieldLength
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +42,10 @@ class AddJobSerializer(serializers.Serializer):
     def to_internal_value(self, data: dict[str, Any]) -> dict[str, Any]:
         if SC.NAME not in data:
             data[SC.NAME] = f"Job-{data[SC.ID]}"
-        data[
-            SC.JOB_KWARGS
-        ] = PipelineManager.get_pipeline_execution_data_for_scheduled_run(
-            pipeline_id=data[SC.ID]
+        data[SC.JOB_KWARGS] = (
+            PipelineManager.get_pipeline_execution_data_for_scheduled_run(
+                pipeline_id=data[SC.ID]
+            )
         )
         data[SC.SCHEDULER_KWARGS] = settings.SCHEDULER_KWARGS
         return super().to_internal_value(data)  # type: ignore

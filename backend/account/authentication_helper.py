@@ -3,9 +3,7 @@ from typing import Any
 
 from account.dto import MemberData
 from account.models import Organization, User
-from platform_settings.platform_auth_service import (
-    PlatformAuthenticationService,
-)
+from platform_settings.platform_auth_service import PlatformAuthenticationService
 
 logger = logging.getLogger(__name__)
 

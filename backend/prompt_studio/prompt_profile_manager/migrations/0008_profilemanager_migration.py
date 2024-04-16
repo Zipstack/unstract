@@ -18,14 +18,12 @@ class Migration(migrations.Migration):
         (
             "prompt_studio_core",
             "0007_remove_customtool_default_profile_and_more",
-        )
+        ),
     ]
 
     def MigrateProfileManager(apps: Any, schema_editor: Any) -> None:
         CustomTool = apps.get_model("prompt_studio_core", "CustomTool")
-        ProfileManager = apps.get_model(
-            "prompt_profile_manager", "ProfileManager"
-        )
+        ProfileManager = apps.get_model("prompt_profile_manager", "ProfileManager")
         ToolStudioPrompt = apps.get_model("prompt_studio", "ToolStudioPrompt")
 
         # Iterate over prompt studio tools
@@ -55,9 +53,7 @@ class Migration(migrations.Migration):
                     # Replicate those profile manager
                     replicated_profile_manager = profile_manager
                     replicated_profile_manager.profile_id = None
-                    replicated_profile_manager.profile_name = (
-                        f"Profile_{index+1}"
-                    )
+                    replicated_profile_manager.profile_name = f"Profile_{index+1}"
                     """Attach the replicated profile manager to the
                     corresponding prompt tool."""
                     replicated_profile_manager.prompt_studio_tool = custom_tool

@@ -3,7 +3,6 @@ from rest_framework.urlpatterns import format_suffix_patterns
 
 from .views import ProfileManagerView
 
-profile_manager_list = ProfileManagerView.as_view({"post": "create"})
 profile_manager_detail = ProfileManagerView.as_view(
     {
         "get": "retrieve",
@@ -16,11 +15,6 @@ profile_manager_detail = ProfileManagerView.as_view(
 
 urlpatterns = format_suffix_patterns(
     [
-        path(
-            "profile-manager/",
-            profile_manager_list,
-            name="profile-manager-list",
-        ),
         path(
             "profile-manager/<uuid:pk>/",
             profile_manager_detail,

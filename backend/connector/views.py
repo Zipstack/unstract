@@ -2,7 +2,6 @@ import logging
 from typing import Any, Optional
 
 from account.custom_exceptions import DuplicateData
-from backend.constants import RequestKey
 from connector.constants import ConnectorInstanceKey as CIKey
 from connector_auth.constants import ConnectorAuthKey
 from connector_auth.exceptions import CacheMissException, MissingParamException
@@ -14,6 +13,8 @@ from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.filtering import FilterHelper
+
+from backend.constants import RequestKey
 
 from .models import ConnectorInstance
 from .serializers import ConnectorInstanceSerializer
@@ -40,9 +41,7 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
             queryset = ConnectorInstance.objects.all()
         return queryset
 
-    def _get_connector_metadata(
-        self, connector_id: str
-    ) -> Optional[dict[str, str]]:
+    def _get_connector_metadata(self, connector_id: str) -> Optional[dict[str, str]]:
         """Gets connector metadata for the ConnectorInstance.
 
         For non oauth based - obtains from request
@@ -57,9 +56,7 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
         connector_metadata = None
         if ConnectorInstance.supportsOAuth(connector_id=connector_id):
             logger.info(f"Fetching oauth data for {connector_id}")
-            oauth_key = self.request.query_params.get(
-                ConnectorAuthKey.OAUTH_KEY
-            )
+            oauth_key = self.request.query_params.get(ConnectorAuthKey.OAUTH_KEY)
             if oauth_key is None:
                 logger.error("OAuth key missing")
                 raise MissingParamException(param=ConnectorAuthKey.OAUTH_KEY)
@@ -98,9 +95,7 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
         connector_metadata = None
         connector_id = self.request.data.get(CIKey.CONNECTOR_ID)
         try:
-            connector_metadata = self._get_connector_metadata(
-                connector_id=connector_id
-            )
+            connector_metadata = self._get_connector_metadata(connector_id=connector_id)
         except Exception as exc:
             logger.error(f"Error while obtaining ConnectorAuth: {exc}")
             raise OAuthTimeOut
