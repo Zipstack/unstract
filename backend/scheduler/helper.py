@@ -12,9 +12,7 @@ logger = logging.getLogger(__name__)
 
 class SchedulerHelper:
     @staticmethod
-    def add_job(
-        pipeline_id: str, cron_string: str = SC.DEFAULT_CRON_STRING
-    ) -> None:
+    def add_job(pipeline_id: str, cron_string: str = SC.DEFAULT_CRON_STRING) -> None:
         logger.info(f"Scheduling job for {pipeline_id} with {cron_string}")
         name = f"Pipeline job-{pipeline_id}"
         job_serialize_data = {

@@ -4,9 +4,7 @@ from connector_auth.constants import SocialAuthConstants as AuthConstants
 from connector_auth.exceptions import EnrichConnectorMetadataException
 from connector_processor.constants import ConnectorKeys
 
-from unstract.connectors.filesystems.google_drive.constants import (
-    GDriveConstants,
-)
+from unstract.connectors.filesystems.google_drive.constants import GDriveConstants
 
 
 class GoogleAuthHelper:

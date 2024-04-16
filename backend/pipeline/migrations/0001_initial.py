@@ -42,9 +42,7 @@ class Migration(migrations.Migration):
                 ("scheduled", models.BooleanField(default=False)),
                 (
                     "cron_string",
-                    models.TextField(
-                        db_comment="UNIX cron string", max_length=256
-                    ),
+                    models.TextField(db_comment="UNIX cron string", max_length=256),
                 ),
                 (
                     "pipeline_type",

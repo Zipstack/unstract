@@ -24,9 +24,7 @@ class CustomToolModelManager(models.Manager):
 class CustomTool(BaseModel):
     """Model to store the custom tools designed in the tool studio."""
 
-    tool_id = models.UUIDField(
-        primary_key=True, default=uuid.uuid4, editable=False
-    )
+    tool_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tool_name = models.TextField(unique=True, blank=False, null=False)
     description = models.TextField(blank=False, null=False)
     author = models.TextField(
@@ -119,8 +117,6 @@ class CustomTool(BaseModel):
 
     # Introduced field to establish M2M relation between users and custom_tool.
     # This will introduce intermediary table which relates both the models.
-    shared_users = models.ManyToManyField(
-        User, related_name="shared_custom_tool"
-    )
+    shared_users = models.ManyToManyField(User, related_name="shared_custom_tool")
 
     objects = CustomToolModelManager()

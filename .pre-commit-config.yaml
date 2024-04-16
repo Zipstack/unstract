@@ -50,23 +50,23 @@ repos:
     rev: 24.3.0
     hooks:
       - id: black
-        args: [--config=pyproject.toml, -l 80]
+        args: [--config=pyproject.toml, -l 88]
         # language: system
         exclude: |
           (?x)^(
               unstract/flags/src/unstract/flags/evaluation_.*\.py|
           )$
-  # - repo: https://github.com/pycqa/flake8
-  #   rev: 7.0.0
-  #   hooks:
-  #     - id: flake8
-  #       args: [--max-line-length=80]
-  #       exclude: |
-  #         (?x)^(
-  #             .*migrations/.*\.py|
-  #             core/tests/.*|
-  #             unstract/flags/src/unstract/flags/evaluation_.*\.py|
-  #         )$
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        args: [--max-line-length=88]
+        exclude: |
+          (?x)^(
+              .*migrations/.*\.py|
+              core/tests/.*|
+              unstract/flags/src/unstract/flags/evaluation_.*\.py|
+          )$
   - repo: https://github.com/pycqa/isort
     rev: 5.13.2
     hooks:

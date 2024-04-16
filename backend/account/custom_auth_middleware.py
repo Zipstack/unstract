@@ -20,9 +20,7 @@ class CustomAuthMiddleware:
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
         # Returns result without authenticated if added in whitelisted paths
-        if any(
-            request.path.startswith(path) for path in settings.WHITELISTED_PATHS
-        ):
+        if any(request.path.startswith(path) for path in settings.WHITELISTED_PATHS):
             return self.get_response(request)
 
         tenantAccessiblePublicPath = False
@@ -56,9 +54,7 @@ class CustomAuthMiddleware:
         org_id = DefaultOrg.MOCK_ORG
         if not request.user.is_authenticated:
             return
-        user_session_info = CacheService.get_user_session_info(
-            request.user.email
-        )
+        user_session_info = CacheService.get_user_session_info(request.user.email)
         if not user_session_info:
             user_info: UserSessionInfo = UserSessionInfo(
                 id=request.user.id,
@@ -67,9 +63,7 @@ class CustomAuthMiddleware:
                 current_org=org_id,
             )
             CacheService.set_user_session_info(user_info)
-            user_session_info = CacheService.get_user_session_info(
-                request.user.email
-            )
+            user_session_info = CacheService.get_user_session_info(request.user.email)
         request.org_id = org_id
         request.session["user"] = user_session_info
         request.session.save()
@@ -93,16 +87,10 @@ class CustomAuthMiddleware:
         if not current_org:
             return
 
-        if (
-            current_org != connection.get_schema()
-            and not tenantAccessiblePublicPath
-        ):
+        if current_org != connection.get_schema() and not tenantAccessiblePublicPath:
             return
 
-        if (
-            current_org == Common.PUBLIC_SCHEMA_NAME
-            or tenantAccessiblePublicPath
-        ):
+        if current_org == Common.PUBLIC_SCHEMA_NAME or tenantAccessiblePublicPath:
             user_service = UserService()
         else:
             organization_member_service = OrganizationMemberService()

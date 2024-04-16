@@ -67,9 +67,7 @@ class Spec:
         default_factory=dict[str, dict[str, Any]]
     )
 
-    def get_adapter_properties_keys(
-        self, adapter_type: AdapterTypes
-    ) -> set[str]:
+    def get_adapter_properties_keys(self, adapter_type: AdapterTypes) -> set[str]:
         properties = set()
         if self.properties is not None:
             properties = {
@@ -255,9 +253,7 @@ class Adapter:
     text_extractors: list[AdapterProperties] = field(
         default_factory=list[AdapterProperties]
     )
-    ocrs: list[AdapterProperties] = field(
-        default_factory=list[AdapterProperties]
-    )
+    ocrs: list[AdapterProperties] = field(default_factory=list[AdapterProperties])
 
     @classmethod
     def from_dict(cls, data_dict: dict[str, Any]) -> "Adapter":
