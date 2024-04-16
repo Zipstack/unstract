@@ -82,8 +82,9 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |<img src="docs/assets/3rd_party/qdrant.png" width="32"/>| Qdrant | ✅ Working |
 |<img src="docs/assets/3rd_party/weaviate.png" width="32"/>| Weaviate | ✅ Working |
 |<img src="docs/assets/3rd_party/pinecone.png" width="32"/>| Pinecone | ✅ Working |
+|<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | ✅ Working |
 |<img src="docs/assets/3rd_party/milvus.png" width="32"/>| Milvus | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | 🗓️ Coming soon! |
+
 
 
 ### Embeddings
