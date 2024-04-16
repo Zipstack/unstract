@@ -51,8 +51,7 @@ function ConfigureDs({
 
   useEffect(() => {
     if (
-      connDetails &&
-      connDetails?.connector_id !== undefined &&
+      connDetails?.connector_id &&
       connDetails?.connector_id !== selectedSourceId
     ) {
       setFormData({});
