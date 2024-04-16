@@ -148,7 +148,7 @@ class DeploymentHelper:
             str: The complete status endpoint URL.
         """
         query_parameters = urlencode({"execution_id": execution_id})
-        complete_endpoint = f"{api_endpoint}?{query_parameters}"
+        complete_endpoint = f"/{api_endpoint}?{query_parameters}"
         return complete_endpoint
 
     @staticmethod
