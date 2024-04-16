@@ -111,9 +111,7 @@ class AdapterInstance(BaseModel):
 
         adapter_metadata = self.get_adapter_meta_data()
         # Get the adapter_instance
-        adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
-            self.adapter_id
-        )
+        adapter_class = Adapterkit().get_adapter_class_by_adapter_id(self.adapter_id)
         adapter_instance = adapter_class(adapter_metadata)
         if isinstance(adapter_instance, LLMAdapter):
             return adapter_instance.get_context_window_size()
