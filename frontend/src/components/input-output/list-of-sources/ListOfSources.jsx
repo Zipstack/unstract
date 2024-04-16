@@ -2,9 +2,9 @@ import { SearchOutlined } from "@ant-design/icons";
 import { Input, List } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import debounce from "lodash/debounce";
 
 import { DataSourceCard } from "../data-source-card/DataSourceCard";
-import debounce from "lodash/debounce";
 import "./ListOfSources.css";
 
 function ListOfSources({ setSelectedSourceId, open, sourcesList }) {
@@ -13,7 +13,7 @@ function ListOfSources({ setSelectedSourceId, open, sourcesList }) {
 
   useEffect(() => {
     onSearch(searchText);
-  }, [sourcesList, searchText]);
+  }, [sourcesList]);
 
   useEffect(() => {
     const filteredList = [...sourcesList].filter((source) => {
@@ -31,11 +31,11 @@ function ListOfSources({ setSelectedSourceId, open, sourcesList }) {
       return name.includes(searchUpperCase);
     });
     setFilteredSourcesList(filteredList);
+    setSearchText(searchText);
   }, 600);
 
   const handleInputChange = (event) => {
     const { value } = event.target;
-    setSearchText(value);
     onSearch(value);
   };
 
@@ -46,7 +46,6 @@ function ListOfSources({ setSelectedSourceId, open, sourcesList }) {
           placeholder="Search"
           prefix={<SearchOutlined className="search-outlined" />}
           onChange={handleInputChange}
-          value={searchText}
         />
       </div>
       <div className="list">
