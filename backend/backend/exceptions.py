@@ -22,8 +22,7 @@ class UnstractBaseException(APIException):
             detail = core_err.user_message
         if detail and "Name or service not known" in str(detail):
             detail = (
-                "Failed to establish a new connection: "
-                "Name or service not known"
+                "Failed to establish a new connection: " "Name or service not known"
             )
         super().__init__(detail=detail, **kwargs)
         self._core_err = core_err

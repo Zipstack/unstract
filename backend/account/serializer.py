@@ -78,7 +78,7 @@ class ModelTenantSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "email")
+        fields = ("id", "username")
 
 
 class OrganizationSignupResponseSerializer(serializers.Serializer):

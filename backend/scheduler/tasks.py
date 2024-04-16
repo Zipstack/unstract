@@ -51,9 +51,7 @@ def create_periodic_task(
             task=task_path,
             args=task_args_json,
         )
-        logger.info(
-            f"Completed running task addition to beat table: {task_name}"
-        )
+        logger.info(f"Completed running task addition to beat table: {task_name}")
     except Exception as e:
         logger.error(f"Failed to create periodic task: {e}")
 
@@ -97,18 +95,14 @@ def execute_pipeline_task(
             workflow = Workflow.objects.get(id=workflow_id)
             try:
                 logger.info(f"Executing workflow: {workflow}")
-                update_pipeline(
-                    pipepline_id, Pipeline.PipelineStatus.INPROGRESS
-                )
+                update_pipeline(pipepline_id, Pipeline.PipelineStatus.INPROGRESS)
                 execution_response = WorkflowHelper.complete_execution(
                     workflow, execution_id, pipepline_id, with_logs
                 )
                 logger.info(f"Execution response: {execution_response}")
                 update_pipeline(pipepline_id, Pipeline.PipelineStatus.SUCCESS)
             except IntegrityError:
-                logger.error(
-                    f"Failed to complete execution for workflow: {workflow}"
-                )
+                logger.error(f"Failed to complete execution for workflow: {workflow}")
                 update_pipeline(pipepline_id, Pipeline.PipelineStatus.FAILURE)
         logger.info(f"Execution completed for pipeline: {name}")
     except Exception as e:

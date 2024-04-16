@@ -35,17 +35,18 @@ import {
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
+
 import { TokenCount } from "../token-count/TokenCount";
 
 const EvalBtn = null;
@@ -434,12 +435,11 @@ function PromptCard({
     const body = {
       document_id: docId,
       id: promptId,
-      tool_id: details?.tool_id,
     };
 
     const requestOptions = {
       method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/${details?.tool_id}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
@@ -685,7 +685,7 @@ function PromptCard({
                     <Button
                       size="small"
                       type="text"
-                      className="display-flex-align-center"
+                      className="display-flex-align-center prompt-card-action-button"
                       onClick={enableEdit}
                       disabled={
                         disableLlmOrDocChange.includes(
@@ -702,11 +702,11 @@ function PromptCard({
                     <Button
                       size="small"
                       type="text"
-                      className="display-flex-align-center"
+                      className="display-flex-align-center prompt-card-action-button"
                       onClick={() => setDisplayAssertion(!displayAssertion)}
                       disabled={true}
                     >
-                      <AssertionIcon className="prompt-card-actions-head" />
+                      <AssertionIcon className="prompt-card-actions-head assertion-icon" />
                     </Button>
                   </Tooltip>
                   {!singlePassExtractMode && (
@@ -738,6 +738,7 @@ function PromptCard({
                       <Button
                         size="small"
                         type="text"
+                        className="prompt-card-action-button"
                         disabled={
                           disableLlmOrDocChange.includes(
                             promptDetails?.prompt_id
@@ -787,7 +788,7 @@ function PromptCard({
                 <Button
                   size="small"
                   type="link"
-                  className="display-flex-align-center"
+                  className="display-flex-align-center prompt-card-action-button"
                   onClick={() => setOpenOutputForDoc(true)}
                 >
                   <Space>
@@ -856,6 +857,7 @@ function PromptCard({
                   <Button
                     type="text"
                     size="small"
+                    className="prompt-card-action-button"
                     disabled={
                       page <= 1 ||
                       disableLlmOrDocChange.includes(
@@ -871,6 +873,7 @@ function PromptCard({
                   <Button
                     type="text"
                     size="small"
+                    className="prompt-card-action-button"
                     disabled={
                       page >= llmProfiles?.length ||
                       disableLlmOrDocChange.includes(

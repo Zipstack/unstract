@@ -50,23 +50,23 @@ repos:
     rev: 24.3.0
     hooks:
       - id: black
-        args: [--config=pyproject.toml, -l 80]
+        args: [--config=pyproject.toml, -l 88]
         # language: system
         exclude: |
           (?x)^(
               unstract/flags/src/unstract/flags/evaluation_.*\.py|
           )$
-  # - repo: https://github.com/pycqa/flake8
-  #   rev: 7.0.0
-  #   hooks:
-  #     - id: flake8
-  #       args: [--max-line-length=80]
-  #       exclude: |
-  #         (?x)^(
-  #             .*migrations/.*\.py|
-  #             core/tests/.*|
-  #             unstract/flags/src/unstract/flags/evaluation_.*\.py|
-  #         )$
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        args: [--max-line-length=88]
+        exclude: |
+          (?x)^(
+              .*migrations/.*\.py|
+              core/tests/.*|
+              unstract/flags/src/unstract/flags/evaluation_.*\.py|
+          )$
   - repo: https://github.com/pycqa/isort
     rev: 5.13.2
     hooks:
@@ -132,13 +132,6 @@ repos:
     rev: v1.1.2
     hooks:
       - id: htmlhint
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.15.1
-    hooks:
-      - id: pyupgrade
-        entry: pyupgrade --py38-plus --keep-runtime-typing
-        types:
-          - python
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.39.0
     hooks:

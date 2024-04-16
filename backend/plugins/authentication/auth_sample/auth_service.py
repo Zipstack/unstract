@@ -7,13 +7,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from .auth_helper import AuthHelper
-from .dto import (
-    AuthOrganization,
-    ResetUserPasswordDto,
-    TokenData,
-    User,
-    UserInfo,
-)
+from .dto import AuthOrganization, ResetUserPasswordDto, TokenData, User, UserInfo
 from .enums import Region
 from .exceptions import MethodNotImplemented
 
@@ -73,9 +67,7 @@ class AuthService(ABC):
     def get_user_id_from_token(self, token: dict[str, Any]) -> Response:
         return token["userinfo"]["sub"]
 
-    def get_organization_members_by_org_id(
-        self, organization_id: str
-    ) -> Response:
+    def get_organization_members_by_org_id(self, organization_id: str) -> Response:
         raise MethodNotImplemented()
 
     def reset_user_password(self, user: User) -> ResetUserPasswordDto:
