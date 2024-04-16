@@ -105,24 +105,34 @@ def set_organization(request: Request, id: str) -> Response:
 
 @api_view(["GET"])
 def get_session_data(request: Request) -> Response:
-    try:
-        response = make_session_response(request)
-        return Response(
-            status=status.HTTP_201_CREATED,
-            data=response,
-        )
+    """get_session_data.
 
-    except Exception as error:
-        Logger.error(f"Error while get User : {error}")
-        return Response(
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            data={"message": "Internal Error"},
-        )
+    Retrieve the current session data.
+    Args:
+        request (HttpRequest): _description_
+
+    Returns:
+        Response: Contains the User and Current organization details.
+    """
+    response = make_session_response(request)
+    return Response(
+        status=status.HTTP_201_CREATED,
+        data=response,
+    )
 
 
 def make_session_response(
     request: Request,
 ) -> Any:
+    """make_session_response.
+
+    Make the current session data.
+    Args:
+        request (HttpRequest): _description_
+
+    Returns:
+        User and Current organization details.
+    """
     auth_controller = AuthenticationController()
     return UserSessionResponseSerializer(
         UserSessionInfo(

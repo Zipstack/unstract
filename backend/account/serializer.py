@@ -112,7 +112,7 @@ class LoginRequestSerializer(serializers.Serializer):
 
 
 class UserSessionResponseSerializer(serializers.Serializer):
-    id = serializers.CharField()
+    id = serializers.IntegerField()
     user_id = serializers.CharField()
     email = serializers.CharField()
     organization_id = serializers.CharField()
