@@ -107,7 +107,6 @@ function AddSourceModal({
         setOpen(false);
       });
   };
-  console.log(isLoading);
 
   const getListOfSources = () => {
     let url = `/api/v1/unstract/${sessionDetails?.orgId}`;
