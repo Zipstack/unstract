@@ -59,9 +59,7 @@ def _pubsub_listen_forever() -> None:
             message = pubsub.get_message()
 
             if message:
-                logger.debug(
-                    f"[{os.getpid()}] Pub sub message received: {message}"
-                )
+                logger.debug(f"[{os.getpid()}] Pub sub message received: {message}")
                 if message["type"] == "pmessage":
                     _handle_pubsub_messages(message)
 
@@ -75,9 +73,7 @@ def _pubsub_listen_forever() -> None:
 def start_server(django_app: WSGIHandler, namespace: str) -> WSGIHandler:
     django_app = socketio.WSGIApp(sio, django_app, socketio_path=namespace)
 
-    pubsub_listener = threading.Thread(
-        target=_pubsub_listen_forever, daemon=True
-    )
+    pubsub_listener = threading.Thread(target=_pubsub_listen_forever, daemon=True)
     pubsub_listener.start()
 
     return django_app

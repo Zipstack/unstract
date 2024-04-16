@@ -16,9 +16,7 @@ project_detail = ProjectViewSet.as_view(
 project_settings = ProjectViewSet.as_view(
     {"get": "project_settings", "put": "project_settings"}
 )
-project_settings_schema = ProjectViewSet.as_view(
-    {"get": "project_settings_schema"}
-)
+project_settings_schema = ProjectViewSet.as_view({"get": "project_settings_schema"})
 
 urlpatterns = format_suffix_patterns(
     [

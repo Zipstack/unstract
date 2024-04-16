@@ -22,8 +22,8 @@ class ProfileManagerSerializer(AuditSerializer):
         vector_db = rep[ProfileManagerKeys.VECTOR_STORE]
         x2text = rep[ProfileManagerKeys.X2TEXT]
         if llm:
-            rep[ProfileManagerKeys.LLM] = (
-                AdapterProcessor.get_adapter_instance_by_id(llm)
+            rep[ProfileManagerKeys.LLM] = AdapterProcessor.get_adapter_instance_by_id(
+                llm
             )
         if embedding:
             rep[ProfileManagerKeys.EMBEDDING_MODEL] = (

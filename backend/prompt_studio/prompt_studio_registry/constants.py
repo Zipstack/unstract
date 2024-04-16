@@ -14,9 +14,7 @@ class PromptStudioRegistryKeys:
 class PromptStudioRegistryErrors:
     SERIALIZATION_FAILED = "Data Serialization Failed."
     DUPLICATE_API = "It appears that a duplicate call may have been made."
-    CUSTOM_TOOL_EXISTS = (
-        "Custom tool with similiar configuration already exists"
-    )
+    CUSTOM_TOOL_EXISTS = "Custom tool with similiar configuration already exists"
 
 
 class LogLevels:

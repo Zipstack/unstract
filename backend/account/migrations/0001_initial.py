@@ -222,9 +222,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "domain",
-                    models.CharField(
-                        db_index=True, max_length=253, unique=True
-                    ),
+                    models.CharField(db_index=True, max_length=253, unique=True),
                 ),
                 (
                     "is_primary",

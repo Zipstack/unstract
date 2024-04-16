@@ -7,9 +7,7 @@ from flask import Flask, json, request
 from llama_index.core import VectorStoreIndex
 from llama_index.core.llms import LLM
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
-from unstract.prompt_service.authentication_middleware import (
-    AuthenticationMiddleware,
-)
+from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.helper import EnvLoader, plugin_loader
@@ -18,9 +16,7 @@ from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import ToolEmbedding
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.llm import ToolLLM
-from unstract.sdk.utils.callback_manager import (
-    CallbackManager as UNCallbackManager,
-)
+from unstract.sdk.utils.callback_manager import CallbackManager as UNCallbackManager
 from unstract.sdk.vector_db import ToolVectorDB
 from werkzeug.exceptions import HTTPException
 
@@ -148,9 +144,7 @@ def authentication_middleware(func: Any) -> Any:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         token = AuthenticationMiddleware.get_token_from_auth_header(request)
         # Check if bearer token exists and validate it
-        if not token or not AuthenticationMiddleware.validate_bearer_token(
-            token
-        ):
+        if not token or not AuthenticationMiddleware.validate_bearer_token(token):
             return "Unauthorized", 401
 
         return func(*args, **kwargs)
@@ -195,9 +189,7 @@ def prompt_processor() -> Any:
         name = output[PSKeys.NAME]
         promptx = output[PSKeys.PROMPT]
         chunk_size = output[PSKeys.CHUNK_SIZE]
-        util = PromptServiceBaseTool(
-            log_level=LogLevel.INFO, platform_key=platform_key
-        )
+        util = PromptServiceBaseTool(log_level=LogLevel.INFO, platform_key=platform_key)
         tool_index = ToolIndex(tool=util)
 
         if active is False:
@@ -347,15 +339,9 @@ def prompt_processor() -> Any:
             )
             assertion_failed = True
             answer = ""
-            if (
-                output[PSKeys.ASSERTION_FAILURE_PROMPT]
-                .lower()
-                .startswith("@assign")
-            ):
+            if output[PSKeys.ASSERTION_FAILURE_PROMPT].lower().startswith("@assign"):
                 answer = "NA"
-                first_space_index = output[
-                    PSKeys.ASSERTION_FAILURE_PROMPT
-                ].find(" ")
+                first_space_index = output[PSKeys.ASSERTION_FAILURE_PROMPT].find(" ")
                 if first_space_index > 0:
                     answer = output[PSKeys.ASSERTION_FAILURE_PROMPT][
                         first_space_index + 1
@@ -483,11 +469,7 @@ def prompt_processor() -> Any:
                 else:
                     structured_output[output[PSKeys.NAME]] = False
         elif output[PSKeys.TYPE] == PSKeys.JSON:
-            if (
-                assertion_failed
-                or answer.lower() == "[]"
-                or answer.lower() == "na"
-            ):
+            if assertion_failed or answer.lower() == "[]" or answer.lower() == "na":
                 structured_output[output[PSKeys.NAME]] = None
             else:
                 # Remove any markdown code blocks
@@ -500,9 +482,7 @@ def prompt_processor() -> Any:
                 try:
                     structured_output[output[PSKeys.NAME]] = json.loads(answer)
                 except Exception as e:
-                    app.logger.info(
-                        f"JSON format error : {answer}", LogLevel.ERROR
-                    )
+                    app.logger.info(f"JSON format error : {answer}", LogLevel.ERROR)
                     app.logger.info(
                         f"Error parsing response (to json): {e}", LogLevel.ERROR
                     )
@@ -676,9 +656,7 @@ def simple_retriver(  # type:ignore
         if node.score > 0.6:
             text += node.get_content() + "\n"
         else:
-            app.logger.info(
-                "Node score is less than 0.6. " f"Ignored: {node.score}"
-            )
+            app.logger.info("Node score is less than 0.6. " f"Ignored: {node.score}")
 
     answer, usage = construct_and_run_prompt(  # type:ignore
         output,
@@ -720,9 +698,7 @@ def run_completion(
         platform_api_key = llm_helper.tool.get_env_or_die(
             PSKeys.PLATFORM_SERVICE_API_KEY
         )
-        completion = llm_helper.run_completion(
-            llm_li, platform_api_key, prompt, 3
-        )
+        completion = llm_helper.run_completion(llm_li, platform_api_key, prompt, 3)
 
         answer: str = completion[PSKeys.RESPONSE].text
         usage = {}
@@ -749,8 +725,7 @@ def extract_variable(
                 )
             else:
                 raise ValueError(
-                    f"Variable {variable_name} not found "
-                    "in structured output"
+                    f"Variable {variable_name} not found " "in structured output"
                 )
 
     if promptx != output[PSKeys.PROMPT]:
