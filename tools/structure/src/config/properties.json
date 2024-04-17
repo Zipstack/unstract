@@ -37,10 +37,7 @@
     "maxFileSize": "50MB",
     "allowedFileTypes": [
       "txt",
-      "pdf",
-      "doc",
-      "docx",
-      "odt"
+      "pdf"
     ]
   }
 }
