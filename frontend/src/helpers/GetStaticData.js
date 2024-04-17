@@ -318,20 +318,18 @@ const displayPromptResult = (output, isFormat = false) => {
     }
   }
 
+  if (!isFormat) {
+    // If formatting is not requested, return the parsed data directly
+    return parsedData;
+  }
+
   // Check if the parsed data is an array or object and formatting is requested
-  if (
-    (Array.isArray(parsedData) || typeof parsedData === "object") &&
-    isFormat
-  ) {
+  if (Array.isArray(parsedData) || typeof parsedData === "object") {
     // If formatting is requested, return the JSON string with indentation
     return JSON.stringify(parsedData, null, 4);
   }
 
-  /*
-    If formatting is requested but parsed data is not an array/object, return string representation
-    else, return the parsedData
-  */
-  return isFormat ? String(parsedData) : parsedData;
+  return String(parsedData);
 };
 
 const onboardCompleted = (adaptersList) => {
