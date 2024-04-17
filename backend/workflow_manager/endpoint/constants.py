@@ -65,16 +65,12 @@ class OutputJsonKey:
 class FileType:
     PDF_DOCUMENTS = "PDF documents"
     TEXT_DOCUMENTS = "Text documents"
-    WORD_DOCUMENTS = "Word documents"
-    OPENOFFICE_DOCUMENTS = "Openoffice documents"
     IMAGES = "Images"
 
 
 class FilePattern:
     PDF_DOCUMENTS = ["*.pdf"]
     TEXT_DOCUMENTS = ["*.txt"]
-    WORD_DOCUMENTS = ["*.doc", "*.docx"]
-    OPENOFFICE_DOCUMENTS = ["*.odt"]
     IMAGES = ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp"]
 
 
