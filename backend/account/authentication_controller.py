@@ -495,10 +495,13 @@ class AuthenticationController:
         self, request: Request, callback_data: CallbackData
     ) -> Union[User, OrganizationMember]:
         email = callback_data.email
+        user_id = callback_data.user_id
         user_service = UserService()
-        user = user_service.get_user_by_email(email)
+        user: User | None = user_service.get_user_by_email(email)
+        if user and not user.user_id:
+            user = user_service.update_user(user, user_id)
         if not user:
-            user_id = callback_data.user_id
+
             user = user_service.create_user(email, user_id)
         return user
 
