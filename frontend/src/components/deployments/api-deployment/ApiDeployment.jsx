@@ -238,14 +238,14 @@ function ApiDeployment() {
     apiDeploymentsApiService
       .downloadPostmanCollection(selectedRow?.id)
       .then((res) => {
-        const href = URL.createObjectURL(res?.data);
+        const { data, headers } = res;
+        const href = URL.createObjectURL(data);
         // Get filename from header or use a default
         const filename =
-          res?.headers["content-disposition"]
+          headers["content-disposition"]
             ?.split("filename=")[1]
             ?.trim()
             .replaceAll('"', "") || "postman_collection.json";
-        console.log(filename);
         // create "a" HTML element with href to file & click
         const link = document.createElement("a");
         link.href = href;
@@ -295,7 +295,7 @@ function ApiDeployment() {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={() => getApiKeys()}
+          onClick={getApiKeys}
         >
           <div>
             <KeyOutlined />
@@ -312,7 +312,7 @@ function ApiDeployment() {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={() => downloadPostmanCollection()}
+          onClick={downloadPostmanCollection}
         >
           <div>
             <CloudDownloadOutlined />
