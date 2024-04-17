@@ -104,9 +104,7 @@ class ToolRegistryHelper:
             image_tag=tool_meta.tag,
         )
 
-        tool_properties: Optional[dict[str, Any]] = (
-            tool_sandbox.get_properties()
-        )
+        tool_properties: Optional[dict[str, Any]] = tool_sandbox.get_properties()
         if not tool_properties:
             return {}
         return tool_properties
@@ -165,9 +163,7 @@ class ToolRegistryHelper:
         Returns:
             ToolData: _description_
         """
-        tool_metadata = ToolUtils.get_tool_meta_from_tool_url(
-            registry_tool=image_url
-        )
+        tool_metadata = ToolUtils.get_tool_meta_from_tool_url(registry_tool=image_url)
         spec = self.get_tool_spec(tool_meta=tool_metadata)
         properties = self.get_tool_properties(tool_meta=tool_metadata)
         icon = self.get_tool_icon(tool_meta=tool_metadata)
@@ -202,9 +198,7 @@ class ToolRegistryHelper:
             dict[str, Any]: _description_
         """
         try:
-            yml_data: dict[str, Any] = ToolUtils.get_registry(
-                self.registry_file
-            )
+            yml_data: dict[str, Any] = ToolUtils.get_registry(self.registry_file)
             return yml_data
         except FileNotFoundError:
             logger.error(f"File not found: {self.registry_file}")
@@ -325,20 +319,14 @@ class ToolRegistryHelper:
         tool_data: dict[str, Any] = tools.pop(tool_uid, {})
         return tool_data
 
-    def add_new_tool_to_disk_by_uid(
-        self, uuid: str, data: dict[str, Any]
-    ) -> None:
+    def add_new_tool_to_disk_by_uid(self, uuid: str, data: dict[str, Any]) -> None:
         tools = self.get_all_tools_from_disk()
         tools[uuid] = data
-        ToolUtils.save_tools_in_to_disk(
-            file_path=self.private_tools_file, data=tools
-        )
+        ToolUtils.save_tools_in_to_disk(file_path=self.private_tools_file, data=tools)
 
     def add_new_tool_to_disk_by_image_url(self, image_url: str) -> None:
         tool_data = self.get_tool_data_by_image_url(image_url=image_url)
-        self.add_new_tool_to_disk_by_uid(
-            uuid=tool_data.uid, data=tool_data.data
-        )
+        self.add_new_tool_to_disk_by_uid(uuid=tool_data.uid, data=tool_data.data)
 
     def remove_tools_from_disk(
         self, tools: dict[str, Any], tool_ids: list[str]

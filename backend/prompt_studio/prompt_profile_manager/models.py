@@ -14,9 +14,7 @@ class ProfileManager(BaseModel):
     class RetrievalStrategy(models.TextChoices):
         SIMPLE = "simple", "Simple retrieval"
 
-    profile_id = models.UUIDField(
-        primary_key=True, default=uuid.uuid4, editable=False
-    )
+    profile_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     profile_name = models.TextField(blank=False)
     vector_store = models.ForeignKey(
         AdapterInstance,

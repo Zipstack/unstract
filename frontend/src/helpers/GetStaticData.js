@@ -320,6 +320,10 @@ const displayPromptResult = (output, isFormat = false) => {
     return JSON.stringify(parsedData, null, 4);
   }
 
+  if (!parsedData) {
+    return String(parsedData);
+  }
+
   return parsedData;
 };
 

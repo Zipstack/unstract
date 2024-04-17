@@ -6,9 +6,7 @@ from django.db import connection, migrations, models
 
 def enable_triggers(apps, schema_editor):
     with connection.cursor() as cursor:
-        cursor.execute(
-            "ALTER TABLE adapter_adapterinstance ENABLE TRIGGER ALL;"
-        )
+        cursor.execute("ALTER TABLE adapter_adapterinstance ENABLE TRIGGER ALL;")
 
 
 class Migration(migrations.Migration):

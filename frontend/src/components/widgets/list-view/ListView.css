@@ -91,3 +91,15 @@
 .list-item-desc {
   padding-bottom: 10px;
 }
+
+.edit-icon {
+  margin-right: 10px;
+}
+
+.edit-icon:hover {
+  color: #1890ff;
+}
+
+.delete-icon:hover {
+  color: #ff4d4f;
+}

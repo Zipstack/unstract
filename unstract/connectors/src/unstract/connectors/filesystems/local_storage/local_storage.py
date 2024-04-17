@@ -4,9 +4,7 @@ from typing import Any, Optional
 
 from fsspec.implementations.local import LocalFileSystem
 
-from unstract.connectors.filesystems.unstract_file_system import (
-    UnstractFileSystem,
-)
+from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 logger = logging.getLogger(__name__)
 

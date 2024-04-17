@@ -14,9 +14,7 @@ def fill_with_default_x2text(apps, schema):
 
     encryption_secret: str = settings.ENCRYPTION_KEY
     f: Fernet = Fernet(encryption_secret.encode("utf-8"))
-    metadata = {
-        "url": "http://unstract-unstructured-io:8000/general/v0/general"
-    }
+    metadata = {"url": "http://unstract-unstructured-io:8000/general/v0/general"}
     json_string = json.dumps(metadata)
     metadata_b = f.encrypt(json_string.encode("utf-8"))
 
@@ -27,9 +25,7 @@ def fill_with_default_x2text(apps, schema):
         adapter_metadata_b=metadata_b,
     )
     adapter_instance.save()
-    ProfileManager.objects.filter(x2text__isnull=True).update(
-        x2text=adapter_instance
-    )
+    ProfileManager.objects.filter(x2text__isnull=True).update(x2text=adapter_instance)
 
 
 def reversal_x2text(*args):
@@ -38,9 +34,7 @@ def reversal_x2text(*args):
 
 def disable_triggers(apps, schema_editor):
     with connection.cursor() as cursor:
-        cursor.execute(
-            "ALTER TABLE adapter_adapterinstance DISABLE TRIGGER ALL;"
-        )
+        cursor.execute("ALTER TABLE adapter_adapterinstance DISABLE TRIGGER ALL;")
 
 
 class Migration(migrations.Migration):

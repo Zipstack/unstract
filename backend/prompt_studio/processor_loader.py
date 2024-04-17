@@ -41,9 +41,7 @@ def load_plugins() -> list[Any]:
         else:
             continue
         try:
-            full_module_path = (
-                f"{processor_package_path}.{processor_module_name}"
-            )
+            full_module_path = f"{processor_package_path}.{processor_module_name}"
             module = import_module(full_module_path)
             metadata = getattr(module, ProcessorConfig.METADATA, {})
 

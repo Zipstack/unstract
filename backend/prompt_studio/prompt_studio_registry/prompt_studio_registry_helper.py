@@ -7,9 +7,7 @@ from django.db import IntegrityError
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.models import CustomTool
-from prompt_studio.prompt_studio_core.prompt_studio_helper import (
-    PromptStudioHelper,
-)
+from prompt_studio.prompt_studio_core.prompt_studio_helper import PromptStudioHelper
 from unstract.tool_registry.dto import Properties, Spec, Tool
 
 from .constants import JsonSchemaKey
@@ -93,7 +91,7 @@ class PromptStudioRegistryHelper:
 
     @staticmethod
     def update_or_create_psr_tool(
-        custom_tool: CustomTool,
+        custom_tool: CustomTool, shared_with_org: bool, user_ids: set[int]
     ) -> PromptStudioRegistry:
         """Updates or creates the PromptStudioRegistry record.
 
@@ -111,14 +109,12 @@ class PromptStudioRegistryHelper:
             obj: PromptStudioRegistry instance that was updated or created
         """
         try:
-            properties: Properties = (
-                PromptStudioRegistryHelper.frame_properties(tool=custom_tool)
+            properties: Properties = PromptStudioRegistryHelper.frame_properties(
+                tool=custom_tool
             )
             spec: Spec = PromptStudioRegistryHelper.frame_spec(tool=custom_tool)
-            prompts: list[ToolStudioPrompt] = (
-                PromptStudioHelper.fetch_prompt_from_tool(
-                    tool_id=custom_tool.tool_id
-                )
+            prompts: list[ToolStudioPrompt] = PromptStudioHelper.fetch_prompt_from_tool(
+                tool_id=custom_tool.tool_id
             )
             metadata = PromptStudioRegistryHelper.frame_export_json(
                 tool=custom_tool, prompts=prompts
@@ -143,6 +139,10 @@ class PromptStudioRegistryHelper:
                 logger.info(f"PSR {obj.prompt_registry_id} was created")
             else:
                 logger.info(f"PSR {obj.prompt_registry_id} was updated")
+            obj.shared_to_org = shared_with_org
+            obj.shared_users.clear()
+            obj.shared_users.add(*user_ids)
+            obj.save()
             return obj
         except IntegrityError as error:
             logger.error(
@@ -206,9 +206,7 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.VECTOR_DB] = vector_db
             output[JsonSchemaKey.EMBEDDING] = embedding_model
             output[JsonSchemaKey.X2TEXT_ADAPTER] = x2text
-            output[JsonSchemaKey.CHUNK_OVERLAP] = (
-                prompt.profile_manager.chunk_overlap
-            )
+            output[JsonSchemaKey.CHUNK_OVERLAP] = prompt.profile_manager.chunk_overlap
             output[JsonSchemaKey.LLM] = llm
             output[JsonSchemaKey.PREAMBLE] = tool.preamble
             output[JsonSchemaKey.POSTAMBLE] = tool.postamble
@@ -238,14 +236,13 @@ class PromptStudioRegistryHelper:
     @staticmethod
     def fetch_json_for_registry(user: User) -> list[dict[str, Any]]:
         try:
-            prompt_studio_tools = PromptStudioRegistry.objects.all()
+            # filter the Prompt studio registry based on the users and org flag
+            prompt_studio_tools = PromptStudioRegistry.objects.list_tools(user)
             pi_serializer = PromptStudioRegistrySerializer(
                 instance=prompt_studio_tools, many=True
             )
         except Exception as error:
-            logger.error(
-                f"Error occured while fetching tool for tool_id: {error}"
-            )
+            logger.error(f"Error occured while fetching tool for tool_id: {error}")
             raise InternalError()
         tool_metadata: dict[str, Any] = {}
         tool_list = []
