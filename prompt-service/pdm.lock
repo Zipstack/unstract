@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:d3843efe948827b882b2c5bc1179bcd752fb4b688796449e6a9d61ea2c0b7031"
+content_hash = "sha256:50d54cc7dddf2e4a3d103e8844e7d6cce463261cdca44973582a083d1d0941e1"
 
 [[package]]
 name = "aiohttp"
@@ -3340,8 +3340,8 @@ requires_python = ">=3.7"
 summary = "Database Abstraction Library"
 groups = ["default"]
 dependencies = [
+    "SQLAlchemy==2.0.29",
     "greenlet!=0.4.17",
-    "sqlalchemy==2.0.29",
 ]
 files = [
     {file = "SQLAlchemy-2.0.29-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:4c142852ae192e9fe5aad5c350ea6befe9db14370b34047e1f0f7cf99e63c63b"},
@@ -3633,7 +3633,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.9.0"
+version = "0.10.0"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract interface for LLMs, Embeddings and VectorDBs"
 groups = ["default"]
@@ -3658,8 +3658,8 @@ dependencies = [
     "singleton-decorator~=1.0.0",
 ]
 files = [
-    {file = "unstract_adapters-0.9.0-py3-none-any.whl", hash = "sha256:4cdd4de1f0bb6fe09f3a13fadf6e229d7fcab8362d31707dd2be331f4ce79940"},
-    {file = "unstract_adapters-0.9.0.tar.gz", hash = "sha256:045bbe233a80fc7c08c8ba8f841bbfc3b57988762cd668fb90f2c09bddafab18"},
+    {file = "unstract_adapters-0.10.0-py3-none-any.whl", hash = "sha256:8ad19cbdf939679a53f2910e596ba6402598b1e3046fc05b2331bb5e902e9915"},
+    {file = "unstract_adapters-0.10.0.tar.gz", hash = "sha256:b0cde1ce5ce40e978fe3e2a350ef5950b7ec622ea9b14a99eedf3fa77efade97"},
 ]
 
 [[package]]
@@ -3680,7 +3680,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.19.0"
+version = "0.20.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3691,11 +3691,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.9.0",
+    "unstract-adapters~=0.10.0",
 ]
 files = [
-    {file = "unstract_sdk-0.19.0-py3-none-any.whl", hash = "sha256:9aeb63b378d22e457c47a6d74d074d0d420bea58d84eb2b9e72ca2d5bfdf9915"},
-    {file = "unstract_sdk-0.19.0.tar.gz", hash = "sha256:f868bfbd2852e7fa6c7176daa3001b77370e09e7bc3efbe460c8d6ee8b203c59"},
+    {file = "unstract_sdk-0.20.0-py3-none-any.whl", hash = "sha256:cdcc7fe30e912a66d4a7cbb4b7ee6f373a5b88e4cfe7d39a06efef5999c182e5"},
+    {file = "unstract_sdk-0.20.0.tar.gz", hash = "sha256:3344860c02313a64990b0d2fa89926b7784122b5549abb21d034a9df11be93b3"},
 ]
 
 [[package]]

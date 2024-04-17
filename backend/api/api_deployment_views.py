@@ -20,6 +20,7 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
+from utils.enums import CeleryTaskState
 from workflow_manager.workflow.dto import ExecutionResponse
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,11 @@ class DeploymentExecution(views.APIView):
             file_objs=file_objs,
             timeout=timeout,
         )
+        if "error" in response and response["error"]:
+            return Response(
+                {"message": response},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
         return Response({"message": response}, status=status.HTTP_200_OK)
 
     @DeploymentHelper.validate_api_key
@@ -69,6 +75,14 @@ class DeploymentExecution(views.APIView):
         response: ExecutionResponse = DeploymentHelper.get_execution_status(
             execution_id=execution_id
         )
+        if response.execution_status != CeleryTaskState.SUCCESS.value:
+            return Response(
+                {
+                    "status": response.execution_status,
+                    "message": response.result,
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
         return Response(
             {"status": response.execution_status, "message": response.result},
             status=status.HTTP_200_OK,
