@@ -5,7 +5,7 @@
 groups = ["default", "hook-check-django-migrations", "lint"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:310c79dc4110a40d6ce285183f2ce6c1112e1b20fcc7d5cfcd4195a785e97d73"
+content_hash = "sha256:4fee7127ce481373d3361ddcfaf4294fb601e7612b9d84c7dd7cb4722e854688"
 
 [[package]]
 name = "adlfs"
@@ -4646,6 +4646,20 @@ files = [
 ]
 
 [[package]]
+name = "types-cffi"
+version = "1.16.0.20240331"
+requires_python = ">=3.8"
+summary = "Typing stubs for cffi"
+groups = ["lint"]
+dependencies = [
+    "types-setuptools",
+]
+files = [
+    {file = "types-cffi-1.16.0.20240331.tar.gz", hash = "sha256:b8b20d23a2b89cfed5f8c5bc53b0cb8677c3aac6d970dbc771e28b9c698f5dee"},
+    {file = "types_cffi-1.16.0.20240331-py3-none-any.whl", hash = "sha256:a363e5ea54a4eb6a4a105d800685fde596bc318089b025b27dee09849fe41ff0"},
+]
+
+[[package]]
 name = "types-pymysql"
 version = "1.1.0.1"
 summary = "Typing stubs for PyMySQL"
@@ -4657,16 +4671,17 @@ files = [
 
 [[package]]
 name = "types-pyopenssl"
-version = "24.0.0.20240311"
+version = "24.0.0.20240417"
 requires_python = ">=3.8"
 summary = "Typing stubs for pyOpenSSL"
 groups = ["lint"]
 dependencies = [
     "cryptography>=35.0.0",
+    "types-cffi",
 ]
 files = [
-    {file = "types-pyOpenSSL-24.0.0.20240311.tar.gz", hash = "sha256:7bca00cfc4e7ef9c5d2663c6a1c068c35798e59670595439f6296e7ba3d58083"},
-    {file = "types_pyOpenSSL-24.0.0.20240311-py3-none-any.whl", hash = "sha256:6e8e8bfad34924067333232c93f7fc4b369856d8bea0d5c9d1808cb290ab1972"},
+    {file = "types-pyOpenSSL-24.0.0.20240417.tar.gz", hash = "sha256:38e75fb828d2717be173770bbae8c22811fdec68e2bc3f5833954113eb84237d"},
+    {file = "types_pyOpenSSL-24.0.0.20240417-py3-none-any.whl", hash = "sha256:4ce41ddaf383815168b6e21d542fd92135f10a5e82adb3e593a6b79638b0b511"},
 ]
 
 [[package]]
@@ -4693,7 +4708,7 @@ files = [
 
 [[package]]
 name = "types-redis"
-version = "4.6.0.20240409"
+version = "4.6.0.20240417"
 requires_python = ">=3.8"
 summary = "Typing stubs for redis"
 groups = ["lint"]
@@ -4702,8 +4717,8 @@ dependencies = [
     "types-pyOpenSSL",
 ]
 files = [
-    {file = "types-redis-4.6.0.20240409.tar.gz", hash = "sha256:ce217c279581d769df992c5b76d61c65425b0a679626048e633e643868eb881b"},
-    {file = "types_redis-4.6.0.20240409-py3-none-any.whl", hash = "sha256:a3b92760c49a034827a0c3825206728df4e61e981c1324099d4414335af4f52f"},
+    {file = "types-redis-4.6.0.20240417.tar.gz", hash = "sha256:8be4b3e5945120acdef0a2348c04be42894e84c6d616288b908a3d8ed5e89a8d"},
+    {file = "types_redis-4.6.0.20240417-py3-none-any.whl", hash = "sha256:4c35cbd90ff18c8da6f97a05d2fe97eb3abfe09acf3a4357b6c5e2d4a59385a1"},
 ]
 
 [[package]]
@@ -4718,6 +4733,17 @@ dependencies = [
 files = [
     {file = "types-requests-2.31.0.6.tar.gz", hash = "sha256:cd74ce3b53c461f1228a9b783929ac73a666658f223e28ed29753771477b3bd0"},
     {file = "types_requests-2.31.0.6-py3-none-any.whl", hash = "sha256:a2db9cb228a81da8348b49ad6db3f5519452dd20a9c1e1a868c83c5fe88fd1a9"},
+]
+
+[[package]]
+name = "types-setuptools"
+version = "69.5.0.20240415"
+requires_python = ">=3.8"
+summary = "Typing stubs for setuptools"
+groups = ["lint"]
+files = [
+    {file = "types-setuptools-69.5.0.20240415.tar.gz", hash = "sha256:ea64af0a96a674f8c40ba34c09c254f3c70bc3f218c6bffa1d0912bd91584a2f"},
+    {file = "types_setuptools-69.5.0.20240415-py3-none-any.whl", hash = "sha256:637cdb24a0d48a6ab362c09cfe3b89ecaa1c10666a8ba9452924e9a0ae00fa4a"},
 ]
 
 [[package]]
@@ -4923,7 +4949,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.20.0"
+version = "0.20.1"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["hook-check-django-migrations"]
@@ -4937,8 +4963,8 @@ dependencies = [
     "unstract-adapters~=0.10.0",
 ]
 files = [
-    {file = "unstract_sdk-0.20.0-py3-none-any.whl", hash = "sha256:cdcc7fe30e912a66d4a7cbb4b7ee6f373a5b88e4cfe7d39a06efef5999c182e5"},
-    {file = "unstract_sdk-0.20.0.tar.gz", hash = "sha256:3344860c02313a64990b0d2fa89926b7784122b5549abb21d034a9df11be93b3"},
+    {file = "unstract_sdk-0.20.1-py3-none-any.whl", hash = "sha256:b3df6cf33550b9e74d9f0d07e914eb65bdf726665c6022c4ad9dda2dbec05899"},
+    {file = "unstract_sdk-0.20.1.tar.gz", hash = "sha256:0fda20c4689a4e83936efacfaeb51a3de9b8ae2bea7f330fc442dee27fd22308"},
 ]
 
 [[package]]
