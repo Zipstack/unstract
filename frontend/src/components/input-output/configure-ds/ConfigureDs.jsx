@@ -5,13 +5,13 @@ import { useParams } from "react-router-dom";
 
 import { sourceTypes } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { OAuthDs } from "../../oauth-ds/oauth-ds/OAuthDs.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./ConfigureDs.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 function ConfigureDs({
   spec,
@@ -50,9 +50,12 @@ function ConfigureDs({
   }, [formData]);
 
   useEffect(() => {
-    if (connDetails && connDetails.connector_id !== selectedSourceId) {
+    if (
+      connDetails?.connector_id &&
+      connDetails?.connector_id !== selectedSourceId
+    ) {
       setFormData({});
-    } else {
+    } else if (metadata) {
       setFormData(metadata);
     }
   }, [selectedSourceId]);
