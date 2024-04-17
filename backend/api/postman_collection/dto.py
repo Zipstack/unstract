@@ -56,9 +56,7 @@ class PostmanItem:
 @dataclass
 class PostmanInfo:
     name: str = "Unstract's API deployment"
-    schema: str = (
-        "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"  # noqa: E501
-    )
+    schema: str = CollectionKey.POSTMAN_COLLECTION_V210
     description: str = "Contains APIs meant for using the deployed Unstract API"
 
 

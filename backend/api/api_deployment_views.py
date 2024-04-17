@@ -2,10 +2,11 @@ import json
 import logging
 from typing import Any, Optional
 
+from api.constants import ApiExecution
 from api.deployment_helper import DeploymentHelper
 from api.exceptions import InvalidAPIRequest, NoActiveAPIKeyError
-from api.models import APIDeployment, APIKey
-from api.postman_collection.models import PostmanCollection
+from api.models import APIDeployment
+from api.postman_collection.dto import PostmanCollection
 from api.serializers import (
     APIDeploymentListSerializer,
     APIDeploymentSerializer,
@@ -45,7 +46,7 @@ class DeploymentExecution(views.APIView):
     def post(
         self, request: Request, org_name: str, api_name: str, api: APIDeployment
     ) -> Response:
-        file_objs = request.FILES.getlist("files")
+        file_objs = request.FILES.getlist(ApiExecution.FILES_FORM_DATA)
         serializer = ExecutionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         timeout = serializer.get_timeout(serializer.validated_data)
@@ -129,18 +130,15 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
     def download_postman_collection(
         self, request: Request, pk: Optional[str] = None
     ) -> Response:
-        """Custom action to fetch a single instance."""
+        """Downloads a Postman Collection of the API deployment instance."""
         instance = self.get_object()
-        active_api_key = ""
-        try:
-            api_key_inst = instance.apikey_set.filter(is_active=True).first()
-            active_api_key = api_key_inst.api_key
-        except APIKey.DoesNotExist:
+        api_key_inst = instance.apikey_set.filter(is_active=True).first()
+        if not api_key_inst:
             logger.error(f"No active API key set for deployment {instance.pk}")
             raise NoActiveAPIKeyError(deployment_name=instance.display_name)
 
         postman_collection = PostmanCollection.create(
-            instance=instance, api_key=active_api_key
+            instance=instance, api_key=api_key_inst.api_key
         )
         response = HttpResponse(
             json.dumps(postman_collection.to_dict()), content_type="application/json"
