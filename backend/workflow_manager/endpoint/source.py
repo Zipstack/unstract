@@ -109,8 +109,6 @@ class SourceConnector(BaseConnector):
         patterns = {
             FileType.PDF_DOCUMENTS: FilePattern.PDF_DOCUMENTS,
             FileType.TEXT_DOCUMENTS: FilePattern.TEXT_DOCUMENTS,
-            FileType.WORD_DOCUMENTS: FilePattern.WORD_DOCUMENTS,
-            FileType.OPENOFFICE_DOCUMENTS: FilePattern.OPENOFFICE_DOCUMENTS,
             FileType.IMAGES: FilePattern.IMAGES,
         }
         wildcard = []
