@@ -12,9 +12,7 @@ class LLMCache:
         redis_host = os.environ.get("REDIS_HOST")
         redis_port = os.environ.get("REDIS_PORT")
         if redis_host is None or redis_port is None:
-            raise RuntimeError(
-                "REDIS_HOST or REDIS_PORT environment variable not set"
-            )
+            raise RuntimeError("REDIS_HOST or REDIS_PORT environment variable not set")
         redis_password = os.environ.get("REDIS_PASSWORD", None)
         if redis_password and (
             redis_password == "" or redis_password.lower() == "none"
@@ -107,10 +105,7 @@ class LLMCache:
         """
         logger.info(f"Clearing cache with prefix: {self.cache_key_prefix}")
         keys_to_delete = [
-            key
-            for key in self.llm_cache.scan_iter(
-                match=self.cache_key_prefix + "*"
-            )
+            key for key in self.llm_cache.scan_iter(match=self.cache_key_prefix + "*")
         ]
         if keys_to_delete:
             return self.delete(*keys_to_delete)

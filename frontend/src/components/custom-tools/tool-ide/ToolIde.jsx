@@ -3,18 +3,18 @@ import { Col, Collapse, Modal, Row } from "antd";
 import { useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomSynonymsModal } from "../custom-synonyms-modal/CustomSynonymsModal";
+import { DisplayLogs } from "../display-logs/DisplayLogs";
 import { DocumentManager } from "../document-manager/DocumentManager";
 import { Header } from "../header/Header";
+import { LogsLabel } from "../logs-label/LogsLabel";
+import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { SettingsModal } from "../settings-modal/SettingsModal";
-import { DisplayLogs } from "../display-logs/DisplayLogs";
-import { LogsLabel } from "../logs-label/LogsLabel";
 
 function ToolIde() {
   const [showLogsModal, setShowLogsModal] = useState(false);
@@ -26,7 +26,6 @@ function ToolIde() {
     updateCustomTool,
     disableLlmOrDocChange,
     selectedDoc,
-    listOfDocs,
     indexDocs,
     pushIndexDoc,
     deleteIndexDoc,
@@ -82,13 +81,12 @@ function ToolIde() {
     }
 
     const body = {
-      tool_id: details?.tool_id,
       document_id: docId,
     };
 
     const requestOptions = {
       method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/index-document/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/index-document/${details?.tool_id}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
@@ -134,7 +132,7 @@ function ToolIde() {
       });
   };
 
-  const handleDocChange = (docId) => {
+  const handleDocChange = (doc) => {
     if (disableLlmOrDocChange?.length > 0) {
       setAlertDetails({
         type: "error",
@@ -143,8 +141,6 @@ function ToolIde() {
       return;
     }
 
-    const doc = [...listOfDocs].find((item) => item?.document_id === docId);
-
     const prevSelectedDoc = selectedDoc;
     const data = {
       selectedDoc: doc,
@@ -152,7 +148,7 @@ function ToolIde() {
     updateCustomTool(data);
 
     const body = {
-      output: docId,
+      output: doc?.document_id,
     };
 
     handleUpdateTool(body).catch((err) => {

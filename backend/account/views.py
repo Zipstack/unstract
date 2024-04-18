@@ -5,17 +5,20 @@ from account.authentication_controller import AuthenticationController
 from account.dto import (
     OrganizationSignupRequestBody,
     OrganizationSignupResponse,
+    UserSessionInfo,
 )
 from account.models import Organization
 from account.organization import OrganizationService
 from account.serializer import (
     OrganizationSignupResponseSerializer,
     OrganizationSignupSerializer,
+    UserSessionResponseSerializer,
 )
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
+from utils.user_session import UserSessionUtils
 
 Logger = logging.getLogger(__name__)
 
@@ -25,9 +28,7 @@ def create_organization(request: Request) -> Response:
     serializer = OrganizationSignupSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     try:
-        requestBody: OrganizationSignupRequestBody = makeSignupRequestParams(
-            serializer
-        )
+        requestBody: OrganizationSignupRequestBody = makeSignupRequestParams(serializer)
 
         organization: Organization = OrganizationService.create_organization(
             requestBody.name,
@@ -100,6 +101,48 @@ def set_organization(request: Request, id: str) -> Response:
 
     auth_controller = AuthenticationController()
     return auth_controller.set_user_organization(request, id)
+
+
+@api_view(["GET"])
+def get_session_data(request: Request) -> Response:
+    """get_session_data.
+
+    Retrieve the current session data.
+    Args:
+        request (HttpRequest): _description_
+
+    Returns:
+        Response: Contains the User and Current organization details.
+    """
+    response = make_session_response(request)
+    return Response(
+        status=status.HTTP_201_CREATED,
+        data=response,
+    )
+
+
+def make_session_response(
+    request: Request,
+) -> Any:
+    """make_session_response.
+
+    Make the current session data.
+    Args:
+        request (HttpRequest): _description_
+
+    Returns:
+        User and Current organization details.
+    """
+    auth_controller = AuthenticationController()
+    return UserSessionResponseSerializer(
+        UserSessionInfo(
+            id=request.user.id,
+            user_id=request.user.user_id,
+            email=request.user.email,
+            user=auth_controller.get_user_info(request),
+            organization_id=UserSessionUtils.get_organization_id(request),
+        )
+    ).data
 
 
 def makeSignupRequestParams(

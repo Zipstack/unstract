@@ -9,9 +9,7 @@ from boxsdk import JWTAuth
 from boxsdk.exception import BoxOAuthException
 
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.unstract_file_system import (
-    UnstractFileSystem,
-)
+from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 logger = logging.getLogger(__name__)
 logging.getLogger("boxsdk").setLevel(logging.ERROR)
@@ -80,9 +78,7 @@ class BoxFS(UnstractFileSystem):
 
     @staticmethod
     def get_description() -> str:
-        return (
-            "Fetch and store data to and from the Box content management system"
-        )
+        return "Fetch and store data to and from the Box content management system"
 
     @staticmethod
     def get_icon() -> str:

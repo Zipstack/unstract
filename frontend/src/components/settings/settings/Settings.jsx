@@ -33,7 +33,7 @@ function Settings() {
               strong
               onClick={() => navigate(`/${sessionDetails?.orgName}/users`)}
             >
-              User Settings
+              User Management
             </Typography.Link>
           </div>
           <div className="settings-plt">

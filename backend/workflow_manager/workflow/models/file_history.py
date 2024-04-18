@@ -16,8 +16,7 @@ class FileHistory(BaseModel):
             bool: True if the execution status is completed, False otherwise.
         """
         return (
-            self.status is not None
-            and self.status == ExecutionStatus.COMPLETED.value
+            self.status is not None and self.status == ExecutionStatus.COMPLETED.value
         )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

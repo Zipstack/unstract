@@ -41,9 +41,7 @@ class OrganizationService:
                 cls.add(organization_id=organization_id)
 
         except IntegrityError as error:
-            Logger.info(
-                f"[Duplicate Id] Failed to create Organization Error: {error}"
-            )
+            Logger.info(f"[Duplicate Id] Failed to create Organization Error: {error}")
             raise error
         # Add one or more domains for the tenant
         domain = Domain()

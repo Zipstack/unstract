@@ -5,6 +5,7 @@ import {
   EditOutlined,
   EllipsisOutlined,
   KeyOutlined,
+  CloudDownloadOutlined,
 } from "@ant-design/icons";
 import { Button, Dropdown, Space, Switch, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
@@ -37,10 +38,9 @@ function ApiDeployment() {
   const [tableData, setTableData] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
   const [isEdit, setIsEdit] = useState(false);
-  const [columns, setColumns] = useState([]);
   const [workflowEndpointList, setWorkflowEndpointList] = useState([]);
   const handleException = useExceptionHandler();
-  const columnsStatic = [
+  const columns = [
     {
       title: "API Name",
       key: "display_name",
@@ -88,7 +88,7 @@ function ApiDeployment() {
             className="workflowName"
             onClick={() =>
               navigate(
-                `/${sessionDetails?.orgId}/workflows/${record?.workflow}`
+                `/${sessionDetails?.orgName}/workflows/${record?.workflow}`
               )
             }
           >
@@ -132,7 +132,6 @@ function ApiDeployment() {
   useEffect(() => {
     getApiDeploymentList();
     getWorkflows();
-    setColumns(columnsStatic);
   }, []);
   const getWorkflows = () => {
     workflowApiService
@@ -235,6 +234,38 @@ function ApiDeployment() {
       });
   };
 
+  const downloadPostmanCollection = () => {
+    apiDeploymentsApiService
+      .downloadPostmanCollection(selectedRow?.id)
+      .then((res) => {
+        const { data, headers } = res;
+        const href = URL.createObjectURL(data);
+        // Get filename from header or use a default
+        const filename =
+          headers["content-disposition"]
+            ?.split("filename=")[1]
+            ?.trim()
+            .replaceAll('"', "") || "postman_collection.json";
+        // create "a" HTML element with href to file & click
+        const link = document.createElement("a");
+        link.href = href;
+        link.setAttribute("download", filename);
+        document.body.appendChild(link);
+        link.click();
+
+        // clean up "a" element & remove ObjectURL
+        document.body.removeChild(link);
+        URL.revokeObjectURL(href);
+        setAlertDetails({
+          type: "success",
+          content: "Collection downloaded successfully",
+        });
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
+  };
+
   const openAddModal = (edit) => {
     setIsEdit(edit);
     setOpenAddApiModal(true);
@@ -264,7 +295,7 @@ function ApiDeployment() {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={() => getApiKeys()}
+          onClick={getApiKeys}
         >
           <div>
             <KeyOutlined />
@@ -281,6 +312,23 @@ function ApiDeployment() {
         <Space
           direction="horizontal"
           className="action-items"
+          onClick={downloadPostmanCollection}
+        >
+          <div>
+            <CloudDownloadOutlined />
+          </div>
+          <div>
+            <Typography.Text>Download Postman Collection</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "4",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
           onClick={() => setOpenCodeModal(true)}
         >
           <div>
@@ -293,7 +341,7 @@ function ApiDeployment() {
       ),
     },
     {
-      key: "4",
+      key: "5",
       label: (
         <Space
           direction="horizontal"

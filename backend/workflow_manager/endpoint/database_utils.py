@@ -159,9 +159,7 @@ class DatabaseUtils:
                 )
                 column_types = DatabaseUtils.get_column_types_util(results)
         except Exception as e:
-            logger.error(
-                f"Error getting column types for {table_name}: {str(e)}"
-            )
+            logger.error(f"Error getting column types for {table_name}: {str(e)}")
             raise e
         return column_types
 
@@ -304,32 +302,32 @@ class DatabaseUtils:
             raise e
 
     @staticmethod
-    def get_db_engine(
+    def get_db_class(
         connector_id: str, connector_settings: dict[str, Any]
-    ) -> Any:
-        connector = db_connectors[connector_id][Common.METADATA][
-            Common.CONNECTOR
-        ]
+    ) -> UnstractDB:
+        connector = db_connectors[connector_id][Common.METADATA][Common.CONNECTOR]
         connector_class: UnstractDB = connector(connector_settings)
-        return connector_class.get_engine()
+        return connector_class
 
     @staticmethod
     def execute_and_fetch_data(
         connector_id: str, connector_settings: dict[str, Any], query: str
     ) -> Any:
-        connector = db_connectors[connector_id][Common.METADATA][
-            Common.CONNECTOR
-        ]
+        connector = db_connectors[connector_id][Common.METADATA][Common.CONNECTOR]
         connector_class: UnstractDB = connector(connector_settings)
         return connector_class.execute(query=query)
 
     @staticmethod
     def create_table_if_not_exists(
-        engine: Any, table_name: str, database_entry: dict[str, Any]
+        db_class: UnstractDB,
+        engine: Any,
+        table_name: str,
+        database_entry: dict[str, Any],
     ) -> None:
         """Creates table if not exists.
 
         Args:
+            class_name (UnstractDB): Type of Unstract DB connector
             engine (Any): _description_
             table_name (str): _description_
             database_entry (dict[str, Any]): _description_
@@ -337,9 +335,8 @@ class DatabaseUtils:
         Raises:
             e: _description_
         """
-        class_name = engine.__class__.__name__
         sql = DBConnectorQueryHelper.create_table_query(
-            conn_cls=class_name, table=table_name, database_entry=database_entry
+            conn_cls=db_class, table=table_name, database_entry=database_entry
         )
         logger.debug(f"creating table with: {sql} query")
         try:
@@ -359,14 +356,14 @@ class DBConnectorQueryHelper:
 
     @staticmethod
     def create_table_query(
-        conn_cls: str, table: str, database_entry: dict[str, Any]
+        conn_cls: UnstractDB, table: str, database_entry: dict[str, Any]
     ) -> Any:
         sql_query = ""
         """Generate a SQL query to create a table, based on the provided
         database entry.
 
         Args:
-            conn_cls (str): The database connection class.
+            conn_cls (str): The database connector class.
                 Should be one of 'BIGQUERY', 'SNOWFLAKE', or other.
             table (str): The name of the table to be created.
             database_entry (dict[str, Any]):
@@ -381,76 +378,22 @@ class DBConnectorQueryHelper:
             and column definitions.
 
         Note:
-            For 'BIGQUERY', 'SNOWFLAKE', or other database connection classes,
-            the appropriate data types will be mapped based
-            on the Python types of the values in the database_entry dictionary.
-
-            Permanent columns, will always be present in table creation.
+            - Each conn_cls have it's implementation for SQL create table query
+            Based on the implementation, a base SQL create table query will be
+            created containing Permanent columns
+            - Each conn_cls also has a mapping to convert python datatype to
+            corresponding column type (string, VARCHAR etc)
+            - keys in database_entry will be converted to column type, and
+            column values will be the valus in database_entry
+            - base SQL create table will be appended based column type and
+            values, and generates a complete SQL create table query
         """
-
-        if conn_cls == DBConnectionClass.BIGQUERY:
-            sql_query += (
-                f"CREATE TABLE IF NOT EXISTS {table} "
-                f"(id string,"
-                f"created_by string, created_at TIMESTAMP, "
-            )
-        elif conn_cls == DBConnectionClass.SNOWFLAKE:
-            sql_query += (
-                f"CREATE TABLE {table} IF NOT EXISTS "
-                f"(id TEXT ,"
-                f"created_by TEXT, created_at TIMESTAMP, "
-            )
-        else:
-            sql_query += (
-                f"CREATE TABLE IF NOT EXISTS {table} "
-                f"(id TEXT , "
-                f"created_by TEXT, created_at TIMESTAMP, "
-            )
+        create_table_query = conn_cls.get_create_table_query(table=table)
+        sql_query += create_table_query
 
         for key, val in database_entry.items():
             if key not in TableColumns.PERMANENT_COLUMNS:
-                python_type = type(val)
-                if conn_cls == DBConnectionClass.BIGQUERY:
-                    sql_type = (
-                        DBConnectorTypeConverter.python_to_bigquery_mapping(
-                            python_type
-                        )
-                    )
-                else:
-                    sql_type = DBConnectorTypeConverter.python_to_sql_mapping(
-                        python_type
-                    )
+                sql_type = conn_cls.sql_to_db_mapping(val)
                 sql_query += f"{key} {sql_type}, "
 
         return sql_query.rstrip(", ") + ");"
-
-
-class DBConnectorTypeConverter:
-    """_summary_
-
-    Class to convert python data type to corresponding connector
-    database data type
-    """
-
-    @staticmethod
-    def python_to_sql_mapping(python_type: Any) -> Optional[str]:
-        """Method used to convert python to SQL datatype Used by Postgres,
-        Redshift, Snowflake."""
-        mapping = {
-            str: "TEXT",
-            int: "INT",
-            float: "FLOAT",
-            datetime.datetime: "TIMESTAMP",
-        }
-        return mapping.get(python_type, "TEXT")
-
-    @staticmethod
-    def python_to_bigquery_mapping(python_type: Any) -> Optional[str]:
-        """Method used to convert python to bigquery datatype."""
-        mapping = {
-            str: "string",
-            int: "INT64",
-            float: "FLOAT64",
-            datetime.datetime: "TIMESTAMP",
-        }
-        return mapping.get(python_type, "string")

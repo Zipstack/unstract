@@ -13,6 +13,7 @@ from tenant_account.serializer import (
     GetRolesResponseSerializer,
     OrganizationLoginResponseSerializer,
 )
+from utils.user_session import UserSessionUtils
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +38,7 @@ def get_roles(request: Request) -> Response:
 @api_view(["POST"])
 def reset_password(request: Request) -> Response:
     auth_controller = AuthenticationController()
-    data: ResetUserPasswordDto = auth_controller.reset_user_password(
-        request.user
-    )
+    data: ResetUserPasswordDto = auth_controller.reset_user_password(request.user)
     if data.status:
         return Response(
             status=status.HTTP_200_OK,
@@ -56,7 +55,8 @@ def reset_password(request: Request) -> Response:
 def get_organization(request: Request) -> Response:
     auth_controller = AuthenticationController()
     try:
-        org_data = auth_controller.get_organization_info(request.org_id)
+        organization_id = UserSessionUtils.get_organization_id(request)
+        org_data = auth_controller.get_organization_info(organization_id)
         if not org_data:
             return Response(
                 status=status.HTTP_404_NOT_FOUND,

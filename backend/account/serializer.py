@@ -78,7 +78,7 @@ class ModelTenantSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "email")
+        fields = ("id", "username")
 
 
 class OrganizationSignupResponseSerializer(serializers.Serializer):
@@ -109,3 +109,10 @@ class LoginRequestSerializer(serializers.Serializer):
                 "Password must be at least 3 characters long."
             )
         return value
+
+
+class UserSessionResponseSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    user_id = serializers.CharField()
+    email = serializers.CharField()
+    organization_id = serializers.CharField()

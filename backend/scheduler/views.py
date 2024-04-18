@@ -7,13 +7,8 @@ from pipeline.models import Pipeline
 from pipeline.pipeline_processor import PipelineProcessor
 from rest_framework.response import Response
 from scheduler.tasks import create_periodic_task
-from workflow_manager.workflow.constants import (
-    WorkflowExecutionKey,
-    WorkflowKey,
-)
-from workflow_manager.workflow.exceptions import (
-    WorkflowExecutionBadRequestException,
-)
+from workflow_manager.workflow.constants import WorkflowExecutionKey, WorkflowKey
+from workflow_manager.workflow.exceptions import WorkflowExecutionBadRequestException
 from workflow_manager.workflow.serializers import ExecuteWorkflowSerializer
 from workflow_manager.workflow.views import WorkflowViewSet
 
@@ -27,9 +22,7 @@ def schedule_task_job(pipeline_id: str, job_data: Any) -> Response:
             return Response({"error": "cron_string is required"}, status=400)
         if "id" not in job_data:
             return Response({"error": "id is required"}, status=400)
-        if "job_kwargs" in job_data and not isinstance(
-            job_data["job_kwargs"], dict
-        ):
+        if "job_kwargs" in job_data and not isinstance(job_data["job_kwargs"], dict):
             return Response(
                 {"error": "job_kwargs is required to be a dict"}, status=400
             )
@@ -57,9 +50,7 @@ def schedule_task_job(pipeline_id: str, job_data: Any) -> Response:
 
         workflow_id = serializer.get_workflow_id(serializer.validated_data)
 
-        execution_action = serializer.get_execution_action(
-            serializer.validated_data
-        )
+        execution_action = serializer.get_execution_action(serializer.validated_data)
         org_schema = connection.tenant.schema_name
 
         create_periodic_task(

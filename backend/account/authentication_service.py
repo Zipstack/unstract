@@ -62,9 +62,18 @@ class AuthenticationService:
         if self.authenticate_and_login(request, username, password):
             return redirect(settings.WEB_APP_ORIGIN_URL)
 
-        return self.render_login_page_with_error(
-            request, ErrorMessage.USER_LOGIN_ERROR
-        )
+        return self.render_login_page_with_error(request, ErrorMessage.USER_LOGIN_ERROR)
+
+    def is_authenticated(self, request: HttpRequest) -> bool:
+        """Check if the user is authenticated.
+
+        Args:
+            request (Request): The HTTP request object.
+
+        Returns:
+            bool: True if the user is authenticated, False otherwise.
+        """
+        return request.user.is_authenticated
 
     def authenticate_and_login(
         self, request: Request, username: str, password: str
@@ -98,9 +107,7 @@ class AuthenticationService:
     def render_login_page(self, request: Request) -> Any:
         return render(request, UserLoginTemplate.TEMPLATE)
 
-    def render_login_page_with_error(
-        self, request: Request, error_message: str
-    ) -> Any:
+    def render_login_page_with_error(self, request: Request, error_message: str) -> Any:
         return render(
             request,
             UserLoginTemplate.TEMPLATE,
@@ -171,10 +178,8 @@ class AuthenticationService:
 
         return member_data
 
-    def handle_authorization_callback(
-        self, user: User, data: CallbackData, redirect_url: str = ""
-    ) -> Response:
-        return Response()
+    def handle_authorization_callback(self, request: Request, backend: str) -> Response:
+        raise MethodNotImplemented()
 
     def add_to_organization(
         self,
@@ -251,14 +256,13 @@ class AuthenticationService:
     def get_invitations(self, organization_id: str) -> list[MemberInvitation]:
         raise MethodNotImplemented()
 
+
     def frictionless_onboarding(
         self, organization: Organization, user: User
     ) -> None:
         raise MethodNotImplemented()
 
-    def delete_invitation(
-        self, organization_id: str, invitation_id: str
-    ) -> bool:
+    def delete_invitation(self, organization_id: str, invitation_id: str) -> bool:
         raise MethodNotImplemented()
 
     def add_organization_user_role(
@@ -312,9 +316,7 @@ class AuthenticationService:
         ):
             return False
 
-        user, created = User.objects.get_or_create(
-            username=DefaultOrg.MOCK_USER
-        )
+        user, created = User.objects.get_or_create(username=DefaultOrg.MOCK_USER)
         if created:
             user.password = make_password(DefaultOrg.MOCK_USER_PASSWORD)
         else:

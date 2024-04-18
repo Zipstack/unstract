@@ -35,9 +35,7 @@ class OrganizationMemberSerializer(serializers.ModelSerializer):
 
 class LimitedUserEmailListSerializer(serializers.ListSerializer):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self.max_elements: int = kwargs.pop(
-            "max_elements", Common.MAX_EMAIL_IN_REQUEST
-        )
+        self.max_elements: int = kwargs.pop("max_elements", Common.MAX_EMAIL_IN_REQUEST)
         super().__init__(*args, **kwargs)
 
     def validate(self, data: list[str]) -> Any:
@@ -50,9 +48,7 @@ class LimitedUserEmailListSerializer(serializers.ListSerializer):
 
 class LimitedUserListSerializer(serializers.ListSerializer):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self.max_elements: int = kwargs.pop(
-            "max_elements", Common.MAX_EMAIL_IN_REQUEST
-        )
+        self.max_elements: int = kwargs.pop("max_elements", Common.MAX_EMAIL_IN_REQUEST)
         super().__init__(*args, **kwargs)
 
     def validate(
@@ -65,13 +61,9 @@ class LimitedUserListSerializer(serializers.ListSerializer):
 
         for item in data:
             if not isinstance(item, dict):
-                raise ValidationError(
-                    "Each item in the list must be a dictionary."
-                )
+                raise ValidationError("Each item in the list must be a dictionary.")
             if "email" not in item:
-                raise ValidationError(
-                    "Each item in the list must have 'email' key."
-                )
+                raise ValidationError("Each item in the list must have 'email' key.")
             if "role" not in item:
                 item["role"] = None
 
@@ -125,9 +117,7 @@ class ChangeUserRoleRequestSerializer(serializers.Serializer):
 class DeleteInvitationRequestSerializer(serializers.Serializer):
     id = serializers.EmailField(required=True)
 
-    def get_id(
-        self, validated_data: dict[str, Union[str, None]]
-    ) -> Optional[str]:
+    def get_id(self, validated_data: dict[str, Union[str, None]]) -> Optional[str]:
         return validated_data.get(Common.ID)
 
 

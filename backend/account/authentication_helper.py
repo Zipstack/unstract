@@ -3,9 +3,8 @@ from typing import Any
 
 from account.dto import MemberData
 from account.models import Organization, User
-from platform_settings.platform_auth_service import (
-    PlatformAuthenticationService,
-)
+from account.user import UserService
+from platform_settings.platform_auth_service import PlatformAuthenticationService
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +25,26 @@ class AuthenticationHelper:
             members.append(MemberData(user_id=user_id, email=email, name=name))
 
         return members
+
+    @staticmethod
+    def get_or_create_user_by_email(user_id: str, email: str) -> User:
+        """Get or create a user with the given email.
+
+        If a user with the given email already exists, return that user.
+        Otherwise, create a new user with the given email and return it.
+
+        Parameters:
+            user_id (str): The ID of the user.
+            email (str): The email of the user.
+
+        Returns:
+            User: The user with the given email.
+        """
+        user_service = UserService()
+        user = user_service.get_user_by_email(email)
+        if not user:
+            user = user_service.create_user(email, user_id)
+        return user
 
     def create_initial_platform_key(
         self, user: User, organization: Organization

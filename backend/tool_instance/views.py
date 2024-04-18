@@ -13,10 +13,7 @@ from rest_framework.versioning import URLPathVersioning
 from tool_instance.constants import ToolInstanceErrors
 from tool_instance.constants import ToolInstanceKey as TIKey
 from tool_instance.constants import ToolKey
-from tool_instance.exceptions import (
-    FetchToolListFailed,
-    ToolFunctionIsMandatory,
-)
+from tool_instance.exceptions import FetchToolListFailed, ToolFunctionIsMandatory
 from tool_instance.models import ToolInstance
 from tool_instance.serializers import (
     ToolInstanceReorderSerializer as TIReorderSerializer,
@@ -25,6 +22,7 @@ from tool_instance.serializers import ToolInstanceSerializer
 from tool_instance.tool_instance_helper import ToolInstanceHelper
 from tool_instance.tool_processor import ToolProcessor
 from utils.filtering import FilterHelper
+from utils.user_session import UserSessionUtils
 from workflow_manager.workflow.constants import WorkflowKey
 
 from backend.constants import RequestKey
@@ -134,23 +132,19 @@ class ToolInstanceViewSet(viewsets.ModelViewSet):
             instance.save()
         return
 
-    def partial_update(
-        self, request: Request, *args: Any, **kwargs: Any
-    ) -> Response:
+    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Allows partial updates on a tool instance."""
         instance: ToolInstance = self.get_object()
-        serializer = self.get_serializer(
-            instance, data=request.data, partial=True
-        )
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         if serializer.validated_data.get(TIKey.METADATA):
-            metadata: dict[str, Any] = serializer.validated_data.get(
-                TIKey.METADATA
-            )
+            metadata: dict[str, Any] = serializer.validated_data.get(TIKey.METADATA)
 
             # TODO: Move update logic into serializer
             ToolInstanceHelper.update_instance_metadata(
-                request.org_id, instance, metadata
+                UserSessionUtils.get_organization_id(request),
+                instance,
+                metadata,
             )
             return Response(serializer.data)
         return super().partial_update(request, *args, **kwargs)
@@ -168,10 +162,6 @@ class ToolInstanceViewSet(viewsets.ModelViewSet):
         ]
 
         ToolInstanceHelper.reorder_tool_instances(instances_to_reorder)
-        tool_instances = ToolInstance.objects.get_instances_for_workflow(
-            workflow=wf_id
-        )
-        ti_serializer = ToolInstanceSerializer(
-            instance=tool_instances, many=True
-        )
+        tool_instances = ToolInstance.objects.get_instances_for_workflow(workflow=wf_id)
+        ti_serializer = ToolInstanceSerializer(instance=tool_instances, many=True)
         return Response(ti_serializer.data, status=status.HTTP_200_OK)

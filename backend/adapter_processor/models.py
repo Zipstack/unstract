@@ -7,7 +7,9 @@ from cryptography.fernet import Fernet
 from django.conf import settings
 from django.db import models
 from django.db.models import QuerySet
+from unstract.adapters.adapterkit import Adapterkit
 from unstract.adapters.enums import AdapterTypes
+from unstract.adapters.llm.llm_adapter import LLMAdapter
 from utils.models.base_model import BaseModel
 
 ADAPTER_NAME_SIZE = 128
@@ -96,6 +98,7 @@ class AdapterInstance(BaseModel):
             ),
         ]
 
+
     def create_adapter(self) -> None:
 
         encryption_secret: str = settings.ENCRYPTION_KEY
@@ -108,6 +111,26 @@ class AdapterInstance(BaseModel):
         self.adapter_metadata = {}
         print("test")
         self.save()
+
+    def get_adapter_meta_data(self) -> Any:
+        encryption_secret: str = settings.ENCRYPTION_KEY
+        f: Fernet = Fernet(encryption_secret.encode("utf-8"))
+
+        adapter_metadata = json.loads(
+            f.decrypt(bytes(self.adapter_metadata_b).decode("utf-8"))
+        )
+        return adapter_metadata
+
+    def get_context_window_size(self) -> int:
+
+        adapter_metadata = self.get_adapter_meta_data()
+        # Get the adapter_instance
+        adapter_class = Adapterkit().get_adapter_class_by_adapter_id(self.adapter_id)
+        adapter_instance = adapter_class(adapter_metadata)
+        if isinstance(adapter_instance, LLMAdapter):
+            return adapter_instance.get_context_window_size()
+        return 0
+
 
 
 class UserDefaultAdapter(BaseModel):
