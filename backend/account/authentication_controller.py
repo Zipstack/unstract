@@ -11,9 +11,7 @@ from account.constants import (
     ErrorMessage,
     OrganizationMemberModel,
 )
-
 from account.custom_exceptions import DuplicateData, Forbidden, UserNotExistError
-
 from account.dto import (
     MemberInvitation,
     OrganizationData,
@@ -410,7 +408,6 @@ class AuthenticationController:
                     tenant_user.save()
                 else:
                     raise UserNotExistError()
-
 
     def get_or_create_user(
         self, user: User

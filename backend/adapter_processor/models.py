@@ -98,7 +98,6 @@ class AdapterInstance(BaseModel):
             ),
         ]
 
-
     def create_adapter(self) -> None:
 
         encryption_secret: str = settings.ENCRYPTION_KEY
@@ -130,7 +129,6 @@ class AdapterInstance(BaseModel):
         if isinstance(adapter_instance, LLMAdapter):
             return adapter_instance.get_context_window_size()
         return 0
-
 
 
 class UserDefaultAdapter(BaseModel):
