@@ -92,7 +92,5 @@ class AuthenticationPluginRegistry:
         """
         chosen_auth_module = next(iter(cls.auth_modules.values()))
         chosen_metadata = chosen_auth_module[PluginConfig.AUTH_METADATA]
-        service_class_name = chosen_metadata[
-            PluginConfig.METADATA_SERVICE_CLASS
-        ]
+        service_class_name = chosen_metadata[PluginConfig.METADATA_SERVICE_CLASS]
         return service_class_name()

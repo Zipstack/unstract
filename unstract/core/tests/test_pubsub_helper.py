@@ -11,9 +11,7 @@ class PubSubHelperTestCase(unittest.TestCase):
         )
         ps2 = Log.publish(
             project_guid="test",
-            message=Log.log(
-                level="ERROR", stage="COMPILE", message="Compile failed"
-            ),
+            message=Log.log(level="ERROR", stage="COMPILE", message="Compile failed"),
         )
         self.assertEqual(ps1, True)
         self.assertEqual(ps2, True)

@@ -81,6 +81,14 @@ function apiDeploymentsService() {
       };
       return axiosPrivate(options);
     },
+    downloadPostmanCollection: (id) => {
+      options = {
+        method: "GET",
+        url: `${path}/api/postman_collection/${id}/`,
+        responseType: "blob",
+      };
+      return axiosPrivate(options);
+    },
   };
 }
 

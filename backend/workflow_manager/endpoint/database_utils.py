@@ -159,9 +159,7 @@ class DatabaseUtils:
                 )
                 column_types = DatabaseUtils.get_column_types_util(results)
         except Exception as e:
-            logger.error(
-                f"Error getting column types for {table_name}: {str(e)}"
-            )
+            logger.error(f"Error getting column types for {table_name}: {str(e)}")
             raise e
         return column_types
 
@@ -307,9 +305,7 @@ class DatabaseUtils:
     def get_db_class(
         connector_id: str, connector_settings: dict[str, Any]
     ) -> UnstractDB:
-        connector = db_connectors[connector_id][Common.METADATA][
-            Common.CONNECTOR
-        ]
+        connector = db_connectors[connector_id][Common.METADATA][Common.CONNECTOR]
         connector_class: UnstractDB = connector(connector_settings)
         return connector_class
 
@@ -317,9 +313,7 @@ class DatabaseUtils:
     def execute_and_fetch_data(
         connector_id: str, connector_settings: dict[str, Any], query: str
     ) -> Any:
-        connector = db_connectors[connector_id][Common.METADATA][
-            Common.CONNECTOR
-        ]
+        connector = db_connectors[connector_id][Common.METADATA][Common.CONNECTOR]
         connector_class: UnstractDB = connector(connector_settings)
         return connector_class.execute(query=query)
 

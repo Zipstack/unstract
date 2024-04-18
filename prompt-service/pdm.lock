@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:d3843efe948827b882b2c5bc1179bcd752fb4b688796449e6a9d61ea2c0b7031"
+content_hash = "sha256:f0b68f3f12f926e922d0fc178e6bb0e03642e8495d15a21c7e1c404e104cf280"
 
 [[package]]
 name = "aiohttp"
@@ -1184,16 +1184,16 @@ files = [
 
 [[package]]
 name = "gunicorn"
-version = "21.2.0"
-requires_python = ">=3.5"
+version = "22.0.0"
+requires_python = ">=3.7"
 summary = "WSGI HTTP Server for UNIX"
 groups = ["deploy"]
 dependencies = [
     "packaging",
 ]
 files = [
-    {file = "gunicorn-21.2.0-py3-none-any.whl", hash = "sha256:3213aa5e8c24949e792bcacfc176fef362e7aac80b76c56f6b5122bf350722f0"},
-    {file = "gunicorn-21.2.0.tar.gz", hash = "sha256:88ec8bff1d634f98e61b9f65bc4bf3cd918a90806c6f5c48bc5603849ec81033"},
+    {file = "gunicorn-22.0.0-py3-none-any.whl", hash = "sha256:350679f91b24062c86e386e198a15438d53a7a8207235a78ba1b53df4c4378d9"},
+    {file = "gunicorn-22.0.0.tar.gz", hash = "sha256:4a0b436239ff76fb33f11c07a16482c521a7e09c1ce3cc293c2330afe01bec63"},
 ]
 
 [[package]]
@@ -2294,11 +2294,11 @@ files = [
 
 [[package]]
 name = "peewee"
-version = "3.17.1"
+version = "3.17.2"
 summary = "a little orm"
 groups = ["default"]
 files = [
-    {file = "peewee-3.17.1.tar.gz", hash = "sha256:e009ac4227c4fdc0058a56e822ad5987684f0a1fbb20fed577200785102581c3"},
+    {file = "peewee-3.17.2.tar.gz", hash = "sha256:2fe35224317d6b50e162ac44880a0d281d4ac0d53c7ae9d228eb769299618fb1"},
 ]
 
 [[package]]
@@ -3340,8 +3340,8 @@ requires_python = ">=3.7"
 summary = "Database Abstraction Library"
 groups = ["default"]
 dependencies = [
+    "SQLAlchemy==2.0.29",
     "greenlet!=0.4.17",
-    "sqlalchemy==2.0.29",
 ]
 files = [
     {file = "SQLAlchemy-2.0.29-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:4c142852ae192e9fe5aad5c350ea6befe9db14370b34047e1f0f7cf99e63c63b"},
@@ -3633,7 +3633,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.9.0"
+version = "0.10.0"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract interface for LLMs, Embeddings and VectorDBs"
 groups = ["default"]
@@ -3658,8 +3658,8 @@ dependencies = [
     "singleton-decorator~=1.0.0",
 ]
 files = [
-    {file = "unstract_adapters-0.9.0-py3-none-any.whl", hash = "sha256:4cdd4de1f0bb6fe09f3a13fadf6e229d7fcab8362d31707dd2be331f4ce79940"},
-    {file = "unstract_adapters-0.9.0.tar.gz", hash = "sha256:045bbe233a80fc7c08c8ba8f841bbfc3b57988762cd668fb90f2c09bddafab18"},
+    {file = "unstract_adapters-0.10.0-py3-none-any.whl", hash = "sha256:8ad19cbdf939679a53f2910e596ba6402598b1e3046fc05b2331bb5e902e9915"},
+    {file = "unstract_adapters-0.10.0.tar.gz", hash = "sha256:b0cde1ce5ce40e978fe3e2a350ef5950b7ec622ea9b14a99eedf3fa77efade97"},
 ]
 
 [[package]]
@@ -3680,7 +3680,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.19.0"
+version = "0.20.1"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3691,11 +3691,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.9.0",
+    "unstract-adapters~=0.10.0",
 ]
 files = [
-    {file = "unstract_sdk-0.19.0-py3-none-any.whl", hash = "sha256:9aeb63b378d22e457c47a6d74d074d0d420bea58d84eb2b9e72ca2d5bfdf9915"},
-    {file = "unstract_sdk-0.19.0.tar.gz", hash = "sha256:f868bfbd2852e7fa6c7176daa3001b77370e09e7bc3efbe460c8d6ee8b203c59"},
+    {file = "unstract_sdk-0.20.1-py3-none-any.whl", hash = "sha256:b3df6cf33550b9e74d9f0d07e914eb65bdf726665c6022c4ad9dda2dbec05899"},
+    {file = "unstract_sdk-0.20.1.tar.gz", hash = "sha256:0fda20c4689a4e83936efacfaeb51a3de9b8ae2bea7f330fc442dee27fd22308"},
 ]
 
 [[package]]

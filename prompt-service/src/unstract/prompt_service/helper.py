@@ -63,9 +63,7 @@ def plugin_loader(app: Flask) -> dict[str, dict[str, Any]]:
 
         metadata: dict[str, Any] = module.metadata
         if metadata.get("disable", False):
-            app.logger.info(
-                f"Ignore disabled plugin: {pkg} v{metadata['version']}"
-            )
+            app.logger.info(f"Ignore disabled plugin: {pkg} v{metadata['version']}")
             continue
 
         try:

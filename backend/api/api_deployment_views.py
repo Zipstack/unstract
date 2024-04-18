@@ -1,8 +1,12 @@
+import json
+import logging
 from typing import Any, Optional
 
+from api.constants import ApiExecution
 from api.deployment_helper import DeploymentHelper
-from api.exceptions import InvalidAPIRequest
+from api.exceptions import InvalidAPIRequest, NoActiveAPIKeyError
 from api.models import APIDeployment
+from api.postman_collection.dto import PostmanCollection
 from api.serializers import (
     APIDeploymentListSerializer,
     APIDeploymentSerializer,
@@ -10,13 +14,17 @@ from api.serializers import (
     ExecutionRequestSerializer,
 )
 from django.db.models import QuerySet
+from django.http import HttpResponse
 from permissions.permission import IsOwner
 from rest_framework import serializers, status, views, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
+from utils.enums import CeleryTaskState
 from workflow_manager.workflow.dto import ExecutionResponse
+
+logger = logging.getLogger(__name__)
 
 
 class DeploymentExecution(views.APIView):
@@ -38,7 +46,7 @@ class DeploymentExecution(views.APIView):
     def post(
         self, request: Request, org_name: str, api_name: str, api: APIDeployment
     ) -> Response:
-        file_objs = request.FILES.getlist("files")
+        file_objs = request.FILES.getlist(ApiExecution.FILES_FORM_DATA)
         serializer = ExecutionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         timeout = serializer.get_timeout(serializer.validated_data)
@@ -51,6 +59,11 @@ class DeploymentExecution(views.APIView):
             file_objs=file_objs,
             timeout=timeout,
         )
+        if "error" in response and response["error"]:
+            return Response(
+                {"message": response},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
         return Response({"message": response}, status=status.HTTP_200_OK)
 
     @DeploymentHelper.validate_api_key
@@ -63,6 +76,14 @@ class DeploymentExecution(views.APIView):
         response: ExecutionResponse = DeploymentHelper.get_execution_status(
             execution_id=execution_id
         )
+        if response.execution_status != CeleryTaskState.SUCCESS.value:
+            return Response(
+                {
+                    "status": response.execution_status,
+                    "message": response.result,
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
         return Response(
             {"status": response.execution_status, "message": response.result},
             status=status.HTTP_200_OK,
@@ -105,9 +126,24 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
             headers=headers,
         )
 
+    @action(detail=True, methods=["get"])
+    def download_postman_collection(
+        self, request: Request, pk: Optional[str] = None
+    ) -> Response:
+        """Downloads a Postman Collection of the API deployment instance."""
+        instance = self.get_object()
+        api_key_inst = instance.apikey_set.filter(is_active=True).first()
+        if not api_key_inst:
+            logger.error(f"No active API key set for deployment {instance.pk}")
+            raise NoActiveAPIKeyError(deployment_name=instance.display_name)
 
-def get_error_from_serializer(error_details: dict[str, Any]) -> Optional[str]:
-    error_key = next(iter(error_details))
-    # Get the first error message
-    error_message: str = f"{error_details[error_key][0]} : {error_key}"
-    return error_message
+        postman_collection = PostmanCollection.create(
+            instance=instance, api_key=api_key_inst.api_key
+        )
+        response = HttpResponse(
+            json.dumps(postman_collection.to_dict()), content_type="application/json"
+        )
+        response["Content-Disposition"] = (
+            f'attachment; filename="{instance.display_name}.json"'
+        )
+        return response

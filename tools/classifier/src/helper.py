@@ -30,9 +30,7 @@ class ClassifierHelper:
 
         return self._extract_from_adapter(file, text_extraction_adapter_id)
 
-    def _extract_from_adapter(
-        self, file: str, adapter_id: str
-    ) -> Optional[str]:
+    def _extract_from_adapter(self, file: str, adapter_id: str) -> Optional[str]:
         """Extract text from adapter.
 
         Args:
@@ -42,15 +40,12 @@ class ClassifierHelper:
             str: page content
         """
         self.tool.stream_log(
-            "Creating text extraction adapter "
-            f"using adapter_id: {adapter_id}"
+            "Creating text extraction adapter " f"using adapter_id: {adapter_id}"
         )
         tool_extraction = X2Text(tool=self.tool)
         adapter = tool_extraction.get_x2text(adapter_id)
 
-        self.tool.stream_log(
-            "Text extraction adapter has been created successfully."
-        )
+        self.tool.stream_log("Text extraction adapter has been created successfully.")
         self.tool.stream_log("Adapter created")
 
         try:
@@ -112,9 +107,7 @@ class ClassifierHelper:
             classification = self.get_result_from_cache(cache_key=cache_key)
 
         if classification is None:
-            self.tool.stream_log(
-                "No classification found in cache, calling LLM."
-            )
+            self.tool.stream_log("No classification found in cache, calling LLM.")
             classification = self.call_llm(prompt=prompt, llm=llm)
         if not classification:
             classification = "unknown"

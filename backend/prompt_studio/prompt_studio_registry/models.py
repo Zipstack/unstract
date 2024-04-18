@@ -7,11 +7,7 @@ from django.db.models import QuerySet
 from prompt_studio.prompt_studio.models import CustomTool
 from utils.models.base_model import BaseModel
 
-from .fields import (
-    ToolMetadataJSONField,
-    ToolPropertyJSONField,
-    ToolSpecJSONField,
-)
+from .fields import ToolMetadataJSONField, ToolPropertyJSONField, ToolSpecJSONField
 
 
 class PromptStudioRegistryModelManager(models.Manager):
@@ -59,9 +55,7 @@ class PromptStudioRegistry(BaseModel):
         blank=False,
         default=dict,
     )
-    icon = models.CharField(
-        db_comment="Tool icon in svg format", editable=False
-    )
+    icon = models.CharField(db_comment="Tool icon in svg format", editable=False)
     url = models.CharField(editable=False)
     custom_tool = models.OneToOneField(
         CustomTool,
@@ -92,8 +86,6 @@ class PromptStudioRegistry(BaseModel):
     )
     # Introduced field to establish M2M relation between users and tools.
     # This will introduce intermediary table which relates both the models.
-    shared_users = models.ManyToManyField(
-        User, related_name="shared_exported_tools"
-    )
+    shared_users = models.ManyToManyField(User, related_name="shared_exported_tools")
 
     objects = PromptStudioRegistryModelManager()

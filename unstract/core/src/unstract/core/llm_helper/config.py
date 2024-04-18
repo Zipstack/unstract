@@ -33,18 +33,14 @@ class AzureOpenAIConfig:
     @classmethod
     def from_env(cls) -> "AzureOpenAIConfig":
         kwargs = {
-            "model": UnstractUtils.get_env(
-                OpenAIKeys.OPENAI_API_MODEL, raise_err=True
-            ),
+            "model": UnstractUtils.get_env(OpenAIKeys.OPENAI_API_MODEL, raise_err=True),
             "deployment_name": UnstractUtils.get_env(
                 OpenAIKeys.OPENAI_API_ENGINE, raise_err=True
             ),
             "engine": UnstractUtils.get_env(
                 OpenAIKeys.OPENAI_API_ENGINE, raise_err=True
             ),
-            "api_key": UnstractUtils.get_env(
-                OpenAIKeys.OPENAI_API_KEY, raise_err=True
-            ),
+            "api_key": UnstractUtils.get_env(OpenAIKeys.OPENAI_API_KEY, raise_err=True),
             "api_version": UnstractUtils.get_env(
                 OpenAIKeys.OPENAI_API_VERSION,
                 default=OpenAIDefaults.OPENAI_API_VERSION,

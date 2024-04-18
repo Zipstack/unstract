@@ -16,13 +16,9 @@ logging.basicConfig(
 )
 
 UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", "/tmp/document_service/upload")
-PROCESS_FOLDER = os.environ.get(
-    "PROCESS_FOLDER", "/tmp/document_service/process"
-)
+PROCESS_FOLDER = os.environ.get("PROCESS_FOLDER", "/tmp/document_service/process")
 LIBREOFFICE_PYTHON = os.environ.get("LIBREOFFICE_PYTHON", "/usr/bin/python3")
-MAX_FILE_SIZE = int(
-    os.environ.get("MAX_FILE_SIZE", 10485760)
-)  # 10 * 1024 * 1024
+MAX_FILE_SIZE = int(os.environ.get("MAX_FILE_SIZE", 10485760))  # 10 * 1024 * 1024
 SERVICE_API_TOKEN = os.environ.get("SERVICE_API_TOKEN", "")
 
 app = Flask("document_service")
@@ -104,9 +100,7 @@ def upload_file():
         redis_host = os.environ.get("REDIS_HOST")
         redis_port = int(os.environ.get("REDIS_PORT"))
         redis_password = os.environ.get("REDIS_PASSWORD")
-        r = redis.Redis(
-            host=redis_host, port=redis_port, password=redis_password
-        )
+        r = redis.Redis(host=redis_host, port=redis_port, password=redis_password)
         # TODO: Create a file reaper process to look at uploaded time and delete
         redis_key = f"upload_time:{account_id}_{file_name}"
         current_timestamp = int(time.time())
@@ -130,9 +124,7 @@ def find_and_replace():
     output_format = request.args.get("output_format").lower()
     find_and_replace_text = request.json
 
-    app.logger.info(
-        f"Find and replace for file {file_name} for account {account_id}"
-    )
+    app.logger.info(f"Find and replace for file {file_name} for account {account_id}")
     app.logger.info(f"Output format: {output_format}")
 
     if output_format not in ["pdf"]:
@@ -152,9 +144,7 @@ def find_and_replace():
     try:
         command = f"{LIBREOFFICE_PYTHON} -m unoserver.converter --convert-to odt \
             --filter writer8 {file_namex} {file_name_odt}"
-        result = subprocess.run(
-            command, shell=True, capture_output=True, text=True
-        )
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
         app.logger.info(result)
         if result.returncode != 0:
             app.logger.error(
@@ -166,9 +156,7 @@ def find_and_replace():
             app.logger.info(
                 f"File converted to ODT format successfully! {file_name_odt}"
             )
-            app.logger.info(
-                f"ODT convertion result: {result.stdout} | {result.stderr}"
-            )
+            app.logger.info(f"ODT convertion result: {result.stdout} | {result.stderr}")
     except Exception as e:
         app.logger.error(f"Error while converting file to ODT format: {e}")
         return "Error while converting file to ODT format!", 500
@@ -182,13 +170,9 @@ def find_and_replace():
         replace_str = find_and_replace_text[find_str]
         for element in doc.getElementsByType(text.Span):
             if find_str in teletype.extractText(element):
-                app.logger.info(
-                    f"Found {find_str} in {teletype.extractText(element)}"
-                )
+                app.logger.info(f"Found {find_str} in {teletype.extractText(element)}")
                 new_element = text.Span()
-                new_element.setAttribute(
-                    "stylename", element.getAttribute("stylename")
-                )
+                new_element.setAttribute("stylename", element.getAttribute("stylename"))
                 t = teletype.extractText(element)
                 t = t.replace(find_str, replace_str)
                 new_element.addText(t)
@@ -205,9 +189,7 @@ def find_and_replace():
             f"{LIBREOFFICE_PYTHON} -m unoserver.converter --convert-to pdf "
             f"--filter writer_pdf_Export {file_name_odt} {file_name_output}"
         )
-        result = subprocess.run(
-            command, shell=True, capture_output=True, text=True
-        )
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
         if result.returncode != 0:
             app.logger.error(
                 f"Failed to convert file to {output_format} format: "
@@ -219,13 +201,9 @@ def find_and_replace():
                 f"File converted to {output_format} format successfully! "
                 f"{file_name_output}"
             )
-            app.logger.info(
-                f"ODT convertion result: {result.stdout} | {result.stderr}"
-            )
+            app.logger.info(f"ODT convertion result: {result.stdout} | {result.stderr}")
     except Exception as e:
-        app.logger.error(
-            f"Error while converting file to {output_format} format: {e}"
-        )
+        app.logger.error(f"Error while converting file to {output_format} format: {e}")
         return f"Error while converting file to {output_format} format!", 500
     return send_file(file_name_output, as_attachment=True)
 

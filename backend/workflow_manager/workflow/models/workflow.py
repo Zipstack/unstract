@@ -37,9 +37,7 @@ class Workflow(BaseModel):
     )
     # TODO: Move prompt fields as a One-One relationship/into Prompt instead
     prompt_name = models.CharField(max_length=PROMPT_NAME_LENGTH, default="")
-    description = models.TextField(
-        max_length=DESCRIPTION_FIELD_LENGTH, default=""
-    )
+    description = models.TextField(max_length=DESCRIPTION_FIELD_LENGTH, default="")
     workflow_name = models.CharField(max_length=WORKFLOW_NAME_SIZE, unique=True)
     prompt_text = models.TextField(default="")
     is_active = models.BooleanField(default=False)
