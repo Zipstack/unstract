@@ -48,17 +48,13 @@ class ConnectorInstance(BaseModel):
         null=False,
         blank=False,
     )
-    connector_id = models.CharField(
-        max_length=FLC.CONNECTOR_ID_LENGTH, default=""
-    )
+    connector_id = models.CharField(max_length=FLC.CONNECTOR_ID_LENGTH, default="")
     # TODO Required to be removed
     connector_metadata = ConnectorAuthJSONField(
         db_column="connector_metadata", null=False, blank=False, default=dict
     )
     connector_metadata_b = models.BinaryField(null=True)
-    connector_version = models.CharField(
-        max_length=VERSION_NAME_SIZE, default=""
-    )
+    connector_version = models.CharField(max_length=VERSION_NAME_SIZE, default="")
     connector_type = models.CharField(choices=ConnectorType.choices)
     connector_auth = models.ForeignKey(
         ConnectorAuth, on_delete=models.SET_NULL, null=True, blank=True

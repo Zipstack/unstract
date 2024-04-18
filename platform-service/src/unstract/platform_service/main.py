@@ -106,14 +106,10 @@ def authentication_middleware(func: Any) -> Any:
 
 
 def get_account_from_bearer_token(token: Optional[str]) -> str:
-    query = (
-        "SELECT organization_id FROM account_platformkey "
-        f"WHERE key='{token}'"
-    )
+    query = "SELECT organization_id FROM account_platformkey " f"WHERE key='{token}'"
     organization = execute_query(query)
     query_org = (
-        "SELECT schema_name FROM account_organization "
-        f"WHERE id='{organization}'"
+        "SELECT schema_name FROM account_organization " f"WHERE id='{organization}'"
     )
     schema_name: str = execute_query(query_org)
     return schema_name
@@ -139,9 +135,7 @@ def validate_bearer_token(token: Optional[str]) -> bool:
         result_row = cursor.fetchone()
         cursor.close()
         if not result_row or len(result_row) == 0:
-            app.logger.error(
-                f"Authentication failed. bearer token not found {token}"
-            )
+            app.logger.error(f"Authentication failed. bearer token not found {token}")
             return False
         platform_key = str(result_row[1])
         is_active = bool(result_row[2])
@@ -151,9 +145,7 @@ def validate_bearer_token(token: Optional[str]) -> bool:
             )
             return False
         if platform_key != token:
-            app.logger.error(
-                f"Authentication failed. Invalid bearer token: {token}"
-            )
+            app.logger.error(f"Authentication failed. Invalid bearer token: {token}")
             return False
 
     except Exception as e:
@@ -224,9 +216,7 @@ def usage() -> Any:
         usage_value=usage_value,
         usage_units=usage_units,
     )
-    app.logger.info(
-        "Entry created with id %s for %s", usage.id, organization_id
-    )
+    app.logger.info("Entry created with id %s for %s", usage.id, organization_id)
     result["status"] = "OK"
     result["unique_id"] = usage.id
     return result
@@ -368,20 +358,16 @@ def adapter_instance() -> Any:
         adapter_instance_id = request.args.get("adapter_instance_id")
 
         try:
-            data_dict = (
-                AdapterInstanceRequestHelper.get_adapter_instance_from_db(
-                    db_instance=be_db,
-                    organization_id=organization_id,
-                    adapter_instance_id=adapter_instance_id,
-                )
+            data_dict = AdapterInstanceRequestHelper.get_adapter_instance_from_db(
+                db_instance=be_db,
+                organization_id=organization_id,
+                adapter_instance_id=adapter_instance_id,
             )
 
             f: Fernet = Fernet(ENCRYPTION_KEY.encode("utf-8"))
 
             data_dict["adapter_metadata"] = json.loads(
-                f.decrypt(
-                    bytes(data_dict.pop("adapter_metadata_b")).decode("utf-8")
-                )
+                f.decrypt(bytes(data_dict.pop("adapter_metadata_b")).decode("utf-8"))
             )
 
             return jsonify(data_dict)

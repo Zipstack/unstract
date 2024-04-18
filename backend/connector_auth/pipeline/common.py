@@ -13,9 +13,7 @@ from social_core.backends.oauth import BaseOAuth2
 logger = logging.getLogger(__name__)
 
 
-def check_user_exists(
-    backend: BaseOAuth2, user: User, **kwargs: Any
-) -> dict[str, str]:
+def check_user_exists(backend: BaseOAuth2, user: User, **kwargs: Any) -> dict[str, str]:
     """Checks if user is authenticated (will be handled in auth middleware,
     present as a fail safe)
 
@@ -51,9 +49,7 @@ def cache_oauth_creds(
         settings.SOCIAL_AUTH_FIELDS_STORED_IN_SESSION[0],
         ConnectorAuthKey.OAUTH_KEY,
     )
-    extra_data = backend.extra_data(
-        user, uid, response, details, *args, **kwargs
-    )
+    extra_data = backend.extra_data(user, uid, response, details, *args, **kwargs)
     extra_data[SocialAuthConstants.PROVIDER] = backend.name
     extra_data[SocialAuthConstants.UID] = uid
 

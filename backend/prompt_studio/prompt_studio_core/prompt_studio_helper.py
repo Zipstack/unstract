@@ -11,9 +11,7 @@ from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.constants import LogLevels
-from prompt_studio.prompt_studio_core.constants import (
-    ToolStudioPromptKeys as TSPKeys,
-)
+from prompt_studio.prompt_studio_core.constants import ToolStudioPromptKeys as TSPKeys
 from prompt_studio.prompt_studio_core.exceptions import (
     AnswerFetchError,
     DefaultProfileError,
@@ -25,9 +23,7 @@ from prompt_studio.prompt_studio_core.exceptions import (
     ToolNotValid,
 )
 from prompt_studio.prompt_studio_core.models import CustomTool
-from prompt_studio.prompt_studio_core.prompt_ide_base_tool import (
-    PromptIdeBaseTool,
-)
+from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
 from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import (  # noqa: E501
     PromptStudioIndexHelper,
 )
@@ -185,8 +181,8 @@ class PromptStudioHelper:
         Returns:
             List[ToolStudioPrompt]: List of instance of the model
         """
-        prompt_instances: list[ToolStudioPrompt] = (
-            ToolStudioPrompt.objects.filter(tool_id=tool_id)
+        prompt_instances: list[ToolStudioPrompt] = ToolStudioPrompt.objects.filter(
+            tool_id=tool_id
         )
         return prompt_instances
 
@@ -243,9 +239,7 @@ class PromptStudioHelper:
         )
         # Need to check the user who created profile manager
         # has access to adapters configured in profile manager
-        PromptStudioHelper.validate_profile_manager_owner_access(
-            default_profile
-        )
+        PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
 
         doc_id = PromptStudioHelper.dynamic_indexer(
             profile_manager=default_profile,
@@ -326,9 +320,7 @@ class PromptStudioHelper:
                     os.path.splitext(filename)[0] + ".txt",
                 )
 
-            logger.info(
-                f"[{tool.tool_id}] Invoking prompt service for prompt {id}"
-            )
+            logger.info(f"[{tool.tool_id}] Invoking prompt service for prompt {id}")
             PromptStudioHelper._publish_log(
                 {"tool_id": tool_id, "prompt_id": id},
                 LogLevels.DEBUG,
@@ -382,14 +374,10 @@ class PromptStudioHelper:
         else:
             prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
             prompts = [
-                prompt
-                for prompt in prompts
-                if prompt.prompt_type != TSPKeys.NOTES
+                prompt for prompt in prompts if prompt.prompt_type != TSPKeys.NOTES
             ]
             if not prompts:
-                logger.error(
-                    f"[{tool_id or 'NA'}] No prompts found for id: {id}"
-                )
+                logger.error(f"[{tool_id or 'NA'}] No prompts found for id: {id}")
                 raise NoPromptsFound()
 
             logger.info(f"[{tool_id}] Executing prompts in single pass")
@@ -444,9 +432,7 @@ class PromptStudioHelper:
                 )
                 raise AnswerFetchError()
 
-            logger.info(
-                f"[{tool.tool_id}] Single pass response fetched successfully"
-            )
+            logger.info(f"[{tool.tool_id}] Single pass response fetched successfully")
             PromptStudioHelper._publish_log(
                 {"tool_id": tool_id, "prompt_id": str(id)},
                 LogLevels.INFO,
@@ -530,9 +516,7 @@ class PromptStudioHelper:
             )
 
             output: dict[str, Any] = {}
-            output[TSPKeys.ASSERTION_FAILURE_PROMPT] = (
-                prompt.assertion_failure_prompt
-            )
+            output[TSPKeys.ASSERTION_FAILURE_PROMPT] = prompt.assertion_failure_prompt
             output[TSPKeys.ASSERT_PROMPT] = prompt.assert_prompt
             output[TSPKeys.IS_ASSERT] = prompt.is_assert
             output[TSPKeys.PROMPT] = prompt.prompt
@@ -550,9 +534,7 @@ class PromptStudioHelper:
             output[TSPKeys.RETRIEVAL_STRATEGY] = (
                 prompt.profile_manager.retrieval_strategy
             )
-            output[TSPKeys.SIMILARITY_TOP_K] = (
-                prompt.profile_manager.similarity_top_k
-            )
+            output[TSPKeys.SIMILARITY_TOP_K] = prompt.profile_manager.similarity_top_k
             output[TSPKeys.SECTION] = prompt.profile_manager.section
             output[TSPKeys.X2TEXT_ADAPTER] = x2text
             # Eval settings for the prompt
@@ -709,9 +691,7 @@ class PromptStudioHelper:
             challenge_llm = str(default_profile.llm.id)
         # Need to check the user who created profile manager
         # has access to adapters configured in profile manager
-        PromptStudioHelper.validate_profile_manager_owner_access(
-            default_profile
-        )
+        PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
         default_profile.chunk_size = 0  # To retrive full context
 
         if prompt_grammar:
@@ -759,9 +739,7 @@ class PromptStudioHelper:
 
         if tool.summarize_as_source:
             path = Path(file_path)
-            file_path = str(
-                path.parent / TSPKeys.SUMMARIZE / (path.stem + ".txt")
-            )
+            file_path = str(path.parent / TSPKeys.SUMMARIZE / (path.stem + ".txt"))
         file_hash = ToolUtils.get_hash_from_file(file_path=file_path)
 
         payload = {
@@ -782,7 +760,7 @@ class PromptStudioHelper:
         answer = responder.single_pass_extraction(payload)
         # TODO: Make use of dataclasses
         if answer["status"] == "ERROR":
-            error_message = answer.get("error", "")
+            error_message = answer.get("error", None)
             raise AnswerFetchError(error_message)
         output_response = json.loads(answer["structure_output"])
         return output_response

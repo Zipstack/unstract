@@ -21,17 +21,13 @@ class FileInformation:
         self.type = file_info[FileInformationKey.FILE_TYPE]
 
         modified_at = file_info.get(FileInformationKey.FILE_LAST_MODIFIED)
-        self.modified_at = (
-            self.parse_datetime(modified_at) if modified_at else None
-        )
+        self.modified_at = self.parse_datetime(modified_at) if modified_at else None
 
         self.content_type = file_content_type
         self.size = file_info[FileInformationKey.FILE_SIZE]
 
     @staticmethod
-    def parse_datetime(
-        dt_string: Optional[Union[str, datetime]]
-    ) -> Optional[datetime]:
+    def parse_datetime(dt_string: Optional[Union[str, datetime]]) -> Optional[datetime]:
         if isinstance(dt_string, str):
             return datetime.strptime(dt_string, "%Y-%m-%dT%H:%M:%S.%f%z")
         return dt_string

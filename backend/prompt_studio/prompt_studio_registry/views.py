@@ -2,9 +2,7 @@ import logging
 from typing import Optional
 
 from django.db.models import QuerySet
-from prompt_studio.prompt_studio_registry.constants import (
-    PromptStudioRegistryKeys,
-)
+from prompt_studio.prompt_studio_registry.constants import PromptStudioRegistryKeys
 from prompt_studio.prompt_studio_registry.serializers import (
     PromptStudioRegistrySerializer,
 )
