@@ -300,6 +300,11 @@ const isJson = (text) => {
 };
 
 const displayPromptResult = (output, isFormat = false) => {
+  /*
+    output: The data to be displayed or parsed
+    isFormat: A flag indicating whether the output should be formatted
+  */
+
   let i = 0;
   let parsedData = output;
 
@@ -308,23 +313,23 @@ const displayPromptResult = (output, isFormat = false) => {
     try {
       parsedData = JSON.parse(parsedData);
     } catch {
+      // Break the loop if parsing fails
       break;
     }
   }
 
-  if (
-    (Array.isArray(parsedData) || typeof parsedData === "object") &&
-    isFormat
-  ) {
-    // If isFormat is true, return the formatted JSON string
+  if (!isFormat) {
+    // If formatting is not requested, return the parsed data directly
+    return parsedData;
+  }
+
+  // Check if the parsed data is an array or object and formatting is requested
+  if (Array.isArray(parsedData) || typeof parsedData === "object") {
+    // If formatting is requested, return the JSON string with indentation
     return JSON.stringify(parsedData, null, 4);
   }
 
-  if (!parsedData) {
-    return String(parsedData);
-  }
-
-  return parsedData;
+  return String(parsedData);
 };
 
 const onboardCompleted = (adaptersList) => {
