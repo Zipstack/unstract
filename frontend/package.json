@@ -23,6 +23,7 @@
     "escape-html": "^1.0.3",
     "handlebars": "^4.7.8",
     "http-proxy-middleware": "^2.0.6",
+    "js-cookie": "^3.0.5",
     "js-yaml": "^4.1.0",
     "markdown-to-jsx": "^7.2.1",
     "moment": "^2.29.4",

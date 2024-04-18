@@ -1,7 +1,7 @@
 import axios from "axios";
 
 import { getSessionData } from "../helpers/GetSessionData";
-import { getCookie } from "../helpers/GetCookie.js";
+import Cookies from "js-cookie";
 import { userSession } from "../helpers/GetUserSession.js";
 import { useSessionStore } from "../store/session-store";
 import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
@@ -33,13 +33,13 @@ function useSessionValid() {
       if (!orgs?.length) {
         throw Error("Organizations not available.");
       }
-      if (orgs?.length > 1 && signedInOrgId && signedInOrgId === "public") {
+      if (orgs?.length > 1 && !signedInOrgId?.length) {
         navigate("/setOrg", { state: orgs });
         return;
       }
       let userAndOrgDetails = null;
       const orgId = signedInOrgId || orgs[0].id;
-      const csrfToken = getCookie("csrftoken");
+      const csrfToken = Cookies.get("csrftoken");
 
       // API to set the organization and get the user details
       requestOptions["method"] = "POST";

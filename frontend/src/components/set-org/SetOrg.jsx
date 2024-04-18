@@ -1,4 +1,4 @@
-import { getCookie } from "../../helpers/GetCookie.js";
+import Cookies from "js-cookie";
 import { userSession } from "../../helpers/GetUserSession.js";
 import { useEffect, useState } from "react";
 import { Button, Card } from "antd";
@@ -29,26 +29,22 @@ function SetOrg() {
       try {
         const userSessionData = await userSession();
         const signedInOrgId = userSessionData?.organization_id;
-        if (state === null || (signedInOrgId && signedInOrgId !== "public")) {
+        if (state === null || signedInOrgId) {
           navigate("/");
-          return;
         }
       } catch (error) {
         navigate("/");
-        return;
       } finally {
         setLoading(false);
       }
     };
-
     fetchData();
   }, [state, navigate]);
 
   const handleContinue = (id) => {
     setLoading(true);
     setLoadingOrgId(id);
-    const csrfToken = getCookie("csrftoken");
-
+    const csrfToken = Cookies.get("csrftoken");
     const requestOptions = {
       method: "POST",
       url: `/api/v1/organization/${id}/set`,
