@@ -1,4 +1,4 @@
-import { BarChartOutlined } from "@ant-design/icons";
+import { BarChartOutlined, FileAddOutlined } from "@ant-design/icons";
 import { Button, Space, Tabs, Tooltip } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -145,6 +145,12 @@ function ToolsMain() {
         </div>
         <div className="display-flex-align-center">
           <Space>
+            <Tooltip title="Tag Check-In">
+              <Button
+                icon={<FileAddOutlined />}
+                onClick={() => navigate("outputAnalyzer")}
+              />
+            </Tooltip>
             <Tooltip title="Output Analyzer">
               <Button
                 icon={<BarChartOutlined />}

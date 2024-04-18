@@ -13,6 +13,8 @@ import { DocumentManager } from "../document-manager/DocumentManager";
 import { Header } from "../header/Header";
 import { LogsLabel } from "../logs-label/LogsLabel";
 import { SettingsModal } from "../settings-modal/SettingsModal";
+import { ManageTags } from "../manage-tags/ManageTags";
+import { ManageExport } from "../manage-export/ManageExport";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
 
@@ -21,6 +23,8 @@ function ToolIde() {
   const [activeKey, setActiveKey] = useState([]);
   const [openCusSynonymsModal, setOpenCusSynonymsModal] = useState(false);
   const [openSettings, setOpenSettings] = useState(false);
+  const [openTags, setOpenTags] = useState(false);
+  const [openManageExport, setOpenManageExport] = useState(false);
   const {
     details,
     updateCustomTool,
@@ -166,6 +170,8 @@ function ToolIde() {
         <Header
           handleUpdateTool={handleUpdateTool}
           setOpenSettings={setOpenSettings}
+          setOpenTags={setOpenTags}
+          setOpenManageExport={setOpenManageExport}
         />
       </div>
       <div className="tool-ide-body">
@@ -220,6 +226,8 @@ function ToolIde() {
         setOpen={setOpenSettings}
         handleUpdateTool={handleUpdateTool}
       />
+      <ManageTags open={openTags} setOpen={setOpenTags} />
+      <ManageExport open={openManageExport} setOpen={setOpenManageExport} />
     </div>
   );
 }

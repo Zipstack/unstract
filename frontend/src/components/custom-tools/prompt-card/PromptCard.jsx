@@ -9,6 +9,7 @@ import {
   RightOutlined,
   SearchOutlined,
   SyncOutlined,
+  ControlOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -45,6 +46,7 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
+import { ManagePromptVersion } from "../manage-prompt-version/ManagePromptVersion";
 import "./PromptCard.css";
 
 import { TokenCount } from "../token-count/TokenCount";
@@ -84,6 +86,7 @@ function PromptCard({
   const [progressMsg, setProgressMsg] = useState({});
   const [docOutputs, setDocOutputs] = useState({});
   const [tokenCount, setTokenCount] = useState({});
+  const [openManageVersion, setOpenManageVersion] = useState(false);
   const divRef = useRef(null);
   const {
     getDropdownItems,
@@ -709,6 +712,16 @@ function PromptCard({
                       <AssertionIcon className="prompt-card-actions-head assertion-icon" />
                     </Button>
                   </Tooltip>
+                  <Tooltip title="Version Manager">
+                    <Button
+                      size="small"
+                      type="text"
+                      className="display-flex-align-center"
+                      onClick={() => setOpenManageVersion(!openManageVersion)}
+                    >
+                      <ControlOutlined className="prompt-card-actions-head" />
+                    </Button>
+                  </Tooltip>
                   {!singlePassExtractMode && (
                     <Tooltip title="Run">
                       <Button
@@ -922,6 +935,10 @@ function PromptCard({
         promptKey={promptDetails?.prompt_key}
         profileManagerId={promptDetails?.profile_manager}
         docOutputs={docOutputs}
+      />
+      <ManagePromptVersion
+        open={openManageVersion}
+        setOpen={setOpenManageVersion}
       />
     </>
   );

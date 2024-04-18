@@ -39,6 +39,7 @@ function DocumentParser({
     }
   }, [scrollToBottom]);
 
+  // Handle change - updating prompt
   const handleChange = async (
     event,
     promptId,
