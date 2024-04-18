@@ -8,6 +8,7 @@ from rest_framework import status, viewsets
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
+from utils.user_session import UserSessionUtils
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class ConnectorAuthViewSet(viewsets.ViewSet):
 
         random = str(uuid.uuid4())
         user_id = request.user.user_id
-        org_id = request.org_id
+        org_id = UserSessionUtils.get_organization_id(request)
         cache_key = f"oauth:{org_id}|{user_id}|{backend}|{random}"
         logger.info(f"Generated cache key: {cache_key}")
         return Response(
