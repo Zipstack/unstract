@@ -7,6 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from tenant_account.serializer import ListInvitationsResponseSerializer
+from utils.user_session import UserSessionUtils
 
 Logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ class InvitationViewSet(viewsets.ViewSet):
     def list_invitations(self, request: Request) -> Response:
         auth_controller = AuthenticationController()
         invitations: list[MemberInvitation] = auth_controller.get_user_invitations(
-            organization_id=request.org_id,
+            organization_id=UserSessionUtils.get_organization_id(request),
         )
         serialized_members = ListInvitationsResponseSerializer(
             invitations, many=True
@@ -30,7 +31,8 @@ class InvitationViewSet(viewsets.ViewSet):
     def delete_invitation(self, request: Request, id: str) -> Response:
         auth_controller = AuthenticationController()
         is_deleted: bool = auth_controller.delete_user_invitation(
-            organization_id=request.org_id, invitation_id=id
+            organization_id=UserSessionUtils.get_organization_id(request),
+            invitation_id=id,
         )
         if is_deleted:
             return Response(

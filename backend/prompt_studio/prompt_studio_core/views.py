@@ -43,6 +43,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance.models import ToolInstance
+from utils.user_session import UserSessionUtils
 
 from unstract.connectors.filesystems.local_storage.local_storage import LocalStorageFS
 
@@ -205,7 +206,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         unique_id = PromptStudioHelper.index_document(
             tool_id=str(tool.tool_id),
             file_name=file_name,
-            org_id=request.org_id,
+            org_id=UserSessionUtils.get_organization_id(request),
             user_id=tool.created_by.user_id,
             document_id=document_id,
         )
@@ -217,7 +218,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             cls.process(
                 tool_id=str(tool.tool_id),
                 file_name=file_name,
-                org_id=request.org_id,
+                org_id=UserSessionUtils.get_organization_id(request),
                 user_id=tool.created_by.user_id,
                 document_id=document_id,
             )
@@ -258,7 +259,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             id=id,
             tool_id=tool_id,
             file_name=file_name,
-            org_id=request.org_id,
+            org_id=UserSessionUtils.get_organization_id(request),
             user_id=custom_tool.created_by.user_id,
             document_id=document_id,
         )
@@ -292,7 +293,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             tool_id=tool_id,
             file_name=file_name,
-            org_id=request.org_id,
+            org_id=UserSessionUtils.get_organization_id(request),
             user_id=custom_tool.created_by.user_id,
             document_id=document_id,
         )
