@@ -68,7 +68,7 @@ class ExecutionRequestSerializer(Serializer):
         return value
 
     def get_timeout(self, validated_data: dict[str, Union[int, None]]) -> int:
-        value = validated_data.get("timeout", -1)
+        value = validated_data.get(ApiExecution.TIMEOUT_FORM_DATA, -1)
         if not isinstance(value, int):
             raise ValidationError("timeout must be a integer.")
         return value
