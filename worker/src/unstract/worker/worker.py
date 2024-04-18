@@ -31,8 +31,9 @@ class UnstractWorker:
             self.client.login(
                 username=ToolKey.LOGIN_USERNAME,
                 password=open(key_file_path).read(),
-                registry=ToolKey.REGISTRY)
-            
+                registry=ToolKey.REGISTRY,
+            )
+
         self.image = self._get_image()
 
     def _get_image(self) -> str:
