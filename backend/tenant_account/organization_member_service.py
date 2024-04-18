@@ -19,7 +19,8 @@ class OrganizationMemberService:
         except OrganizationMember.DoesNotExist:
             return None
 
-    def get_user_by_id(self, id: str) -> Optional[OrganizationMember]:
+    @staticmethod
+    def get_user_by_id(id: str) -> Optional[OrganizationMember]:
         try:
             return OrganizationMember.objects.get(user=id)  # type: ignore
         except OrganizationMember.DoesNotExist:
