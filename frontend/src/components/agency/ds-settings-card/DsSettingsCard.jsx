@@ -55,11 +55,6 @@ const disabledIdsByType = {
     "azure_cloud_storage|1476a54a-ed17-4a01-9f8f-cb7e4cf91c8a",
     "http|6fdea346-86e4-4383-9a21-132db7c9a576",
   ],
-  DATABASE: [
-    "mariadb|146b0124-b9fc-466f-8e68-098ff60703e8",
-    "mysql|db709852-fa51-4aa6-9b91-afc45f111bec",
-    "mssql|6c6af35c-9498-4bd6-9258-23b5337e068b",
-  ],
 };
 
 const needToRemove = {

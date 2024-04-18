@@ -2,10 +2,7 @@ import logging
 from typing import Any
 
 from account.authentication_controller import AuthenticationController
-from account.dto import (
-    OrganizationSignupRequestBody,
-    OrganizationSignupResponse,
-)
+from account.dto import OrganizationSignupRequestBody, OrganizationSignupResponse
 from account.models import Organization
 from account.organization import OrganizationService
 from account.serializer import (
@@ -25,9 +22,7 @@ def create_organization(request: Request) -> Response:
     serializer = OrganizationSignupSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     try:
-        requestBody: OrganizationSignupRequestBody = makeSignupRequestParams(
-            serializer
-        )
+        requestBody: OrganizationSignupRequestBody = makeSignupRequestParams(serializer)
 
         organization: Organization = OrganizationService.create_organization(
             requestBody.name,

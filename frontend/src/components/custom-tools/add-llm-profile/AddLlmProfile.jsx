@@ -16,13 +16,13 @@ import { useEffect, useState } from "react";
 
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./AddLlmProfile.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function AddLlmProfile({
   editLlmProfileId,
@@ -290,10 +290,11 @@ function AddLlmProfile({
   const handleSubmit = () => {
     setLoading(true);
     let method = "POST";
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/`;
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profilemanager/${details?.tool_id}`;
 
     if (editLlmProfileId?.length) {
       method = "PUT";
+      url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/`;
       url += `${editLlmProfileId}/`;
     }
 
@@ -334,7 +335,7 @@ function AddLlmProfile({
         setIsAddLlm(false);
       })
       .catch((err) => {
-        handleException(err, "", setBackendErrors);
+        setAlertDetails(handleException(err, "", setBackendErrors));
       })
       .finally(() => {
         setLoading(false);
@@ -355,13 +356,16 @@ function AddLlmProfile({
     }
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/mock_org/adapter/` + value,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/info/${value}/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
     };
 
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data;
-        const contextWindowSize = data.adapter_metadata.context_window_size;
+        const contextWindowSize = data.context_window_size;
         const chunkSize = form.getFieldValue("chunk_size");
         setTokenSize(chunkSize > 0 ? calcTokenSize(chunkSize) : 0);
         setMaxTokenSize(contextWindowSize);
@@ -370,7 +374,7 @@ function AddLlmProfile({
         setAlertDetails(
           handleException(
             err,
-            "Failed to get the dropdown list for LLM Adaptors"
+            "Failed to get chunk size information for the requested LLM. Please proceed with a sane default."
           )
         );
       });

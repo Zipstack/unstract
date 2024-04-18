@@ -1,16 +1,14 @@
 import json
 from typing import Any
 
-from account.models import User
+from account.serializer import UserSerializer
 from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.constants import AdapterKeys
 from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
-from unstract.adapters.adapterkit import Adapterkit
 from unstract.adapters.constants import Common as common
-from unstract.adapters.llm.llm_adapter import LLMAdapter
 
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
@@ -31,9 +29,7 @@ class BaseAdapterSerializer(AuditSerializer):
 
 
 class DefaultAdapterSerializer(serializers.Serializer):
-    llm_default = serializers.CharField(
-        max_length=FLC.UUID_LENGTH, required=False
-    )
+    llm_default = serializers.CharField(max_length=FLC.UUID_LENGTH, required=False)
     embedding_default = serializers.CharField(
         max_length=FLC.UUID_LENGTH, required=False
     )
@@ -52,9 +48,7 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
         if data.get(AdapterKeys.ADAPTER_METADATA, None):
             encryption_secret: str = settings.ENCRYPTION_KEY
             f: Fernet = Fernet(encryption_secret.encode("utf-8"))
-            json_string: str = json.dumps(
-                data.pop(AdapterKeys.ADAPTER_METADATA)
-            )
+            json_string: str = json.dumps(data.pop(AdapterKeys.ADAPTER_METADATA))
 
             data[AdapterKeys.ADAPTER_METADATA_B] = f.encrypt(
                 json_string.encode("utf-8")
@@ -65,26 +59,13 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
     def to_representation(self, instance: AdapterInstance) -> dict[str, str]:
         rep: dict[str, str] = super().to_representation(instance)
 
-        encryption_secret: str = settings.ENCRYPTION_KEY
-        f: Fernet = Fernet(encryption_secret.encode("utf-8"))
-
         rep.pop(AdapterKeys.ADAPTER_METADATA_B)
-        adapter_metadata = json.loads(
-            f.decrypt(bytes(instance.adapter_metadata_b).decode("utf-8"))
-        )
-        # Get the adapter_instance
-        adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
-            instance.adapter_id
-        )
-        adapter_instance = adapter_class(adapter_metadata)
-        # If adapter_instance is a LLM send
-        # additional parameter of context_window
-        if isinstance(adapter_instance, LLMAdapter):
-            adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
-                adapter_instance.get_context_window_size()
-            )
 
+        adapter_metadata = instance.get_adapter_meta_data()
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
+        adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
+            instance.get_context_window_size()
+        )
 
         rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
             instance.adapter_id, common.ICON
@@ -92,6 +73,25 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
         rep[AdapterKeys.ADAPTER_CREATED_BY] = instance.created_by.email
 
         return rep
+
+
+class AdapterInfoSerializer(BaseAdapterSerializer):
+
+    context_window_size = serializers.SerializerMethodField()
+
+    class Meta(BaseAdapterSerializer.Meta):
+        model = AdapterInstance
+        fields = (
+            "id",
+            "adapter_id",
+            "adapter_name",
+            "adapter_type",
+            "created_by",
+            "context_window_size",
+        )  # type: ignore
+
+    def get_context_window_size(self, obj: AdapterInstance) -> int:
+        return obj.get_context_window_size()
 
 
 class AdapterListSerializer(BaseAdapterSerializer):
@@ -120,16 +120,10 @@ class AdapterListSerializer(BaseAdapterSerializer):
         return rep
 
 
-class UserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ("id", "username")
-
-
 class SharedUserListSerializer(BaseAdapterSerializer):
     """Inherits BaseAdapterSerializer.
 
-    Used for listing adapters
+    Used for listing adapter users
     """
 
     shared_users = UserSerializer(many=True)

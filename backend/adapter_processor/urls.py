@@ -24,6 +24,7 @@ adapter_detail = AdapterInstanceViewSet.as_view(
 test_adapter = AdapterViewSet.as_view({"post": "test_adapter"})
 
 adapter_users = AdapterInstanceViewSet.as_view({"get": "list_of_shared_users"})
+adapter_info = AdapterInstanceViewSet.as_view({"get": "adapter_info"})
 urlpatterns = format_suffix_patterns(
     [
         path("adapter_schema/", adapter_schema, name="get_adapter_schema"),
@@ -31,6 +32,7 @@ urlpatterns = format_suffix_patterns(
         path("adapter/", adapter_list, name="adapter-list"),
         path("adapter/default_triad/", default_triad, name="default_triad"),
         path("adapter/<uuid:pk>/", adapter_detail, name="adapter_detail"),
+        path("adapter/info/<uuid:pk>/", adapter_info, name="adapter_info"),
         path("test_adapters/", adapter_test, name="adapter-test"),
         path(
             "adapter/users/<uuid:pk>/",

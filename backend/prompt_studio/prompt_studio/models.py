@@ -28,9 +28,7 @@ class ToolStudioPrompt(BaseModel):
     class Mode(models.TextChoices):
         DEFAULT = "Default", "Default choice for output"
 
-    prompt_id = models.UUIDField(
-        primary_key=True, default=uuid.uuid4, editable=False
-    )
+    prompt_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     prompt_key = models.TextField(
         blank=False,
         db_comment="Field to store the prompt key",

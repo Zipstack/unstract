@@ -35,11 +35,9 @@ class ConnectorInstanceSerializer(AuditSerializer):
             and CIKey.CONNECTOR_METADATA in kwargs
         ):
             try:
-                connector_oauth = (
-                    ConnectorAuthHelper.get_or_create_connector_auth(
-                        user=user,  # type: ignore
-                        oauth_credentials=kwargs[CIKey.CONNECTOR_METADATA],
-                    )
+                connector_oauth = ConnectorAuthHelper.get_or_create_connector_auth(
+                    user=user,  # type: ignore
+                    oauth_credentials=kwargs[CIKey.CONNECTOR_METADATA],
                 )
                 kwargs[CIKey.CONNECTOR_AUTH] = connector_oauth
                 (
@@ -61,9 +59,7 @@ class ConnectorInstanceSerializer(AuditSerializer):
         if self.validated_data:
             self.validated_data.pop(CIKey.CONNECTOR_METADATA)
 
-        kwargs[CIKey.CONNECTOR_METADATA_B] = f.encrypt(
-            json_string.encode("utf-8")
-        )
+        kwargs[CIKey.CONNECTOR_METADATA_B] = f.encrypt(json_string.encode("utf-8"))
 
         instance = super().save(**kwargs)
         return instance
@@ -76,10 +72,8 @@ class ConnectorInstanceSerializer(AuditSerializer):
         if SerializerUtils.check_context_for_GET_or_POST(context=self.context):
             rep.pop(CIKey.CONNECTOR_AUTH)
             # set icon fields for UI
-            rep[ConnectorKeys.ICON] = (
-                ConnectorProcessor.get_connector_data_with_key(
-                    instance.connector_id, ConnectorKeys.ICON
-                )
+            rep[ConnectorKeys.ICON] = ConnectorProcessor.get_connector_data_with_key(
+                instance.connector_id, ConnectorKeys.ICON
             )
         encryption_secret: str = settings.ENCRYPTION_KEY
         f: Fernet = Fernet(encryption_secret.encode("utf-8"))

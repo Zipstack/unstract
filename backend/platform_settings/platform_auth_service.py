@@ -73,9 +73,7 @@ class PlatformAuthenticationService:
             logger.info(f"platform_key is generated for {organization.id}")
             return result
         except IntegrityError as error:
-            logger.error(
-                f"Integrity error - failed to generate platform key : {error}"
-            )
+            logger.error(f"Integrity error - failed to generate platform key : {error}")
             raise DuplicateData(
                 f"{ErrorMessage.KEY_EXIST}, \
                             {ErrorMessage.DUPLICATE_API}"
@@ -133,9 +131,7 @@ class PlatformAuthenticationService:
             logger.info(f"platform_key {id} is updated by user {user.id}")
             return result
         except IntegrityError as error:
-            logger.error(
-                f"Integrity error - failed to refresh platform key : {error}"
-            )
+            logger.error(f"Integrity error - failed to refresh platform key : {error}")
             raise DuplicateData(
                 f"{ErrorMessage.KEY_EXIST}, \
                             {ErrorMessage.DUPLICATE_API}"
@@ -186,9 +182,7 @@ class PlatformAuthenticationService:
                             {ErrorMessage.DUPLICATE_API}"
             )
         except Exception as error:
-            logger.error(
-                f"Failed to activate/deactivate platform key : {error}"
-            )
+            logger.error(f"Failed to activate/deactivate platform key : {error}")
             raise InternalServiceError()
 
     @staticmethod

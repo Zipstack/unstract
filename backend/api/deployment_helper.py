@@ -44,9 +44,7 @@ class DeploymentHelper:
         """
 
         @wraps(func)
-        def wrapper(
-            self: Any, request: Request, *args: Any, **kwargs: Any
-        ) -> Any:
+        def wrapper(self: Any, request: Request, *args: Any, **kwargs: Any) -> Any:
             """Wrapper to validate the inputs and key.
 
             Args:
@@ -62,26 +60,18 @@ class DeploymentHelper:
             try:
                 authorization_header = request.headers.get("Authorization")
                 api_key = None
-                if authorization_header and authorization_header.startswith(
-                    "Bearer "
-                ):
+                if authorization_header and authorization_header.startswith("Bearer "):
                     api_key = authorization_header.split(" ")[1]
                 if not api_key:
                     raise Forbidden("Missing api key")
-                org_name = kwargs.get("org_name") or request.data.get(
-                    "org_name"
-                )
-                api_name = kwargs.get("api_name") or request.data.get(
-                    "api_name"
-                )
+                org_name = kwargs.get("org_name") or request.data.get("org_name")
+                api_name = kwargs.get("api_name") or request.data.get("api_name")
                 if not api_name:
                     raise Forbidden("Missing api_name")
                 tenant = get_tenant_model().objects.get(schema_name=org_name)
                 with tenant_context(tenant):
-                    api_deployment = (
-                        DeploymentHelper.get_deployment_by_api_name(
-                            api_name=api_name
-                        )
+                    api_deployment = DeploymentHelper.get_deployment_by_api_name(
+                        api_name=api_name
                     )
                     DeploymentHelper.validate_api(
                         api_deployment=api_deployment, api_key=api_key
@@ -99,9 +89,7 @@ class DeploymentHelper:
         return wrapper
 
     @staticmethod
-    def validate_api(
-        api_deployment: Optional[APIDeployment], api_key: str
-    ) -> None:
+    def validate_api(api_deployment: Optional[APIDeployment], api_key: str) -> None:
         """Validating API and API key.
 
         Args:
@@ -160,7 +148,7 @@ class DeploymentHelper:
             str: The complete status endpoint URL.
         """
         query_parameters = urlencode({"execution_id": execution_id})
-        complete_endpoint = f"{api_endpoint}?{query_parameters}"
+        complete_endpoint = f"/{api_endpoint}?{query_parameters}"
         return complete_endpoint
 
     @staticmethod
@@ -248,7 +236,7 @@ class DeploymentHelper:
         Returns:
             ReturnDict: status/result of execution
         """
-        execution_response: ExecutionResponse = (
-            WorkflowHelper.get_status_of_async_task(execution_id=execution_id)
+        execution_response: ExecutionResponse = WorkflowHelper.get_status_of_async_task(
+            execution_id=execution_id
         )
         return execution_response

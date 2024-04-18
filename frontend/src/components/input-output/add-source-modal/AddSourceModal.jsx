@@ -9,6 +9,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { AddSource } from "../add-source/AddSource";
 import { ListOfSources } from "../list-of-sources/ListOfSources";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
 function AddSourceModal({
   open,
@@ -25,6 +26,14 @@ function AddSourceModal({
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const [isLoading, setIsLoading] = useState(false);
+  const [sourcesList, setSourcesList] = useState([]);
+
+  const disabledIdsByType = {
+    EMBEDDING: ["huggingface|90ec9ec2-1768-4d69-8fb1-c88b95de5e5a"],
+    LLM: ["replicate|2715ce84-05af-4ab4-b8e9-67ac3211b81e"],
+    VECTOR_DB: ["milvus|3f42f6f9-4b8e-4546-95f3-22ecc9aca442"],
+  };
 
   useEffect(() => {
     const addOrEdit = editItemId?.length ? "Edit" : "Add";
@@ -49,6 +58,10 @@ function AddSourceModal({
         setSelectedSourceId(null);
         setEditItemId(null);
       }, 500);
+    }
+
+    if (type && type !== null) {
+      getListOfSources();
     }
   }, [open]);
 
@@ -88,6 +101,40 @@ function AddSourceModal({
       });
   };
 
+  const getListOfSources = () => {
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}`;
+    if (type && sourceTypes.connectors.includes(type)) {
+      url += `/supported_connectors/?type=${type?.toUpperCase()}`;
+    } else {
+      url += `/supported_adapters/?adapter_type=${type?.toUpperCase()}`;
+    }
+    // API to get the list of adapters.
+    const requestOptions = {
+      method: "GET",
+      url,
+    };
+
+    setIsLoading(true);
+    setSourcesList([]);
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const sources = res?.data || [];
+        const updatedSources = sources?.map((source) => ({
+          ...source,
+          isDisabled: disabledIdsByType[source?.adapter_type]?.includes(
+            source?.id
+          ),
+        }));
+        setSourcesList(updatedSources || []);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  };
+
   return (
     <Modal
       open={open}
@@ -111,8 +158,14 @@ function AddSourceModal({
           editItemId={editItemId}
           metadata={metadata}
         />
+      ) : isLoading ? (
+        <SpinnerLoader />
       ) : (
-        <ListOfSources setSelectedSourceId={setSelectedSourceId} type={type} />
+        <ListOfSources
+          setSelectedSourceId={setSelectedSourceId}
+          open={open}
+          sourcesList={sourcesList}
+        />
       )}
     </Modal>
   );
@@ -121,7 +174,7 @@ function AddSourceModal({
 AddSourceModal.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
-  type: PropTypes.string.isRequired,
+  type: PropTypes.any,
   addNewItem: PropTypes.func.isRequired,
   editItemId: PropTypes.string,
   setEditItemId: PropTypes.func.isRequired,

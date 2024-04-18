@@ -17,6 +17,12 @@ deployment_details = APIDeploymentViewSet.as_view(
         "delete": APIDeploymentViewSet.destroy.__name__,
     }
 )
+download_postman_collection = APIDeploymentViewSet.as_view(
+    {
+        "get": APIDeploymentViewSet.download_postman_collection.__name__,
+    }
+)
+
 execute = DeploymentExecution.as_view()
 
 key_details = APIKeyViewSet.as_view(
@@ -40,6 +46,11 @@ urlpatterns = format_suffix_patterns(
             "deployment/<uuid:pk>/",
             deployment_details,
             name="api_deployment_details",
+        ),
+        path(
+            "postman_collection/<uuid:pk>/",
+            download_postman_collection,
+            name="download_postman_collection",
         ),
         re_path(
             r"^api/(?P<org_name>[\w-]+)/(?P<api_name>[\w-]+)/?$",

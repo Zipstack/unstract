@@ -35,9 +35,7 @@ class UnstractAccount:
         except ClientError as e:
             logger.info(f"{bucket_name} Folder {account_folder} does not exist")
             if e.response["Error"]["Code"] == "404":
-                logger.info(
-                    f"Folder {account_folder} does not exist. Creating it..."
-                )
+                logger.info(f"Folder {account_folder} does not exist. Creating it...")
                 s3.put_object(Bucket=bucket_name, Key=account_folder)
                 account_folder_output = f"{self.tenant}/{self.username}/output/"
                 s3.put_object(Bucket=bucket_name, Key=account_folder_output)
@@ -67,8 +65,7 @@ class UnstractAccount:
                     folder, os.path.relpath(local_file_path, local_path)
                 )
                 logger.info(
-                    f"Uploading: {local_file_path} => "
-                    f"s3://{bucket_name}/{s3_key}"
+                    f"Uploading: {local_file_path} => " f"s3://{bucket_name}/{s3_key}"
                 )
                 try:
                     s3.upload_file(local_file_path, bucket_name, s3_key)

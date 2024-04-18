@@ -203,9 +203,9 @@ class TestConnector(APITestCase):
             },
         }
         response = self.client.put(url, data, format="json")
-        nested_value = response.data["connector_metadata"][
-            "sample_metadata_json"
-        ]["key1"]
+        nested_value = response.data["connector_metadata"]["sample_metadata_json"][
+            "key1"
+        ]
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(nested_value, "value1")
@@ -229,9 +229,9 @@ class TestConnector(APITestCase):
             },
         }
         response = self.client.put(url, data, format="json")
-        nested_value = response.data["connector_metadata"][
-            "sample_metadata_json"
-        ]["key1"]
+        nested_value = response.data["connector_metadata"]["sample_metadata_json"][
+            "key1"
+        ]
         nested_list = response.data["connector_metadata"]["file_list"]
         last_val = nested_list.pop()
 
@@ -296,9 +296,7 @@ class TestConnector(APITestCase):
 
         self.assertEqual(
             connector_id,
-            ConnectorInstance.objects.get(
-                connector_id=connector_id
-            ).connector_id,
+            ConnectorInstance.objects.get(connector_id=connector_id).connector_id,
         )
 
     def test_connectors_update_json_field_patch(self) -> None:
