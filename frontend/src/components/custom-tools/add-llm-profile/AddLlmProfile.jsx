@@ -356,7 +356,7 @@ function AddLlmProfile({
     }
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${value}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/info/${value}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -365,7 +365,7 @@ function AddLlmProfile({
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data;
-        const contextWindowSize = data.adapter_metadata.context_window_size;
+        const contextWindowSize = data.context_window_size;
         const chunkSize = form.getFieldValue("chunk_size");
         setTokenSize(chunkSize > 0 ? calcTokenSize(chunkSize) : 0);
         setMaxTokenSize(contextWindowSize);
