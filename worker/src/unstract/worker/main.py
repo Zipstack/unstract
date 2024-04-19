@@ -1,13 +1,28 @@
+import os
 from typing import Any, Optional
 
 from flask import Blueprint, Flask, Response, jsonify, request
-from unstract.worker import UnstractWorker
+from k8s_worker import K8sWorker
 from unstract.worker.constants import ToolCommandKey
+
+from worker.src.unstract.worker.docker_worker import DockerWorker
 
 app = Flask(__name__)
 
 # Define a Blueprint with a root URL path
 bp = Blueprint("v1", __name__, url_prefix="/v1/api")
+
+container_manager_type = os.environ.get(
+    "CONTAINER_MANAGER", "docker"
+)  # Default to Docker
+if container_manager_type == "docker":
+    worker = DockerWorker()
+elif container_manager_type == "kubernetes":
+    worker = K8sWorker()
+else:
+    raise ValueError(
+        "Unknown container manager type. Please check the CONTAINER_MANAGER environment variable."
+    )
 
 
 # Define a route to ping test
@@ -29,8 +44,9 @@ def run_container() -> Optional[Any]:
     envs = data["envs"]
     messaging_channel = data["messaging_channel"]
 
-    worker = UnstractWorker(image_name, image_tag)
     result = worker.run_container(
+        image_name=image_name,
+        image_tag=image_tag,
         organization_id=organization_id,
         workflow_id=workflow_id,
         execution_id=execution_id,
@@ -64,16 +80,15 @@ def get_variables() -> Optional[Any]:
 def get_resource(endpoint: str) -> Optional[Any]:
     image_name = request.args.get("image_name")
     image_tag = request.args.get("image_tag")
-    worker = UnstractWorker(image_name, image_tag)
 
     if endpoint == ToolCommandKey.PROPERTIES:
-        return worker.get_properties()
+        return worker.get_properties(image_name, image_tag)
     elif endpoint == ToolCommandKey.ICON:
-        return worker.get_icon()
+        return worker.get_icon(image_name, image_tag)
     elif endpoint == ToolCommandKey.VARIABLES:
-        return worker.get_variables()
+        return worker.get_variables(image_name, image_tag)
     elif endpoint == ToolCommandKey.SPEC:
-        return worker.get_spec()
+        return worker.get_spec(image_name, image_tag)
     else:
         return None
 
