@@ -11,7 +11,12 @@ from account.constants import (
     ErrorMessage,
     OrganizationMemberModel,
 )
-from account.custom_exceptions import DuplicateData, Forbidden, UserNotExistError
+from account.custom_exceptions import (
+    DuplicateData,
+    Forbidden,
+    MethodNotImplemented,
+    UserNotExistError,
+)
 from account.dto import (
     MemberInvitation,
     OrganizationData,

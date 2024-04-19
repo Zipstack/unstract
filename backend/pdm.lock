@@ -367,6 +367,16 @@ files = [
 ]
 
 [[package]]
+name = "azure-common"
+version = "1.1.28"
+summary = "Microsoft Azure Client Library for Python (Common)"
+groups = ["default"]
+files = [
+    {file = "azure-common-1.1.28.zip", hash = "sha256:4ac0cd3214e36b6a1b6a442686722a5d8cc449603aa833f3f0f40bda836704a3"},
+    {file = "azure_common-1.1.28-py2.py3-none-any.whl", hash = "sha256:5c12d3dcf4ec20599ca6b0d3e09e86e146353d443e7fcc050c9a19c1f9df20ad"},
+]
+
+[[package]]
 name = "azure-core"
 version = "1.30.1"
 requires_python = ">=3.7"
@@ -2579,6 +2589,24 @@ dependencies = [
 files = [
     {file = "msal-extensions-1.1.0.tar.gz", hash = "sha256:6ab357867062db7b253d0bd2df6d411c7891a0ee7308d54d1e4317c1d1c54252"},
     {file = "msal_extensions-1.1.0-py3-none-any.whl", hash = "sha256:01be9711b4c0b1a151450068eeb2c4f0997df3bba085ac299de3a66f585e382f"},
+]
+
+[[package]]
+name = "msrest"
+version = "0.7.1"
+requires_python = ">=3.6"
+summary = "AutoRest swagger generator Python client runtime."
+groups = ["default"]
+dependencies = [
+    "azure-core>=1.24.0",
+    "certifi>=2017.4.17",
+    "isodate>=0.6.0",
+    "requests-oauthlib>=0.5.0",
+    "requests~=2.16",
+]
+files = [
+    {file = "msrest-0.7.1-py3-none-any.whl", hash = "sha256:21120a810e1233e5e6cc7fe40b474eeb4ec6f757a15d7cf86702c369f9567c32"},
+    {file = "msrest-0.7.1.zip", hash = "sha256:6e7661f46f3afd88b75667b7187a92829924446c7ea1d169be8c4bb7eeb788b9"},
 ]
 
 [[package]]
