@@ -28,6 +28,7 @@ class AdapterInstanceModelManager(models.Manager):
                 models.Q(created_by=user)
                 | models.Q(shared_users=user)
                 | models.Q(shared_to_org=True)
+                | models.Q(is_friction_less=True)
             )
             .distinct("id")
         )
@@ -87,6 +88,11 @@ class AdapterInstance(BaseModel):
     shared_to_org = models.BooleanField(
         default=False,
         db_comment="Is the adapter shared to enitire org",
+    )
+
+    is_friction_less = models.BooleanField(
+        default=False,
+        db_comment="Does the adapter created through frictionless onbaording",
     )
 
     # Introduced field to establish M2M relation between users and adapters.

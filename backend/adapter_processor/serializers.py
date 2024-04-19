@@ -115,7 +115,11 @@ class AdapterListSerializer(BaseAdapterSerializer):
         rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
             instance.adapter_id, common.ICON
         )
-        rep["created_by_email"] = instance.created_by.email
+
+        if instance.is_friction_less:
+            rep["created_by_email"] = "Admin"
+        else:
+            rep["created_by_email"] = instance.created_by.email
 
         return rep
 
