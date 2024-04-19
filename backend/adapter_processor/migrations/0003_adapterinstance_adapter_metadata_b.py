@@ -3,7 +3,6 @@
 import json
 from typing import Any
 
-from adapter_processor.models import AdapterInstance
 from cryptography.fernet import Fernet
 from django.conf import settings
 from django.db import migrations, models
@@ -17,6 +16,7 @@ class Migration(migrations.Migration):
     def EncryptCredentials(apps: Any, schema_editor: Any) -> None:
         encryption_secret: str = settings.ENCRYPTION_KEY
         f: Fernet = Fernet(encryption_secret.encode("utf-8"))
+        AdapterInstance = apps.get_model("adapter_processor", "AdapterInstance")
         queryset = AdapterInstance.objects.all()
 
         for obj in queryset:  # type: ignore

@@ -24,7 +24,11 @@ class AdapterInstanceModelManager(models.Manager):
     def for_user(self, user: User) -> QuerySet[Any]:
         return (
             self.get_queryset()
-            .filter(models.Q(created_by=user) | models.Q(shared_users=user))
+            .filter(
+                models.Q(created_by=user)
+                | models.Q(shared_users=user)
+                | models.Q(shared_to_org=True)
+            )
             .distinct("id")
         )
 
@@ -79,6 +83,10 @@ class AdapterInstance(BaseModel):
     is_active = models.BooleanField(
         default=False,
         db_comment="Is the adapter instance currently being used",
+    )
+    shared_to_org = models.BooleanField(
+        default=False,
+        db_comment="Is the adapter shared to enitire org",
     )
 
     # Introduced field to establish M2M relation between users and adapters.
