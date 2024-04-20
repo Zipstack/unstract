@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 const STORE_VARIABLES = {
-  AlertDetails: {
+  alertDetails: {
     type: "",
     content: "",
     title: "",
@@ -11,15 +11,10 @@ const useAlertStore = create((setState) => ({
   ...STORE_VARIABLES,
   setAlertDetails: (details) => {
     setState(() => {
-      let title = details.title;
-      if (!title) {
-        if (details.type === "error") {
-          title = "Failed";
-        } else {
-          title = "Success";
-        }
-      }
-      return { AlertDetails: { ...details, title } };
+      const title = details.title;
+      const notificationTitle =
+        title || (details.type === "error" ? "Failed" : "Success");
+      return { alertDetails: { ...details, title: notificationTitle } };
     });
   },
 }));

@@ -11,13 +11,13 @@ function App() {
   const [notificationAPI, contextHolder] = notification.useNotification();
   const { defaultAlgorithm, darkAlgorithm } = theme;
   const { sessionDetails } = useSessionStore();
-  const { AlertDetails } = useAlertStore();
+  const { alertDetails } = useAlertStore();
 
-  AlertDetails.content &&
+  alertDetails.content &&
     notificationAPI.open({
-      message: AlertDetails.title || "Success",
-      description: AlertDetails.content,
-      type: AlertDetails.type,
+      message: alertDetails.title,
+      description: alertDetails.content,
+      type: alertDetails.type,
     });
 
   return (
