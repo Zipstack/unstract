@@ -362,7 +362,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             )
 
         file_path = file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            request.org_id,
+            UserSessionUtils.get_organization_id(request),
             is_create=True,
             user_id=custom_tool.created_by.user_id,
             tool_id=str(custom_tool.tool_id),
@@ -382,7 +382,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         uploaded_files: Any = serializer.validated_data.get("file")
 
         file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            request.org_id,
+            UserSessionUtils.get_organization_id(request),
             is_create=True,
             user_id=custom_tool.created_by.user_id,
             tool_id=str(custom_tool.tool_id),
@@ -427,7 +427,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            request.org_id,
+            UserSessionUtils.get_organization_id(request),
             is_create=False,
             user_id=custom_tool.created_by.user_id,
             tool_id=str(custom_tool.tool_id),
