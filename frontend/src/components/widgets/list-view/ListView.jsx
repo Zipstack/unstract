@@ -39,6 +39,7 @@ function ListView({
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const [open, setOpen] = useState(false);
+  const [currentItemToTest, setCurrentItemToTest] = useState(false);
   const handleDeleteClick = (event, tool) => {
     event.stopPropagation(); // Stop propagation to prevent list item click
     handleDelete(event, tool);
@@ -47,7 +48,8 @@ function ListView({
     event.stopPropagation(); // Stop propagation to prevent list item click
     handleShare(event, tool, isEdit);
   };
-  const testExtractor = (event) => {
+  const testExtractor = (event, item) => {
+    setCurrentItemToTest(item);
     event.stopPropagation(); // Stop propagation to prevent list item click
     setOpen(true);
   };
@@ -113,11 +115,13 @@ function ListView({
           onClick={(event) => event.stopPropagation()}
           role="none"
         >
-          <Tooltip title="Test">
-            <PlayCircleOutlined
-              onClick={(event) => testExtractor(event, item)}
-            />
-          </Tooltip>
+          {item.adapter_type === "X2TEXT" && (
+            <Tooltip title="Try">
+              <PlayCircleOutlined
+                onClick={(event) => testExtractor(event, item)}
+              />
+            </Tooltip>
+          )}
           <EditOutlined
             key={`${item.id}-edit`}
             onClick={(event) => handleEdit(event, item)}
@@ -186,7 +190,11 @@ function ListView({
           );
         }}
       />
-      <TestExtractor open={open} setOpen={setOpen} />
+      <TestExtractor
+        open={open}
+        setOpen={setOpen}
+        currentItemToTest={currentItemToTest}
+      />
     </>
   );
 }

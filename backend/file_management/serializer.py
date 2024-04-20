@@ -34,6 +34,23 @@ class FileUploadSerializer(serializers.Serializer):
     path = serializers.CharField()
 
 
+class FileTestAdapterSerializer(serializers.Serializer):
+    file = serializers.ListField(
+        child=serializers.FileField(),
+        required=True,
+        validators=[
+            FileValidator(
+                allowed_extensions=FileInformationKey.FILE_UPLOAD_ALLOWED_EXT,
+                allowed_mimetypes=FileInformationKey.FILE_UPLOAD_ALLOWED_MIME,
+                min_size=0,
+                max_size=FileInformationKey.FILE_UPLOAD_MAX_SIZE,
+            )
+        ],
+    )
+    # FileExtensionValidator(allowed_extensions=['pdf'])
+    adapter_id = serializers.CharField()
+
+
 class FileUploadIdeSerializer(serializers.Serializer):
     file = serializers.ListField(
         child=serializers.FileField(),

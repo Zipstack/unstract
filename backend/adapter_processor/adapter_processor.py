@@ -19,6 +19,13 @@ from unstract.adapters.exceptions import AdapterError
 from unstract.adapters.x2text.constants import X2TextConstants
 
 from .models import AdapterInstance, UserDefaultAdapter
+from unstract.adapters.x2text import adapters
+from unstract.adapters.x2text.x2text_adapter import X2TextAdapter
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+from file_management.serializer import (
+    FileTestAdapterSerializer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -255,3 +262,48 @@ class AdapterProcessor:
         except Exception as e:
             logger.error(f"Error occurred while fetching default adapters: {e}")
             raise InternalServiceError("Error fetching default adapters")
+
+    @staticmethod
+    def process_file_text_extractor(
+        serializer: FileTestAdapterSerializer,
+        adapter_instance: AdapterInstance,
+        id: str,
+    ) -> Any:
+        try:
+            uploaded_file: Any = serializer.validated_data.get("file")
+            path = settings.MEDIA_ROOT
+            try:
+                # This is to support TemporaryUploadedFile, file read from temp and copied to MEDIA_ROOT
+                temp_path = uploaded_file[0].temporary_file_path()
+                with open(temp_path, "rb") as source_file:
+                    path += default_storage.save(
+                        path + uploaded_file[0].name, ContentFile(source_file.read())
+                    )
+            except Exception as e:
+                # This is to support InMemoryUploadedFile, copied to MEDIA_ROOT
+                logger.debug(
+                    "Not a TemporaryUploadedFile : %s",
+                    e,
+                )
+                path += default_storage.save(
+                    path + uploaded_file[0].name, uploaded_file[0]
+                )
+            x2text_adapter = adapters[id]["metadata"]["adapter"]
+            # Add x2text service host, port and platform_service_key
+            x2text_metadata = adapter_instance.get_adapter_meta_data()
+            x2text_adapter_class: X2TextAdapter = x2text_adapter(
+                x2text_metadata
+                )
+            output = x2text_adapter_class.process(path)
+            # Delete file after process
+            default_storage.delete(path)
+            return output
+        except ObjectDoesNotExist as e:
+            logger.error(f"No default adapters found: {e}")
+            raise InternalServiceError(
+                "No default adapters found, " "configure them through Platform Settings"
+            )
+        except Exception as e:
+            logger.error(f"Error occurred while fetching default adapters: {e}")
+            raise InternalServiceError("Error fetching default adapters")
+

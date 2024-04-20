@@ -3,44 +3,64 @@ import PropTypes from "prop-types";
 import { UploadOutlined } from "@ant-design/icons";
 import { useState } from "react";
 
-const TestExtractor = ({ open, setOpen }) => {
-  const [fileList, setFileList] = useState([]);
-  const handleChange = ({ fileList: newFileList }) => setFileList(newFileList);
+import { useAxiosPrivate } from "../../hooks/useAxiosPrivate";
+import { useSessionStore } from "../../store/session-store";
+import { TextViewerPre } from "../custom-tools/text-viewer-pre/TextViewerPre";
+
+const TestExtractor = ({ open, setOpen, currentItemToTest }) => {
+  const [file, setFile] = useState(null);
+  const axiosPrivate = useAxiosPrivate();
+  const { sessionDetails } = useSessionStore();
+  const [result, setResult] = useState("");
+  const handleChange = (file) => {
+    setResult("");
+    setFile(file);
+  };
   const handleCancel = () => {
+    setFile(null);
+    setResult("");
     setOpen(false);
   };
   const testExecute = () => {
-    console.log(fileList);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("adapter_id", currentItemToTest.adapter_id);
+    const header = {
+      "X-CSRFToken": sessionDetails?.csrfToken,
+      "Content-Type": "multipart/form-data",
+    };
+    const requestOptions = {
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/try/${currentItemToTest.id}/`,
+      headers: header,
+      data: formData,
+    };
+
+    axiosPrivate(requestOptions).then((res) => {
+      setResult(res.data.data);
+    });
   };
-  // const getRequestBody = (body) => {
-  //   const formData = new FormData();
-  //   formData.append("files", file);
-  //   formData.append("workflow_id", body["workflow_id"]);
-  //   formData.append("execution_id", body["execution_id"]);
-  //   if (body["execution_action"]) {
-  //     formData.append("execution_action", body["execution_action"]);
-  //   }
-  //   return formData;
-  // };
   return (
     <Modal
-      title="Upload file to test"
+      title="Upload file to try"
       centered
       open={open}
       maskClosable={false}
       onCancel={handleCancel}
       onOk={testExecute}
+      maxCount={1}
       // okButtonProps={{ disabled: fileList.length === 0 }}
-      okText="Test"
+      okText="Try"
     >
       <Upload
-        fileList={fileList}
-        // beforeUpload={beforeUpload}
-        // onRemove={onRemove}
-        onChange={handleChange}
+        file={file}
+        beforeUpload={handleChange}
+        multiple={false}
+        maxCount={1}
       >
         <Button icon={<UploadOutlined />}>Select File</Button>
       </Upload>
+      <TextViewerPre text={result} />
     </Modal>
   );
 };
@@ -48,6 +68,7 @@ const TestExtractor = ({ open, setOpen }) => {
 TestExtractor.propTypes = {
   open: PropTypes.bool,
   setOpen: PropTypes.func.isRequired,
+  currentItemToTest: PropTypes.object.isRequired,
 };
 
 export { TestExtractor };

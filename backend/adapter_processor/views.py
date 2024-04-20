@@ -21,7 +21,7 @@ from adapter_processor.serializers import (
     UserDefaultAdapterSerializer,
 )
 from file_management.serializer import (
-    FileUploadSerializer,
+    FileTestAdapterSerializer,
 )
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
@@ -40,6 +40,7 @@ from utils.filtering import FilterHelper
 from .constants import AdapterKeys as constant
 from .exceptions import InternalServiceError
 from .models import AdapterInstance, UserDefaultAdapter
+
 
 logger = logging.getLogger(__name__)
 
@@ -124,35 +125,6 @@ class AdapterViewSet(GenericViewSet):
         except Exception as e:
             logger.error(f"Error testing adapter : {str(e)}")
             raise e
-        
-    def test_adapter(self, request: Request) -> Response:
-        """Tests the adapter with sample file."""
-        serializer = FileUploadSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        id: str = serializer.validated_data.get("adapter_id")
-
-        path: str = serializer.validated_data.get("path")
-        uploaded_files: Any = serializer.validated_data.get("file")
-        print(uploaded_files)
-        print(path)
-        print(id)
-        # connector_instance: ConnectorInstance = ConnectorInstance.objects.get(
-        #     pk=id
-        # )
-        # file_system = FileManagerHelper.get_file_system(connector_instance)
-
-        # for uploaded_file in uploaded_files:
-        #     file_name = uploaded_file.name
-        #     logger.info(
-        #         f"Uploading file: {file_name}"
-        #         if file_name
-        #         else "Uploading file"
-        #     )
-        #     FileManagerHelper.upload_file(
-        #         file_system, path, uploaded_file, file_name
-        #     )
-        return Response({"message": "Files are uploaded successfully!"})
-
 
 
 class AdapterInstanceViewSet(ModelViewSet):
@@ -259,7 +231,21 @@ class AdapterInstanceViewSet(ModelViewSet):
             # TODO: Provide details of adpter usage with exception object
             raise DeleteAdapterInUseError(adapter_name=adapter_instance.adapter_name)
         return Response(status=status.HTTP_204_NO_CONTENT)
-
+    
+    def try_adapter(self, request: Request, pk: uuid) -> Response:
+        """Try the adapter with sample file."""
+        adapter_instance: AdapterInstance = self.get_object()
+        serializer = FileTestAdapterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        id: str = serializer.validated_data.get("adapter_id")
+        output = AdapterProcessor.process_file_text_extractor(
+            serializer,
+            adapter_instance,
+            id,
+            )
+        
+        return Response({"data": output})
+    
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
