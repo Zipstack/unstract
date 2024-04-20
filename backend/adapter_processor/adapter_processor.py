@@ -271,7 +271,8 @@ class AdapterProcessor:
             uploaded_file: Any = serializer.validated_data.get("file")
             path = settings.MEDIA_ROOT
             try:
-                # This is to support TemporaryUploadedFile, file read from temp and copied to MEDIA_ROOT
+                """ This is to support TemporaryUploadedFile, 
+                file read from temp and copied to MEDIA_ROOT """
                 temp_path = uploaded_file[0].temporary_file_path()
                 with open(temp_path, "rb") as source_file:
                     path += default_storage.save(
