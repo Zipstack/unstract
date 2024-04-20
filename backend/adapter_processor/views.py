@@ -20,13 +20,11 @@ from adapter_processor.serializers import (
     TestAdapterSerializer,
     UserDefaultAdapterSerializer,
 )
-from file_management.serializer import (
-    FileTestAdapterSerializer,
-)
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from django.http import HttpRequest
 from django.http.response import HttpResponse
+from file_management.serializer import FileTestAdapterSerializer
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from rest_framework import status
 from rest_framework.decorators import action
@@ -40,7 +38,6 @@ from utils.filtering import FilterHelper
 from .constants import AdapterKeys as constant
 from .exceptions import InternalServiceError
 from .models import AdapterInstance, UserDefaultAdapter
-
 
 logger = logging.getLogger(__name__)
 
@@ -231,7 +228,7 @@ class AdapterInstanceViewSet(ModelViewSet):
             # TODO: Provide details of adpter usage with exception object
             raise DeleteAdapterInUseError(adapter_name=adapter_instance.adapter_name)
         return Response(status=status.HTTP_204_NO_CONTENT)
-    
+
     def try_adapter(self, request: Request, pk: uuid) -> Response:
         """Try the adapter with sample file."""
         adapter_instance: AdapterInstance = self.get_object()
@@ -242,10 +239,10 @@ class AdapterInstanceViewSet(ModelViewSet):
             serializer,
             adapter_instance,
             id,
-            )
-        
+        )
+
         return Response({"data": output})
-    
+
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:

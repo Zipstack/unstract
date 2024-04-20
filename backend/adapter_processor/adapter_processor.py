@@ -11,21 +11,19 @@ from adapter_processor.exceptions import (
 )
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+from file_management.serializer import FileTestAdapterSerializer
 from platform_settings.platform_auth_service import PlatformAuthenticationService
 from unstract.adapters.adapterkit import Adapterkit
 from unstract.adapters.base import Adapter
 from unstract.adapters.enums import AdapterTypes
 from unstract.adapters.exceptions import AdapterError
+from unstract.adapters.x2text import adapters
 from unstract.adapters.x2text.constants import X2TextConstants
+from unstract.adapters.x2text.x2text_adapter import X2TextAdapter
 
 from .models import AdapterInstance, UserDefaultAdapter
-from unstract.adapters.x2text import adapters
-from unstract.adapters.x2text.x2text_adapter import X2TextAdapter
-from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
-from file_management.serializer import (
-    FileTestAdapterSerializer,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -291,9 +289,7 @@ class AdapterProcessor:
             x2text_adapter = adapters[id]["metadata"]["adapter"]
             # Add x2text service host, port and platform_service_key
             x2text_metadata = adapter_instance.get_adapter_meta_data()
-            x2text_adapter_class: X2TextAdapter = x2text_adapter(
-                x2text_metadata
-                )
+            x2text_adapter_class: X2TextAdapter = x2text_adapter(x2text_metadata)
             output = x2text_adapter_class.process(path)
             # Delete file after process
             default_storage.delete(path)
@@ -306,4 +302,3 @@ class AdapterProcessor:
         except Exception as e:
             logger.error(f"Error occurred while fetching default adapters: {e}")
             raise InternalServiceError("Error fetching default adapters")
-
