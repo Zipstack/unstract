@@ -35,49 +35,38 @@ function ExportTool({
   const [sharingOption, setSharingOption] = useState(SHARE_ALL);
 
   useEffect(() => {
-    if (toolDetails?.shared_users) {
-      // set the selectedUsers to the IDs of shared users
-      // filter owners and shared users
-
-      const promptStudioUsers = toolDetails?.prompt_studio_users.map((user) =>
-        user?.id?.toString()
-      );
-
-      const users = allUsers.filter((user) => {
-        const userId = user?.id?.toString();
-        return (
-          !selectedUsers.includes(userId) &&
-          !promptStudioUsers.includes(userId) &&
-          toolDetails?.created_by?.toString() !== userId
-        );
-      });
-
-      setFilteredUserList(users);
-      toolDetails?.shared_to_org
-        ? setSharingOption(SHARE_ALL)
-        : setSharingOption(SHARE_CUSTOM);
+    if (!toolDetails?.shared_users) {
+      return;
     }
+
+    const promptStudioUsers = toolDetails?.prompt_studio_users?.map((user) =>
+      user?.id?.toString()
+    );
+    const createdByUserId = toolDetails?.created_by?.toString();
+
+    const filteredUsers = allUsers.filter((user) => {
+      const userId = user?.id?.toString();
+      return (
+        !selectedUsers.includes(userId) &&
+        !promptStudioUsers.includes(userId) &&
+        createdByUserId !== userId
+      );
+    });
+
+    setFilteredUserList(filteredUsers);
+    setSharingOption(toolDetails.shared_to_org ? SHARE_ALL : SHARE_CUSTOM);
+
+    setSelectedUsers(
+      toolDetails.shared_users
+        .filter((user) => {
+          const userId = user?.id?.toString();
+          return (
+            !promptStudioUsers.includes(userId) && createdByUserId !== userId
+          );
+        })
+        .map((user) => user?.id?.toString())
+    );
   }, [toolDetails, allUsers, selectedUsers]);
-
-  useEffect(() => {
-    if (toolDetails?.shared_users) {
-      setSelectedUsers(
-        toolDetails.shared_users
-          .filter((user) => {
-            const promptStudioUsers = toolDetails?.prompt_studio_users.map(
-              (user) => user?.id?.toString()
-            );
-            const userId = user?.id?.toString();
-            return (
-              !promptStudioUsers.includes(userId) &&
-              toolDetails?.created_by?.toString() !== userId
-            );
-          })
-          .map((user) => user?.id?.toString())
-      );
-    }
-  }, [toolDetails, allUsers]);
-
   const handleDeleteUser = (userId) => {
     setSelectedUsers((prevSelectedUsers) =>
       prevSelectedUsers.filter((user) => user !== userId)
@@ -90,11 +79,11 @@ function ExportTool({
     setSharingOption(e.target.value);
   };
 
-  let sharedWithContent;
-  if (sharingOption === SHARE_ALL) {
-    sharedWithContent = <Typography.Text>Shared with everyone</Typography.Text>;
-  } else {
-    sharedWithContent = (
+  const shareWithUsers = () => {
+    if (sharingOption === SHARE_ALL) {
+      return <Typography.Text>Shared with everyone</Typography.Text>;
+    }
+    return (
       <>
         <List
           dataSource={selectedUsers.map((userId) => {
@@ -111,7 +100,7 @@ function ExportTool({
               extra={
                 <div onClick={(event) => event.stopPropagation()} role="none">
                   <Popconfirm
-                    key={`${item.id}-delete`}
+                    key={`${item?.id}-delete`}
                     title="Delete the User"
                     description={`Are you sure to remove ${item?.email}?`}
                     okText="Yes"
@@ -134,7 +123,7 @@ function ExportTool({
                       icon={<UserOutlined />}
                     />
                     <Typography.Text className="export-username">
-                      {item.email}
+                      {item?.email}
                     </Typography.Text>
                   </>
                 }
@@ -148,7 +137,7 @@ function ExportTool({
         </Typography>
       </>
     );
-  }
+  };
 
   return (
     toolDetails && (
@@ -185,7 +174,6 @@ function ExportTool({
                 showSearch
                 size={"middle"}
                 placeholder="Search"
-                value={null}
                 className="export-permission-search"
                 onChange={(selectedUser) => {
                   const isUserSelected = selectedUsers.includes(selectedUser);
@@ -194,8 +182,8 @@ function ExportTool({
                   }
                 }}
                 options={filteredUserList.map((user) => ({
-                  label: user.email,
-                  value: user.id,
+                  label: user?.email,
+                  value: user?.id,
                 }))}
               >
                 {filteredUserList.map((user) => {
@@ -208,7 +196,7 @@ function ExportTool({
               </Select>
             )}
             <Typography.Title level={5}>Shared with</Typography.Title>
-            {sharedWithContent}
+            {shareWithUsers()}
           </>
         )}
       </Modal>
