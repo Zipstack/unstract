@@ -1,4 +1,5 @@
 import logging
+import uuid
 from typing import Any, Optional
 
 from adapter_processor.adapter_processor import AdapterProcessor
@@ -11,6 +12,7 @@ from adapter_processor.exceptions import (
     UniqueConstraintViolation,
 )
 from adapter_processor.serializers import (
+    AdapterInfoSerializer,
     AdapterInstanceSerializer,
     AdapterListSerializer,
     DefaultAdapterSerializer,
@@ -268,10 +270,17 @@ class AdapterInstanceViewSet(ModelViewSet):
     @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:
         self.permission_classes = [IsOwnerOrSharedUser]
-        adapter = (
-            self.get_object()
-        )  # Assuming you have a get_object method in your viewset
+        adapter = self.get_object()
 
         serialized_instances = SharedUserListSerializer(adapter).data
+
+        return Response(serialized_instances)
+
+    @action(detail=True, methods=["get"])
+    def adapter_info(self, request: HttpRequest, pk: uuid) -> Response:
+        self.permission_classes = [IsOwnerOrSharedUser]
+        adapter = self.get_object()
+
+        serialized_instances = AdapterInfoSerializer(adapter).data
 
         return Response(serialized_instances)

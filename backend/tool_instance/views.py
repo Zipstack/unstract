@@ -22,6 +22,7 @@ from tool_instance.serializers import ToolInstanceSerializer
 from tool_instance.tool_instance_helper import ToolInstanceHelper
 from tool_instance.tool_processor import ToolProcessor
 from utils.filtering import FilterHelper
+from utils.user_session import UserSessionUtils
 from workflow_manager.workflow.constants import WorkflowKey
 
 from backend.constants import RequestKey
@@ -141,7 +142,9 @@ class ToolInstanceViewSet(viewsets.ModelViewSet):
 
             # TODO: Move update logic into serializer
             ToolInstanceHelper.update_instance_metadata(
-                request.org_id, instance, metadata
+                UserSessionUtils.get_organization_id(request),
+                instance,
+                metadata,
             )
             return Response(serializer.data)
         return super().partial_update(request, *args, **kwargs)
