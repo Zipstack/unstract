@@ -15,6 +15,7 @@ from tenant_account.serializer import (
     UserInfoSerializer,
     UserInviteResponseSerializer,
 )
+from utils.user_session import UserSessionUtils
 
 Logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         role = serializer.get_user_role(serializer.validated_data)
         if not (user_email and role):
             raise BadRequestException
-        org_id: str = request.org_id
+        org_id: str = UserSessionUtils.get_organization_id(request)
         auth_controller = AuthenticationController()
 
         auth_controller = AuthenticationController()
@@ -54,7 +55,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         role = serializer.get_user_role(serializer.validated_data)
         if not (user_email and role):
             raise BadRequestException
-        org_id: str = request.org_id
+        org_id: str = UserSessionUtils.get_organization_id(request)
         auth_controller = AuthenticationController()
 
         auth_controller = AuthenticationController()
@@ -107,7 +108,9 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         user_list = serializer.get_users(serializer.validated_data)
         auth_controller = AuthenticationController()
         invite_response = auth_controller.invite_user(
-            admin=request.user, org_id=request.org_id, user_list=user_list
+            admin=request.user,
+            org_id=UserSessionUtils.get_organization_id(request),
+            user_list=user_list,
         )
 
         response_serializer = UserInviteResponseSerializer(invite_response, many=True)
@@ -130,7 +133,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
 
         serializer.is_valid(raise_exception=True)
         user_emails = serializer.get_user_emails(serializer.validated_data)
-        organization_id: str = request.org_id
+        organization_id: str = UserSessionUtils.get_organization_id(request)
 
         auth_controller = AuthenticationController()
         is_updated = auth_controller.remove_users_from_organization(
@@ -152,7 +155,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["GET"])
     def get_organization_members(self, request: Request) -> Response:
         auth_controller = AuthenticationController()
-        if request.org_id:
+        if UserSessionUtils.get_organization_id(request):
             members: list[OrganizationMember] = (
                 auth_controller.get_organization_members_by_org_id()
             )

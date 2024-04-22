@@ -146,6 +146,7 @@ DEFAULT_AUTH_PASSWORD = os.environ.get("DEFAULT_AUTH_PASSWORD", "unstract")
 SYSTEM_ADMIN_USERNAME = get_required_setting("SYSTEM_ADMIN_USERNAME")
 SYSTEM_ADMIN_PASSWORD = get_required_setting("SYSTEM_ADMIN_PASSWORD")
 SYSTEM_ADMIN_EMAIL = get_required_setting("SYSTEM_ADMIN_EMAIL")
+SESSION_COOKIE_AGE = int(get_required_setting("SESSION_COOKIE_AGE", "86400"))
 
 # Flag to Enable django admin
 ADMIN_ENABLED = False
@@ -163,7 +164,6 @@ DEBUG = True
 ALLOWED_HOSTS = ["*"]
 CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL]
 CORS_ALLOW_ALL_ORIGINS = False
-SESSION_COOKIE_AGE = 86400
 
 
 # Application definition
@@ -311,6 +311,8 @@ CACHES = {
     }
 }
 
+SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
+
 RQ_QUEUES = {
     "default": {"USE_REDIS_CACHE": "default"},
 }
@@ -404,11 +406,6 @@ WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
 # White lists workflow-api-deployment path
 WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
 
-# White list paths under tenant paths
-TENANT_ACCESSIBLE_PUBLIC_PATHS_LIST = ["/oauth", "/organization", "/doc"]
-TENANT_ACCESSIBLE_PUBLIC_PATHS = [
-    f"/{PATH_PREFIX}{PATH}" for PATH in TENANT_ACCESSIBLE_PUBLIC_PATHS_LIST
-]
 
 # API Doc Generator Settings
 # https://drf-yasg.readthedocs.io/en/stable/settings.html
