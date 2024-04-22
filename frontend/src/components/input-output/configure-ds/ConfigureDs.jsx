@@ -50,14 +50,15 @@ function ConfigureDs({
   }, [formData]);
 
   useEffect(() => {
-    if (
-      connDetails?.connector_id &&
-      connDetails?.connector_id !== selectedSourceId
-    ) {
-      setFormData({});
-    } else if (metadata) {
-      setFormData(metadata);
-    }
+    const { connector_id: connectorId } = connDetails || {};
+
+    // Check if connectorId matches selectedSourceId and metadata is available
+
+    const shouldSetMetadata = connectorId === selectedSourceId && metadata;
+    if (!shouldSetMetadata) return;
+
+    // Set formData based on the condition
+    setFormData(shouldSetMetadata ? metadata : {});
   }, [selectedSourceId]);
 
   const isFormValid = () => {
