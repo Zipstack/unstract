@@ -64,6 +64,17 @@ class AuthenticationService:
 
         return self.render_login_page_with_error(request, ErrorMessage.USER_LOGIN_ERROR)
 
+    def is_authenticated(self, request: HttpRequest) -> bool:
+        """Check if the user is authenticated.
+
+        Args:
+            request (Request): The HTTP request object.
+
+        Returns:
+            bool: True if the user is authenticated, False otherwise.
+        """
+        return request.user.is_authenticated
+
     def authenticate_and_login(
         self, request: Request, username: str, password: str
     ) -> bool:
@@ -167,10 +178,8 @@ class AuthenticationService:
 
         return member_data
 
-    def handle_authorization_callback(
-        self, user: User, data: CallbackData, redirect_url: str = ""
-    ) -> Response:
-        return Response()
+    def handle_authorization_callback(self, request: Request, backend: str) -> Response:
+        raise MethodNotImplemented()
 
     def add_to_organization(
         self,

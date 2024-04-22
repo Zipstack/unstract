@@ -67,8 +67,15 @@ class PluginConfig:
 
 
 class AuthorizationErrorCode:
-    """Error code reference
-    frontend/src/components/error/GenericError/GenericError.jsx."""
+    """Error codes
+    IDM: INVITATION DENIED MESSAGE (Unauthorized invitation)
+    INF: INVITATION NOT FOUND (Invitation is either invalid or has expired)
+    UMM: USER MEMBERSHIP MISCONDUCT
+    USF: USER FOUND (User Account Already Exists for Organization)
+
+    Error code reference :
+        frontend/src/components/error/GenericError/GenericError.jsx.
+    """
 
     IDM = "IDM"
     UMM = "UMM"
