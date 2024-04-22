@@ -25,7 +25,6 @@ function ExportTool({
   open,
   setOpen,
   toolDetails,
-
   loading,
   allUsers,
   onApply,
@@ -35,14 +34,19 @@ function ExportTool({
   const [sharingOption, setSharingOption] = useState(SHARE_ALL);
 
   useEffect(() => {
+    const createdByUserId = toolDetails?.created_by?.toString();
     if (!toolDetails?.shared_users) {
+      const filteredUsers = allUsers.filter((user) => {
+        const userId = user?.id?.toString();
+        return !selectedUsers.includes(userId) && createdByUserId !== userId;
+      });
+      setFilteredUserList(filteredUsers);
       return;
     }
 
     const promptStudioUsers = toolDetails?.prompt_studio_users?.map((user) =>
       user?.id?.toString()
     );
-    const createdByUserId = toolDetails?.created_by?.toString();
 
     const filteredUsers = allUsers.filter((user) => {
       const userId = user?.id?.toString();
@@ -52,10 +56,18 @@ function ExportTool({
         createdByUserId !== userId
       );
     });
-
     setFilteredUserList(filteredUsers);
     setSharingOption(toolDetails.shared_to_org ? SHARE_ALL : SHARE_CUSTOM);
+  }, [toolDetails, allUsers, selectedUsers]);
 
+  useEffect(() => {
+    if (!toolDetails?.shared_users) {
+      return;
+    }
+    const createdByUserId = toolDetails?.created_by?.toString();
+    const promptStudioUsers = toolDetails?.prompt_studio_users?.map((user) =>
+      user?.id?.toString()
+    );
     setSelectedUsers(
       toolDetails.shared_users
         .filter((user) => {
@@ -66,7 +78,8 @@ function ExportTool({
         })
         .map((user) => user?.id?.toString())
     );
-  }, [toolDetails, allUsers, selectedUsers]);
+  }, []);
+
   const handleDeleteUser = (userId) => {
     setSelectedUsers((prevSelectedUsers) =>
       prevSelectedUsers.filter((user) => user !== userId)
@@ -185,6 +198,7 @@ function ExportTool({
                   label: user?.email,
                   value: user?.id,
                 }))}
+                value={null} // null value needed here so that value wont get populated in input
               >
                 {filteredUserList.map((user) => {
                   return (
