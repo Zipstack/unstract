@@ -53,7 +53,6 @@ function ConfigureDs({
     const { connector_id: connectorId } = connDetails || {};
 
     // Check if connectorId matches selectedSourceId and metadata is available
-
     const shouldSetMetadata = connectorId === selectedSourceId && metadata;
     if (!shouldSetMetadata) return;
 
