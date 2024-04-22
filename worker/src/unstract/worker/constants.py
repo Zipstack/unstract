@@ -15,8 +15,6 @@ class LogType:
 
 class ToolKey:
     TOOL_INSTANCE_ID = "tool_instance_id"
-    LOGIN_USERNAME = "_json_key"
-    REGISTRY = "https://us-central1-docker.pkg.dev"
 
 
 class Env:
@@ -25,3 +23,6 @@ class Env:
     WORKFLOW_DATA_DIR = "WORKFLOW_DATA_DIR"
     TOOL_DATA_DIR = "TOOL_DATA_DIR"
     GOOGLE_SERVICE_ACCOUNT_PATH = "GOOGLE_SERVICE_ACCOUNT_PATH"
+    LOGIN_USERNAME="LOGIN_USERNAME"
+    REGISTRY="REGISTRY"
+
