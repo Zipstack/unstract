@@ -57,7 +57,7 @@ function ConfigureDs({
     if (!shouldSetMetadata) return;
 
     // Set formData based on the condition
-    setFormData(shouldSetMetadata ? metadata : {});
+    setFormData(metadata);
   }, [selectedSourceId]);
 
   const isFormValid = () => {
