@@ -25,11 +25,15 @@ class UnstractWorker:
         # Create a Docker client that communicates with
         #   the Docker daemon in the host environment
         self.client: DockerClient = docker.from_env()  # type: ignore[attr-defined]  # noqa: E501
-        
+
         google_service_account = os.getenv(Env.GOOGLE_SERVICE_ACCOUNT)
         private_registry_username = os.getenv(Env.PRIVATE_REGISTRY_USERNAME)
         private_registry_url = os.getenv(Env.PRIVATE_REGISTRY_URL)
-        if google_service_account and private_registry_username and private_registry_url:
+        if (
+            google_service_account
+            and private_registry_username
+            and private_registry_url
+        ):
             self.client.login(
                 username=private_registry_username,
                 password=google_service_account,
