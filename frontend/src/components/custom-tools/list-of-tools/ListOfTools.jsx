@@ -88,7 +88,7 @@ function ListOfTools() {
           const tool = res?.data;
           updateList(isEdit, tool);
           setOpenAddTool(false);
-          resolve(true);
+          resolve(res?.data);
         })
         .catch((err) => {
           reject(err);
