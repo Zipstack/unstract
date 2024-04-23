@@ -406,6 +406,15 @@ class ToolInstanceHelper:
         adapter_instances = AdapterInstance.objects.filter(id__in=adapter_ids).all()
 
         for adapter_instance in adapter_instances:
+            if not adapter_instance.is_active:
+                logger.error(
+                    "Free usage for the configured sample adapter %s exhausted",
+                    adapter_instance.id,
+                )
+                raise PermissionDenied(
+                    "Free usage for the configured sample adapters exhausted"
+                )
+
             if not (
                 adapter_instance.created_by == user
                 or adapter_instance.shared_users.filter(pk=user.pk).exists()
