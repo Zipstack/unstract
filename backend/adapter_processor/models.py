@@ -82,17 +82,21 @@ class AdapterInstance(BaseModel):
     )
 
     is_active = models.BooleanField(
-        default=True,
+        default=False,
         db_comment="Is the adapter instance currently being used",
     )
     shared_to_org = models.BooleanField(
         default=False,
-        db_comment="Is the adapter shared to enitire org",
+        db_comment="Is the adapter shared to entire org",
     )
 
     is_friction_less = models.BooleanField(
         default=False,
-        db_comment="Does the adapter created through frictionless onbaording",
+        db_comment="Does the adapter created through frictionless onboarding",
+    )
+    is_usable = models.BooleanField(
+        default=True,
+        db_comment="Is the Adpater Usable",
     )
 
     # Introduced field to establish M2M relation between users and adapters.

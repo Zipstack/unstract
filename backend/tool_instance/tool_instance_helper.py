@@ -406,7 +406,7 @@ class ToolInstanceHelper:
         adapter_instances = AdapterInstance.objects.filter(id__in=adapter_ids).all()
 
         for adapter_instance in adapter_instances:
-            if not adapter_instance.is_active:
+            if not adapter_instance.is_usable:
                 logger.error(
                     "Free usage for the configured sample adapter %s exhausted",
                     adapter_instance.id,

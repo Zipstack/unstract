@@ -72,7 +72,7 @@ class PromptStudioHelper:
         ]
 
         for adapter in adapters:
-            if not adapter.is_active:
+            if not adapter.is_usable:
                 raise PermissionError(error_msg)
 
     @staticmethod
