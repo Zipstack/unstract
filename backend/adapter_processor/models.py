@@ -124,9 +124,8 @@ class AdapterInstance(BaseModel):
         self.adapter_metadata_b = f.encrypt(
             json.dumps(self.adapter_metadata).encode("utf-8")
         )
-
         self.adapter_metadata = {}
-        print("test")
+
         self.save()
 
     def get_adapter_meta_data(self) -> Any:
