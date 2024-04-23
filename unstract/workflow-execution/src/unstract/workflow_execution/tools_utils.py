@@ -42,16 +42,16 @@ class ToolsUtils:
         self.platform_service_port = ToolsUtils.get_env(
             ToolRV.PLATFORM_PORT, raise_exception=True
         )
-        self.doc_processor_url = ToolsUtils.get_env(
-            ToolRV.DOCUMENT_PROCESSOR_URL, raise_exception=True
-        )
-        self.doc_processor_api_key = ToolsUtils.get_env(
-            ToolRV.DOCUMENT_PROCESSOR_API_KEY, raise_exception=True
-        )
         self.prompt_host = ToolsUtils.get_env(ToolRV.PROMPT_HOST, raise_exception=True)
         self.prompt_port = ToolsUtils.get_env(ToolRV.PROMPT_PORT, raise_exception=True)
         self.x2text_host = ToolsUtils.get_env(ToolRV.X2TEXT_HOST, raise_exception=True)
         self.x2text_port = ToolsUtils.get_env(ToolRV.X2TEXT_PORT, raise_exception=True)
+        self.llmw_poll_interval = ToolsUtils.get_env(
+            ToolRV.ADAPTER_LLMW_POLL_INTERVAL, raise_exception=False
+        )
+        self.llmw_max_polls = ToolsUtils.get_env(
+            ToolRV.ADAPTER_LLMW_MAX_POLLS, raise_exception=False
+        )
 
     def set_messaging_channel(self, messaging_channel: str) -> None:
         self.messaging_channel = messaging_channel
@@ -218,13 +218,16 @@ class ToolsUtils:
             ToolRV.PLATFORM_HOST: self.platform_service_host,
             ToolRV.PLATFORM_PORT: self.platform_service_port,
             ToolRV.PLATFORM_SERVICE_API_KEY: self.platform_service_api_key,
-            ToolRV.DOCUMENT_PROCESSOR_URL: self.doc_processor_url,
-            ToolRV.DOCUMENT_PROCESSOR_API_KEY: self.doc_processor_api_key,
             ToolRV.PROMPT_HOST: self.prompt_host,
             ToolRV.PROMPT_PORT: self.prompt_port,
             ToolRV.X2TEXT_HOST: self.x2text_host,
             ToolRV.X2TEXT_PORT: self.x2text_port,
         }
+        # For async LLM Whisperer extraction
+        if self.llmw_poll_interval:
+            platform_vars[ToolRV.ADAPTER_LLMW_POLL_INTERVAL] = self.llmw_poll_interval
+        if self.llmw_max_polls:
+            platform_vars[ToolRV.ADAPTER_LLMW_MAX_POLLS] = self.llmw_max_polls
         if not project_settings:
             project_settings = {}
         return {**project_settings, **platform_vars}

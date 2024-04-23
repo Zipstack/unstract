@@ -27,6 +27,21 @@ class UnstractWorker:
         # Create a Docker client that communicates with
         #   the Docker daemon in the host environment
         self.client: DockerClient = docker.from_env()  # type: ignore[attr-defined]  # noqa: E501
+
+        private_registry_password = os.getenv(Env.PRIVATE_REGISTRY_PASSWORD)
+        private_registry_username = os.getenv(Env.PRIVATE_REGISTRY_USERNAME)
+        private_registry_url = os.getenv(Env.PRIVATE_REGISTRY_URL)
+        if (
+            private_registry_password
+            and private_registry_username
+            and private_registry_url
+        ):
+            self.client.login(
+                username=private_registry_username,
+                password=private_registry_password,
+                registry=private_registry_url,
+            )
+
         self.image = self._get_image()
 
     def _get_image(self) -> str:

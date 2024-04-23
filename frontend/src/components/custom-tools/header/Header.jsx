@@ -16,7 +16,7 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import { ExportTool } from "../export-tool/ExportTool";
 
 let SinglePassToggleSwitch;
 try {
@@ -34,8 +34,7 @@ function Header({ setOpenSettings, handleUpdateTool }) {
   const navigate = useNavigate();
   const handleException = useExceptionHandler();
   const [userList, setUserList] = useState([]);
-  const [openSharePermissionModal, setOpenSharePermissionModal] =
-    useState(false);
+  const [openExportToolModal, setOpenExportToolModal] = useState(false);
 
   const [toolDetails, setToolDetails] = useState(null);
 
@@ -66,7 +65,7 @@ function Header({ setOpenSettings, handleUpdateTool }) {
       })
       .finally(() => {
         setIsExportLoading(false);
-        setOpenSharePermissionModal(false);
+        setOpenExportToolModal(false);
       });
   };
 
@@ -85,17 +84,11 @@ function Header({ setOpenSettings, handleUpdateTool }) {
       } else {
         axiosPrivate(requestOptions)
           .then((res) => {
-            setOpenSharePermissionModal(true);
+            setOpenExportToolModal(true);
             setToolDetails({ ...res?.data, created_by: details?.created_by });
           })
           .catch((err) => {
-            if (err?.response?.status === 404) {
-              setToolDetails(details);
-              setOpenSharePermissionModal(true);
-              setAlertDetails(handleException(err, "Tool not exported yet"));
-            } else {
-              setAlertDetails(handleException(err));
-            }
+            setAlertDetails(handleException(err));
           })
           .finally(() => {
             setIsExportLoading(false);
@@ -175,15 +168,13 @@ function Header({ setOpenSettings, handleUpdateTool }) {
             </CustomButton>
           </Tooltip>
         </div>
-        <SharePermission
+        <ExportTool
           allUsers={userList}
-          open={openSharePermissionModal}
-          setOpen={setOpenSharePermissionModal}
+          open={openExportToolModal}
+          setOpen={setOpenExportToolModal}
           onApply={handleExport}
           loading={isExportLoading}
-          adapter={toolDetails}
-          permissionEdit={true}
-          isSharableToOrg={true}
+          toolDetails={toolDetails}
         />
       </div>
     </div>

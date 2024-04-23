@@ -7,6 +7,7 @@ import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import "./AddCustomToolFormModal.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useNavigate } from "react-router-dom";
 const defaultFromDetails = {
   tool_name: "",
   author: "",
@@ -31,6 +32,7 @@ function AddCustomToolFormModal({
   );
   const [icon, setIcon] = useState(isEdit ? formDetails.icon : "");
   const [backendErrors, setBackendErrors] = useState(null);
+  const navigate = useNavigate();
 
   const updateIcon = (emoji) => {
     setIcon(emoji);
@@ -71,6 +73,7 @@ function AddCustomToolFormModal({
         });
         setOpen(false);
         clearFormDetails();
+        navigate(success?.tool_id);
       })
       .catch((err) => {
         handleException(err, "", setBackendErrors);
