@@ -98,6 +98,7 @@ function AddSourceModal({
       .catch((err) => {
         setAlertDetails(handleException(err));
         setOpen(false);
+        setEditItemId(null);
       });
   };
 

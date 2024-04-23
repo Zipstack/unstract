@@ -6,12 +6,14 @@ const useExceptionHandler = () => {
   const handleException = (
     err,
     errMessage = "Something went wrong",
-    setBackendErrors = undefined
+    setBackendErrors = undefined,
+    title = "Failed"
   ) => {
     if (!err) {
       return {
         type: "error",
         content: errMessage,
+        title: title,
       };
     }
 
@@ -27,6 +29,7 @@ const useExceptionHandler = () => {
         case "subscription_error":
           navigate("/trial-expired");
           return {
+            title: title,
             type: "error",
             content:
               errors && errors[0]?.detail ? errors[0].detail : errMessage,
@@ -34,18 +37,21 @@ const useExceptionHandler = () => {
         case "client_error":
         case "server_error":
           return {
+            title: title,
             type: "error",
             content:
               errors && errors[0]?.detail ? errors[0].detail : errMessage,
           };
         default:
           return {
+            title: title,
             type: "error",
             content: errMessage,
           };
       }
     } else {
       return {
+        title: title,
         type: "error",
         content: errMessage,
       };
