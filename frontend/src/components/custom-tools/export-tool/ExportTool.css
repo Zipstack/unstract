@@ -1,0 +1,16 @@
+.shared-user-avatar {
+  background-color: #00a6ed;
+  margin-right: 15px;
+}
+
+.export-username {
+  font-weight: 500;
+}
+
+.export-permission-search {
+  width: 100%;
+}
+
+.export-per-radio {
+  margin: 10px 5px;
+}
