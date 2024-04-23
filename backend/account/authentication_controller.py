@@ -120,6 +120,8 @@ class AuthenticationController:
                     data={"domain": ex.data.get("domain"), "code": ex.code},
                 )
                 return response
+            Logger.error(f"Email address not valid: {ex}")
+            raise ex
         user: User = request.user
         org_ids = {org.id for org in organizations}
         CacheService.set_user_organizations(user.user_id, list(org_ids))
