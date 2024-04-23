@@ -2,10 +2,10 @@ import axios from "axios";
 
 import { getSessionData } from "../helpers/GetSessionData";
 import Cookies from "js-cookie";
-import { userSession } from "../helpers/GetUserSession.js";
 import { useSessionStore } from "../store/session-store";
 import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
 import { useNavigate } from "react-router-dom";
+import { useUserSession } from "./useUserSession.js";
 
 let getTrialDetails;
 try {
@@ -18,6 +18,7 @@ function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
   const handleException = useExceptionHandler();
   const navigate = useNavigate();
+  const userSession = useUserSession();
   return async () => {
     try {
       const userSessionData = await userSession();
