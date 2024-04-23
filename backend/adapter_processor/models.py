@@ -82,7 +82,7 @@ class AdapterInstance(BaseModel):
     )
 
     is_active = models.BooleanField(
-        default=False,
+        default=True,
         db_comment="Is the adapter instance currently being used",
     )
     shared_to_org = models.BooleanField(
