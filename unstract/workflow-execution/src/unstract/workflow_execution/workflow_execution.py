@@ -374,6 +374,8 @@ class WorkflowExecutionService:
             step=step,
             iteration=iteration,
             iteration_total=iteration_total,
+            execution_id=self.execution_id,
+            organization_id=self.organization_id,
         )
         LogPublisher.publish(self.messaging_channel, log_details)
 

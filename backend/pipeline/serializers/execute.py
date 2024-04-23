@@ -17,3 +17,8 @@ class PipelineExecuteSerializer(serializers.Serializer):
         except Pipeline.DoesNotExist:
             raise serializers.ValidationError("Invalid pipeline ID")
         return value
+
+
+class DateRangeSerializer(serializers.Serializer):
+    start_date = serializers.DateTimeField(required=False)
+    end_date = serializers.DateTimeField(required=False)

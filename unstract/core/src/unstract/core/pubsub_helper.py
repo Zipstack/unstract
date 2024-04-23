@@ -26,6 +26,8 @@ class LogPublisher:
         step: Optional[int] = None,
         iteration: Optional[int] = None,
         iteration_total: Optional[int] = None,
+        execution_id: Optional[str] = None,
+        organization_id: Optional[str] = None,
     ) -> dict[str, Any]:
         return {
             "timestamp": datetime.now(timezone.utc).timestamp(),
@@ -39,6 +41,8 @@ class LogPublisher:
             "step": step,
             "iteration": iteration,
             "iteration_total": iteration_total,
+            "execution_id": execution_id,
+            "organization_id": organization_id,
         }
 
     @staticmethod

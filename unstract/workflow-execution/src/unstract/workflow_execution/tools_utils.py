@@ -106,6 +106,8 @@ class ToolsUtils:
                 LogPublisher.log_workflow(
                     "BUILD",
                     f"------ Building step {tool_instance.step}/{tool_uid}",
+                    execution_id=execution_id,
+                    organization_id=self.organization_id,
                 ),
             )
 
@@ -117,7 +119,10 @@ class ToolsUtils:
             LogPublisher.publish(
                 self.messaging_channel,
                 LogPublisher.log_workflow(
-                    "BUILD", f"Building the tool {tool_uid} now..."
+                    "BUILD",
+                    f"Building the tool {tool_uid} now...",
+                    execution_id=execution_id,
+                    organization_id=self.organization_id,
                 ),
             )
             tool_sandbox = ToolSandbox(

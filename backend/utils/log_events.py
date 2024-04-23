@@ -8,7 +8,10 @@ import redis
 import socketio
 from django.conf import settings
 from django.core.wsgi import WSGIHandler
+from django.dispatch import Signal
 
+# Define a signal
+log_received = Signal()
 logger = logging.getLogger(__name__)
 
 sio = socketio.Server(
@@ -38,13 +41,51 @@ def disconnect(sid: str) -> None:
     logger.info(f"[{os.getpid()}] Client with SID:{sid} disconnected")
 
 
-def _handle_pubsub_messages(message: Any) -> None:
-    channel = message["channel"].decode("utf-8")
-    data = message["data"]
-    payload = {"data": data}
+def _store_execution_log(data: bytes) -> None:
+    """Store execution log in database
+    Args:
+        data (bytes): Execution log data in bytes format
+    """
+    try:
+        log_received.send_robust(sender=None, data=data)
+    except Exception as e:
+        logger.error(f"Error storing execution log: {e}")
 
-    logger.debug(f"[{os.getpid()}] Push websocket event: {channel}, {payload}")
-    sio.emit(channel, {"data": data})
+
+def _emit_websocket_event(channel: str, data: bytes) -> None:
+    """Emit websocket event
+    Args:
+        channel (str): WebSocket channel
+        data (bytes): Execution log data in bytes format
+    """
+    payload = {"data": data}
+    try:
+        logger.debug(f"[{os.getpid()}] Push websocket event: {channel}, {payload}")
+        sio.emit(channel, payload)
+    except Exception as e:
+        logger.error(f"Error emitting WebSocket event: {e}")
+
+
+def _handle_pubsub_messages(message: dict[str, Any]) -> None:
+    """Handle pubsub messages
+    Args:
+        message (dict[str, Any]): Pub sub message
+    """
+    channel = message.get("channel")
+    data = message.get("data")
+
+    if not channel or not data:
+        logger.warning(f"Invalid message received: {message}")
+        return
+
+    try:
+        channel_str = channel.decode("utf-8")
+    except UnicodeDecodeError as e:
+        logger.error(f"Error decoding channel: {e}")
+        return
+
+    _store_execution_log(data)
+    _emit_websocket_event(channel_str, data)
 
 
 def _pubsub_listen_forever() -> None:
