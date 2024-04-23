@@ -111,6 +111,7 @@ function RjsfFormLayout({
           fields={fields}
           formData={formData}
           transformErrors={transformErrors}
+          onError={() => {}}
           onSubmit={(e) => validateAndSubmit(e.formData)}
           formContext={{
             descriptionLocation: "tooltip",
