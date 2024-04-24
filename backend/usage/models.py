@@ -6,7 +6,6 @@ from utils.models.base_model import BaseModel
 
 class Usage(BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    organization_id = models.CharField(max_length=255)
     workflow_id = models.CharField(max_length=255)
     execution_id = models.CharField(max_length=255)
     adapter_instance_id = models.CharField(max_length=255)

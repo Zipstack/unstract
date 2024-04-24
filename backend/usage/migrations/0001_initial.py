@@ -26,7 +26,6 @@ class Migration(migrations.Migration):
                         serialize=False,
                     ),
                 ),
-                ("organization_id", models.CharField(max_length=255)),
                 ("workflow_id", models.CharField(max_length=255)),
                 ("execution_id", models.CharField(max_length=255)),
                 ("adapter_instance_id", models.CharField(max_length=255)),
