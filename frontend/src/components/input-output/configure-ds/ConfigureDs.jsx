@@ -5,13 +5,13 @@ import { useParams } from "react-router-dom";
 
 import { sourceTypes } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { OAuthDs } from "../../oauth-ds/oauth-ds/OAuthDs.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./ConfigureDs.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 function ConfigureDs({
   spec,
@@ -50,11 +50,14 @@ function ConfigureDs({
   }, [formData]);
 
   useEffect(() => {
-    if (connDetails && connDetails.connector_id !== selectedSourceId) {
-      setFormData({});
-    } else {
-      setFormData(metadata);
-    }
+    const { connector_id: connectorId } = connDetails || {};
+
+    // Check if connectorId matches selectedSourceId and metadata is available
+    const shouldSetMetadata = connectorId === selectedSourceId && metadata;
+    if (!shouldSetMetadata) return;
+
+    // Set formData based on the condition
+    setFormData(metadata);
   }, [selectedSourceId]);
 
   const isFormValid = () => {

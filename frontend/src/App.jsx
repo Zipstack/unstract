@@ -1,4 +1,4 @@
-import { ConfigProvider, message, theme } from "antd";
+import { ConfigProvider, notification, theme } from "antd";
 import { BrowserRouter } from "react-router-dom";
 
 import { THEME } from "./helpers/GetStaticData.js";
@@ -8,12 +8,18 @@ import { useSessionStore } from "./store/session-store.js";
 import PostHogPageviewTracker from "./PostHogPageviewTracker.js";
 
 function App() {
-  const [messageApi, contextHolder] = message.useMessage();
+  const [notificationAPI, contextHolder] = notification.useNotification();
   const { defaultAlgorithm, darkAlgorithm } = theme;
   const { sessionDetails } = useSessionStore();
-  const { AlertDetails } = useAlertStore();
+  const { alertDetails } = useAlertStore();
 
-  AlertDetails.content && messageApi.open(AlertDetails);
+  alertDetails.content &&
+    notificationAPI.open({
+      message: alertDetails.title,
+      description: alertDetails.content,
+      type: alertDetails.type,
+      duration: 0,
+    });
 
   return (
     <ConfigProvider

@@ -9,7 +9,7 @@ default_stages:
   - commit
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v4.6.0
     hooks:
       - id: trailing-whitespace
         exclude_types:
@@ -47,7 +47,7 @@ repos:
   #     - id: actionlint-docker
   #       args: [-ignore, 'label ".+" is unknown']
   - repo: https://github.com/psf/black
-    rev: 24.3.0
+    rev: 24.4.0
     hooks:
       - id: black
         args: [--config=pyproject.toml, -l 88]
@@ -89,7 +89,7 @@ repos:
     hooks:
       - id: docformatter
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.15.1
+    rev: v3.15.2
     hooks:
       - id: pyupgrade
         entry: pyupgrade --py39-plus --keep-runtime-typing
@@ -140,7 +140,7 @@ repos:
       - id: markdownlint-fix
         args: [--disable, MD013]
   - repo: https://github.com/pdm-project/pdm
-    rev: 2.12.4
+    rev: 2.15.0
     hooks:
       - id: pdm-lock-check
   # - repo: local

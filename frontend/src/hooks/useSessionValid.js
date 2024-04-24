@@ -53,6 +53,7 @@ function useSessionValid() {
       const setOrgRes = await axios(requestOptions).catch((error) => {
         if (error?.response && error?.response?.status === 403) {
           navigate("/", { state: null });
+          window.location.reload();
         }
       });
       userAndOrgDetails = setOrgRes?.data?.user;
