@@ -5,6 +5,7 @@ const STORE_VARIABLES = {
     type: "",
     content: "",
     title: "",
+    duration: undefined,
   },
 };
 const useAlertStore = create((setState) => ({
@@ -14,7 +15,15 @@ const useAlertStore = create((setState) => ({
       const title = details.title;
       const notificationTitle =
         title || (details.type === "error" ? "Failed" : "Success");
-      return { alertDetails: { ...details, title: notificationTitle } };
+      const duration =
+        details.duration || details.type === "error" ? 0 : undefined;
+      return {
+        alertDetails: {
+          ...details,
+          title: notificationTitle,
+          duration: duration,
+        },
+      };
     });
   },
 }));

@@ -18,7 +18,7 @@ function App() {
       message: alertDetails.title,
       description: alertDetails.content,
       type: alertDetails.type,
-      duration: 0,
+      duration: alertDetails.duration,
     });
 
   return (

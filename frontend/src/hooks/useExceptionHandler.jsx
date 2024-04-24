@@ -14,10 +14,11 @@ const useExceptionHandler = () => {
         type: "error",
         content: errMessage,
         title: title,
+        duration: 0,
       };
     }
 
-    if (err.response && err.response.data) {
+    if (err?.response && err?.response.data) {
       const { type, errors } = err.response.data;
       switch (type) {
         case "validation_error":
@@ -33,6 +34,7 @@ const useExceptionHandler = () => {
             type: "error",
             content:
               errors && errors[0]?.detail ? errors[0].detail : errMessage,
+            duration: 0,
           };
         case "client_error":
         case "server_error":
@@ -41,12 +43,14 @@ const useExceptionHandler = () => {
             type: "error",
             content:
               errors && errors[0]?.detail ? errors[0].detail : errMessage,
+            duration: 0,
           };
         default:
           return {
             title: title,
             type: "error",
             content: errMessage,
+            duration: 0,
           };
       }
     } else {
@@ -54,6 +58,7 @@ const useExceptionHandler = () => {
         title: title,
         type: "error",
         content: errMessage,
+        duration: 0,
       };
     }
   };
