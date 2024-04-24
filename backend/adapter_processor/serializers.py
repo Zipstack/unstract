@@ -108,6 +108,7 @@ class AdapterListSerializer(BaseAdapterSerializer):
             "adapter_name",
             "adapter_type",
             "created_by",
+            "description",
         )  # type: ignore
 
     def to_representation(self, instance: AdapterInstance) -> dict[str, str]:
@@ -117,7 +118,7 @@ class AdapterListSerializer(BaseAdapterSerializer):
         )
 
         if instance.is_friction_less:
-            rep["created_by_email"] = "Admin"
+            rep["created_by_email"] = "Unstract"
         else:
             rep["created_by_email"] = instance.created_by.email
 
