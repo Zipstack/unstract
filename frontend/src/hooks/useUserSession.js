@@ -1,10 +1,14 @@
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
 
 import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../store/alert-store";
 const useUserSession = () => {
+  const navigate = useNavigate();
   const handleException = useExceptionHandler();
   const { setAlertDetails } = useAlertStore();
+  const FallbackErrorMessage = "Error while getting session";
+
   return async () => {
     try {
       const requestOptions = {
@@ -14,13 +18,16 @@ const useUserSession = () => {
       const res = await axios(requestOptions);
       return res.data;
     } catch (error) {
-      if (error?.response?.statusText === "Payment Required") {
-        handleException(error, "Error while getting session");
-      } else if (error?.response?.statusText === "Unauthorized") {
-        handleException(error, "Error while getting session");
-      } else {
-        setAlertDetails(handleException(error, "Error while getting session"));
+      if (error?.response?.statusText === "Unauthorized") {
+        return;
       }
+
+      if (error?.response?.statusText === "Payment Required") {
+        navigate("/trial-expired");
+        return;
+      }
+
+      setAlertDetails(handleException(error, FallbackErrorMessage));
     }
   };
 };
