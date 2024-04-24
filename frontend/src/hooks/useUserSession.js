@@ -7,7 +7,7 @@ const useUserSession = () => {
   const navigate = useNavigate();
   const handleException = useExceptionHandler();
   const { setAlertDetails } = useAlertStore();
-  const FallbackErrorMessage = "Error while getting session";
+  const fallbackErrorMessage = "Error while getting session";
 
   return async () => {
     try {
@@ -27,7 +27,7 @@ const useUserSession = () => {
         return;
       }
 
-      setAlertDetails(handleException(error, FallbackErrorMessage));
+      setAlertDetails(handleException(error, fallbackErrorMessage));
     }
   };
 };
