@@ -1,15 +1,18 @@
 import axios from "axios";
+import Cookies from "js-cookie";
+import { useNavigate } from "react-router-dom";
 
 import { getSessionData } from "../helpers/GetSessionData";
-import Cookies from "js-cookie";
 import { userSession } from "../helpers/GetUserSession.js";
 import { useSessionStore } from "../store/session-store";
 import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
-import { useNavigate } from "react-router-dom";
 
 let getTrialDetails;
+let isPlatformAdmin;
 try {
   getTrialDetails = require("../plugins/subscription/trial-helper/fetchTrialDetails.jsx");
+  isPlatformAdmin =
+    require("../plugins/frictionless-onboard/helper.js").isPlatformAdmin;
 } catch (err) {
   // Plugin not available
 }
@@ -96,7 +99,9 @@ function useSessionValid() {
           userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
       }
       userAndOrgDetails["allOrganization"] = orgs;
-
+      if (isPlatformAdmin) {
+        userAndOrgDetails["isPlatformAdmin"] = await isPlatformAdmin();
+      }
       // Set the session details
       setSessionDetails(getSessionData(userAndOrgDetails));
     } catch (err) {

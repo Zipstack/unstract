@@ -9,7 +9,6 @@ import { RequireGuest } from "../components/helpers/auth/RequireGuest.js";
 import { CustomToolsHelper } from "../components/helpers/custom-tools/CustomToolsHelper.js";
 import { ProjectHelper } from "../components/helpers/project/ProjectHelper.js";
 import { OAuthStatus } from "../components/oauth-ds/oauth-status/OAuthStatus.jsx";
-import { Admin } from "../components/settings/admin/Admin.jsx";
 import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
 import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
@@ -32,9 +31,15 @@ import { UsersPage } from "../pages/UsersPage.jsx";
 import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
 
 let TrialRoutes;
+let RequirePlatformAdmin;
+let PlatformAdminPage;
 try {
   TrialRoutes =
     require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
+  RequirePlatformAdmin =
+    require("../plugins/frictionless-onboard/helper.js").RequirePlatformAdmin;
+  PlatformAdminPage =
+    require("../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx").PlatformAdminPage;
 } catch (err) {
   TrialRoutes = NotFound;
 }
@@ -49,7 +54,6 @@ function Router() {
           <Route path="landing" element={<LandingPage />} />
         </Route>
         {/* protected routes */}
-        <Route path="admin" element={<Admin />} />
         <Route path="setOrg" element={<SetOrgPage />} />
         <Route path="" element={<RequireAuth />}>
           <Route path=":orgName" element={<FullPageLayout />}>
@@ -113,6 +117,11 @@ function Router() {
               <Route path="users/edit" element={<InviteEditUserPage />} />
             </Route>
             <Route path="settings/triad" element={<DefaultTriad />} />
+            {RequirePlatformAdmin && PlatformAdminPage && (
+              <Route element={<RequirePlatformAdmin />}>
+                <Route path="settings/admin" element={<PlatformAdminPage />} />
+              </Route>
+            )}
           </Route>
         </Route>
         {TrialRoutes && (

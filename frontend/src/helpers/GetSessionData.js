@@ -22,6 +22,7 @@ function getSessionData(sessionData) {
     logEventsId: sessionData?.logEventsId,
     remainingTrialDays: sessionData?.remainingTrialDays,
     allOrganization: sessionData?.allOrganization,
+    isPlatformAdmin: sessionData?.isPlatformAdmin,
   };
 }
 
