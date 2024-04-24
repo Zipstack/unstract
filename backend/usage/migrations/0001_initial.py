@@ -31,7 +31,7 @@ class Migration(migrations.Migration):
                 ("adapter_instance_id", models.CharField(max_length=255)),
                 ("run_id", models.CharField(max_length=255)),
                 ("usage_type", models.CharField(max_length=255)),
-                ("model_type", models.CharField(max_length=255)),
+                ("model_name", models.CharField(max_length=255)),
                 ("embedding_tokens", models.IntegerField()),
                 ("prompt_tokens", models.IntegerField()),
                 ("completion_tokens", models.IntegerField()),
