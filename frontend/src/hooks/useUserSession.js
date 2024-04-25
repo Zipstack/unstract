@@ -18,7 +18,6 @@ const useUserSession = () => {
       const res = await axios(requestOptions);
       return res.data;
     } catch (error) {
-      console.log("error:: ", error);
       if (error?.response?.data?.message === "Unauthorized") {
         return;
       }
