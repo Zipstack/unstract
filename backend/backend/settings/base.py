@@ -221,6 +221,7 @@ TENANT_APPS = (
     "prompt_studio.prompt_studio_output_manager",
     "prompt_studio.prompt_studio_document_manager",
     "prompt_studio.prompt_studio_index_manager",
+    "prompt_studio.prompt_studio_tag_manager",
 )
 
 INSTALLED_APPS = list(SHARED_APPS) + [

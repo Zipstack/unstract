@@ -101,6 +101,7 @@ class ToolStudioPrompt(BaseModel):
         blank=True,
         editable=False,
     )
+    version = models.PositiveIntegerField(default=1)
     # Eval settings for the prompt
     # NOTE:
     # - Field name format is eval_<metric_type>_<metric_name>
