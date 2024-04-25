@@ -481,21 +481,17 @@ def prompt_processor() -> Any:
             if assertion_failed or answer.lower() == "[]" or answer.lower() == "na":
                 structured_output[output[PSKeys.NAME]] = None
             else:
-                prompt = (
-                    f"Convert the following text:\n{answer} into valid JSON format."
-                )
+                prompt = f"Convert the following text into valid JSON string: \
+                    \n{answer}\n\n The JSON string should be able to be parsed \
+                    into a Python dictionary. \
+                    Output just the JSON string. No explanation is required. \
+                    If you cannot extract the JSON string, output {{}}"
+
                 answer, usage = run_completion(
                     llm_helper,
                     llm_li,
                     prompt,
                 )
-                # Remove any markdown code blocks
-                lines = answer.split("\n")
-                answer = ""
-                for line in lines:
-                    if line.strip().startswith("```"):
-                        continue
-                    answer += line + "\n"
                 try:
                     structured_output[output[PSKeys.NAME]] = json.loads(answer)
                 except Exception as e:
@@ -503,7 +499,7 @@ def prompt_processor() -> Any:
                     app.logger.info(
                         f"Error parsing response (to json): {e}", LogLevel.ERROR
                     )
-                    structured_output[output[PSKeys.NAME]] = []
+                    structured_output[output[PSKeys.NAME]] = answer
         else:
             structured_output[output[PSKeys.NAME]] = answer
 
