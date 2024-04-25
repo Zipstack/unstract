@@ -1,5 +1,4 @@
 import Cookies from "js-cookie";
-import { userSession } from "../../helpers/GetUserSession.js";
 import { useEffect, useState } from "react";
 import { Button, Card } from "antd";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -15,6 +14,7 @@ import {
 } from "../../assets/index";
 import { useExceptionHandler } from "../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../store/alert-store";
+import { useUserSession } from "../../hooks/useUserSession.js";
 
 function SetOrg() {
   const { state } = useLocation();
@@ -23,7 +23,7 @@ function SetOrg() {
   const [loadingOrgId, setLoadingOrgId] = useState(null);
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
-
+  const userSession = useUserSession();
   useEffect(() => {
     const fetchData = async () => {
       try {
