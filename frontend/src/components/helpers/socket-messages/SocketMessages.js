@@ -7,6 +7,7 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
+import { useUsageStore } from "../../../store/usage-store";
 function SocketMessages({ logId }) {
   const {
     pushStagedMessage,
@@ -20,6 +21,7 @@ function SocketMessages({ logId }) {
   const socket = useContext(SocketContext);
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
+  const { setLLMTokenUsage } = useUsageStore();
 
   const onMessage = (data) => {
     try {
@@ -36,6 +38,9 @@ function SocketMessages({ logId }) {
       }
       if (msg?.type === "LOG" && msg?.service === "prompt") {
         updateCusToolMessages(msg);
+      }
+      if (msg?.type === "LOG" && msg?.service === "usage") {
+        setLLMTokenUsage(msg?.added_token_count);
       }
     } catch (err) {
       setAlertDetails(handleException(err, "Failed to process socket message"));
