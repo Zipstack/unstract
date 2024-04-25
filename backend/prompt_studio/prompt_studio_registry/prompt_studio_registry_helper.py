@@ -11,7 +11,12 @@ from prompt_studio.prompt_studio_core.prompt_studio_helper import PromptStudioHe
 from unstract.tool_registry.dto import Properties, Spec, Tool
 
 from .constants import JsonSchemaKey
-from .exceptions import InternalError, ToolSaveError
+from .exceptions import (
+    EmptyToolExportError,
+    InternalError,
+    InValidCustomToolError,
+    ToolSaveError,
+)
 from .models import PromptStudioRegistry
 from .serializers import PromptStudioRegistrySerializer
 
@@ -173,6 +178,8 @@ class PromptStudioRegistryHelper:
         grammer_dict = {}
         outputs: list[dict[str, Any]] = []
         output: dict[str, Any] = {}
+        invalidated_prompts: list[str] = []
+        invalidated_outputs: list[str] = []
         if prompt_grammer:
             for word, synonyms in prompt_grammer.items():
                 synonyms = prompt_grammer[word]
@@ -193,7 +200,16 @@ class PromptStudioRegistryHelper:
         embedding_model = ""
 
         default_llm_profile = ProfileManager.get_default_llm_profile(tool)
+        if not prompts:
+            raise EmptyToolExportError()
+
         for prompt in prompts:
+            if not prompt.prompt:
+                invalidated_prompts.append(prompt.prompt_key)
+
+            if not prompt.output:
+                invalidated_outputs.append(prompt.prompt_key)
+
             if prompt.prompt_type == JsonSchemaKey.NOTES:
                 continue
             if not prompt.profile_manager:
@@ -240,6 +256,17 @@ class PromptStudioRegistryHelper:
             adapter_id = ""
             llm = ""
             embedding_model = ""
+
+        if invalidated_prompts:
+            raise InValidCustomToolError(
+                f"Cannot export tool. Prompts : {invalidated_prompts} "
+                "does not have a valid prompt."
+            )
+        if invalidated_outputs:
+            raise InValidCustomToolError(
+                f"Cannot export tool. Prompts : {invalidated_outputs} "
+                "is not executed."
+            )
 
         export_metadata[JsonSchemaKey.OUTPUTS] = outputs
         return export_metadata
