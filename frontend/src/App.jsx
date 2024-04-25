@@ -1,4 +1,4 @@
-import { ConfigProvider, notification, theme } from "antd";
+import { Button, ConfigProvider, notification, theme } from "antd";
 import { BrowserRouter } from "react-router-dom";
 
 import { THEME } from "./helpers/GetStaticData.js";
@@ -13,12 +13,19 @@ function App() {
   const { sessionDetails } = useSessionStore();
   const { alertDetails } = useAlertStore();
 
+  const btn = (
+    <Button type="link" size="small" onClick={() => notificationAPI.destroy()}>
+      Destroy All
+    </Button>
+  );
+
   alertDetails.content &&
     notificationAPI.open({
       message: alertDetails.title,
       description: alertDetails.content,
       type: alertDetails.type,
-      duration: 0,
+      duration: alertDetails.duration,
+      btn,
     });
 
   return (
