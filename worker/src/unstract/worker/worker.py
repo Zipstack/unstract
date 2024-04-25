@@ -7,6 +7,7 @@ from typing import Any, Optional
 
 from dotenv import load_dotenv
 from unstract.worker.constants import Env, LogType, ToolKey
+from unstract.worker.exception import KeyFileNotMountedError
 
 import docker
 from docker import DockerClient  # type: ignore[attr-defined]
@@ -26,17 +27,28 @@ class UnstractWorker:
         #   the Docker daemon in the host environment
         self.client: DockerClient = docker.from_env()  # type: ignore[attr-defined]  # noqa: E501
 
-        private_registry_password = os.getenv(Env.PRIVATE_REGISTRY_PASSWORD)
+        private_registry_credential_path = os.getenv(
+            Env.PRIVATE_REGISTRY_CREDENTIAL_PATH
+        )
         private_registry_username = os.getenv(Env.PRIVATE_REGISTRY_USERNAME)
         private_registry_url = os.getenv(Env.PRIVATE_REGISTRY_URL)
         if (
-            private_registry_password
+            private_registry_credential_path
             and private_registry_username
             and private_registry_url
         ):
+            try:
+                open(private_registry_credential_path)
+            except FileNotFoundError as file_err:
+                logger.error(
+                    f"Service account key file is not mounted "
+                    f"in {private_registry_credential_path}: {file_err}"
+                )
+                raise KeyFileNotMountedError()
+
             self.client.login(
                 username=private_registry_username,
-                password=private_registry_password,
+                password=open(private_registry_credential_path).read(),
                 registry=private_registry_url,
             )
 
