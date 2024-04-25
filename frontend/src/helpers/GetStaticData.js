@@ -390,6 +390,10 @@ const docIndexStatus = {
   done: "DONE",
 };
 
+const isNonNegativeNumber = (value) => {
+  return typeof value === "number" && !isNaN(value) && value >= 0;
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -424,4 +428,5 @@ export {
   titleCase,
   getMenuItem,
   docIndexStatus,
+  isNonNegativeNumber,
 };
