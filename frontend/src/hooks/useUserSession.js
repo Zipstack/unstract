@@ -18,11 +18,12 @@ const useUserSession = () => {
       const res = await axios(requestOptions);
       return res.data;
     } catch (error) {
-      if (error?.response?.statusText === "Unauthorized") {
+      console.log("error:: ", error);
+      if (error?.response?.data?.message === "Unauthorized") {
         return;
       }
 
-      if (error?.response?.statusText === "Payment Required") {
+      if (error?.response?.data?.type === "subscription_error") {
         navigate("/trial-expired");
         return;
       }
