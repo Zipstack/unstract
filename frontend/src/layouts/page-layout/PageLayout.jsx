@@ -41,6 +41,7 @@ function PageLayout() {
         activeKey?.length > 0 ? (
           <>
             <div
+              aria-hidden="true"
               style={{
                 position: "absolute",
                 width: "100%",
