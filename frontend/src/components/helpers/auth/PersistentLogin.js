@@ -4,6 +4,7 @@ import { Outlet } from "react-router-dom";
 import { Logo64 } from "../../../assets";
 import useSessionValid from "../../../hooks/useSessionValid";
 import { useSessionStore } from "../../../store/session-store";
+import { SocketMessages } from "../socket-messages/SocketMessages";
 
 function PersistentLogin() {
   const [isLoading, setIsLoading] = useState(true);
@@ -33,7 +34,12 @@ function PersistentLogin() {
       </div>
     );
   }
-  return <Outlet />;
+  return (
+    <>
+      <Outlet />
+      <SocketMessages />
+    </>
+  );
 }
 
 export { PersistentLogin };

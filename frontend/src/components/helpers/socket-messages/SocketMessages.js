@@ -1,5 +1,4 @@
-import PropTypes from "prop-types";
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useState } from "react";
 
 import { SocketContext } from "../../../helpers/SocketContext";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -7,7 +6,10 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
-function SocketMessages({ logId }) {
+import { useSessionStore } from "../../../store/session-store";
+
+function SocketMessages() {
+  const [logId, setLogId] = useState("");
   const {
     pushStagedMessage,
     updateMessage,
@@ -17,9 +19,14 @@ function SocketMessages({ logId }) {
   } = useSocketMessagesStore();
   const { pushLogMessages } = useSocketLogsStore();
   const { updateCusToolMessages } = useSocketCustomToolStore();
+  const { sessionDetails } = useSessionStore();
   const socket = useContext(SocketContext);
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
+
+  useEffect(() => {
+    setLogId(sessionDetails?.logEventsId || "");
+  }, [sessionDetails]);
 
   const onMessage = (data) => {
     try {
@@ -67,9 +74,5 @@ function SocketMessages({ logId }) {
     }, 0);
   }, [stagedMessages, pointer]);
 }
-
-SocketMessages.propTypes = {
-  logId: PropTypes.string,
-};
 
 export { SocketMessages };
