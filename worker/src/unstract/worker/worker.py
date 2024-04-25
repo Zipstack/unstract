@@ -7,7 +7,6 @@ from typing import Any, Optional
 
 from dotenv import load_dotenv
 from unstract.worker.constants import Env, LogType, ToolKey
-from unstract.worker.exception import KeyFileNotMountedError
 
 import docker
 from docker import DockerClient  # type: ignore[attr-defined]
@@ -39,18 +38,17 @@ class UnstractWorker:
         ):
             try:
                 open(private_registry_credential_path)
+                self.client.login(
+                    username=private_registry_username,
+                    password=open(private_registry_credential_path).read(),
+                    registry=private_registry_url,
+                )
             except FileNotFoundError as file_err:
                 logger.error(
                     f"Service account key file is not mounted "
                     f"in {private_registry_credential_path}: {file_err}"
+                    "Logging to private registry might fail, if private tool is used."
                 )
-                raise KeyFileNotMountedError()
-
-            self.client.login(
-                username=private_registry_username,
-                password=open(private_registry_credential_path).read(),
-                registry=private_registry_url,
-            )
 
         self.image = self._get_image()
 
