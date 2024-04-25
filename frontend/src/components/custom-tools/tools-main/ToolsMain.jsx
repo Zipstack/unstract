@@ -1,4 +1,8 @@
-import { BarChartOutlined, FileAddOutlined } from "@ant-design/icons";
+import {
+  BarChartOutlined,
+  FileAddOutlined,
+  TagsOutlined,
+} from "@ant-design/icons";
 import { Button, Space, Tabs, Tooltip } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -12,6 +16,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { CombinedOutput } from "../combined-output/CombinedOutput";
 import { DocumentParser } from "../document-parser/DocumentParser";
 import { Footer } from "../footer/Footer";
+import { ManageTags } from "../manage-tags/ManageTags";
 import "./ToolsMain.css";
 
 let RunSinglePassBtn;
@@ -27,6 +32,7 @@ function ToolsMain() {
   const [prompts, setPrompts] = useState([]);
   const [scrollToBottom, setScrollToBottom] = useState(false);
   const { sessionDetails } = useSessionStore();
+  const [openTags, setOpenTags] = useState(false);
   const {
     details,
     defaultLlmProfile,
@@ -145,6 +151,14 @@ function ToolsMain() {
         </div>
         <div className="display-flex-align-center">
           <Space>
+            <div>
+              <Tooltip title="Manage Tags">
+                <Button
+                  icon={<TagsOutlined />}
+                  onClick={() => setOpenTags(true)}
+                />
+              </Tooltip>
+            </div>
             <Tooltip title="Tag Check-In">
               <Button
                 icon={<FileAddOutlined />}
@@ -180,6 +194,7 @@ function ToolsMain() {
       <div className="tools-main-footer">
         <Footer activeKey={activeKey} addPromptInstance={addPromptInstance} />
       </div>
+      <ManageTags open={openTags} setOpen={setOpenTags} />
     </div>
   );
 }

@@ -2,7 +2,6 @@ import {
   ArrowLeftOutlined,
   EditOutlined,
   SettingOutlined,
-  TagsOutlined,
   UnorderedListOutlined,
 } from "@ant-design/icons";
 import { Button, Tooltip, Typography } from "antd";
@@ -27,12 +26,7 @@ try {
 } catch {
   // The variable will remain undefined if the component is not available.
 }
-function Header({
-  setOpenSettings,
-  handleUpdateTool,
-  setOpenTags,
-  setOpenManageExport,
-}) {
+function Header({ setOpenSettings, handleUpdateTool, setOpenManageExport }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
   const { details } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
@@ -163,11 +157,6 @@ function Header({
           <SinglePassToggleSwitch handleUpdateTool={handleUpdateTool} />
         )}
         <div>
-          <Tooltip title="Manage Tags">
-            <Button icon={<TagsOutlined />} onClick={() => setOpenTags(true)} />
-          </Tooltip>
-        </div>
-        <div>
           <Tooltip title="Manage Exported Tools">
             <Button
               icon={<UnorderedListOutlined />}
@@ -213,7 +202,6 @@ function Header({
 Header.propTypes = {
   setOpenSettings: PropTypes.func.isRequired,
   handleUpdateTool: PropTypes.func.isRequired,
-  setOpenTags: PropTypes.func.isRequired,
   setOpenManageExport: PropTypes.func.isRequired,
 };
 
