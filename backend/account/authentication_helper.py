@@ -5,6 +5,7 @@ from account.dto import MemberData
 from account.models import Organization, User
 from account.user import UserService
 from platform_settings.platform_auth_service import PlatformAuthenticationService
+from tenant_account.organization_member_service import OrganizationMemberService
 
 logger = logging.getLogger(__name__)
 
@@ -81,3 +82,40 @@ class AuthenticationHelper:
                 "Failed to create default platform key for "
                 f"organization {organization.organization_id}"
             )
+
+    @staticmethod
+    def remove_users_from_organization_by_pks(
+        user_pks: list[str],
+    ) -> None:
+        """Remove users from an organization by their primary keys.
+
+        Parameters:
+            user_pks (list[str]): The primary keys of the users to remove.
+        """
+        # removing user from organization
+        OrganizationMemberService.remove_users_by_user_pks(user_pks)
+        # removing user m2m relations , while removing user
+        for user_pk in user_pks:
+            User.objects.get(pk=user_pk).shared_exported_tools.clear()
+            User.objects.get(pk=user_pk).shared_custom_tool.clear()
+            User.objects.get(pk=user_pk).shared_adapters.clear()
+
+    @staticmethod
+    def remove_user_from_organization_by_user_id(
+        user_id: str, organization_id: str
+    ) -> None:
+        """Remove users from an organization by their user_id.
+
+        Parameters:
+            user_id (str): The user_id of the users to remove.
+        """
+        # removing user from organization
+        OrganizationMemberService.remove_user_by_user_id(user_id)
+        # removing user m2m relations , while removing user
+        User.objects.get(user_id=user_id).shared_exported_tools.clear()
+        User.objects.get(user_id=user_id).shared_custom_tool.clear()
+        User.objects.get(user_id=user_id).shared_adapters.clear()
+        # removing user from organization cache
+        OrganizationMemberService.remove_user_membership_in_organization_cache(
+            user_id=user_id, organization_id=organization_id
+        )
