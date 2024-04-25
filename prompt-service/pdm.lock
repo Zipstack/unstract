@@ -1489,7 +1489,7 @@ files = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.10.30"
+version = "0.10.31"
 requires_python = "<4.0,>=3.8.1"
 summary = "Interface between LLMs and your data"
 groups = ["default"]
@@ -1519,8 +1519,8 @@ dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "llama_index_core-0.10.30-py3-none-any.whl", hash = "sha256:2f291ce2975f9dbf0ea87d684d3d8122ce216265f468f32baa2cf4ecfb34ed2a"},
-    {file = "llama_index_core-0.10.30.tar.gz", hash = "sha256:bed3f683606a0b0eb0839677c935a4b57b7bae509a95d380e51c6225630660e0"},
+    {file = "llama_index_core-0.10.31-py3-none-any.whl", hash = "sha256:b894680fa320a94de56d9a933ac7edb646cabf15fe67ae1cf8fa53ac52ab4542"},
+    {file = "llama_index_core-0.10.31.tar.gz", hash = "sha256:66d39d6f253e20311a21e0b98ea386089f099be12f2d23dbe11379a6d908ddf1"},
 ]
 
 [[package]]
@@ -1751,7 +1751,7 @@ files = [
 
 [[package]]
 name = "llama-index-program-openai"
-version = "0.1.5"
+version = "0.1.6"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index program openai integration"
 groups = ["default"]
@@ -1761,8 +1761,8 @@ dependencies = [
     "llama-index-llms-openai<0.2.0,>=0.1.1",
 ]
 files = [
-    {file = "llama_index_program_openai-0.1.5-py3-none-any.whl", hash = "sha256:20b6efa706ac73e4dc5086900fea1ffcb1eb0787c8a6f081669d37da7235aee0"},
-    {file = "llama_index_program_openai-0.1.5.tar.gz", hash = "sha256:c33aa2d2876ad0ff1f9a2a755d4e7d4917240847d0174e7b2d0b8474499bb700"},
+    {file = "llama_index_program_openai-0.1.6-py3-none-any.whl", hash = "sha256:4660b338503537c5edca1e0dab606af6ce372b4f1b597e2833c6b602447c5d8d"},
+    {file = "llama_index_program_openai-0.1.6.tar.gz", hash = "sha256:c6a4980c5ea826088b28b4dee3367edb20221e6d05eb0e05019049190131d772"},
 ]
 
 [[package]]
@@ -1894,7 +1894,7 @@ files = [
 
 [[package]]
 name = "llama-parse"
-version = "0.4.1"
+version = "0.4.2"
 requires_python = "<4.0,>=3.8.1"
 summary = "Parse files into RAG-Optimized formats."
 groups = ["default"]
@@ -1902,8 +1902,8 @@ dependencies = [
     "llama-index-core>=0.10.29",
 ]
 files = [
-    {file = "llama_parse-0.4.1-py3-none-any.whl", hash = "sha256:2c08962b66791c61fc360ae2042f953729c7b8decc3590d01fea5a98ca1f6676"},
-    {file = "llama_parse-0.4.1.tar.gz", hash = "sha256:d723af84d6a1fc99eb431915d21865d20b76d8a246dbaa124d1f96c956a644f7"},
+    {file = "llama_parse-0.4.2-py3-none-any.whl", hash = "sha256:5ce0390141f216dcd88c1123fea7f2a4f561d177f791a97217a3db3509dec4ff"},
+    {file = "llama_parse-0.4.2.tar.gz", hash = "sha256:fa04c09730b102155f6505de9cf91998c86d334581f0f12597c5eb47ca5db859"},
 ]
 
 [[package]]
@@ -2186,7 +2186,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.23.2"
+version = "1.23.6"
 requires_python = ">=3.7.1"
 summary = "The official Python library for the openai API"
 groups = ["default"]
@@ -2200,8 +2200,8 @@ dependencies = [
     "typing-extensions<5,>=4.7",
 ]
 files = [
-    {file = "openai-1.23.2-py3-none-any.whl", hash = "sha256:293a36effde29946eb221040c89c46a4850f2f2e30b37ef09ff6d75226d71b42"},
-    {file = "openai-1.23.2.tar.gz", hash = "sha256:b84aa3005357ceb38f22a269e0e22ee58ce103897f447032d021906f18178a8e"},
+    {file = "openai-1.23.6-py3-none-any.whl", hash = "sha256:f406c76ba279d16b9aca5a89cee0d968488e39f671f4dc6f0d690ac3c6f6fca1"},
+    {file = "openai-1.23.6.tar.gz", hash = "sha256:612de2d54cf580920a1156273f84aada6b3dca26d048f62eb5364a4314d7f449"},
 ]
 
 [[package]]
@@ -2846,7 +2846,7 @@ files = [
 
 [[package]]
 name = "redis"
-version = "5.0.3"
+version = "5.0.4"
 requires_python = ">=3.7"
 summary = "Python client for Redis database and key-value store"
 groups = ["default"]
@@ -2854,13 +2854,13 @@ dependencies = [
     "async-timeout>=4.0.3; python_full_version < \"3.11.3\"",
 ]
 files = [
-    {file = "redis-5.0.3-py3-none-any.whl", hash = "sha256:5da9b8fe9e1254293756c16c008e8620b3d15fcc6dde6babde9541850e72a32d"},
-    {file = "redis-5.0.3.tar.gz", hash = "sha256:4973bae7444c0fbed64a06b87446f79361cb7e4ec1538c022d696ed7a5015580"},
+    {file = "redis-5.0.4-py3-none-any.whl", hash = "sha256:7adc2835c7a9b5033b7ad8f8918d09b7344188228809c98df07af226d39dec91"},
+    {file = "redis-5.0.4.tar.gz", hash = "sha256:ec31f2ed9675cc54c21ba854cfe0462e6faf1d83c8ce5944709db8a4700b9c61"},
 ]
 
 [[package]]
 name = "referencing"
-version = "0.34.0"
+version = "0.35.0"
 requires_python = ">=3.8"
 summary = "JSON Referencing + Python"
 groups = ["default"]
@@ -2869,8 +2869,8 @@ dependencies = [
     "rpds-py>=0.7.0",
 ]
 files = [
-    {file = "referencing-0.34.0-py3-none-any.whl", hash = "sha256:d53ae300ceddd3169f1ffa9caf2cb7b769e92657e4fafb23d34b93679116dfd4"},
-    {file = "referencing-0.34.0.tar.gz", hash = "sha256:5773bd84ef41799a5a8ca72dc34590c041eb01bf9aa02632b4a973fb0181a844"},
+    {file = "referencing-0.35.0-py3-none-any.whl", hash = "sha256:8080727b30e364e5783152903672df9b6b091c926a146a759080b62ca3126cd6"},
+    {file = "referencing-0.35.0.tar.gz", hash = "sha256:191e936b0c696d0af17ad7430a3dc68e88bc11be6514f4757dc890f04ab05889"},
 ]
 
 [[package]]
@@ -3588,7 +3588,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.12.0"
+version = "0.12.1"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract interface for LLMs, Embeddings and VectorDBs"
 groups = ["default"]
@@ -3615,8 +3615,8 @@ dependencies = [
     "singleton-decorator~=1.0.0",
 ]
 files = [
-    {file = "unstract_adapters-0.12.0-py3-none-any.whl", hash = "sha256:17fb31aa7702ce20093f026e2f5e3e7e3d92d403fa5d55f79bf9056f121db8f9"},
-    {file = "unstract_adapters-0.12.0.tar.gz", hash = "sha256:eea8c08914668157f583c2c920662b2b4e73a54f5e17d04dc6c5c01e413f0009"},
+    {file = "unstract_adapters-0.12.1-py3-none-any.whl", hash = "sha256:35bcce98d4b36d5369ddd0062cfc72f246e03e28d93d95d32384fc4a259a9a02"},
+    {file = "unstract_adapters-0.12.1.tar.gz", hash = "sha256:ad50071d8d8bcbf90cc70fb0d129ba48a22558940157b5a2e63745dc932f93ce"},
 ]
 
 [[package]]
@@ -3637,7 +3637,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.22.0"
+version = "0.22.1"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3648,11 +3648,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.12.0",
+    "unstract-adapters~=0.12.1",
 ]
 files = [
-    {file = "unstract_sdk-0.22.0-py3-none-any.whl", hash = "sha256:9edb3c65fe710486d6b93bb82d0124c437f2ef08228a4eea94724e509cef2a4c"},
-    {file = "unstract_sdk-0.22.0.tar.gz", hash = "sha256:44523edd5e5f7a56d5cb85092d2e8318c6a07cf5ab3e4eaa3a152b24cee976d9"},
+    {file = "unstract_sdk-0.22.1-py3-none-any.whl", hash = "sha256:af29fec4c56c3c1916b7af639d331d9c7b115ebff6f1183e4be50bef01bd1792"},
+    {file = "unstract_sdk-0.22.1.tar.gz", hash = "sha256:f49db6c62bca6baa2474912a63f305df01ec12ada34af9a2fb93b8ce91e7fa16"},
 ]
 
 [[package]]
