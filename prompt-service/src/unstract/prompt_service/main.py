@@ -219,7 +219,7 @@ def prompt_processor() -> Any:
             structured_output, variable_names, output, promptx
         )
 
-        doc_id = ToolIndex.generate_file_id(
+        doc_id = tool_index.generate_file_id(
             tool_id=tool_id,
             file_hash=file_hash,
             vector_db=output[PSKeys.VECTOR_DB],
