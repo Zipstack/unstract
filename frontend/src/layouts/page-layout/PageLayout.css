@@ -3,6 +3,7 @@
   height: 100%;
   width: 100%;
   grid-template-rows: auto 1fr;
+  overflow: hidden;
 }
 
 .topNav {
@@ -21,4 +22,19 @@
   position: absolute;
   margin-left: -10px;
   margin-top: -10px;
+}
+
+.log-footer {
+  padding: 0;
+  position: relative;
+}
+
+.ide-collapse-panel {
+  background-color: var(--white);
+  border: none;
+  border-radius: 0px;
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  z-index: 100;
 }
