@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:85b6d9e53c0d4940dc936012b113d22dd2639eb40ac24841129e933fd4133dc6"
+content_hash = "sha256:197161bde2aebabf5877e87f8444323a3ee8eb229e512e0cca606345dba59e64"
 
 [[package]]
 name = "adlfs"
@@ -422,6 +422,36 @@ dependencies = [
 files = [
     {file = "azure-identity-1.16.0.tar.gz", hash = "sha256:6ff1d667cdcd81da1ceab42f80a0be63ca846629f518a922f7317a7e3c844e1b"},
     {file = "azure_identity-1.16.0-py3-none-any.whl", hash = "sha256:722fdb60b8fdd55fa44dc378b8072f4b419b56a5e54c0de391f644949f3a826f"},
+]
+
+[[package]]
+name = "azure-mgmt-apimanagement"
+version = "3.0.0"
+requires_python = ">=3.6"
+summary = "Microsoft Azure API Management Client Library for Python"
+groups = ["default"]
+dependencies = [
+    "azure-common~=1.1",
+    "azure-mgmt-core<2.0.0,>=1.3.0",
+    "msrest>=0.6.21",
+]
+files = [
+    {file = "azure-mgmt-apimanagement-3.0.0.zip", hash = "sha256:9262f54ed387eb083d8dae66d32a8df35647319b902bd498cdc376f50a12d154"},
+    {file = "azure_mgmt_apimanagement-3.0.0-py3-none-any.whl", hash = "sha256:58a96261266c51c63a64113dbb0ad96cabbf3b6c32fb9b79c395462d01470964"},
+]
+
+[[package]]
+name = "azure-mgmt-core"
+version = "1.4.0"
+requires_python = ">=3.7"
+summary = "Microsoft Azure Management Core Library for Python"
+groups = ["default"]
+dependencies = [
+    "azure-core<2.0.0,>=1.26.2",
+]
+files = [
+    {file = "azure-mgmt-core-1.4.0.zip", hash = "sha256:d195208340094f98e5a6661b781cde6f6a051e79ce317caabd8ff97030a9b3ae"},
+    {file = "azure_mgmt_core-1.4.0-py3-none-any.whl", hash = "sha256:81071675f186a585555ef01816f2774d49c1c9024cb76e5720c3c0f6b337bb7d"},
 ]
 
 [[package]]
