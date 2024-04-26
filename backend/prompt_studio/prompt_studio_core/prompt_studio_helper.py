@@ -661,13 +661,14 @@ class PromptStudioHelper:
             )
             return doc_id
         except IndexingError as e:
+            doc_name = os.path.split(file_path)[1]
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "doc_name": os.path.split(file_path)[1]},
+                {"tool_id": tool_id, "doc_name": doc_name},
                 LogLevels.ERROR,
                 LogLevels.RUN,
-                "Indexing failed",
+                f"Indexing failed : {e}",
             )
-            raise IndexingAPIError(str(e)) from e
+            raise IndexingAPIError(f"Error while indexing {doc_name}. {str(e)}") from e
 
     @staticmethod
     def _fetch_single_pass_response(
