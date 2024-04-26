@@ -7,7 +7,6 @@ import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { useSessionStore } from "../../../store/session-store";
-
 import { useUsageStore } from "../../../store/usage-store";
 
 function SocketMessages() {
@@ -50,7 +49,7 @@ function SocketMessages() {
       if (msg?.type === "LOG" && msg?.service === "usage") {
         const remainingTokens =
           msg?.max_token_count_set - msg?.added_token_count;
-        setLLMTokenUsage(remainingTokens);
+        setLLMTokenUsage(Math.max(remainingTokens, 0));
       }
     } catch (err) {
       setAlertDetails(handleException(err, "Failed to process socket message"));
