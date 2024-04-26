@@ -13,7 +13,7 @@ let isPlatformAdmin;
 try {
   getTrialDetails = require("../plugins/subscription/trial-helper/fetchTrialDetails.jsx");
   isPlatformAdmin =
-    require("../plugins/frictionless-onboard/helper.js").isPlatformAdmin;
+    require("../plugins/hooks/usePlatformAdmin.js").usePlatformAdmin();
 } catch (err) {
   // Plugin not available
 }

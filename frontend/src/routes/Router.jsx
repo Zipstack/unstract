@@ -37,7 +37,7 @@ try {
   TrialRoutes =
     require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
   RequirePlatformAdmin =
-    require("../plugins/frictionless-onboard/helper.js").RequirePlatformAdmin;
+    require("../plugins/frictionless-onboard/RequirePlatformAdmin.jsx").RequirePlatformAdmin;
   PlatformAdminPage =
     require("../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx").PlatformAdminPage;
 } catch (err) {
