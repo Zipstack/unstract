@@ -411,11 +411,7 @@ class ToolInstanceHelper:
                     "Free usage for the configured sample adapter %s exhausted",
                     adapter_instance.id,
                 )
-                error_msg = """Permission Error: Free usage for the configured
-                        trial adapter exhausted.
-                        Please connect your own service accounts to continue.
-                        Please see our documentation for more details:
-                        https://docs.unstract.com/unstract_platform/setup_accounts/whats_needed"""  # noqa: E501
+                error_msg = "Permission Error: Free usage for the configured trial adapter exhausted.Please connect your own service accounts to continue.Please see our documentation for more details:https://docs.unstract.com/unstract_platform/setup_accounts/whats_needed"  # noqa: E501
 
                 raise PermissionDenied(error_msg)
 

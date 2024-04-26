@@ -610,10 +610,6 @@ backend/plugins/authentication/*
 # Processor Plugins
 backend/plugins/processor/*
 
-
-# Subscription Plugins
-backend/plugins/subscription/*
-
 # FE Plugins
 frontend/src/plugins/*
 
@@ -649,5 +645,4 @@ unstract/unstract-adapters/
 unstract/unstract-sdk/
 
 # BE pluggable-apps
-# backend/pluggable_apps/*
-backend/pluggable_apps/subscription/*
+backend/pluggable_apps/*
