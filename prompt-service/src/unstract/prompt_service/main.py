@@ -1,5 +1,6 @@
 import logging
 from enum import Enum
+from json import JSONDecodeError
 from typing import Any, Optional
 
 import peewee
@@ -494,12 +495,12 @@ def prompt_processor() -> Any:
                 )
                 try:
                     structured_output[output[PSKeys.NAME]] = json.loads(answer)
-                except Exception as e:
+                except JSONDecodeError as e:
                     app.logger.info(f"JSON format error : {answer}", LogLevel.ERROR)
                     app.logger.info(
                         f"Error parsing response (to json): {e}", LogLevel.ERROR
                     )
-                    structured_output[output[PSKeys.NAME]] = answer
+                    structured_output[output[PSKeys.NAME]] = {}
         else:
             structured_output[output[PSKeys.NAME]] = answer
 
