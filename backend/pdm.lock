@@ -5,8 +5,7 @@
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:d32c9f74e40f02d7c0f0af6a18e11038de233982b899a716c4571c50543ba2d7"
-
+content_hash = "sha256:217a1cf800d393c22fe30815724239a07c6578d6b75799296ba8e4df6cf0ad3d"
 
 [[package]]
 name = "adlfs"
@@ -2110,7 +2109,7 @@ files = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.10.31"
+version = "0.10.32"
 requires_python = "<4.0,>=3.8.1"
 summary = "Interface between LLMs and your data"
 groups = ["default"]
@@ -2140,8 +2139,8 @@ dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "llama_index_core-0.10.31-py3-none-any.whl", hash = "sha256:b894680fa320a94de56d9a933ac7edb646cabf15fe67ae1cf8fa53ac52ab4542"},
-    {file = "llama_index_core-0.10.31.tar.gz", hash = "sha256:66d39d6f253e20311a21e0b98ea386089f099be12f2d23dbe11379a6d908ddf1"},
+    {file = "llama_index_core-0.10.32-py3-none-any.whl", hash = "sha256:215f7389dadb78f2df13c20312a3e1e03c41f23e3063907469c4bae67bfd458c"},
+    {file = "llama_index_core-0.10.32.tar.gz", hash = "sha256:0078c06d9143390e14c86a40e69716c88c7828533341559edd15e52249ede65a"},
 ]
 
 [[package]]
@@ -2177,7 +2176,7 @@ files = [
 
 [[package]]
 name = "llama-index-embeddings-openai"
-version = "0.1.8"
+version = "0.1.9"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index embeddings openai integration"
 groups = ["default"]
@@ -2185,8 +2184,8 @@ dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
 ]
 files = [
-    {file = "llama_index_embeddings_openai-0.1.8-py3-none-any.whl", hash = "sha256:186be52c29a8c82a39ff6e033e3a61b9c5a17cf6177a5507abe4f5c79fea3a53"},
-    {file = "llama_index_embeddings_openai-0.1.8.tar.gz", hash = "sha256:aae4ce3ec2fe2cb604d944646982c71663a8b99ed5f8c370823ee82eef4ddd3b"},
+    {file = "llama_index_embeddings_openai-0.1.9-py3-none-any.whl", hash = "sha256:fbd16d6197b91f4dbdc6d0707e573cc224ac2b0a48d5b370c6232dd8a2282473"},
+    {file = "llama_index_embeddings_openai-0.1.9.tar.gz", hash = "sha256:0fd292b2f9a0ad4534a790d6374726bc885853188087eb018167dcf239643924"},
 ]
 
 [[package]]
@@ -2558,7 +2557,7 @@ files = [
 
 [[package]]
 name = "minio"
-version = "7.2.5"
+version = "7.2.6"
 summary = "MinIO Python SDK for Amazon S3 Compatible Cloud Storage"
 groups = ["default"]
 dependencies = [
@@ -2569,8 +2568,8 @@ dependencies = [
     "urllib3",
 ]
 files = [
-    {file = "minio-7.2.5-py3-none-any.whl", hash = "sha256:ed9176c96d4271cb1022b9ecb8a538b1e55b32ae06add6de16425cab99ef2304"},
-    {file = "minio-7.2.5.tar.gz", hash = "sha256:59d8906e2da248a9caac34d4958a859cc3a44abbe6447910c82b5abfa9d6a2e1"},
+    {file = "minio-7.2.6-py3-none-any.whl", hash = "sha256:4972273a924f274e2d71f38f6d2afdf841a034801e60ba758e5c5aff4234b768"},
+    {file = "minio-7.2.6.tar.gz", hash = "sha256:c545d0dda1ff26cefcfc754242be3d27a4e620e37ef3e51ecbe7212cf7ecc274"},
 ]
 
 [[package]]
@@ -4780,7 +4779,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.22.1"
+version = "0.23.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -4794,8 +4793,8 @@ dependencies = [
     "unstract-adapters~=0.12.1",
 ]
 files = [
-    {file = "unstract_sdk-0.22.1-py3-none-any.whl", hash = "sha256:af29fec4c56c3c1916b7af639d331d9c7b115ebff6f1183e4be50bef01bd1792"},
-    {file = "unstract_sdk-0.22.1.tar.gz", hash = "sha256:f49db6c62bca6baa2474912a63f305df01ec12ada34af9a2fb93b8ce91e7fa16"},
+    {file = "unstract_sdk-0.23.0-py3-none-any.whl", hash = "sha256:769bfa6048261241b0c2f76c64520d42992bcbba46403948d7474eb7e53740aa"},
+    {file = "unstract_sdk-0.23.0.tar.gz", hash = "sha256:f327d1d4631947d611da7221667bdd82c40c836ae8d7fbef81eb8ad25818f165"},
 ]
 
 [[package]]
