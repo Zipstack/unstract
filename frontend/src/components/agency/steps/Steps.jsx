@@ -58,11 +58,12 @@ function Steps({ setSteps, activeToolId, sourceMsg, destinationMsg }) {
   };
 
   const moveItem = (fromIndex, toIndex, funcName, dragging) => {
+    const toolInstance = details?.tool_instances || [];
     if (fromIndex === undefined && funcName) {
       handleAddToolInstance(funcName)
         .then((res) => {
           const data = res?.data;
-          const newList = [...details.tool_instances];
+          const newList = [...toolInstance];
           newList.push(data);
           addNewTool(data);
           return rearrangeTools(newList);
@@ -75,11 +76,11 @@ function Steps({ setSteps, activeToolId, sourceMsg, destinationMsg }) {
           setAlertDetails(handleException(err, msg));
         });
     } else {
-      const updatedSteps = [...details.tool_instances];
+      const updatedSteps = [...toolInstance];
       const [movedStep] = updatedSteps.splice(fromIndex, 1);
       updatedSteps.splice(toIndex, 0, movedStep);
       if (!dragging) {
-        rearrangeTools(details?.tool_instances).then((res) => {
+        rearrangeTools(toolInstance).then((res) => {
           setSteps(res);
         });
       } else {
