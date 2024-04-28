@@ -27,11 +27,12 @@
 .log-footer {
   padding: 0;
   position: relative;
+  height: 53px;
 }
 
 .ide-collapse-panel {
   background-color: var(--white);
-  border: none;
+  border-top: 1px rgba(0, 0, 0, 0.15) solid;
   border-radius: 0px;
   position: absolute;
   bottom: 0;
