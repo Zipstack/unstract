@@ -92,7 +92,7 @@ class AdapterInstance(BaseModel):
 
     is_friction_less = models.BooleanField(
         default=False,
-        db_comment="Does the adapter created through frictionless onboarding",
+        db_comment="Was the adapter created through frictionless onboarding",
     )
     is_usable = models.BooleanField(
         default=True,
