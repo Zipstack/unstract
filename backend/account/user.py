@@ -22,6 +22,11 @@ class UserService:
             raise error
         return user
 
+    def update_user(self, user: User, user_id: str) -> User:
+        user.user_id = user_id
+        user.save()
+        return user
+
     def get_user_by_email(self, email: str) -> Optional[User]:
         try:
             user: User = User.objects.get(email=email)
