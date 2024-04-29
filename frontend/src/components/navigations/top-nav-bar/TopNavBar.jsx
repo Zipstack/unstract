@@ -1,4 +1,13 @@
-import { Alert, Button, Col, Dropdown, Image, Row, Typography } from "antd";
+import {
+  Alert,
+  Button,
+  Col,
+  Dropdown,
+  Image,
+  Row,
+  Space,
+  Typography,
+} from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -163,26 +172,28 @@ function TopNavBar() {
       </Col>
       <Col span={4}>
         <Row justify="end" align="middle">
-          {TrialDaysInfo && (
-            <TrialDaysInfo remainingTrialDays={remainingTrialDays} />
-          )}
-          <Dropdown menu={{ items }} placement="bottomLeft" arrow>
-            <div className="top-navbar-dp">
-              {sessionDetails?.picture ? (
-                <Image
-                  className="navbar-img"
-                  height="100%"
-                  width="100%"
-                  preview={false}
-                  src={sessionDetails?.picture}
-                />
-              ) : (
-                <Typography.Text className="initials">
-                  {getInitials(sessionDetails?.name)}
-                </Typography.Text>
-              )}
-            </div>
-          </Dropdown>
+          <Space>
+            {TrialDaysInfo && (
+              <TrialDaysInfo remainingTrialDays={remainingTrialDays} />
+            )}
+            <Dropdown menu={{ items }} placement="bottomLeft" arrow>
+              <div className="top-navbar-dp">
+                {sessionDetails?.picture ? (
+                  <Image
+                    className="navbar-img"
+                    height="100%"
+                    width="100%"
+                    preview={false}
+                    src={sessionDetails?.picture}
+                  />
+                ) : (
+                  <Typography.Text className="initials">
+                    {getInitials(sessionDetails?.name)}
+                  </Typography.Text>
+                )}
+              </div>
+            </Dropdown>
+          </Space>
         </Row>
       </Col>
     </Row>

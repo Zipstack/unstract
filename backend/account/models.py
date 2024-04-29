@@ -36,6 +36,10 @@ class Organization(TenantMixin):
     )
     modified_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now=True)
+    allowed_token_limit = models.IntegerField(
+        default=-1,
+        db_comment="token limit set in case of frition less onbaoarded org",
+    )
 
     auto_create_schema = True
 
