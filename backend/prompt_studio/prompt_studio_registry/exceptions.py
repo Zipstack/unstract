@@ -14,3 +14,15 @@ class ToolDoesNotExist(APIException):
 class ToolSaveError(APIException):
     status_code = 500
     default_detail = "Error while saving the tool."
+
+
+class EmptyToolExportError(APIException):
+    status_code = 500
+    default_detail = "Empty tool without prompts cannot be exported. \
+        Try adding a prompt and executing it."
+
+
+class InValidCustomToolError(APIException):
+    status_code = 500
+    default_detail = "This tool cannot be exported. It probably \
+        has some empty or unexecuted prompts."
