@@ -24,7 +24,12 @@ from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from django.http import HttpRequest
 from django.http.response import HttpResponse
-from permissions.permission import IsOwner, IsOwnerOrSharedUser
+from permissions.permission import (
+    IsFrictionLessAdapter,
+    IsFrictionLessAdapterDelete,
+    IsOwner,
+    IsOwnerOrSharedUser,
+)
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -124,8 +129,20 @@ class AdapterViewSet(GenericViewSet):
 
 
 class AdapterInstanceViewSet(ModelViewSet):
-    permission_classes: list[type[IsOwner]] = [IsOwner]
+
     serializer_class = AdapterInstanceSerializer
+
+    def get_permissions(self) -> list[Any]:
+
+        if self.action in ["update", "retrieve"]:
+            return [IsFrictionLessAdapter()]
+
+        elif self.action == "destroy":
+            return [IsFrictionLessAdapterDelete()]
+
+        # Hack for friction-less onboarding
+        # User cant view/update metadata but can delete/share etc
+        return [IsOwner()]
 
     def get_queryset(self) -> Optional[QuerySet]:
         if filter_args := FilterHelper.build_filter_args(
@@ -195,27 +212,36 @@ class AdapterInstanceViewSet(ModelViewSet):
     ) -> Response:
         adapter_instance: AdapterInstance = self.get_object()
         adapter_type = adapter_instance.adapter_type
-        user_default_adapter = UserDefaultAdapter.objects.get(user=request.user)
-        if (
-            (
-                adapter_type == AdapterKeys.LLM
-                and adapter_instance == user_default_adapter.default_llm_adapter
+        try:
+            user_default_adapter: UserDefaultAdapter = UserDefaultAdapter.objects.get(
+                user=request.user
             )
-            or (
-                adapter_type == AdapterKeys.EMBEDDING
-                and adapter_instance == user_default_adapter.default_embedding_adapter
-            )
-            or (
-                adapter_type == AdapterKeys.VECTOR_DB
-                and adapter_instance == user_default_adapter.default_vector_db_adapter
-            )
-            or (
-                adapter_type == AdapterKeys.X2TEXT
-                and adapter_instance == user_default_adapter.default_x2text_adapter
-            )
-        ):
-            logger.error("Cannot delete a default adapter")
-            raise CannotDeleteDefaultAdapter()
+
+            if (
+                (
+                    adapter_type == AdapterKeys.LLM
+                    and adapter_instance == user_default_adapter.default_llm_adapter
+                )
+                or (
+                    adapter_type == AdapterKeys.EMBEDDING
+                    and adapter_instance
+                    == user_default_adapter.default_embedding_adapter
+                )
+                or (
+                    adapter_type == AdapterKeys.VECTOR_DB
+                    and adapter_instance
+                    == user_default_adapter.default_vector_db_adapter
+                )
+                or (
+                    adapter_type == AdapterKeys.X2TEXT
+                    and adapter_instance == user_default_adapter.default_x2text_adapter
+                )
+            ):
+                logger.error("Cannot delete a default adapter")
+                raise CannotDeleteDefaultAdapter()
+        except UserDefaultAdapter.DoesNotExist:
+            # We can go head and remove adapter here
+            logger.info("User default adpater doesnt not exist")
 
         try:
             super().perform_destroy(adapter_instance)

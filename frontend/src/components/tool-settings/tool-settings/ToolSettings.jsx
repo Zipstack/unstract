@@ -213,6 +213,7 @@ function ToolSettings({ type }) {
               handleEdit={(_event, item) => setEditItemId(item?.id)}
               idProp="id"
               titleProp="adapter_name"
+              descriptionProp="description"
               iconProp="icon"
               isEmpty={!tableRows?.length}
               centered
