@@ -185,7 +185,7 @@ class AuthenticationController:
                         organization=organization, user=user
                     )
                 except MethodNotImplemented:
-                    Logger.info("Method not implemented")
+                    Logger.info("frictionless_onboarding not implemented")
 
             if new_organization:
                 self.authentication_helper.create_initial_platform_key(
@@ -205,7 +205,8 @@ class AuthenticationController:
             current_organization_id = UserSessionUtils.get_organization_id(request)
             if current_organization_id:
                 OrganizationMemberService.remove_user_membership_in_organization_cache(
-                    user_id=user.user_id, organization_id=current_organization_id
+                    user_id=user.user_id,
+                    organization_id=current_organization_id,
                 )
             UserSessionUtils.set_organization_id(request, organization_id)
             OrganizationMemberService.set_user_membership_in_organization_cache(

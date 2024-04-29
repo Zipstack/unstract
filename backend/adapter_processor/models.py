@@ -94,6 +94,9 @@ class AdapterInstance(BaseModel):
         default=False,
         db_comment="Was the adapter created through frictionless onboarding",
     )
+
+    # Can be used if the adapter usage gets exhausted
+    # Can also be used in other possible scenarios in feature
     is_usable = models.BooleanField(
         default=True,
         db_comment="Is the Adpater Usable",
