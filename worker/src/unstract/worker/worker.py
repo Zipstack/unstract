@@ -5,6 +5,7 @@ import os
 import uuid
 from typing import Any, Optional
 
+from docker.errors import APIError
 from dotenv import load_dotenv
 from unstract.worker.constants import Env, LogType, ToolKey
 
@@ -49,6 +50,11 @@ class UnstractWorker:
                     f"Service account key file is not mounted "
                     f"in {private_registry_credential_path}: {file_err}"
                     "Logging to private registry might fail, if private tool is used."
+                )
+            except APIError as api_err:
+                logger.error(
+                    f"Exception occured while invoking docker client : {api_err}."
+                    f"Authentication to artifact registry failed."
                 )
 
         self.image = self._get_image()
