@@ -187,7 +187,7 @@ function Pipelines({ type }) {
   const fetchExecutionLogs = () => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${selectedPorD.id}/executions/asfd`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${selectedPorD.id}/executions/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },

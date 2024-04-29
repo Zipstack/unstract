@@ -1,6 +1,7 @@
-import { Modal, Button } from "antd";
+import { Table, Modal, Button } from "antd";
 import PropTypes from "prop-types";
 import { useState } from "react";
+
 import { useSessionStore } from "../../../store/session-store.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store.js";
@@ -9,7 +10,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 const LogsModal = ({ open, setOpen, logRecord }) => {
   const [selectedLogId, setSelectedLogId] = useState(null);
   const [logDescModalOpen, setLogDescModalOpen] = useState(false);
-  const [logDetails, setLogDetails] = useState(null);
+  const [logDetails, setLogDetails] = useState([]);
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -26,6 +27,7 @@ const LogsModal = ({ open, setOpen, logRecord }) => {
     axiosPrivate(requestOptions)
       .then((res) => {
         const logDetails = res.data.results.map((item) => ({
+          id: item.id,
           log: item.data.log,
           type: item.data.type,
           event_time: item.event_time,
@@ -43,43 +45,76 @@ const LogsModal = ({ open, setOpen, logRecord }) => {
     setLogDescModalOpen(true);
   };
 
+  const logColumns = [
+    {
+      title: "Created At",
+      dataIndex: "created_at",
+      key: "created_at",
+    },
+    {
+      title: "Execution Log ID",
+      dataIndex: "execution_log_id",
+      key: "execution_log_id",
+      render: (text, record) => (
+        <Button
+          type="link"
+          onClick={() => handleLogIdClick(record.execution_log_id)}
+        >
+          {text}
+        </Button>
+      ),
+    },
+    {
+      title: "Status",
+      dataIndex: "status",
+      key: "status",
+    },
+    {
+      title: "Execution Time",
+      dataIndex: "execution_time",
+      key: "execution_time",
+    },
+  ];
+
+  const logDetailsColumns = [
+    {
+      title: "Log",
+      dataIndex: "log",
+      key: "log",
+    },
+    {
+      title: "Event Time",
+      dataIndex: "event_time",
+      key: "event_time",
+    },
+  ];
   return (
     <>
       <Modal
         title="Execution Logs"
         centered
-        visible={open}
+        open={open}
         onCancel={() => setOpen(false)}
         footer={null}
-        bodyStyle={{ maxHeight: "60vh", overflowY: "auto" }}
+        width="80%"
       >
-        {logRecord.map((log) => (
-          <div key={log.execution_log_id}>
-            <p>Created At: {log.created_at}</p>
-            <p>
-              Execution Log ID:{" "}
-              <Button
-                type="link"
-                onClick={() => handleLogIdClick(log.execution_log_id)}
-              >
-                {log.execution_log_id}
-              </Button>
-            </p>
-            <p>Status: {log.status}</p>
-            <p>Execution Time: {log.execution_time}</p>
-            <hr />
-          </div>
-        ))}
+        <Table columns={logColumns} dataSource={logRecord} rowKey="id" />
       </Modal>
 
       <Modal
         title={`Execution Log Details - ${selectedLogId}`}
         centered
-        visible={logDescModalOpen}
+        open={logDescModalOpen}
         onCancel={() => setLogDescModalOpen(false)}
         footer={null}
+        width="80%"
+        wrapClassName="modal-body"
       >
-        <pre>{JSON.stringify(logDetails, null, 2)}</pre>
+        <Table
+          columns={logDetailsColumns}
+          dataSource={logDetails}
+          rowKey="id"
+        />
       </Modal>
     </>
   );
