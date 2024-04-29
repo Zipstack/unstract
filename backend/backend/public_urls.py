@@ -44,3 +44,13 @@ if settings.ADMIN_ENABLED:
         ),
     ]
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
+
+try:
+    import pluggable_apps.platform_admin.urls  # noqa: F401
+
+    urlpatterns += [
+        path(f"{path_prefix}/", include("pluggable_apps.platform_admin.urls")),
+    ]
+except ImportError:
+    pass
