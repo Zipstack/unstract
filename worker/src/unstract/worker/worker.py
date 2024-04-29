@@ -37,10 +37,11 @@ class UnstractWorker:
             and private_registry_url
         ):
             try:
-                open(private_registry_credential_path)
+                with open(private_registry_credential_path, encoding="utf-8") as file:
+                    password = file.read()
                 self.client.login(
                     username=private_registry_username,
-                    password=open(private_registry_credential_path).read(),
+                    password=password,
                     registry=private_registry_url,
                 )
             except FileNotFoundError as file_err:
