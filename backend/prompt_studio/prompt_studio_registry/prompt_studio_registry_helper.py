@@ -8,6 +8,7 @@ from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.models import CustomTool
 from prompt_studio.prompt_studio_core.prompt_studio_helper import PromptStudioHelper
+from prompt_studio.prompt_studio_output_manager.models import PromptStudioOutputManager
 from unstract.tool_registry.dto import Properties, Spec, Tool
 
 from .constants import JsonSchemaKey
@@ -207,7 +208,13 @@ class PromptStudioRegistryHelper:
             if not prompt.prompt:
                 invalidated_prompts.append(prompt.prompt_key)
 
-            if not prompt.output:
+            prompt_output = PromptStudioOutputManager.objects.filter(
+                tool_id=tool.tool_id,
+                prompt_id=prompt.prompt_id,
+                profile_manager=prompt.profile_manager,
+            ).all()
+
+            if not prompt_output:
                 invalidated_outputs.append(prompt.prompt_key)
 
             if prompt.prompt_type == JsonSchemaKey.NOTES:
