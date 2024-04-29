@@ -23,13 +23,11 @@ import { useSessionStore } from "../../../store/session-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
 import { CreateApiDeploymentModal } from "../../deployments/create-api-deployment-modal/CreateApiDeploymentModal.jsx";
 import { EtlTaskDeploy } from "../../pipelines-or-deployments/etl-task-deploy/EtlTaskDeploy.jsx";
-import { SocketMessages } from "../../helpers/socket-messages/SocketMessages";
 import FileUpload from "../file-upload/FileUpload.jsx";
 import "./Actions.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
-  const [logId, setLogId] = useState("");
   const [executionId, setExecutionId] = useState("");
   const [execType, setExecType] = useState("");
   const [stepExecType, setStepExecType] = useState("");
@@ -122,10 +120,8 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
     try {
       const initialRes = await handleWfExecutionApi(body);
       const execIdValue = initialRes?.data?.execution_id;
-      const logIdValue = initialRes?.data?.log_id;
 
       setExecutionId(execIdValue);
-      setLogId(logIdValue);
       body["execution_id"] = execIdValue;
       if (isStepExecution) {
         body["execution_action"] = wfExecutionTypes[executionAction];
@@ -535,7 +531,6 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           setDeploymentName={setDeploymentName}
         />
       )}
-      <SocketMessages logId={logId} />
     </>
   );
 }

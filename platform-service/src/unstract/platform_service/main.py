@@ -1,15 +1,14 @@
-import datetime
-import json
 import logging
 import os
 import uuid
+from datetime import datetime
 from typing import Any, Literal, Optional
 
 import peewee
 import redis
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
-from flask import Flask, Request, Response, jsonify, request
+from flask import Flask, Request, Response, json, jsonify, make_response, request
 from unstract.platform_service.exceptions import CustomException
 from unstract.platform_service.helper import (
     AdapterInstanceRequestHelper,
@@ -55,30 +54,15 @@ be_db.init(PG_BE_DATABASE)
 be_db.connect()
 
 
-class UnstractUsage(peewee.Model):
-    id = peewee.UUIDField(primary_key=True, default=uuid.uuid4)
-    created_at = peewee.DateTimeField(default=datetime.datetime.now)
-    organization_id = peewee.CharField()
-    workflow_id = peewee.CharField()
-    execution_id = peewee.CharField()
-    status = peewee.CharField()
-    usage_type = peewee.CharField()
-    external_service = peewee.CharField()
-    tokens_valid = peewee.BooleanField(default=False)
-    embedding_tokens = peewee.IntegerField()
-    prompt_tokens = peewee.IntegerField()
-    completion_tokens = peewee.IntegerField()
-    total_tokens = peewee.IntegerField()
-    usage_value_valid = peewee.BooleanField(peewee.BooleanField(default=False))
-    usage_value = peewee.FloatField()
-    usage_units = peewee.CharField()
-
-    class Meta:
-        database = be_db  # This model uses the "BE_DB" database.
-        table_name = "unstract_usage"
+def drop_unstract_usage_table() -> None:
+    query = "DROP TABLE IF EXISTS unstract_usage"
+    try:
+        be_db.execute_sql(query)
+    except Exception as e:
+        app.logger.error(f"Error dropping 'unstract_usage' table: {e}")
 
 
-UnstractUsage.create_table()
+drop_unstract_usage_table()
 
 
 def get_token_from_auth_header(request: Request) -> Any:
@@ -173,8 +157,6 @@ def usage() -> Any:
             ....
         }'
     """
-    bearer_token = get_token_from_auth_header(request)
-    organization_id = get_account_from_bearer_token(bearer_token)
     result: dict[str, Any] = {
         "status": "ERROR",
         "error": "",
@@ -183,43 +165,54 @@ def usage() -> Any:
     payload: Optional[dict[Any, Any]] = request.json
     if not payload:
         result["error"] = INVALID_PAYLOAD
-        return result, 400
-
-    org_id = organization_id
+        return make_response(result, 400)
+    bearer_token = get_token_from_auth_header(request)
+    org_id = get_account_from_bearer_token(bearer_token)
     workflow_id = payload.get("workflow_id")
     execution_id = payload.get("execution_id", "")
-    status = payload.get("status", "")
+    adapter_instance_id = payload.get("adapter_instance_id", "")
+    run_id = payload.get("run_id", "")
     usage_type = payload.get("usage_type", "")
-    external_service = payload.get("external_service", "")
-    tokens_valid = payload.get("tokens_valid", False)
+    model_name = payload.get("model_name", "")
     embedding_tokens = payload.get("embedding_tokens", 0)
     prompt_tokens = payload.get("prompt_tokens", 0)
     completion_tokens = payload.get("completion_tokens", 0)
     total_tokens = payload.get("total_tokens", 0)
-    usage_value_valid = payload.get("usage_value_valid", False)
-    usage_value = payload.get("usage_value", 0.0)
-    usage_units = payload.get("usage_units", "")
-
-    usage: UnstractUsage = UnstractUsage.create(
-        organization_id=org_id,
-        workflow_id=workflow_id,
-        execution_id=execution_id,
-        status=status,
-        usage_type=usage_type,
-        external_service=external_service,
-        tokens_valid=tokens_valid,
-        embedding_tokens=embedding_tokens,
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        total_tokens=total_tokens,
-        usage_value_valid=usage_value_valid,
-        usage_value=usage_value,
-        usage_units=usage_units,
+    query = f"""
+        INSERT INTO "{org_id}"."token_usage" (id, workflow_id, execution_id,
+        adapter_instance_id, run_id, usage_type, model_name, embedding_tokens,
+        prompt_tokens, completion_tokens, total_tokens, created_at, modified_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+    usage_id = uuid.uuid4()
+    current_time = datetime.now()
+    params = (
+        usage_id,
+        workflow_id,
+        execution_id,
+        adapter_instance_id,
+        run_id,
+        usage_type,
+        model_name,
+        embedding_tokens,
+        prompt_tokens,
+        completion_tokens,
+        total_tokens,
+        current_time,
+        current_time,
     )
-    app.logger.info("Entry created with id %s for %s", usage.id, organization_id)
-    result["status"] = "OK"
-    result["unique_id"] = usage.id
-    return result
+    try:
+        with be_db.atomic() as transaction:
+            be_db.execute_sql(query, params)
+            transaction.commit()
+            app.logger.info("Entry created with id %s for %s", usage_id, org_id)
+            result["status"] = "OK"
+            result["unique_id"] = usage_id
+            return make_response(result, 200)
+    except Exception as e:
+        app.logger.error(f"Error while creating usage entry: {e}")
+        result["error"] = "Internal Server Error"
+        return make_response(result, 500)
 
 
 @app.route(
