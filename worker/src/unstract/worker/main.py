@@ -3,8 +3,12 @@ from typing import Any, Optional
 from flask import Blueprint, Flask, Response, jsonify, request
 from unstract.worker import UnstractWorker
 from unstract.worker.constants import ToolCommandKey
+from unstract.worker.utils import Utils
 
 app = Flask(__name__)
+
+log_level = Utils.get_log_level()
+app.logger.setLevel(log_level.value)
 
 # Define a Blueprint with a root URL path
 bp = Blueprint("v1", __name__, url_prefix="/v1/api")
@@ -29,7 +33,7 @@ def run_container() -> Optional[Any]:
     envs = data["envs"]
     messaging_channel = data["messaging_channel"]
 
-    worker = UnstractWorker(image_name, image_tag)
+    worker = UnstractWorker(image_name, image_tag, app=app)
     result = worker.run_container(
         organization_id=organization_id,
         workflow_id=workflow_id,
