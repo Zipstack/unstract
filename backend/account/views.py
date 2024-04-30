@@ -14,10 +14,12 @@ from account.serializer import (
     OrganizationSignupSerializer,
     UserSessionResponseSerializer,
 )
+from django_tenants.utils import tenant_context
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
+from tenant_account.models import OrganizationMember
 from utils.user_session import UserSessionUtils
 
 Logger = logging.getLogger(__name__)
@@ -115,6 +117,16 @@ def get_session_data(request: Request) -> Response:
         Response: Contains the User and Current organization details.
     """
     response = make_session_response(request)
+    # changes for displying onboarding msgs
+    organization_id = UserSessionUtils.get_organization_id(request)
+    organization = Organization.objects.get(organization_id=organization_id)
+    with tenant_context(organization):
+        org_member = OrganizationMember.objects.get(user=request.user)
+        response["login_onboarding_message_displayed"] = org_member.is_onboarding_msg
+        response["prompt_onboarding_message_displayed"] = (
+            org_member.is_prompt_studio_msg
+        )
+
     return Response(
         status=status.HTTP_201_CREATED,
         data=response,
