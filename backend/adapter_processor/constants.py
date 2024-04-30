@@ -21,7 +21,8 @@ class AdapterKeys:
     X2TEXT_DEFAULT = "x2text_default"
     SHARED_USERS = "shared_users"
     ADAPTER_NAME_EXISTS = (
-        "Configuration with this Name already exists. " "Please try with a different Name"
+        "Configuration with this Name already exists. "
+        "Please try with a different Name"
     )
     ADAPTER_CREATED_BY = "created_by_email"
     ADAPTER_CONTEXT_WINDOW_SIZE = "context_window_size"
