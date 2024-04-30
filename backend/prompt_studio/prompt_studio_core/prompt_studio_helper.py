@@ -50,6 +50,33 @@ class PromptStudioHelper:
     """Helper class for Custom tool operations."""
 
     @staticmethod
+    def validate_adapter_status(
+        profile_manager: ProfileManager,
+    ) -> None:
+        """Helper method to validate the status of adapters in profile manager.
+
+        Args:
+            profile_manager (ProfileManager): The profile manager instance to
+              validate.
+
+        Raises:
+            PermissionError: If the owner does not have permission to perform
+              the action.
+        """
+
+        error_msg = "Permission Error: Free usage for the configured trial adapter exhausted.Please connect your own service accounts to continue.Please see our documentation for more details:https://docs.unstract.com/unstract_platform/setup_accounts/whats_needed"  # noqa: E501
+        adapters = [
+            profile_manager.llm,
+            profile_manager.vector_store,
+            profile_manager.embedding_model,
+            profile_manager.x2text,
+        ]
+
+        for adapter in adapters:
+            if not adapter.is_usable:
+                raise PermissionError(error_msg)
+
+    @staticmethod
     def validate_profile_manager_owner_access(
         profile_manager: ProfileManager,
     ) -> None:
@@ -237,6 +264,9 @@ class PromptStudioHelper:
             LogLevels.RUN,
             "Indexing started",
         )
+
+        # Validate the status of adapter in profile manager
+        PromptStudioHelper.validate_adapter_status(default_profile)
         # Need to check the user who created profile manager
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
@@ -493,6 +523,8 @@ class PromptStudioHelper:
                 grammer_dict = {}
         for prompt in prompts:
             # Need to check the user who created profile manager
+            PromptStudioHelper.validate_adapter_status(prompt.profile_manager)
+            # Need to check the user who created profile manager
             # has access to adapters
             PromptStudioHelper.validate_profile_manager_owner_access(
                 prompt.profile_manager
@@ -661,13 +693,14 @@ class PromptStudioHelper:
             )
             return doc_id
         except IndexingError as e:
+            doc_name = os.path.split(file_path)[1]
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "doc_name": os.path.split(file_path)[1]},
+                {"tool_id": tool_id, "doc_name": doc_name},
                 LogLevels.ERROR,
                 LogLevels.RUN,
-                "Indexing failed",
+                f"Indexing failed : {e}",
             )
-            raise IndexingAPIError(str(e)) from e
+            raise IndexingAPIError(f"Error while indexing {doc_name}. {str(e)}") from e
 
     @staticmethod
     def _fetch_single_pass_response(
@@ -690,6 +723,7 @@ class PromptStudioHelper:
         else:
             challenge_llm = str(default_profile.llm.id)
         # Need to check the user who created profile manager
+        PromptStudioHelper.validate_adapter_status(default_profile)
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
         default_profile.chunk_size = 0  # To retrive full context
