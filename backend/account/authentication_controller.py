@@ -421,7 +421,10 @@ class AuthenticationController:
                     )
                     user_role = user_roles[0]
                     tenant_user: OrganizationMember = OrganizationMember(
-                        user=user, role=user_role
+                        user=user,
+                        role=user_role,
+                        is_onboarding_msg=False,
+                        is_prompt_studio_msg=False,
                     )
                     tenant_user.save()
                 else:
