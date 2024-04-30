@@ -5,6 +5,7 @@ import {
   EllipsisOutlined,
   SyncOutlined,
   HighlightOutlined,
+  FileSearchOutlined,
 } from "@ant-design/icons";
 import { Dropdown, Image, Space, Switch, Typography } from "antd";
 import PropTypes from "prop-types";
@@ -19,6 +20,7 @@ import { Layout } from "../../deployments/layout/Layout.jsx";
 import { SocketMessages } from "../../helpers/socket-messages/SocketMessages.js";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
+import { LogsModal } from "../log-modal/LogsModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import "./Pipelines.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
@@ -35,6 +37,8 @@ function Pipelines({ type }) {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const [isEdit, setIsEdit] = useState(false);
+  const [openLogsModal, setOpenLogsModal] = useState(false);
+  const [executionLogs, setExecutionLogs] = useState([]);
 
   useEffect(() => {
     getPipelineList();
@@ -180,6 +184,29 @@ function Pipelines({ type }) {
       });
   };
 
+  const fetchExecutionLogs = () => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${selectedPorD.id}/executions/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+    };
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const logs = res?.data?.results?.map((result) => ({
+          created_at: result.created_at,
+          execution_log_id: result.execution_log_id,
+          status: result.status,
+          execution_time: result.execution_time,
+        }));
+        setExecutionLogs(logs);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
+  };
+
   const clearCache = () => {
     const requestOptions = {
       method: "GET",
@@ -246,6 +273,26 @@ function Pipelines({ type }) {
         <Space
           direction="horizontal"
           className="action-items"
+          onClick={() => {
+            setOpenLogsModal(true);
+            fetchExecutionLogs();
+          }}
+        >
+          <div>
+            <FileSearchOutlined />
+          </div>
+          <div>
+            <Typography.Text>View Logs</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "3",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
           onClick={() => setOpenDeleteModal(true)}
         >
           <div>
@@ -258,7 +305,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "3",
+      key: "4",
       label: (
         <Space
           direction="horizontal"
@@ -275,7 +322,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "4",
+      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -292,7 +339,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "5",
+      key: "6",
       label: (
         <Space
           direction="horizontal"
@@ -454,6 +501,11 @@ function Pipelines({ type }) {
             setSelectedRow={setSelectedPorD}
           />
         )}
+        <LogsModal
+          open={openLogsModal}
+          setOpen={setOpenLogsModal}
+          logRecord={executionLogs}
+        />
         <DeleteModal
           open={openDeleteModal}
           setOpen={setOpenDeleteModal}
