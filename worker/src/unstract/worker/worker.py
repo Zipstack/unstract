@@ -7,12 +7,11 @@ from typing import Any, Optional
 from dotenv import load_dotenv
 from flask import Flask
 from unstract.worker.constants import Env, LogType, ToolKey
+from unstract.worker.utils import Utils
 
 import docker
 from docker import DockerClient  # type: ignore[attr-defined]
 from unstract.core.pubsub_helper import LogPublisher
-
-from unstract.worker.utils import Utils
 
 load_dotenv()
 
@@ -92,10 +91,14 @@ class UnstractWorker:
         try:
             # Attempt to get the image information
             self.client.images.get(image_name_with_tag)
-            self.logger.info(f"Image '{image_name_with_tag}' found in the local system.")
+            self.logger.info(
+                f"Image '{image_name_with_tag}' found in the local system."
+            )
             return True
         except docker.errors.ImageNotFound:  # type: ignore[attr-defined]
-            self.logger.info(f"Image '{image_name_with_tag}' not found in the local system.")
+            self.logger.info(
+                f"Image '{image_name_with_tag}' not found in the local system."
+            )
             return False
         except docker.errors.APIError as e:  # type: ignore[attr-defined]
             self.logger.error(f"An API error occurred: {e}")
@@ -120,9 +123,7 @@ class UnstractWorker:
                 channel=channel,
             )
 
-    def get_valid_log_message(
-        self, log_message: str
-    ) -> Optional[dict[str, Any]]:
+    def get_valid_log_message(self, log_message: str) -> Optional[dict[str, Any]]:
         """Get a valid log message from the log message.
 
         Args:
