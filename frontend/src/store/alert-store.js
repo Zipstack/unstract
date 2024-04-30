@@ -7,6 +7,7 @@ const STORE_VARIABLES = {
     content: "",
     title: "",
     duration: undefined,
+    key: null,
   },
 };
 const useAlertStore = create((setState) => ({
@@ -21,6 +22,7 @@ const useAlertStore = create((setState) => ({
         : isErrorType
         ? 0
         : undefined;
+      details.key = `open${Date.now()}`;
       return { alertDetails: { ...details } };
     });
   },

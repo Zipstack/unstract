@@ -14,9 +14,22 @@ function App() {
   const { alertDetails } = useAlertStore();
 
   const btn = (
-    <Button type="link" size="small" onClick={() => notificationAPI.destroy()}>
-      Destroy All
-    </Button>
+    <>
+      <Button
+        type="link"
+        size="small"
+        onClick={() => notificationAPI.destroy(alertDetails?.key)}
+      >
+        Close
+      </Button>
+      <Button
+        type="link"
+        size="small"
+        onClick={() => notificationAPI.destroy()}
+      >
+        Close All
+      </Button>
+    </>
   );
 
   alertDetails.content &&
@@ -26,6 +39,7 @@ function App() {
       type: alertDetails.type,
       duration: alertDetails.duration,
       btn,
+      key: alertDetails.key,
     });
 
   return (
