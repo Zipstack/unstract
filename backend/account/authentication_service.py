@@ -256,6 +256,9 @@ class AuthenticationService:
     def get_invitations(self, organization_id: str) -> list[MemberInvitation]:
         raise MethodNotImplemented()
 
+    def frictionless_onboarding(self, organization: Organization, user: User) -> None:
+        raise MethodNotImplemented()
+
     def delete_invitation(self, organization_id: str, invitation_id: str) -> bool:
         raise MethodNotImplemented()
 

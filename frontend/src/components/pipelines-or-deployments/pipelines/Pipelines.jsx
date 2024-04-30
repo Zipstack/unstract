@@ -16,7 +16,6 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { useSessionStore } from "../../../store/session-store.js";
 import { Layout } from "../../deployments/layout/Layout.jsx";
-import { SocketMessages } from "../../helpers/socket-messages/SocketMessages.js";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
@@ -29,7 +28,6 @@ function Pipelines({ type }) {
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [selectedPorD, setSelectedPorD] = useState({});
   const [tableLoading, setTableLoading] = useState(true);
-  const [logId, setLogId] = useState("");
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -77,8 +75,6 @@ function Pipelines({ type }) {
 
     handleSyncApiReq(body)
       .then((res) => {
-        const logIdValue = res?.data?.execution?.log_id;
-        setLogId(logIdValue);
         const executionId = res?.data?.execution?.execution_id;
         body["execution_id"] = executionId;
         return handleSyncApiReq(body);
@@ -460,7 +456,6 @@ function Pipelines({ type }) {
           deleteRecord={deletePipeline}
         />
       </div>
-      <SocketMessages logId={logId} />
     </>
   );
 }

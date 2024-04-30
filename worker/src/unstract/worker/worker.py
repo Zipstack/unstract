@@ -4,6 +4,7 @@ import os
 import uuid
 from typing import Any, Optional
 
+from docker.errors import APIError
 from dotenv import load_dotenv
 from flask import Flask
 from unstract.worker.constants import Env, LogType, ToolKey
@@ -26,19 +27,35 @@ class UnstractWorker:
         #   the Docker daemon in the host environment
         self.client: DockerClient = docker.from_env()  # type: ignore[attr-defined]  # noqa: E501
 
-        private_registry_password = os.getenv(Env.PRIVATE_REGISTRY_PASSWORD)
+        private_registry_credential_path = os.getenv(
+            Env.PRIVATE_REGISTRY_CREDENTIAL_PATH
+        )
         private_registry_username = os.getenv(Env.PRIVATE_REGISTRY_USERNAME)
         private_registry_url = os.getenv(Env.PRIVATE_REGISTRY_URL)
         if (
-            private_registry_password
+            private_registry_credential_path
             and private_registry_username
             and private_registry_url
         ):
-            self.client.login(
-                username=private_registry_username,
-                password=private_registry_password,
-                registry=private_registry_url,
-            )
+            try:
+                with open(private_registry_credential_path, encoding="utf-8") as file:
+                    password = file.read()
+                self.client.login(
+                    username=private_registry_username,
+                    password=password,
+                    registry=private_registry_url,
+                )
+            except FileNotFoundError as file_err:
+                logger.error(
+                    f"Service account key file is not mounted "
+                    f"in {private_registry_credential_path}: {file_err}"
+                    "Logging to private registry might fail, if private tool is used."
+                )
+            except APIError as api_err:
+                logger.error(
+                    f"Exception occured while invoking docker client : {api_err}."
+                    f"Authentication to artifact registry failed."
+                )
 
         self.image = self._get_image()
 
