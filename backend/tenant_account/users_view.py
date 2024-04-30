@@ -91,6 +91,15 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             serialized_user_info["is_admin"] = auth_controller.is_admin_by_role(
                 role.role
             )
+            # changes for displying onboarding msgs
+            org_member = OrganizationMember.objects.get(user=request.user)
+            serialized_user_info["login_onboarding_message_displayed"] = (
+                org_member.is_onboarding_msg
+            )
+            serialized_user_info["prompt_onboarding_message_displayed"] = (
+                org_member.is_prompt_studio_msg
+            )
+
             return Response(
                 status=status.HTTP_200_OK, data={"user": serialized_user_info}
             )
