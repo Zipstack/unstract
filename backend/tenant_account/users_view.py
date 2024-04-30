@@ -14,6 +14,7 @@ from tenant_account.serializer import (
     RemoveUserFromOrganizationSerializer,
     UserInfoSerializer,
     UserInviteResponseSerializer,
+    updateFlagSerializer,
 )
 from utils.user_session import UserSessionUtils
 
@@ -177,3 +178,20 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             status=status.HTTP_401_UNAUTHORIZED,
             data={"message": "cookie not found"},
         )
+
+    @action(detail=False, methods=["PUT"])
+    def update_flags(self, request: Request) -> Response:
+
+        serializer = updateFlagSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        org_member = OrganizationMember.objects.get(user=request.user)
+
+        org_member.is_onboarding_msg = serializer.validated_data.get(
+            "is_onboarding_msg"
+        )
+
+        org_member.is_prompt_studio_msg = serializer.validated_data.get(
+            "is_prompt_studio_msg"
+        )
+        org_member.save()
+        return Response(serializer)
