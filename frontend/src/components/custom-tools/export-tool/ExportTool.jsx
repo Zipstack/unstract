@@ -78,7 +78,7 @@ function ExportTool({
         })
         .map((user) => user?.id?.toString())
     );
-  }, []);
+  }, [toolDetails]);
 
   const handleDeleteUser = (userId) => {
     setSelectedUsers((prevSelectedUsers) =>
