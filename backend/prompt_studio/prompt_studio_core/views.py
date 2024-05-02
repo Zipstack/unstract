@@ -6,6 +6,7 @@ from account.custom_exceptions import DuplicateData
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest
+from file_management.exceptions import FileNotFound
 from file_management.file_management_helper import FileManagerHelper
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from prompt_studio.processor_loader import ProcessorConfig, load_plugins
@@ -371,7 +372,21 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not file_path.endswith("/"):
             file_path += "/"
         file_path += file_name
-        contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
+        # Temporary Hack for frictionless onboarding as the user id will be empty
+        try:
+            contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
+        except FileNotFound:
+            file_path = file_path = FileManagerHelper.handle_sub_directory_for_tenants(
+                UserSessionUtils.get_organization_id(request),
+                is_create=True,
+                user_id="",
+                tool_id=str(custom_tool.tool_id),
+            )
+            if not file_path.endswith("/"):
+                file_path += "/"
+                file_path += file_name
+            contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
+
         return Response({"data": contents}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
@@ -481,4 +496,4 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
             return Response(serialized_instances)
         else:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+            return Response(status=status.HTTP_204_NO_CONTENT)

@@ -1,5 +1,6 @@
 import logging
 from enum import Enum
+from json import JSONDecodeError
 from typing import Any, Optional
 
 import peewee
@@ -160,7 +161,6 @@ def authentication_middleware(func: Any) -> Any:
 @authentication_middleware
 def prompt_processor() -> Any:
     result: dict[str, Any] = {}
-    usage = {}
     platform_key = AuthenticationMiddleware.get_token_from_auth_header(request)
     if request.method == "POST":
         payload: dict[Any, Any] = request.json
@@ -191,6 +191,7 @@ def prompt_processor() -> Any:
         chunk_size = output[PSKeys.CHUNK_SIZE]
         util = PromptServiceBaseTool(log_level=LogLevel.INFO, platform_key=platform_key)
         tool_index = ToolIndex(tool=util)
+        adapter_instance_id = output[PSKeys.LLM]
 
         if active is False:
             app.logger.info(f"[{tool_id}] Skipping inactive prompt: {name}")
@@ -238,10 +239,10 @@ def prompt_processor() -> Any:
 
         llm_helper = ToolLLM(tool=util)
         llm_li: Optional[LLM] = llm_helper.get_llm(
-            adapter_instance_id=output[PSKeys.LLM]
+            adapter_instance_id=adapter_instance_id
         )
         if llm_li is None:
-            msg = f"Couldn't fetch LLM {output[PSKeys.LLM]}"
+            msg = f"Couldn't fetch LLM {adapter_instance_id}"
             app.logger.error(msg)
             _publish_log(
                 log_events_id,
@@ -320,7 +321,7 @@ def prompt_processor() -> Any:
         is_assert = output[PSKeys.IS_ASSERT]
         if is_assert:
             app.logger.debug(f'Asserting prompt: {output["assert_prompt"]}')
-            answer, usage = construct_and_run_prompt(
+            answer = construct_and_run_prompt(
                 output,
                 llm_helper,
                 llm_li,
@@ -348,7 +349,7 @@ def prompt_processor() -> Any:
                     ]
                 app.logger.info(f"[Assigning] {answer} to the output")
             else:
-                answer, usage = construct_and_run_prompt(
+                answer = construct_and_run_prompt(
                     output,
                     llm_helper,
                     llm_li,
@@ -357,7 +358,7 @@ def prompt_processor() -> Any:
                 )
         else:
             if chunk_size == 0:
-                answer, usage = construct_and_run_prompt(
+                answer = construct_and_run_prompt(
                     output,
                     llm_helper,
                     llm_li,
@@ -375,7 +376,7 @@ def prompt_processor() -> Any:
                 )
 
                 if output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SIMPLE:
-                    answer, context, usage = simple_retriver(
+                    answer, context = simple_retriver(
                         output,
                         doc_id,
                         llm_helper,
@@ -419,10 +420,11 @@ def prompt_processor() -> Any:
                     percentages or other grouping \
                     characters. No explanation is required.\
                     If you cannot extract the number, output 0."
-                answer, usage = run_completion(
-                    llm_helper,
-                    llm_li,
-                    prompt,
+                answer = run_completion(
+                    llm_helper=llm_helper,
+                    llm_li=llm_li,
+                    prompt=prompt,
+                    adapter_instance_id=adapter_instance_id,
                 )
                 try:
                     structured_output[output[PSKeys.NAME]] = float(answer)
@@ -439,10 +441,11 @@ def prompt_processor() -> Any:
                 prompt = f'Extract the email from the following text:\n{answer}\n\nOutput just the email. \
                     The email should be directly assignable to a string variable. \
                         No explanation is required. If you cannot extract the email, output "NA".'  # noqa
-                answer, usage = run_completion(
-                    llm_helper,
-                    llm_li,
-                    prompt,
+                answer = run_completion(
+                    llm_helper=llm_helper,
+                    llm_li=llm_li,
+                    prompt=prompt,
+                    adapter_instance_id=adapter_instance_id,
                 )
                 structured_output[output[PSKeys.NAME]] = answer
         elif output[PSKeys.TYPE] == PSKeys.DATE:
@@ -453,10 +456,11 @@ def prompt_processor() -> Any:
                       The date should be in ISO date time format. No explanation is required. \
                         The date should be directly assignable to a date variable. \
                             If you cannot convert the string into a date, output "NA".'  # noqa
-                answer, usage = run_completion(
-                    llm_helper,
-                    llm_li,
-                    prompt,
+                answer = run_completion(
+                    llm_helper=llm_helper,
+                    llm_li=llm_li,
+                    prompt=prompt,
+                    adapter_instance_id=adapter_instance_id,
                 )
                 structured_output[output[PSKeys.NAME]] = answer
 
@@ -468,10 +472,11 @@ def prompt_processor() -> Any:
                     Output in single word.\
                     If the context is trying to convey that the answer is true, \
                     then return "yes", else return "no".'
-                answer, usage = run_completion(
-                    llm_helper,
-                    llm_li,
-                    prompt,
+                answer = run_completion(
+                    llm_helper=llm_helper,
+                    llm_li=llm_li,
+                    prompt=prompt,
+                    adapter_instance_id=adapter_instance_id,
                 )
                 if answer.lower() == "yes":
                     structured_output[output[PSKeys.NAME]] = True
@@ -481,29 +486,25 @@ def prompt_processor() -> Any:
             if assertion_failed or answer.lower() == "[]" or answer.lower() == "na":
                 structured_output[output[PSKeys.NAME]] = None
             else:
-                prompt = (
-                    f"Convert the following text:\n{answer} into valid JSON format."
+                prompt = f"Convert the following text into valid JSON string: \
+                    \n{answer}\n\n The JSON string should be able to be parsed \
+                    into a Python dictionary. \
+                    Output just the JSON string. No explanation is required. \
+                    If you cannot extract the JSON string, output {{}}"
+                answer = run_completion(
+                    llm_helper=llm_helper,
+                    llm_li=llm_li,
+                    prompt=prompt,
+                    adapter_instance_id=adapter_instance_id,
                 )
-                answer, usage = run_completion(
-                    llm_helper,
-                    llm_li,
-                    prompt,
-                )
-                # Remove any markdown code blocks
-                lines = answer.split("\n")
-                answer = ""
-                for line in lines:
-                    if line.strip().startswith("```"):
-                        continue
-                    answer += line + "\n"
                 try:
                     structured_output[output[PSKeys.NAME]] = json.loads(answer)
-                except Exception as e:
+                except JSONDecodeError as e:
                     app.logger.info(f"JSON format error : {answer}", LogLevel.ERROR)
                     app.logger.info(
                         f"Error parsing response (to json): {e}", LogLevel.ERROR
                     )
-                    structured_output[output[PSKeys.NAME]] = []
+                    structured_output[output[PSKeys.NAME]] = {}
         else:
             structured_output[output[PSKeys.NAME]] = answer
 
@@ -522,7 +523,7 @@ def prompt_processor() -> Any:
                         PSKeys.PREAMBLE: output[PSKeys.PREAMBLE],
                         PSKeys.POSTAMBLE: output[PSKeys.POSTAMBLE],
                         PSKeys.GRAMMAR: output[PSKeys.GRAMMAR],
-                        PSKeys.LLM: output[PSKeys.LLM],
+                        PSKeys.LLM: adapter_instance_id,
                         PSKeys.CHALLENGE_LLM: output[PSKeys.CHALLENGE_LLM],
                     }
                     challenge = challenge_plugin["entrypoint_cls"](
@@ -629,7 +630,6 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         "Execution complete",
     )
-    app.logger.info("Usage details : %s", str(usage))
     return structured_output
 
 
@@ -650,10 +650,11 @@ def simple_retriver(  # type:ignore
         f"Generate a sub-question from the following verbose prompt that will"
         f" help extract relevant documents from a vector store:\n\n{prompt}"
     )
-    answer, usage = run_completion(
-        llm_helper,
-        llm_li,
-        subq_prompt,
+    answer = run_completion(
+        llm_helper=llm_helper,
+        llm_li=llm_li,
+        prompt=subq_prompt,
+        adapter_instance_id=output[PSKeys.LLM],
     )
 
     retriever = vector_index.as_retriever(
@@ -675,14 +676,14 @@ def simple_retriver(  # type:ignore
         else:
             app.logger.info("Node score is less than 0.6. " f"Ignored: {node.score}")
 
-    answer, usage = construct_and_run_prompt(  # type:ignore
+    answer = construct_and_run_prompt(  # type:ignore
         output,
         llm_helper,
         llm_li,
         text,
         "promptx",
     )
-    return (answer, text, usage)
+    return (answer, text)
 
 
 def construct_and_run_prompt(
@@ -700,9 +701,10 @@ def construct_and_run_prompt(
         context=context,
     )
     return run_completion(
-        llm_helper,
-        llm_li,
-        prompt,
+        llm_helper=llm_helper,
+        llm_li=llm_li,
+        prompt=prompt,
+        adapter_instance_id=output[PSKeys.LLM],
     )
 
 
@@ -710,18 +712,21 @@ def run_completion(
     llm_helper: ToolLLM,
     llm_li: Optional[LLM],
     prompt: str,
+    adapter_instance_id: str,
 ) -> tuple[str, dict[str, Any]]:
     try:
         platform_api_key = llm_helper.tool.get_env_or_die(
             PSKeys.PLATFORM_SERVICE_API_KEY
         )
-        completion = llm_helper.run_completion(llm_li, platform_api_key, prompt, 3)
+        completion = llm_helper.run_completion(
+            llm=llm_li,
+            platform_api_key=platform_api_key,
+            prompt=prompt,
+            adapter_instance_id=adapter_instance_id,
+        )
 
         answer: str = completion[PSKeys.RESPONSE].text
-        usage = {}
-        if PSKeys.USAGE in completion:
-            usage = completion[PSKeys.USAGE]
-        return answer, usage
+        return answer
     except Exception as e:
         app.logger.info(f"Error completing prompt: {e}.")
         raise e

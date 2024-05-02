@@ -8,11 +8,9 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
-import { SocketMessages } from "../socket-messages/SocketMessages";
 
 function CustomToolsHelper() {
   const [isLoading, setIsLoading] = useState(true);
-  const [logId, setLogId] = useState(null);
   const { id } = useParams();
   const { sessionDetails } = useSessionStore();
   const { updateCustomTool, setDefaultCustomTool } = useCustomToolStore();
@@ -46,7 +44,6 @@ function CustomToolsHelper() {
         updatedCusTool["singlePassExtractMode"] =
           data?.single_pass_extraction_mode;
         selectedDocId = data?.output;
-        setLogId(sessionDetails?.logEventsId);
 
         const reqOpsDocs = {
           method: "GET",
@@ -110,12 +107,7 @@ function CustomToolsHelper() {
   if (isLoading) {
     return <SpinnerLoader />;
   }
-  return (
-    <>
-      <Outlet />
-      <SocketMessages logId={logId} />
-    </>
-  );
+  return <Outlet />;
 }
 
 export { CustomToolsHelper };

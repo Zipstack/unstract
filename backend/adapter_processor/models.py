@@ -24,7 +24,12 @@ class AdapterInstanceModelManager(models.Manager):
     def for_user(self, user: User) -> QuerySet[Any]:
         return (
             self.get_queryset()
-            .filter(models.Q(created_by=user) | models.Q(shared_users=user))
+            .filter(
+                models.Q(created_by=user)
+                | models.Q(shared_users=user)
+                | models.Q(shared_to_org=True)
+                | models.Q(is_friction_less=True)
+            )
             .distinct("id")
         )
 
@@ -80,10 +85,27 @@ class AdapterInstance(BaseModel):
         default=False,
         db_comment="Is the adapter instance currently being used",
     )
+    shared_to_org = models.BooleanField(
+        default=False,
+        db_comment="Is the adapter shared to entire org",
+    )
+
+    is_friction_less = models.BooleanField(
+        default=False,
+        db_comment="Was the adapter created through frictionless onboarding",
+    )
+
+    # Can be used if the adapter usage gets exhausted
+    # Can also be used in other possible scenarios in feature
+    is_usable = models.BooleanField(
+        default=True,
+        db_comment="Is the Adpater Usable",
+    )
 
     # Introduced field to establish M2M relation between users and adapters.
     # This will introduce intermediary table which relates both the models.
     shared_users = models.ManyToManyField(User, related_name="shared_adapters")
+    description = models.TextField(blank=True, null=True, default=None)
 
     objects = AdapterInstanceModelManager()
 
@@ -97,6 +119,18 @@ class AdapterInstance(BaseModel):
                 name="unique_adapter",
             ),
         ]
+
+    def create_adapter(self) -> None:
+
+        encryption_secret: str = settings.ENCRYPTION_KEY
+        f: Fernet = Fernet(encryption_secret.encode("utf-8"))
+
+        self.adapter_metadata_b = f.encrypt(
+            json.dumps(self.adapter_metadata).encode("utf-8")
+        )
+        self.adapter_metadata = {}
+
+        self.save()
 
     def get_adapter_meta_data(self) -> Any:
         encryption_secret: str = settings.ENCRYPTION_KEY

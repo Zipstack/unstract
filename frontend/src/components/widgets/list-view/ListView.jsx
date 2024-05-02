@@ -1,4 +1,12 @@
-import { Avatar, Flex, Image, List, Popconfirm, Typography } from "antd";
+import {
+  Avatar,
+  Flex,
+  Image,
+  List,
+  Popconfirm,
+  Tooltip,
+  Typography,
+} from "antd";
 import PropTypes from "prop-types";
 import "./ListView.css";
 import {
@@ -9,6 +17,7 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
+
 import { useSessionStore } from "../../../store/session-store";
 
 function ListView({
@@ -157,7 +166,9 @@ function ListView({
               title={renderTitle(item)}
               description={
                 <Typography.Text type="secondary" ellipsis>
-                  {item[descriptionProp]}
+                  <Tooltip title={item[descriptionProp]}>
+                    {item[descriptionProp]}
+                  </Tooltip>
                 </Typography.Text>
               }
             ></List.Item.Meta>
