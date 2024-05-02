@@ -152,7 +152,7 @@ class ListInvitationsResponseSerializer(serializers.Serializer):
         return data
 
 
-class updateFlagSerializer(ModelSerializer):
+class UpdateFlagSerializer(ModelSerializer):
 
     class Meta:
         model = OrganizationMember

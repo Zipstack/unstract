@@ -12,9 +12,9 @@ from tenant_account.serializer import (
     InviteUserSerializer,
     OrganizationMemberSerializer,
     RemoveUserFromOrganizationSerializer,
+    UpdateFlagSerializer,
     UserInfoSerializer,
     UserInviteResponseSerializer,
-    updateFlagSerializer,
 )
 from utils.user_session import UserSessionUtils
 
@@ -181,7 +181,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["PUT"])
     def update_flags(self, request: Request) -> Response:
-        serializer = updateFlagSerializer(data=request.data)
+        serializer = UpdateFlagSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         org_member = OrganizationMember.objects.get(user=request.user)
         org_member.is_login_onboarding_msg = serializer.validated_data.get(
