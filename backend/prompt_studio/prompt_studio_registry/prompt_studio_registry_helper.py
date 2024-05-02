@@ -209,6 +209,7 @@ class PromptStudioRegistryHelper:
 
             if not prompt.prompt:
                 invalidated_prompts.append(prompt.prompt_key)
+                continue
 
             prompt_output = PromptStudioOutputManager.objects.filter(
                 tool_id=tool.tool_id,
@@ -218,6 +219,7 @@ class PromptStudioRegistryHelper:
 
             if not prompt_output:
                 invalidated_outputs.append(prompt.prompt_key)
+                continue
 
             if prompt.prompt_type == JsonSchemaKey.NOTES:
                 continue
@@ -268,13 +270,13 @@ class PromptStudioRegistryHelper:
 
         if invalidated_prompts:
             raise InValidCustomToolError(
-                f"Cannot export tool. Prompts : {invalidated_prompts} "
-                "does not have a valid prompt."
+                f"Cannot export tool. Prompt(s) : {invalidated_prompts} "
+                "do not have a valid prompt."
             )
         if invalidated_outputs:
             raise InValidCustomToolError(
-                f"Cannot export tool. Prompts : {invalidated_outputs} "
-                "is not executed."
+                f"Cannot export tool. Prompt(s) : {invalidated_outputs} "
+                "are not executed."
             )
 
         export_metadata[JsonSchemaKey.OUTPUTS] = outputs

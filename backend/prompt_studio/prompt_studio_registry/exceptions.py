@@ -26,5 +26,5 @@ class EmptyToolExportError(APIException):
 
 class InValidCustomToolError(APIException):
     status_code = 500
-    default_detail = "This tool cannot be exported. It probably \
+    default_detail = "This prompt studio project cannot be exported. It probably \
         has some empty or unexecuted prompts."
