@@ -19,7 +19,9 @@ class Migration(migrations.Migration):
     ]
 
     def remove_incorrect_index_keys(apps: Any, schema_editor: Any) -> None:
-        IndexManager = apps.get_model("prompt_studio_index_manager", "IndexManager")
+        index_manager_model = apps.get_model(
+            "prompt_studio_index_manager", "IndexManager"
+        )
 
         incorrect_index_pattern = (
             r"[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}\|"  # Tool ID
@@ -30,13 +32,12 @@ class Migration(migrations.Migration):
             r"[\da-f]{64}"  # SHA-256 file hash
         )
 
-        incorrect_indexes = IndexManager.objects.filter(
+        incorrect_indexes = index_manager_model.objects.filter(
             models.Q(raw_index_id__regex=incorrect_index_pattern)
             | models.Q(summarize_index_id__regex=incorrect_index_pattern)
         )
         logger.info(f"Deleting index manager records: {incorrect_indexes}")
         incorrect_indexes.delete()
-        return
 
     operations = [
         migrations.RunPython(
