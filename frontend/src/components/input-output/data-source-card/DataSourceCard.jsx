@@ -2,8 +2,24 @@ import { Card, Image, Typography } from "antd";
 import PropTypes from "prop-types";
 
 import "./DataSourceCard.css";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
-function DataSourceCard({ srcDetails, setSelectedSourceId }) {
+function DataSourceCard({ srcDetails, setSelectedSourceId, type }) {
+  const { posthogEventText, setPostHogCustomEvent } = usePostHogEvents();
+
+  const handleSelectSource = () => {
+    if (srcDetails?.isDisabled) {
+      return;
+    }
+
+    if (posthogEventText[type]) {
+      setPostHogCustomEvent(posthogEventText[type], {
+        info: `User selected ${srcDetails?.name}`,
+      });
+    }
+
+    setSelectedSourceId(srcDetails?.id);
+  };
   return (
     <Card
       hoverable={!srcDetails?.isDisabled}
@@ -11,9 +27,7 @@ function DataSourceCard({ srcDetails, setSelectedSourceId }) {
       type="inner"
       bordered={true}
       className={`ds-card ${srcDetails?.isDisabled ? "disabled" : ""}`}
-      onClick={() =>
-        !srcDetails?.isDisabled && setSelectedSourceId(srcDetails?.id)
-      }
+      onClick={handleSelectSource}
     >
       <div className="cover-container">
         {srcDetails?.isDisabled && (
@@ -40,6 +54,7 @@ function DataSourceCard({ srcDetails, setSelectedSourceId }) {
 DataSourceCard.propTypes = {
   srcDetails: PropTypes.object.isRequired,
   setSelectedSourceId: PropTypes.func.isRequired,
+  type: PropTypes.string.isRequired,
 };
 
 export { DataSourceCard };

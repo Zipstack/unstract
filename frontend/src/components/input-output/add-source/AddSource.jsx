@@ -12,6 +12,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function AddSource({
   selectedSourceId,
+  selectedSourceName,
   setOpen,
   type,
   addNewItem,
@@ -106,12 +107,14 @@ function AddSource({
       handleUpdate={handleUpdate}
       connDetails={connDetails}
       metadata={metadata}
+      selectedSourceName={selectedSourceName}
     />
   );
 }
 
 AddSource.propTypes = {
   selectedSourceId: PropTypes.string.isRequired,
+  selectedSourceName: PropTypes.string.isRequired,
   setOpen: PropTypes.func,
   type: PropTypes.string.isRequired,
   addNewItem: PropTypes.func,

@@ -12,6 +12,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { OAuthDs } from "../../oauth-ds/oauth-ds/OAuthDs.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./ConfigureDs.css";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 function ConfigureDs({
   spec,
@@ -28,6 +29,7 @@ function ConfigureDs({
   handleUpdate,
   connDetails,
   metadata,
+  selectedSourceName,
 }) {
   const formRef = createRef(null);
   const axiosPrivate = useAxiosPrivate();
@@ -40,6 +42,8 @@ function ConfigureDs({
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { updateSessionDetails } = useSessionStore();
+  const { posthogTcEventText, posthogSubmitEventText, setPostHogCustomEvent } =
+    usePostHogEvents();
 
   const { id } = useParams();
 
@@ -104,6 +108,10 @@ function ConfigureDs({
         adapter_type: type.toUpperCase(),
       };
       url += "test_adapters/";
+
+      setPostHogCustomEvent(posthogTcEventText[type], {
+        info: `Test connection was triggered: ${selectedSourceName}`,
+      });
     }
 
     if (oAuthProvider?.length > 0) {
@@ -186,6 +194,10 @@ function ConfigureDs({
         adapter_name: adapterName,
       };
       url += "adapter/";
+
+      setPostHogCustomEvent(posthogSubmitEventText[type], {
+        info: `Submit was triggered: ${selectedSourceName}`,
+      });
     }
 
     let method = "POST";
@@ -311,6 +323,7 @@ ConfigureDs.propTypes = {
   handleUpdate: PropTypes.func,
   connDetails: PropTypes.object,
   metadata: PropTypes.object,
+  selectedSourceName: PropTypes.string.isRequired,
 };
 
 export { ConfigureDs };
