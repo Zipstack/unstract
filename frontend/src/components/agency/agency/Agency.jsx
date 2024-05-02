@@ -188,7 +188,6 @@ function Agency() {
         <Layout className="agency-sider-layout">
           <IslandLayout>
             <WorkflowExecution
-              steps={steps}
               setSteps={setSteps}
               activeToolId={activeToolId}
               inputMd={inputMd}

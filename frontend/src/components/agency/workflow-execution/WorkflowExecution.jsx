@@ -5,7 +5,6 @@ import "./WorkflowExecution.css";
 import { WorkflowExecutionMain } from "../workflow-execution-layout/WorkflowExecutionMain";
 
 function WorkflowExecution({
-  steps,
   setSteps,
   activeToolId,
   inputMd,
@@ -22,7 +21,6 @@ function WorkflowExecution({
       </div>
       <div className="wf-exec-main">
         <WorkflowExecutionMain
-          steps={steps}
           setSteps={setSteps}
           activeToolId={activeToolId}
           inputMd={inputMd}
@@ -36,7 +34,6 @@ function WorkflowExecution({
 }
 
 WorkflowExecution.propTypes = {
-  steps: PropTypes.array,
   setSteps: PropTypes.func,
   activeToolId: PropTypes.string,
   inputMd: PropTypes.string,
