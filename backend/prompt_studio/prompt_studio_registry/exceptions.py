@@ -18,8 +18,10 @@ class ToolSaveError(APIException):
 
 class EmptyToolExportError(APIException):
     status_code = 500
-    default_detail = "Empty tool without prompts cannot be exported. \
-        Try adding a prompt and executing it."
+    default_detail = (
+        "Empty Prompt Studio project without prompts cannot be exported. "
+        "Try adding a prompt and executing it."
+    )
 
 
 class InValidCustomToolError(APIException):
