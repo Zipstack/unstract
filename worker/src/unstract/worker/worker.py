@@ -46,13 +46,13 @@ class UnstractWorker:
                     registry=private_registry_url,
                 )
             except FileNotFoundError as file_err:
-                logger.error(
+                self.logger.error(
                     f"Service account key file is not mounted "
                     f"in {private_registry_credential_path}: {file_err}"
                     "Logging to private registry might fail, if private tool is used."
                 )
             except APIError as api_err:
-                logger.error(
+                self.logger.error(
                     f"Exception occured while invoking docker client : {api_err}."
                     f"Authentication to artifact registry failed."
                 )
