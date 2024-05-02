@@ -72,7 +72,7 @@ class AuthorizationErrorCode:
     INF: INVITATION NOT FOUND (Invitation is either invalid or has expired)
     UMM: USER MEMBERSHIP MISCONDUCT
     USF: USER FOUND (User Account Already Exists for Organization)
-    INE001: INVALID EMAIL Exception code when an invalid email address is used 
+    INE001: INVALID EMAIL Exception code when an invalid email address is used
     like disposable.
     INE002: INVALID EMAIL Exception code when an invalid email address format.
 
@@ -87,4 +87,3 @@ class AuthorizationErrorCode:
     USR = "USR"
     INE001 = "INE001"
     INE002 = "INE002"
-
