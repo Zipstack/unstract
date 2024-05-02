@@ -156,4 +156,4 @@ class updateFlagSerializer(ModelSerializer):
 
     class Meta:
         model = OrganizationMember
-        fields = ("is_onboarding_msg", "is_prompt_studio_msg")
+        fields = ("is_login_onboarding_msg", "is_prompt_studio_onboarding_msg")

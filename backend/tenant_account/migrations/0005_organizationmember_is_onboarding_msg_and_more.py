@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name="organizationmember",
-            name="is_onboarding_msg",
+            name="is_login_onboarding_msg",
             field=models.BooleanField(
                 db_comment="Flag to indicate whether the onboarding messages are shown to user",
                 default=True,
@@ -20,7 +20,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name="organizationmember",
-            name="is_prompt_studio_msg",
+            name="is_prompt_studio_onboarding_msg",
             field=models.BooleanField(
                 db_comment="Flag to indicate whether the prompt studio messages are shown to user",
                 default=True,

@@ -181,8 +181,8 @@ class AuthenticationController:
 
             if new_organization:
                 try:
-                    tenant_user.is_onboarding_msg = False
-                    tenant_user.is_prompt_studio_msg = False
+                    tenant_user.is_login_onboarding_msg = False
+                    tenant_user.is_prompt_studio_onboarding_msg = False
                     tenant_user.save()
                     self.auth_service.frictionless_onboarding(
                         organization=organization, user=user

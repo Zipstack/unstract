@@ -95,10 +95,10 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             # changes for displying onboarding msgs
             org_member = OrganizationMember.objects.get(user=request.user)
             serialized_user_info["login_onboarding_message_displayed"] = (
-                org_member.is_onboarding_msg
+                org_member.is_login_onboarding_msg
             )
             serialized_user_info["prompt_onboarding_message_displayed"] = (
-                org_member.is_prompt_studio_msg
+                org_member.is_prompt_studio_onboarding_msg
             )
 
             return Response(
@@ -181,17 +181,18 @@ class OrganizationUserViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["PUT"])
     def update_flags(self, request: Request) -> Response:
-
         serializer = updateFlagSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         org_member = OrganizationMember.objects.get(user=request.user)
-
-        org_member.is_onboarding_msg = serializer.validated_data.get(
-            "is_onboarding_msg"
+        org_member.is_login_onboarding_msg = serializer.validated_data.get(
+            "is_login_onboarding_msg"
         )
 
-        org_member.is_prompt_studio_msg = serializer.validated_data.get(
-            "is_prompt_studio_msg"
+        org_member.is_prompt_studio_onboarding_msg = serializer.validated_data.get(
+            "is_prompt_studio_onboarding_msg"
         )
         org_member.save()
-        return Response(serializer)
+        return Response(
+            status=status.HTTP_200_OK,
+            data={"status": "success", "message": "success"},
+        )
