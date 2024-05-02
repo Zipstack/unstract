@@ -4,6 +4,7 @@ from typing import Any, Optional, Union, cast
 from account.constants import Common
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
+from rest_framework.serializers import ModelSerializer
 from tenant_account.models import OrganizationMember
 
 
@@ -149,3 +150,10 @@ class ListInvitationsResponseSerializer(serializers.Serializer):
     def to_representation(self, instance: Any) -> OrderedDict[str, Any]:
         data: OrderedDict[str, Any] = super().to_representation(instance)
         return data
+
+
+class UpdateFlagSerializer(ModelSerializer):
+
+    class Meta:
+        model = OrganizationMember
+        fields = ("is_login_onboarding_msg", "is_prompt_studio_onboarding_msg")

@@ -278,6 +278,7 @@ class PromptStudioHelper:
             org_id=org_id,
             document_id=document_id,
             is_summary=is_summary,
+            reindex=True,
         )
 
         logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
@@ -627,6 +628,7 @@ class PromptStudioHelper:
         org_id: str,
         document_id: str,
         is_summary: bool = False,
+        reindex: bool = False,
     ) -> str:
         """Used to index a file based on the passed arguments.
 
@@ -681,7 +683,7 @@ class PromptStudioHelper:
                 file_hash=file_hash,
                 chunk_size=profile_manager.chunk_size,
                 chunk_overlap=profile_manager.chunk_overlap,
-                reindex=profile_manager.reindex,
+                reindex=reindex,
                 output_file_path=extract_file_path,
             )
 

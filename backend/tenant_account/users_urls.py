@@ -11,6 +11,7 @@ organization_user_role = OrganizationUserViewSet.as_view(
 user_profile = OrganizationUserViewSet.as_view(
     {
         "get": OrganizationUserViewSet.get_user_profile.__name__,
+        "put": OrganizationUserViewSet.update_flags.__name__,
     }
 )
 
