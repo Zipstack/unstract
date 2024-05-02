@@ -271,12 +271,12 @@ class PromptStudioRegistryHelper:
         if invalidated_prompts:
             raise InValidCustomToolError(
                 f"Cannot export tool. Prompt(s) : {invalidated_prompts} "
-                "do not have a valid prompt."
+                "are not valid. Please enter a valid prompt."
             )
         if invalidated_outputs:
             raise InValidCustomToolError(
                 f"Cannot export tool. Prompt(s) : {invalidated_outputs} "
-                "are not executed."
+                "were not run. Please run them before exporting."
             )
 
         export_metadata[JsonSchemaKey.OUTPUTS] = outputs
