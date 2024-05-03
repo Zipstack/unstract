@@ -333,7 +333,7 @@ class PromptStudioHelper:
 
             logger.info(f"[{tool_id}] Executing single prompt {id}")
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "prompt_id": id},
+                {"tool_id": tool_id, "prompt_id": id, "doc_name": file_name},
                 LogLevels.INFO,
                 LogLevels.RUN,
                 "Executing single prompt",
@@ -353,7 +353,7 @@ class PromptStudioHelper:
 
             logger.info(f"[{tool.tool_id}] Invoking prompt service for prompt {id}")
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "prompt_id": id},
+                {"tool_id": tool_id, "prompt_id": id, "doc_name": file_name},
                 LogLevels.DEBUG,
                 LogLevels.RUN,
                 "Invoking prompt service",
@@ -651,6 +651,7 @@ class PromptStudioHelper:
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = ToolIndex(tool=util)
         except Exception as e:
+            # TODO: Review use of this
             PromptStudioHelper._publish_log(
                 {"tool_id": tool_id, "doc_name": os.path.split(file_path)[1]},
                 LogLevels.ERROR,
