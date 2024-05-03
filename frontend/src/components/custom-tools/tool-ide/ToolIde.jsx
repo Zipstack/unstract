@@ -16,6 +16,18 @@ import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
 
+let OnboardMessagesModal;
+let slides;
+try {
+  OnboardMessagesModal =
+    require("../../../plugins/onboarding-messages/OnboardMessagesModal.jsx").OnboardMessagesModal;
+  slides =
+    require("../../../plugins/onboarding-messages/prompt-slides.jsx").PromptSlides;
+} catch (err) {
+  OnboardMessagesModal = null;
+  slides = [];
+}
+
 function ToolIde() {
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [activeKey, setActiveKey] = useState([]);
@@ -31,9 +43,11 @@ function ToolIde() {
     deleteIndexDoc,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
+  const { promptOnboardingMessage } = sessionDetails;
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const [loginModalOpen, setLoginModalOpen] = useState(true);
 
   const openLogsModal = () => {
     setShowLogsModal(true);
@@ -220,6 +234,13 @@ function ToolIde() {
         setOpen={setOpenSettings}
         handleUpdateTool={handleUpdateTool}
       />
+      {!promptOnboardingMessage && OnboardMessagesModal && (
+        <OnboardMessagesModal
+          open={loginModalOpen}
+          setOpen={setLoginModalOpen}
+          slides={slides}
+        />
+      )}
     </div>
   );
 }
