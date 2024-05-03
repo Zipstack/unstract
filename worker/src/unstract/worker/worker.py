@@ -56,6 +56,14 @@ class UnstractWorker:
                     f"Exception occured while invoking docker client : {api_err}."
                     f"Authentication to artifact registry failed."
                 )
+            except OSError as os_err:
+                self.logger.error(
+                    f"Exception in the file system used for authentication: {os_err}"
+                )
+            except Exception as exc:
+                self.logger.error(
+                    f"Internal service error occured while authentication: {exc}"
+                )
 
         self.image = self._get_image()
 
