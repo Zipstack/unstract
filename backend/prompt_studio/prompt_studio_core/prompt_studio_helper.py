@@ -278,6 +278,7 @@ class PromptStudioHelper:
             org_id=org_id,
             document_id=document_id,
             is_summary=is_summary,
+            reindex=True,
         )
 
         logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
@@ -627,6 +628,7 @@ class PromptStudioHelper:
         org_id: str,
         document_id: str,
         is_summary: bool = False,
+        reindex: bool = False,
     ) -> str:
         """Used to index a file based on the passed arguments.
 
@@ -660,7 +662,6 @@ class PromptStudioHelper:
         embedding_model = str(profile_manager.embedding_model.id)
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
-        file_hash = ToolUtils.get_hash_from_file(file_path=file_path)
         extract_file_path: Optional[str] = None
 
         if not is_summary:
@@ -678,10 +679,9 @@ class PromptStudioHelper:
                 vector_db=vector_db,
                 x2text_adapter=x2text_adapter,
                 file_path=file_path,
-                file_hash=file_hash,
                 chunk_size=profile_manager.chunk_size,
                 chunk_overlap=profile_manager.chunk_overlap,
-                reindex=profile_manager.reindex,
+                reindex=reindex,
                 output_file_path=extract_file_path,
             )
 
