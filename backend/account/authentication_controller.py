@@ -118,6 +118,8 @@ class AuthenticationController:
             if hasattr(ex, "code") and ex.code in {
                 AuthorizationErrorCode.USF,
                 AuthorizationErrorCode.USR,
+                AuthorizationErrorCode.INE001,
+                AuthorizationErrorCode.INE002,
             }:  # type: ignore
                 response = Response(
                     status=status.HTTP_412_PRECONDITION_FAILED,
