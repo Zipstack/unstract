@@ -23,6 +23,8 @@ function getSessionData(sessionData) {
     remainingTrialDays: sessionData?.remainingTrialDays,
     allOrganization: sessionData?.allOrganization,
     isPlatformAdmin: sessionData?.isPlatformAdmin,
+    loginOnboardingMessage: sessionData?.loginOnboardingMessage,
+    promptOnboardingMessage: sessionData?.promptOnboardingMessage,
   };
 }
 
