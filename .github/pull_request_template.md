@@ -10,12 +10,7 @@
 
 -
 
-
-## How
-
--
-
-## Can this PR break any existing features. If yes please list of possible items. If no please exaplin why. (PS: Admins do not merge the PR without this section filled)
+## Can this PR break any existing features. If yes, please list possible items. If no, please explain why. (PS: Admins do not merge the PR without this section filled)
 
 -
 
