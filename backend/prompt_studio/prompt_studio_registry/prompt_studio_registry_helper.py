@@ -8,10 +8,16 @@ from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.models import CustomTool
 from prompt_studio.prompt_studio_core.prompt_studio_helper import PromptStudioHelper
+from prompt_studio.prompt_studio_output_manager.models import PromptStudioOutputManager
 from unstract.tool_registry.dto import Properties, Spec, Tool
 
 from .constants import JsonSchemaKey
-from .exceptions import InternalError, ToolSaveError
+from .exceptions import (
+    EmptyToolExportError,
+    InternalError,
+    InValidCustomToolError,
+    ToolSaveError,
+)
 from .models import PromptStudioRegistry
 from .serializers import PromptStudioRegistrySerializer
 
@@ -173,6 +179,12 @@ class PromptStudioRegistryHelper:
         grammer_dict = {}
         outputs: list[dict[str, Any]] = []
         output: dict[str, Any] = {}
+        invalidated_prompts: list[str] = []
+        invalidated_outputs: list[str] = []
+
+        if not prompts:
+            raise EmptyToolExportError()
+
         if prompt_grammer:
             for word, synonyms in prompt_grammer.items():
                 synonyms = prompt_grammer[word]
@@ -194,6 +206,21 @@ class PromptStudioRegistryHelper:
 
         default_llm_profile = ProfileManager.get_default_llm_profile(tool)
         for prompt in prompts:
+
+            if not prompt.prompt:
+                invalidated_prompts.append(prompt.prompt_key)
+                continue
+
+            prompt_output = PromptStudioOutputManager.objects.filter(
+                tool_id=tool.tool_id,
+                prompt_id=prompt.prompt_id,
+                profile_manager=prompt.profile_manager,
+            ).all()
+
+            if not prompt_output:
+                invalidated_outputs.append(prompt.prompt_key)
+                continue
+
             if prompt.prompt_type == JsonSchemaKey.NOTES:
                 continue
             if not prompt.profile_manager:
@@ -240,6 +267,17 @@ class PromptStudioRegistryHelper:
             adapter_id = ""
             llm = ""
             embedding_model = ""
+
+        if invalidated_prompts:
+            raise InValidCustomToolError(
+                f"Cannot export tool. Prompt(s) : {invalidated_prompts} "
+                "are not valid. Please enter a valid prompt."
+            )
+        if invalidated_outputs:
+            raise InValidCustomToolError(
+                f"Cannot export tool. Prompt(s) : {invalidated_outputs} "
+                "were not run. Please run them before exporting."
+            )
 
         export_metadata[JsonSchemaKey.OUTPUTS] = outputs
         return export_metadata
