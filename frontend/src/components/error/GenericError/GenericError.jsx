@@ -37,7 +37,7 @@ function GenericError() {
       },
       INE001: {
         title: `Email not allowed`,
-        subtitle: "Disposible emails not allowed.",
+        subtitle: "Disposable emails not allowed.",
       },
       INE002: {
         title: `Invalid Email format`,
