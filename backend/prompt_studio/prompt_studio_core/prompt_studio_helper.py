@@ -333,7 +333,7 @@ class PromptStudioHelper:
 
             logger.info(f"[{tool_id}] Executing single prompt {id}")
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "prompt_id": id},
+                {"tool_id": tool_id, "prompt_id": id, "doc_name": file_name},
                 LogLevels.INFO,
                 LogLevels.RUN,
                 "Executing single prompt",
@@ -353,7 +353,7 @@ class PromptStudioHelper:
 
             logger.info(f"[{tool.tool_id}] Invoking prompt service for prompt {id}")
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "prompt_id": id},
+                {"tool_id": tool_id, "prompt_id": id, "doc_name": file_name},
                 LogLevels.DEBUG,
                 LogLevels.RUN,
                 "Invoking prompt service",
@@ -651,6 +651,7 @@ class PromptStudioHelper:
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = ToolIndex(tool=util)
         except Exception as e:
+            # TODO: Review use of this
             PromptStudioHelper._publish_log(
                 {"tool_id": tool_id, "doc_name": os.path.split(file_path)[1]},
                 LogLevels.ERROR,
@@ -662,7 +663,6 @@ class PromptStudioHelper:
         embedding_model = str(profile_manager.embedding_model.id)
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
-        file_hash = ToolUtils.get_hash_from_file(file_path=file_path)
         extract_file_path: Optional[str] = None
 
         if not is_summary:
@@ -680,7 +680,6 @@ class PromptStudioHelper:
                 vector_db=vector_db,
                 x2text_adapter=x2text_adapter,
                 file_path=file_path,
-                file_hash=file_hash,
                 chunk_size=profile_manager.chunk_size,
                 chunk_overlap=profile_manager.chunk_overlap,
                 reindex=reindex,

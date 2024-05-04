@@ -220,14 +220,14 @@ def prompt_processor() -> Any:
             structured_output, variable_names, output, promptx
         )
 
-        doc_id = ToolIndex.generate_file_id(
+        doc_id = tool_index.generate_file_id(
             tool_id=tool_id,
             file_hash=file_hash,
             vector_db=output[PSKeys.VECTOR_DB],
             embedding=output[PSKeys.EMBEDDING],
             x2text=output[PSKeys.X2TEXT_ADAPTER],
-            chunk_size=output[PSKeys.CHUNK_SIZE],
-            chunk_overlap=output[PSKeys.CHUNK_OVERLAP],
+            chunk_size=str(output[PSKeys.CHUNK_SIZE]),
+            chunk_overlap=str(output[PSKeys.CHUNK_OVERLAP]),
         )
         _publish_log(
             log_events_id,
@@ -302,11 +302,27 @@ def prompt_processor() -> Any:
         context = ""
         if output[PSKeys.CHUNK_SIZE] == 0:
             # We can do this only for chunkless indexes
-            context = tool_index.get_text_from_index(
+            context: Optional[str] = tool_index.get_text_from_index(
                 embedding_type=output[PSKeys.EMBEDDING],
                 vector_db=output[PSKeys.VECTOR_DB],
                 doc_id=doc_id,
             )
+            if context is None:
+                msg = (
+                    "Couldn't fetch context from"
+                    f" vector DB {output[PSKeys.VECTOR_DB]}"
+                )
+                app.logger.error(msg)
+                result["error"] = msg
+                # TODO: Try to fill doc_name also here
+                _publish_log(
+                    log_events_id,
+                    {"tool_id": tool_id},
+                    LogLevel.ERROR,
+                    RunLevel.RUN,
+                    "Couldn't fetch context from vector DB",
+                )
+                return result, 500
 
         assertion_failed = False
         answer = "yes"
