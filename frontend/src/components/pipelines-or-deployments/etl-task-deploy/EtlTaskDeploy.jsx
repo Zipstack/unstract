@@ -13,6 +13,7 @@ import "./EtlTaskDeploy.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useWorkflowStore } from "../../../store/workflow-store.js";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData.js";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 const defaultFromDetails = {
   pipeline_name: "",
@@ -49,6 +50,8 @@ const EtlTaskDeploy = ({
   const [openCronGenerator, setOpenCronGenerator] = useState(false);
   const [backendErrors, setBackendErrors] = useState(null);
   const [summary, setSummary] = useState(null);
+  const { posthogDeploymentEventText, setPostHogCustomEvent } =
+    usePostHogEvents();
 
   useEffect(() => {
     if (workflowId) {
@@ -175,6 +178,19 @@ const EtlTaskDeploy = ({
   };
 
   const createPipeline = () => {
+    try {
+      const wf = workflowList.find(
+        (item) => item?.id === formDetails?.workflow
+      );
+      setPostHogCustomEvent(posthogDeploymentEventText[`${type}_success`], {
+        info: "Clicked on 'Save and Deploy' button",
+        deployment_name: formDetails?.pipeline_name,
+        workflow_name: wf?.workflow_name,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
     const body = formDetails;
     body["pipeline_type"] = type.toUpperCase();
 
@@ -306,7 +322,7 @@ const EtlTaskDeploy = ({
             </div>
             <div>
               <Typography.Text className="summary-text">
-                {summary ? summary : "Summary not available."}
+                {summary || "Summary not available."}
               </Typography.Text>
             </div>
           </Space>
@@ -322,6 +338,7 @@ const EtlTaskDeploy = ({
     </>
   );
 };
+
 EtlTaskDeploy.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
@@ -333,4 +350,5 @@ EtlTaskDeploy.propTypes = {
   selectedRow: PropTypes.object,
   setDeploymentName: PropTypes.func,
 };
+
 export { EtlTaskDeploy };

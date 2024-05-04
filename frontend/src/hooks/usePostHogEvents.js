@@ -29,6 +29,33 @@ const usePostHogEvents = () => {
     ocr: null,
   };
 
+  const posthogConnectorEventText = {
+    "FILESYSTEM:input": "intent_wf_fs_source",
+    "FILESYSTEM:output": "intent_wf_fs_dest",
+    "DATABASE:output": "intent_wf_db_dest",
+  };
+
+  const posthogConnectorAddedEventText = {
+    "FILESYSTEM:input": "intent_success_wf_fs_source",
+    "FILESYSTEM:output": "intent_success_wf_fs_dest",
+    "DATABASE:output": "intent_success_wf_db_dest",
+  };
+
+  const posthogWfDeploymentEventText = {
+    API: "wf_deploy_api",
+    ETL: "wf_deploy_etl",
+    TASK: "wf_deploy_task",
+  };
+
+  const posthogDeploymentEventText = {
+    api: "intent_api_deployment",
+    api_success: "intent_success_api_deployment",
+    etl: "intent_etl_deployment",
+    etl_success: "intent_success_etl_deployment",
+    task: "intent_task_deployment",
+    task_success: "intent_success_task_deployment",
+  };
+
   const setPostHogIdentity = () => {
     const distinctId = `${sessionDetails?.orgId}:${sessionDetails?.orgName}`;
     const orgName = sessionDetails?.orgName;
@@ -61,6 +88,10 @@ const usePostHogEvents = () => {
     posthogEventText,
     posthogTcEventText,
     posthogSubmitEventText,
+    posthogConnectorEventText,
+    posthogConnectorAddedEventText,
+    posthogWfDeploymentEventText,
+    posthogDeploymentEventText,
     setPostHogIdentity,
     setPostHogCustomEvent,
   };

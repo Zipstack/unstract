@@ -191,10 +191,13 @@ function ToolSettings({ type }) {
   const handleOpenAddSourceModal = () => {
     setOpenAddSourcesModal(true);
 
-    if (!posthogEventText[type]) return;
-    setPostHogCustomEvent(posthogEventText[type], {
-      info: `Clicked on '+ ${btnText[type]}' button`,
-    });
+    try {
+      setPostHogCustomEvent(posthogEventText[type], {
+        info: `Clicked on '+ ${btnText[type]}' button`,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
   };
 
   return (

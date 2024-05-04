@@ -12,13 +12,16 @@ function DataSourceCard({ srcDetails, setSelectedSourceId, type }) {
       return;
     }
 
-    if (posthogEventText[type]) {
-      setPostHogCustomEvent(posthogEventText[type], {
-        info: `User selected ${srcDetails?.name}`,
-      });
-    }
-
     setSelectedSourceId(srcDetails?.id);
+
+    try {
+      setPostHogCustomEvent(posthogEventText[type], {
+        info: "Clicked on the adapters card",
+        adapter_name: srcDetails?.name,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
   };
   return (
     <Card

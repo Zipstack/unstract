@@ -30,6 +30,7 @@ function ConfigureDs({
   connDetails,
   metadata,
   selectedSourceName,
+  connType,
 }) {
   const formRef = createRef(null);
   const axiosPrivate = useAxiosPrivate();
@@ -42,8 +43,12 @@ function ConfigureDs({
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { updateSessionDetails } = useSessionStore();
-  const { posthogTcEventText, posthogSubmitEventText, setPostHogCustomEvent } =
-    usePostHogEvents();
+  const {
+    posthogTcEventText,
+    posthogSubmitEventText,
+    posthogConnectorAddedEventText,
+    setPostHogCustomEvent,
+  } = usePostHogEvents();
 
   const { id } = useParams();
 
@@ -109,9 +114,13 @@ function ConfigureDs({
       };
       url += "test_adapters/";
 
-      setPostHogCustomEvent(posthogTcEventText[type], {
-        info: `Test connection was triggered: ${selectedSourceName}`,
-      });
+      try {
+        setPostHogCustomEvent(posthogTcEventText[type], {
+          info: `Test connection was triggered: ${selectedSourceName}`,
+        });
+      } catch (err) {
+        // If an error occurs while setting custom posthog event, ignore it and continue
+      }
     }
 
     if (oAuthProvider?.length > 0) {
@@ -159,7 +168,7 @@ function ConfigureDs({
   };
 
   const handleSubmit = () => {
-    if (!isTcSuccessful) {
+    if (isTcSuccessful) {
       setAlertDetails({
         type: "error",
         content: "Please test the connection before submitting.",
@@ -183,6 +192,18 @@ function ConfigureDs({
         connector_name: connectorName,
       };
       url += "connector/";
+
+      try {
+        setPostHogCustomEvent(
+          posthogConnectorAddedEventText[`${connType}:${type}`],
+          {
+            info: `Clicked on 'Submit' button`,
+            connector_name: selectedSourceName,
+          }
+        );
+      } catch (err) {
+        // If an error occurs while setting custom posthog event, ignore it and continue
+      }
     } else {
       const adapterMetadata = { ...formData };
       const adapterName = adapterMetadata?.adapter_name;
@@ -195,9 +216,14 @@ function ConfigureDs({
       };
       url += "adapter/";
 
-      setPostHogCustomEvent(posthogSubmitEventText[type], {
-        info: `Submit was triggered: ${selectedSourceName}`,
-      });
+      try {
+        setPostHogCustomEvent(posthogSubmitEventText[type], {
+          info: "Clicked on 'Submit' button",
+          adpater_name: selectedSourceName,
+        });
+      } catch (err) {
+        // If an error occurs while setting custom posthog event, ignore it and continue
+      }
     }
 
     let method = "POST";
@@ -296,7 +322,7 @@ function ConfigureDs({
               block
               type="primary"
               onClick={handleSubmit}
-              disabled={!isTcSuccessful}
+              disabled={isTcSuccessful}
               loading={isSubmitApiLoading}
             >
               Submit
@@ -324,6 +350,7 @@ ConfigureDs.propTypes = {
   connDetails: PropTypes.object,
   metadata: PropTypes.object,
   selectedSourceName: PropTypes.string.isRequired,
+  connType: PropTypes.string,
 };
 
 export { ConfigureDs };

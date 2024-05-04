@@ -13,7 +13,7 @@ const RequireAdmin = () => {
   if (!isAdmin) {
     return <Unauthorized />;
   }
-  if (isOpenSource) {
+  if (!isOpenSource) {
     return <NotFound />;
   }
 
