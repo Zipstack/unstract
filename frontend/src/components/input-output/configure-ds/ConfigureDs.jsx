@@ -322,7 +322,7 @@ function ConfigureDs({
               block
               type="primary"
               onClick={handleSubmit}
-              disabled={isTcSuccessful}
+              disabled={!isTcSuccessful}
               loading={isSubmitApiLoading}
             >
               Submit
