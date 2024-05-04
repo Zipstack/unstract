@@ -240,7 +240,7 @@ function ManageDocsModal({
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/document-index?profile_manager=${llmProfileId}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/document-index/?profile_manager=${llmProfileId}`,
     };
 
     handleLoading(indexType, true);

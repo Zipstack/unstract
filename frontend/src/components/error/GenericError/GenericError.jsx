@@ -35,6 +35,14 @@ function GenericError() {
         subtitle:
           "You'll need to contact the admin of your organization's account to get access.",
       },
+      INE001: {
+        title: `Email not allowed`,
+        subtitle: "Disposible emails not allowed.",
+      },
+      INE002: {
+        title: `Invalid Email format`,
+        subtitle: "Please give a valid email address",
+      },
 
       // Add more key-value pairs as needed
     };
