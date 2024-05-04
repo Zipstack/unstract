@@ -168,7 +168,7 @@ function ConfigureDs({
   };
 
   const handleSubmit = () => {
-    if (isTcSuccessful) {
+    if (!isTcSuccessful) {
       setAlertDetails({
         type: "error",
         content: "Please test the connection before submitting.",
