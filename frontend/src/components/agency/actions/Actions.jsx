@@ -26,6 +26,7 @@ import { EtlTaskDeploy } from "../../pipelines-or-deployments/etl-task-deploy/Et
 import FileUpload from "../file-upload/FileUpload.jsx";
 import "./Actions.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   const [executionId, setExecutionId] = useState("");
@@ -44,6 +45,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   const [deploymentType, setDeploymentType] = useState("");
   const handleException = useExceptionHandler();
   const {
+    projectName,
     details,
     isLoading,
     loadingType,
@@ -55,6 +57,9 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   const { sessionDetails } = useSessionStore();
   const { orgName } = sessionDetails;
   const axiosPrivate = useAxiosPrivate();
+  const { posthogWfDeploymentEventText, setPostHogCustomEvent } =
+    usePostHogEvents();
+
   useEffect(() => {
     // Enable Deploy as API only when
     // Source & Destination connection_type are selected as API
@@ -156,6 +161,19 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
     isStepExecution,
     executionAction
   ) => {
+    try {
+      if (isStepExecution) {
+        setPostHogCustomEvent("wf_step", {
+          info: `Clicked on '${wfExecutionTypes[executionAction]}' button (Step Execution)`,
+        });
+      } else {
+        setPostHogCustomEvent("wf_run_wf", {
+          info: "Clicked on 'Run Workflow' button (Normal Execution)",
+        });
+      }
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
     const workflowId = details?.id;
 
     if (!workflowId) {
@@ -373,6 +391,19 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
       });
   };
 
+  const handleDeployBtnClick = (deployType) => {
+    createDeployment(deployType);
+
+    try {
+      setPostHogCustomEvent(posthogWfDeploymentEventText[deployType], {
+        info: `Clicked on 'Deploy as ${deployType}' button`,
+        workflow_name: projectName,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+  };
+
   return (
     <>
       <div className="actions-container">
@@ -446,7 +477,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           <Tooltip title="Deploy as API">
             <Button
               disabled={isIncompleteWorkflow() || !apiOpsPresent}
-              onClick={() => createDeployment("API")}
+              onClick={() => handleDeployBtnClick("API")}
             >
               <ApiOutlined />
             </Button>
@@ -454,14 +485,14 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           <Tooltip title="Deploy as ETL Pipeline">
             <Button
               disabled={isIncompleteWorkflow() || !canAddETLPipeline}
-              onClick={() => createDeployment("ETL")}
+              onClick={() => handleDeployBtnClick("ETL")}
             >
               <DeploymentUnitOutlined />
             </Button>
           </Tooltip>
           <Tooltip title="Deploy as Task Pipeline">
             <Button
-              onClick={() => createDeployment("TASK")}
+              onClick={() => handleDeployBtnClick("TASK")}
               disabled={isIncompleteWorkflow() || !canAddTaskPipeline}
             >
               <ApiOutlined />

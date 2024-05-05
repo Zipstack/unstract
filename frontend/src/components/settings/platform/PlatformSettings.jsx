@@ -14,6 +14,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import "./PlatformSettings.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 const defaultKeys = [
   {
@@ -40,6 +41,7 @@ function PlatformSettings() {
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
   const handleException = useExceptionHandler();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   useEffect(() => {
     const requestOptions = {
@@ -110,6 +112,20 @@ function PlatformSettings() {
     } else {
       // url += "/generate";
       body["is_active"] = activeKey === index;
+    }
+
+    try {
+      if (details?.id?.length > 0) {
+        setPostHogCustomEvent("intent_api_key_refreshed", {
+          info: "API Key has been refreshed",
+        });
+      } else {
+        setPostHogCustomEvent("intent_api_key_generation", {
+          info: "API Key has been generated",
+        });
+      }
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
     const requestOptions = {

@@ -7,7 +7,7 @@ import debounce from "lodash/debounce";
 import { DataSourceCard } from "../data-source-card/DataSourceCard";
 import "./ListOfSources.css";
 
-function ListOfSources({ setSelectedSourceId, open, sourcesList }) {
+function ListOfSources({ setSelectedSourceId, open, sourcesList, type }) {
   const [filteredSourcesList, setFilteredSourcesList] = useState([]);
   const [searchText, setSearchText] = useState("");
 
@@ -57,6 +57,7 @@ function ListOfSources({ setSelectedSourceId, open, sourcesList }) {
               <DataSourceCard
                 srcDetails={srcDetails}
                 setSelectedSourceId={setSelectedSourceId}
+                type={type}
               />
             </List.Item>
           )}
@@ -70,6 +71,7 @@ ListOfSources.propTypes = {
   setSelectedSourceId: PropTypes.func.isRequired,
   open: PropTypes.bool,
   sourcesList: PropTypes.array,
+  type: PropTypes.string.isRequired,
 };
 
 export { ListOfSources };

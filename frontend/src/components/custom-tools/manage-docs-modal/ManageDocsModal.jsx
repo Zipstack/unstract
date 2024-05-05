@@ -31,6 +31,7 @@ import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./ManageDocsModal.css";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 let SummarizeStatusTitle = null;
 try {
@@ -78,6 +79,7 @@ function ManageDocsModal({
   const { messages } = useSocketCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   const successIndex = (
     <Typography.Text>
@@ -338,6 +340,19 @@ function ManageDocsModal({
     return instance?.isIndexed ? successIndex : failed;
   };
 
+  const handleReIndexBtnClick = (item) => {
+    generateIndex(item);
+
+    try {
+      setPostHogCustomEvent("intent_ps_indexed_file", {
+        info: "Clicked on index button",
+        document_name: item?.document_name,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+  };
+
   useEffect(() => {
     const newRows = listOfDocs.map((item) => {
       return {
@@ -357,7 +372,7 @@ function ManageDocsModal({
                   <Button
                     size="small"
                     icon={<ReloadOutlined />}
-                    onClick={() => generateIndex(item)}
+                    onClick={() => handleReIndexBtnClick(item)}
                     disabled={
                       disableLlmOrDocChange?.length > 0 ||
                       isSinglePassExtractLoading ||
@@ -419,6 +434,14 @@ function ManageDocsModal({
   ]);
 
   const beforeUpload = (file) => {
+    try {
+      setPostHogCustomEvent("ps_uploaded_file", {
+        info: "Clicked on '+ Upload New File' button",
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);

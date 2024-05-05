@@ -12,6 +12,7 @@ import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { AddLlmProfile } from "../add-llm-profile/AddLlmProfile";
 import "./ManageLlmProfiles.css";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 const columns = [
   {
@@ -68,8 +69,17 @@ function ManageLlmProfiles() {
     useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   const handleDefaultLlm = (profileId) => {
+    try {
+      setPostHogCustomEvent("ps_profile_changed_per_prompt", {
+        info: "Selected default LLM profile",
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
     const body = {
       default_profile: profileId,
     };
@@ -140,6 +150,18 @@ function ManageLlmProfiles() {
     setRows(modifiedRows);
   }, [llmProfiles, defaultLlmProfile]);
 
+  const handleAddNewLlmProfileBtnClick = () => {
+    setIsAddLlm(true);
+
+    try {
+      setPostHogCustomEvent("intent_ps_new_llm_profile", {
+        info: "Clicked on 'Add New LLM Profile' button",
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+  };
+
   const handleEdit = (id) => {
     setEditLlmProfileId(id);
     setIsAddLlm(true);
@@ -206,7 +228,7 @@ function ManageLlmProfiles() {
         </div>
       </SpaceWrapper>
       <div className="display-flex-right">
-        <CustomButton type="primary" onClick={() => setIsAddLlm(true)}>
+        <CustomButton type="primary" onClick={handleAddNewLlmProfileBtnClick}>
           Add New LLM Profile
         </CustomButton>
       </div>

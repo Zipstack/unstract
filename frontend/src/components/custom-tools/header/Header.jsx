@@ -17,6 +17,7 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { ExportTool } from "../export-tool/ExportTool";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 let SinglePassToggleSwitch;
 try {
@@ -35,6 +36,7 @@ function Header({ setOpenSettings, handleUpdateTool }) {
   const handleException = useExceptionHandler();
   const [userList, setUserList] = useState([]);
   const [openExportToolModal, setOpenExportToolModal] = useState(false);
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   const [toolDetails, setToolDetails] = useState(null);
 
@@ -70,6 +72,15 @@ function Header({ setOpenSettings, handleUpdateTool }) {
   };
 
   const handleShare = (isEdit) => {
+    try {
+      setPostHogCustomEvent("ps_exported_tool", {
+        info: `Clicked on the 'Export' button`,
+        tool_name: details?.tool_name,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/${details?.tool_id}`,

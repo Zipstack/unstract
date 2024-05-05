@@ -13,6 +13,7 @@ import { CombinedOutput } from "../combined-output/CombinedOutput";
 import { DocumentParser } from "../document-parser/DocumentParser";
 import { Footer } from "../footer/Footer";
 import "./ToolsMain.css";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 let RunSinglePassBtn;
 try {
@@ -40,6 +41,7 @@ function ToolsMain() {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const navigate = useNavigate();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   const items = [
     {
@@ -105,6 +107,14 @@ function ToolsMain() {
   };
 
   const addPromptInstance = (type) => {
+    try {
+      setPostHogCustomEvent("ps_prompt_added", {
+        info: `Clicked on + ${type} button`,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
     let body = {};
     if (type === promptType.prompt) {
       body = { ...defaultPromptInstance };
@@ -137,6 +147,18 @@ function ToolsMain() {
       });
   };
 
+  const handleOutputAnalyzerBtnClick = () => {
+    navigate("outputAnalyzer");
+
+    try {
+      setPostHogCustomEvent("ps_output_analyser_seen", {
+        info: "Clicked on 'Output Analyzer' button",
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+  };
+
   return (
     <div className="tools-main-layout">
       <div className="doc-manager-header">
@@ -148,7 +170,7 @@ function ToolsMain() {
             <Tooltip title="Output Analyzer">
               <Button
                 icon={<BarChartOutlined />}
-                onClick={() => navigate("outputAnalyzer")}
+                onClick={handleOutputAnalyzerBtnClick}
                 disabled={
                   disableLlmOrDocChange?.length > 0 ||
                   isSinglePassExtractLoading

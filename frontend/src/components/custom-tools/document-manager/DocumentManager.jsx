@@ -15,6 +15,7 @@ import { DocumentViewer } from "../document-viewer/DocumentViewer";
 import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 const items = [
   {
@@ -71,6 +72,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   useEffect(() => {
     setFileUrl("");
@@ -167,6 +169,22 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
   const handleActiveKeyChange = (key) => {
     setActiveKey(key);
+
+    try {
+      if (key === "2") {
+        setPostHogCustomEvent("ps_raw_view_clicked", {
+          info: "Clicked on the 'Raw View' tab",
+        });
+      }
+
+      if (key === "3") {
+        setPostHogCustomEvent("ps_summary_view_clicked", {
+          info: "Clicked on the 'Summary View' tab",
+        });
+      }
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
   };
 
   const setErrorMessage = (viewType) => {

@@ -429,34 +429,32 @@ function Pipelines({ type }) {
   ];
 
   return (
-    <>
-      <div className="p-or-d-layout">
-        <Layout
+    <div className="p-or-d-layout">
+      <Layout
+        type={type}
+        columns={columns}
+        tableData={tableData}
+        isTableLoading={tableLoading}
+        openAddModal={openAddModal}
+      />
+      {openEtlOrTaskModal && (
+        <EtlTaskDeploy
+          open={openEtlOrTaskModal}
+          setOpen={setOpenEtlOrTaskModal}
+          setTableData={setTableData}
           type={type}
-          columns={columns}
-          tableData={tableData}
-          isTableLoading={tableLoading}
-          openAddModal={openAddModal}
+          title={deploymentsStaticContent[type].modalTitle}
+          isEdit={isEdit}
+          selectedRow={selectedPorD}
+          setSelectedRow={setSelectedPorD}
         />
-        {openEtlOrTaskModal && (
-          <EtlTaskDeploy
-            open={openEtlOrTaskModal}
-            setOpen={setOpenEtlOrTaskModal}
-            setTableData={setTableData}
-            type={type}
-            title={deploymentsStaticContent[type].modalTitle}
-            isEdit={isEdit}
-            selectedRow={selectedPorD}
-            setSelectedRow={setSelectedPorD}
-          />
-        )}
-        <DeleteModal
-          open={openDeleteModal}
-          setOpen={setOpenDeleteModal}
-          deleteRecord={deletePipeline}
-        />
-      </div>
-    </>
+      )}
+      <DeleteModal
+        open={openDeleteModal}
+        setOpen={setOpenDeleteModal}
+        deleteRecord={deletePipeline}
+      />
+    </div>
   );
 }
 
