@@ -5,15 +5,26 @@ import {
   onboardCompleted,
 } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
+import { useEffect } from "react";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 const RequireAuth = () => {
   const { sessionDetails } = useSessionStore();
+  const { setPostHogIdentity } = usePostHogEvents();
   const location = useLocation();
   const isLoggedIn = sessionDetails?.isLoggedIn;
   const orgName = sessionDetails?.orgName;
   const pathname = location?.pathname;
   const adapters = sessionDetails?.adapters;
   const currOrgName = getOrgNameFromPathname(pathname);
+
+  useEffect(() => {
+    if (!sessionDetails?.isLoggedIn) {
+      return;
+    }
+
+    setPostHogIdentity();
+  }, [sessionDetails]);
 
   let navigateTo = `/${orgName}/onboard`;
   if (onboardCompleted(adapters)) {
