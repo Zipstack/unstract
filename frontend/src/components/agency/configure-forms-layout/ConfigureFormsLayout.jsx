@@ -17,6 +17,8 @@ function ConfigureFormsLayout({
   setFormDataConfig,
   isSpecConfigLoading,
   connDetails,
+  connType,
+  selectedItemName,
 }) {
   return (
     <Row className="conn-modal-tab-body">
@@ -41,6 +43,8 @@ function ConfigureFormsLayout({
                 editItemId={editItemId}
                 handleUpdate={handleUpdate}
                 connDetails={connDetails}
+                connType={connType}
+                selectedSourceName={selectedItemName}
               />
             )}
           </div>
@@ -82,6 +86,8 @@ ConfigureFormsLayout.propTypes = {
   setFormDataConfig: PropTypes.func.isRequired,
   isSpecConfigLoading: PropTypes.bool.isRequired,
   connDetails: PropTypes.object,
+  connType: PropTypes.string,
+  selectedItemName: PropTypes.string,
 };
 
 export { ConfigureFormsLayout };

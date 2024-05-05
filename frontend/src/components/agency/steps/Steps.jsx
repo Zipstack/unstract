@@ -14,6 +14,7 @@ import { DsSettingsCard } from "../ds-settings-card/DsSettingsCard.jsx";
 import { StepCard } from "../step-card/StepCard.jsx";
 import "./Steps.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 function Steps({ setSteps, activeToolId, sourceMsg, destinationMsg }) {
   const workflowStore = useWorkflowStore();
@@ -31,6 +32,7 @@ function Steps({ setSteps, activeToolId, sourceMsg, destinationMsg }) {
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   useEffect(() => {
     getWfEndpointDetails();
@@ -60,6 +62,14 @@ function Steps({ setSteps, activeToolId, sourceMsg, destinationMsg }) {
   const moveItem = (fromIndex, toIndex, funcName, dragging) => {
     const toolInstance = details?.tool_instances || [];
     if (fromIndex === undefined && funcName) {
+      try {
+        setPostHogCustomEvent("wf_tool_drag_dropped", {
+          info: `Tool dragged and dropped`,
+          tool_name: funcName,
+        });
+      } catch (err) {
+        // If an error occurs while setting custom posthog event, ignore it and continue
+      }
       handleAddToolInstance(funcName)
         .then((res) => {
           const data = res?.data;

@@ -12,6 +12,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { OAuthDs } from "../../oauth-ds/oauth-ds/OAuthDs.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./ConfigureDs.css";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 function ConfigureDs({
   spec,
@@ -28,6 +29,8 @@ function ConfigureDs({
   handleUpdate,
   connDetails,
   metadata,
+  selectedSourceName,
+  connType,
 }) {
   const formRef = createRef(null);
   const axiosPrivate = useAxiosPrivate();
@@ -40,6 +43,12 @@ function ConfigureDs({
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { updateSessionDetails } = useSessionStore();
+  const {
+    posthogTcEventText,
+    posthogSubmitEventText,
+    posthogConnectorAddedEventText,
+    setPostHogCustomEvent,
+  } = usePostHogEvents();
 
   const { id } = useParams();
 
@@ -104,6 +113,14 @@ function ConfigureDs({
         adapter_type: type.toUpperCase(),
       };
       url += "test_adapters/";
+
+      try {
+        setPostHogCustomEvent(posthogTcEventText[type], {
+          info: `Test connection was triggered: ${selectedSourceName}`,
+        });
+      } catch (err) {
+        // If an error occurs while setting custom posthog event, ignore it and continue
+      }
     }
 
     if (oAuthProvider?.length > 0) {
@@ -175,6 +192,18 @@ function ConfigureDs({
         connector_name: connectorName,
       };
       url += "connector/";
+
+      try {
+        setPostHogCustomEvent(
+          posthogConnectorAddedEventText[`${connType}:${type}`],
+          {
+            info: `Clicked on 'Submit' button`,
+            connector_name: selectedSourceName,
+          }
+        );
+      } catch (err) {
+        // If an error occurs while setting custom posthog event, ignore it and continue
+      }
     } else {
       const adapterMetadata = { ...formData };
       const adapterName = adapterMetadata?.adapter_name;
@@ -186,6 +215,15 @@ function ConfigureDs({
         adapter_name: adapterName,
       };
       url += "adapter/";
+
+      try {
+        setPostHogCustomEvent(posthogSubmitEventText[type], {
+          info: "Clicked on 'Submit' button",
+          adpater_name: selectedSourceName,
+        });
+      } catch (err) {
+        // If an error occurs while setting custom posthog event, ignore it and continue
+      }
     }
 
     let method = "POST";
@@ -311,6 +349,8 @@ ConfigureDs.propTypes = {
   handleUpdate: PropTypes.func,
   connDetails: PropTypes.object,
   metadata: PropTypes.object,
+  selectedSourceName: PropTypes.string.isRequired,
+  connType: PropTypes.string,
 };
 
 export { ConfigureDs };

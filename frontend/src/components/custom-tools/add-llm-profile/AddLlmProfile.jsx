@@ -23,6 +23,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./AddLlmProfile.css";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 function AddLlmProfile({
   editLlmProfileId,
@@ -50,6 +51,7 @@ function AddLlmProfile({
   const axiosPrivate = useAxiosPrivate();
   const { token } = theme.useToken();
   const handleException = useExceptionHandler();
+  const { setPostHogCustomEvent } = usePostHogEvents();
   const panelStyle = {
     marginBottom: 16,
   };
@@ -296,6 +298,14 @@ function AddLlmProfile({
       method = "PUT";
       url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/`;
       url += `${editLlmProfileId}/`;
+    } else {
+      try {
+        setPostHogCustomEvent("intent_success_ps_new_llm_profile", {
+          info: "Clicked on 'Add' button",
+        });
+      } catch (err) {
+        // If an error occurs while setting custom posthog event, ignore it and continue
+      }
     }
 
     const requestOptions = {
