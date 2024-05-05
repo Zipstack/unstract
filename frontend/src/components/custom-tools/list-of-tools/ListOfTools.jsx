@@ -11,6 +11,7 @@ import "./ListOfTools.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 let OnboardMessagesModal;
 let slides;
@@ -30,6 +31,7 @@ function ListOfTools() {
   const [editItem, setEditItem] = useState(null);
   const { sessionDetails } = useSessionStore();
   const { loginOnboardingMessage } = sessionDetails;
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -181,12 +183,24 @@ function ListOfTools() {
     setOpenAddTool(true);
   };
 
+  const handleNewProjectBtnClick = () => {
+    showAddTool();
+
+    try {
+      setPostHogCustomEvent("intent_new_ps_project", {
+        info: "Clicked on '+ New Project' button",
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+  };
+
   const CustomButtons = () => {
     return (
       <CustomButton
         type="primary"
         icon={<PlusOutlined />}
-        onClick={showAddTool}
+        onClick={handleNewProjectBtnClick}
       >
         New Project
       </CustomButton>

@@ -15,6 +15,7 @@ import { LogsLabel } from "../logs-label/LogsLabel";
 import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 let OnboardMessagesModal;
 let slides;
@@ -48,6 +49,7 @@ function ToolIde() {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const [loginModalOpen, setLoginModalOpen] = useState(true);
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   const openLogsModal = () => {
     setShowLogsModal(true);
@@ -115,6 +117,14 @@ function ToolIde() {
           type: "success",
           content: `${doc?.document_name} - Indexed successfully`,
         });
+
+        try {
+          setPostHogCustomEvent("intent_success_ps_indexed_file", {
+            info: "Indexing completed",
+          });
+        } catch (err) {
+          // If an error occurs while setting custom posthog event, ignore it and continue
+        }
       })
       .catch((err) => {
         setAlertDetails(

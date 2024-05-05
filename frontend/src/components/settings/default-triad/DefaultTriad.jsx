@@ -12,6 +12,7 @@ import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import "./DefaultTriad.css";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 const { Option } = Select;
 
@@ -21,6 +22,7 @@ function DefaultTriad() {
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   const [adapterList, setAdapterList] = useState([]);
   const [dropdownData, setDropdownData] = useState([]);
@@ -118,6 +120,15 @@ function DefaultTriad() {
       [adapterType]: selectedValue,
     }));
     setIsSubmitEnabled(true);
+
+    try {
+      setPostHogCustomEvent("intent_success_select_default_triad", {
+        info: "Selected default triad",
+        adapter_name: adapterType,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
   };
 
   // Handler for form submission

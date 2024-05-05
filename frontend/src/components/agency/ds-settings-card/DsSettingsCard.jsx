@@ -77,6 +77,8 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const [isSpecConfigLoading, setIsSpecConfigLoading] = useState(false);
   const [formDataConfig, setFormDataConfig] = useState({});
   const [selectedId, setSelectedId] = useState("");
+  const [selectedItemName, setSelectedItemName] = useState("");
+
   const { sessionDetails } = useSessionStore();
   const { updateWorkflow } = useWorkflowStore();
   const { setAlertDetails } = useAlertStore();
@@ -431,6 +433,8 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         isSpecConfigLoading={isSpecConfigLoading}
         connDetails={connDetails}
         connType={connType}
+        selectedItemName={selectedItemName}
+        setSelectedItemName={setSelectedItemName}
       />
     </>
   );

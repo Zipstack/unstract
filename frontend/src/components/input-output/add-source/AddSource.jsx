@@ -12,6 +12,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function AddSource({
   selectedSourceId,
+  selectedSourceName,
   setOpen,
   type,
   addNewItem,
@@ -19,6 +20,7 @@ function AddSource({
   metadata,
   handleUpdate,
   connDetails,
+  connType,
 }) {
   const [spec, setSpec] = useState({});
   const [formData, setFormData] = useState({});
@@ -106,12 +108,15 @@ function AddSource({
       handleUpdate={handleUpdate}
       connDetails={connDetails}
       metadata={metadata}
+      selectedSourceName={selectedSourceName}
+      connType={connType}
     />
   );
 }
 
 AddSource.propTypes = {
   selectedSourceId: PropTypes.string.isRequired,
+  selectedSourceName: PropTypes.string,
   setOpen: PropTypes.func,
   type: PropTypes.string.isRequired,
   addNewItem: PropTypes.func,
@@ -119,6 +124,7 @@ AddSource.propTypes = {
   metadata: PropTypes.object,
   handleUpdate: PropTypes.func,
   connDetails: PropTypes.object,
+  connType: PropTypes.string,
 };
 
 export { AddSource };

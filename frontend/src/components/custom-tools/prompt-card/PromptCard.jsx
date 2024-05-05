@@ -48,6 +48,7 @@ import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
 
 import { TokenCount } from "../token-count/TokenCount";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 const EvalBtn = null;
 const EvalMetrics = null;
@@ -104,6 +105,7 @@ function PromptCard({
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   useEffect(() => {
     // Find the latest message that matches the criteria
@@ -282,6 +284,14 @@ function PromptCard({
 
   // Generate the result for the currently selected document
   const handleRun = () => {
+    try {
+      setPostHogCustomEvent("ps_prompt_run", {
+        info: "Click on 'Run Prompt' button (Multi Pass)",
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
     if (!promptDetails?.profile_manager?.length) {
       setAlertDetails({
         type: "error",
