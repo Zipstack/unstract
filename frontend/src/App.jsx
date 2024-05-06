@@ -12,7 +12,6 @@ function App() {
   const { defaultAlgorithm, darkAlgorithm } = theme;
   const { sessionDetails } = useSessionStore();
   const { alertDetails } = useAlertStore();
-  console.log(alertDetails);
 
   const btn = (
     <>
