@@ -225,23 +225,6 @@ function Pipelines({ type }) {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={() => openAddModal(true)}
-        >
-          <div>
-            <EditOutlined />
-          </div>
-          <div>
-            <Typography.Text>Edit</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "2",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
           onClick={() => setOpenDeleteModal(true)}
         >
           <div>
@@ -254,7 +237,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "3",
+      key: "2",
       label: (
         <Space
           direction="horizontal"
@@ -271,7 +254,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "4",
+      key: "3",
       label: (
         <Space
           direction="horizontal"
@@ -288,7 +271,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "5",
+      key: "4",
       label: (
         <Space
           direction="horizontal"
