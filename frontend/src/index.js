@@ -13,6 +13,7 @@ const API_HOST = "https://app.posthog.com";
 posthog.init(API_KEY, {
   api_host: API_HOST,
   capture_pageview: false,
+  autocapture: false,
 });
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
