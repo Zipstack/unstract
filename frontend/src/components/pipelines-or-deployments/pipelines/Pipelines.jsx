@@ -1,7 +1,6 @@
 import {
   ClearOutlined,
   DeleteOutlined,
-  EditOutlined,
   EllipsisOutlined,
   SyncOutlined,
   HighlightOutlined,
