@@ -63,3 +63,4 @@ class RunLevel(Enum):
 
     RUN = "RUN"
     EVAL = "EVAL"
+    CHALLENGE = "CHALLENGE"
