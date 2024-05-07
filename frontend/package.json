@@ -35,6 +35,7 @@
     "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "^18.2.0",
     "react-js-cron": "^5.0.1",
+    "react-product-fruits": "^2.2.6",
     "react-router-dom": "^6.11.2",
     "react-scripts": "5.0.1",
     "react-social-login-buttons": "^3.9.1",
