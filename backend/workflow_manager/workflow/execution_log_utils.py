@@ -67,7 +67,7 @@ def create_log_consumer_scheduler_if_not_exists():
         else:
             print("Log consumer scheduler created successfully.")
     except IntegrityError as error:
-        logger.error("Error occurred while creating log consumer scheduler:", error)
+        logger.error(f"Error occurred while creating log consumer scheduler: {error}")
 
 
 def store_to_db(organization_id: str, execution_logs: list[ExecutionLog]) -> None:
