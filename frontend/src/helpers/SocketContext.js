@@ -22,7 +22,10 @@ const SocketProvider = ({ children }) => {
     }
     const newSocket = io(baseUrl, body);
     setSocket(newSocket);
-
+    // Clean up the socket connection on browser unload
+    window.onbeforeunload = () => {
+      newSocket.disconnect();
+    };
     // Clean up the socket connection on component unmount
     return () => {
       newSocket.disconnect();
