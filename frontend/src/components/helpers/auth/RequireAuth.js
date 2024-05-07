@@ -8,6 +8,14 @@ import { useSessionStore } from "../../../store/session-store";
 import { useEffect } from "react";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
+let ProductFruitsManager;
+try {
+  ProductFruitsManager =
+    require("../../../plugins/product-fruits/ProductFruitsManager").ProductFruitsManager;
+} catch {
+  // The component will remain null of it is not available
+}
+
 const RequireAuth = () => {
   const { sessionDetails } = useSessionStore();
   const { setPostHogIdentity } = usePostHogEvents();
@@ -39,7 +47,12 @@ const RequireAuth = () => {
     return <Navigate to={navigateTo} />;
   }
 
-  return <Outlet />;
+  return (
+    <>
+      {ProductFruitsManager && <ProductFruitsManager />}
+      <Outlet />
+    </>
+  );
 };
 
 export { RequireAuth };
