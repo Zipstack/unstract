@@ -6,6 +6,7 @@ import { useAlertStore } from "../../../store/alert-store";
 import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useWorkflowStore } from "../../../store/workflow-store.js";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 const defaultFromDetails = {
   display_name: "",
@@ -39,6 +40,8 @@ const CreateApiDeploymentModal = ({
   const [form] = Form.useForm();
   const [backendErrors, setBackendErrors] = useState(null);
   const [isFormChanged, setIsFormChanged] = useState(false);
+  const { setPostHogCustomEvent } = usePostHogEvents();
+
   const handleInputChange = (changedValues, allValues) => {
     setIsFormChanged(true);
     setFormDetails({ ...formDetails, ...allValues });
@@ -92,6 +95,19 @@ const CreateApiDeploymentModal = ({
   };
 
   const createApiDeployment = () => {
+    try {
+      const wf = workflowEndpointList.find(
+        (item) => item?.workflow === formDetails?.workflow
+      );
+      setPostHogCustomEvent("intent_success_api_deployment", {
+        info: "Clicked on 'Save' button",
+        deployment_name: formDetails?.api_name,
+        workflow_name: wf?.workflow_name,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
     setIsLoading(true);
     const body = formDetails;
     apiDeploymentsApiService

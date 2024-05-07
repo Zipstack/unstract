@@ -16,6 +16,23 @@ class LogPublisher:
     )
 
     @staticmethod
+    def log_usage(
+        level: str = "INFO",
+        added_token_count: Optional[int] = None,
+        max_token_count_set: Optional[int] = None,
+        enabled: bool = False,
+    ) -> dict[str, Any]:
+        return {
+            "timestamp": datetime.now(timezone.utc).timestamp(),
+            "type": "LOG",
+            "service": "usage",
+            "level": level,
+            "added_token_count": added_token_count,
+            "max_token_count_set": max_token_count_set,
+            "enabled": enabled,
+        }
+
+    @staticmethod
     def log_workflow(
         stage: str,
         message: str,

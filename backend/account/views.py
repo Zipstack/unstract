@@ -115,6 +115,7 @@ def get_session_data(request: Request) -> Response:
         Response: Contains the User and Current organization details.
     """
     response = make_session_response(request)
+
     return Response(
         status=status.HTTP_201_CREATED,
         data=response,

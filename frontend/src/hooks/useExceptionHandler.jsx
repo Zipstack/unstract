@@ -7,17 +7,19 @@ const useExceptionHandler = () => {
     err,
     errMessage = "Something went wrong",
     setBackendErrors = undefined,
-    title = "Failed"
+    title = "Failed",
+    duration = 0
   ) => {
     if (!err) {
       return {
         type: "error",
         content: errMessage,
         title: title,
+        duration: duration,
       };
     }
 
-    if (err.response && err.response.data) {
+    if (err?.response?.data) {
       const { type, errors } = err.response.data;
       switch (type) {
         case "validation_error":
@@ -31,22 +33,23 @@ const useExceptionHandler = () => {
           return {
             title: title,
             type: "error",
-            content:
-              errors && errors[0]?.detail ? errors[0].detail : errMessage,
+            content: errors?.[0]?.detail ? errors[0].detail : errMessage,
+            duration: duration,
           };
         case "client_error":
         case "server_error":
           return {
             title: title,
             type: "error",
-            content:
-              errors && errors[0]?.detail ? errors[0].detail : errMessage,
+            content: errors?.[0]?.detail ? errors[0].detail : errMessage,
+            duration: duration,
           };
         default:
           return {
             title: title,
             type: "error",
             content: errMessage,
+            duration: duration,
           };
       }
     } else {
@@ -54,6 +57,7 @@ const useExceptionHandler = () => {
         title: title,
         type: "error",
         content: errMessage,
+        duration: duration,
       };
     }
   };

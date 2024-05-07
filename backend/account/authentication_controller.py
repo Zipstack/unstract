@@ -11,7 +11,12 @@ from account.constants import (
     ErrorMessage,
     OrganizationMemberModel,
 )
-from account.custom_exceptions import DuplicateData, Forbidden, UserNotExistError
+from account.custom_exceptions import (
+    DuplicateData,
+    Forbidden,
+    MethodNotImplemented,
+    UserNotExistError,
+)
 from account.dto import (
     MemberInvitation,
     OrganizationData,
@@ -54,7 +59,6 @@ class AuthenticationController:
         """This method initializes the controller by selecting the appropriate
         authentication plugin based on availability."""
         self.authentication_helper = AuthenticationHelper()
-        self.organization_member_service = OrganizationMemberService()
         if AuthenticationPluginRegistry.is_plugin_available():
             self.auth_service: AuthenticationService = (
                 AuthenticationPluginRegistry.get_plugin()
@@ -114,6 +118,8 @@ class AuthenticationController:
             if hasattr(ex, "code") and ex.code in {
                 AuthorizationErrorCode.USF,
                 AuthorizationErrorCode.USR,
+                AuthorizationErrorCode.INE001,
+                AuthorizationErrorCode.INE002,
             }:  # type: ignore
                 response = Response(
                     status=status.HTTP_412_PRECONDITION_FAILED,
@@ -122,6 +128,7 @@ class AuthenticationController:
                 return response
         user: User = request.user
         org_ids = {org.id for org in organizations}
+
         CacheService.set_user_organizations(user.user_id, list(org_ids))
 
         serialized_organizations = GetOrganizationsResponseSerializer(
@@ -172,7 +179,20 @@ class AuthenticationController:
                         f"{ErrorMessage.ORGANIZATION_EXIST}, \
                             {ErrorMessage.DUPLICATE_API}"
                     )
-            self.create_tenant_user(organization=organization, user=user)
+            tenant_user = self.create_tenant_user(organization=organization, user=user)
+
+            if new_organization:
+                try:
+                    with tenant_context(organization):
+                        tenant_user.is_login_onboarding_msg = False
+                        tenant_user.is_prompt_studio_onboarding_msg = False
+                        tenant_user.save()
+                    self.auth_service.frictionless_onboarding(
+                        organization=organization, user=user
+                    )
+                except MethodNotImplemented:
+                    Logger.info("frictionless_onboarding not implemented")
+
             if new_organization:
                 self.authentication_helper.create_initial_platform_key(
                     user=user, organization=organization
@@ -188,7 +208,16 @@ class AuthenticationController:
                     f"{Common.LOG_EVENTS_ID}": StateStore.get(Common.LOG_EVENTS_ID),
                 },
             )
+            current_organization_id = UserSessionUtils.get_organization_id(request)
+            if current_organization_id:
+                OrganizationMemberService.remove_user_membership_in_organization_cache(
+                    user_id=user.user_id,
+                    organization_id=current_organization_id,
+                )
             UserSessionUtils.set_organization_id(request, organization_id)
+            OrganizationMemberService.set_user_membership_in_organization_cache(
+                user_id=user.user_id, organization_id=organization_id
+            )
             return response
         return Response(status=status.HTTP_403_FORBIDDEN)
 
@@ -230,6 +259,12 @@ class AuthenticationController:
 
     def user_logout(self, request: Request) -> Response:
         response = self.auth_service.user_logout(request=request)
+        organization_id = UserSessionUtils.get_organization_id(request)
+        user_id = UserSessionUtils.get_user_id(request)
+        if organization_id:
+            OrganizationMemberService.remove_user_membership_in_organization_cache(
+                user_id=user_id, organization_id=organization_id
+            )
         django_logout(request)
         return response
 
@@ -284,7 +319,7 @@ class AuthenticationController:
             email = user_item.get("email")
             role = user_item.get("role")
             if email:
-                user = self.organization_member_service.get_user_by_email(email=email)
+                user = OrganizationMemberService.get_user_by_email(email=email)
                 user_response = {}
                 user_response["email"] = email
                 status = False
@@ -313,10 +348,10 @@ class AuthenticationController:
             user__email__in=user_emails
         ).values_list(OrganizationMemberModel.USER_ID, OrganizationMemberModel.ID)
         user_ids_list: list[str] = []
-        ids_list: list[str] = []
+        pk_list: list[str] = []
         for user in user_ids:
             user_ids_list.append(user[0])
-            ids_list.append(user[1])
+            pk_list.append(user[1])
         if len(user_ids_list) > 0:
             is_removed = self.auth_service.remove_users_from_organization(
                 admin=admin_user,
@@ -326,19 +361,19 @@ class AuthenticationController:
         else:
             is_removed = False
         if is_removed:
-            OrganizationMember.objects.filter(user__in=ids_list).delete()
-            # removing user m2m relations , while removing user
-            for user_id in ids_list:
-                User.objects.get(pk=user_id).shared_exported_tools.clear()
-                User.objects.get(pk=user_id).shared_custom_tool.clear()
-                User.objects.get(pk=user_id).shared_adapters.clear()
+            AuthenticationHelper.remove_users_from_organization_by_pks(pk_list)
+            for user_id in user_ids_list:
+                OrganizationMemberService.remove_user_membership_in_organization_cache(
+                    user_id, organization_id
+                )
+
         return is_removed
 
     def add_user_role(
         self, admin: User, org_id: str, email: str, role: str
     ) -> Optional[str]:
         admin_user = OrganizationMember.objects.get(user=admin.id)
-        user = self.organization_member_service.get_user_by_email(email=email)
+        user = OrganizationMemberService.get_user_by_email(email=email)
         if user:
             current_roles = self.auth_service.add_organization_user_role(
                 admin_user, org_id, user.user.user_id, [role]
@@ -355,9 +390,7 @@ class AuthenticationController:
         self, admin: User, org_id: str, email: str, role: str
     ) -> Optional[str]:
         admin_user = OrganizationMember.objects.get(user=admin.id)
-        organization_member = self.organization_member_service.get_user_by_email(
-            email=email
-        )
+        organization_member = OrganizationMemberService.get_user_by_email(email=email)
         if organization_member:
             current_roles = self.auth_service.remove_organization_user_role(
                 admin_user, org_id, organization_member.user.user_id, [role]
@@ -372,7 +405,7 @@ class AuthenticationController:
             return None
 
     def save_orgnanization_user_role(self, user_id: str, role: str) -> None:
-        organization_user = self.organization_member_service.get_user_by_user_id(
+        organization_user = OrganizationMemberService.get_user_by_user_id(
             user_id=user_id
         )
         if organization_user:
@@ -380,11 +413,14 @@ class AuthenticationController:
             organization_user.role = role
             organization_user.save()
 
-    def create_tenant_user(self, organization: Organization, user: User) -> None:
+    def create_tenant_user(
+        self, organization: Organization, user: User
+    ) -> OrganizationMember:
         with tenant_context(organization):
             existing_tenant_user = OrganizationMemberService.get_user_by_id(id=user.id)
             if existing_tenant_user:
                 Logger.info(f"{existing_tenant_user.user.email} Already exist")
+                return existing_tenant_user
             else:
                 account_user = self.get_or_create_user(user=user)
                 if account_user:
@@ -394,9 +430,11 @@ class AuthenticationController:
                     )
                     user_role = user_roles[0]
                     tenant_user: OrganizationMember = OrganizationMember(
-                        user=user, role=user_role
+                        user=user,
+                        role=user_role,
                     )
                     tenant_user.save()
+                    return tenant_user
                 else:
                     raise UserNotExistError()
 

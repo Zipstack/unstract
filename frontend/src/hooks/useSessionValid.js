@@ -1,15 +1,19 @@
 import axios from "axios";
-
-import { getSessionData } from "../helpers/GetSessionData";
 import Cookies from "js-cookie";
-import { userSession } from "../helpers/GetUserSession.js";
-import { useSessionStore } from "../store/session-store";
-import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
 import { useNavigate } from "react-router-dom";
 
+import { getSessionData } from "../helpers/GetSessionData";
+
+import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
+import { useSessionStore } from "../store/session-store";
+import { useUserSession } from "./useUserSession.js";
+
 let getTrialDetails;
+let isPlatformAdmin;
 try {
   getTrialDetails = require("../plugins/subscription/trial-helper/fetchTrialDetails.jsx");
+  isPlatformAdmin =
+    require("../plugins/hooks/usePlatformAdmin.js").usePlatformAdmin();
 } catch (err) {
   // Plugin not available
 }
@@ -18,6 +22,7 @@ function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
   const handleException = useExceptionHandler();
   const navigate = useNavigate();
+  const userSession = useUserSession();
   return async () => {
     try {
       const userSessionData = await userSession();
@@ -67,6 +72,10 @@ function useSessionValid() {
       };
       const getUserInfo = await axios(requestOptions);
       userAndOrgDetails["isAdmin"] = getUserInfo?.data?.user?.is_admin;
+      userAndOrgDetails["loginOnboardingMessage"] =
+        getUserInfo?.data?.user?.login_onboarding_message_displayed;
+      userAndOrgDetails["promptOnboardingMessage"] =
+        getUserInfo?.data?.user?.prompt_onboarding_message_displayed;
 
       const zCode = ("; " + document.cookie)
         .split(`; z_code=`)
@@ -97,7 +106,9 @@ function useSessionValid() {
           userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
       }
       userAndOrgDetails["allOrganization"] = orgs;
-
+      if (isPlatformAdmin) {
+        userAndOrgDetails["isPlatformAdmin"] = await isPlatformAdmin();
+      }
       // Set the session details
       setSessionDetails(getSessionData(userAndOrgDetails));
     } catch (err) {

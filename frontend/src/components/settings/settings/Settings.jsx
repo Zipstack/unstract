@@ -4,10 +4,24 @@ import "./Settings.css";
 
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import { useSessionStore } from "../../../store/session-store";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 function Settings() {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
+  const { setPostHogCustomEvent } = usePostHogEvents();
+
+  const handleDefaultTriadClick = () => {
+    navigate("triad");
+
+    try {
+      setPostHogCustomEvent("intent_select_default_triad", {
+        info: "Clicked on 'Default Triad' button",
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+  };
 
   return (
     <div className="settings-bg-col">
@@ -40,11 +54,23 @@ function Settings() {
             <Typography.Link
               className="settings-plt-typo"
               strong
-              onClick={() => navigate("triad")}
+              onClick={handleDefaultTriadClick}
             >
               Default Triad
             </Typography.Link>
           </div>
+
+          {sessionDetails?.isPlatformAdmin && (
+            <div className="settings-plt">
+              <Typography.Link
+                className="settings-plt-typo"
+                strong
+                onClick={() => navigate("admin")}
+              >
+                Admin settings
+              </Typography.Link>
+            </div>
+          )}
         </div>
       </IslandLayout>
     </div>

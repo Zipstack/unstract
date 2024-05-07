@@ -14,6 +14,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 const titles = {
   llm: "LLMs",
@@ -46,6 +47,7 @@ function ToolSettings({ type }) {
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const { posthogEventText, setPostHogCustomEvent } = usePostHogEvents();
 
   useEffect(() => {
     setTableRows([]);
@@ -186,6 +188,18 @@ function ToolSettings({ type }) {
       });
   };
 
+  const handleOpenAddSourceModal = () => {
+    setOpenAddSourcesModal(true);
+
+    try {
+      setPostHogCustomEvent(posthogEventText[type], {
+        info: `Clicked on '+ ${btnText[type]}' button`,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+  };
+
   return (
     <div className="plt-tool-settings-layout">
       <ToolNavBar
@@ -194,7 +208,7 @@ function ToolSettings({ type }) {
           return (
             <CustomButton
               type="primary"
-              onClick={() => setOpenAddSourcesModal(true)}
+              onClick={handleOpenAddSourceModal}
               icon={<PlusOutlined />}
             >
               {btnText[type]}
@@ -213,6 +227,7 @@ function ToolSettings({ type }) {
               handleEdit={(_event, item) => setEditItemId(item?.id)}
               idProp="id"
               titleProp="adapter_name"
+              descriptionProp="description"
               iconProp="icon"
               isEmpty={!tableRows?.length}
               centered

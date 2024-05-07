@@ -15,6 +15,19 @@ import { LogsLabel } from "../logs-label/LogsLabel";
 import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+
+let OnboardMessagesModal;
+let slides;
+try {
+  OnboardMessagesModal =
+    require("../../../plugins/onboarding-messages/OnboardMessagesModal.jsx").OnboardMessagesModal;
+  slides =
+    require("../../../plugins/onboarding-messages/prompt-slides.jsx").PromptSlides;
+} catch (err) {
+  OnboardMessagesModal = null;
+  slides = [];
+}
 
 function ToolIde() {
   const [showLogsModal, setShowLogsModal] = useState(false);
@@ -31,9 +44,12 @@ function ToolIde() {
     deleteIndexDoc,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
+  const { promptOnboardingMessage } = sessionDetails;
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const [loginModalOpen, setLoginModalOpen] = useState(true);
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   const openLogsModal = () => {
     setShowLogsModal(true);
@@ -101,6 +117,14 @@ function ToolIde() {
           type: "success",
           content: `${doc?.document_name} - Indexed successfully`,
         });
+
+        try {
+          setPostHogCustomEvent("intent_success_ps_indexed_file", {
+            info: "Indexing completed",
+          });
+        } catch (err) {
+          // If an error occurs while setting custom posthog event, ignore it and continue
+        }
       })
       .catch((err) => {
         setAlertDetails(
@@ -220,6 +244,13 @@ function ToolIde() {
         setOpen={setOpenSettings}
         handleUpdateTool={handleUpdateTool}
       />
+      {!promptOnboardingMessage && OnboardMessagesModal && (
+        <OnboardMessagesModal
+          open={loginModalOpen}
+          setOpen={setLoginModalOpen}
+          slides={slides}
+        />
+      )}
     </div>
   );
 }

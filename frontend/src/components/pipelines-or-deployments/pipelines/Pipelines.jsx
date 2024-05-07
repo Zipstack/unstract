@@ -1,7 +1,6 @@
 import {
   ClearOutlined,
   DeleteOutlined,
-  EditOutlined,
   EllipsisOutlined,
   SyncOutlined,
   HighlightOutlined,
@@ -17,7 +16,6 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { useSessionStore } from "../../../store/session-store.js";
 import { Layout } from "../../deployments/layout/Layout.jsx";
-import { SocketMessages } from "../../helpers/socket-messages/SocketMessages.js";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import { LogsModal } from "../log-modal/LogsModal.jsx";
@@ -31,7 +29,6 @@ function Pipelines({ type }) {
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [selectedPorD, setSelectedPorD] = useState({});
   const [tableLoading, setTableLoading] = useState(true);
-  const [logId, setLogId] = useState("");
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -81,8 +78,6 @@ function Pipelines({ type }) {
 
     handleSyncApiReq(body)
       .then((res) => {
-        const logIdValue = res?.data?.execution?.log_id;
-        setLogId(logIdValue);
         const executionId = res?.data?.execution?.execution_id;
         body["execution_id"] = executionId;
         return handleSyncApiReq(body);
@@ -256,13 +251,13 @@ function Pipelines({ type }) {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={() => openAddModal(true)}
+          onClick={() => setOpenDeleteModal(true)}
         >
           <div>
-            <EditOutlined />
+            <DeleteOutlined />
           </div>
           <div>
-            <Typography.Text>Edit</Typography.Text>
+            <Typography.Text>Delete</Typography.Text>
           </div>
         </Space>
       ),
@@ -293,23 +288,6 @@ function Pipelines({ type }) {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={() => setOpenDeleteModal(true)}
-        >
-          <div>
-            <DeleteOutlined />
-          </div>
-          <div>
-            <Typography.Text>Delete</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "4",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
           onClick={() => clearCache()}
         >
           <div>
@@ -322,7 +300,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "5",
+      key: "4",
       label: (
         <Space
           direction="horizontal"
@@ -339,7 +317,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "6",
+      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -480,40 +458,37 @@ function Pipelines({ type }) {
   ];
 
   return (
-    <>
-      <div className="p-or-d-layout">
-        <Layout
+    <div className="p-or-d-layout">
+      <Layout
+        type={type}
+        columns={columns}
+        tableData={tableData}
+        isTableLoading={tableLoading}
+        openAddModal={openAddModal}
+      />
+      {openEtlOrTaskModal && (
+        <EtlTaskDeploy
+          open={openEtlOrTaskModal}
+          setOpen={setOpenEtlOrTaskModal}
+          setTableData={setTableData}
           type={type}
-          columns={columns}
-          tableData={tableData}
-          isTableLoading={tableLoading}
-          openAddModal={openAddModal}
+          title={deploymentsStaticContent[type].modalTitle}
+          isEdit={isEdit}
+          selectedRow={selectedPorD}
+          setSelectedRow={setSelectedPorD}
         />
-        {openEtlOrTaskModal && (
-          <EtlTaskDeploy
-            open={openEtlOrTaskModal}
-            setOpen={setOpenEtlOrTaskModal}
-            setTableData={setTableData}
-            type={type}
-            title={deploymentsStaticContent[type].modalTitle}
-            isEdit={isEdit}
-            selectedRow={selectedPorD}
-            setSelectedRow={setSelectedPorD}
-          />
-        )}
-        <LogsModal
-          open={openLogsModal}
-          setOpen={setOpenLogsModal}
-          logRecord={executionLogs}
-        />
-        <DeleteModal
-          open={openDeleteModal}
-          setOpen={setOpenDeleteModal}
-          deleteRecord={deletePipeline}
-        />
-      </div>
-      <SocketMessages logId={logId} />
-    </>
+      )}
+      <LogsModal
+        open={openLogsModal}
+        setOpen={setOpenLogsModal}
+        logRecord={executionLogs}
+      />
+      <DeleteModal
+        open={openDeleteModal}
+        setOpen={setOpenDeleteModal}
+        deleteRecord={deletePipeline}
+      />
+    </div>
   );
 }
 
