@@ -6,11 +6,6 @@ class IndexingError(APIException):
     default_detail = "Error while indexing file"
 
 
-class FilenameMissingError(APIException):
-    status_code = 400
-    default_detail = "No file selected to parse."
-
-
 class AnswerFetchError(APIException):
     status_code = 400
     default_detail = "Error occured while fetching response for the prompt"
