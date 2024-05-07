@@ -196,7 +196,7 @@ function Pipelines({ type }) {
       .then((res) => {
         const logs = res?.data?.results?.map((result) => ({
           created_at: result.created_at,
-          execution_log_id: result.execution_log_id,
+          execution_id: result.id,
           status: result.status,
           execution_time: result.execution_time,
         }));

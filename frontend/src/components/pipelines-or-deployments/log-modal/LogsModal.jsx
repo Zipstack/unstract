@@ -6,6 +6,7 @@ import { useSessionStore } from "../../../store/session-store.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import "./LogsModel.css";
 
 const LogsModal = ({ open, setOpen, logRecord }) => {
   const [selectedLogId, setSelectedLogId] = useState(null);
@@ -28,8 +29,10 @@ const LogsModal = ({ open, setOpen, logRecord }) => {
       .then((res) => {
         const logDetails = res.data.results.map((item) => ({
           id: item.id,
-          log: item.data.log,
-          type: item.data.type,
+          log: item.data?.log,
+          type: item.data?.type,
+          stage: item.data?.stage,
+          level: item.data?.level,
           event_time: item.event_time,
         }));
         setLogDetails(logDetails);
@@ -47,45 +50,55 @@ const LogsModal = ({ open, setOpen, logRecord }) => {
 
   const logColumns = [
     {
-      title: "Created At",
+      title: "Executed At",
       dataIndex: "created_at",
       key: "created_at",
     },
     {
-      title: "Execution Log ID",
-      dataIndex: "execution_log_id",
-      key: "execution_log_id",
-      render: (text, record) => (
-        <Button
-          type="link"
-          onClick={() => handleLogIdClick(record.execution_log_id)}
-        >
-          {text}
-        </Button>
-      ),
+      title: "Execution ID",
+      dataIndex: "execution_id",
+      key: "execution_id",
+      render: (text, record) => {
+        console.log("record:: ", record);
+        return (
+          <Button
+            type="link"
+            onClick={() => handleLogIdClick(record.execution_id)}
+          >
+            {text}
+          </Button>
+        );
+      },
     },
     {
       title: "Status",
       dataIndex: "status",
       key: "status",
-    },
-    {
-      title: "Execution Time",
-      dataIndex: "execution_time",
-      key: "execution_time",
+      render: (level) => <span className={level.toLowerCase()}>{level}</span>,
     },
   ];
 
   const logDetailsColumns = [
     {
-      title: "Log",
-      dataIndex: "log",
-      key: "log",
-    },
-    {
       title: "Event Time",
       dataIndex: "event_time",
       key: "event_time",
+    },
+    {
+      title: "Event Stage",
+      dataIndex: "stage",
+      key: "stage",
+    },
+    {
+      title: "Log Level",
+      dataIndex: "level",
+      key: "level",
+      render: (level) => <span className={level.toLowerCase()}>{level}</span>,
+    },
+    {
+      title: "Log",
+      dataIndex: "log",
+      key: "log",
     },
   ];
   return (

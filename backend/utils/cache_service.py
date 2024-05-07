@@ -1,8 +1,10 @@
 from typing import Any, Optional
 
-from account.custom_cache import CustomCache
 from django.conf import settings
 from django.core.cache import cache
+from django_redis import get_redis_connection
+
+redis_cache = get_redis_connection("default")
 
 
 class CacheService:
@@ -56,16 +58,20 @@ class CacheService:
         return cache.delete(key)
 
     @staticmethod
-    def add_cookie_id_to_user(user_id: str, cookie_id: str) -> None:
-        custom_cache = CustomCache()
-        key: str = f"{user_id}|cookies"
-        custom_cache.rpush(key, cookie_id)
+    def rpush(key: str, value: str) -> None:
+        redis_cache.rpush(key, value)
 
     @staticmethod
-    def remove_cookie_id_from_user(user_id: str, cookie_id: str) -> None:
-        custom_cache = CustomCache()
-        key: str = f"{user_id}|cookies"
-        custom_cache.lrem(key, cookie_id)
+    def lpop(key: str) -> Any:
+        return redis_cache.lpop(key)
+
+    @staticmethod
+    def lrem(key: str, value: str) -> None:
+        redis_cache.lrem(key, value)
+
+    @staticmethod
+    def lrange(key, start_index, end_index) -> list[Any]:
+        return redis_cache.lrange(key, start_index, end_index)
 
     @staticmethod
     def remove_all_session_keys(

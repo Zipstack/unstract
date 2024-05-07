@@ -145,7 +145,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         workflow_execution.save()
         return workflow_execution
 
-    def __update_execution(
+    def update_execution(
         self,
         status: Optional[ExecutionStatus] = None,
         execution_time: Optional[float] = None,
@@ -171,11 +171,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         detailed_message: str,
         execution_time: Optional[float] = None,
     ) -> WorkflowExecutionError:
-        self.__update_execution(
-            status=ExecutionStatus.ERROR,
-            error=detailed_message,
-            execution_time=execution_time,
-        )
         return WorkflowExecutionError(detail=error_message)
 
     def has_successful_compilation(self) -> bool:
@@ -190,11 +185,15 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     def build(self) -> None:
         if self.compilation_result["success"] is True:
             self.build_workflow()
-            self.__update_execution(status=ExecutionStatus.READY)
+            self.update_execution(status=ExecutionStatus.READY)
         else:
             logger.error(
                 "Errors while compiling workflow "
                 f"{self.compilation_result['problems']}"
+            )
+            self.update_execution(
+                status=ExecutionStatus.ERROR,
+                error=self.compilation_result["problems"][0],
             )
             raise self.__execution_error(
                 error_message=self.compilation_result["problems"][0],
@@ -207,29 +206,18 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution_type = ExecutionType.STEP
 
         if self.compilation_result["success"] is True:
-            self.__update_execution(status=ExecutionStatus.READY)
             if (
                 self.execution_mode == WorkflowExecution.Mode.INSTANT
                 or self.execution_mode == WorkflowExecution.Mode.QUEUE
             ):
                 start_time = time.time()
                 try:
-                    self.__update_execution(increment_attempt=True)
                     self.execute_workflow(execution_type=execution_type)
                     end_time = time.time()
                     execution_time = end_time - start_time
-                    self.__update_execution(
-                        status=ExecutionStatus.COMPLETED,
-                        execution_time=execution_time,
-                    )
                 except StopExecution as exception:
                     end_time = time.time()
                     execution_time = end_time - start_time
-                    self.__update_execution(
-                        status=ExecutionStatus.STOPPED,
-                        error=str(exception),
-                        execution_time=execution_time,
-                    )
                     logger.info(f"Execution {self.execution_id} stopped")
                     raise exception
                 except Exception as exception:
@@ -269,7 +257,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             LogState.RUNNING, "Ready for execution", LogComponent.WORKFLOW
         )
 
-    def publish_final_workflow_logs(self) -> None:
+    def publish_final_workflow_logs(
+        self, total_files: int, processed_files: int
+    ) -> None:
         """Publishes the final logs for the workflow.
 
         Returns:
@@ -278,6 +268,10 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.publish_update_log(LogState.END_WORKFLOW, "1", LogComponent.STATUS_BAR)
         self.publish_update_log(
             LogState.SUCCESS, "Executed successfully", LogComponent.WORKFLOW
+        )
+        self.publish_log(
+            f"Execution completed successfully for the files {processed_files} "
+            f"out of {total_files}"
         )
 
     def publish_initial_tool_execution_logs(
@@ -305,7 +299,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         file_name: str,
         single_step: bool,
         file_history: Optional[FileHistory] = None,
-    ) -> None:
+    ) -> bool:
         """Executes the input file.
 
         Args:
@@ -319,17 +313,20 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             None
         """
         execution_type = ExecutionType.COMPLETE
+        is_executed = False
         if single_step:
             execution_type = ExecutionType.STEP
         if not (file_history and file_history.is_completed()):
             self.execute_uncached_input(file_name=file_name, single_step=single_step)
+            self.publish_log(f"Tool executed successfully for {file_name}")
+            is_executed = True
         else:
             self.publish_log(
                 f"Skipping file {file_name} as it is already processed."
                 "Clear the cache to process it again"
             )
-        self.publish_log(f"Tool executed successfully for {file_name}")
         self._handle_execution_type(execution_type)
+        return is_executed
 
     def execute_uncached_input(self, file_name: str, single_step: bool) -> None:
         """Executes the uncached input file.

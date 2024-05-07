@@ -147,6 +147,11 @@ SYSTEM_ADMIN_USERNAME = get_required_setting("SYSTEM_ADMIN_USERNAME")
 SYSTEM_ADMIN_PASSWORD = get_required_setting("SYSTEM_ADMIN_PASSWORD")
 SYSTEM_ADMIN_EMAIL = get_required_setting("SYSTEM_ADMIN_EMAIL")
 SESSION_COOKIE_AGE = int(get_required_setting("SESSION_COOKIE_AGE", "86400"))
+ENABLE_LOG_HISTORY = get_required_setting("ENABLE_LOG_HISTORY")
+LOG_HISTORY_CONSUMER_INTERVAL = int(
+    get_required_setting("LOG_HISTORY_CONSUMER_INTERVAL", "60")
+)
+LOGS_BATCH_LIMIT = int(get_required_setting("LOGS_BATCH_LIMIT", "30"))
 
 # Flag to Enable django admin
 ADMIN_ENABLED = False
@@ -307,7 +312,7 @@ CACHES = {
             "USERNAME": REDIS_USER,
             "PASSWORD": REDIS_PASSWORD,
         },
-        "KEY_FUNCTION": "utils.cache_service.custom_key_function",
+        "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
     }
 }
 

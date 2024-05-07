@@ -1,17 +1,20 @@
+import json
 import logging
 import os
 import threading
 import time
-from typing import Any
+from typing import Any, Optional
 
 import redis
 import socketio
 from django.conf import settings
 from django.core.wsgi import WSGIHandler
-from django.dispatch import Signal
+from unstract.workflow_execution.enums import LogType
+from utils.constants import ExecutionLogConstants
+from utils.dto import LogDataDTO
 
-# Define a signal
-log_received = Signal()
+from unstract.core.constants import LogFieldName
+
 logger = logging.getLogger(__name__)
 
 sio = socketio.Server(
@@ -41,13 +44,60 @@ def disconnect(sid: str) -> None:
     logger.info(f"[{os.getpid()}] Client with SID:{sid} disconnected")
 
 
+def _get_validated_log_data(json_data: Any) -> Optional[LogDataDTO]:
+    """Validate log data to persist history
+    Args:
+        json_data (Any): Log data in JSON format
+    """
+    print(f"Received log data: {json_data}")
+    if isinstance(json_data, bytes):
+        json_data = json_data.decode("utf-8")
+
+    if isinstance(json_data, str):
+        try:
+            # Parse the string as JSON
+            json_data = json.loads(json_data)
+        except json.JSONDecodeError:
+            logger.error(f"Error decoding JSON data {json_data}")
+            return
+
+    if not isinstance(json_data, dict):
+        return
+
+    # Extract required fields from the JSON data
+    execution_id = json_data.get(LogFieldName.EXECUTION_ID)
+    organization_id = json_data.get(LogFieldName.ORGANIZATION_ID)
+    timestamp = json_data.get(LogFieldName.TIMESTAMP)
+    log_type = json_data.get(LogFieldName.TYPE)
+
+    # Check if all required fields are present
+    if not all((execution_id, organization_id, timestamp, log_type)):
+        return
+
+    # Ensure the log type is LogType.LOG
+    if log_type != LogType.LOG.value:
+        return
+
+    return LogDataDTO(
+        execution_id=execution_id,
+        organization_id=organization_id,
+        timestamp=timestamp,
+        log_type=log_type,
+        data=json_data,
+    )
+
+
 def _store_execution_log(data: bytes) -> None:
     """Store execution log in database
     Args:
         data (bytes): Execution log data in bytes format
     """
+    if not ExecutionLogConstants.IS_ENABLED:
+        return
     try:
-        log_received.send_robust(sender=None, data=data)
+        log_data = _get_validated_log_data(json_data=data)
+        if log_data:
+            redis_conn.rpush(ExecutionLogConstants.LOG_QUEUE_NAME, log_data.to_json())
     except Exception as e:
         logger.error(f"Error storing execution log: {e}")
 

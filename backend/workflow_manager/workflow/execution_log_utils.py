@@ -1,80 +1,76 @@
-import json
 import logging
-from datetime import datetime
-from typing import Any
+from collections import defaultdict
 
 from account.models import Organization
 from celery import shared_task
+from django.db import IntegrityError
+from django_celery_beat.models import IntervalSchedule, PeriodicTask
 from django_tenants.utils import get_tenant_model, tenant_context
-from unstract.workflow_execution.enums import LogType
+from utils.cache_service import CacheService
+from utils.constants import ExecutionLogConstants
+from utils.dto import LogDataDTO
 from workflow_manager.workflow.models.execution_log import ExecutionLog
-
-from unstract.core.constants import LogFieldName
 
 logger = logging.getLogger(__name__)
 
 
-def handle_received_log(sender, **kwargs):
-    """Handle the received log from log signal.
+@shared_task(bind=True)
+def consume_log_history(self):
+    organization_logs = defaultdict(list)
+    logs_count = 0
 
-    Args:
-        sender (Any): The sender of the signal
-        **kwargs (dict): The keyword arguments passed to the signal
-    """
-    data = kwargs.get("data")
-    _store_log.delay(json_data=data)
+    while logs_count < ExecutionLogConstants.LOGS_BATCH_LIMIT:
+        log = CacheService.lpop(ExecutionLogConstants.LOG_QUEUE_NAME)
+        if not log:
+            break
+
+        log_data = LogDataDTO.from_json(log)
+        if not log_data:
+            continue
+
+        organization_id = log_data.organization_id
+        organization_logs[organization_id].append(
+            ExecutionLog(
+                execution_id=log_data.execution_id,
+                data=log_data.data,
+                event_time=log_data.event_time,
+            )
+        )
+        logs_count += 1
+    logger.info(f"Logs count: {logs_count}")
+    for organization_id, logs in organization_logs.items():
+        store_to_db(organization_id, logs)
 
 
-@shared_task(
-    name="store_logs",
-    acks_late=True,
-    autoretry_for=(Exception,),
-    max_retries=1,
-    retry_backoff=True,
-    retry_backoff_max=500,
-    retry_jitter=True,
-)
-def _store_log(json_data: Any) -> None:
-    """Store the execution log in the database.
+def create_log_consumer_scheduler_if_not_exists():
+    try:
+        interval, _ = IntervalSchedule.objects.get_or_create(
+            every=ExecutionLogConstants.CONSUMER_INTERVAL,
+            period=IntervalSchedule.SECONDS,
+        )
+        # Create the scheduler
+        task, created = PeriodicTask.objects.get_or_create(
+            name=ExecutionLogConstants.PERIODIC_TASK_NAME,
+            task=ExecutionLogConstants.TASK,
+            defaults={
+                "interval": interval,
+                "queue": ExecutionLogConstants.CELERY_QUEUE_NAME,
+                "enabled": ExecutionLogConstants.IS_ENABLED,
+            },
+        )
+        if not created:
+            task.enabled = ExecutionLogConstants.IS_ENABLED
+            task.interval = interval
+            task.queue = ExecutionLogConstants.CELERY_QUEUE_NAME
+            task.save()
+            logger.info("Log consumer scheduler updated successfully.")
+        else:
+            print("Log consumer scheduler created successfully.")
+    except IntegrityError as error:
+        logger.error("Error occurred while creating log consumer scheduler:", error)
 
-    This method is used to store the execution log in the database.
-    It takes a JSON data as input and creates an ExecutionLog object with
-    the provided data.
-    Args:
-        json_data (Any): The JSON data to be stored.
-    Returns:
-        None
-    """
-    if isinstance(json_data, bytes):
-        # Decode byte-encoded JSON into a string
-        json_data = json_data.decode("utf-8")
 
-    if isinstance(json_data, str):
-        try:
-            # Parse the string as JSON
-            json_data = json.loads(json_data)
-        except json.JSONDecodeError:
-            logger.error(f"Error decoding JSON data {json_data}")
-            return
-
-    # Check if the data is a dictionary
-    if not isinstance(json_data, dict):
-        return
-
-    # Extract required fields from the JSON data
-    execution_id = json_data.get(LogFieldName.EXECUTION_ID)
-    organization_id = json_data.get(LogFieldName.ORGANIZATION_ID)
-    timestamp = json_data.get(LogFieldName.TIMESTAMP)
-    log_type = json_data.get(LogFieldName.TYPE)
-
-    # Check if all required fields are present
-    if not all((execution_id, organization_id, timestamp, log_type)):
-        return
-
-    # Ensure the log type is "LOG"
-    if log_type != LogType.LOG.value:
-        return
-
+def store_to_db(organization_id: str, execution_logs: list[ExecutionLog]) -> None:
     try:
         tenant: Organization = get_tenant_model().objects.get(
             schema_name=organization_id
@@ -83,16 +79,9 @@ def _store_log(json_data: Any) -> None:
         logger.error(f"Organization with ID {organization_id} does not exist.")
         return
 
-    # Convert timestamp to datetime object
-    event_time = datetime.fromtimestamp(timestamp)
-
     # Store the log data in the database within tenant context
     with tenant_context(tenant):
-        ExecutionLog.objects.create(
-            execution_id=execution_id,
-            data=json_data,
-            event_time=event_time,
-        )
+        ExecutionLog.objects.bulk_create(objs=execution_logs, ignore_conflicts=True)
 
 
 class ExecutionLogUtils:

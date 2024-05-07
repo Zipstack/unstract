@@ -6,7 +6,8 @@ class WorkflowConfig(AppConfig):
     name = "workflow_manager.workflow"
 
     def ready(self):
-        from utils.log_events import log_received
-        from workflow_manager.workflow.execution_log_utils import handle_received_log
+        from workflow_manager.workflow.execution_log_utils import (
+            create_log_consumer_scheduler_if_not_exists,
+        )
 
-        log_received.connect(handle_received_log)
+        create_log_consumer_scheduler_if_not_exists()
