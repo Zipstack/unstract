@@ -42,7 +42,7 @@
             "enum": [
                 "Write JSON to a single column"
             ],
-            "default": "Split JSON into columns"
+            "default": "Write JSON to a single column"
         },
         "singleColumnName": {
             "type": "string",
