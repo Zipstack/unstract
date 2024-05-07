@@ -12,11 +12,17 @@ from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.constants import RunLevel
-from unstract.prompt_service.exceptions import APIError, ErrorResponse
+from unstract.prompt_service.exceptions import (
+    APIError,
+    ErrorResponse,
+    NoPayloadError,
+    RateLimitError,
+)
 from unstract.prompt_service.helper import EnvLoader, plugin_loader
 from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import ToolEmbedding
+from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
 from unstract.sdk.exceptions import SdkError
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.llm import ToolLLM
@@ -159,17 +165,15 @@ def authentication_middleware(func: Any) -> Any:
 @app.route(
     "/answer-prompt",
     endpoint="answer_prompt",
-    methods=["POST", "GET", "DELETE"],
+    methods=["POST"],
 )
 @authentication_middleware
 def prompt_processor() -> Any:
-    result: dict[str, Any] = {}
     platform_key = AuthenticationMiddleware.get_token_from_auth_header(request)
     if request.method == "POST":
         payload: dict[Any, Any] = request.json
         if not payload:
-            result["error"] = "Bad Request / No payload"
-            return result, 400
+            raise NoPayloadError()
     outputs = payload.get(PSKeys.OUTPUTS)
     tool_id: str = payload.get(PSKeys.TOOL_ID, "")
     file_hash = payload.get(PSKeys.FILE_HASH)
@@ -302,6 +306,14 @@ def prompt_processor() -> Any:
                     msg,
                 )
                 raise APIError(message=msg)
+            # TODO: Use vectorDB name when available
+            _publish_log(
+                log_events_id,
+                {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
+                LogLevel.DEBUG,
+                RunLevel.RUN,
+                "Fetched context from vector DB",
+            )
 
         assertion_failed = False
         answer = "yes"
@@ -522,6 +534,17 @@ def prompt_processor() -> Any:
             challenge_plugin: dict[str, Any] = plugins.get("challenge", {})
             try:
                 if challenge_plugin:
+                    _publish_log(
+                        log_events_id,
+                        {
+                            "tool_id": tool_id,
+                            "prompt_key": prompt_name,
+                            "doc_name": doc_name,
+                        },
+                        LogLevel.INFO,
+                        RunLevel.CHALLENGE,
+                        "Challenging response",
+                    )
                     tool_settings: dict[str, Any] = {
                         PSKeys.PREAMBLE: output[PSKeys.PREAMBLE],
                         PSKeys.POSTAMBLE: output[PSKeys.POSTAMBLE],
@@ -548,6 +571,17 @@ def prompt_processor() -> Any:
             except challenge_plugin["exception_cls"] as e:
                 app.logger.error(
                     "Failed to challenge prompt %s: %s", output["name"], str(e)
+                )
+                _publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.ERROR,
+                    RunLevel.CHALLENGE,
+                    "Error while challenging response",
                 )
 
         #
@@ -743,6 +777,8 @@ def run_completion(
         answer: str = completion[PSKeys.RESPONSE].text
         return answer
     # TODO: Catch and handle specific exception here
+    except SdkRateLimitError as e:
+        raise RateLimitError(f"Rate limit error. {str(e)}") from e
     except Exception as e:
         app.logger.info(f"Error fetching response for prompt: {e}.")
         # TODO: Publish this error as a FE update

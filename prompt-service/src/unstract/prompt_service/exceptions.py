@@ -18,6 +18,7 @@ class ErrorResponse:
 
 class APIError(HTTPException):
     code = 500
+    message = DEFAULT_ERR_MESSAGE
 
     def __init__(
         self,
@@ -42,3 +43,13 @@ class APIError(HTTPException):
 
     def __str__(self):
         return str(self.message)
+
+
+class NoPayloadError(APIError):
+    code = 400
+    message = "Bad Request / No payload"
+
+
+class RateLimitError(APIError):
+    code = 429
+    message = "Running into rate limit errors, please try again later"
