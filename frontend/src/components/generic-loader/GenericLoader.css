@@ -8,7 +8,7 @@
       transform: scale(.75);
     }
   }
-  
+
   /* PULSE BUBBLES */
   .spinner-box {
     text-align: center;
@@ -22,13 +22,13 @@
     margin-top: 15px;
     margin-bottom: 15px;
   }
-  
+
   .pulse-bubble {
     width: 10px;
     height: 10px;
     border-radius: 50%;
   }
-  
+
   .pulse-bubble-1 {
       background-color: #ff4d6d;
       animation: pulse .5s ease 0s infinite alternate;
@@ -45,12 +45,12 @@
       background-color: #00a6ed;
       animation: pulse .5s ease .6s infinite alternate;
   }
-  
+
   .fadeinout
   {
     animation: fadeinout 2s infinite;
   }
-  
+
   @keyframes fadeinout
   {
     0%{
