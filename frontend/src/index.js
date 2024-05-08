@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import posthog from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
 
-import { Logo64 } from "./assets";
+import { GenericLoader } from "./components/generic-loader/GenericLoader";
 import { LazyLoader } from "./components/widgets/lazy-loader/LazyLoader.jsx";
 import { SocketProvider } from "./helpers/SocketContext.js";
 import "./index.css";
@@ -22,11 +22,7 @@ root.render(
     <PostHogProvider client={posthog}>
       <SocketProvider>
         <LazyLoader
-          loader={
-            <div className="center">
-              <Logo64 />
-            </div>
-          }
+          loader={<GenericLoader />}
           component={() => import("./App.jsx")}
           componentName="App"
         />
