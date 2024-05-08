@@ -14,7 +14,6 @@ from prompt_studio.prompt_profile_manager.constants import ProfileManagerErrors
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_profile_manager.serializers import ProfileManagerSerializer
 from prompt_studio.prompt_studio.constants import ToolStudioPromptErrors
-from prompt_studio.prompt_studio.exceptions import FilenameMissingError
 from prompt_studio.prompt_studio.serializers import ToolStudioPromptSerializer
 from prompt_studio.prompt_studio_core.constants import (
     FileViewTypes,
@@ -249,17 +248,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         custom_tool = self.get_object()
         tool_id: str = str(custom_tool.tool_id)
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
-        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
-        file_name: str = document.document_name
         id: str = request.data.get(ToolStudioPromptKeys.ID)
 
-        if not file_name or file_name == ToolStudioPromptKeys.UNDEFINED:
-            logger.error("Mandatory field file_name is missing")
-            raise FilenameMissingError()
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,
             tool_id=tool_id,
-            file_name=file_name,
             org_id=UserSessionUtils.get_organization_id(request),
             user_id=custom_tool.created_by.user_id,
             document_id=document_id,
@@ -274,9 +267,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             request (HttpRequest): _description_
             pk (Any): Primary key of the CustomTool
 
-        Raises:
-            FilenameMissingError: _description_
-
         Returns:
             Response
         """
@@ -285,15 +275,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         custom_tool = self.get_object()
         tool_id: str = str(custom_tool.tool_id)
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
-        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
-        file_name: str = document.document_name
 
-        if not file_name or file_name == ToolStudioPromptKeys.UNDEFINED:
-            logger.error("Mandatory field file_name is missing")
-            raise FilenameMissingError()
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             tool_id=tool_id,
-            file_name=file_name,
             org_id=UserSessionUtils.get_organization_id(request),
             user_id=custom_tool.created_by.user_id,
             document_id=document_id,
