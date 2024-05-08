@@ -724,6 +724,7 @@ function PromptCard({
                       <Button
                         size="small"
                         type="text"
+                        className="prompt-card-action-button"
                         onClick={handleRun}
                         disabled={
                           (updateStatus?.promptId ===
