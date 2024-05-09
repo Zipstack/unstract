@@ -204,7 +204,8 @@ class WorkflowExecutionService:
             )
             if not self.validate_execution_result(step + 1):
                 raise ToolOutputNotFoundException(
-                    f"Tool exception raised for tool {tool_uid}"
+                    f"Tool exception raised for tool {tool_uid}, "
+                    "check logs for more information"
                 )
             log_message = f"Step {actual_step} executed successfully"
             self.publish_update_log(
