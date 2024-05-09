@@ -289,7 +289,7 @@ def prompt_processor() -> Any:
                 # TODO: Obtain user set name for vector DB
                 msg = "Couldn't fetch context from vector DB"
                 app.logger.error(
-                    msg + f" {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
+                    f"{msg} {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
                 )
                 _publish_log(
                     log_events_id,
