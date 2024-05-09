@@ -29,7 +29,6 @@ class ToolStudioPromptKeys:
     ID = "id"
     FILE_NAME = "file_name"
     FILE_HASH = "file_hash"
-    UNDEFINED = "undefined"
     TOOL_ID = "tool_id"
     NAME = "name"
     ACTIVE = "active"

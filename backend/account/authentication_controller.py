@@ -118,6 +118,8 @@ class AuthenticationController:
             if hasattr(ex, "code") and ex.code in {
                 AuthorizationErrorCode.USF,
                 AuthorizationErrorCode.USR,
+                AuthorizationErrorCode.INE001,
+                AuthorizationErrorCode.INE002,
             }:  # type: ignore
                 response = Response(
                     status=status.HTTP_412_PRECONDITION_FAILED,
@@ -412,6 +414,7 @@ class AuthenticationController:
             existing_tenant_user = OrganizationMemberService.get_user_by_id(id=user.id)
             if existing_tenant_user:
                 Logger.info(f"{existing_tenant_user.user.email} Already exist")
+
             else:
                 account_user = self.get_or_create_user(user=user)
                 if account_user:
@@ -420,10 +423,15 @@ class AuthenticationController:
                         organization_id=organization.organization_id,
                     )
                     user_role = user_roles[0]
+
                     tenant_user: OrganizationMember = OrganizationMember(
-                        user=user, role=user_role
+                        user=user,
+                        role=user_role,
+                        is_login_onboarding_msg=False,
+                        is_prompt_studio_onboarding_msg=False,
                     )
                     tenant_user.save()
+
                 else:
                     raise UserNotExistError()
 

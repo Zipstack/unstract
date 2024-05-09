@@ -31,6 +31,7 @@ import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./ManageDocsModal.css";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 let SummarizeStatusTitle = null;
 try {
@@ -78,6 +79,7 @@ function ManageDocsModal({
   const { messages } = useSocketCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   const successIndex = (
     <Typography.Text>
@@ -111,7 +113,13 @@ function ManageDocsModal({
       return;
     }
 
-    return <Tag color={color}>{indexMessage?.message}</Tag>;
+    return (
+      <Tooltip title={indexMessage?.message || ""}>
+        <Tag color={color}>
+          <div className="tag-max-width ellipsis">{indexMessage?.message}</div>
+        </Tag>
+      </Tooltip>
+    );
   };
 
   const failedSummary = (
@@ -238,7 +246,7 @@ function ManageDocsModal({
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/document-index?profile_manager=${llmProfileId}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/document-index/?profile_manager=${llmProfileId}`,
     };
 
     handleLoading(indexType, true);
@@ -338,6 +346,19 @@ function ManageDocsModal({
     return instance?.isIndexed ? successIndex : failed;
   };
 
+  const handleReIndexBtnClick = (item) => {
+    generateIndex(item);
+
+    try {
+      setPostHogCustomEvent("intent_ps_indexed_file", {
+        info: "Clicked on index button",
+        document_name: item?.document_name,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+  };
+
   useEffect(() => {
     const newRows = listOfDocs.map((item) => {
       return {
@@ -357,7 +378,7 @@ function ManageDocsModal({
                   <Button
                     size="small"
                     icon={<ReloadOutlined />}
-                    onClick={() => generateIndex(item)}
+                    onClick={() => handleReIndexBtnClick(item)}
                     disabled={
                       disableLlmOrDocChange?.length > 0 ||
                       isSinglePassExtractLoading ||
@@ -369,7 +390,9 @@ function ManageDocsModal({
                 </Tooltip>
               )}
             </div>
-            <div>{infoIndex(indexMessages?.[item?.document_name])}</div>
+            <div className="center">
+              {infoIndex(indexMessages?.[item?.document_name])}
+            </div>
           </Space>
         ),
         delete: (
@@ -419,6 +442,14 @@ function ManageDocsModal({
   ]);
 
   const beforeUpload = (file) => {
+    try {
+      setPostHogCustomEvent("ps_uploaded_file", {
+        info: "Clicked on '+ Upload New File' button",
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);

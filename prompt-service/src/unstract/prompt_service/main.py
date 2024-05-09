@@ -1,20 +1,29 @@
 import logging
+import traceback
 from enum import Enum
 from json import JSONDecodeError
 from typing import Any, Optional
 
 import peewee
-from flask import Flask, json, request
+from flask import Flask, json, jsonify, request
 from llama_index.core import VectorStoreIndex
 from llama_index.core.llms import LLM
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.constants import RunLevel
+from unstract.prompt_service.exceptions import (
+    APIError,
+    ErrorResponse,
+    NoPayloadError,
+    RateLimitError,
+)
 from unstract.prompt_service.helper import EnvLoader, plugin_loader
 from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import ToolEmbedding
+from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
+from unstract.sdk.exceptions import SdkError
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.llm import ToolLLM
 from unstract.sdk.utils.callback_manager import CallbackManager as UNCallbackManager
@@ -156,27 +165,26 @@ def authentication_middleware(func: Any) -> Any:
 @app.route(
     "/answer-prompt",
     endpoint="answer_prompt",
-    methods=["POST", "GET", "DELETE"],
+    methods=["POST"],
 )
 @authentication_middleware
 def prompt_processor() -> Any:
-    result: dict[str, Any] = {}
     platform_key = AuthenticationMiddleware.get_token_from_auth_header(request)
     if request.method == "POST":
         payload: dict[Any, Any] = request.json
         if not payload:
-            result["error"] = "Bad Request / No payload"
-            return result, 400
+            raise NoPayloadError()
     outputs = payload.get(PSKeys.OUTPUTS)
     tool_id: str = payload.get(PSKeys.TOOL_ID, "")
     file_hash = payload.get(PSKeys.FILE_HASH)
+    doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
 
     structured_output: dict[str, Any] = {}
     variable_names: list[str] = []
     _publish_log(
         log_events_id,
-        {"tool_id": tool_id},
+        {"tool_id": tool_id, "doc_name": doc_name},
         LogLevel.DEBUG,
         RunLevel.RUN,
         "Preparing to execute all prompts",
@@ -186,7 +194,7 @@ def prompt_processor() -> Any:
         variable_names.append(output[PSKeys.NAME])
     for output in outputs:  # type:ignore
         active = output[PSKeys.ACTIVE]
-        name = output[PSKeys.NAME]
+        prompt_name = output[PSKeys.NAME]
         promptx = output[PSKeys.PROMPT]
         chunk_size = output[PSKeys.CHUNK_SIZE]
         util = PromptServiceBaseTool(log_level=LogLevel.INFO, platform_key=platform_key)
@@ -194,20 +202,20 @@ def prompt_processor() -> Any:
         adapter_instance_id = output[PSKeys.LLM]
 
         if active is False:
-            app.logger.info(f"[{tool_id}] Skipping inactive prompt: {name}")
+            app.logger.info(f"[{tool_id}] Skipping inactive prompt: {prompt_name}")
             _publish_log(
                 log_events_id,
-                {"tool_id": tool_id, "prompt_key": name},
+                {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
                 LogLevel.INFO,
                 RunLevel.RUN,
                 "Skipping inactive prompt",
             )
             continue
 
-        app.logger.info(f"[{tool_id}] Executing prompt: {name}")
+        app.logger.info(f"[{tool_id}] Executing prompt: {prompt_name}")
         _publish_log(
             log_events_id,
-            {"tool_id": tool_id, "prompt_key": name},
+            {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
             LogLevel.DEBUG,
             RunLevel.RUN,
             "Executing prompt",
@@ -220,76 +228,51 @@ def prompt_processor() -> Any:
             structured_output, variable_names, output, promptx
         )
 
-        doc_id = ToolIndex.generate_file_id(
+        doc_id = tool_index.generate_file_id(
             tool_id=tool_id,
             file_hash=file_hash,
             vector_db=output[PSKeys.VECTOR_DB],
             embedding=output[PSKeys.EMBEDDING],
             x2text=output[PSKeys.X2TEXT_ADAPTER],
-            chunk_size=output[PSKeys.CHUNK_SIZE],
-            chunk_overlap=output[PSKeys.CHUNK_OVERLAP],
+            chunk_size=str(output[PSKeys.CHUNK_SIZE]),
+            chunk_overlap=str(output[PSKeys.CHUNK_OVERLAP]),
         )
         _publish_log(
             log_events_id,
-            {"tool_id": tool_id, "prompt_key": name},
+            {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
             LogLevel.DEBUG,
             RunLevel.RUN,
             "Retrieved document ID",
         )
 
-        llm_helper = ToolLLM(tool=util)
-        llm_li: Optional[LLM] = llm_helper.get_llm(
-            adapter_instance_id=adapter_instance_id
-        )
-        if llm_li is None:
-            msg = f"Couldn't fetch LLM {adapter_instance_id}"
-            app.logger.error(msg)
-            _publish_log(
-                log_events_id,
-                {"tool_id": tool_id, "prompt_key": name},
-                LogLevel.ERROR,
-                RunLevel.RUN,
-                "Failed due to LLM error",
+        try:
+            llm_helper = ToolLLM(tool=util)
+            llm_li: LLM = llm_helper.get_llm(adapter_instance_id=adapter_instance_id)
+            embedd_helper = ToolEmbedding(tool=util)
+            embedding_li = embedd_helper.get_embedding(
+                adapter_instance_id=output[PSKeys.EMBEDDING]
             )
-            result["error"] = msg
-            return result, 500
-        embedd_helper = ToolEmbedding(tool=util)
-        embedding_li = embedd_helper.get_embedding(
-            adapter_instance_id=output[PSKeys.EMBEDDING]
-        )
-        if embedding_li is None:
-            msg = f"Couldn't fetch embedding {output[PSKeys.EMBEDDING]}"
-            app.logger.error(msg)
-            _publish_log(
-                log_events_id,
-                {"tool_id": tool_id, "prompt_key": name},
-                LogLevel.ERROR,
-                RunLevel.RUN,
-                "Failed due to embedding error",
-            )
-            result["error"] = msg
-            return result, 500
-        embedding_dimension = embedd_helper.get_embedding_length(embedding_li)
+            embedding_dimension = embedd_helper.get_embedding_length(embedding_li)
 
-        vdb_helper = ToolVectorDB(
-            tool=util,
-        )
-        vector_db_li = vdb_helper.get_vector_db(
-            adapter_instance_id=output[PSKeys.VECTOR_DB],
-            embedding_dimension=embedding_dimension,
-        )
-        if vector_db_li is None:
-            msg = f"Couldn't fetch vector DB {output[PSKeys.VECTOR_DB]}"
+            vdb_helper = ToolVectorDB(
+                tool=util,
+            )
+            vector_db_li = vdb_helper.get_vector_db(
+                adapter_instance_id=output[PSKeys.VECTOR_DB],
+                embedding_dimension=embedding_dimension,
+            )
+        except SdkError as e:
+            msg = f"Couldn't fetch adapter. {e}"
             app.logger.error(msg)
-            result["error"] = msg
             _publish_log(
                 log_events_id,
-                {"tool_id": tool_id, "prompt_key": name},
+                {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
                 LogLevel.ERROR,
                 RunLevel.RUN,
-                "Failed due to vector db error",
+                "Unable to obtain LLM / embedding / vectorDB",
             )
-            return result, 500
+            return APIError(message=msg)
+
         # Set up llm, embedding and callback manager to collect usage stats
         # for this context
         UNCallbackManager.set_callback_manager(
@@ -302,17 +285,41 @@ def prompt_processor() -> Any:
         context = ""
         if output[PSKeys.CHUNK_SIZE] == 0:
             # We can do this only for chunkless indexes
-            context = tool_index.get_text_from_index(
+            context: Optional[str] = tool_index.get_text_from_index(
                 embedding_type=output[PSKeys.EMBEDDING],
                 vector_db=output[PSKeys.VECTOR_DB],
                 doc_id=doc_id,
+            )
+            if context is None:
+                # TODO: Obtain user set name for vector DB
+                msg = "Couldn't fetch context from vector DB"
+                app.logger.error(msg + f" {output[PSKeys.VECTOR_DB]}")
+                _publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.ERROR,
+                    RunLevel.RUN,
+                    msg,
+                )
+                raise APIError(message=msg)
+            # TODO: Use vectorDB name when available
+            _publish_log(
+                log_events_id,
+                {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
+                LogLevel.DEBUG,
+                RunLevel.RUN,
+                "Fetched context from vector DB",
             )
 
         assertion_failed = False
         answer = "yes"
         _publish_log(
             log_events_id,
-            {"tool_id": tool_id, "prompt_key": name},
+            {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
             LogLevel.DEBUG,
             RunLevel.RUN,
             "Verifying assertion prompt",
@@ -333,7 +340,7 @@ def prompt_processor() -> Any:
             app.logger.info("Assert failed.")
             _publish_log(
                 log_events_id,
-                {"tool_id": tool_id, "prompt_key": name},
+                {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
                 LogLevel.DEBUG,
                 RunLevel.RUN,
                 "Assertion failed",
@@ -369,7 +376,11 @@ def prompt_processor() -> Any:
                 answer = "NA"
                 _publish_log(
                     log_events_id,
-                    {"tool_id": tool_id, "prompt_key": name},
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
                     LogLevel.INFO,
                     RunLevel.RUN,
                     "Retrieving context from adapter",
@@ -391,7 +402,11 @@ def prompt_processor() -> Any:
 
                 _publish_log(
                     log_events_id,
-                    {"tool_id": tool_id, "prompt_key": name},
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
                     LogLevel.DEBUG,
                     RunLevel.RUN,
                     "Retrieved context from adapter",
@@ -399,7 +414,7 @@ def prompt_processor() -> Any:
 
         _publish_log(
             log_events_id,
-            {"tool_id": tool_id, "prompt_key": name},
+            {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
             LogLevel.INFO,
             RunLevel.RUN,
             f"Processing prompt type: {output[PSKeys.TYPE]}",
@@ -519,6 +534,17 @@ def prompt_processor() -> Any:
             challenge_plugin: dict[str, Any] = plugins.get("challenge", {})
             try:
                 if challenge_plugin:
+                    _publish_log(
+                        log_events_id,
+                        {
+                            "tool_id": tool_id,
+                            "prompt_key": prompt_name,
+                            "doc_name": doc_name,
+                        },
+                        LogLevel.INFO,
+                        RunLevel.CHALLENGE,
+                        "Challenging response",
+                    )
                     tool_settings: dict[str, Any] = {
                         PSKeys.PREAMBLE: output[PSKeys.PREAMBLE],
                         PSKeys.POSTAMBLE: output[PSKeys.POSTAMBLE],
@@ -546,6 +572,17 @@ def prompt_processor() -> Any:
                 app.logger.error(
                     "Failed to challenge prompt %s: %s", output["name"], str(e)
                 )
+                _publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.ERROR,
+                    RunLevel.CHALLENGE,
+                    "Error while challenging response",
+                )
 
         #
         # Evaluate the prompt.
@@ -558,7 +595,11 @@ def prompt_processor() -> Any:
             if eval_plugin:
                 _publish_log(
                     log_events_id,
-                    {"tool_id": tool_id, "prompt_key": name},
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
                     LogLevel.INFO,
                     RunLevel.EVAL,
                     "Evaluating response",
@@ -582,7 +623,11 @@ def prompt_processor() -> Any:
                     )
                     _publish_log(
                         log_events_id,
-                        {"tool_id": tool_id, "prompt_key": name},
+                        {
+                            "tool_id": tool_id,
+                            "prompt_key": prompt_name,
+                            "doc_name": doc_name,
+                        },
                         LogLevel.ERROR,
                         RunLevel.EVAL,
                         "Error while evaluation",
@@ -590,7 +635,11 @@ def prompt_processor() -> Any:
                 else:
                     _publish_log(
                         log_events_id,
-                        {"tool_id": tool_id, "prompt_key": name},
+                        {
+                            "tool_id": tool_id,
+                            "prompt_key": prompt_name,
+                            "doc_name": doc_name,
+                        },
                         LogLevel.DEBUG,
                         RunLevel.EVAL,
                         "Evaluation completed",
@@ -602,7 +651,7 @@ def prompt_processor() -> Any:
 
     _publish_log(
         log_events_id,
-        {"tool_id": tool_id},
+        {"tool_id": tool_id, "doc_name": doc_name},
         LogLevel.INFO,
         RunLevel.RUN,
         "Sanitizing null values",
@@ -625,7 +674,7 @@ def prompt_processor() -> Any:
 
     _publish_log(
         log_events_id,
-        {"tool_id": tool_id},
+        {"tool_id": tool_id, "doc_name": doc_name},
         LogLevel.INFO,
         RunLevel.RUN,
         "Execution complete",
@@ -727,9 +776,13 @@ def run_completion(
 
         answer: str = completion[PSKeys.RESPONSE].text
         return answer
+    # TODO: Catch and handle specific exception here
+    except SdkRateLimitError as e:
+        raise RateLimitError(f"Rate limit error. {str(e)}") from e
     except Exception as e:
-        app.logger.info(f"Error completing prompt: {e}.")
-        raise e
+        app.logger.info(f"Error fetching response for prompt: {e}.")
+        # TODO: Publish this error as a FE update
+        raise APIError(str(e)) from e
 
 
 def extract_variable(
@@ -769,19 +822,62 @@ def enable_single_pass_extraction() -> None:
 enable_single_pass_extraction()
 
 
+def log_exceptions(e: HTTPException):
+    """Helper method to log exceptions.
+
+    Args:
+        e (HTTPException): Exception to log
+    """
+    code = 500
+    if hasattr(e, "code"):
+        code = e.code
+
+    if code >= 500:
+        message = "{method} {url} {status}\n\n{error}\n\n````{tb}````".format(
+            method=request.method,
+            url=request.url,
+            status=code,
+            error=str(e),
+            tb=traceback.format_exc(),
+        )
+    else:
+        message = "{method} {url} {status} {error}".format(
+            method=request.method,
+            url=request.url,
+            status=code,
+            error=str(e),
+        )
+    app.logger.error(message)
+
+
 @app.errorhandler(HTTPException)
-def handle_exception(e):
+def handle_http_exception(e: HTTPException):
     """Return JSON instead of HTML for HTTP errors."""
-    response = e.get_response()
-    response.data = json.dumps(
-        {
-            "code": e.code,
-            "name": e.name,
-            "error": e.description,
-        }
-    )
-    response.content_type = "application/json"
-    return response
+    log_exceptions(e)
+    if isinstance(e, APIError):
+        return jsonify(e.to_dict()), e.code
+    else:
+        response = e.get_response()
+        response.data = json.dumps(
+            ErrorResponse(error=e.description, name=e.name, code=e.code)
+        )
+        response.content_type = "application/json"
+        return response
+
+
+@app.errorhandler(Exception)
+def handle_uncaught_exception(e):
+    """Handler for uncaught exceptions.
+
+    Args:
+        e (Exception): Any uncaught exception
+    """
+    # pass through HTTP errors
+    if isinstance(e, HTTPException):
+        return handle_http_exception(e)
+
+    log_exceptions(e)
+    return handle_http_exception(APIError())
 
 
 if __name__ == "__main__":

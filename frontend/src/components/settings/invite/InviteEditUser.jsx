@@ -11,6 +11,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { TopBar } from "../../widgets/top-bar/TopBar.jsx";
 import "./InviteEditUser.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 function InviteEditUser() {
   const axiosPrivate = useAxiosPrivate();
@@ -23,6 +24,7 @@ function InviteEditUser() {
   const [loading, setLoading] = useState(true);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [initialRole, setInitialRole] = useState();
+  const { setPostHogCustomEvent } = usePostHogEvents();
   const isInvite = location.pathname.split("/").slice(-1)[0] === "invite";
   const validateMessages = {
     required: "required!",
@@ -32,6 +34,7 @@ function InviteEditUser() {
     },
   };
   const USER_ROLE = "unstract_user";
+
   const getUserRoles = async () => {
     setLoading(true);
     const requestOptions = {
@@ -120,6 +123,15 @@ function InviteEditUser() {
       inviteUserToOrg(values.email);
     } else {
       updateUserRole(values);
+    }
+
+    try {
+      const info = isInvite
+        ? "Clicked on 'Invite' button"
+        : "Clicked on 'Update' button";
+      setPostHogCustomEvent("intent_success_add_user", { info });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
 

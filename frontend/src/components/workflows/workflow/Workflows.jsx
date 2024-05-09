@@ -17,6 +17,7 @@ import { workflowService } from "./workflow-service";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 const PROJECT_FILTER_OPTIONS = [
   { label: "My Workflows", value: "mine" },
@@ -30,6 +31,7 @@ function Workflows() {
   const location = useLocation();
   const projectApiService = workflowService();
   const handleException = useExceptionHandler();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   const [projectList, setProjectList] = useState();
   const [editingProject, setEditProject] = useState();
@@ -162,15 +164,25 @@ function Workflows() {
     setEditProject();
   }
 
+  const handleNewWorkflowBtnClick = () => {
+    showNewProject();
+    toggleModal(true);
+
+    try {
+      setPostHogCustomEvent("intent_new_wf_project", {
+        info: "Clicked on '+ New Workflow' button",
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+  };
+
   const CustomButtons = () => {
     return (
       <CustomButton
         type="primary"
         icon={<PlusOutlined />}
-        onClick={() => {
-          showNewProject();
-          toggleModal(true);
-        }}
+        onClick={handleNewWorkflowBtnClick}
       >
         New Workflow
       </CustomButton>

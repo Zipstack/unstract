@@ -72,6 +72,10 @@ function useSessionValid() {
       };
       const getUserInfo = await axios(requestOptions);
       userAndOrgDetails["isAdmin"] = getUserInfo?.data?.user?.is_admin;
+      userAndOrgDetails["loginOnboardingMessage"] =
+        getUserInfo?.data?.user?.login_onboarding_message_displayed;
+      userAndOrgDetails["promptOnboardingMessage"] =
+        getUserInfo?.data?.user?.prompt_onboarding_message_displayed;
 
       const zCode = ("; " + document.cookie)
         .split(`; z_code=`)

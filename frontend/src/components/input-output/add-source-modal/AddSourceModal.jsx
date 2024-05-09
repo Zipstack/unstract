@@ -22,6 +22,7 @@ function AddSourceModal({
   const [selectedSourceId, setSelectedSourceId] = useState(null);
   const [metadata, setMetadata] = useState({});
   const [titles, setTitles] = useState({});
+  const [selectedSourceName, setSelectedSourceName] = useState("");
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -64,6 +65,13 @@ function AddSourceModal({
       getListOfSources();
     }
   }, [open]);
+
+  useEffect(() => {
+    const selectedSource = sourcesList.find(
+      (item) => item?.id === selectedSourceId
+    );
+    setSelectedSourceName(selectedSource?.name);
+  }, [selectedSourceId]);
 
   const getSourceDetails = () => {
     const isConnector = sourceTypes.connectors.includes(type);
@@ -153,6 +161,7 @@ function AddSourceModal({
       {selectedSourceId ? (
         <AddSource
           selectedSourceId={selectedSourceId}
+          selectedSourceName={selectedSourceName}
           setOpen={setOpen}
           type={type}
           addNewItem={addNewItem}
@@ -166,6 +175,7 @@ function AddSourceModal({
           setSelectedSourceId={setSelectedSourceId}
           open={open}
           sourcesList={sourcesList}
+          type={type}
         />
       )}
     </Modal>
