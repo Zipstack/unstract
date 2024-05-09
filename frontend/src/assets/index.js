@@ -15,7 +15,6 @@ import { ReactComponent as ListOfWfStepsPlaceholder } from "./list-of-wf-steps-p
 import { ReactComponent as ListOfToolsPlaceholder } from "./list-of-tools-placeholder.svg";
 import { ReactComponent as ApiDeployments } from "./api-deployments.svg";
 import { ReactComponent as StepIcon } from "./steps.svg";
-import { ReactComponent as AssertionIcon } from "./assertion.svg";
 import { ReactComponent as CombinedOutputIcon } from "./combined-output.svg";
 import { ReactComponent as EmptyPlaceholder } from "./empty.svg";
 import { ReactComponent as Desktop } from "./desktop.svg";
@@ -52,7 +51,6 @@ export {
   ApiDeployments,
   StepIcon,
   EmptyPlaceholder,
-  AssertionIcon,
   CombinedOutputIcon,
   Desktop,
   ReachOut,
