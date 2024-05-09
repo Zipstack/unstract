@@ -4,6 +4,7 @@ from os import environ as env
 
 from dotenv import load_dotenv
 from flask import Flask
+from unstract.prompt_service.constants import LogLevel
 
 load_dotenv()
 
@@ -29,10 +30,10 @@ dictConfig(
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    log_level = env.get("LOG_LEVEL", "INFO")
-    if log_level == "DEBUG":
+    log_level = env.get("LOG_LEVEL", LogLevel.WARN)
+    if log_level == LogLevel.DEBUG.value:
         app.logger.setLevel(logging.DEBUG)
-    elif log_level == "INFO":
+    elif log_level == LogLevel.INFO.value:
         app.logger.setLevel(logging.INFO)
     else:
         app.logger.setLevel(logging.WARNING)
