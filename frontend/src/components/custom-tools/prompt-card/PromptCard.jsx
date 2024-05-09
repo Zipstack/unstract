@@ -647,15 +647,21 @@ function PromptCard({
                 </Col>
                 <Col span={12} className="display-flex-right">
                   {progressMsg?.message && (
-                    <Tag
-                      icon={isCoverageLoading && <LoadingOutlined spin />}
-                      color={
-                        progressMsg?.level === "ERROR" ? "error" : "processing"
-                      }
-                      className="display-flex-align-center"
-                    >
-                      {progressMsg?.message}
-                    </Tag>
+                    <Tooltip title={progressMsg?.message || ""}>
+                      <Tag
+                        icon={isCoverageLoading && <LoadingOutlined spin />}
+                        color={
+                          progressMsg?.level === "ERROR"
+                            ? "error"
+                            : "processing"
+                        }
+                        className="display-flex-align-center"
+                      >
+                        <div className="tag-max-width ellipsis">
+                          {progressMsg?.message}
+                        </div>
+                      </Tag>
+                    </Tooltip>
                   )}
                   {updateStatus?.promptId === promptDetails?.prompt_id && (
                     <>
@@ -724,15 +730,14 @@ function PromptCard({
                       <Button
                         size="small"
                         type="text"
+                        className="prompt-card-action-button"
                         onClick={handleRun}
                         disabled={
                           (updateStatus?.promptId ===
                             promptDetails?.prompt_id &&
                             updateStatus?.status ===
                               promptStudioUpdateStatus.isUpdating) ||
-                          disableLlmOrDocChange.includes(
-                            promptDetails?.prompt_id
-                          ) ||
+                          disableLlmOrDocChange?.length > 0 ||
                           indexDocs.includes(selectedDoc?.document_id)
                         }
                       >
