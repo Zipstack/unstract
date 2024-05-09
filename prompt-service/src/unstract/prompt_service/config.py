@@ -1,0 +1,39 @@
+import logging
+from logging.config import dictConfig
+from os import environ as env
+
+from dotenv import load_dotenv
+from flask import Flask
+
+load_dotenv()
+
+dictConfig(
+    {
+        "version": 1,
+        "formatters": {
+            "default": {
+                "format": "[%(asctime)s] %(levelname)s in %(module)s: %(message)s",
+            }
+        },
+        "handlers": {
+            "wsgi": {
+                "class": "logging.StreamHandler",
+                "stream": "ext://flask.logging.wsgi_errors_stream",
+                "formatter": "default",
+            }
+        },
+        "root": {"level": "INFO", "handlers": ["wsgi"]},
+    }
+)
+
+
+def create_app() -> Flask:
+    app = Flask(__name__)
+    log_level = env.get("LOG_LEVEL", "INFO")
+    if log_level == "DEBUG":
+        app.logger.setLevel(logging.DEBUG)
+    elif log_level == "INFO":
+        app.logger.setLevel(logging.INFO)
+    else:
+        app.logger.setLevel(logging.WARNING)
+    return app
