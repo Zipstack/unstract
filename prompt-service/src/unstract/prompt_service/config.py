@@ -29,7 +29,7 @@ dictConfig(
 
 
 def create_app() -> Flask:
-    app = Flask(__name__)
+    app = Flask("prompt-service")
     log_level = env.get("LOG_LEVEL", LogLevel.WARN)
     if log_level == LogLevel.DEBUG.value:
         app.logger.setLevel(logging.DEBUG)
