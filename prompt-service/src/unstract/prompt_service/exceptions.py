@@ -22,15 +22,16 @@ class APIError(HTTPException):
 
     def __init__(
         self,
-        message: str = DEFAULT_ERR_MESSAGE,
+        message: Optional[str] = None,
         code: Optional[int] = None,
         payload: Any = None,
     ):
-        super().__init__(description=message)
-        self.message = message
-        if code is not None:
+        if message:
+            self.message = message
+        if code:
             self.code = code
         self.payload = payload
+        super().__init__(description=message)
 
     def to_dict(self):
         err = ErrorResponse(

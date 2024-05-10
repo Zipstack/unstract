@@ -85,7 +85,6 @@ function ToolsMain() {
     prompt: "",
     tool_id: details?.tool_id,
     prompt_type: promptType.prompt,
-    is_assert: false,
     profile_manager: defaultLlmProfile,
     sequence_number: getSequenceNumber(),
   };
