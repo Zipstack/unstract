@@ -2306,11 +2306,11 @@ files = [
 
 [[package]]
 name = "peewee"
-version = "3.17.4"
-summary = ""
+version = "3.17.5"
+summary = "a little orm"
 groups = ["default"]
 files = [
-    {file = "peewee-3.17.4.tar.gz", hash = "sha256:530c545739870699d1dd2a3a3c749951f94200315f27df2be5474c2e87ae9f94"},
+    {file = "peewee-3.17.5.tar.gz", hash = "sha256:e1b6a64192207fd3ddb4e1188054820f42aef0aadfa749e3981af3c119a76420"},
 ]
 
 [[package]]
