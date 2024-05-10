@@ -1,15 +1,15 @@
-import logging
 import traceback
 from enum import Enum
 from json import JSONDecodeError
 from typing import Any, Optional
 
 import peewee
-from flask import Flask, json, jsonify, request
+from flask import json, jsonify, request
 from llama_index.core import VectorStoreIndex
 from llama_index.core.llms import LLM
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
+from unstract.prompt_service.config import create_app
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.exceptions import (
@@ -31,11 +31,6 @@ from unstract.sdk.vector_db import ToolVectorDB
 from werkzeug.exceptions import HTTPException
 
 from unstract.core.pubsub_helper import LogPublisher
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s : %(message)s",
-)
 
 POS_TEXT_PATH = "/tmp/pos.txt"
 USE_UNSTRACT_PROMPT = True
@@ -59,7 +54,8 @@ be_db.connect()
 
 AuthenticationMiddleware.be_db = be_db
 
-app = Flask("prompt-service")
+app = create_app()
+
 
 plugins: dict[str, dict[str, Any]] = plugin_loader(app)
 
@@ -170,10 +166,9 @@ def authentication_middleware(func: Any) -> Any:
 @authentication_middleware
 def prompt_processor() -> Any:
     platform_key = AuthenticationMiddleware.get_token_from_auth_header(request)
-    if request.method == "POST":
-        payload: dict[Any, Any] = request.json
-        if not payload:
-            raise NoPayloadError()
+    payload: dict[Any, Any] = request.json
+    if not payload:
+        raise NoPayloadError
     outputs = payload.get(PSKeys.OUTPUTS)
     tool_id: str = payload.get(PSKeys.TOOL_ID, "")
     file_hash = payload.get(PSKeys.FILE_HASH)
@@ -193,7 +188,7 @@ def prompt_processor() -> Any:
     for output in outputs:  # type:ignore
         variable_names.append(output[PSKeys.NAME])
     for output in outputs:  # type:ignore
-        active = output[PSKeys.ACTIVE]
+        is_active = output[PSKeys.ACTIVE]
         prompt_name = output[PSKeys.NAME]
         promptx = output[PSKeys.PROMPT]
         chunk_size = output[PSKeys.CHUNK_SIZE]
@@ -201,7 +196,7 @@ def prompt_processor() -> Any:
         tool_index = ToolIndex(tool=util)
         adapter_instance_id = output[PSKeys.LLM]
 
-        if active is False:
+        if is_active is False:
             app.logger.info(f"[{tool_id}] Skipping inactive prompt: {prompt_name}")
             _publish_log(
                 log_events_id,
@@ -293,7 +288,9 @@ def prompt_processor() -> Any:
             if context is None:
                 # TODO: Obtain user set name for vector DB
                 msg = "Couldn't fetch context from vector DB"
-                app.logger.error(msg + f" {output[PSKeys.VECTOR_DB]}")
+                app.logger.error(
+                    f"{msg} {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
+                )
                 _publish_log(
                     log_events_id,
                     {
@@ -315,102 +312,64 @@ def prompt_processor() -> Any:
                 "Fetched context from vector DB",
             )
 
-        assertion_failed = False
-        answer = "yes"
-        _publish_log(
-            log_events_id,
-            {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
-            LogLevel.DEBUG,
-            RunLevel.RUN,
-            "Verifying assertion prompt",
-        )
-
-        is_assert = output[PSKeys.IS_ASSERT]
-        if is_assert:
-            app.logger.debug(f'Asserting prompt: {output["assert_prompt"]}')
+        if chunk_size == 0:
+            _publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.INFO,
+                RunLevel.RUN,
+                "Retrieving answer from LLM",
+            )
             answer = construct_and_run_prompt(
                 output,
                 llm_helper,
                 llm_li,
                 context,
-                "assert_prompt",
+                "promptx",
             )
-            app.logger.debug(f"Assert response: {answer}")
-        if answer.startswith("No") or answer.startswith("no"):
-            app.logger.info("Assert failed.")
+        else:
+            answer = "NA"
             _publish_log(
                 log_events_id,
-                {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.INFO,
+                RunLevel.RUN,
+                "Retrieving context from adapter",
+            )
+
+            if output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SIMPLE:
+                answer, context = simple_retriver(
+                    output,
+                    doc_id,
+                    llm_helper,
+                    llm_li,
+                    vector_index,
+                )
+            else:
+                app.logger.info(
+                    "Invalid retrieval strategy "
+                    f"passed {output[PSKeys.RETRIEVAL_STRATEGY]}"
+                )
+
+            _publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
                 LogLevel.DEBUG,
                 RunLevel.RUN,
-                "Assertion failed",
+                "Retrieved context from adapter",
             )
-            assertion_failed = True
-            answer = ""
-            if output[PSKeys.ASSERTION_FAILURE_PROMPT].lower().startswith("@assign"):
-                answer = "NA"
-                first_space_index = output[PSKeys.ASSERTION_FAILURE_PROMPT].find(" ")
-                if first_space_index > 0:
-                    answer = output[PSKeys.ASSERTION_FAILURE_PROMPT][
-                        first_space_index + 1
-                    ]
-                app.logger.info(f"[Assigning] {answer} to the output")
-            else:
-                answer = construct_and_run_prompt(
-                    output,
-                    llm_helper,
-                    llm_li,
-                    context,
-                    "assertion_failure_prompt",
-                )
-        else:
-            if chunk_size == 0:
-                answer = construct_and_run_prompt(
-                    output,
-                    llm_helper,
-                    llm_li,
-                    context,
-                    "promptx",
-                )
-            else:
-                answer = "NA"
-                _publish_log(
-                    log_events_id,
-                    {
-                        "tool_id": tool_id,
-                        "prompt_key": prompt_name,
-                        "doc_name": doc_name,
-                    },
-                    LogLevel.INFO,
-                    RunLevel.RUN,
-                    "Retrieving context from adapter",
-                )
-
-                if output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SIMPLE:
-                    answer, context = simple_retriver(
-                        output,
-                        doc_id,
-                        llm_helper,
-                        llm_li,
-                        vector_index,
-                    )
-                else:
-                    app.logger.info(
-                        "Invalid retrieval strategy "
-                        f"passed {output[PSKeys.RETRIEVAL_STRATEGY]}"
-                    )
-
-                _publish_log(
-                    log_events_id,
-                    {
-                        "tool_id": tool_id,
-                        "prompt_key": prompt_name,
-                        "doc_name": doc_name,
-                    },
-                    LogLevel.DEBUG,
-                    RunLevel.RUN,
-                    "Retrieved context from adapter",
-                )
 
         _publish_log(
             log_events_id,
@@ -421,7 +380,7 @@ def prompt_processor() -> Any:
         )
 
         if output[PSKeys.TYPE] == PSKeys.NUMBER:
-            if assertion_failed or answer.lower() == "na":
+            if answer.lower() == "na":
                 structured_output[output[PSKeys.NAME]] = None
             else:
                 # TODO: Extract these prompts as constants after pkging
@@ -450,7 +409,7 @@ def prompt_processor() -> Any:
                     )
                     structured_output[output[PSKeys.NAME]] = None
         elif output[PSKeys.TYPE] == PSKeys.EMAIL:
-            if assertion_failed or answer.lower() == "na":
+            if answer.lower() == "na":
                 structured_output[output[PSKeys.NAME]] = None
             else:
                 prompt = f'Extract the email from the following text:\n{answer}\n\nOutput just the email. \
@@ -464,7 +423,7 @@ def prompt_processor() -> Any:
                 )
                 structured_output[output[PSKeys.NAME]] = answer
         elif output[PSKeys.TYPE] == PSKeys.DATE:
-            if assertion_failed or answer.lower() == "na":
+            if answer.lower() == "na":
                 structured_output[output[PSKeys.NAME]] = None
             else:
                 prompt = f'Extract the date from the following text:\n{answer}\n\nOutput just the date.\
@@ -480,7 +439,7 @@ def prompt_processor() -> Any:
                 structured_output[output[PSKeys.NAME]] = answer
 
         elif output[PSKeys.TYPE] == PSKeys.BOOLEAN:
-            if assertion_failed or answer.lower() == "na":
+            if answer.lower() == "na":
                 structured_output[output[PSKeys.NAME]] = None
             else:
                 prompt = f'Extract yes/no from the following text:\n{answer}\n\n\
@@ -498,7 +457,7 @@ def prompt_processor() -> Any:
                 else:
                     structured_output[output[PSKeys.NAME]] = False
         elif output[PSKeys.TYPE] == PSKeys.JSON:
-            if assertion_failed or answer.lower() == "[]" or answer.lower() == "na":
+            if answer.lower() == "[]" or answer.lower() == "na":
                 structured_output[output[PSKeys.NAME]] = None
             else:
                 prompt = f"Convert the following text into valid JSON string: \
@@ -780,7 +739,7 @@ def run_completion(
     except SdkRateLimitError as e:
         raise RateLimitError(f"Rate limit error. {str(e)}") from e
     except Exception as e:
-        app.logger.info(f"Error fetching response for prompt: {e}.")
+        app.logger.error(f"Error fetching response for prompt: {e}.")
         # TODO: Publish this error as a FE update
         raise APIError(str(e)) from e
 
@@ -880,6 +839,6 @@ def handle_uncaught_exception(e):
     return handle_http_exception(APIError())
 
 
+# TODO: Review if below code is needed
 if __name__ == "__main__":
-    # Start the server
     app.run(host="0.0.0.0", port=5003)

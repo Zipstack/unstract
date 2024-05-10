@@ -19,7 +19,6 @@ from prompt_studio.prompt_studio_core.exceptions import (
     IndexingAPIError,
     NoPromptsFound,
     PermissionError,
-    PromptNotValid,
     ToolNotValid,
 )
 from prompt_studio.prompt_studio_core.models import CustomTool
@@ -310,7 +309,6 @@ class PromptStudioHelper:
             id (Optional[str]): ID of the prompt
 
         Raises:
-            PromptNotValid: If a prompt could not be queried from the DB
             AnswerFetchError: Error from prompt-service
 
         Returns:
@@ -329,13 +327,10 @@ class PromptStudioHelper:
 
         if id:
             prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
-            if not prompt_instance:
-                logger.error(f"[{tool_id or 'NA'}] Invalid prompt id: {id}")
-                raise PromptNotValid()
-
+            prompt_name = prompt_instance.prompt_key
             logger.info(f"[{tool_id}] Executing single prompt {id}")
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "prompt_id": id, "doc_name": doc_name},
+                {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
                 LogLevels.INFO,
                 LogLevels.RUN,
                 "Executing single prompt",
@@ -355,7 +350,7 @@ class PromptStudioHelper:
 
             logger.info(f"[{tool.tool_id}] Invoking prompt service for prompt {id}")
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "prompt_id": id, "doc_name": doc_name},
+                {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
                 LogLevels.DEBUG,
                 LogLevels.RUN,
                 "Invoking prompt service",
@@ -382,7 +377,11 @@ class PromptStudioHelper:
                     f"[{tool.tool_id}] Error while fetching response for prompt {id}: {e}"  # noqa: E501
                 )
                 PromptStudioHelper._publish_log(
-                    {"tool_id": tool_id, "prompt_id": id},
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
                     LogLevels.ERROR,
                     LogLevels.RUN,
                     f"Failed to fetch prompt response. {e}",
@@ -393,7 +392,7 @@ class PromptStudioHelper:
                 f"[{tool.tool_id}] Response fetched successfully for prompt {id}"  # noqa: E501
             )
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "prompt_id": id},
+                {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
                 LogLevels.INFO,
                 LogLevels.RUN,
                 "Single prompt execution completed",
@@ -539,6 +538,7 @@ class PromptStudioHelper:
             )
 
             output: dict[str, Any] = {}
+            # TODO: Deprecate and remove assertion related elements
             output[TSPKeys.ASSERTION_FAILURE_PROMPT] = prompt.assertion_failure_prompt
             output[TSPKeys.ASSERT_PROMPT] = prompt.assert_prompt
             output[TSPKeys.IS_ASSERT] = prompt.is_assert
