@@ -88,6 +88,7 @@ class UnstractClassifier(BaseTool):
             llm=llm,
             workflow_id=self.workflow_id,
             execution_id=self.execution_id,
+            adapter_instance_id=llm_adapter_instance_id,
         )
         max_tokens = tool_llm.get_max_tokens(reserved_for_output=50 + 1000)
         max_bytes = int(max_tokens * 1.3)
