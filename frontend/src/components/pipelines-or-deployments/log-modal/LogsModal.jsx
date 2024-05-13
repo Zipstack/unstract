@@ -8,7 +8,13 @@ import { useAlertStore } from "../../../store/alert-store.js";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import "./LogsModel.css";
 
-const LogsModal = ({ open, setOpen, logRecord }) => {
+const LogsModal = ({
+  open,
+  setOpen,
+  logRecord,
+  totalLogs,
+  fetchExecutionLogs,
+}) => {
   const [selectedLogId, setSelectedLogId] = useState(null);
   const [logDescModalOpen, setLogDescModalOpen] = useState(false);
   const [logDetails, setLogDetails] = useState([]);
@@ -16,13 +22,18 @@ const LogsModal = ({ open, setOpen, logRecord }) => {
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const [totalCount, setTotalCount] = useState(0);
 
-  const fetchLogDetails = async (logId) => {
+  const fetchLogDetails = async (logId, page = 1, pageSize = 10) => {
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/execution/${logId}/logs/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+      params: {
+        page: page,
+        page_size: pageSize,
       },
     };
     axiosPrivate(requestOptions)
@@ -36,6 +47,7 @@ const LogsModal = ({ open, setOpen, logRecord }) => {
           event_time: item.event_time,
         }));
         setLogDetails(logDetails);
+        setTotalCount(res.data.count);
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
@@ -59,7 +71,6 @@ const LogsModal = ({ open, setOpen, logRecord }) => {
       dataIndex: "execution_id",
       key: "execution_id",
       render: (text, record) => {
-        console.log("record:: ", record);
         return (
           <Button
             type="link"
@@ -111,7 +122,19 @@ const LogsModal = ({ open, setOpen, logRecord }) => {
         footer={null}
         width="80%"
       >
-        <Table columns={logColumns} dataSource={logRecord} rowKey="id" />
+        <Table
+          columns={logColumns}
+          dataSource={logRecord}
+          rowKey="id"
+          align="left"
+          pagination={{
+            pageSize: 10,
+            total: totalLogs,
+            onChange: (page, pageSize) => {
+              fetchExecutionLogs(page, pageSize);
+            },
+          }}
+        />
       </Modal>
 
       <Modal
@@ -127,6 +150,14 @@ const LogsModal = ({ open, setOpen, logRecord }) => {
           columns={logDetailsColumns}
           dataSource={logDetails}
           rowKey="id"
+          align="left"
+          pagination={{
+            pageSize: 10,
+            total: totalCount,
+            onChange: (page, pageSize) => {
+              fetchLogDetails(selectedLogId, page, pageSize);
+            },
+          }}
         />
       </Modal>
     </>
@@ -137,6 +168,8 @@ LogsModal.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
   logRecord: PropTypes.array.isRequired,
+  totalLogs: PropTypes.number.isRequired,
+  fetchExecutionLogs: PropTypes.func.isRequired,
 };
 
 export { LogsModal };

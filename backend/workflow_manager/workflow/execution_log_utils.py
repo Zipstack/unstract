@@ -48,6 +48,13 @@ def create_log_consumer_scheduler_if_not_exists():
             every=ExecutionLogConstants.CONSUMER_INTERVAL,
             period=IntervalSchedule.SECONDS,
         )
+    except IntervalSchedule.MultipleObjectsReturned as error:
+        logger.error(f"Error occurred while getting interval schedule: {error}")
+        interval = IntervalSchedule.objects.filter(
+            every=ExecutionLogConstants.CONSUMER_INTERVAL,
+            period=IntervalSchedule.SECONDS,
+        ).first()
+    try:
         # Create the scheduler
         task, created = PeriodicTask.objects.get_or_create(
             name=ExecutionLogConstants.PERIODIC_TASK_NAME,

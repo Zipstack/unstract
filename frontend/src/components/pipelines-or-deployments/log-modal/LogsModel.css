@@ -9,3 +9,7 @@
 .warning {
     color: #af6714;
 }
+
+table .ant-btn {
+    padding: 0;
+}

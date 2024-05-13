@@ -36,6 +36,7 @@ function Pipelines({ type }) {
   const [isEdit, setIsEdit] = useState(false);
   const [openLogsModal, setOpenLogsModal] = useState(false);
   const [executionLogs, setExecutionLogs] = useState([]);
+  const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
 
   useEffect(() => {
     getPipelineList();
@@ -179,12 +180,16 @@ function Pipelines({ type }) {
       });
   };
 
-  const fetchExecutionLogs = () => {
+  const fetchExecutionLogs = (page = 1, pageSize = 10) => {
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${selectedPorD.id}/executions/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+      params: {
+        page: page,
+        page_size: pageSize,
       },
     };
     axiosPrivate(requestOptions)
@@ -196,6 +201,7 @@ function Pipelines({ type }) {
           execution_time: result.execution_time,
         }));
         setExecutionLogs(logs);
+        setExecutionLogsTotalCount(res.data.count);
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
@@ -482,6 +488,8 @@ function Pipelines({ type }) {
         open={openLogsModal}
         setOpen={setOpenLogsModal}
         logRecord={executionLogs}
+        totalLogs={executionLogsTotalCount}
+        fetchExecutionLogs={fetchExecutionLogs}
       />
       <DeleteModal
         open={openDeleteModal}
