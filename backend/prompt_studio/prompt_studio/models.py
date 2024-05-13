@@ -64,6 +64,7 @@ class ToolStudioPrompt(BaseModel):
         blank=True,
     )
     output = models.TextField(blank=True)
+    # TODO: Remove below 3 fields related to assertion
     assert_prompt = models.TextField(
         blank=True,
         null=True,

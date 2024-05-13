@@ -67,7 +67,7 @@ class StructureTool(BaseTool):
             self.stream_error_and_exit(f"Error fetching data and indexing: {e}")
 
         _, file_name = os.path.split(input_file)
-        # TODO : Check if reindex. If Yes, reindex, else continue.
+        # TODO : Resolve and pass log events ID
         payload = {
             "outputs": outputs,
             "tool_id": tool_id,
