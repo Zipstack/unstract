@@ -7,7 +7,6 @@ import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { Actions } from "../actions/Actions";
 import { WorkflowExecution } from "../workflow-execution/WorkflowExecution";
 import "./Agency.css";
-import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
 import { SidePanel } from "../side-panel/SidePanel";
@@ -21,7 +20,6 @@ function Agency() {
   const [sourceMsg, setSourceMsg] = useState("");
   const [destinationMsg, setDestinationMsg] = useState("");
   const { message, setDefault } = useSocketMessagesStore();
-  const { emptyLogs } = useSocketLogsStore();
   const workflowStore = useWorkflowStore();
   const { details, loadingType } = workflowStore;
   const prompt = details?.prompt_text;
@@ -58,7 +56,6 @@ function Agency() {
     setOutputMd("");
     setStatusBarMsg("");
     setDefault();
-    emptyLogs();
     setSourceMsg("");
     setDestinationMsg("");
   };
@@ -67,7 +64,6 @@ function Agency() {
     // Clean up function to clear all the socket messages
     return () => {
       setDefault();
-      emptyLogs();
     };
   }, []);
 

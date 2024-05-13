@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { Col, Row, Typography } from "antd";
 
 import "../../agency/display-logs/DisplayLogs.css";
-import { getDateTimeString } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
@@ -33,7 +32,7 @@ function DisplayLogs() {
       .catch((err) => {
         console.log(err);
       });
-  });
+  }, []);
 
   return (
     <div className="tool-logs">
@@ -43,7 +42,7 @@ function DisplayLogs() {
             <Row>
               <Col span={2}>
                 <Typography className="display-logs-col-first">
-                  {getDateTimeString(log?.timestamp)}
+                  {log?.timestamp}
                 </Typography>
               </Col>
               <Col span={2}>
