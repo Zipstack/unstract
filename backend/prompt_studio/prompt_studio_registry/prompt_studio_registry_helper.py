@@ -233,6 +233,7 @@ class PromptStudioRegistryHelper:
             adapter_id = str(prompt.profile_manager.embedding_model.adapter_id)
             embedding_suffix = adapter_id.split("|")[0]
 
+            # TODO: Remove these fields related to assertion
             output[JsonSchemaKey.ASSERTION_FAILURE_PROMPT] = (
                 prompt.assertion_failure_prompt
             )
