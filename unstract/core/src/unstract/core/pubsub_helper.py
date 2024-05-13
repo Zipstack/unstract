@@ -94,6 +94,17 @@ class LogPublisher:
         channel = f"logs:{channel_id}"
         try:
             cls.r.publish(channel, json.dumps(payload))
+
+            # Check if the payload type is "LOG"
+            if payload["type"] == "LOG":
+                # Extract timestamp from payload
+                timestamp = payload["timestamp"]
+
+                # Construct Redis key using channel and timestamp
+                redis_key = f"{channel}:{timestamp}"
+
+                # Store logs in Redis with expiration of 1 hour
+                cls.r.setex(redis_key, 3600, json.dumps(payload))
         except Exception as e:
             logging.error(f"Failed to publish '{channel}' <= {payload}: {e}")
             return False
