@@ -2,9 +2,9 @@ import json
 import logging
 
 from prompt_studio.prompt_profile_manager.models import ProfileManager
+from prompt_studio.prompt_studio_core.exceptions import IndexingAPIError
 from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 
-from ..prompt_studio_core.exceptions import IndexingAPIError
 from .models import IndexManager
 
 logger = logging.getLogger(__name__)
