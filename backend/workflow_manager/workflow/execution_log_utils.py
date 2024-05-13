@@ -49,9 +49,7 @@ def create_log_consumer_scheduler_if_not_exists():
             period=IntervalSchedule.SECONDS,
         )
     except IntervalSchedule.MultipleObjectsReturned as error:
-        logger.error(
-            f"Error occurred while getting interval schedule: {error}"
-        )
+        logger.error(f"Error occurred while getting interval schedule: {error}")
         interval = IntervalSchedule.objects.filter(
             every=ExecutionLogConstants.CONSUMER_INTERVAL,
             period=IntervalSchedule.SECONDS,
