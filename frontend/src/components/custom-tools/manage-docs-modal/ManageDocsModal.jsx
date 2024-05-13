@@ -113,7 +113,13 @@ function ManageDocsModal({
       return;
     }
 
-    return <Tag color={color}>{indexMessage?.message}</Tag>;
+    return (
+      <Tooltip title={indexMessage?.message || ""}>
+        <Tag color={color}>
+          <div className="tag-max-width ellipsis">{indexMessage?.message}</div>
+        </Tag>
+      </Tooltip>
+    );
   };
 
   const failedSummary = (
@@ -384,7 +390,9 @@ function ManageDocsModal({
                 </Tooltip>
               )}
             </div>
-            <div>{infoIndex(indexMessages?.[item?.document_name])}</div>
+            <div className="center">
+              {infoIndex(indexMessages?.[item?.document_name])}
+            </div>
           </Space>
         ),
         delete: (
