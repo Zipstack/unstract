@@ -632,7 +632,7 @@ function PromptCard({
                           updateStatus?.status ===
                             promptStudioUpdateStatus.isUpdating) ||
                         disableLlmOrDocChange.includes(
-                            promptDetails?.prompt_id
+                          promptDetails?.prompt_id
                         ) ||
                         indexDocs.includes(selectedDoc?.document_id)
                       }
