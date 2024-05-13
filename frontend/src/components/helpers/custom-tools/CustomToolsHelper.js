@@ -6,7 +6,6 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
 function CustomToolsHelper() {
@@ -14,7 +13,6 @@ function CustomToolsHelper() {
   const { id } = useParams();
   const { sessionDetails } = useSessionStore();
   const { updateCustomTool, setDefaultCustomTool } = useCustomToolStore();
-  const { emptyCusToolMessages } = useSocketCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const navigate = useNavigate();
   const axiosPrivate = useAxiosPrivate();
@@ -92,7 +90,6 @@ function CustomToolsHelper() {
   useEffect(() => {
     return () => {
       setDefaultCustomTool();
-      emptyCusToolMessages();
     };
   }, []);
 

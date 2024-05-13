@@ -2,54 +2,98 @@ import { useEffect, useRef } from "react";
 import { Col, Row, Typography } from "antd";
 
 import "../../agency/display-logs/DisplayLogs.css";
-import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { getDateTimeString } from "../../../helpers/GetStaticData";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useSessionStore } from "../../../store/session-store";
+import { useSocketLogsStore } from "../../../store/socket-logs-store";
 
 function DisplayLogs() {
   const bottomRef = useRef(null);
-  const { messages } = useSocketCustomToolStore();
+  const { logs } = useSocketLogsStore();
+  const axiosPrivate = useAxiosPrivate();
+  const { sessionDetails } = useSessionStore();
 
   useEffect(() => {
-    if (messages?.length) {
+    if (logs?.length) {
       // Scroll down to the lastest chat.
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+  }, [logs]);
+
+  useEffect(() => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/logs/`,
+    };
+
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        console.log(res);
+      })
+      .catch((err) => {
+        console.log(err);
+      });
+  });
 
   return (
     <div className="tool-logs">
-      {messages.map((message) => {
+      {logs.map((log) => {
         return (
-          <div key={message?.timestamp}>
+          <div key={log?.timestamp}>
             <Row>
-              <Col span={5}>
+              <Col span={2}>
                 <Typography className="display-logs-col-first">
-                  {getDateTimeString(message?.timestamp)}
+                  {getDateTimeString(log?.timestamp)}
                 </Typography>
               </Col>
               <Col span={2}>
                 <Typography className="display-logs-col">
-                  {message?.level}
+                  {log?.level}
                 </Typography>
               </Col>
               <Col span={2}>
                 <Typography className="display-logs-col">
-                  {message?.state}
+                  {log?.stage}
                 </Typography>
               </Col>
-              <Col span={3}>
+              <Col span={2}>
                 <Typography className="display-logs-col">
-                  {message?.component?.prompt_key}
+                  {log?.step}
                 </Typography>
               </Col>
-              <Col span={3}>
+              <Col span={2}>
                 <Typography className="display-logs-col">
-                  {message?.component?.doc_name}
+                  {log?.state}
                 </Typography>
               </Col>
-              <Col span={8}>
+              <Col span={2}>
                 <Typography className="display-logs-col">
-                  {message?.message}
+                  {log?.component?.prompt_key}
+                </Typography>
+              </Col>
+              <Col span={2}>
+                <Typography className="display-logs-col">
+                  {log?.component?.doc_name}
+                </Typography>
+              </Col>
+              <Col span={2}>
+                <Typography className="display-logs-col">
+                  {log?.cost}
+                </Typography>
+              </Col>
+              <Col span={4}>
+                <Typography className="display-logs-col">
+                  {log?.message}
+                </Typography>
+              </Col>
+              <Col span={2}>
+                <Typography className="display-logs-col">
+                  {log?.iteration}
+                </Typography>
+              </Col>
+              <Col span={2}>
+                <Typography className="display-logs-col">
+                  {log?.iteration_total}
                 </Typography>
               </Col>
             </Row>

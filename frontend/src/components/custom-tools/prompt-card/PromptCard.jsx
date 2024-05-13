@@ -39,7 +39,6 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
@@ -49,6 +48,7 @@ import "./PromptCard.css";
 
 import { TokenCount } from "../token-count/TokenCount";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { useSocketLogsStore } from "../../../store/socket-logs-store";
 
 const EvalBtn = null;
 const EvalMetrics = null;
@@ -100,7 +100,7 @@ function PromptCard({
     singlePassExtractMode,
     isSinglePassExtractLoading,
   } = useCustomToolStore();
-  const { messages } = useSocketCustomToolStore();
+  const { logs } = useSocketLogsStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -109,7 +109,7 @@ function PromptCard({
 
   useEffect(() => {
     // Find the latest message that matches the criteria
-    const msg = [...messages]
+    const msg = [...logs]
       .reverse()
       .find(
         (item) =>
@@ -128,7 +128,7 @@ function PromptCard({
       message: msg?.message || "",
       level: msg?.level || "INFO",
     });
-  }, [messages]);
+  }, [logs]);
 
   useEffect(() => {
     if (promptDetails?.is_assert) {
@@ -737,7 +737,9 @@ function PromptCard({
                             promptDetails?.prompt_id &&
                             updateStatus?.status ===
                               promptStudioUpdateStatus.isUpdating) ||
-                          disableLlmOrDocChange?.length > 0 ||
+                          disableLlmOrDocChange.includes(
+                            promptDetails?.prompt_id
+                          ) ||
                           indexDocs.includes(selectedDoc?.document_id)
                         }
                       >

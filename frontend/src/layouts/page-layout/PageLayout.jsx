@@ -30,7 +30,6 @@ function PageLayout() {
   };
   const handleCollapse = (keys) => {
     setActiveKey(keys);
-    console.log(collapsed);
     setHeight(keys.length > 0 ? 200 : 50);
   };
 
