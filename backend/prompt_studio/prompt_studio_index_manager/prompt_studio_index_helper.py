@@ -32,7 +32,7 @@ class PromptStudioIndexHelper:
         try:
             # Create or get the existing record for this document and
             # profile combo
-            index_manager, success = IndexManager.objects.get_or_create(**args)
+            index_manager, _ = IndexManager.objects.get_or_create(**args)
 
             index_ids = index_manager.index_ids_history
             index_ids_list = json.loads(index_ids) if index_ids else []
