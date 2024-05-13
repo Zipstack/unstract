@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -65,11 +66,13 @@ class StructureTool(BaseTool):
         except Exception as e:
             self.stream_error_and_exit(f"Error fetching data and indexing: {e}")
 
-        # TODO : Check if reindex. If Yes, reindex, else continue.
+        _, file_name = os.path.split(input_file)
+        # TODO : Resolve and pass log events ID
         payload = {
             "outputs": outputs,
             "tool_id": tool_id,
             "file_hash": file_hash,
+            "file_name": file_name,
         }
         self.stream_log("Fetching responses for prompts...")
         prompt_service_resp = responder.answer_prompt(payload=payload)
