@@ -13,7 +13,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
     "PyYAML~=6.0.1",
-    "unstract-adapters~=0.14.0",
+    "unstract-adapters~=0.15.0",
     # ! IMPORTANT!
     # Local dependencies usually need to be added as:
     # https://pdm-project.org/latest/usage/dependency/#local-dependencies

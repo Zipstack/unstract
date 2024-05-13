@@ -270,12 +270,12 @@ class PromptStudioRegistryHelper:
 
         if invalidated_prompts:
             raise InValidCustomToolError(
-                f"Cannot export tool. Prompt(s) : {invalidated_prompts} "
-                "are not valid. Please enter a valid prompt."
+                f"Cannot export tool. Prompt(s): {', '.join(invalidated_prompts)} "
+                "are empty. Please enter a valid prompt."
             )
         if invalidated_outputs:
             raise InValidCustomToolError(
-                f"Cannot export tool. Prompt(s) : {invalidated_outputs} "
+                f"Cannot export tool. Prompt(s): {', '.join(invalidated_outputs)} "
                 "were not run. Please run them before exporting."
             )
 

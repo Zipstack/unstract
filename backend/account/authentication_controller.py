@@ -179,14 +179,10 @@ class AuthenticationController:
                         f"{ErrorMessage.ORGANIZATION_EXIST}, \
                             {ErrorMessage.DUPLICATE_API}"
                     )
-            tenant_user = self.create_tenant_user(organization=organization, user=user)
+            self.create_tenant_user(organization=organization, user=user)
 
             if new_organization:
                 try:
-                    with tenant_context(organization):
-                        tenant_user.is_login_onboarding_msg = False
-                        tenant_user.is_prompt_studio_onboarding_msg = False
-                        tenant_user.save()
                     self.auth_service.frictionless_onboarding(
                         organization=organization, user=user
                     )
@@ -413,14 +409,12 @@ class AuthenticationController:
             organization_user.role = role
             organization_user.save()
 
-    def create_tenant_user(
-        self, organization: Organization, user: User
-    ) -> OrganizationMember:
+    def create_tenant_user(self, organization: Organization, user: User) -> None:
         with tenant_context(organization):
             existing_tenant_user = OrganizationMemberService.get_user_by_id(id=user.id)
             if existing_tenant_user:
                 Logger.info(f"{existing_tenant_user.user.email} Already exist")
-                return existing_tenant_user
+
             else:
                 account_user = self.get_or_create_user(user=user)
                 if account_user:
@@ -429,12 +423,15 @@ class AuthenticationController:
                         organization_id=organization.organization_id,
                     )
                     user_role = user_roles[0]
+
                     tenant_user: OrganizationMember = OrganizationMember(
                         user=user,
                         role=user_role,
+                        is_login_onboarding_msg=False,
+                        is_prompt_studio_onboarding_msg=False,
                     )
                     tenant_user.save()
-                    return tenant_user
+
                 else:
                     raise UserNotExistError()
 

@@ -91,35 +91,8 @@
   margin-bottom: 2px;
 }
 
-.assert-p-l-4 {
-  padding-left: 4px;
-}
-
-.assert-p-r-4 {
-  padding-right: 4px;
-}
-
-.assertion-comp {
-  background-color: #eceff3;
-  border-end-end-radius: 0px;
-  border-end-start-radius: 0px;
-}
-
-.assertion-comp .ant-collapse-header {
-  display: none !important;
-  padding: 0 !important;
-}
-
-.assertion-comp .ant-collapse-content-box {
-  padding: 0px !important;
-}
-
 .prompt-card-action-button.ant-btn-text:disabled > .prompt-card-actions-head {
   color: rgba(0, 0, 0, 0.25);
-}
-
-.prompt-card-action-button.ant-btn-text:disabled > .assertion-icon > path {
-  fill: rgba(0, 0, 0, 0.25);
 }
 
 .tag-max-width {
