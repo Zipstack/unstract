@@ -11,6 +11,7 @@ from connector_processor.exceptions import (
     InternalServiceError,
     InValidConnectorId,
     InValidConnectorMode,
+    KeyNotFoundException,
     OAuthTimeOut,
     TestConnectorException,
     TestConnectorInputException,
@@ -128,6 +129,9 @@ class ConnectorProcessor:
         except ConnectorError as e:
             logger.error(f"Error while testing {connector_id}: {e}")
             raise TestConnectorInputException(core_err=e)
+        except KeyError as e:
+            logger.error(f"Path not found while testing {connector_id}: {e}")
+            raise KeyNotFoundException(message=str(e))
         except Exception as e:
             logger.error(f"Error while testing {connector_id}: {e}")
             raise TestConnectorException

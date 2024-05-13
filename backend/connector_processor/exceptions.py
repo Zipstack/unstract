@@ -49,3 +49,20 @@ class TestConnectorInputException(UnstractBaseException):
         super().__init__(detail=core_err.message, core_err=core_err)
         self.default_detail = core_err.message
         self.status_code = 400
+
+
+class TestConnectionException(Exception):
+    DEFAULT_MESSAGE = "Test connection failed! "
+
+    def __init__(self, message: str = DEFAULT_MESSAGE):
+        super().__init__(message)
+        self.message = message
+
+    def __str__(self) -> str:
+        return self.message
+
+
+class KeyNotFoundException(TestConnectionException):
+    def __init__(self, message: str):
+        error_message = f"Test connection failed! Please check key {message}"
+        super().__init__(error_message)

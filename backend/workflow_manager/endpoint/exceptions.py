@@ -69,3 +69,18 @@ class BigQueryTableNotFound(APIException):
         "Please enter correct correct bigquery table in the form "
         "{table}.{schema}.{database}."
     )
+
+
+class UnstractDBException(APIException):
+    status_code = 400
+    default_detail = "Error writing to database"
+
+    def __init__(self, detail: str = default_detail, code: int = status_code) -> None:
+        super().__init__(detail, code)
+
+
+class InvalidSchemaException(UnstractDBException):
+    default_detail = "Schema doesn't exist. Please select a valid schema"
+
+    def __init__(self, detail: str = default_detail) -> None:
+        super().__init__(detail)

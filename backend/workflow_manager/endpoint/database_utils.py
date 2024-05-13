@@ -4,13 +4,17 @@ import logging
 import uuid
 from typing import Any, Optional
 
+from psycopg2 import errors
 from utils.constants import Common
 from workflow_manager.endpoint.constants import (
     BigQuery,
     DBConnectionClass,
     TableColumns,
 )
-from workflow_manager.endpoint.exceptions import BigQueryTableNotFound
+from workflow_manager.endpoint.exceptions import (
+    BigQueryTableNotFound,
+    InvalidSchemaException,
+)
 from workflow_manager.workflow.enums import AgentName, ColumnModes
 
 from unstract.connectors.databases import connectors as db_connectors
@@ -349,6 +353,9 @@ class DatabaseUtils:
                 engine.commit()
             else:
                 engine.query(sql)
+        except errors.InvalidSchemaName as e:
+            logger.error(f"Invalid schema in creating table: {str(e)}")
+            raise InvalidSchemaException()
         except Exception as e:
             logger.error(f"Error while creating table: {str(e)}")
             raise e
