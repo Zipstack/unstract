@@ -213,8 +213,10 @@ class DestinationConnector(BaseConnector):
             table_name=table_name,
             database_entry=values,
         )
-        sql_columns_and_values = DatabaseUtils.get_sql_columns_and_values_for_query(
+        cls_name = db_class.__class__.__name__
+        sql_columns_and_values = DatabaseUtils.get_sql_query_data(
             engine=engine,
+            cls_name=cls_name,
             connector_id=connector_instance.connector_id,
             connector_settings=connector_settings,
             table_name=table_name,
@@ -222,6 +224,7 @@ class DestinationConnector(BaseConnector):
         )
         DatabaseUtils.execute_write_query(
             engine=engine,
+            cls_name=cls_name,
             table_name=table_name,
             sql_keys=list(sql_columns_and_values.keys()),
             sql_values=list(sql_columns_and_values.values()),

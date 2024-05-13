@@ -74,14 +74,13 @@ class Redshift(UnstractDB):
             str: _description_
         """
         python_type = type(value)
-
         mapping = {
-            str: "VARCHAR(65535)",
+            str: "SUPER",
             int: "BIGINT",
             float: "DOUBLE PRECISION",
             datetime.datetime: "TIMESTAMP",
         }
-        return mapping.get(python_type, "VARCHAR(65535)")
+        return mapping.get(python_type, "SUPER")
 
     @staticmethod
     def get_create_table_query(table: str) -> str:

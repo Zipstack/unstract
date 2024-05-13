@@ -8,7 +8,6 @@ from utils.constants import Common
 from workflow_manager.endpoint.constants import (
     BigQuery,
     DBConnectionClass,
-    Snowflake,
     TableColumns,
 )
 from workflow_manager.endpoint.exceptions import BigQueryTableNotFound
@@ -22,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 class DatabaseUtils:
     @staticmethod
-    def make_sql_values_for_query(
-        values: dict[str, Any], column_types: dict[str, str], cls: Any = None
+    def get_sql_values_for_query(
+        values: dict[str, Any], column_types: dict[str, str], cls_name: str
     ) -> dict[str, str]:
         """Making Sql Columns and Values for Query.
 
@@ -51,32 +50,29 @@ class DatabaseUtils:
                     insert into the table accordingly
         """
         sql_values: dict[str, Any] = {}
-
         for column in values:
-            if cls == DBConnectionClass.SNOWFLAKE:
+            if cls_name == DBConnectionClass.SNOWFLAKE:
                 col = column.lower()
                 type_x = column_types[col]
-                if type_x in Snowflake.COLUMN_TYPES:
-                    sql_values[column] = f"'{values[column]}'"
-                elif type_x == "VARIANT":
+                if type_x == "VARIANT":
                     values[column] = values[column].replace("'", "\\'")
                     sql_values[column] = f"parse_json($${values[column]}$$)"
                 else:
                     sql_values[column] = f"{values[column]}"
-            elif cls == DBConnectionClass.BIGQUERY:
+            elif cls_name == DBConnectionClass.BIGQUERY:
                 col = column.lower()
                 type_x = column_types[col]
                 if type_x in BigQuery.COLUMN_TYPES:
-                    sql_values[column] = f"{type_x}('{values[column]}')"
+                    sql_values[column] = f"{type_x}({values[column]})"
                 else:
-                    sql_values[column] = f"'{values[column]}'"
+                    sql_values[column] = f"{values[column]}"
             else:
                 # Default to Other SQL DBs
                 # TODO: Handle numeric types with no quotes
-                sql_values[column] = f"'{values[column]}'"
+                sql_values[column] = f"{values[column]}"
         if column_types.get("id"):
             uuid_id = str(uuid.uuid4())
-            sql_values["id"] = f"'{uuid_id}'"
+            sql_values["id"] = f"{uuid_id}"
         return sql_values
 
     @staticmethod
@@ -223,8 +219,9 @@ class DatabaseUtils:
         return values
 
     @staticmethod
-    def get_sql_columns_and_values_for_query(
+    def get_sql_query_data(
         engine: Any,
+        cls_name: str,
         connector_id: str,
         connector_settings: dict[str, Any],
         table_name: str,
@@ -259,19 +256,20 @@ class DatabaseUtils:
             connector_id=connector_id,
             connector_settings=connector_settings,
         )
-        sql_columns_and_values = DatabaseUtils.make_sql_values_for_query(
+        sql_columns_and_values = DatabaseUtils.get_sql_values_for_query(
             values=values,
             column_types=column_types,
-            cls=class_name,
+            cls_name=cls_name,
         )
         return sql_columns_and_values
 
     @staticmethod
     def execute_write_query(
         engine: Any,
+        cls_name: str,
         table_name: str,
         sql_keys: list[str],
-        sql_values: list[str],
+        sql_values: Any,
     ) -> None:
         """Execute Insert Query.
 
@@ -284,22 +282,27 @@ class DatabaseUtils:
         - Snowflake does not support INSERT INTO ... VALUES ...
           syntax when VARIANT columns are present (JSON).
           So we need to use INSERT INTO ... SELECT ... syntax
+        - sql values can contain data with single quote. It needs to
         """
         sql = (
             f"INSERT INTO {table_name} ({','.join(sql_keys)}) "
-            f"SELECT {','.join(sql_values)}"
+            f"VALUES ({','.join(['%s' for _ in sql_keys])})"
         )
-        logger.debug(f"insertng into table with: {sql} query")
+        logger.debug(f"insertng into table {table_name} with: {sql} query")
+        if cls_name == DBConnectionClass.MSSQL:
+            sql_values = tuple(sql_values)
+        logger.debug(f"sql_values: {sql_values} ")
         try:
             if hasattr(engine, "cursor"):
                 with engine.cursor() as cursor:
-                    cursor.execute(sql)
+                    cursor.execute(sql, sql_values)
                 engine.commit()
             else:
                 engine.query(sql)
         except Exception as e:
             logger.error(f"Error while writing data: {str(e)}")
             raise e
+        logger.debug(f"sucessfully inserted into table {table_name} with: {sql} query")
 
     @staticmethod
     def get_db_class(
@@ -338,7 +341,7 @@ class DatabaseUtils:
         sql = DBConnectorQueryHelper.create_table_query(
             conn_cls=db_class, table=table_name, database_entry=database_entry
         )
-        logger.debug(f"creating table with: {sql} query")
+        logger.debug(f"creating table {table_name} with: {sql} query")
         try:
             if hasattr(engine, "cursor"):
                 with engine.cursor() as cursor:
@@ -349,6 +352,7 @@ class DatabaseUtils:
         except Exception as e:
             logger.error(f"Error while creating table: {str(e)}")
             raise e
+        logger.debug(f"successfully created table {table_name} with: {sql} query")
 
 
 class DBConnectorQueryHelper:

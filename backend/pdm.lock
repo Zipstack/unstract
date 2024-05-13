@@ -456,19 +456,19 @@ files = [
 
 [[package]]
 name = "azure-storage-blob"
-version = "12.19.1"
-requires_python = ">=3.7"
+version = "12.20.0"
+requires_python = ">=3.8"
 summary = "Microsoft Azure Blob Storage Client Library for Python"
 groups = ["default"]
 dependencies = [
-    "azure-core<2.0.0,>=1.28.0",
+    "azure-core>=1.28.0",
     "cryptography>=2.1.4",
     "isodate>=0.6.1",
-    "typing-extensions>=4.3.0",
+    "typing-extensions>=4.6.0",
 ]
 files = [
-    {file = "azure-storage-blob-12.19.1.tar.gz", hash = "sha256:13e16ba42fc54ac2c7e8f976062173a5c82b9ec0594728e134aac372965a11b0"},
-    {file = "azure_storage_blob-12.19.1-py3-none-any.whl", hash = "sha256:c5530dc51c21c9564e4eb706cd499befca8819b10dd89716d3fc90d747556243"},
+    {file = "azure-storage-blob-12.20.0.tar.gz", hash = "sha256:eeb91256e41d4b5b9bad6a87fd0a8ade07dd58aa52344e2c8d2746e27a017d3b"},
+    {file = "azure_storage_blob-12.20.0-py3-none-any.whl", hash = "sha256:de6b3bf3a90e9341a6bcb96a2ebe981dffff993e9045818f6549afea827a52a9"},
 ]
 
 [[package]]
@@ -1333,7 +1333,7 @@ files = [
 
 [[package]]
 name = "google-api-python-client"
-version = "2.127.0"
+version = "2.128.0"
 requires_python = ">=3.7"
 summary = "Google API Client Library for Python"
 groups = ["default"]
@@ -1345,8 +1345,8 @@ dependencies = [
     "uritemplate<5,>=3.0.1",
 ]
 files = [
-    {file = "google-api-python-client-2.127.0.tar.gz", hash = "sha256:bbb51b0fbccdf40e536c26341e372d7800f09afebb53103bbcc94e08f14b523b"},
-    {file = "google_api_python_client-2.127.0-py2.py3-none-any.whl", hash = "sha256:d01c70c7840ec37888aa02b1aea5d9baba4c1701e268d1a0251640afd56e5e90"},
+    {file = "google-api-python-client-2.128.0.tar.gz", hash = "sha256:908af182dfc1cd79412a489b37fe45e4f3cc99c74e80c7c477ca5babaa54eea5"},
+    {file = "google_api_python_client-2.128.0-py2.py3-none-any.whl", hash = "sha256:99da6acb0acc648e309102b0e0262d7fef30f07f6bf56c6eeaa0504ceca113e3"},
 ]
 
 [[package]]
@@ -2077,18 +2077,18 @@ files = [
 
 [[package]]
 name = "llama-index-agent-openai"
-version = "0.2.3"
+version = "0.2.4"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index agent openai integration"
 groups = ["default"]
 dependencies = [
-    "llama-index-core<0.11.0,>=0.10.30",
+    "llama-index-core<0.11.0,>=0.10.35",
     "llama-index-llms-openai<0.2.0,>=0.1.5",
     "openai>=1.14.0",
 ]
 files = [
-    {file = "llama_index_agent_openai-0.2.3-py3-none-any.whl", hash = "sha256:3782b24dd611364e391672dadc8308efd58d731a097c34a40e29f28c3abc5034"},
-    {file = "llama_index_agent_openai-0.2.3.tar.gz", hash = "sha256:c899d90b32036656a8ef86d0f0378d4168e00eb2d75a10901eab58ba5b2656a4"},
+    {file = "llama_index_agent_openai-0.2.4-py3-none-any.whl", hash = "sha256:b05eb7f0331d40a7a2bcaabaa84c9c7ebe6837a72038d03cbb71c083a4301a81"},
+    {file = "llama_index_agent_openai-0.2.4.tar.gz", hash = "sha256:cd4a58f8bf233728ceda554cbb34de56a2b6bbbbff6ce801c3f8ff0c8280bf55"},
 ]
 
 [[package]]
@@ -2109,7 +2109,7 @@ files = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.10.34"
+version = "0.10.35.post1"
 requires_python = "<4.0,>=3.8.1"
 summary = "Interface between LLMs and your data"
 groups = ["default"]
@@ -2139,8 +2139,8 @@ dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "llama_index_core-0.10.34-py3-none-any.whl", hash = "sha256:073eb6f2617686826065c68b0934a2cd127bf6f762220601c00d20712b48d586"},
-    {file = "llama_index_core-0.10.34.tar.gz", hash = "sha256:d41beeff56f7581d924f2a27c0020f291827b15a18bb7bd80f3ab38ccc95e4ca"},
+    {file = "llama_index_core-0.10.35.post1-py3-none-any.whl", hash = "sha256:1c5993946202a9aec86bd6f0943991d1fe443556bd3e6c7b345cb360a46dc6c2"},
+    {file = "llama_index_core-0.10.35.post1.tar.gz", hash = "sha256:f62013217bf7c04b6adf9dc2c1b168ff957f924519f19af2f383a0f0c34308e4"},
 ]
 
 [[package]]
@@ -2298,7 +2298,7 @@ files = [
 
 [[package]]
 name = "llama-index-llms-openai"
-version = "0.1.16"
+version = "0.1.18"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms openai integration"
 groups = ["default"]
@@ -2306,8 +2306,8 @@ dependencies = [
     "llama-index-core<0.11.0,>=0.10.24",
 ]
 files = [
-    {file = "llama_index_llms_openai-0.1.16-py3-none-any.whl", hash = "sha256:4a9c0fe969302731907c8fa31631812397637e114a44ebbad11fd6c59def9315"},
-    {file = "llama_index_llms_openai-0.1.16.tar.gz", hash = "sha256:313bbc17c241992430a6bf686a1b1edc4276c8256ad6b0550aa1bea1e0fed1a6"},
+    {file = "llama_index_llms_openai-0.1.18-py3-none-any.whl", hash = "sha256:934cf72d10385f1c76c0183b0e94ce1850fab1026287e01b7db0a14c946dfd79"},
+    {file = "llama_index_llms_openai-0.1.18.tar.gz", hash = "sha256:8cb7546a1885ba558ff580b114d638569a0aed81a264961114e719bc42b37100"},
 ]
 
 [[package]]
@@ -2403,7 +2403,7 @@ files = [
 
 [[package]]
 name = "llama-index-readers-file"
-version = "0.1.20"
+version = "0.1.22"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index readers file integration"
 groups = ["default"]
@@ -2414,8 +2414,8 @@ dependencies = [
     "striprtf<0.0.27,>=0.0.26",
 ]
 files = [
-    {file = "llama_index_readers_file-0.1.20-py3-none-any.whl", hash = "sha256:055999f86ad11130445bfe10c0886ddecb63e1b727678ab4ba58602282443289"},
-    {file = "llama_index_readers_file-0.1.20.tar.gz", hash = "sha256:1258c016bc8ee1efe37a3b081384ba47dbca13b92c205d3154ba235fc09cc2fb"},
+    {file = "llama_index_readers_file-0.1.22-py3-none-any.whl", hash = "sha256:a8d4a69a9ea659c14ebb22ca9a5560b9c7ec6f501e7f68f6c52f591374165376"},
+    {file = "llama_index_readers_file-0.1.22.tar.gz", hash = "sha256:37de54ad0cfbdc607c195532b9a292417a4714f57773570b87027b8dc381f0e2"},
 ]
 
 [[package]]
@@ -4532,13 +4532,13 @@ files = [
 
 [[package]]
 name = "tomlkit"
-version = "0.12.4"
+version = "0.12.5"
 requires_python = ">=3.7"
 summary = "Style preserving TOML library"
 groups = ["default"]
 files = [
-    {file = "tomlkit-0.12.4-py3-none-any.whl", hash = "sha256:5cd82d48a3dd89dee1f9d64420aa20ae65cfbd00668d6f094d7578a78efbb77b"},
-    {file = "tomlkit-0.12.4.tar.gz", hash = "sha256:7ca1cfc12232806517a8515047ba66a19369e71edf2439d0f5824f91032b6cc3"},
+    {file = "tomlkit-0.12.5-py3-none-any.whl", hash = "sha256:af914f5a9c59ed9d0762c7b64d3b5d5df007448eb9cd2edc8a46b1eafead172f"},
+    {file = "tomlkit-0.12.5.tar.gz", hash = "sha256:eef34fba39834d4d6b73c9ba7f3e4d1c417a4e56f89a7e96e090dd0d24b8fb3c"},
 ]
 
 [[package]]
