@@ -722,8 +722,7 @@ def run_completion(
     prompt: str,
 ) -> tuple[str, dict[str, Any]]:
     try:
-        platform_api_key = llm.tool.get_env_or_die(PSKeys.PLATFORM_SERVICE_API_KEY)
-        completion = llm.run_completion(platform_api_key, prompt)
+        completion = llm.run_completion(prompt)
 
         answer: str = completion[PSKeys.RESPONSE].text
         return answer

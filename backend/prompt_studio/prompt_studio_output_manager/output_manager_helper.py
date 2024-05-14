@@ -13,6 +13,7 @@ from prompt_studio.prompt_studio_output_manager.models import PromptStudioOutput
 class OutputManagerHelper:
     @staticmethod
     def handle_prompt_output_update(
+        run_id: str,
         prompts: list[ToolStudioPrompt],
         outputs: Any,
         document_id: str,
@@ -51,6 +52,7 @@ class OutputManagerHelper:
             PromptStudioOutputManager.objects.update_or_create(
                 document_manager=document_manager,
                 tool_id=tool,
+                run_id=run_id,
                 profile_manager=profile_manager,
                 prompt_id=prompt,
                 is_single_pass_extract=is_single_pass_extract,
