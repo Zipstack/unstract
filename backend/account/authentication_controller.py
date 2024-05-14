@@ -115,17 +115,22 @@ class AuthenticationController:
         except Exception as ex:
             #
             self.user_logout(request)
+
+            response = Response(
+                status=status.HTTP_412_PRECONDITION_FAILED,
+            )
             if hasattr(ex, "code") and ex.code in {
                 AuthorizationErrorCode.USF,
                 AuthorizationErrorCode.USR,
                 AuthorizationErrorCode.INE001,
                 AuthorizationErrorCode.INE002,
             }:  # type: ignore
-                response = Response(
-                    status=status.HTTP_412_PRECONDITION_FAILED,
-                    data={"domain": ex.data.get("domain"), "code": ex.code},
-                )
+                response.data = ({"domain": ex.data.get("domain"), "code": ex.code},)
                 return response
+            # Return in case even if missed unknown exception in
+            # self.auth_service.user_organizations(request)
+            return response
+
         user: User = request.user
         org_ids = {org.id for org in organizations}
 
