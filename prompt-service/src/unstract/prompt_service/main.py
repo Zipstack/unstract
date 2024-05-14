@@ -346,12 +346,12 @@ def prompt_processor() -> Any:
             )
 
             if output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SIMPLE:
-                answer, context = simple_retriver(
-                    output,
-                    doc_id,
-                    llm_helper,
-                    llm_li,
-                    vector_index,
+                answer, context = simple_or_subq_retriever(
+                    output, doc_id, llm_helper, llm_li, vector_index, PSKeys.SIMPLE
+                )
+            elif output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SUBQUESTION:
+                answer, context = simple_or_subq_retriever(
+                    output, doc_id, llm_helper, llm_li, vector_index, PSKeys.SUBQUESTION
                 )
             else:
                 app.logger.info(
@@ -641,12 +641,13 @@ def prompt_processor() -> Any:
     return structured_output
 
 
-def simple_retriver(  # type:ignore
+def simple_or_subq_retriever(  # type:ignore
     output: dict[str, Any],
     doc_id: str,
     llm_helper: ToolLLM,
     llm_li: Optional[LLM],
     vector_index,
+    retrival_type: str,
 ) -> tuple[str, str]:
     prompt = construct_prompt_for_engine(
         preamble=output["preamble"],
@@ -654,17 +655,34 @@ def simple_retriver(  # type:ignore
         postamble=output["postamble"],
         grammar_list=output["grammar"],
     )
-    subq_prompt = (
-        f"Generate a sub-question from the following verbose prompt that will"
-        f" help extract relevant documents from a vector store:\n\n{prompt}"
-    )
+    context_prompt = ""
+    if retrival_type is PSKeys.SIMPLE:
+        context_prompt = prompt
+    if retrival_type is PSKeys.SUBQUESTION:
+        context_prompt = (
+            f"Generate a sub-question from the following verbose prompt that will"
+            f" help extract relevant documents from a vector store:\n\n{prompt}"
+        )
     answer = run_completion(
         llm_helper=llm_helper,
         llm_li=llm_li,
-        prompt=subq_prompt,
+        prompt=context_prompt,
         adapter_instance_id=output[PSKeys.LLM],
     )
 
+    text = generate_context(output, doc_id, vector_index, answer)
+
+    answer = construct_and_run_prompt(  # type:ignore
+        output,
+        llm_helper,
+        llm_li,
+        text,
+        "promptx",
+    )
+    return (answer, text)
+
+
+def generate_context(output, doc_id, vector_index, answer) -> str:
     retriever = vector_index.as_retriever(
         similarity_top_k=output[PSKeys.SIMILARITY_TOP_K],
         filters=MetadataFilters(
@@ -683,15 +701,7 @@ def simple_retriver(  # type:ignore
             text += node.get_content() + "\n"
         else:
             app.logger.info("Node score is less than 0.6. " f"Ignored: {node.score}")
-
-    answer = construct_and_run_prompt(  # type:ignore
-        output,
-        llm_helper,
-        llm_li,
-        text,
-        "promptx",
-    )
-    return (answer, text)
+    return text
 
 
 def construct_and_run_prompt(
