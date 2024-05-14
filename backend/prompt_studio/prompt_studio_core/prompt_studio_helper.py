@@ -675,7 +675,7 @@ class PromptStudioHelper:
                 doc_id=doc_id,
             )
             return doc_id
-        except IndexingError as e:
+        except (IndexingError, IndexingAPIError) as e:
             doc_name = os.path.split(file_path)[1]
             PromptStudioHelper._publish_log(
                 {"tool_id": tool_id, "doc_name": doc_name},
