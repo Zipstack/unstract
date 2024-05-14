@@ -220,6 +220,7 @@ class PromptStudioHelper:
         user_id: str,
         document_id: str,
         is_summary: bool = False,
+        run_id: str = None,
     ) -> Any:
         """Method to index a document.
 
@@ -278,6 +279,7 @@ class PromptStudioHelper:
             document_id=document_id,
             is_summary=is_summary,
             reindex=True,
+            run_id=run_id,
         )
 
         logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
@@ -297,6 +299,7 @@ class PromptStudioHelper:
         user_id: str,
         document_id: str,
         id: Optional[str] = None,
+        run_id: str = None,
     ) -> Any:
         """Execute chain/single run of the prompts. Makes a call to prompt
         service and returns the dict of response.
@@ -330,7 +333,11 @@ class PromptStudioHelper:
             prompt_name = prompt_instance.prompt_key
             logger.info(f"[{tool_id}] Executing single prompt {id}")
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
                 LogLevels.INFO,
                 LogLevels.RUN,
                 "Executing single prompt",
@@ -350,7 +357,11 @@ class PromptStudioHelper:
 
             logger.info(f"[{tool.tool_id}] Invoking prompt service for prompt {id}")
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
                 LogLevels.DEBUG,
                 LogLevels.RUN,
                 "Invoking prompt service",
@@ -364,11 +375,13 @@ class PromptStudioHelper:
                     prompt=prompt_instance,
                     org_id=org_id,
                     document_id=document_id,
+                    run_id=run_id,
                 )
 
                 OutputManagerHelper.handle_prompt_output_update(
+                    run_id=response["run_id"],
                     prompts=prompts,
-                    outputs=response,
+                    outputs=response["output"],
                     document_id=document_id,
                     is_single_pass_extract=False,
                 )
@@ -400,7 +413,11 @@ class PromptStudioHelper:
                 f"[{tool.tool_id}] Response fetched successfully for prompt {id}"
             )
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "prompt_key": prompt_name, "doc_name": doc_name},
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
                 LogLevels.INFO,
                 LogLevels.RUN,
                 "Single prompt execution completed",
@@ -432,9 +449,11 @@ class PromptStudioHelper:
                     prompts=prompts,
                     org_id=org_id,
                     document_id=document_id,
+                    run_id=run_id,
                 )
 
                 OutputManagerHelper.handle_prompt_output_update(
+                    run_id=response["run_id"],
                     prompts=prompts,
                     outputs=response[TSPKeys.SINGLE_PASS_EXTRACTION],
                     document_id=document_id,
@@ -470,6 +489,7 @@ class PromptStudioHelper:
         prompt: ToolStudioPrompt,
         org_id: str,
         document_id: str,
+        run_id: str,
     ) -> Any:
         """Utility function to invoke prompt service. Used internally.
 
@@ -528,6 +548,7 @@ class PromptStudioHelper:
             org_id=org_id,
             document_id=document_id,
             is_summary=tool.summarize_as_source,
+            run_id=run_id,
         )
 
         output: dict[str, Any] = {}
@@ -588,6 +609,7 @@ class PromptStudioHelper:
         payload = {
             TSPKeys.OUTPUTS: outputs,
             TSPKeys.TOOL_ID: tool_id,
+            TSPKeys.RUN_ID: run_id,
             TSPKeys.FILE_NAME: doc_name,
             TSPKeys.FILE_HASH: file_hash,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
@@ -622,6 +644,7 @@ class PromptStudioHelper:
         document_id: str,
         is_summary: bool = False,
         reindex: bool = False,
+        run_id: str = None,
     ) -> str:
         """Used to index a file based on the passed arguments.
 
@@ -654,18 +677,20 @@ class PromptStudioHelper:
             profile_manager.chunk_size = 0
 
         try:
+            usage_kwargs = {"run_id": run_id}
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = ToolIndex(tool=util)
             doc_id: str = tool_index.index_file(
                 tool_id=tool_id,
-                embedding_type=embedding_model,
-                vector_db=vector_db,
-                x2text_adapter=x2text_adapter,
+                embedding_instance_id=embedding_model,
+                vector_db_instance_id=vector_db,
+                x2text_instance_id=x2text_adapter,
                 file_path=file_path,
                 chunk_size=profile_manager.chunk_size,
                 chunk_overlap=profile_manager.chunk_overlap,
                 reindex=reindex,
                 output_file_path=extract_file_path,
+                kwargs=usage_kwargs,
             )
 
             PromptStudioIndexHelper.handle_index_manager(
@@ -692,6 +717,7 @@ class PromptStudioHelper:
         prompts: list[ToolStudioPrompt],
         org_id: str,
         document_id: str,
+        run_id: str = None,
     ) -> Any:
         tool_id: str = str(tool.tool_id)
         outputs: list[dict[str, Any]] = []
@@ -725,6 +751,7 @@ class PromptStudioHelper:
             org_id=org_id,
             is_summary=tool.summarize_as_source,
             document_id=document_id,
+            run_id=run_id,
         )
 
         vector_db = str(default_profile.vector_store.id)

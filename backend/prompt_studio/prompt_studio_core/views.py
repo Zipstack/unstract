@@ -203,12 +203,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         )
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
+        # Generate a run_id
+        run_id = str(uuid.uuid4())
         unique_id = PromptStudioHelper.index_document(
             tool_id=str(tool.tool_id),
             file_name=file_name,
             org_id=UserSessionUtils.get_organization_id(request),
             user_id=tool.created_by.user_id,
             document_id=document_id,
+            run_id=run_id,
         )
 
         for processor_plugin in self.processor_plugins:
@@ -249,6 +252,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         tool_id: str = str(custom_tool.tool_id)
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         id: str = request.data.get(ToolStudioPromptKeys.ID)
+        # Generate a run_id
+        run_id = str(uuid.uuid4())
 
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,
@@ -256,6 +261,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             org_id=UserSessionUtils.get_organization_id(request),
             user_id=custom_tool.created_by.user_id,
             document_id=document_id,
+            run_id=run_id,
         )
         return Response(response, status=status.HTTP_200_OK)
 
@@ -275,12 +281,14 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         custom_tool = self.get_object()
         tool_id: str = str(custom_tool.tool_id)
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
-
+        # Generate a run_id
+        run_id = str(uuid.uuid4())
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             tool_id=tool_id,
             org_id=UserSessionUtils.get_organization_id(request),
             user_id=custom_tool.created_by.user_id,
             document_id=document_id,
+            run_id=run_id,
         )
         return Response(response, status=status.HTTP_200_OK)
 
