@@ -4,7 +4,9 @@ import logging
 import uuid
 from typing import Any, Optional
 
-from psycopg2 import errors
+import google.api_core.exceptions
+import snowflake.connector.errors as SnowflakeError
+from psycopg2 import errors as PsycopgError
 from utils.constants import Common
 from workflow_manager.endpoint.constants import (
     BigQuery,
@@ -12,13 +14,19 @@ from workflow_manager.endpoint.constants import (
     TableColumns,
 )
 from workflow_manager.endpoint.exceptions import (
+    BigQueryForbiddenException,
+    BigQueryNotFoundException,
     BigQueryTableNotFound,
     InvalidSchemaException,
+    InvalidSyntaxException,
+    SnowflakeProgrammingException,
+    UnstractDBException,
 )
 from workflow_manager.workflow.enums import AgentName, ColumnModes
 
 from unstract.connectors.databases import connectors as db_connectors
 from unstract.connectors.databases.unstract_db import UnstractDB
+from unstract.connectors.exceptions import ConnectorError
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +104,7 @@ class DatabaseUtils:
 
     @staticmethod
     def get_column_types(
-        cls: Any,
+        cls_name: Any,
         table_name: str,
         connector_id: str,
         connector_settings: dict[str, Any],
@@ -118,7 +126,7 @@ class DatabaseUtils:
         """
         column_types: dict[str, str] = {}
         try:
-            if cls == DBConnectionClass.SNOWFLAKE:
+            if cls_name == DBConnectionClass.SNOWFLAKE:
                 query = f"describe table {table_name}"
                 results = DatabaseUtils.execute_and_fetch_data(
                     connector_id=connector_id,
@@ -127,7 +135,7 @@ class DatabaseUtils:
                 )
                 for column in results:
                     column_types[column[0].lower()] = column[1].split("(")[0]
-            elif cls == DBConnectionClass.BIGQUERY:
+            elif cls_name == DBConnectionClass.BIGQUERY:
                 bigquery_table_name = str.lower(table_name).split(".")
                 if len(bigquery_table_name) != BigQuery.TABLE_NAME_SIZE:
                     raise BigQueryTableNotFound()
@@ -253,9 +261,8 @@ class DatabaseUtils:
             - For other SQL databases, it uses default SQL generation
                 based on column types.
         """
-        class_name = engine.__class__.__name__
         column_types: dict[str, str] = DatabaseUtils.get_column_types(
-            cls=class_name,
+            cls_name=cls_name,
             table_name=table_name,
             connector_id=connector_id,
             connector_settings=connector_settings,
@@ -322,7 +329,10 @@ class DatabaseUtils:
     ) -> Any:
         connector = db_connectors[connector_id][Common.METADATA][Common.CONNECTOR]
         connector_class: UnstractDB = connector(connector_settings)
-        return connector_class.execute(query=query)
+        try:
+            return connector_class.execute(query=query)
+        except ConnectorError as e:
+            raise UnstractDBException(detail=e.message)
 
     @staticmethod
     def create_table_if_not_exists(
@@ -353,12 +363,21 @@ class DatabaseUtils:
                 engine.commit()
             else:
                 engine.query(sql)
-        except errors.InvalidSchemaName as e:
-            logger.error(f"Invalid schema in creating table: {str(e)}")
-            raise InvalidSchemaException()
-        except Exception as e:
-            logger.error(f"Error while creating table: {str(e)}")
-            raise e
+        except PsycopgError.InvalidSchemaName as e:
+            logger.error(f"Invalid schema in creating table: {e.pgerror}")
+            raise InvalidSchemaException(code=e.pgcode, detail=e.pgerror)
+        except PsycopgError.SyntaxError as e:
+            logger.error(f"Invalid syntax in creating table: {e.pgerror}")
+            raise InvalidSyntaxException(code=e.pgcode, detail=e.pgerror)
+        except SnowflakeError.ProgrammingError as e:
+            logger.error(f"snowflake error in creating table: {e.msg} {e.errno}")
+            raise SnowflakeProgrammingException(code=e.errno, detail=e.msg)
+        except google.api_core.exceptions.Forbidden as e:
+            logger.error(f"Forbidden exception in creating table: {str(e)}")
+            raise BigQueryForbiddenException(code=e.code)
+        except google.api_core.exceptions.NotFound as e:
+            logger.error(f"Resource not found in creating table: {str(e)}")
+            raise BigQueryNotFoundException(code=e.code)
         logger.debug(f"successfully created table {table_name} with: {sql} query")
 
 

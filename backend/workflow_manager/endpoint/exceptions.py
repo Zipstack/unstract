@@ -1,3 +1,5 @@
+from typing import Any
+
 from rest_framework.exceptions import APIException
 
 
@@ -75,12 +77,37 @@ class UnstractDBException(APIException):
     status_code = 400
     default_detail = "Error writing to database"
 
-    def __init__(self, detail: str = default_detail, code: int = status_code) -> None:
-        super().__init__(detail, code)
+    def __init__(self, code: Any = status_code, detail: str = default_detail) -> None:
+        super().__init__(detail=detail, code=code)
+
+
+class InvalidSyntaxException(UnstractDBException):
+    def __init__(self, code: Any, detail: Any) -> None:
+        default_detail = "Syntax incorrect. "
+        super().__init__(code=code, detail=default_detail + detail)
 
 
 class InvalidSchemaException(UnstractDBException):
-    default_detail = "Schema doesn't exist. Please select a valid schema"
+    def __init__(self, code: Any, detail: Any) -> None:
+        default_detail = "Schema not valid. "
+        super().__init__(code=code, detail=default_detail + detail)
 
-    def __init__(self, detail: str = default_detail) -> None:
-        super().__init__(detail)
+
+class SnowflakeProgrammingException(UnstractDBException):
+    def __init__(self, code: Any, detail: Any) -> None:
+        default_detail = "Error while creating/inserting data. "
+        super().__init__(code, default_detail + detail)
+
+
+class BigQueryForbiddenException(UnstractDBException):
+    default_detail = "Access forbidden. Check your permissions."
+
+    def __init__(self, code: Any, detail: str = default_detail) -> None:
+        super().__init__(detail=detail, code=code)
+
+
+class BigQueryNotFoundException(UnstractDBException):
+    default_detail = "The requested resource was not found."
+
+    def __init__(self, code: Any, detail: str = default_detail) -> None:
+        super().__init__(detail=detail, code=code)
