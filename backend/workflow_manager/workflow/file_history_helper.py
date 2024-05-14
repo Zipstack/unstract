@@ -1,8 +1,12 @@
+import logging
 from typing import Any, Optional
 
+from django.db.utils import IntegrityError
 from workflow_manager.workflow.enums import ExecutionStatus
 from workflow_manager.workflow.models.file_history import FileHistory
 from workflow_manager.workflow.models.workflow import Workflow
+
+logger = logging.getLogger(__name__)
 
 
 class FileHistoryHelper:
@@ -37,6 +41,7 @@ class FileHistoryHelper:
         status: ExecutionStatus,
         result: Any,
         error: Optional[str] = None,
+        file_name: Optional[str] = None,
     ) -> FileHistory:
         """Create a new file history record.
 
@@ -49,13 +54,25 @@ class FileHistoryHelper:
         Returns:
             FileHistory: The newly created file history record.
         """
-        file_history: FileHistory = FileHistory.objects.create(
-            workflow=workflow,
-            cache_key=cache_key,
-            status=status.value,
-            result=str(result),
-            error=str(error) if error else "",
-        )
+        try:
+            file_history: FileHistory = FileHistory.objects.create(
+                workflow=workflow,
+                cache_key=cache_key,
+                status=status.value,
+                result=str(result),
+                error=str(error) if error else "",
+            )
+        except IntegrityError:
+            # TODO: Need to find why duplicate insert is coming
+            logger.warning(
+                "Trying to insert duplication data for filename %s for workflow %s",
+                file_name,
+                workflow,
+            )
+            file_history = FileHistoryHelper.get_file_history(
+                workflow=workflow, cache_key=cache_key
+            )
+
         return file_history
 
     @staticmethod
