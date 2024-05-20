@@ -65,7 +65,14 @@ deploy = [
 ]
 test = [
     "pytest>=8.0.1",
+    "pytest-dotenv==0.5.2",
 ]
+
+[tool.pytest.ini_options]
+env = [
+    ".env"
+]
+addopts = "-s"
 
 [tool.pdm.scripts]
 # Commands for backend
