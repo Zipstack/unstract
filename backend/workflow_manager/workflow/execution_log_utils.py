@@ -72,7 +72,7 @@ def create_log_consumer_scheduler_if_not_exists():
             task.save()
             logger.info("Log consumer scheduler updated successfully.")
         else:
-            print("Log consumer scheduler created successfully.")
+            logger.info("Log consumer scheduler created successfully.")
     except IntegrityError as error:
         logger.error(f"Error occurred while creating log consumer scheduler: {error}")
 

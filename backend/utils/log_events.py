@@ -49,7 +49,6 @@ def _get_validated_log_data(json_data: Any) -> Optional[LogDataDTO]:
     Args:
         json_data (Any): Log data in JSON format
     """
-    print(f"Received log data: {json_data}")
     if isinstance(json_data, bytes):
         json_data = json_data.decode("utf-8")
 
