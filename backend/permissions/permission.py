@@ -29,7 +29,7 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
         )
 
 
-class IsOwnerOrSharedUserOrOrg(permissions.BasePermission):
+class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
     """Custom permission to only allow owners and shared users of an object or
     if it is shared to org."""
 
