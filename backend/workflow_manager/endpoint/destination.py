@@ -119,6 +119,7 @@ class DestinationConnector(BaseConnector):
                 workflow=workflow,
                 status=ExecutionStatus.COMPLETED,
                 result=result,
+                file_name=file_name,
             )
 
     def copy_output_to_output_directory(self) -> None:
