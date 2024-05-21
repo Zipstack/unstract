@@ -93,6 +93,12 @@ class InvalidSchemaException(UnstractDBException):
         super().__init__(code=code, detail=default_detail + detail)
 
 
+class FeatureNotSupportedException(UnstractDBException):
+    def __init__(self, code: Any, detail: Any) -> None:
+        default_detail = "feature not supported sql error. "
+        super().__init__(code=code, detail=default_detail + detail)
+
+
 class SnowflakeProgrammingException(UnstractDBException):
     def __init__(self, code: Any, detail: Any) -> None:
         default_detail = "Error while creating/inserting data. "

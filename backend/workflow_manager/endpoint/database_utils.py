@@ -17,6 +17,7 @@ from workflow_manager.endpoint.exceptions import (
     BigQueryForbiddenException,
     BigQueryNotFoundException,
     BigQueryTableNotFound,
+    FeatureNotSupportedException,
     InvalidSchemaException,
     InvalidSyntaxException,
     SnowflakeProgrammingException,
@@ -366,6 +367,9 @@ class DatabaseUtils:
         except PsycopgError.InvalidSchemaName as e:
             logger.error(f"Invalid schema in creating table: {e.pgerror}")
             raise InvalidSchemaException(code=e.pgcode, detail=e.pgerror)
+        except PsycopgError.FeatureNotSupported as e:
+            logger.error(f"feature not supported sql error: {e.pgerror}")
+            raise FeatureNotSupportedException(code=e.pgcode, detail=e.pgerror)
         except PsycopgError.SyntaxError as e:
             logger.error(f"Invalid syntax in creating table: {e.pgerror}")
             raise InvalidSyntaxException(code=e.pgcode, detail=e.pgerror)

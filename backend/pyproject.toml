@@ -69,9 +69,7 @@ test = [
 ]
 
 [tool.pytest.ini_options]
-env = [
-    ".env"
-]
+env_files = "test.env" # Load env from particular env file
 addopts = "-s"
 
 [tool.pdm.scripts]
