@@ -27,7 +27,6 @@ class PromptStudioIndexHelper:
         args: dict[str, str] = dict()
         args["document_manager"] = document
         args["profile_manager"] = profile_manager
-        args[index_id] = doc_id
 
         try:
             # Create or get the existing record for this document and
@@ -50,6 +49,7 @@ class PromptStudioIndexHelper:
             if doc_id not in index_ids:
                 index_ids_list.append(doc_id)
 
+            args[index_id] = doc_id
             args["index_ids_history"] = json.dumps(index_ids_list)
 
             # Update the record with the index id
