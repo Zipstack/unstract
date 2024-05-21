@@ -45,9 +45,15 @@ def disconnect(sid: str) -> None:
 
 
 def _get_validated_log_data(json_data: Any) -> Optional[LogDataDTO]:
-    """Validate log data to persist history
+    """Validate log data to persist history. This function takes log data in
+    JSON format, validates it, and returns a `LogDataDTO` object if the data is
+    valid. The validation process includes decoding bytes to string, parsing
+    the string as JSON, and checking for required fields and log type.
+
     Args:
         json_data (Any): Log data in JSON format
+    Returns:
+        Optional[LogDataDTO]: Log data DTO object
     """
     if isinstance(json_data, bytes):
         json_data = json_data.decode("utf-8")
@@ -57,10 +63,11 @@ def _get_validated_log_data(json_data: Any) -> Optional[LogDataDTO]:
             # Parse the string as JSON
             json_data = json.loads(json_data)
         except json.JSONDecodeError:
-            logger.error(f"Error decoding JSON data {json_data}")
+            logger.error(f"Error decoding JSON data while validating {json_data}")
             return
 
     if not isinstance(json_data, dict):
+        logger.warning(f"Getting invalid data type while validating {json_data}")
         return
 
     # Extract required fields from the JSON data
@@ -69,12 +76,13 @@ def _get_validated_log_data(json_data: Any) -> Optional[LogDataDTO]:
     timestamp = json_data.get(LogFieldName.TIMESTAMP)
     log_type = json_data.get(LogFieldName.TYPE)
 
-    # Check if all required fields are present
-    if not all((execution_id, organization_id, timestamp, log_type)):
-        return
-
     # Ensure the log type is LogType.LOG
     if log_type != LogType.LOG.value:
+        return
+
+    # Check if all required fields are present
+    if not all((execution_id, organization_id, timestamp)):
+        logger.warning(f"Missing required fields while validating {json_data}")
         return
 
     return LogDataDTO(

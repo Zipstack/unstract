@@ -1,10 +1,13 @@
 import json
+import logging
 from datetime import datetime
 from typing import Any, Optional
 
 from unstract.workflow_execution.enums import LogType
 
 from unstract.core.constants import LogFieldName
+
+logger = logging.getLogger(__name__)
 
 
 class LogDataDTO:
@@ -45,7 +48,7 @@ class LogDataDTO:
             if all((execution_id, organization_id, timestamp, log_type, data)):
                 return cls(execution_id, organization_id, timestamp, log_type, data)
         except (json.JSONDecodeError, AttributeError):
-            pass
+            logger.warning("Invalid log data: %s", json_data)
         return None
 
     def to_json(self) -> str:

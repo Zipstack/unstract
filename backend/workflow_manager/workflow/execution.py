@@ -308,9 +308,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             single step mode.
             file_history (Optional[FileHistory], optional):
             The file history object. Defaults to None.
-
         Returns:
-            None
+            bool: Flag indicating whether the file was executed.
         """
         execution_type = ExecutionType.COMPLETE
         is_executed = False
