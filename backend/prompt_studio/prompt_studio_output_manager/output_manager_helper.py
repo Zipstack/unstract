@@ -56,18 +56,16 @@ class OutputManagerHelper:
             try:
                 # Create or get the existing record for this document, prompt and
                 # profile combo
-                output_manager, success = (
-                    PromptStudioOutputManager.objects.get_or_create(
-                        document_manager=document_manager,
-                        tool_id=tool,
-                        profile_manager=profile_manager,
-                        prompt_id=prompt,
-                        is_single_pass_extract=is_single_pass_extract,
-                        defaults={
-                            "output": output,
-                            "eval_metrics": eval_metrics,
-                        },
-                    )
+                _, success = PromptStudioOutputManager.objects.get_or_create(
+                    document_manager=document_manager,
+                    tool_id=tool,
+                    profile_manager=profile_manager,
+                    prompt_id=prompt,
+                    is_single_pass_extract=is_single_pass_extract,
+                    defaults={
+                        "output": output,
+                        "eval_metrics": eval_metrics,
+                    },
                 )
 
                 if success:
