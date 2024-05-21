@@ -28,7 +28,7 @@ from permissions.permission import (
     IsFrictionLessAdapter,
     IsFrictionLessAdapterDelete,
     IsOwner,
-    IsOwnerOrSharedUser,
+    IsOwnerOrSharedUserOrSharedToOrg,
 )
 from rest_framework import status
 from rest_framework.decorators import action
@@ -139,6 +139,9 @@ class AdapterInstanceViewSet(ModelViewSet):
 
         elif self.action == "destroy":
             return [IsFrictionLessAdapterDelete()]
+
+        elif self.action in ["list_of_shared_users", "adapter_info"]:
+            return [IsOwnerOrSharedUserOrSharedToOrg()]
 
         # Hack for friction-less onboarding
         # User cant view/update metadata but can delete/share etc
@@ -295,7 +298,7 @@ class AdapterInstanceViewSet(ModelViewSet):
 
     @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:
-        self.permission_classes = [IsOwnerOrSharedUser]
+
         adapter = self.get_object()
 
         serialized_instances = SharedUserListSerializer(adapter).data
@@ -304,7 +307,7 @@ class AdapterInstanceViewSet(ModelViewSet):
 
     @action(detail=True, methods=["get"])
     def adapter_info(self, request: HttpRequest, pk: uuid) -> Response:
-        self.permission_classes = [IsOwnerOrSharedUser]
+
         adapter = self.get_object()
 
         serialized_instances = AdapterInfoSerializer(adapter).data
