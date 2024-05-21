@@ -50,11 +50,7 @@ DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    'filters': {
-        'request_id': {
-            '()': 'log_request_id.filters.RequestIDFilter'
-        }
-    },
+    "filters": {"request_id": {"()": "log_request_id.filters.RequestIDFilter"}},
     "formatters": {
         "enriched": {
             "format": (
@@ -75,7 +71,7 @@ LOGGING = {
         "console": {
             "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
             "class": "logging.StreamHandler",
-            'filters': ['request_id'],
+            "filters": ["request_id"],
             "formatter": "enriched",
         },
     },
