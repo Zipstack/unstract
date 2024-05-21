@@ -127,26 +127,6 @@ class TestCreateTableIfNotExists:
                 database_entry=self.database_entry,
             )
 
-    # def test_execute_write_query(self, db_instance: Any) -> None:
-    #     cls_name = DBConnectionClass.PostgreSQL
-    #     sql_columns_and_values = {
-    #         "created_by": "Unstract/DBWriter",
-    #         "created_at": "2024-05-20 10:36:25.362609",
-    #         "data": '{"input_file": "simple.pdf", "result": "report"}',
-    #         "id": str(uuid.uuid4()),
-    #     }
-    #     engine = db_instance.get_engine()
-
-    #     result = DatabaseUtils.execute_write_query(
-    #         engine=engine,
-    #         cls_name=cls_name,
-    #         table_name=self.table_name,
-    #         sql_keys=list(sql_columns_and_values.keys()),
-    #         sql_values=list(sql_columns_and_values.values()),
-    #     )
-
-    #     assert result is None
-
 
 if __name__ == "__main__":
     pytest.main()
