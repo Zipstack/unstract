@@ -281,13 +281,13 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         )
 
     def publish_initial_tool_execution_logs(
-        self, current_step: int, total_step: int, file_name: str
+        self, current_file_idx: int, total_files: int, file_name: str
     ) -> None:
         """Publishes the initial logs for tool execution.
 
         Args:
-            current_step (int): The current step number.
-            total_step (int): The total number of steps.
+            current_file_idx (int): 1-based index for the current file being processed
+            total_files (int): The total number of files to process
             file_name (str): The name of the file being processed.
 
         Returns:
@@ -296,7 +296,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.publish_update_log(
             component=LogComponent.STATUS_BAR,
             state=LogState.MESSAGE,
-            message=f"Processing file {current_step}/{total_step}",
+            message=f"Processing file {file_name} {current_file_idx}/{total_files}",
         )
         self.publish_log(f"Processing file {file_name}")
 
@@ -352,8 +352,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
     def initiate_tool_execution(
         self,
-        current_step: int,
-        total_step: int,
+        current_file_idx: int,
+        total_files: int,
         file_name: str,
         single_step: bool,
     ) -> None:
@@ -361,11 +361,11 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         workflow.
 
         Args:
-            current_step (int): The current step number in the workflow.
-            total_step (int): The total number of steps in the workflow.
-            file_name (str): The name of the file being processed.
+            current_file_idx (int): 1-based index for the current file being processed
+            total_step (int): The total number of files to process in the workflow
+            file_name (str): The name of the file being processed
             single_step (bool): Flag indicating whether the execution is in
-            single-step mode.
+            single-step mode
 
         Returns:
             None
@@ -376,11 +376,13 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         execution_type = ExecutionType.COMPLETE
         if single_step:
             execution_type = ExecutionType.STEP
-        self.publish_initial_tool_execution_logs(current_step, total_step, file_name)
+        self.publish_initial_tool_execution_logs(
+            current_file_idx, total_files, file_name
+        )
         self._handle_execution_type(execution_type)
 
         source_status_message = (
-            f"({current_step}/{total_step})Processing file {file_name}"
+            f"({current_file_idx}/{total_files})Processing file {file_name}"
         )
         self.publish_update_log(
             state=LogState.RUNNING,

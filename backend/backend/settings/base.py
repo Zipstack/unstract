@@ -338,13 +338,6 @@ CELERY_TASK_RETRY_BACKOFF = 60  # Time in seconds before retrying the task
 # Feature Flag
 FEATURE_FLAG_SERVICE_URL = {"evaluate": f"{FLIPT_BASE_URL}/api/v1/flags/evaluate/"}
 
-SCHEDULER_KWARGS = {
-    "coalesce": True,
-    "misfire_grace_time": 300,
-    "max_instances": 1,
-    "replace_existing": True,
-}
-
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
 
