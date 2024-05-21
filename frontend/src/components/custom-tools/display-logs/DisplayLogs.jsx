@@ -8,7 +8,7 @@ import { useSocketLogsStore } from "../../../store/socket-logs-store";
 
 function DisplayLogs() {
   const bottomRef = useRef(null);
-  const { logs } = useSocketLogsStore();
+  const { logs, pushLogMessages } = useSocketLogsStore();
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
 
@@ -27,7 +27,12 @@ function DisplayLogs() {
 
     axiosPrivate(requestOptions)
       .then((res) => {
-        console.log(res);
+        const data = res?.data?.data || {};
+        const keys = Object.keys(data);
+
+        keys.forEach((key) => {
+          pushLogMessages(JSON.parse(data[key]));
+        });
       })
       .catch((err) => {
         console.log(err);
