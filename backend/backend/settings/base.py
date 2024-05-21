@@ -54,8 +54,8 @@ LOGGING = {
     "formatters": {
         "enriched": {
             "format": (
-                "%(levelname)s : [%(asctime)s] {module:%(module)s process:%(process)d thread:%(thread)d "
-                "request_id:%(request_id)s} :- %(message)s"
+                "%(levelname)s : [%(asctime)s] {module:%(module)s process:%(process)d "
+                "thread:%(thread)d request_id:%(request_id)s} :- %(message)s"
             ),
         },
         "verbose": {
