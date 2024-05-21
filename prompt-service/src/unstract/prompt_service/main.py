@@ -292,9 +292,10 @@ def prompt_processor() -> Any:
         if output[PSKeys.CHUNK_SIZE] == 0:
             # We can do this only for chunkless indexes
             context: Optional[str] = tool_index.get_text_from_index(
-                embedding_type=output[PSKeys.EMBEDDING],
-                vector_db=output[PSKeys.VECTOR_DB],
+                embedding_instance_id=output[PSKeys.EMBEDDING],
+                vector_db_instance_id=output[PSKeys.VECTOR_DB],
                 doc_id=doc_id,
+                usage_kwargs=usage_kwargs,
             )
             if context is None:
                 # TODO: Obtain user set name for vector DB
@@ -518,8 +519,14 @@ def prompt_processor() -> Any:
                         PSKeys.LLM: adapter_instance_id,
                         PSKeys.CHALLENGE_LLM: output[PSKeys.CHALLENGE_LLM],
                     }
+                    challenge_llm = LLM(
+                        tool=util,
+                        adapter_instance_id=output[PSKeys.CHALLENGE_LLM],
+                        usage_kwargs=usage_kwargs,
+                    )
                     challenge = challenge_plugin["entrypoint_cls"](
-                        llm_helper=llm,
+                        llm=challenge_llm,
+                        run_id=run_id,
                         context=context,
                         tool_settings=tool_settings,
                         output=output,

@@ -31,7 +31,7 @@ from prompt_studio.prompt_studio_output_manager.output_manager_helper import (
     OutputManagerHelper,
 )
 from unstract.sdk.constants import LogLevel
-from unstract.sdk.exceptions import IndexingError
+from unstract.sdk.exceptions import IndexingError, SdkError
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
@@ -379,7 +379,7 @@ class PromptStudioHelper:
                 )
 
                 OutputManagerHelper.handle_prompt_output_update(
-                    run_id=response["run_id"],
+                    run_id=response[TSPKeys.RUN_ID],
                     prompts=prompts,
                     outputs=response["output"],
                     document_id=document_id,
@@ -453,7 +453,7 @@ class PromptStudioHelper:
                 )
 
                 OutputManagerHelper.handle_prompt_output_update(
-                    run_id=response["run_id"],
+                    run_id=response[TSPKeys.RUN_ID],
                     prompts=prompts,
                     outputs=response[TSPKeys.SINGLE_PASS_EXTRACTION],
                     document_id=document_id,
@@ -690,7 +690,7 @@ class PromptStudioHelper:
                 chunk_overlap=profile_manager.chunk_overlap,
                 reindex=reindex,
                 output_file_path=extract_file_path,
-                kwargs=usage_kwargs,
+                usage_kwargs=usage_kwargs,
             )
 
             PromptStudioIndexHelper.handle_index_manager(
@@ -700,7 +700,7 @@ class PromptStudioHelper:
                 doc_id=doc_id,
             )
             return doc_id
-        except (IndexingError, IndexingAPIError) as e:
+        except (IndexingError, IndexingAPIError, SdkError) as e:
             doc_name = os.path.split(file_path)[1]
             PromptStudioHelper._publish_log(
                 {"tool_id": tool_id, "doc_name": doc_name},
@@ -790,6 +790,7 @@ class PromptStudioHelper:
             TSPKeys.TOOL_SETTINGS: tool_settings,
             TSPKeys.OUTPUTS: outputs,
             TSPKeys.TOOL_ID: tool_id,
+            TSPKeys.RUN_ID: run_id,
             TSPKeys.FILE_HASH: file_hash,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
         }

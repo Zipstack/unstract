@@ -52,6 +52,7 @@ class PromptStudioOutputManager(BaseModel):
         on_delete=models.CASCADE,
         related_name="prompt_ouput_linked_tool",
     )
+    run_id = models.UUIDField(default=uuid.uuid4, editable=False)
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -76,8 +77,7 @@ class PromptStudioOutputManager(BaseModel):
                     "prompt_id",
                     "document_manager",
                     "profile_manager",
-                    "tool_id",
-                    "is_single_pass_extract",
+                    "tool_id" "is_single_pass_extract",
                 ],
                 name="unique_prompt_output",
             ),
