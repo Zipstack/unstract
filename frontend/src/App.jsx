@@ -7,6 +7,14 @@ import { useAlertStore } from "./store/alert-store.js";
 import { useSessionStore } from "./store/session-store.js";
 import PostHogPageviewTracker from "./PostHogPageviewTracker.js";
 
+let GoogleTagManagerHelper;
+try {
+  GoogleTagManagerHelper =
+    require("./plugins/google-tag-manager-helper/GoogleTagManagerHelper.js").GoogleTagManagerHelper;
+} catch {
+  // The component will remain null of it is not available
+}
+
 function App() {
   const [notificationAPI, contextHolder] = notification.useNotification();
   const { defaultAlgorithm, darkAlgorithm } = theme;
@@ -61,6 +69,7 @@ function App() {
     >
       <BrowserRouter>
         <PostHogPageviewTracker />
+        {GoogleTagManagerHelper && <GoogleTagManagerHelper />}
         {contextHolder}
         <Router />
       </BrowserRouter>

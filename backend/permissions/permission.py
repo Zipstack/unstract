@@ -18,11 +18,29 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
     """Custom permission to only allow owners and shared users of an object."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
+
         return (
             True
             if (
                 obj.created_by == request.user
                 or obj.shared_users.filter(pk=request.user.pk).exists()
+            )
+            else False
+        )
+
+
+class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
+    """Custom permission to only allow owners and shared users of an object or
+    if it is shared to org."""
+
+    def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
+
+        return (
+            True
+            if (
+                obj.created_by == request.user
+                or obj.shared_users.filter(pk=request.user.pk).exists()
+                or obj.shared_to_org
             )
             else False
         )

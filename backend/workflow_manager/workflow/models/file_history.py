@@ -39,3 +39,11 @@ class FileHistory(BaseModel):
         db_comment="Error message",
     )
     result = models.TextField(blank=True, db_comment="Result from execution")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workflow", "cache_key"],
+                name="workflow_cacheKey",
+            ),
+        ]
