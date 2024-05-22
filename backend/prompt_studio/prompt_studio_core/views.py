@@ -252,8 +252,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         tool_id: str = str(custom_tool.tool_id)
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         id: str = request.data.get(ToolStudioPromptKeys.ID)
-        # Generate a run_id
-        run_id = str(uuid.uuid4())
+        run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
+        if not run_id:
+            # Generate a run_id
+            run_id = str(uuid.uuid4())
 
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,

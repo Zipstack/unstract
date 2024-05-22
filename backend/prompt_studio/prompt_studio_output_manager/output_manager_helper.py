@@ -91,4 +91,4 @@ class OutputManagerHelper:
                 ).update(**args)
 
             except Exception as e:
-                raise AnswerFetchError("Error updating prompt output") from e
+                raise AnswerFetchError(f"Error updating prompt output {e}") from e
