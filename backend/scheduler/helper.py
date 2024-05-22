@@ -64,7 +64,6 @@ class SchedulerHelper:
                 str(name),
             ],
         )
-        return
 
     @staticmethod
     def add_job(pipeline_id: str, cron_string: str = SC.DEFAULT_CRON_STRING) -> None:
