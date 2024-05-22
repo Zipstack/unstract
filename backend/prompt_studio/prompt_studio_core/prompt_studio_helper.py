@@ -32,7 +32,7 @@ from prompt_studio.prompt_studio_output_manager.output_manager_helper import (
 )
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import IndexingError, SdkError
-from unstract.sdk.index import ToolIndex
+from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
 from utils.local_context import StateStore
@@ -687,7 +687,7 @@ class PromptStudioHelper:
         try:
             usage_kwargs = {"run_id": run_id}
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
-            tool_index = ToolIndex(tool=util)
+            tool_index = Index(tool=util)
             doc_id: str = tool_index.index_file(
                 tool_id=tool_id,
                 embedding_instance_id=embedding_model,
