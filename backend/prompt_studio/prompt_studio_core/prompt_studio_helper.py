@@ -259,7 +259,7 @@ class PromptStudioHelper:
 
         logger.info(f"[{tool_id}] Indexing started for doc: {file_name}")
         PromptStudioHelper._publish_log(
-            {"tool_id": tool_id, "doc_name": file_name},
+            {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
             LogLevels.INFO,
             LogLevels.RUN,
             "Indexing started",
@@ -284,7 +284,7 @@ class PromptStudioHelper:
 
         logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
         PromptStudioHelper._publish_log(
-            {"tool_id": tool_id, "doc_name": file_name},
+            {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
             LogLevels.INFO,
             LogLevels.RUN,
             "Indexing successful",
@@ -335,6 +335,7 @@ class PromptStudioHelper:
             PromptStudioHelper._publish_log(
                 {
                     "tool_id": tool_id,
+                    "run_id": run_id,
                     "prompt_key": prompt_name,
                     "doc_name": doc_name,
                 },
@@ -359,6 +360,7 @@ class PromptStudioHelper:
             PromptStudioHelper._publish_log(
                 {
                     "tool_id": tool_id,
+                    "run_id": run_id,
                     "prompt_key": prompt_name,
                     "doc_name": doc_name,
                 },
@@ -400,6 +402,7 @@ class PromptStudioHelper:
                 PromptStudioHelper._publish_log(
                     {
                         "tool_id": tool_id,
+                        "run_id": run_id,
                         "prompt_key": prompt_name,
                         "doc_name": doc_name,
                     },
@@ -415,6 +418,7 @@ class PromptStudioHelper:
             PromptStudioHelper._publish_log(
                 {
                     "tool_id": tool_id,
+                    "run_id": run_id,
                     "prompt_key": prompt_name,
                     "doc_name": doc_name,
                 },
@@ -435,7 +439,7 @@ class PromptStudioHelper:
 
             logger.info(f"[{tool_id}] Executing prompts in single pass")
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "prompt_id": str(id)},
+                {"tool_id": tool_id, "run_id": run_id, "prompt_id": str(id)},
                 LogLevels.INFO,
                 LogLevels.RUN,
                 "Executing prompts in single pass",
@@ -464,7 +468,11 @@ class PromptStudioHelper:
                     f"[{tool.tool_id}] Error while fetching single pass response: {e}"  # noqa: E501
                 )
                 PromptStudioHelper._publish_log(
-                    {"tool_id": tool_id, "prompt_id": str(id)},
+                    {
+                        "tool_id": tool_id,
+                        "run_id": run_id,
+                        "prompt_id": str(id),
+                    },
                     LogLevels.ERROR,
                     LogLevels.RUN,
                     f"Failed to fetch single pass response. {e}",
@@ -473,7 +481,7 @@ class PromptStudioHelper:
 
             logger.info(f"[{tool.tool_id}] Single pass response fetched successfully")
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "prompt_id": str(id)},
+                {"tool_id": tool_id, "run_id": run_id, "prompt_id": str(id)},
                 LogLevels.INFO,
                 LogLevels.RUN,
                 "Single pass execution completed",
@@ -703,7 +711,7 @@ class PromptStudioHelper:
         except (IndexingError, IndexingAPIError, SdkError) as e:
             doc_name = os.path.split(file_path)[1]
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "doc_name": doc_name},
+                {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
                 LogLevels.ERROR,
                 LogLevels.RUN,
                 f"Indexing failed : {e}",
