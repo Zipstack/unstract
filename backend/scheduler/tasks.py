@@ -8,7 +8,6 @@ from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from django_tenants.utils import get_tenant_model, tenant_context
 from pipeline.models import Pipeline
 from pipeline.pipeline_processor import PipelineProcessor
-from pymysql import IntegrityError
 from workflow_manager.workflow.models.workflow import Workflow
 from workflow_manager.workflow.workflow_helper import WorkflowHelper
 
@@ -85,20 +84,17 @@ def execute_pipeline_task(
         )
         with tenant_context(tenant):
             workflow = Workflow.objects.get(id=workflow_id)
-            try:
-                logger.info(f"Executing workflow: {workflow}")
-                update_pipeline(pipepline_id, Pipeline.PipelineStatus.INPROGRESS)
-                execution_response = WorkflowHelper.complete_execution(
-                    workflow, execution_id, pipepline_id
-                )
-                logger.info(f"Execution response: {execution_response}")
-                update_pipeline(pipepline_id, Pipeline.PipelineStatus.SUCCESS)
-            except IntegrityError:
-                logger.error(f"Failed to complete execution for workflow: {workflow}")
-                update_pipeline(pipepline_id, Pipeline.PipelineStatus.FAILURE)
+            logger.info(f"Executing workflow: {workflow}")
+            update_pipeline(pipepline_id, Pipeline.PipelineStatus.INPROGRESS)
+            execution_response = WorkflowHelper.complete_execution(
+                workflow, execution_id, pipepline_id
+            )
+            logger.info(f"Execution response: {execution_response}")
+            update_pipeline(pipepline_id, Pipeline.PipelineStatus.SUCCESS)
         logger.info(f"Execution completed for pipeline: {name}")
     except Exception as e:
         logger.error(f"Failed to execute pipeline: {name}. Error: {e}")
+        update_pipeline(pipepline_id, Pipeline.PipelineStatus.FAILURE)
 
 
 def delete_periodic_task(task_name: str) -> None:
