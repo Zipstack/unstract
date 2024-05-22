@@ -72,7 +72,7 @@ services:
     volumes:
       - unstract_data:/data
     profiles:
-      - debug
+      - optional
 
   # Celery Beat
   celery-beat:
