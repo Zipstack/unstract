@@ -50,7 +50,14 @@ DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {"request_id": {"()": "log_request_id.filters.RequestIDFilter"}},
     "formatters": {
+        "enriched": {
+            "format": (
+                "%(levelname)s : [%(asctime)s] {module:%(module)s process:%(process)d "
+                "thread:%(thread)d request_id:%(request_id)s} :- %(message)s"
+            ),
+        },
         "verbose": {
             "format": "[%(asctime)s] %(levelname)s %(name)s: %(message)s",
             "datefmt": "%d/%b/%Y %H:%M:%S",
@@ -64,7 +71,8 @@ LOGGING = {
         "console": {
             "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
             "class": "logging.StreamHandler",
-            "formatter": "verbose",
+            "filters": ["request_id"],
+            "formatter": "enriched",
         },
     },
     "root": {
@@ -241,6 +249,7 @@ AUTH_USER_MODEL = "account.User"
 PUBLIC_ORG_ID = "public"
 
 MIDDLEWARE = [
+    "log_request_id.middleware.RequestIDMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django_tenants.middleware.TenantSubfolderMiddleware",
     "django.middleware.security.SecurityMiddleware",

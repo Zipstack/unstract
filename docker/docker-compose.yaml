@@ -39,7 +39,7 @@ services:
     container_name: unstract-execution-consumer
     restart: unless-stopped
     entrypoint: .venv/bin/celery
-    command: "-A backend worker --loglevel=info"
+    command: "-A backend worker --loglevel=info --autoscale=8,1"
     env_file:
       - ../backend/.env
     depends_on:
@@ -57,7 +57,7 @@ services:
     container_name: unstract-celery-flower
     restart: unless-stopped
     entrypoint: .venv/bin/celery
-    command: "-A backend flower --port=5555"
+    command: "-A backend flower --port=5555 --purge_offline_workers=5"
     env_file:
       - ../backend/.env
     depends_on:
@@ -71,6 +71,8 @@ services:
       - ENVIRONMENT=development
     volumes:
       - unstract_data:/data
+    profiles:
+      - optional
 
   # Celery Beat
   celery-beat:

@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:aa4a58ff9b6bd73adc1fda8f8931d4a1a3954d5a19d032bd4dc51c309c287eae"
+content_hash = "sha256:046a2f7554318d18df2ec2167dfddf3e4662aeb8bf34aa8c784af5003b215161"
 
 [[package]]
 name = "adlfs"
@@ -963,6 +963,19 @@ dependencies = [
 files = [
     {file = "django-cors-headers-4.3.1.tar.gz", hash = "sha256:0bf65ef45e606aff1994d35503e6b677c0b26cafff6506f8fd7187f3be840207"},
     {file = "django_cors_headers-4.3.1-py3-none-any.whl", hash = "sha256:0b1fd19297e37417fc9f835d39e45c8c642938ddba1acce0c1753d3edef04f36"},
+]
+
+[[package]]
+name = "django-log-request-id"
+version = "2.1.0"
+summary = "Django middleware and log filter to attach a unique ID to every log message generated as part of a request"
+groups = ["default"]
+dependencies = [
+    "django>=1.8",
+]
+files = [
+    {file = "django-log-request-id-2.1.0.tar.gz", hash = "sha256:b11fc821774b54b820ef2e732dbaa52304711de8d5c4f9031ca48578f6121ab6"},
+    {file = "django_log_request_id-2.1.0-py3-none-any.whl", hash = "sha256:c0793c030cfe9f673eff3f89667711f65c39509c016d85e436f9d48507ee778c"},
 ]
 
 [[package]]
