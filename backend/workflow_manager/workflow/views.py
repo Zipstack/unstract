@@ -58,13 +58,6 @@ def make_execution_response(response: ExecutionResponse) -> Any:
     return ExecuteWorkflowResponseSerializer(response).data
 
 
-def handle_false(string: str) -> bool:
-    if string.lower() == "false":
-        return False
-    else:
-        return True
-
-
 class WorkflowViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     permission_classes = [IsOwner]
@@ -153,13 +146,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         execution = WorkflowHelper.get_current_execution(pk)
         return Response(make_execution_response(execution), status=status.HTTP_200_OK)
 
-    def get_error_from_serializer(self, error_details: dict[str, Any]) -> Optional[str]:
-        """Validation error."""
-        error_key = next(iter(error_details))
-        # Get the first error message
-        error_message: str = f"{error_details[error_key][0]} : {error_key}"
-        return error_message
-
     def get_workflow_by_id_or_project_id(
         self,
         workflow_id: Optional[str] = None,
@@ -189,12 +175,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         self,
         request: Request,
         pipeline_guid: Optional[str] = None,
-        with_log: Optional[bool] = None,
     ) -> Response:
-        if with_log is not None:
-            # Handle string field
-            with_log = handle_false(str(with_log))
-
         self.serializer_class = ExecuteWorkflowSerializer
         serializer = ExecuteWorkflowSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -220,7 +201,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 execution_action=execution_action,
                 execution_id=execution_id,
                 pipeline_guid=pipeline_guid,
-                with_log=with_log,
                 hash_values_of_files=hashes_of_files,
             )
             return Response(
@@ -232,8 +212,8 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             update_pipeline(pipeline_guid, Pipeline.PipelineStatus.FAILURE)
             raise exception
         except MissingEnvException as exception:
-            update_pipeline(pipeline_guid, Pipeline.PipelineStatus.FAILURE)
             logger.error(f"Error while executing workflow: {exception}")
+            update_pipeline(pipeline_guid, Pipeline.PipelineStatus.FAILURE)
             return Response(
                 {"error": "Please check the logs for more details: " + str(exception)},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -253,7 +233,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         execution_action: Optional[str] = None,
         execution_id: Optional[str] = None,
         pipeline_guid: Optional[str] = None,
-        with_log: Optional[bool] = None,
         hash_values_of_files: dict[str, str] = {},
     ) -> ExecutionResponse:
         if execution_action is not None:
@@ -271,7 +250,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 workflow=workflow,
                 execution_id=execution_id,
                 pipeline_id=pipeline_guid,
-                log_required=with_log,
                 hash_values_of_files=hash_values_of_files,
             )
             update_pipeline(pipeline_guid, Pipeline.PipelineStatus.SUCCESS)
@@ -279,7 +257,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             execution_response = WorkflowHelper.complete_execution(
                 workflow=workflow,
                 execution_id=execution_id,
-                log_required=with_log,
                 hash_values_of_files=hash_values_of_files,
             )
         return execution_response
