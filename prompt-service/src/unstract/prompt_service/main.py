@@ -526,7 +526,7 @@ def prompt_processor() -> Any:
                         usage_kwargs=usage_kwargs,
                     )
                     challenge = challenge_plugin["entrypoint_cls"](
-                        llm=challenge_llm,
+                        challenge_llm=challenge_llm,
                         run_id=run_id,
                         context=context,
                         tool_settings=tool_settings,
