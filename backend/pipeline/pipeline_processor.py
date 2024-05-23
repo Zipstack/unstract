@@ -34,7 +34,7 @@ class PipelineProcessor:
         pipeline: Pipeline = Pipeline.objects.get(pk=pipeline_id)
         if check_active and not pipeline.is_active():
             logger.error(f"Inactive pipeline fetched: {pipeline_id}")
-            raise InactivePipelineError
+            raise InactivePipelineError(pipeline_name=pipeline.pipeline_name)
         return pipeline
 
     @staticmethod
