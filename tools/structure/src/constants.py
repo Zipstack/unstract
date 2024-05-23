@@ -47,3 +47,5 @@ class SettingsKeys:
     # PDF_TO_TEXT_CONVERTER = "pdf-to-text-converters"
     REINDEX = "reindex"
     STRUCTURE_OUTPUT = "structure_output"
+    TOOL_SETTINGS = "tool_settings"
+    ENABLE_SINGLE_PASS_EXTRACTION = "enable_single_pass_extraction"

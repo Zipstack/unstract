@@ -2,6 +2,7 @@ import logging
 from typing import Any, Optional
 
 from account.models import User
+from adapter_processor.models import AdapterInstance
 from django.conf import settings
 from django.db import IntegrityError
 from prompt_studio.prompt_profile_manager.models import ProfileManager
@@ -41,7 +42,40 @@ class PromptStudioRegistryHelper:
         Returns:
             dict: spec dict
         """
-        spec = Spec(title=str(tool.tool_id), description=tool.description)
+        properties = {
+            "challenge_llm": {
+                "type": "string",
+                "title": "Challenge LLM",
+                "adapterType": "LLM",
+                "description": "LLM to use for challenge",
+                "adapterIdKey": "challenge_llm_adapter_id",
+            },
+            "enable_challenge": {
+                "type": "boolean",
+                "title": "Enable Challenge",
+                "default": False,
+                "description": "Enable Challenge",
+            },
+            "summarize_as_Source": {
+                "type": "boolean",
+                "title": "Summarize and use summary as source",
+                "default": False,
+                "description": "Flag to use summarized content as source",
+            },
+            "single_pass_extraction_mode": {
+                "type": "boolean",
+                "title": "Enable single pass extraction",
+                "default": False,
+                "description": "Enable single pass extraction",
+            },
+        }
+
+        spec = Spec(
+            title=str(tool.tool_id),
+            description=tool.description,
+            required=["challenge_llm"],
+            properties=properties,
+        )
         return spec
 
     @staticmethod
@@ -198,13 +232,39 @@ class PromptStudioRegistryHelper:
         export_metadata[JsonSchemaKey.AUTHOR] = tool.author
         export_metadata[JsonSchemaKey.TOOL_ID] = str(tool.tool_id)
 
-        vector_db = ""
+        default_llm_profile = ProfileManager.get_default_llm_profile(tool)
+        challenge_llm_instance: Optional[AdapterInstance] = tool.challenge_llm
+        challenge_llm: Optional[str] = None
+        # Using default profile manager llm if challenge_llm is None
+        if challenge_llm_instance:
+            challenge_llm = str(challenge_llm_instance.id)
+        else:
+            challenge_llm = str(default_llm_profile.llm.id)
+
         embedding_suffix = ""
         adapter_id = ""
-        llm = ""
-        embedding_model = ""
+        vector_db = str(default_llm_profile.vector_store.id)
+        embedding_model = str(default_llm_profile.embedding_model.id)
+        llm = str(default_llm_profile.llm.id)
+        x2text = str(default_llm_profile.x2text.id)
 
-        default_llm_profile = ProfileManager.get_default_llm_profile(tool)
+        # Tool settings
+        tool_settings = {}
+        tool_settings[JsonSchemaKey.PREAMBLE] = tool.preamble
+        tool_settings[JsonSchemaKey.POSTAMBLE] = tool.postamble
+        tool_settings[JsonSchemaKey.GRAMMAR] = grammar_list
+        tool_settings[JsonSchemaKey.LLM] = llm
+        tool_settings[JsonSchemaKey.X2TEXT_ADAPTER] = x2text
+        tool_settings[JsonSchemaKey.VECTOR_DB] = vector_db
+        tool_settings[JsonSchemaKey.EMBEDDING] = embedding_model
+        tool_settings[JsonSchemaKey.CHUNK_SIZE] = default_llm_profile.chunk_size
+        tool_settings[JsonSchemaKey.CHUNK_OVERLAP] = default_llm_profile.chunk_overlap
+        tool_settings[JsonSchemaKey.ENABLE_CHALLENGE] = tool.enable_challenge
+        tool_settings[JsonSchemaKey.CHALLENGE_LLM] = challenge_llm
+        tool_settings[JsonSchemaKey.ENABLE_SINGLE_PASS_EXTRACTION] = (
+            tool.single_pass_extraction_mode
+        )
+
         for prompt in prompts:
 
             if not prompt.prompt:
@@ -278,7 +338,7 @@ class PromptStudioRegistryHelper:
                 f"Cannot export tool. Prompt(s) : {invalidated_outputs} "
                 "were not run. Please run them before exporting."
             )
-
+        export_metadata[JsonSchemaKey.TOOL_SETTINGS] = tool_settings
         export_metadata[JsonSchemaKey.OUTPUTS] = outputs
         return export_metadata
 

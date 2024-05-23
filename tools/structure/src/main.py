@@ -22,12 +22,15 @@ class StructureTool(BaseTool):
         output_dir: str,
     ) -> None:
         prompt_registry_id: str = settings[SettingsKeys.PROMPT_REGISTRY_ID]
+        challenge_llm: str = settings["challenge_llm_adapter_id"]
+        enable_challenge: bool = settings["enable_challenge"]
+        # summarize_as_Source: bool = settings["summarize_as_Source"]
+        single_pass_extraction_mode: bool = settings["single_pass_extraction_mode"]
         responder = PromptTool(
             tool=self,
             prompt_port=self.get_env_or_die(SettingsKeys.PROMPT_PORT),
             prompt_host=self.get_env_or_die(SettingsKeys.PROMPT_HOST),
         )
-
         self.stream_log(f"Fetching metadata for tool {prompt_registry_id}")
         try:
             exported_tool = responder.get_exported_tool(
@@ -44,35 +47,58 @@ class StructureTool(BaseTool):
         self.stream_update(input_log, state=LogState.INPUT_UPDATE)
         self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
 
-        self.stream_log("Indexing document...")
         file_hash = self.get_exec_metadata.get(MetadataKey.SOURCE_HASH)
         tool_index = ToolIndex(tool=self)
         tool_id = tool_metadata[SettingsKeys.TOOL_ID]
+        tool_settings = tool_metadata[SettingsKeys.TOOL_SETTINGS]
         outputs = tool_metadata[SettingsKeys.OUTPUTS]
-        try:
-            for output in outputs:
-                tool_index.index_file(
-                    tool_id=tool_metadata[SettingsKeys.TOOL_ID],
-                    embedding_type=output[SettingsKeys.EMBEDDING],
-                    vector_db=output[SettingsKeys.VECTOR_DB],
-                    x2text_adapter=output[SettingsKeys.X2TEXT_ADAPTER],
-                    file_path=input_file,
-                    file_hash=file_hash,
-                    chunk_size=output[SettingsKeys.CHUNK_SIZE],
-                    chunk_overlap=output[SettingsKeys.CHUNK_OVERLAP],
-                    reindex=output[SettingsKeys.REINDEX],
-                )
-        except Exception as e:
-            self.stream_error_and_exit(f"Error fetching data and indexing: {e}")
+        tool_settings["challenge_llm"] = challenge_llm
+        tool_settings["enable_challenge"] = enable_challenge
+        tool_settings["enable_single_pass_extraction"] = single_pass_extraction_mode
 
+        prompt_service_resp = None
         # TODO : Check if reindex. If Yes, reindex, else continue.
         payload = {
+            "tool_settings": tool_settings,
             "outputs": outputs,
             "tool_id": tool_id,
             "file_hash": file_hash,
         }
-        self.stream_log("Fetching responses for prompts...")
-        prompt_service_resp = responder.answer_prompt(payload=payload)
+
+        if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
+            self.stream_log("Indexing document...")
+            tool_index.index_file(
+                tool_id=tool_metadata[SettingsKeys.TOOL_ID],
+                embedding_type=tool_settings[SettingsKeys.EMBEDDING],
+                vector_db=tool_settings[SettingsKeys.VECTOR_DB],
+                x2text_adapter=tool_settings[SettingsKeys.X2TEXT_ADAPTER],
+                file_path=input_file,
+                file_hash=file_hash,
+                chunk_size=tool_settings[SettingsKeys.CHUNK_SIZE],
+                chunk_overlap=tool_settings[SettingsKeys.CHUNK_OVERLAP],
+                # reindex=output[SettingsKeys.REINDEX],
+            )
+            self.stream_log("Fetching response for single pass extraction...")
+            prompt_service_resp = responder.single_pass_extraction(payload=payload)
+        else:
+            self.stream_log("Indexing document...")
+            try:
+                for output in outputs:
+                    tool_index.index_file(
+                        tool_id=tool_metadata[SettingsKeys.TOOL_ID],
+                        embedding_type=output[SettingsKeys.EMBEDDING],
+                        vector_db=output[SettingsKeys.VECTOR_DB],
+                        x2text_adapter=output[SettingsKeys.X2TEXT_ADAPTER],
+                        file_path=input_file,
+                        file_hash=file_hash,
+                        chunk_size=output[SettingsKeys.CHUNK_SIZE],
+                        chunk_overlap=output[SettingsKeys.CHUNK_OVERLAP],
+                        reindex=output[SettingsKeys.REINDEX],
+                    )
+            except Exception as e:
+                self.stream_error_and_exit(f"Error fetching data and indexing: {e}")
+            self.stream_log("Fetching responses for prompts...")
+            prompt_service_resp = responder.answer_prompt(payload=payload)
 
         # TODO: Make use of dataclasses
         if prompt_service_resp["status"] == "ERROR":

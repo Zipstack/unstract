@@ -88,6 +88,10 @@ class JsonSchemaKey:
     FUNCTION_NAME = "function_name"
     PROMPT_REGISTRY_ID = "prompt_registry_id"
     NOTES = "NOTES"
+    TOOL_SETTINGS = "tool_settings"
+    ENABLE_CHALLENGE = "enable_challenge"
+    CHALLENGE_LLM = "challenge_llm"
+    ENABLE_SINGLE_PASS_EXTRACTION = "enable_single_pass_extraction"
 
 
 class SpecKey:
