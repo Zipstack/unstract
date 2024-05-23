@@ -218,7 +218,7 @@ class WorkflowExecutionService:
             self.publish_log(log_message, step=actual_step)
 
         except Exception as error:
-            logger.info(f"Error while execution tool {tool_uid}: {str(error)}")
+            logger.info(f"Error while running tool {tool_uid}: {str(error)}")
             self.publish_log(str(error), LogLevel.ERROR, step=actual_step)
             self.publish_update_log(
                 state=LogState.ERROR,
