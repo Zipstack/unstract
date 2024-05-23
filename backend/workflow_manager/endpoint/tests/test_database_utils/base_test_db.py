@@ -4,12 +4,6 @@ from typing import Any
 
 import pytest  # type: ignore
 from dotenv import load_dotenv
-from workflow_manager.endpoint.database_utils import DatabaseUtils
-from workflow_manager.endpoint.exceptions import (
-    FeatureNotSupportedException,
-    InvalidSchemaException,
-    InvalidSyntaxException,
-)
 
 from unstract.connectors.databases.postgresql import PostgreSQL
 from unstract.connectors.databases.redshift import Redshift
@@ -18,9 +12,9 @@ from unstract.connectors.databases.unstract_db import UnstractDB
 load_dotenv("test.env")
 
 
-class TestCreateTableIfNotExists:
+class BaseTestDB:
     @pytest.fixture(autouse=True)
-    def setup(self) -> None:
+    def base_setup(self) -> None:
         self.postgres_creds = {
             "user": os.getenv("DB_USER"),
             "password": os.getenv("DB_PASSWORD"),
@@ -81,55 +75,3 @@ class TestCreateTableIfNotExists:
     )
     def invalid_dbs_instance(self, request: Any) -> Any:
         return self.get_db_instance(request=request)
-
-    def test_create_table_if_not_exists_valid(
-        self, valid_dbs_instance: UnstractDB
-    ) -> None:
-        engine = valid_dbs_instance.get_engine()
-        result = DatabaseUtils.create_table_if_not_exists(
-            db_class=valid_dbs_instance,
-            engine=engine,
-            table_name=self.valid_table_name,
-            database_entry=self.database_entry,
-        )
-        assert result is None
-
-    def test_create_table_if_not_exists_invalid_schema(
-        self, invalid_dbs_instance: UnstractDB
-    ) -> None:
-        engine = invalid_dbs_instance.get_engine()
-        with pytest.raises(InvalidSchemaException):
-            DatabaseUtils.create_table_if_not_exists(
-                db_class=invalid_dbs_instance,
-                engine=engine,
-                table_name=self.valid_table_name,
-                database_entry=self.database_entry,
-            )
-
-    def test_create_table_if_not_exists_invalid_syntax(
-        self, valid_dbs_instance: UnstractDB
-    ) -> None:
-        engine = valid_dbs_instance.get_engine()
-        with pytest.raises(InvalidSyntaxException):
-            DatabaseUtils.create_table_if_not_exists(
-                db_class=valid_dbs_instance,
-                engine=engine,
-                table_name=self.invalid_syntax_table_name,
-                database_entry=self.database_entry,
-            )
-
-    def test_create_table_if_not_exists_feature_not_supported(
-        self, invalid_dbs_instance: UnstractDB
-    ) -> None:
-        engine = invalid_dbs_instance.get_engine()
-        with pytest.raises(FeatureNotSupportedException):
-            DatabaseUtils.create_table_if_not_exists(
-                db_class=invalid_dbs_instance,
-                engine=engine,
-                table_name=self.invalid_wrong_table_name,
-                database_entry=self.database_entry,
-            )
-
-
-if __name__ == "__main__":
-    pytest.main()

@@ -21,7 +21,9 @@ from workflow_manager.endpoint.exceptions import (
     InvalidSchemaException,
     InvalidSyntaxException,
     SnowflakeProgrammingException,
+    UnderfinedTableException,
     UnstractDBException,
+    ValueTooLongException,
 )
 from workflow_manager.workflow.enums import AgentName, ColumnModes
 
@@ -311,6 +313,18 @@ class DatabaseUtils:
                 engine.commit()
             else:
                 engine.query(sql)
+        except PsycopgError.UndefinedTable as e:
+            logger.error(f"Undefined table in inserting: {e.pgerror}")
+            raise UnderfinedTableException(code=e.pgcode, detail=e.pgerror)
+        except PsycopgError.SyntaxError as e:
+            logger.error(f"Invalid syntax in inserting data: {e.pgerror}")
+            raise InvalidSyntaxException(code=e.pgcode, detail=e.pgerror)
+        except PsycopgError.FeatureNotSupported as e:
+            logger.error(f"feature not supported in inserting data: {e.pgerror}")
+            raise FeatureNotSupportedException(code=e.pgcode, detail=e.pgerror)
+        except PsycopgError.StringDataRightTruncation as e:
+            logger.error(f"value too long for character datatype: {e.pgerror}")
+            raise ValueTooLongException(code=e.pgcode, detail=e.pgerror)
         except Exception as e:
             logger.error(f"Error while writing data: {str(e)}")
             raise e
@@ -368,7 +382,7 @@ class DatabaseUtils:
             logger.error(f"Invalid schema in creating table: {e.pgerror}")
             raise InvalidSchemaException(code=e.pgcode, detail=e.pgerror)
         except PsycopgError.FeatureNotSupported as e:
-            logger.error(f"feature not supported sql error: {e.pgerror}")
+            logger.error(f"feature not supported in creating table: {e.pgerror}")
             raise FeatureNotSupportedException(code=e.pgcode, detail=e.pgerror)
         except PsycopgError.SyntaxError as e:
             logger.error(f"Invalid syntax in creating table: {e.pgerror}")

@@ -83,13 +83,25 @@ class UnstractDBException(APIException):
 
 class InvalidSyntaxException(UnstractDBException):
     def __init__(self, code: Any, detail: Any) -> None:
-        default_detail = "Syntax incorrect. "
+        default_detail = "Syntax incorrect. Please check your table-name or schema. "
         super().__init__(code=code, detail=default_detail + detail)
 
 
 class InvalidSchemaException(UnstractDBException):
     def __init__(self, code: Any, detail: Any) -> None:
         default_detail = "Schema not valid. "
+        super().__init__(code=code, detail=default_detail + detail)
+
+
+class UnderfinedTableException(UnstractDBException):
+    def __init__(self, code: Any, detail: Any) -> None:
+        default_detail = "Undefined table. "
+        super().__init__(code=code, detail=default_detail + detail)
+
+
+class ValueTooLongException(UnstractDBException):
+    def __init__(self, code: Any, detail: Any) -> None:
+        default_detail = "Size of the inserted data exceeds the limit. "
         super().__init__(code=code, detail=default_detail + detail)
 
 
