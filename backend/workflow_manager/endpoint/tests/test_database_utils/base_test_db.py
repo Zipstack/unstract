@@ -1,10 +1,12 @@
 import datetime
+import json
 import os
 from typing import Any
 
 import pytest  # type: ignore
 from dotenv import load_dotenv
 
+from unstract.connectors.databases.bigquery import BigQuery
 from unstract.connectors.databases.postgresql import PostgreSQL
 from unstract.connectors.databases.redshift import Redshift
 from unstract.connectors.databases.unstract_db import UnstractDB
@@ -49,6 +51,10 @@ class BaseTestDB:
         self.invalid_syntax_table_name = "invalid-syntax.name.test_output"
         self.invalid_wrong_table_name = "database.schema.test_output"
         self.valid_table_name = "test_output"
+        bigquery_json_str = os.getenv("BIGQUERY_CREDS", "{}")
+        self.bigquery_settings = json.loads(bigquery_json_str)
+        self.bigquery_settings["json_credentials"] = bigquery_json_str
+        self.valid_bigquery_table_name = "pandoras-tamer.bigquery_test.bigquery_output"
 
     @pytest.fixture(
         params=[
@@ -75,3 +81,7 @@ class BaseTestDB:
     )
     def invalid_dbs_instance(self, request: Any) -> Any:
         return self.get_db_instance(request=request)
+
+    @pytest.fixture
+    def valid_bigquery_db_instance(self) -> Any:
+        return BigQuery(settings=self.bigquery_settings)
