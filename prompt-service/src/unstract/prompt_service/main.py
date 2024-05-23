@@ -655,14 +655,29 @@ def simple_or_subq_retriever(  # type:ignore
         postamble=output["postamble"],
         grammar_list=output["grammar"],
     )
-    context_prompt = ""
-    if retrival_type is PSKeys.SIMPLE:
-        context_prompt = prompt
     if retrival_type is PSKeys.SUBQUESTION:
-        context_prompt = (
+        subq_prompt = (
             f"Generate a sub-question from the following verbose prompt that will"
             f" help extract relevant documents from a vector store:\n\n{prompt}"
         )
+        prompt = run_completion(
+            llm_helper=llm_helper,
+            llm_li=llm_li,
+            prompt=context_prompt,
+            adapter_instance_id=output[PSKeys.LLM],
+        )
+
+    context = _retrieve_context(output, doc_id, vector_index, prompt)
+
+    answer = construct_and_run_prompt(  # type:ignore
+        output,
+        llm_helper,
+        llm_li,
+        text,
+        "promptx",
+    )
+
+    return (answer, context)
     answer = run_completion(
         llm_helper=llm_helper,
         llm_li=llm_li,
