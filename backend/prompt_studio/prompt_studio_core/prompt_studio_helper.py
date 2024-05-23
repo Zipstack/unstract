@@ -395,7 +395,7 @@ class PromptStudioHelper:
                 )
                 msg: str = (
                     f"Error while fetching response for "
-                    f"{prompt_name} with {doc_name}. {e}"
+                    f"'{prompt_name}' with '{doc_name}'. {e}"
                 )
                 if isinstance(e, AnswerFetchError):
                     msg = str(e)
@@ -638,7 +638,7 @@ class PromptStudioHelper:
             error_message = answer.get("error", "")
             raise AnswerFetchError(
                 "Error while fetching response for "
-                f"{prompt.prompt_key} with {doc_name}. {error_message}"
+                f"'{prompt.prompt_key}' with '{doc_name}'. {error_message}"
             )
         output_response = json.loads(answer["structure_output"])
         return output_response
@@ -716,7 +716,9 @@ class PromptStudioHelper:
                 LogLevels.RUN,
                 f"Indexing failed : {e}",
             )
-            raise IndexingAPIError(f"Error while indexing {doc_name}. {str(e)}") from e
+            raise IndexingAPIError(
+                f"Error while indexing '{doc_name}'. {str(e)}"
+            ) from e
 
     @staticmethod
     def _fetch_single_pass_response(

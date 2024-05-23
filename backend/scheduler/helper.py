@@ -82,7 +82,7 @@ class SchedulerHelper:
             )
         except Exception as e:
             logger.error(f"Exception while adding job: {e}")
-            raise JobSchedulingError
+            raise JobSchedulingError from e
 
     @staticmethod
     def remove_job(pipeline_id: str) -> None:
