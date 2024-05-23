@@ -123,7 +123,7 @@ class WorkflowHelper:
             try:
                 is_executed, error = WorkflowHelper.process_file(
                     current_file_idx=file_number,
-                    total_step=total_files,
+                    total_files=total_files,
                     input_file=input_file,
                     workflow=workflow,
                     source=source,
