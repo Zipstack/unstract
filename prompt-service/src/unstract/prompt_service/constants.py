@@ -6,6 +6,7 @@ class PromptServiceContants:
     SYNONYMS = "synonyms"
     OUTPUTS = "outputs"
     TOOL_ID = "tool_id"
+    RUN_ID = "run_id"
     FILE_NAME = "file_name"
     FILE_HASH = "file_hash"
     NAME = "name"
