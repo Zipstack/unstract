@@ -23,7 +23,8 @@
         "openai_embedding":"openai_embedding"
     },
     "retrieval_strategy":{
-        "simple":"simple"
+        "simple":"simple",
+        "subquestion":"subquestion"
     },
     "vector_store":{
         "Postgres pg_vector":"Postgres pg_vector",
