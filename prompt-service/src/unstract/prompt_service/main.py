@@ -361,11 +361,12 @@ def prompt_processor() -> Any:
             )
 
             if output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SIMPLE:
-                answer, context = simple_retriver(
-                    output,
-                    doc_id,
-                    llm,
-                    vector_index,
+                answer, context = run_retrieval(
+                    output, doc_id, llm, vector_index, PSKeys.SIMPLE
+                )
+            elif output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SUBQUESTION:
+                answer, context = run_retrieval(
+                    output, doc_id, llm, vector_index, PSKeys.SUBQUESTION
                 )
             else:
                 app.logger.info(
@@ -525,7 +526,7 @@ def prompt_processor() -> Any:
                         usage_kwargs=usage_kwargs,
                     )
                     challenge = challenge_plugin["entrypoint_cls"](
-                        llm=challenge_llm,
+                        challenge_llm=challenge_llm,
                         run_id=run_id,
                         context=context,
                         tool_settings=tool_settings,
@@ -656,11 +657,12 @@ def prompt_processor() -> Any:
     return response
 
 
-def simple_retriver(  # type:ignore
+def run_retrieval(  # type:ignore
     output: dict[str, Any],
     doc_id: str,
     llm: LLM,
     vector_index,
+    retrieval_type: str,
 ) -> tuple[str, str]:
     prompt = construct_prompt_for_engine(
         preamble=output["preamble"],
@@ -668,15 +670,28 @@ def simple_retriver(  # type:ignore
         postamble=output["postamble"],
         grammar_list=output["grammar"],
     )
-    subq_prompt = (
-        f"Generate a sub-question from the following verbose prompt that will"
-        f" help extract relevant documents from a vector store:\n\n{prompt}"
-    )
-    answer = run_completion(
-        llm=llm,
-        prompt=subq_prompt,
+    if retrieval_type is PSKeys.SUBQUESTION:
+        subq_prompt = (
+            f"Generate a sub-question from the following verbose prompt that will"
+            f" help extract relevant documents from a vector store:\n\n{prompt}"
+        )
+        prompt = run_completion(
+            llm=llm,
+            prompt=subq_prompt,
+        )
+    context = _retrieve_context(output, doc_id, vector_index, prompt)
+
+    answer = construct_and_run_prompt(  # type:ignore
+        output,
+        llm,
+        context,
+        "promptx",
     )
 
+    return (answer, context)
+
+
+def _retrieve_context(output, doc_id, vector_index, answer) -> str:
     retriever = vector_index.as_retriever(
         similarity_top_k=output[PSKeys.SIMILARITY_TOP_K],
         filters=MetadataFilters(
@@ -695,14 +710,7 @@ def simple_retriver(  # type:ignore
             text += node.get_content() + "\n"
         else:
             app.logger.info("Node score is less than 0.6. " f"Ignored: {node.score}")
-
-    answer = construct_and_run_prompt(  # type:ignore
-        output,
-        llm,
-        text,
-        "promptx",
-    )
-    return (answer, text)
+    return text
 
 
 def construct_and_run_prompt(
