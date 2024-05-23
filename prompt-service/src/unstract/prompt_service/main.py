@@ -366,7 +366,7 @@ def prompt_processor() -> Any:
                 )
             elif output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SUBQUESTION:
                 answer, context = run_retrieval(
-                    output, doc_id, llm_helper, llm_li, vector_index, PSKeys.SUBQUESTION              
+                    output, doc_id, llm_helper, llm_li, vector_index, PSKeys.SUBQUESTION
             else:
                 app.logger.info(
                     "Invalid retrieval strategy "
