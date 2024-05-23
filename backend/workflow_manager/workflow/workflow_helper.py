@@ -18,7 +18,7 @@ from rest_framework import serializers
 from tool_instance.constants import ToolInstanceKey
 from tool_instance.models import ToolInstance
 from tool_instance.tool_instance_helper import ToolInstanceHelper
-from unstract.workflow_execution.enums import LogComponent, LogState
+from unstract.workflow_execution.enums import LogComponent, LogLevel, LogState
 from unstract.workflow_execution.exceptions import StopExecution
 from utils.cache_service import CacheService
 from workflow_manager.endpoint.destination import DestinationConnector
@@ -112,13 +112,18 @@ class WorkflowHelper:
     ) -> WorkflowExecution:
         input_files = source.list_files_from_source()
         total_files = len(input_files)
+        processed_files = 0
+        error_raised = 0
         execution_service.publish_initial_workflow_logs(total_files)
+        execution_service.update_execution(
+            ExecutionStatus.EXECUTING, increment_attempt=True
+        )
         for index, input_file in enumerate(input_files):
             file_number = index + 1
             try:
-                WorkflowHelper.process_file(
+                is_executed, error = WorkflowHelper.process_file(
                     current_file_idx=file_number,
-                    total_files=total_files,
+                    total_step=total_files,
                     input_file=input_file,
                     workflow=workflow,
                     source=source,
@@ -127,9 +132,23 @@ class WorkflowHelper:
                     single_step=single_step,
                     hash_values_of_files=hash_values_of_files,
                 )
-            except StopExecution:
+                if is_executed:
+                    processed_files += 1
+                if error:
+                    error_raised += 1
+            except StopExecution as exception:
+                execution_service.update_execution(
+                    ExecutionStatus.STOPPED, error=str(exception)
+                )
                 break
-        execution_service.publish_final_workflow_logs()
+        if error_raised and error_raised == total_files:
+            execution_service.update_execution(ExecutionStatus.ERROR)
+        else:
+            execution_service.update_execution(ExecutionStatus.COMPLETED)
+
+        execution_service.publish_final_workflow_logs(
+            total_files=total_files, processed_files=processed_files
+        )
         return execution_service.get_execution_instance()
 
     @staticmethod
@@ -143,9 +162,10 @@ class WorkflowHelper:
         execution_service: WorkflowExecutionServiceHelper,
         single_step: bool,
         hash_values_of_files: dict[str, str],
-    ) -> None:
+    ) -> tuple[bool, Optional[str]]:
         file_history = None
         error = None
+        is_executed = False
         file_name, file_hash = source.add_file_to_volume(
             input_file_path=input_file,
             hash_values_of_files=hash_values_of_files,
@@ -157,7 +177,7 @@ class WorkflowHelper:
             file_history = FileHistoryHelper.get_file_history(
                 workflow=workflow, cache_key=file_hash
             )
-            execution_service.execute_input_file(
+            is_executed = execution_service.execute_input_file(
                 file_name=file_name,
                 single_step=single_step,
                 file_history=file_history,
@@ -166,7 +186,8 @@ class WorkflowHelper:
             raise
         except Exception as e:
             execution_service.publish_log(
-                f"Error processing file {input_file}: {str(e)}"
+                f"Error processing file {input_file}: {str(e)}",
+                level=LogLevel.ERROR,
             )
             error = str(e)
         execution_service.publish_update_log(
@@ -186,6 +207,7 @@ class WorkflowHelper:
             f"{file_name}'s output is processed successfully",
             LogComponent.DESTINATION,
         )
+        return is_executed, error
 
     @staticmethod
     def validate_tool_instances_meta(

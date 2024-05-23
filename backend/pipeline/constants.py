@@ -61,5 +61,6 @@ class PipelineURL:
     """Constants for URL names."""
 
     DETAIL = "pipeline-detail"
+    EXECUTIONS = "pipeline-executions"
     LIST = "pipeline-list"
     EXECUTE = "pipeline-execute"

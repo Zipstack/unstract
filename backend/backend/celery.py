@@ -4,6 +4,7 @@ import os
 
 from celery import Celery
 from django.conf import settings
+from utils.constants import ExecutionLogConstants
 
 # Set the default Django settings module for the 'celery' program.
 os.environ.setdefault(
@@ -23,6 +24,14 @@ app.config_from_object("django.conf:settings", namespace="CELERY")
 
 # Autodiscover tasks in all installed apps.
 app.autodiscover_tasks()
+
+# Define the queues to purge when the Celery broker is restarted.
+queues_to_purge = [ExecutionLogConstants.CELERY_QUEUE_NAME]
+with app.connection() as connection:
+    channel = connection.channel()
+
+    for queue_name in queues_to_purge:
+        channel.queue_purge(queue_name)
 
 # Use the Django-Celery-Beat scheduler.
 app.conf.beat_scheduler = "django_celery_beat.schedulers:DatabaseScheduler"

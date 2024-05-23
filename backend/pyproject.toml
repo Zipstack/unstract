@@ -20,6 +20,7 @@ dependencies = [
     "djangorestframework==3.14.0",
     "django-cors-headers==4.3.1",
     "django-celery-beat>=2.5.0",
+    "django-log-request-id>=2.1.0",
     "django-redis==5.4.0",
     "django-tenants==3.5.0",
     "drf-standardized-errors>=0.12.6",
@@ -77,7 +78,7 @@ migrate_db.cmd = "python manage.py migrate"
 migrate_db.env_file = ".env"
 migrate_db.help = "Performs DB migrations for Unstract backend"
 # Commands for backend execution
-consumer.cmd = "celery -A backend worker --loglevel=info"
+consumer.cmd = "celery -A backend worker --loglevel=info -Q celery,celery_periodic_logs"
 consumer.env_file = ".env"
 consumer.help = "Runs the Unstract consumer"
 # Celery Flower
