@@ -21,6 +21,7 @@ class ToolStudioErrors:
 class ToolStudioPromptKeys:
     CREATED_BY = "created_by"
     TOOL_ID = "tool_id"
+    RUN_ID = "run_id"
     NUMBER = "Number"
     FLOAT = "Float"
     PG_VECTOR = "Postgres pg_vector"

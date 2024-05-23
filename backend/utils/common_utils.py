@@ -1,3 +1,4 @@
+import uuid
 from enum import Enum
 
 
@@ -13,6 +14,11 @@ class CommonUtils:
             bool
         """
         return string.lower() == "true"
+
+    @staticmethod
+    def get_uuid() -> str:
+        """Class method to get uuid."""
+        return str(uuid.uuid4())
 
 
 class ModelEnum(Enum):
