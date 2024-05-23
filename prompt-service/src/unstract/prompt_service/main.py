@@ -413,8 +413,8 @@ def prompt_processor() -> Any:
                     characters. No explanation is required.\
                     If you cannot extract the number, output 0."
                 answer = run_completion(
-                    llm,
-                    prompt,
+                    llm=llm,
+                    prompt=prompt,
                 )
                 try:
                     structured_output[output[PSKeys.NAME]] = float(answer)
@@ -432,8 +432,8 @@ def prompt_processor() -> Any:
                     The email should be directly assignable to a string variable. \
                         No explanation is required. If you cannot extract the email, output "NA".'  # noqa
                 answer = run_completion(
-                    llm,
-                    prompt,
+                    llm=llm,
+                    prompt=prompt,
                 )
                 structured_output[output[PSKeys.NAME]] = answer
         elif output[PSKeys.TYPE] == PSKeys.DATE:
@@ -445,8 +445,8 @@ def prompt_processor() -> Any:
                         The date should be directly assignable to a date variable. \
                             If you cannot convert the string into a date, output "NA".'  # noqa
                 answer = run_completion(
-                    llm,
-                    prompt,
+                    llm=llm,
+                    prompt=prompt,
                 )
                 structured_output[output[PSKeys.NAME]] = answer
 
@@ -459,8 +459,8 @@ def prompt_processor() -> Any:
                     If the context is trying to convey that the answer is true, \
                     then return "yes", else return "no".'
                 answer = run_completion(
-                    llm,
-                    prompt,
+                    llm=llm,
+                    prompt=prompt,
                 )
                 if answer.lower() == "yes":
                     structured_output[output[PSKeys.NAME]] = True
@@ -476,8 +476,8 @@ def prompt_processor() -> Any:
                     Output just the JSON string. No explanation is required. \
                     If you cannot extract the JSON string, output {{}}"
                 answer = run_completion(
-                    llm,
-                    prompt,
+                    llm=llm,
+                    prompt=prompt,
                 )
                 try:
                     structured_output[output[PSKeys.NAME]] = json.loads(answer)
@@ -673,8 +673,8 @@ def simple_retriver(  # type:ignore
         f" help extract relevant documents from a vector store:\n\n{prompt}"
     )
     answer = run_completion(
-        llm,
-        subq_prompt,
+        llm=llm,
+        prompt=subq_prompt,
     )
 
     retriever = vector_index.as_retriever(
@@ -719,8 +719,8 @@ def construct_and_run_prompt(
         context=context,
     )
     return run_completion(
-        llm,
-        prompt,
+        llm=llm,
+        prompt=prompt,
     )
 
 
