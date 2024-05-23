@@ -678,7 +678,6 @@ def run_retrieval(  # type:ignore
         prompt = run_completion(
             llm=llm,
             prompt=subq_prompt,
-            adapter_instance_id=output[PSKeys.LLM],
         )
     context = _retrieve_context(output, doc_id, vector_index, prompt)
 
