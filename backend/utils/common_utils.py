@@ -15,6 +15,11 @@ class CommonUtils:
         """
         return string.lower() == "true"
 
+    @staticmethod
+    def get_uuid() -> str:
+        """Class method to get uuid."""
+        return str(uuid.uuid4())
+
 
 class ModelEnum(Enum):
     @classmethod
@@ -22,8 +27,3 @@ class ModelEnum(Enum):
         """Class method implementing model.TextChoice's choices() to enable
         using an enum in a model."""
         return [(key.value, key.name) for key in cls]
-
-    @classmethod
-    def get_uuid(cls) -> str:
-        """Class method to get uuid."""
-        return str(uuid.uuid4())

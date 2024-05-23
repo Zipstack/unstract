@@ -1299,7 +1299,7 @@ files = [
 
 [[package]]
 name = "google-api-python-client"
-version = "2.129.0"
+version = "2.130.0"
 requires_python = ">=3.7"
 summary = "Google API Client Library for Python"
 groups = ["default"]
@@ -1311,8 +1311,8 @@ dependencies = [
     "uritemplate<5,>=3.0.1",
 ]
 files = [
-    {file = "google-api-python-client-2.129.0.tar.gz", hash = "sha256:984cc8cc8eb4923468b1926d2b8effc5b459a4dda3c845896eb87c153b28ef84"},
-    {file = "google_api_python_client-2.129.0-py2.py3-none-any.whl", hash = "sha256:d50f7e2dfdbb7fc2732f6a0cba1c54d7bb676390679526c6bb628c901e43ec86"},
+    {file = "google-api-python-client-2.130.0.tar.gz", hash = "sha256:2bba3122b82a649c677b8a694b8e2bbf2a5fbf3420265caf3343bb88e2e9f0ae"},
+    {file = "google_api_python_client-2.130.0-py2.py3-none-any.whl", hash = "sha256:7d45a28d738628715944a9c9d73e8696e7e03ac50b7de87f5e3035cefa94ed3a"},
 ]
 
 [[package]]
