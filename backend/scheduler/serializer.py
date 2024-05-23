@@ -18,7 +18,6 @@ class JobKwargsSerializer(serializers.Serializer):
     # url = serializers.URLField()
     url = serializers.CharField(max_length=128)
     headers = serializers.JSONField()
-    params = serializers.JSONField()
     data = serializers.JSONField()
 
 
