@@ -4,8 +4,6 @@ from typing import Any, Optional
 from account.custom_exceptions import DuplicateData
 from django.db import IntegrityError
 from django.db.models import QuerySet
-from drf_yasg import openapi
-from drf_yasg.utils import swagger_auto_schema
 from permissions.permission import IsOwner
 from pipeline.constants import PipelineConstants, PipelineErrors, PipelineExecutionKey
 from pipeline.constants import PipelineKey as PK
@@ -20,7 +18,6 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from scheduler.helper import SchedulerHelper
-from workflow_manager.workflow.constants import WorkflowExecutionKey as WFExecKey
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +27,6 @@ class PipelineViewSet(viewsets.ModelViewSet):
     queryset = Pipeline.objects.all()
     permission_classes = [IsOwner]
     serializer_class = PipelineSerializer
-
-    # For doc strings
-    with_log = openapi.Parameter(
-        "with_log",
-        openapi.IN_QUERY,
-        description="To pass workflow execution logs to FE",
-        type=openapi.TYPE_BOOLEAN,
-        enum=[True, False],
-    )
 
     def get_queryset(self) -> Optional[QuerySet]:
         type = self.request.query_params.get(PipelineConstants.TYPE)
@@ -61,10 +49,7 @@ class PipelineViewSet(viewsets.ModelViewSet):
     # For eg, passing pipeline ID and with_log=False -> executes pipeline
     # For FE however we call the same API twice
     # (first call generates execution ID)
-    @swagger_auto_schema(manual_parameters=[with_log])
     def execute(self, request: Request) -> Response:
-        # TODO: Use a serializer instead to validate args
-        with_log = request.query_params.get(WFExecKey.WITH_LOG)
         serializer: ExecuteSerializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         execution_id = serializer.validated_data.get("execution_id", None)
@@ -74,7 +59,6 @@ class PipelineViewSet(viewsets.ModelViewSet):
             request=request,
             pipeline_id=pipeline_id,
             execution_id=execution_id,
-            with_log=with_log,
         )
         pipeline: Pipeline = PipelineProcessor.fetch_pipeline(pipeline_id)
         serializer = PipelineSerializer(pipeline)

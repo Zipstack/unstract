@@ -50,7 +50,14 @@ DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {"request_id": {"()": "log_request_id.filters.RequestIDFilter"}},
     "formatters": {
+        "enriched": {
+            "format": (
+                "%(levelname)s : [%(asctime)s] {module:%(module)s process:%(process)d "
+                "thread:%(thread)d request_id:%(request_id)s} :- %(message)s"
+            ),
+        },
         "verbose": {
             "format": "[%(asctime)s] %(levelname)s %(name)s: %(message)s",
             "datefmt": "%d/%b/%Y %H:%M:%S",
@@ -64,7 +71,8 @@ LOGGING = {
         "console": {
             "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
             "class": "logging.StreamHandler",
-            "formatter": "verbose",
+            "filters": ["request_id"],
+            "formatter": "enriched",
         },
     },
     "root": {
@@ -147,6 +155,11 @@ SYSTEM_ADMIN_USERNAME = get_required_setting("SYSTEM_ADMIN_USERNAME")
 SYSTEM_ADMIN_PASSWORD = get_required_setting("SYSTEM_ADMIN_PASSWORD")
 SYSTEM_ADMIN_EMAIL = get_required_setting("SYSTEM_ADMIN_EMAIL")
 SESSION_COOKIE_AGE = int(get_required_setting("SESSION_COOKIE_AGE", "86400"))
+ENABLE_LOG_HISTORY = get_required_setting("ENABLE_LOG_HISTORY")
+LOG_HISTORY_CONSUMER_INTERVAL = int(
+    get_required_setting("LOG_HISTORY_CONSUMER_INTERVAL", "60")
+)
+LOGS_BATCH_LIMIT = int(get_required_setting("LOGS_BATCH_LIMIT", "30"))
 
 # Flag to Enable django admin
 ADMIN_ENABLED = False
@@ -241,6 +254,7 @@ AUTH_USER_MODEL = "account.User"
 PUBLIC_ORG_ID = "public"
 
 MIDDLEWARE = [
+    "log_request_id.middleware.RequestIDMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django_tenants.middleware.TenantSubfolderMiddleware",
     "django.middleware.security.SecurityMiddleware",
@@ -308,7 +322,7 @@ CACHES = {
             "USERNAME": REDIS_USER,
             "PASSWORD": REDIS_PASSWORD,
         },
-        "KEY_FUNCTION": "utils.cache_service.custom_key_function",
+        "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
     }
 }
 
@@ -337,13 +351,6 @@ CELERY_TASK_RETRY_BACKOFF = 60  # Time in seconds before retrying the task
 
 # Feature Flag
 FEATURE_FLAG_SERVICE_URL = {"evaluate": f"{FLIPT_BASE_URL}/api/v1/flags/evaluate/"}
-
-SCHEDULER_KWARGS = {
-    "coalesce": True,
-    "misfire_grace_time": 300,
-    "max_instances": 1,
-    "replace_existing": True,
-}
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
