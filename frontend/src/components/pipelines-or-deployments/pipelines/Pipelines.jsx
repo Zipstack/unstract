@@ -4,6 +4,7 @@ import {
   EllipsisOutlined,
   SyncOutlined,
   HighlightOutlined,
+  FileSearchOutlined,
 } from "@ant-design/icons";
 import { Dropdown, Image, Space, Switch, Typography } from "antd";
 import PropTypes from "prop-types";
@@ -17,6 +18,7 @@ import { useSessionStore } from "../../../store/session-store.js";
 import { Layout } from "../../deployments/layout/Layout.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
+import { LogsModal } from "../log-modal/LogsModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import "./Pipelines.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
@@ -32,6 +34,9 @@ function Pipelines({ type }) {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const [isEdit, setIsEdit] = useState(false);
+  const [openLogsModal, setOpenLogsModal] = useState(false);
+  const [executionLogs, setExecutionLogs] = useState([]);
+  const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
 
   useEffect(() => {
     getPipelineList();
@@ -175,6 +180,34 @@ function Pipelines({ type }) {
       });
   };
 
+  const fetchExecutionLogs = (page = 1, pageSize = 10) => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${selectedPorD.id}/executions/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+      params: {
+        page: page,
+        page_size: pageSize,
+      },
+    };
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const logs = res?.data?.results?.map((result) => ({
+          created_at: result.created_at,
+          execution_id: result.id,
+          status: result.status,
+          execution_time: result.execution_time,
+        }));
+        setExecutionLogs(logs);
+        setExecutionLogsTotalCount(res.data.count);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
+  };
+
   const clearCache = () => {
     const requestOptions = {
       method: "GET",
@@ -241,6 +274,26 @@ function Pipelines({ type }) {
         <Space
           direction="horizontal"
           className="action-items"
+          onClick={() => {
+            setOpenLogsModal(true);
+            fetchExecutionLogs();
+          }}
+        >
+          <div>
+            <FileSearchOutlined />
+          </div>
+          <div>
+            <Typography.Text>View Logs</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "3",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
           onClick={() => clearCache()}
         >
           <div>
@@ -253,7 +306,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "3",
+      key: "4",
       label: (
         <Space
           direction="horizontal"
@@ -270,7 +323,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "4",
+      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -431,6 +484,13 @@ function Pipelines({ type }) {
           setSelectedRow={setSelectedPorD}
         />
       )}
+      <LogsModal
+        open={openLogsModal}
+        setOpen={setOpenLogsModal}
+        logRecord={executionLogs}
+        totalLogs={executionLogsTotalCount}
+        fetchExecutionLogs={fetchExecutionLogs}
+      />
       <DeleteModal
         open={openDeleteModal}
         setOpen={setOpenDeleteModal}

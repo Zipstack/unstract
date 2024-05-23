@@ -17,6 +17,8 @@ from workflow_manager.endpoint.models import WorkflowEndpoint
 from workflow_manager.workflow.constants import WorkflowExecutionKey, WorkflowKey
 from workflow_manager.workflow.exceptions import WorkflowGenerationError
 from workflow_manager.workflow.generator import WorkflowGenerator
+from workflow_manager.workflow.models.execution import WorkflowExecution
+from workflow_manager.workflow.models.execution_log import ExecutionLog
 from workflow_manager.workflow.models.workflow import Workflow
 
 from backend.constants import RequestKey
@@ -148,4 +150,16 @@ class WorkflowEndpointSerializer(ModelSerializer):
 
     class Meta:
         model = WorkflowEndpoint
+        fields = "__all__"
+
+
+class WorkflowExecutionSerializer(ModelSerializer):
+    class Meta:
+        model = WorkflowExecution
+        fields = "__all__"
+
+
+class WorkflowExecutionLogSerializer(ModelSerializer):
+    class Meta:
+        model = ExecutionLog
         fields = "__all__"
