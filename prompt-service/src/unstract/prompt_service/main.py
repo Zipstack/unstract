@@ -362,11 +362,12 @@ def prompt_processor() -> Any:
 
             if output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SIMPLE:
                 answer, context = run_retrieval(
-                    output, doc_id, llm_helper, llm_li, vector_index, PSKeys.SIMPLE
+                    output, doc_id, llm, vector_index, PSKeys.SIMPLE
                 )
             elif output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SUBQUESTION:
                 answer, context = run_retrieval(
-                    output, doc_id, llm_helper, llm_li, vector_index, PSKeys.SUBQUESTION
+                    output, doc_id, llm, vector_index, PSKeys.SUBQUESTION
+                )
             else:
                 app.logger.info(
                     "Invalid retrieval strategy "
@@ -675,18 +676,15 @@ def run_retrieval(  # type:ignore
             f" help extract relevant documents from a vector store:\n\n{prompt}"
         )
         prompt = run_completion(
-            llm_helper=llm_helper,
-            llm_li=llm_li,
+            llm=llm,
             prompt=subq_prompt,
             adapter_instance_id=output[PSKeys.LLM],
         )
-
     context = _retrieve_context(output, doc_id, vector_index, prompt)
 
     answer = construct_and_run_prompt(  # type:ignore
         output,
-        llm_helper,
-        llm_li,
+        llm,
         context,
         "promptx",
     )
