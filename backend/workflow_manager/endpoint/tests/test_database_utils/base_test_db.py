@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from unstract.connectors.databases.bigquery import BigQuery
 from unstract.connectors.databases.postgresql import PostgreSQL
 from unstract.connectors.databases.redshift import Redshift
+from unstract.connectors.databases.snowflake import SnowflakeDB
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 load_dotenv("test.env")
@@ -30,6 +31,15 @@ class BaseTestDB:
             "host": os.getenv("REDSHIFT_HOST"),
             "port": os.getenv("REDSHIFT_PORT"),
             "database": os.getenv("REDSHIFT_DB"),
+        }
+        self.snowflake_creds = {
+            "user": os.getenv("SNOWFLAKE_USER"),
+            "password": os.getenv("SNOWFLAKE_PASSWORD"),
+            "account": os.getenv("SNOWFLAKE_ACCOUNT"),
+            "role": os.getenv("SNOWFLAKE_ROLE"),
+            "database": os.getenv("SNOWFLAKE_DB"),
+            "schema": os.getenv("SNOWFLAKE_SCHEMA"),
+            "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE"),
         }
         self.database_entry = {
             "created_by": "Unstract/DBWriter",
@@ -55,14 +65,35 @@ class BaseTestDB:
         self.bigquery_settings = json.loads(bigquery_json_str)
         self.bigquery_settings["json_credentials"] = bigquery_json_str
         self.valid_bigquery_table_name = "pandoras-tamer.bigquery_test.bigquery_output"
+        self.invalid_snowflake_db = {**self.snowflake_creds, "database": "invalid"}
+        self.invalid_snowflake_schema = {**self.snowflake_creds, "schema": "invalid"}
+        self.invalid_snowflake_warehouse = {
+            **self.snowflake_creds,
+            "warehouse": "invalid",
+        }
 
+    # Gets all valid db instances except
+    # Bigquery (table name needs to be writted separately for bigquery)
     @pytest.fixture(
         params=[
             ("valid_postgres_creds", PostgreSQL),
             ("valid_redshift_creds", Redshift),
+            ("snowflake_creds", SnowflakeDB),
         ]
     )
     def valid_dbs_instance(self, request: Any) -> Any:
+        return self.get_db_instance(request=request)
+
+    # Gets all valid db instances except:
+    # Bigquery (table name needs to be writted separately for bigquery)
+    # Redshift (can't process more than 64KB character type)
+    @pytest.fixture(
+        params=[
+            ("valid_postgres_creds", PostgreSQL),
+            ("snowflake_creds", SnowflakeDB),
+        ]
+    )
+    def valid_dbs_instance_to_handle_large_doc(self, request: Any) -> Any:
         return self.get_db_instance(request=request)
 
     def get_db_instance(self, request: Any) -> UnstractDB:
@@ -73,6 +104,7 @@ class BaseTestDB:
         db_instance = db_class(settings=creds)
         return db_instance
 
+    # Gets all invalid-db instances for postgres, redshift:
     @pytest.fixture(
         params=[
             ("invalid_postgres_creds", PostgreSQL),
@@ -85,3 +117,14 @@ class BaseTestDB:
     @pytest.fixture
     def valid_bigquery_db_instance(self) -> Any:
         return BigQuery(settings=self.bigquery_settings)
+
+    # Gets all invalid-db instances for snowflake:
+    @pytest.fixture(
+        params=[
+            ("invalid_snowflake_db", SnowflakeDB),
+            ("invalid_snowflake_schema", SnowflakeDB),
+            ("invalid_snowflake_warehouse", SnowflakeDB),
+        ]
+    )
+    def invalid_snowflake_db_instance(self, request: Any) -> Any:
+        return self.get_db_instance(request=request)

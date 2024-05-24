@@ -5,6 +5,7 @@ from workflow_manager.endpoint.exceptions import (
     FeatureNotSupportedException,
     InvalidSchemaException,
     InvalidSyntaxException,
+    SnowflakeProgrammingException,
 )
 
 from unstract.connectors.databases.unstract_db import UnstractDB
@@ -51,7 +52,7 @@ class TestCreateTableIfNotExists(BaseTestDB):
         self, valid_dbs_instance: UnstractDB
     ) -> None:
         engine = valid_dbs_instance.get_engine()
-        with pytest.raises(InvalidSyntaxException):
+        with pytest.raises((InvalidSyntaxException, SnowflakeProgrammingException)):
             DatabaseUtils.create_table_if_not_exists(
                 db_class=valid_dbs_instance,
                 engine=engine,
@@ -66,6 +67,18 @@ class TestCreateTableIfNotExists(BaseTestDB):
         with pytest.raises(FeatureNotSupportedException):
             DatabaseUtils.create_table_if_not_exists(
                 db_class=invalid_dbs_instance,
+                engine=engine,
+                table_name=self.invalid_wrong_table_name,
+                database_entry=self.database_entry,
+            )
+
+    def test_create_table_if_not_exists_invalid_snowflake_db(
+        self, invalid_snowflake_db_instance: UnstractDB
+    ) -> None:
+        engine = invalid_snowflake_db_instance.get_engine()
+        with pytest.raises(SnowflakeProgrammingException):
+            DatabaseUtils.create_table_if_not_exists(
+                db_class=invalid_snowflake_db_instance,
                 engine=engine,
                 table_name=self.invalid_wrong_table_name,
                 database_entry=self.database_entry,
