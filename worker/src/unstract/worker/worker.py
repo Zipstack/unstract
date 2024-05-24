@@ -2,6 +2,7 @@ import ast
 import json
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from docker.errors import APIError
@@ -12,6 +13,7 @@ from unstract.worker.utils import Utils
 
 import docker
 from docker import DockerClient  # type: ignore[attr-defined]
+from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
 
 load_dotenv()
@@ -137,6 +139,8 @@ class UnstractWorker:
         self,
         container: Any,
         tool_instance_id: str,
+        execution_id: str,
+        organization_id: str,
         channel: Optional[str] = None,
     ) -> None:
         for line in container.logs(stream=True, follow=True):
@@ -146,6 +150,8 @@ class UnstractWorker:
                 log_message=log_message,
                 tool_instance_id=tool_instance_id,
                 channel=channel,
+                execution_id=execution_id,
+                organization_id=organization_id,
             )
 
     def get_valid_log_message(self, log_message: str) -> Optional[dict[str, Any]]:
@@ -168,6 +174,8 @@ class UnstractWorker:
         self,
         log_message: str,
         tool_instance_id: str,
+        execution_id: str,
+        organization_id: str,
         channel: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         log_dict = self.get_valid_log_message(log_message)
@@ -176,7 +184,7 @@ class UnstractWorker:
         log_type = self.get_log_type(log_dict)
         if not self.is_valid_log_type(log_type):
             self.logger.warning(
-                f"Received invalid logType: {log_type} with log message: " f"{log_dict}"
+                f"Received invalid logType: {log_type} with log message: {log_dict}"
             )
             return None
         if log_type == LogType.RESULT:
@@ -184,6 +192,10 @@ class UnstractWorker:
         if log_type == LogType.UPDATE:
             log_dict["component"] = tool_instance_id
         if channel:
+            log_dict[LogFieldName.EXECUTION_ID] = execution_id
+            log_dict[LogFieldName.ORGANIZATION_ID] = organization_id
+            log_dict[LogFieldName.TIMESTAMP] = datetime.now(timezone.utc).timestamp()
+
             # Publish to channel of socket io
             LogPublisher.publish(channel, log_dict)
         return None
@@ -366,6 +378,8 @@ class UnstractWorker:
                 container=container,
                 tool_instance_id=tool_instance_id,
                 channel=self.messaging_channel,
+                execution_id=execution_id,
+                organization_id=organization_id,
             )
         except Exception as e:
             self.logger.error(f"Failed to run docker container: {e}")

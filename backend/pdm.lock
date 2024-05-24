@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:0f0f3bf6fa55d21c5308cbfd245c6c09711191785ed709bd101175aed5ad1175"
+content_hash = "sha256:635a06f965d1d3f01950fc71e452430c384cc2fac4ff9c31cffcac6d8b86b963"
 
 [[package]]
 name = "adlfs"
@@ -536,7 +536,7 @@ files = [
 
 [[package]]
 name = "boxsdk"
-version = "3.9.2"
+version = "3.10.0"
 summary = "Official Box Python SDK"
 groups = ["default"]
 dependencies = [
@@ -547,24 +547,24 @@ dependencies = [
     "urllib3",
 ]
 files = [
-    {file = "boxsdk-3.9.2-py2.py3-none-any.whl", hash = "sha256:44087bc208d3082e0a791f98e491c2eccc61cd5123cedc96e52d089e12c5f410"},
-    {file = "boxsdk-3.9.2.tar.gz", hash = "sha256:10e23e2f82e9cff2b2e501b7ca7ffe7bac0e280d1cd4b2983dea95f826e3008b"},
+    {file = "boxsdk-3.10.0-py2.py3-none-any.whl", hash = "sha256:4457a1e85f65b27aec1f19423463329ef9eccbaa95a48ce249b89ed6bda13bef"},
+    {file = "boxsdk-3.10.0.tar.gz", hash = "sha256:3d6df94c8baf51b56d21710cacc9624beb86d2188a96007382ee5221530a8506"},
 ]
 
 [[package]]
 name = "boxsdk"
-version = "3.9.2"
+version = "3.10.0"
 extras = ["jwt"]
 summary = "Official Box Python SDK"
 groups = ["default"]
 dependencies = [
-    "boxsdk==3.9.2",
+    "boxsdk==3.10.0",
     "cryptography>=3",
     "pyjwt>=1.7.0",
 ]
 files = [
-    {file = "boxsdk-3.9.2-py2.py3-none-any.whl", hash = "sha256:44087bc208d3082e0a791f98e491c2eccc61cd5123cedc96e52d089e12c5f410"},
-    {file = "boxsdk-3.9.2.tar.gz", hash = "sha256:10e23e2f82e9cff2b2e501b7ca7ffe7bac0e280d1cd4b2983dea95f826e3008b"},
+    {file = "boxsdk-3.10.0-py2.py3-none-any.whl", hash = "sha256:4457a1e85f65b27aec1f19423463329ef9eccbaa95a48ce249b89ed6bda13bef"},
+    {file = "boxsdk-3.10.0.tar.gz", hash = "sha256:3d6df94c8baf51b56d21710cacc9624beb86d2188a96007382ee5221530a8506"},
 ]
 
 [[package]]
@@ -1010,6 +1010,19 @@ files = [
 ]
 
 [[package]]
+name = "django-log-request-id"
+version = "2.1.0"
+summary = "Django middleware and log filter to attach a unique ID to every log message generated as part of a request"
+groups = ["default"]
+dependencies = [
+    "django>=1.8",
+]
+files = [
+    {file = "django-log-request-id-2.1.0.tar.gz", hash = "sha256:b11fc821774b54b820ef2e732dbaa52304711de8d5c4f9031ca48578f6121ab6"},
+    {file = "django_log_request_id-2.1.0-py3-none-any.whl", hash = "sha256:c0793c030cfe9f673eff3f89667711f65c39509c016d85e436f9d48507ee778c"},
+]
+
+[[package]]
 name = "django-redis"
 version = "5.4.0"
 requires_python = ">=3.6"
@@ -1377,7 +1390,7 @@ files = [
 
 [[package]]
 name = "google-api-python-client"
-version = "2.129.0"
+version = "2.130.0"
 requires_python = ">=3.7"
 summary = "Google API Client Library for Python"
 groups = ["default"]
@@ -1389,8 +1402,8 @@ dependencies = [
     "uritemplate<5,>=3.0.1",
 ]
 files = [
-    {file = "google-api-python-client-2.129.0.tar.gz", hash = "sha256:984cc8cc8eb4923468b1926d2b8effc5b459a4dda3c845896eb87c153b28ef84"},
-    {file = "google_api_python_client-2.129.0-py2.py3-none-any.whl", hash = "sha256:d50f7e2dfdbb7fc2732f6a0cba1c54d7bb676390679526c6bb628c901e43ec86"},
+    {file = "google-api-python-client-2.130.0.tar.gz", hash = "sha256:2bba3122b82a649c677b8a694b8e2bbf2a5fbf3420265caf3343bb88e2e9f0ae"},
+    {file = "google_api_python_client-2.130.0-py2.py3-none-any.whl", hash = "sha256:7d45a28d738628715944a9c9d73e8696e7e03ac50b7de87f5e3035cefa94ed3a"},
 ]
 
 [[package]]
@@ -1442,7 +1455,7 @@ files = [
 
 [[package]]
 name = "google-cloud-aiplatform"
-version = "1.51.0"
+version = "1.52.0"
 requires_python = ">=3.8"
 summary = "Vertex AI API client library"
 groups = ["default"]
@@ -1460,8 +1473,8 @@ dependencies = [
     "shapely<3.0.0dev",
 ]
 files = [
-    {file = "google-cloud-aiplatform-1.51.0.tar.gz", hash = "sha256:901993b4d14392452699c14cf23d72c01c5488ee36a7e00b23195e64d7d2f5ec"},
-    {file = "google_cloud_aiplatform-1.51.0-py2.py3-none-any.whl", hash = "sha256:f2d3ff231454fe397f02fce1358680dea76ed7c74fc42e6c7e1aa1acb1648df3"},
+    {file = "google-cloud-aiplatform-1.52.0.tar.gz", hash = "sha256:932a56e3050b4bc9a2c0630e6af3c0bd52f0bcf72b5dc01c059874231099edd3"},
+    {file = "google_cloud_aiplatform-1.52.0-py2.py3-none-any.whl", hash = "sha256:8c62f5d0ec39e008737ebba4875105ed7563dd0958f591f95dc7816e4b30f92a"},
 ]
 
 [[package]]
@@ -1939,7 +1952,7 @@ files = [
 
 [[package]]
 name = "huggingface-hub"
-version = "0.23.0"
+version = "0.23.1"
 requires_python = ">=3.8.0"
 summary = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
 groups = ["default"]
@@ -1953,8 +1966,8 @@ dependencies = [
     "typing-extensions>=3.7.4.3",
 ]
 files = [
-    {file = "huggingface_hub-0.23.0-py3-none-any.whl", hash = "sha256:075c30d48ee7db2bba779190dc526d2c11d422aed6f9044c5e2fdc2c432fdb91"},
-    {file = "huggingface_hub-0.23.0.tar.gz", hash = "sha256:7126dedd10a4c6fac796ced4d87a8cf004efc722a5125c2c09299017fa366fa9"},
+    {file = "huggingface_hub-0.23.1-py3-none-any.whl", hash = "sha256:720a5bffd2b1b449deb793da8b0df7a9390a7e238534d5a08c9fbcdecb1dd3cb"},
+    {file = "huggingface_hub-0.23.1.tar.gz", hash = "sha256:4f62dbf6ae94f400c6d3419485e52bce510591432a5248a65d0cb72e4d479eb4"},
 ]
 
 [[package]]
@@ -2207,7 +2220,7 @@ files = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.10.37.post1"
+version = "0.10.38.post2"
 requires_python = "<4.0,>=3.8.1"
 summary = "Interface between LLMs and your data"
 groups = ["default"]
@@ -2239,8 +2252,8 @@ dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "llama_index_core-0.10.37.post1-py3-none-any.whl", hash = "sha256:e6b8a2dd4371e0326f57845a0b3d257ef4fa0d7d7de4e911fd45a5c814520606"},
-    {file = "llama_index_core-0.10.37.post1.tar.gz", hash = "sha256:431305ecd7e8a524dc282f849ca4d7f7dccccd677cae55efefaf16b49d3d1aed"},
+    {file = "llama_index_core-0.10.38.post2-py3-none-any.whl", hash = "sha256:b4b55449bac458d339e84d8d26f322b4dc9f36d3682ebb41fccf5594c295620f"},
+    {file = "llama_index_core-0.10.38.post2.tar.gz", hash = "sha256:9eff6e16e9045deca9cb58bcf2a4b9ba39d0da12d7493e6aebaa5badd3b3ebb5"},
 ]
 
 [[package]]
@@ -2780,14 +2793,14 @@ files = [
 
 [[package]]
 name = "milvus-lite"
-version = "2.4.4"
+version = "2.4.5"
 requires_python = ">=3.7"
 summary = "A lightweight version of Milvus wrapped with Python."
 groups = ["default"]
 files = [
-    {file = "milvus_lite-2.4.4-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:82ba784eb160251b5969864402ebd759d461168f32503544998bb3e89905bf6c"},
-    {file = "milvus_lite-2.4.4-py3-none-macosx_11_0_arm64.whl", hash = "sha256:8d7f56289204250eec99f0b03538239145c293c0f8d729c41b76a451ceea9ff3"},
-    {file = "milvus_lite-2.4.4-py3-none-manylinux2014_x86_64.whl", hash = "sha256:e7ba8a3214f84705c6714114a9b3060dc3bb880b213a631d7b04f1dea4d48558"},
+    {file = "milvus_lite-2.4.5-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:343d5f4df801def14eb711048de8fdf24a216704e591c261cd0827770772a7ee"},
+    {file = "milvus_lite-2.4.5-py3-none-macosx_11_0_arm64.whl", hash = "sha256:73f154a82d60f933e2c991b53dd795683b196c0f5b6d36f8464422bdedddb857"},
+    {file = "milvus_lite-2.4.5-py3-none-manylinux2014_x86_64.whl", hash = "sha256:22d70c87494442882b3fceeba38ef131d1186c9b9bc363fb9550e8494b2fdaba"},
 ]
 
 [[package]]
@@ -3757,7 +3770,7 @@ summary = "A py.test plugin that parses environment files before running tests"
 groups = ["test"]
 dependencies = [
     "pytest>=5.0.0",
-    "python-dotenv>=0.9.1",
+    "python-dotenv>=0.9.1",wasabi
 ]
 files = [
     {file = "pytest-dotenv-0.5.2.tar.gz", hash = "sha256:2dc6c3ac6d8764c71c6d2804e902d0ff810fa19692e95fe138aefc9b1aa73732"},
@@ -3766,15 +3779,14 @@ files = [
 
 [[package]]
 name = "python-crontab"
-version = "3.0.0"
+version = "3.1.0"
 summary = "Python Crontab API"
 groups = ["default"]
 dependencies = [
     "python-dateutil",
 ]
 files = [
-    {file = "python-crontab-3.0.0.tar.gz", hash = "sha256:79fb7465039ddfd4fb93d072d6ee0d45c1ac8bf1597f0686ea14fd4361dba379"},
-    {file = "python_crontab-3.0.0-py3-none-any.whl", hash = "sha256:6d5ba3c190ec76e4d252989a1644fcb233dbf53fbc8fceeb9febe1657b9fb1d4"},
+    {file = "python-crontab-3.1.0.tar.gz", hash = "sha256:f4ea1605d24533b67fa7a634ef26cb59a5f2e7954f6e677d2d7a2229959a2fc8"},
 ]
 
 [[package]]
@@ -4284,13 +4296,13 @@ files = [
 
 [[package]]
 name = "setuptools"
-version = "69.5.1"
+version = "70.0.0"
 requires_python = ">=3.8"
 summary = "Easily download, build, install, upgrade, and uninstall Python packages"
 groups = ["default"]
 files = [
-    {file = "setuptools-69.5.1-py3-none-any.whl", hash = "sha256:c636ac361bc47580504644275c9ad802c50415c7522212252c033bd15f301f32"},
-    {file = "setuptools-69.5.1.tar.gz", hash = "sha256:6c1fccdac05a97e598fb0ae3bbed5904ccb317337a51139dcd51453611bbb987"},
+    {file = "setuptools-70.0.0-py3-none-any.whl", hash = "sha256:54faa7f2e8d2d11bcd2c07bed282eef1046b5c080d1c32add737d7b5817b1ad4"},
+    {file = "setuptools-70.0.0.tar.gz", hash = "sha256:f211a66637b8fa059bb28183da127d4e86396c991a942b028c6650d4319c3fd0"},
 ]
 
 [[package]]
@@ -5076,7 +5088,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.15.1"
+version = "0.16.0"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract interface for LLMs, Embeddings and VectorDBs"
 groups = ["default"]
@@ -5104,8 +5116,8 @@ dependencies = [
     "singleton-decorator~=1.0.0",
 ]
 files = [
-    {file = "unstract_adapters-0.15.1-py3-none-any.whl", hash = "sha256:c4e4afe661ce363bc6842626fa1d5a402cb5146db2980a3d20f6e70c6a218f1f"},
-    {file = "unstract_adapters-0.15.1.tar.gz", hash = "sha256:279e1e4c80b5f399a219ba63edf4cf5d640342f1b2e779b6c16b004cc7bfc802"},
+    {file = "unstract_adapters-0.16.0-py3-none-any.whl", hash = "sha256:e599e11fd422508c13b3762df929e3be7b2719b7f91837dd7e38ce37f74aa0fb"},
+    {file = "unstract_adapters-0.16.0.tar.gz", hash = "sha256:13aac40042bb64def782493a74f0f0bc39fc4b1ff4b61846060236fa7c1b4e00"},
 ]
 
 [[package]]
@@ -5163,7 +5175,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.26.1"
+version = "0.27.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -5175,11 +5187,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.15.1",
+    "unstract-adapters~=0.16.0",
 ]
 files = [
-    {file = "unstract_sdk-0.26.1-py3-none-any.whl", hash = "sha256:ce0c3211d048927eee7fd108f75c2403dd01072585ddd4e420b28c373019cc50"},
-    {file = "unstract_sdk-0.26.1.tar.gz", hash = "sha256:09fd8079068e300cdd6c01bf3cd33a9df4172e726735ab76e49fb1327c4f5913"},
+    {file = "unstract_sdk-0.27.0-py3-none-any.whl", hash = "sha256:211135346e24ec7af260ff2f25f80e4f956ba0b7680e8a05b890adb40c810758"},
+    {file = "unstract_sdk-0.27.0.tar.gz", hash = "sha256:92f7e5bc8e2546fecae84aee8f1ade82f2e3c56443a2cbe44ebda6750845d19b"},
 ]
 
 [[package]]
@@ -5193,7 +5205,7 @@ dependencies = [
     "PyYAML~=6.0.1",
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
-    "unstract-adapters~=0.15.0",
+    "unstract-adapters~=0.16.0",
     "unstract-tool-sandbox",
 ]
 

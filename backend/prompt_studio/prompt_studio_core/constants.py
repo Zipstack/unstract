@@ -21,6 +21,7 @@ class ToolStudioErrors:
 class ToolStudioPromptKeys:
     CREATED_BY = "created_by"
     TOOL_ID = "tool_id"
+    RUN_ID = "run_id"
     NUMBER = "Number"
     FLOAT = "Float"
     PG_VECTOR = "Postgres pg_vector"
@@ -82,6 +83,7 @@ class ToolStudioPromptKeys:
     SINGLE_PASS_EXTRACTION_MODE = "single_pass_extraction_mode"
     SINGLE_PASS_EXTRACTION = "single_pass_extraction"
     NOTES = "NOTES"
+    OUTPUT = "output"
 
 
 class FileViewTypes:
