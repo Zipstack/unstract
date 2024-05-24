@@ -69,7 +69,6 @@ class PromptStudioHelper:
         Returns:
             None
         """
-        # create only if adapter is availble and usable
         try:
             AdapterInstance.objects.get(
                 is_friction_less=True,
