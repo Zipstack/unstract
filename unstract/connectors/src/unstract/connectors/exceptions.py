@@ -25,9 +25,10 @@ class ConnectorError(ConnectorBaseException):
         treat_as_user_message: bool = False,
         **kwargs: Any,
     ) -> None:
+        default_msg = "Failed to connect to db. Error:"
         user_message = message if treat_as_user_message else None
         super().__init__(*args, user_message=user_message, **kwargs)
-        self.message = message
+        self.message = default_msg + message
 
     def __str__(self) -> str:
         return f"{self.message}"

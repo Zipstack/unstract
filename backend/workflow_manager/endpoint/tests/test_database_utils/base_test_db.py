@@ -7,7 +7,9 @@ import pytest  # type: ignore
 from dotenv import load_dotenv
 
 from unstract.connectors.databases.bigquery import BigQuery
+from unstract.connectors.databases.mariadb import MariaDB
 from unstract.connectors.databases.mssql import MSSQL
+from unstract.connectors.databases.mysql import MySQL
 from unstract.connectors.databases.postgresql import PostgreSQL
 from unstract.connectors.databases.redshift import Redshift
 from unstract.connectors.databases.snowflake import SnowflakeDB
@@ -49,6 +51,20 @@ class BaseTestDB:
             "port": os.getenv("MSSQL_PORT"),
             "database": os.getenv("MSSQL_DB"),
         }
+        self.mysql_creds = {
+            "user": os.getenv("MYSQL_USER"),
+            "password": os.getenv("MYSQL_PASSWORD"),
+            "host": os.getenv("MYSQL_SERVER"),
+            "port": os.getenv("MYSQL_PORT"),
+            "database": os.getenv("MYSQL_DB"),
+        }
+        self.mariadb_creds = {
+            "user": os.getenv("MARIADB_USER"),
+            "password": os.getenv("MARIADB_PASSWORD"),
+            "host": os.getenv("MARIADB_SERVER"),
+            "port": os.getenv("MARIADB_PORT"),
+            "database": os.getenv("MARIADB_DB"),
+        }
         self.database_entry = {
             "created_by": "Unstract/DBWriter",
             "created_at": datetime.datetime(2024, 5, 20, 7, 46, 57, 307998),
@@ -88,6 +104,8 @@ class BaseTestDB:
             ("valid_redshift_creds", Redshift),
             ("snowflake_creds", SnowflakeDB),
             ("mssql_creds", MSSQL),
+            ("mysql_creds", MySQL),
+            ("mariadb_creds", MariaDB),
         ]
     )
     def valid_dbs_instance(self, request: Any) -> Any:
@@ -101,6 +119,8 @@ class BaseTestDB:
             ("valid_postgres_creds", PostgreSQL),
             ("snowflake_creds", SnowflakeDB),
             ("mssql_creds", MSSQL),
+            ("mysql_creds", MySQL),
+            ("mariadb_creds", MariaDB),
         ]
     )
     def valid_dbs_instance_to_handle_large_doc(self, request: Any) -> Any:

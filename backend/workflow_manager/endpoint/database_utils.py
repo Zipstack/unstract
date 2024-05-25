@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 import google.api_core.exceptions
 import pymssql._pymssql as PyMssql
+import pymysql.err as MysqlError
 import snowflake.connector.errors as SnowflakeError
 from google.cloud import bigquery
 from psycopg2 import errors as PsycopgError
@@ -331,12 +332,13 @@ class DatabaseUtils:
             logger.error(f"snowflake error in inserting table: {e.msg} {e.errno}")
             raise SnowflakeProgrammingException(code=e.errno, detail=e.msg)
         except (PyMssql.ProgrammingError, PyMssql.OperationalError) as e:
-            error_code, error_details = ExceptionHelper.extract_mssql_exception(e=e)
+            error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
             logger.error(f"Invalid syntax in inserting mssql table: {error_details}")
             raise InvalidSyntaxException(code=error_code, detail=error_details)
-        except Exception as e:
-            logger.error(f"Error while writing data: {str(e)}")
-            raise e
+        except MysqlError.ProgrammingError as e:
+            error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
+            logger.error(f"Invalid syntax in inserting mysql table: {error_details}")
+            raise InvalidSyntaxException(code=error_code, detail=error_details)
         logger.debug(f"sucessfully inserted into table {table_name} with: {sql} query")
 
     @staticmethod
@@ -406,8 +408,12 @@ class DatabaseUtils:
             logger.error(f"Resource not found in creating table: {str(e)}")
             raise BigQueryNotFoundException(code=e.code)
         except (PyMssql.ProgrammingError, PyMssql.OperationalError) as e:
-            error_code, error_details = ExceptionHelper.extract_mssql_exception(e=e)
+            error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
             logger.error(f"Invalid syntax in creating mssql table: {error_details}")
+            raise InvalidSyntaxException(code=error_code, detail=error_details)
+        except MysqlError.ProgrammingError as e:
+            error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
+            logger.error(f"Invalid syntax in creating mysql table: {error_details}")
             raise InvalidSyntaxException(code=error_code, detail=error_details)
         logger.debug(f"successfully created table {table_name} with: {sql} query")
 
@@ -499,7 +505,7 @@ class DBConnectorQueryHelper:
 
 class ExceptionHelper:
     @staticmethod
-    def extract_mssql_exception(e: Exception) -> tuple[str, str]:
+    def extract_byte_exception(e: Exception) -> tuple[str, str]:
         error_message = str(e)
         error_code, error_details = eval(error_message)
         if isinstance(error_details, bytes):
