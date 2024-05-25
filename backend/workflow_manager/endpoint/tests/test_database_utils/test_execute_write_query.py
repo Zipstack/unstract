@@ -123,6 +123,27 @@ class TestExecuteWriteQuery(BaseTestDB):
         )
         assert result is None
 
+    def test_execute_write_query_wrong_table_name(
+        self, valid_dbs_instance: UnstractDB
+    ) -> None:
+        cls_name = valid_dbs_instance.__class__.__name__
+        engine = valid_dbs_instance.get_engine()
+        with pytest.raises(
+            (
+                FeatureNotSupportedException,
+                UnderfinedTableException,
+                InvalidSyntaxException,
+                SnowflakeProgrammingException,
+            )
+        ):
+            DatabaseUtils.execute_write_query(
+                engine=engine,
+                cls_name=cls_name,
+                table_name=self.invalid_wrong_table_name,
+                sql_keys=list(self.sql_columns_and_values.keys()),
+                sql_values=list(self.sql_columns_and_values.values()),
+            )
+
     def test_execute_write_query_bigquery_large_doc(
         self, valid_bigquery_db_instance: Any
     ) -> None:

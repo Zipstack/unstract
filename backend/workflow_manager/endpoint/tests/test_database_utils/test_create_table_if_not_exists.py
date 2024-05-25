@@ -60,6 +60,24 @@ class TestCreateTableIfNotExists(BaseTestDB):
                 database_entry=self.database_entry,
             )
 
+    def test_create_table_if_not_exists_wrong_table_name(
+        self, valid_dbs_instance: UnstractDB
+    ) -> None:
+        engine = valid_dbs_instance.get_engine()
+        with pytest.raises(
+            (
+                FeatureNotSupportedException,
+                SnowflakeProgrammingException,
+                InvalidSyntaxException,
+            )
+        ):
+            DatabaseUtils.create_table_if_not_exists(
+                db_class=valid_dbs_instance,
+                engine=engine,
+                table_name=self.invalid_wrong_table_name,
+                database_entry=self.database_entry,
+            )
+
     def test_create_table_if_not_exists_feature_not_supported(
         self, invalid_dbs_instance: UnstractDB
     ) -> None:

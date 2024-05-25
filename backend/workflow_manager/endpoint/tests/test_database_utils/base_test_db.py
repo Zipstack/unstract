@@ -7,6 +7,7 @@ import pytest  # type: ignore
 from dotenv import load_dotenv
 
 from unstract.connectors.databases.bigquery import BigQuery
+from unstract.connectors.databases.mssql import MSSQL
 from unstract.connectors.databases.postgresql import PostgreSQL
 from unstract.connectors.databases.redshift import Redshift
 from unstract.connectors.databases.snowflake import SnowflakeDB
@@ -40,6 +41,13 @@ class BaseTestDB:
             "database": os.getenv("SNOWFLAKE_DB"),
             "schema": os.getenv("SNOWFLAKE_SCHEMA"),
             "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE"),
+        }
+        self.mssql_creds = {
+            "user": os.getenv("MSSQL_USER"),
+            "password": os.getenv("MSSQL_PASSWORD"),
+            "server": os.getenv("MSSQL_SERVER"),
+            "port": os.getenv("MSSQL_PORT"),
+            "database": os.getenv("MSSQL_DB"),
         }
         self.database_entry = {
             "created_by": "Unstract/DBWriter",
@@ -79,6 +87,7 @@ class BaseTestDB:
             ("valid_postgres_creds", PostgreSQL),
             ("valid_redshift_creds", Redshift),
             ("snowflake_creds", SnowflakeDB),
+            ("mssql_creds", MSSQL),
         ]
     )
     def valid_dbs_instance(self, request: Any) -> Any:
@@ -91,6 +100,7 @@ class BaseTestDB:
         params=[
             ("valid_postgres_creds", PostgreSQL),
             ("snowflake_creds", SnowflakeDB),
+            ("mssql_creds", MSSQL),
         ]
     )
     def valid_dbs_instance_to_handle_large_doc(self, request: Any) -> Any:

@@ -5,6 +5,7 @@ import uuid
 from typing import Any, Optional
 
 import google.api_core.exceptions
+import pymssql._pymssql as PyMssql
 import snowflake.connector.errors as SnowflakeError
 from google.cloud import bigquery
 from psycopg2 import errors as PsycopgError
@@ -326,6 +327,13 @@ class DatabaseUtils:
         except PsycopgError.StringDataRightTruncation as e:
             logger.error(f"value too long for character datatype: {e.pgerror}")
             raise ValueTooLongException(code=e.pgcode, detail=e.pgerror)
+        except SnowflakeError.ProgrammingError as e:
+            logger.error(f"snowflake error in inserting table: {e.msg} {e.errno}")
+            raise SnowflakeProgrammingException(code=e.errno, detail=e.msg)
+        except (PyMssql.ProgrammingError, PyMssql.OperationalError) as e:
+            error_code, error_details = ExceptionHelper.extract_mssql_exception(e=e)
+            logger.error(f"Invalid syntax in inserting mssql table: {error_details}")
+            raise InvalidSyntaxException(code=error_code, detail=error_details)
         except Exception as e:
             logger.error(f"Error while writing data: {str(e)}")
             raise e
@@ -397,6 +405,10 @@ class DatabaseUtils:
         except google.api_core.exceptions.NotFound as e:
             logger.error(f"Resource not found in creating table: {str(e)}")
             raise BigQueryNotFoundException(code=e.code)
+        except (PyMssql.ProgrammingError, PyMssql.OperationalError) as e:
+            error_code, error_details = ExceptionHelper.extract_mssql_exception(e=e)
+            logger.error(f"Invalid syntax in creating mssql table: {error_details}")
+            raise InvalidSyntaxException(code=error_code, detail=error_details)
         logger.debug(f"successfully created table {table_name} with: {sql} query")
 
 
@@ -483,3 +495,13 @@ class DBConnectorQueryHelper:
     @staticmethod
     def execute_generic_query(engine: Any, sql: str, sql_values: Any) -> None:
         engine.query(sql)
+
+
+class ExceptionHelper:
+    @staticmethod
+    def extract_mssql_exception(e: Exception) -> tuple[str, str]:
+        error_message = str(e)
+        error_code, error_details = eval(error_message)
+        if isinstance(error_details, bytes):
+            error_details = error_details.decode("utf-8")
+        return error_code, error_message
