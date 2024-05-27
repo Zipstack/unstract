@@ -1,4 +1,5 @@
 """Traffic Routing model."""
+
 from account.models import Organization, User
 from django.core.validators import RegexValidator
 from django.db import models

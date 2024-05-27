@@ -1,4 +1,5 @@
 """Module to handle app deployment routing globally."""
+
 import logging
 
 from account.authentication_controller import AuthenticationController
@@ -92,10 +93,10 @@ class TrafficRuleListView(viewsets.ModelViewSet):
             #  TODO: Organization details should be saved in session on login
             #  And the same should be used for this logic.
             auth_controller = AuthenticationController()
-            organizations: list[
-                OrganizationData
-            ] = auth_controller.auth_service.get_organizations_by_user_id(
-                request.user.user_id
+            organizations: list[OrganizationData] = (
+                auth_controller.auth_service.get_organizations_by_user_id(
+                    request.user.user_id
+                )
             )
             app_organization_access = False
             for organization in organizations:

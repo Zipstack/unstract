@@ -15,6 +15,7 @@ from file_management.serializer import FileInfoSerializer
 from oauth2client.client import HttpAccessTokenRefreshError
 from rest_framework import viewsets
 from rest_framework.response import Response
+
 from unstract.connectors.exceptions import ConnectorError
 
 from .exceptions import AppNotFound, ValidationError
@@ -58,12 +59,8 @@ class DocumentView(viewsets.ModelViewSet):
                     id=app_id, is_active=True
                 )
                 if queryset:
-                    files = DocumentView.fetch_files(
-                        queryset.workflow, path, dir_only
-                    )
-                    serializer = FileInfoSerializer(
-                        files[:limit], many=True
-                    )
+                    files = DocumentView.fetch_files(queryset.workflow, path, dir_only)
+                    serializer = FileInfoSerializer(files[:limit], many=True)
                     return Response(serializer.data)
             except AppDeployment.DoesNotExist:
                 raise AppNotFound()
@@ -90,8 +87,8 @@ class DocumentView(viewsets.ModelViewSet):
             list[FileInformation]: _description_
         """
         try:
-            connector_instance: ConnectorInstance = (
-                ConnectorInstance.objects.get(workflow=workflow_id, connector_type="INPUT")
+            connector_instance: ConnectorInstance = ConnectorInstance.objects.get(
+                workflow=workflow_id, connector_type="INPUT"
             )
             file_system: FileManagerHelper = FileManagerHelper.get_file_system(
                 connector_instance
@@ -130,8 +127,8 @@ class DocumentView(viewsets.ModelViewSet):
     @staticmethod
     def get_file_content(workflow_id: str, file_name: str) -> HttpResponse:
         try:
-            connector_instance: ConnectorInstance = (
-                ConnectorInstance.objects.get(workflow=workflow_id, connector_type="INPUT")
+            connector_instance: ConnectorInstance = ConnectorInstance.objects.get(
+                workflow=workflow_id, connector_type="INPUT"
             )
             file_system: FileManagerHelper = FileManagerHelper.get_file_system(
                 connector_instance

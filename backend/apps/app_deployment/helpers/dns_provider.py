@@ -1,15 +1,10 @@
 """Module to load appropriate dns provider as per configuration."""
+
 import json
 
-from apps.app_deployment.helpers.dns_providers.cloudflare import (
-    CloudFlareDNSProvider,
-)
-from apps.app_deployment.helpers.dns_providers.interface import (
-    DNSProviderInterface,
-)
-from apps.app_deployment.helpers.dns_providers.localhost import (
-    LocalhostDNSProvider,
-)
+from apps.app_deployment.helpers.dns_providers.cloudflare import CloudFlareDNSProvider
+from apps.app_deployment.helpers.dns_providers.interface import DNSProviderInterface
+from apps.app_deployment.helpers.dns_providers.localhost import LocalhostDNSProvider
 from apps.app_deployment.models import DNSProvider
 from django.conf import settings
 
@@ -46,9 +41,7 @@ def get_dns_provider(
     provider = provider_lookup.get(dns_provider)
     if not provider:
         # Raises error when the provider class is not available
-        raise InvalidDNSProviderException(
-            f"Invalid dns_provider name: {dns_provider}"
-        )
+        raise InvalidDNSProviderException(f"Invalid dns_provider name: {dns_provider}")
     configurations = json.loads(settings.DNS_PROVIDER_CONFIG)
     return provider(
         subdomain,

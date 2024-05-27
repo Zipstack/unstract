@@ -1,10 +1,9 @@
 """Module for cloudflare dns provider."""
+
 from functools import lru_cache
 from typing import Optional
 
-from apps.app_deployment.helpers.dns_providers.interface import (
-    DNSProviderInterface,
-)
+from apps.app_deployment.helpers.dns_providers.interface import DNSProviderInterface
 from CloudFlare import CloudFlare
 
 
@@ -72,9 +71,7 @@ class CloudFlareDNSProvider(DNSProviderInterface):
             None
         """
         # TODO: Add logs
-        self._client.zones.dns_records.post(
-            self._zone_id, data=self._dns_record
-        )
+        self._client.zones.dns_records.post(self._zone_id, data=self._dns_record)
 
     def delete_record(self) -> None:
         """Delete a DNS record for the given subdomain.

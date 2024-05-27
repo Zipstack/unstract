@@ -1,6 +1,7 @@
 # serializers.py
 from apps.canned_question.models import CannedQuestion
 from rest_framework.serializers import CharField, ModelSerializer, Serializer
+
 from backend.serializers import AuditSerializer
 
 

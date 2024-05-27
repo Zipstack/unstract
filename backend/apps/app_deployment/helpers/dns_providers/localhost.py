@@ -1,8 +1,6 @@
 """Module for handling localhost."""
 
-from apps.app_deployment.helpers.dns_providers.interface import (
-    DNSProviderInterface,
-)
+from apps.app_deployment.helpers.dns_providers.interface import DNSProviderInterface
 
 
 class LocalhostDNSProvider(DNSProviderInterface):

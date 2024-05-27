@@ -44,7 +44,7 @@ class FileManagerHelper:
                 f"Class not Found for {connector.connector_id}"
             )
             raise ConnectorClassNotFound
-        
+
     @staticmethod
     def list_files(file_system: UnstractFileSystem, path: str) -> list[FileInformation]:
         fs = file_system.get_fsspec_fs()
@@ -60,11 +60,9 @@ class FileManagerHelper:
             FileManagerHelper.logger.error(f"Missing path Atribute in {fs}")
             raise MissingConnectorParams()
         return [fs, file_path]
-    
+
     @staticmethod
-    def list_files(
-        file_system: UnstractFileSystem, path: str
-    ) -> list[FileInformation]:
+    def list_files(file_system: UnstractFileSystem, path: str) -> list[FileInformation]:
         fs, file_path = FileManagerHelper.get_file_path(
             file_system=file_system, path=path
         )
@@ -130,11 +128,9 @@ class FileManagerHelper:
                 file_content_type = file_info.get("ContentType")
                 if not file_content_type:
                     file_content_type, _ = mimetypes.guess_type(file_name)
-                    file_list.append(
-                        FileInformation(file_info, file_content_type)
-                    )
+                    file_list.append(FileInformation(file_info, file_content_type))
         return file_list
-    
+
     @staticmethod
     def download_file(
         file_system: UnstractFileSystem, file_path: str, only_view: bool
@@ -159,17 +155,11 @@ class FileManagerHelper:
             file = fs.open(file_path, "rb")
             if only_view:
                 response = HttpResponse(content_type="application/octet-stream")
-                response[
-                    "Content-Disposition"
-                ] = f"attachment; filename={base_name}"
+                response["Content-Disposition"] = f"attachment; filename={base_name}"
                 response.write(file.read())
             else:
-                response = StreamingHttpResponse(
-                    file, content_type=file_content_type
-                )
-                response[
-                    "Content-Disposition"
-                ] = f"attachment; filename={base_name}"
+                response = StreamingHttpResponse(file, content_type=file_content_type)
+                response["Content-Disposition"] = f"attachment; filename={base_name}"
             file.close()
             response = StreamingHttpResponse(file, content_type=file_content_type)
             response["Content-Disposition"] = f"attachment; filename={base_name}"

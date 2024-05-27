@@ -33,16 +33,12 @@ class DNSProviderInterface(abc.ABC):
             Delete a DNS record for the given subdomain.
     """
 
-    def __init__(
-        self, subdomain: str, app_fqdn: str, configurations: dict[str, str]
-    ):
+    def __init__(self, subdomain: str, app_fqdn: str, configurations: dict[str, str]):
         self._app_fqdn = app_fqdn
         self._subdomain = subdomain
         self._domain = configurations["domain"]
         self._top_level_domain = configurations["top_level_domain"]
-        self._fqdn = ".".join(
-            [self._subdomain, self._domain, self._top_level_domain]
-        )
+        self._fqdn = ".".join([self._subdomain, self._domain, self._top_level_domain])
         self.initialize(configurations)
 
     @abc.abstractmethod

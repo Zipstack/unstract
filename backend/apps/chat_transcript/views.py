@@ -16,6 +16,7 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
+
 from backend.constants import RequestKey
 
 
@@ -79,12 +80,8 @@ class ChatTranscriptView(viewsets.ModelViewSet):
         )
 
         chat_engine = ChatEngine(app_deployment=chat_history.app_deployment)
-        assistant_message_data = {
-            "message": chat_engine.chat(user_message.message)
-        }
-        assistant_message_serializer = self.get_serializer(
-            data=assistant_message_data
-        )
+        assistant_message_data = {"message": chat_engine.chat(user_message.message)}
+        assistant_message_serializer = self.get_serializer(data=assistant_message_data)
         assistant_message_serializer.is_valid()
         assistant_message = assistant_message_serializer.save(
             chat_history=chat_history,

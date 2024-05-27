@@ -1,4 +1,5 @@
 """Module for managing urls of traffic routing."""
+
 from apps.traffic_routing.views import TrafficRuleListView
 from django.urls import path
 from rest_framework.urlpatterns import format_suffix_patterns

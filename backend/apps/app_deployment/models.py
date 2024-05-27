@@ -96,9 +96,7 @@ class AppDeployment(BaseModel):
         on_delete=models.CASCADE,
         db_comment="Foreign key reference to Workflow model.",
     )
-    template = models.CharField(
-        choices=TemplateType.choices, default=TemplateType.CHAT
-    )
+    template = models.CharField(choices=TemplateType.choices, default=TemplateType.CHAT)
     knowledge_base_mode = models.CharField(
         choices=KBModeType.choices, default=KBModeType.SINGLE
     )

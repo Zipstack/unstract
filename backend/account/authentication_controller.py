@@ -33,6 +33,8 @@ from account.serializer import (
     SetOrganizationsResponseSerializer,
 )
 from account.user import UserService
+from api.exceptions import APINotFound
+from apps.traffic_routing.models import TrafficRule
 from django.conf import settings
 from django.contrib.auth import logout as django_logout
 from django.db.utils import IntegrityError
@@ -44,8 +46,6 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from tenant_account.models import OrganizationMember as OrganizationMember
 from tenant_account.organization_member_service import OrganizationMemberService
-from api.exceptions import APINotFound
-from apps.traffic_routing.models import TrafficRule
 from utils.cache_service import CacheService
 from utils.local_context import StateStore
 from utils.user_session import UserSessionUtils
@@ -232,7 +232,7 @@ class AuthenticationController:
 
     def get_user_info(self, request: Request) -> Optional[UserInfo]:
         return self.auth_service.get_user_info(request)
-    
+
     def get_app_id(self, request: Request) -> str:
         app_id = ""
         if not request.data or not request.data["app_id"]:
@@ -247,10 +247,8 @@ class AuthenticationController:
             if app_id != str(routing_detail.app_deployment_id):
                 raise APINotFound("App not found")
             app_organization = routing_detail.organization
-            organizations: list[
-                OrganizationData
-            ] = self.auth_service.get_organizations_by_user_id(
-                request.user.user_id
+            organizations: list[OrganizationData] = (
+                self.auth_service.get_organizations_by_user_id(request.user.user_id)
             )
             app_organization_access = False
             for organization in organizations:

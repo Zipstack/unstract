@@ -5,6 +5,7 @@ from rest_framework.serializers import (
     Serializer,
     SerializerMethodField,
 )
+
 from backend.serializers import AuditSerializer
 
 
@@ -15,9 +16,7 @@ class AppDeploymentListSerializer(ModelSerializer):
         ModelSerializer (_type_): _description_
     """
 
-    workflow_name = CharField(
-        source="workflow.project.project_name", read_only=True
-    )
+    workflow_name = CharField(source="workflow.project.project_name", read_only=True)
     project_id = CharField(source="workflow.project_id", read_only=True)
     fqdn = SerializerMethodField("get_fqdn")
 

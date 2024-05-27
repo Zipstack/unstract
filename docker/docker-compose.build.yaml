@@ -43,4 +43,3 @@ services:
     build:
       dockerfile: docker/dockerfiles/app-deployment.Dockerfile
       context: ..
-  

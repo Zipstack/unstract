@@ -13,8 +13,9 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
-from backend.constants import RequestKey
 from utils.filtering import FilterHelper
+
+from backend.constants import RequestKey
 
 
 # Create your views here.
@@ -96,9 +97,7 @@ class CannedQuestionView(viewsets.ModelViewSet):
             )
         self.perform_create(serializer)
 
-        response_serializer = CannedQuestionResponseSerializer(
-            {**serializer.data}
-        )
+        response_serializer = CannedQuestionResponseSerializer({**serializer.data})
 
         headers = self.get_success_headers(serializer.data)
         return Response(

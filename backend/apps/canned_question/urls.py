@@ -20,9 +20,7 @@ deployment_details = CannedQuestionView.as_view(
 
 urlpatterns = format_suffix_patterns(
     [
-        path(
-            "canned_question/", deployment, name="canned_question_list_create"
-        ),
+        path("canned_question/", deployment, name="canned_question_list_create"),
         path(
             "canned_question/<uuid:pk>/",
             deployment_details,
