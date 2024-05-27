@@ -1,3 +1,5 @@
+# Documentation: https://grafana.com/docs/grafana-cloud/monitor-applications/application-observability/setup/instrument/python/gunicorn/
+
 import os
 from uuid import uuid4
 
@@ -6,9 +8,6 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.resources import SERVICE_INSTANCE_ID, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-
-# your gunicorn config here
-# bind = "127.0.0.1:8000"
 
 # Retrieve the collector endpoint from the environment variable
 collector_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")

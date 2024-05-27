@@ -45,7 +45,7 @@ RUN set -e; \
     # Install opentelemetry for instrumentation
     pip install opentelemetry-distro[otlp] ; \
     \
-    pentelemetry-bootstrap -a install;
+    opentelemetry-bootstrap -a install;
 
 # Disable all telemetry by default
 ENV OTEL_TRACES_EXPORTER none
