@@ -46,6 +46,10 @@ const inputOptions = [
     value: "DATABASE",
     label: "Database",
   },
+  {
+    value: "QUEUE",
+    label: "Queue",
+  },
 ];
 
 const disabledIdsByType = {
@@ -98,7 +102,9 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       } else {
         // Filter options based on source connection type
         const filteredOptions = ["API"].includes(source?.connection_type)
-          ? inputOptions.filter((option) => option.value === "API")
+          ? inputOptions.filter(
+              (option) => option.value === "API" || option.value === "QUEUE"
+            )
           : inputOptions.filter((option) => option.value !== "API");
 
         setOptions(filteredOptions);
@@ -108,7 +114,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     if (type === "input") {
       // Remove Database from Source Dropdown
       const filteredOptions = inputOptions.filter(
-        (option) => option.value !== "DATABASE"
+        (option) => option.value !== "DATABASE" && option.value !== "QUEUE"
       );
       setOptions(filteredOptions);
     }
@@ -133,6 +139,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
   useEffect(() => {
     const menuItems = [];
+    console.log(listOfConnectors, "sdgsdfsdfsd");
     [...listOfConnectors].forEach((item) => {
       if (
         endpointDetails?.connection_type &&

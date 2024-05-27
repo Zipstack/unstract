@@ -113,6 +113,9 @@ class DestinationConnector(BaseConnector):
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
             self._handle_api_result(file_name=file_name, error=error, result=result)
+        elif connection_type == WorkflowEndpoint.ConnectionType.QUEUE:
+            result = self.get_result(file_history)
+            self._handle_api_result(file_name=file_name, error=error, result=result)
         if not file_history:
             FileHistoryHelper.create_file_history(
                 cache_key=file_hash,
