@@ -1,5 +1,3 @@
-# Documentation: https://grafana.com/docs/grafana-cloud/monitor-applications/application-observability/setup/instrument/python/gunicorn/
-
 import os
 from uuid import uuid4
 
@@ -19,7 +17,8 @@ def post_fork(server, worker):
         return
     resource = Resource.create(
         attributes={
-            # each worker needs a unique service.instance.id to distinguish the created metrics in prometheus
+            # each worker needs a unique service.instance.id to
+            # distinguish the created metrics in prometheus
             SERVICE_INSTANCE_ID: str(uuid4()),
             "worker": worker.pid,
         }
