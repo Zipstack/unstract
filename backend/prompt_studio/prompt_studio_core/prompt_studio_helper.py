@@ -106,7 +106,7 @@ class PromptStudioHelper:
             profile_manager.save()
 
         except AdapterInstance.DoesNotExist:
-            logger.info("skipping  default profile creation")
+            logger.info("skipping default profile creation")
 
     @staticmethod
     def validate_adapter_status(
