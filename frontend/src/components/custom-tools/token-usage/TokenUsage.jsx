@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 
 /**
  * TokenUsage component displays token usage details in a tag with a tooltip.
+ *
+ * @param {Object} tokenUsage - An object containing token usage details.
+ * @param {string} docId - The document ID to fetch token usage for.
+ * @return {JSX.Element} - The TokenUsage component.
  */
 function TokenUsage({ tokenUsage, docId }) {
   const [tokens, setTokens] = useState({});

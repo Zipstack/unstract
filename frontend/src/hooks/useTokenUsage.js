@@ -5,6 +5,8 @@ import { useExceptionHandler } from "./useExceptionHandler";
 
 /**
  * Custom hook to fetch token usage data.
+ *
+ * @return {Object} - An object containing the getTokenUsage function.
  */
 const useTokenUsage = () => {
   const axiosPrivate = useAxiosPrivate();
