@@ -4,7 +4,8 @@ import os
 
 from celery import Celery
 from django.conf import settings
-from utils.constants import ExecutionLogConstants
+
+# from utils.constants import ExecutionLogConstants
 
 # Set the default Django settings module for the 'celery' program.
 os.environ.setdefault(
@@ -26,7 +27,8 @@ app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks()
 
 # Define the queues to purge when the Celery broker is restarted.
-queues_to_purge = [ExecutionLogConstants.CELERY_QUEUE_NAME]
+# queues_to_purge = [ExecutionLogConstants.CELERY_QUEUE_NAME]
+queues_to_purge = "celery_periodic_logs"
 with app.connection() as connection:
     channel = connection.channel()
 
