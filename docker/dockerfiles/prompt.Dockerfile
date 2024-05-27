@@ -15,10 +15,10 @@ ENV PDM_VERSION 2.12.3
 
 RUN apt-get update; \
     apt-get --no-install-recommends install -y \
-        # unstract sdk
-        build-essential libmagic-dev pandoc pkg-config tesseract-ocr \
-        # git url
-        git; \
+    # unstract sdk
+    build-essential libmagic-dev pandoc pkg-config tesseract-ocr \
+    # git url
+    git; \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
     \
     pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}; \
@@ -50,28 +50,28 @@ RUN set -e; \
     #
     for dir in "${TARGET_PLUGINS_PATH}"/*/; \
     do \
-        # Remove trailing "/". \
-        dirpath=${dir%*/}; \
-        \
-        # If no plugins, final part on split by "/" is equal to "*". \
-        if [ "${dirpath##*/}" = "*" ]; then \
-            continue; \
-        fi; \
-        \
-        cd "$dirpath"; \
-        echo "Installing plugin: ${dirpath##*/}..."; \
-        \
-        # PDM reuses active venv unless PDM_IGNORE_ACTIVE_VENV is set.
-        pdm sync --prod --no-editable; \
-        \
-        cd -; \
+    # Remove trailing "/". \
+    dirpath=${dir%*/}; \
+    \
+    # If no plugins, final part on split by "/" is equal to "*". \
+    if [ "${dirpath##*/}" = "*" ]; then \
+    continue; \
+    fi; \
+    \
+    cd "$dirpath"; \
+    echo "Installing plugin: ${dirpath##*/}..."; \
+    \
+    # PDM reuses active venv unless PDM_IGNORE_ACTIVE_VENV is set.
+    pdm sync --prod --no-editable; \
+    \
+    cd -; \
     done; \
     #
     #
     #
     \
     # REF: https://docs.gunicorn.org/en/stable/deploy.html#using-virtualenv
-    pip install --no-cache-dir gunicorn; \
+    pip install --no-cache-dir gunicorn gevent; \
     \
     # Storage for prompt studio uploads
     mkdir prompt-studio-data;
@@ -79,4 +79,4 @@ RUN set -e; \
 EXPOSE 3003
 
 # During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
-CMD [".venv/bin/gunicorn", "--bind", "0.0.0.0:3003", "--timeout", "300", "unstract.prompt_service.main:app"]
+CMD [ "./entrypoint.sh" ]
