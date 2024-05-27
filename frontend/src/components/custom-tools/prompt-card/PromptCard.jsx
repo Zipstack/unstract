@@ -415,15 +415,16 @@ function PromptCard({
   const handleRunApiRequest = async (docId) => {
     const runId = generateUUID();
 
-    setTokenUsage((prev) => {
-      const data = { ...(prev || {}) };
-      data[docId] = defaultTokenUsage;
-      return data;
-    });
+    // Update the token usage state with default token usage for a specific document ID
+    setTokenUsage((prev) => ({
+      ...prev,
+      [docId]: defaultTokenUsage,
+    }));
 
+    // Set up an interval to fetch token usage data at regular intervals
     const intervalId = setInterval(
       () => getTokenUsage(runId, docId, setTokenUsage),
-      5000
+      5000 // Fetch token usage data every 5000 milliseconds (5 seconds)
     );
 
     const promptId = promptDetails?.prompt_id;

@@ -22,11 +22,11 @@ const useTokenUsage = () => {
     axiosPrivate(requestOptions)
       .then((res) => {
         const tokens = res?.data || defaultTokenUsage; // Use default token usage if response data is null or undefined
-        setTokenUsage((prev) => {
-          const data = { ...(prev || {}) }; // Copy previous state to avoid mutations
-          data[docId] = tokens; // Set the token usage for the given docId
-          return data;
-        });
+        // Update the token usage state with token usage data for a specific document ID
+        setTokenUsage((prev) => ({
+          ...prev,
+          [docId]: tokens,
+        }));
       })
       .catch((err) => {
         // Handle any errors that occur during the request
