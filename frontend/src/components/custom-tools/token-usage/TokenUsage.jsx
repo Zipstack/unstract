@@ -28,8 +28,8 @@ function TokenUsage({ tokenUsage, docId }) {
   }
 
   return (
-    <Tooltip title="Embedding Token Count | Prompt Token Count | Completion Token Count | Total Token Count">
-      <Tag color="#2db7f5">{`${tokens?.embedding_tokens} | ${tokens?.prompt_tokens} | ${tokens?.completion_tokens} | ${tokens?.total_tokens}`}</Tag>
+    <Tooltip title="Total Token Count">
+      <Tag color="#2db7f5">{`Tokens: ${tokens?.total_tokens}`}</Tag>
     </Tooltip>
   );
 }
