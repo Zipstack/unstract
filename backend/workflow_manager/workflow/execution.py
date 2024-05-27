@@ -165,14 +165,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
         execution.save()
 
-    def __execution_error(
-        self,
-        error_message: str,
-        detailed_message: str,
-        execution_time: Optional[float] = None,
-    ) -> WorkflowExecutionError:
-        return WorkflowExecutionError(detail=error_message)
-
     def has_successful_compilation(self) -> bool:
         return self.compilation_result["success"] is True
 
