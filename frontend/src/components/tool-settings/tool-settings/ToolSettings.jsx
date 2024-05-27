@@ -1,20 +1,20 @@
 import { PlusOutlined } from "@ant-design/icons";
-import { Typography } from "antd";
 import PropTypes from "prop-types";
+import { useEffect, useState } from "react";
 
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
 import "../../input-output/data-source-card/DataSourceCard.css";
 import "./ToolSettings.css";
-
-import { useEffect, useState } from "react";
-
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import { ListOfItems } from "../list-of-items/ListOfItems";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
+import { ViewTools } from "../../custom-tools/view-tools/ViewTools";
+import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 const titles = {
   llm: "LLMs",
@@ -35,18 +35,29 @@ const btnText = {
 function ToolSettings({ type }) {
   const [tableRows, setTableRows] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isShareLoading, setIsShareLoading] = useState(false);
+  const [adapterDetails, setAdapterDetails] = useState(null);
+  const [userList, setUserList] = useState([]);
   const [openAddSourcesModal, setOpenAddSourcesModal] = useState(false);
+  const [openSharePermissionModal, setOpenSharePermissionModal] =
+    useState(false);
+  const [isPermissonEdit, setIsPermissionEdit] = useState(false);
   const [editItemId, setEditItemId] = useState(null);
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
+  const { posthogEventText, setPostHogCustomEvent } = usePostHogEvents();
 
   useEffect(() => {
     setTableRows([]);
     if (!type) {
       return;
     }
+    getAdapters();
+  }, [type]);
 
+  const getAdapters = () => {
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${
@@ -64,7 +75,7 @@ function ToolSettings({ type }) {
       .finally(() => {
         setIsLoading(false);
       });
-  }, [type]);
+  };
 
   const addNewItem = (row, isEdit) => {
     if (isEdit) {
@@ -83,10 +94,10 @@ function ToolSettings({ type }) {
     }
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = (_event, adapter) => {
     const requestOptions = {
       method: "DELETE",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${id}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter?.id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -95,7 +106,7 @@ function ToolSettings({ type }) {
     setIsLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        const filteredList = tableRows.filter((row) => row?.id !== id);
+        const filteredList = tableRows.filter((row) => row?.id !== adapter?.id);
         setTableRows(filteredList);
         setAlertDetails({
           type: "success",
@@ -110,33 +121,120 @@ function ToolSettings({ type }) {
       });
   };
 
+  const handleShare = (_event, adapter, isEdit) => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/users/${adapter.id}/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+    };
+    setIsShareLoading(true);
+    getAllUsers();
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        setOpenSharePermissionModal(true);
+        setAdapterDetails(res?.data);
+        setIsPermissionEdit(isEdit);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      })
+      .finally(() => {
+        setIsShareLoading(false);
+      });
+  };
+
+  const getAllUsers = () => {
+    setIsShareLoading(true);
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
+    };
+
+    axiosPrivate(requestOptions)
+      .then((response) => {
+        const users = response?.data?.members || [];
+        setUserList(
+          users.map((user) => ({
+            id: user?.id,
+            email: user?.email,
+          }))
+        );
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to load"));
+      })
+      .finally(() => {
+        setIsShareLoading(false);
+      });
+  };
+
+  const onShare = (userIds, adapter) => {
+    const requestOptions = {
+      method: "PATCH",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter?.id}/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+      data: { shared_users: userIds },
+    };
+    axiosPrivate(requestOptions)
+      .then((response) => {
+        setOpenSharePermissionModal(false);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to load"));
+      });
+  };
+
+  const handleOpenAddSourceModal = () => {
+    setOpenAddSourcesModal(true);
+
+    try {
+      setPostHogCustomEvent(posthogEventText[type], {
+        info: `Clicked on '+ ${btnText[type]}' button`,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+  };
+
   return (
     <div className="plt-tool-settings-layout">
+      <ToolNavBar
+        title={titles[type]}
+        CustomButtons={() => {
+          return (
+            <CustomButton
+              type="primary"
+              onClick={handleOpenAddSourceModal}
+              icon={<PlusOutlined />}
+            >
+              {btnText[type]}
+            </CustomButton>
+          );
+        }}
+      />
       <IslandLayout>
         <div className="plt-tool-settings-layout-2">
-          <div className="plt-tool-settings-header">
-            <div className="plt-tool-settings-title">
-              <Typography.Text className="typo-text" strong>
-                {titles[type]}
-              </Typography.Text>
-            </div>
-            <div className="plt-tool-settings-add-btn">
-              <CustomButton
-                type="primary"
-                onClick={() => setOpenAddSourcesModal(true)}
-                icon={<PlusOutlined />}
-              >
-                {btnText[type]}
-              </CustomButton>
-            </div>
-          </div>
           <div className="plt-tool-settings-body">
-            <ListOfItems
+            <ViewTools
+              listOfTools={tableRows}
               isLoading={isLoading}
-              tableRows={tableRows}
-              setEditItemId={setEditItemId}
               handleDelete={handleDelete}
-              handleClick={() => setOpenAddSourcesModal(true)}
+              setOpenAddTool={setOpenAddSourcesModal}
+              handleEdit={(_event, item) => setEditItemId(item?.id)}
+              idProp="id"
+              titleProp="adapter_name"
+              descriptionProp="description"
+              iconProp="icon"
+              isEmpty={!tableRows?.length}
+              centered
+              isClickable={false}
+              handleShare={handleShare}
+              showOwner={true}
+              type="Adapter"
             />
           </div>
         </div>
@@ -148,6 +246,15 @@ function ToolSettings({ type }) {
         addNewItem={addNewItem}
         editItemId={editItemId}
         setEditItemId={setEditItemId}
+      />
+      <SharePermission
+        open={openSharePermissionModal}
+        setOpen={setOpenSharePermissionModal}
+        adapter={adapterDetails}
+        permissionEdit={isPermissonEdit}
+        loading={isShareLoading}
+        allUsers={userList}
+        onApply={onShare}
       />
     </div>
   );

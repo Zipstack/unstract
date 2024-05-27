@@ -1,13 +1,12 @@
 import logging
 from typing import Any, Optional, Union
-from urllib.parse import urlencode
 
 from account.authentication_helper import AuthenticationHelper
 from account.authentication_plugin_registry import AuthenticationPluginRegistry
 from account.authentication_service import AuthenticationService
-from account.cache_service import CacheService
 from account.constants import (
-    AuthoErrorCode,
+    AuthorizationErrorCode,
+    Common,
     Cookie,
     ErrorMessage,
     OrganizationMemberModel,
@@ -15,10 +14,10 @@ from account.constants import (
 from account.custom_exceptions import (
     DuplicateData,
     Forbidden,
+    MethodNotImplemented,
     UserNotExistError,
 )
 from account.dto import (
-    CallbackData,
     MemberInvitation,
     OrganizationData,
     UserInfo,
@@ -35,13 +34,11 @@ from account.serializer import (
 )
 from account.user import UserService
 from django.conf import settings
-from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
 from django.db.utils import IntegrityError
 from django.middleware import csrf
 from django.shortcuts import redirect
 from django_tenants.utils import tenant_context
-from psycopg2.errors import UndefinedTable
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -49,6 +46,9 @@ from tenant_account.models import OrganizationMember as OrganizationMember
 from tenant_account.organization_member_service import OrganizationMemberService
 from api.exceptions import APINotFound
 from apps.traffic_routing.models import TrafficRule
+from utils.cache_service import CacheService
+from utils.local_context import StateStore
+from utils.user_session import UserSessionUtils
 
 Logger = logging.getLogger(__name__)
 
@@ -61,7 +61,6 @@ class AuthenticationController:
         """This method initializes the controller by selecting the appropriate
         authentication plugin based on availability."""
         self.authentication_helper = AuthenticationHelper()
-        self.organization_member_service = OrganizationMemberService()
         if AuthenticationPluginRegistry.is_plugin_available():
             self.auth_service: AuthenticationService = (
                 AuthenticationPluginRegistry.get_plugin()
@@ -94,54 +93,13 @@ class AuthenticationController:
         Returns:
             Any: Redirect response
         """
-
-        callback_data: CallbackData = self.auth_service.get_callback_data(
-            request=request
-        )
-        user: User = self.get_or_create_user_by_email(request, callback_data)
         try:
-            member = self.auth_service.handle_invited_user_while_callback(
-                request=request, user=user
+            return self.auth_service.handle_authorization_callback(
+                request=request, backend=backend
             )
-
         except Exception as ex:
-            """Error code reference
-            frontend/src/components/error/GenericError/GenericError.jsx."""
-            if ex.code == AuthoErrorCode.IDM:  # type: ignore
-                query_params = {"code": AuthoErrorCode.IDM}
-                return redirect(
-                    f"{settings.ERROR_URL}?{urlencode(query_params)}"
-                )
-            elif ex.code == AuthoErrorCode.UMM:  # type: ignore
-                query_params = {"code": AuthoErrorCode.UMM}
-                return redirect(
-                    f"{settings.ERROR_URL}?{urlencode(query_params)}"
-                )
-
+            Logger.error(f"Error while handling authorization callback: {ex}")
             return redirect(f"{settings.ERROR_URL}")
-
-        if member.organization_id and member.role and len(member.role) > 0:
-            organization: Optional[Organization] = (
-                OrganizationService.get_organization_by_org_id(
-                    member.organization_id
-                )
-            )
-            if organization:
-                try:
-                    self.create_tenant_user(
-                        organization=organization, user=user
-                    )
-                except UndefinedTable:
-                    pass
-
-        response = self.auth_service.handle_authorization_callback(
-            user=user,
-            data=callback_data,
-            redirect_url=request.GET.get("redirect_url"),
-        )
-        django_login(request, user, backend)
-
-        return response
 
     def user_organizations(self, request: Request) -> Any:
         """List a user's organizations.
@@ -159,14 +117,25 @@ class AuthenticationController:
         except Exception as ex:
             #
             self.user_logout(request)
-            if ex.code == AuthoErrorCode.USF:  # type: ignore
-                response = Response(
-                    status=status.HTTP_412_PRECONDITION_FAILED,
-                    data={"domain": ex.data.get("domain")},  # type: ignore
-                )
+
+            response = Response(
+                status=status.HTTP_412_PRECONDITION_FAILED,
+            )
+            if hasattr(ex, "code") and ex.code in {
+                AuthorizationErrorCode.USF,
+                AuthorizationErrorCode.USR,
+                AuthorizationErrorCode.INE001,
+                AuthorizationErrorCode.INE002,
+            }:  # type: ignore
+                response.data = ({"domain": ex.data.get("domain"), "code": ex.code},)
                 return response
+            # Return in case even if missed unknown exception in
+            # self.auth_service.user_organizations(request)
+            return response
+
         user: User = request.user
         org_ids = {org.id for org in organizations}
+
         CacheService.set_user_organizations(user.user_id, list(org_ids))
 
         serialized_organizations = GetOrganizationsResponseSerializer(
@@ -185,11 +154,10 @@ class AuthenticationController:
 
         return response
 
-    def set_user_organization(
-        self, request: Request, organization_id: str
-    ) -> Response:
+    def set_user_organization(self, request: Request, organization_id: str) -> Response:
         user: User = request.user
         app_id = self.get_app_id(request)
+        new_organization = False
         organization_ids = CacheService.get_user_organizations(user.user_id)
         if not organization_ids:
             z_organizations: list[OrganizationData] = (
@@ -203,9 +171,7 @@ class AuthenticationController:
             if not organization:
                 try:
                     organization_data: OrganizationData = (
-                        self.auth_service.get_organization_by_org_id(
-                            organization_id
-                        )
+                        self.auth_service.get_organization_by_org_id(organization_id)
                     )
                 except ValueError:
                     raise OrganizationNotExist()
@@ -215,27 +181,46 @@ class AuthenticationController:
                         organization_data.display_name,
                         organization_data.id,
                     )
+                    new_organization = True
                 except IntegrityError:
                     raise DuplicateData(
                         f"{ErrorMessage.ORGANIZATION_EXIST}, \
                             {ErrorMessage.DUPLICATE_API}"
                     )
             self.create_tenant_user(organization=organization, user=user)
+
+            if new_organization:
+                try:
+                    self.auth_service.frictionless_onboarding(
+                        organization=organization, user=user
+                    )
+                except MethodNotImplemented:
+                    Logger.info("frictionless_onboarding not implemented")
+
+            if new_organization:
+                self.authentication_helper.create_initial_platform_key(
+                    user=user, organization=organization
+                )
             user_info: Optional[UserInfo] = self.get_user_info(request)
-            serialized_user_info = SetOrganizationsResponseSerializer(
-                user_info
-            ).data
+            serialized_user_info = SetOrganizationsResponseSerializer(user_info).data
             organization_info = OrganizationSerializer(organization).data
             response: Response = Response(
                 status=status.HTTP_200_OK,
                 data={
                     "user": serialized_user_info,
                     "organization": organization_info,
+                    f"{Common.LOG_EVENTS_ID}": StateStore.get(Common.LOG_EVENTS_ID),
                 },
             )
-            # Update user session data in redis
-            user_session_info: dict[str, Any] = (
-                CacheService.get_user_session_info(user.email)
+            current_organization_id = UserSessionUtils.get_organization_id(request)
+            if current_organization_id:
+                OrganizationMemberService.remove_user_membership_in_organization_cache(
+                    user_id=user.user_id,
+                    organization_id=current_organization_id,
+                )
+            UserSessionUtils.set_organization_id(request, organization_id)
+            OrganizationMemberService.set_user_membership_in_organization_cache(
+                user_id=user.user_id, organization_id=organization_id
             )
             user_session_info["current_org"] = organization_id
             user_session_info["app_id"] = app_id
@@ -298,11 +283,7 @@ class AuthenticationController:
         return self.auth_service.is_admin_by_role(role=role)
 
     def get_organization_info(self, org_id: str) -> Optional[Organization]:
-        organization = self.auth_service.get_organization_info(org_id)
-        if not organization:
-            organization = OrganizationService.get_organization_by_org_id(
-                org_id=org_id
-            )
+        organization = OrganizationService.get_organization_by_org_id(org_id=org_id)
         return organization
 
     def make_organization_and_add_member(
@@ -324,6 +305,12 @@ class AuthenticationController:
 
     def user_logout(self, request: Request) -> Response:
         response = self.auth_service.user_logout(request=request)
+        organization_id = UserSessionUtils.get_organization_id(request)
+        user_id = UserSessionUtils.get_user_id(request)
+        if organization_id:
+            OrganizationMemberService.remove_user_membership_in_organization_cache(
+                user_id=user_id, organization_id=organization_id
+            )
         django_logout(request)
         return response
 
@@ -333,9 +320,7 @@ class AuthenticationController:
         members: list[OrganizationMember] = OrganizationMember.objects.all()
         return members
 
-    def get_organization_members_by_user(
-        self, user: User
-    ) -> OrganizationMember:
+    def get_organization_members_by_user(self, user: User) -> OrganizationMember:
         member: OrganizationMember = OrganizationMember.objects.filter(
             user=user
         ).first()
@@ -344,16 +329,10 @@ class AuthenticationController:
     def get_user_roles(self) -> list[UserRoleData]:
         return self.auth_service.get_roles()
 
-    def get_user_invitations(
-        self, organization_id: str
-    ) -> list[MemberInvitation]:
-        return self.auth_service.get_invitations(
-            organization_id=organization_id
-        )
+    def get_user_invitations(self, organization_id: str) -> list[MemberInvitation]:
+        return self.auth_service.get_invitations(organization_id=organization_id)
 
-    def delete_user_invitation(
-        self, organization_id: str, invitation_id: str
-    ) -> bool:
+    def delete_user_invitation(self, organization_id: str, invitation_id: str) -> bool:
         return self.auth_service.delete_invitation(
             organization_id=organization_id, invitation_id=invitation_id
         )
@@ -386,27 +365,18 @@ class AuthenticationController:
             email = user_item.get("email")
             role = user_item.get("role")
             if email:
-                user = self.organization_member_service.get_user_by_email(
-                    email=email
-                )
+                user = OrganizationMemberService.get_user_by_email(email=email)
                 user_response = {}
                 user_response["email"] = email
-                message: str = "User invitation successful"
-                if user:
-                    # Already in organization
-                    status = False
-                    message = "User is already part of current organization."
-                else:
-                    try:
-                        self.auth_service.check_user_organization_association(
-                            user_email=email
-                        )
-                        status = self.auth_service.invite_user(
-                            admin_user, org_id, email, role=role
-                        )
-                    except Exception as exception:
-                        status = False
-                        message = exception.message  # type: ignore
+                status = False
+                message = "User is already part of current organization"
+                # Check if user is already part of current organization
+                if not user:
+                    status = self.auth_service.invite_user(
+                        admin_user, org_id, email, role=role
+                    )
+                    message = "User invitation successful."
+
                 response.append(
                     UserInviteResponse(
                         email=email,
@@ -422,14 +392,12 @@ class AuthenticationController:
         admin_user = OrganizationMember.objects.get(user=admin.id)
         user_ids = OrganizationMember.objects.filter(
             user__email__in=user_emails
-        ).values_list(
-            OrganizationMemberModel.USER_ID, OrganizationMemberModel.ID
-        )
+        ).values_list(OrganizationMemberModel.USER_ID, OrganizationMemberModel.ID)
         user_ids_list: list[str] = []
-        ids_list: list[str] = []
+        pk_list: list[str] = []
         for user in user_ids:
             user_ids_list.append(user[0])
-            ids_list.append(user[1])
+            pk_list.append(user[1])
         if len(user_ids_list) > 0:
             is_removed = self.auth_service.remove_users_from_organization(
                 admin=admin_user,
@@ -439,14 +407,19 @@ class AuthenticationController:
         else:
             is_removed = False
         if is_removed:
-            OrganizationMember.objects.filter(user__in=ids_list).delete()
+            AuthenticationHelper.remove_users_from_organization_by_pks(pk_list)
+            for user_id in user_ids_list:
+                OrganizationMemberService.remove_user_membership_in_organization_cache(
+                    user_id, organization_id
+                )
+
         return is_removed
 
     def add_user_role(
         self, admin: User, org_id: str, email: str, role: str
     ) -> Optional[str]:
         admin_user = OrganizationMember.objects.get(user=admin.id)
-        user = self.organization_member_service.get_user_by_email(email=email)
+        user = OrganizationMemberService.get_user_by_email(email=email)
         if user:
             current_roles = self.auth_service.add_organization_user_role(
                 admin_user, org_id, user.user.user_id, [role]
@@ -463,9 +436,7 @@ class AuthenticationController:
         self, admin: User, org_id: str, email: str, role: str
     ) -> Optional[str]:
         admin_user = OrganizationMember.objects.get(user=admin.id)
-        organization_member = (
-            self.organization_member_service.get_user_by_email(email=email)
-        )
+        organization_member = OrganizationMemberService.get_user_by_email(email=email)
         if organization_member:
             current_roles = self.auth_service.remove_organization_user_role(
                 admin_user, org_id, organization_member.user.user_id, [role]
@@ -480,52 +451,39 @@ class AuthenticationController:
             return None
 
     def save_orgnanization_user_role(self, user_id: str, role: str) -> None:
-        organization_user = (
-            self.organization_member_service.get_user_by_user_id(
-                user_id=user_id
-            )
+        organization_user = OrganizationMemberService.get_user_by_user_id(
+            user_id=user_id
         )
         if organization_user:
             # consider single role
             organization_user.role = role
             organization_user.save()
 
-    def create_tenant_user(
-        self, organization: Organization, user: User
-    ) -> None:
+    def create_tenant_user(self, organization: Organization, user: User) -> None:
         with tenant_context(organization):
-            existing_tenant_user = (
-                self.organization_member_service.get_user_by_id(id=user.id)
-            )
+            existing_tenant_user = OrganizationMemberService.get_user_by_id(id=user.id)
             if existing_tenant_user:
                 Logger.info(f"{existing_tenant_user.user.email} Already exist")
+
             else:
                 account_user = self.get_or_create_user(user=user)
                 if account_user:
-                    user_roles = (
-                        self.auth_service.get_organization_role_of_user(
-                            user_id=account_user.user_id,
-                            organization_id=organization.organization_id,
-                        )
+                    user_roles = self.auth_service.get_organization_role_of_user(
+                        user_id=account_user.user_id,
+                        organization_id=organization.organization_id,
                     )
                     user_role = user_roles[0]
+
                     tenant_user: OrganizationMember = OrganizationMember(
-                        user=user, role=user_role
+                        user=user,
+                        role=user_role,
+                        is_login_onboarding_msg=False,
+                        is_prompt_studio_onboarding_msg=False,
                     )
                     tenant_user.save()
+
                 else:
                     raise UserNotExistError()
-
-    def get_or_create_user_by_email(
-        self, request: Request, callback_data: CallbackData
-    ) -> Union[User, OrganizationMember]:
-        email = callback_data.email
-        user_service = UserService()
-        user = user_service.get_user_by_email(email)
-        if not user:
-            user_id = callback_data.user_id
-            user = user_service.create_user(email, user_id)
-        return user
 
     def get_or_create_user(
         self, user: User

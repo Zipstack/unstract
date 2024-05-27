@@ -5,7 +5,7 @@
             "schemaVersion": "0.0.1",
             "displayName": "File Classifier",
             "functionName": "classify",
-            "toolVersion": "0.0.1",
+            "toolVersion": "0.0.17",
             "description": "Classifies a file into a bin based on its contents",
             "input": {
                 "description": "File to be classified"
@@ -35,6 +35,15 @@
                 "vectorStores": [
                     {
                         "isEnabled": false
+                    }
+                ],
+                "textExtractors": [
+                    {
+                        "isEnabled": true,
+                        "adapterId": "textExtractorId",
+                        "title": "Text Extraction Adapter",
+                        "isRequired": true,
+                        "description": "Choose extractor adapter to extract text"
                     }
                 ]
             },
@@ -130,128 +139,9 @@
             }
         },
         "icon": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n<svg\n   enable-background=\"new 0 0 20 20\"\n   height=\"48\"\n   viewBox=\"0 0 20 20\"\n   width=\"48\"\n   fill=\"#000000\"\n   version=\"1.1\"\n   id=\"svg8109\"\n   sodipodi:docname=\"folder_copy_black_48dp.svg\"\n   xmlns:inkscape=\"http://www.inkscape.org/namespaces/inkscape\"\n   xmlns:sodipodi=\"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd\"\n   xmlns=\"http://www.w3.org/2000/svg\"\n   xmlns:svg=\"http://www.w3.org/2000/svg\">\n  <defs\n     id=\"defs8113\" />\n  <sodipodi:namedview\n     id=\"namedview8111\"\n     pagecolor=\"#ffffff\"\n     bordercolor=\"#000000\"\n     borderopacity=\"0.25\"\n     inkscape:showpageshadow=\"2\"\n     inkscape:pageopacity=\"0.0\"\n     inkscape:pagecheckerboard=\"0\"\n     inkscape:deskcolor=\"#d1d1d1\"\n     showgrid=\"false\" />\n  <g\n     id=\"g8099\">\n    <rect\n       fill=\"none\"\n       height=\"20\"\n       width=\"20\"\n       x=\"0\"\n       id=\"rect8097\"\n       y=\"0\" />\n  </g>\n  <g\n     id=\"g8107\"\n     style=\"fill:#ff4d6d;fill-opacity:1\">\n    <g\n       id=\"g8105\"\n       style=\"fill:#ff4d6d;fill-opacity:1\">\n      <path\n         d=\"M 2.5,5 H 1 V 15.5 C 1,16.33 1.67,17 2.5,17 H 15.68 V 15.5 H 2.5 Z\"\n         id=\"path8101\"\n         style=\"fill:#ff4d6d;fill-opacity:1\" />\n      <path\n         d=\"M 16.5,4 H 11 L 9,2 H 5.5 C 4.67,2 4,2.67 4,3.5 v 9 C 4,13.33 4.67,14 5.5,14 h 11 c 0.83,0 1.5,-0.67 1.5,-1.5 v -7 C 18,4.67 17.33,4 16.5,4 Z m 0,8.5 h -11 v -9 h 2.88 l 2,2 h 6.12 z\"\n         id=\"path8103\"\n         style=\"fill:#ff4d6d;fill-opacity:1\" />\n    </g>\n  </g>\n</svg>\n",
-        "image_url": "docker:unstract/tool-classifier:0.0.1",
+        "image_url": "docker:unstract/tool-classifier:0.0.17",
         "image_name": "unstract/tool-classifier",
-        "image_tag": "0.0.1"
-    },
-    "document_indexer": {
-        "tool_uid": "document_indexer",
-        "properties": {
-            "schemaVersion": "0.0.1",
-            "displayName": "Document Indexer",
-            "functionName": "document_indexer",
-            "toolVersion": "0.0.2",
-            "description": "Used to index documents in the specified vector DB / embedding.",
-            "input": {
-                "description": "Document that needs to be indexed"
-            },
-            "output": {
-                "description": "No files written"
-            },
-            "result": {
-                "type": "TXT",
-                "description": "Result of the indexing process"
-            },
-            "adapter": {
-                "languageModels": [
-                    {
-                        "isEnabled": false
-                    }
-                ],
-                "embeddingServices": [
-                    {
-                        "adapterId": "embeddingAdapterId",
-                        "isEnabled": true,
-                        "title": "Embedding to use",
-                        "isRequired": true,
-                        "description": "Embedding service to use for indexing"
-                    }
-                ],
-                "vectorStores": [
-                    {
-                        "adapterId": "vectorDbAdapterId",
-                        "isEnabled": true,
-                        "title": "Vector DB to use",
-                        "isRequired": true,
-                        "description": "Vector DB to use for indexing"
-                    }
-                ],
-                "textExtractors": [
-                    {
-                        "adapterId": "x2TextAdapterId",
-                        "isEnabled": true,
-                        "title": "Text extractor to use",
-                        "isRequired": true,
-                        "description": "Text extractor to use for indexing"
-                    }
-                ]
-            },
-            "ioCompatibility": {
-                "api": {
-                    "sourceSupport": true,
-                    "destinationSupport": false,
-                    "additionalArgs": {
-                        "sync": true
-                    }
-                },
-                "file": {
-                    "sourceSupport": true,
-                    "destinationSupport": false,
-                    "additionalArgs": {}
-                },
-                "db": {
-                    "destinationSupport": false,
-                    "additionalArgs": {}
-                }
-            },
-            "restrictions": {
-                "maxFileSize": "50 MB",
-                "allowedFileTypes": [
-                    "txt",
-                    "pdf",
-                    "doc",
-                    "docx",
-                    "odt"
-                ]
-            }
-        },
-        "spec": {
-            "title": "Document Indexer",
-            "description": "Index documents based on their semantic content",
-            "type": "object",
-            "required": [],
-            "properties": {
-                "chunkSize": {
-                    "type": "number",
-                    "title": "Chunk size",
-                    "default": 1024,
-                    "description": "Size of chunks to be considered for the embedding. Smaller chunk size means embeddings are more precise, while larger chunk size means that the embeddings may be more general, but can miss fine-grained details."
-                },
-                "chunkOverlap": {
-                    "type": "number",
-                    "title": "Chunk overlap",
-                    "default": 128,
-                    "description": "Overlap to be considered for the embedding."
-                },
-                "reIndex": {
-                    "type": "boolean",
-                    "title": "Re-Index",
-                    "default": false,
-                    "description": "Re-index files every time (useful during development)"
-                }
-            }
-        },
-        "variables": {
-            "title": "Runtime Variables",
-            "description": "Runtime Variables for Document Indexer",
-            "type": "object",
-            "required": [],
-            "properties": {}
-        },
-        "icon": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n<svg\n   enable-background=\"new 0 0 24 24\"\n   height=\"48\"\n   viewBox=\"0 0 24 24\"\n   width=\"48\"\n   fill=\"#000000\"\n   version=\"1.1\"\n   id=\"svg552\"\n   sodipodi:docname=\"summarize_black_48dp.svg\"\n   inkscape:export-filename=\"summarize_black_48dp.png\"\n   inkscape:export-xdpi=\"96\"\n   inkscape:export-ydpi=\"96\"\n   xmlns:inkscape=\"http://www.inkscape.org/namespaces/inkscape\"\n   xmlns:sodipodi=\"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd\"\n   xmlns=\"http://www.w3.org/2000/svg\"\n   xmlns:svg=\"http://www.w3.org/2000/svg\">\n  <defs\n     id=\"defs556\" />\n  <sodipodi:namedview\n     id=\"namedview554\"\n     pagecolor=\"#ffffff\"\n     bordercolor=\"#000000\"\n     borderopacity=\"0.25\"\n     inkscape:showpageshadow=\"2\"\n     inkscape:pageopacity=\"0.0\"\n     inkscape:pagecheckerboard=\"0\"\n     inkscape:deskcolor=\"#d1d1d1\"\n     showgrid=\"false\" />\n  <g\n     id=\"g544\">\n    <path\n       d=\"M 0,0 H 24 V 24 H 0 Z\"\n       fill=\"none\"\n       id=\"path542\" />\n  </g>\n  <g\n     id=\"g550\"\n     style=\"fill:#ff4d6d;fill-opacity:1\">\n    <g\n       id=\"g548\"\n       style=\"fill:#ff4d6d;fill-opacity:1\">\n      <path\n         d=\"M 15,3 H 5 C 3.9,3 3.01,3.9 3.01,5 L 3,19 c 0,1.1 0.89,2 1.99,2 H 19 c 1.1,0 2,-0.9 2,-2 V 9 Z M 5,19 V 5 h 9 v 5 h 5 v 9 z M 9,8 C 9,8.55 8.55,9 8,9 7.45,9 7,8.55 7,8 7,7.45 7.45,7 8,7 8.55,7 9,7.45 9,8 Z m 0,4 c 0,0.55 -0.45,1 -1,1 -0.55,0 -1,-0.45 -1,-1 0,-0.55 0.45,-1 1,-1 0.55,0 1,0.45 1,1 z m 0,4 c 0,0.55 -0.45,1 -1,1 -0.55,0 -1,-0.45 -1,-1 0,-0.55 0.45,-1 1,-1 0.55,0 1,0.45 1,1 z\"\n         id=\"path546\"\n         style=\"fill:#ff4d6d;fill-opacity:1\" />\n    </g>\n  </g>\n</svg>\n",
-        "image_url": "docker:unstract/tool-indexer:0.0.2",
-        "image_name": "unstract/tool-indexer",
-        "image_tag": "0.0.2"
+        "image_tag": "0.0.17"
     },
     "text_extractor": {
         "tool_uid": "text_extractor",
@@ -259,7 +149,7 @@
             "schemaVersion": "0.0.1",
             "displayName": "Text Extractor",
             "functionName": "text_extractor",
-            "toolVersion": "0.0.2",
+            "toolVersion": "0.0.16",
             "description": "The Text Extractor is a powerful tool designed to convert documents to its text form or Extract texts from documents",
             "input": {
                 "description": "Document"
@@ -334,109 +224,8 @@
             }
         },
         "icon": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n<svg\n   enable-background=\"new 0 0 20 20\"\n   height=\"48\"\n   viewBox=\"0 0 20 20\"\n   width=\"48\"\n   fill=\"#000000\"\n   version=\"1.1\"\n   id=\"svg8109\"\n   sodipodi:docname=\"folder_copy_black_48dp.svg\"\n   xmlns:inkscape=\"http://www.inkscape.org/namespaces/inkscape\"\n   xmlns:sodipodi=\"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd\"\n   xmlns=\"http://www.w3.org/2000/svg\"\n   xmlns:svg=\"http://www.w3.org/2000/svg\">\n  <defs\n     id=\"defs8113\" />\n  <sodipodi:namedview\n     id=\"namedview8111\"\n     pagecolor=\"#ffffff\"\n     bordercolor=\"#000000\"\n     borderopacity=\"0.25\"\n     inkscape:showpageshadow=\"2\"\n     inkscape:pageopacity=\"0.0\"\n     inkscape:pagecheckerboard=\"0\"\n     inkscape:deskcolor=\"#d1d1d1\"\n     showgrid=\"false\" />\n  <g\n     id=\"g8099\">\n    <rect\n       fill=\"none\"\n       height=\"20\"\n       width=\"20\"\n       x=\"0\"\n       id=\"rect8097\"\n       y=\"0\" />\n  </g>\n  <g\n     id=\"g8107\"\n     style=\"fill:#ff4d6d;fill-opacity:1\">\n    <g\n       id=\"g8105\"\n       style=\"fill:#ff4d6d;fill-opacity:1\">\n      <path\n         d=\"M 2.5,5 H 1 V 15.5 C 1,16.33 1.67,17 2.5,17 H 15.68 V 15.5 H 2.5 Z\"\n         id=\"path8101\"\n         style=\"fill:#ff4d6d;fill-opacity:1\" />\n      <path\n         d=\"M 16.5,4 H 11 L 9,2 H 5.5 C 4.67,2 4,2.67 4,3.5 v 9 C 4,13.33 4.67,14 5.5,14 h 11 c 0.83,0 1.5,-0.67 1.5,-1.5 v -7 C 18,4.67 17.33,4 16.5,4 Z m 0,8.5 h -11 v -9 h 2.88 l 2,2 h 6.12 z\"\n         id=\"path8103\"\n         style=\"fill:#ff4d6d;fill-opacity:1\" />\n    </g>\n  </g>\n</svg>\n",
-        "image_url": "docker:unstract/tool-text-extractor:0.0.2",
+        "image_url": "docker:unstract/tool-text-extractor:0.0.16",
         "image_name": "unstract/tool-text-extractor",
-        "image_tag": "0.0.2"
-    },
-    "ocr": {
-        "tool_uid": "ocr",
-        "properties": {
-            "schemaVersion": "0.0.1",
-            "displayName": "OCR",
-            "functionName": "ocr",
-            "toolVersion": "0.0.1",
-            "description": "This is tool which can be used to extract text from images. Perform OCR operations on images.",
-            "input": {
-                "description": "The file on which OCR operation is to be performed"
-            },
-            "output": {
-                "description": "Places the file into a folder (bin) that its OCR operation performed into."
-            },
-            "result": {
-                "type": "JSON",
-                "description": "JSON response containing the bin to which the file was classified into",
-                "schema": {}
-            },
-            "adapter": {
-                "ocrs": [
-                    {
-                        "isEnabled": true,
-                        "adapterId": "ocrAdapterId",
-                        "title": "OCR to use",
-                        "isRequired": true,
-                        "description": "OCR used to extract text from images"
-                    }
-                ]
-            },
-            "ioCompatibility": {
-                "api": {
-                    "sourceSupport": true,
-                    "destinationSupport": true,
-                    "additionalArgs": {
-                        "sync": true
-                    }
-                },
-                "file": {
-                    "sourceSupport": true,
-                    "destinationSupport": true,
-                    "additionalArgs": {}
-                },
-                "db": {
-                    "destinationSupport": true,
-                    "additionalArgs": {}
-                }
-            },
-            "restrictions": {
-                "maxFileSize": "10MB",
-                "allowedFileTypes": [
-                  "jpeg",
-                  "png",
-                  "tiff",
-                  "bmp",
-                  "gif",
-                  "webp",
-                  "pdf"
-                ]
-              }
-        },
-        "spec": {
-            "title": "OCR Tool",
-            "description": "Setup the OCR tool",
-            "type": "object",
-            "required": [],
-            "properties": {
-                "useCache": {
-                    "type": "boolean",
-                    "title": "Cache and use cached results",
-                    "default": true,
-                    "description": "Use cached results"
-                }
-            }
-        },
-        "variables": {
-            "title": "Runtime Variables",
-            "description": "Runtime Variables for ocr",
-            "type": "object",
-            "required": [
-                "GOOGLE_SERVICE_ACCOUNT",
-                "GOOGLE_DOCUMENT_AI_ENDPOINT"
-            ],
-            "properties": {
-                "GOOGLE_SERVICE_ACCOUNT": {
-                    "type": "string",
-                    "title": "Google Service Account",
-                    "description": "Google Service account"
-                },
-                "GOOGLE_DOCUMENT_AI_ENDPOINT": {
-                    "type": "string",
-                    "title": "Google Document API Base URL",
-                    "description": "The base URL for the Google Document service"
-                }
-            }
-        },
-        "icon": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n<svg\n   enable-background=\"new 0 0 20 20\"\n   height=\"48\"\n   viewBox=\"0 0 20 20\"\n   width=\"48\"\n   fill=\"#000000\"\n   version=\"1.1\"\n   id=\"svg8109\"\n   sodipodi:docname=\"folder_copy_black_48dp.svg\"\n   xmlns:inkscape=\"http://www.inkscape.org/namespaces/inkscape\"\n   xmlns:sodipodi=\"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd\"\n   xmlns=\"http://www.w3.org/2000/svg\"\n   xmlns:svg=\"http://www.w3.org/2000/svg\">\n  <defs\n     id=\"defs8113\" />\n  <sodipodi:namedview\n     id=\"namedview8111\"\n     pagecolor=\"#ffffff\"\n     bordercolor=\"#000000\"\n     borderopacity=\"0.25\"\n     inkscape:showpageshadow=\"2\"\n     inkscape:pageopacity=\"0.0\"\n     inkscape:pagecheckerboard=\"0\"\n     inkscape:deskcolor=\"#d1d1d1\"\n     showgrid=\"false\" />\n  <g\n     id=\"g8099\">\n    <rect\n       fill=\"none\"\n       height=\"20\"\n       width=\"20\"\n       x=\"0\"\n       id=\"rect8097\"\n       y=\"0\" />\n  </g>\n  <g\n     id=\"g8107\"\n     style=\"fill:#ff4d6d;fill-opacity:1\">\n    <g\n       id=\"g8105\"\n       style=\"fill:#ff4d6d;fill-opacity:1\">\n      <path\n         d=\"M 2.5,5 H 1 V 15.5 C 1,16.33 1.67,17 2.5,17 H 15.68 V 15.5 H 2.5 Z\"\n         id=\"path8101\"\n         style=\"fill:#ff4d6d;fill-opacity:1\" />\n      <path\n         d=\"M 16.5,4 H 11 L 9,2 H 5.5 C 4.67,2 4,2.67 4,3.5 v 9 C 4,13.33 4.67,14 5.5,14 h 11 c 0.83,0 1.5,-0.67 1.5,-1.5 v -7 C 18,4.67 17.33,4 16.5,4 Z m 0,8.5 h -11 v -9 h 2.88 l 2,2 h 6.12 z\"\n         id=\"path8103\"\n         style=\"fill:#ff4d6d;fill-opacity:1\" />\n    </g>\n  </g>\n</svg>\n",
-        "image_url": "docker:unstract/tool-ocr:0.0.1",
-        "image_name": "unstract/tool-ocr",
-        "image_tag": "0.0.1"
+        "image_tag": "0.0.16"
     }
 }

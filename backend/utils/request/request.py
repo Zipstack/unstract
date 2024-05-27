@@ -8,7 +8,7 @@ from requests.exceptions import RequestException
 logger = logging.getLogger(__name__)
 
 
-class HTTPMethod(Enum):
+class HTTPMethod(str, Enum):
     GET = "GET"
     POST = "POST"
     DELETE = "DELETE"

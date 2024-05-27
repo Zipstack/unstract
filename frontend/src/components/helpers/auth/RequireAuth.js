@@ -5,9 +5,20 @@ import {
   onboardCompleted,
 } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
+import { useEffect } from "react";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
+
+let ProductFruitsManager;
+try {
+  ProductFruitsManager =
+    require("../../../plugins/product-fruits/ProductFruitsManager").ProductFruitsManager;
+} catch {
+  // The component will remain null of it is not available
+}
 
 const RequireAuth = () => {
   const { sessionDetails } = useSessionStore();
+  const { setPostHogIdentity } = usePostHogEvents();
   const location = useLocation();
   const isLoggedIn = sessionDetails?.isLoggedIn;
   const orgName = sessionDetails?.orgName;
@@ -15,9 +26,17 @@ const RequireAuth = () => {
   const adapters = sessionDetails?.adapters;
   const currOrgName = getOrgNameFromPathname(pathname);
 
+  useEffect(() => {
+    if (!sessionDetails?.isLoggedIn) {
+      return;
+    }
+
+    setPostHogIdentity();
+  }, [sessionDetails]);
+
   let navigateTo = `/${orgName}/onboard`;
   if (onboardCompleted(adapters)) {
-    navigateTo = `/${orgName}/etl`;
+    navigateTo = `/${orgName}/tools`;
   }
 
   if (!isLoggedIn) {
@@ -28,7 +47,12 @@ const RequireAuth = () => {
     return <Navigate to={navigateTo} />;
   }
 
-  return <Outlet />;
+  return (
+    <>
+      {ProductFruitsManager && <ProductFruitsManager />}
+      <Outlet />
+    </>
+  );
 };
 
 export { RequireAuth };

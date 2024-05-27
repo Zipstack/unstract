@@ -20,7 +20,10 @@ import { DeploymentsPage } from "../pages/DeploymentsPage.jsx";
 import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
 import { LandingPage } from "../pages/LandingPage.jsx";
 import { OnBoardPage } from "../pages/OnBoardPage.jsx";
+import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
+import { PipelinesOrDeploymentsPage } from "../pages/PipelinesOrDeploymentsPage.jsx";
 import { ProfilePage } from "../pages/ProfilePage.jsx";
+import { SetOrgPage } from "../pages/SetOrgPage.jsx";
 import { SettingsPage } from "../pages/SettingsPage.jsx";
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
@@ -28,6 +31,20 @@ import { UsersPage } from "../pages/UsersPage.jsx";
 import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 import { AppDeployments } from "../components/pipelines-or-deployments/app-deployments/AppDeployments.jsx";
+
+let TrialRoutes;
+let RequirePlatformAdmin;
+let PlatformAdminPage;
+try {
+  TrialRoutes =
+    require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
+  RequirePlatformAdmin =
+    require("../plugins/frictionless-onboard/RequirePlatformAdmin.jsx").RequirePlatformAdmin;
+  PlatformAdminPage =
+    require("../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx").PlatformAdminPage;
+} catch (err) {
+  TrialRoutes = NotFound;
+}
 
 function Router() {
   return (
@@ -38,8 +55,8 @@ function Router() {
         <Route path="" element={<RequireGuest />}>
           <Route path="landing" element={<LandingPage />} />
         </Route>
-
         {/* protected routes */}
+        <Route path="setOrg" element={<SetOrgPage />} />
         <Route path="" element={<RequireAuth />}>
           <Route path=":orgName" element={<FullPageLayout />}>
             <Route path="onboard" element={<OnBoardPage />} />
@@ -93,14 +110,22 @@ function Router() {
             />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="settings/platform" element={<PlatformSettings />} />
-            <Route path="settings/triad" element={<DefaultTriad />} />
             <Route element={<RequireAdmin />}>
               <Route path="users" element={<UsersPage />} />
               <Route path="users/invite" element={<InviteEditUserPage />} />
               <Route path="users/edit" element={<InviteEditUserPage />} />
             </Route>
+            <Route path="settings/triad" element={<DefaultTriad />} />
+            {RequirePlatformAdmin && PlatformAdminPage && (
+              <Route element={<RequirePlatformAdmin />}>
+                <Route path="settings/admin" element={<PlatformAdminPage />} />
+              </Route>
+            )}
           </Route>
         </Route>
+        {TrialRoutes && (
+          <Route path="/trial-expired" element={<TrialRoutes />} />
+        )}
         <Route path="*" element={<NotFound />} />
       </Route>
       <Route path="oauth-status" element={<OAuthStatus />} />

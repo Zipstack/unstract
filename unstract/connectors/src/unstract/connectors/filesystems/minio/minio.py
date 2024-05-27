@@ -3,10 +3,9 @@ import os
 from typing import Any
 
 from s3fs.core import S3FileSystem
+
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.unstract_file_system import (
-    UnstractFileSystem,
-)
+from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +46,7 @@ class MinioFS(UnstractFileSystem):
 
     @staticmethod
     def get_icon() -> str:
-        return (
-            "https://storage.googleapis.com/"
-            "pandora-static/connector-icons/S3.png"
-        )
+        return "/icons/connector-icons/S3.png"
 
     @staticmethod
     def get_json_schema() -> str:

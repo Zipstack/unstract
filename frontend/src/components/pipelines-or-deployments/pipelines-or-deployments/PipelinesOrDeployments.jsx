@@ -3,7 +3,6 @@ import {
   DeleteOutlined,
   EditOutlined,
   EllipsisOutlined,
-  EyeOutlined,
   InfoCircleOutlined,
   PlusOutlined,
   SyncOutlined,
@@ -14,11 +13,11 @@ import { useEffect, useState } from "react";
 
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./PipelinesOrDeployments.css";
-
-import { listOfAppDeployments } from "../../../helpers/GetStaticData";
+import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
 
 function PipelinesOrDeployments({ type }) {
   const [headerText, setHeaderText] = useState("");
@@ -28,10 +27,10 @@ function PipelinesOrDeployments({ type }) {
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [selectedPorD, setSelectedPorD] = useState({});
 
+  // TODO: add appdeployment management logic when it is available
   useEffect(() => {
     setHeaderText("App Deployments");
     setModalTitle("Deploy App");
-    setTableData(listOfAppDeployments);
   }, [type]);
 
   const actionItems = [
@@ -70,19 +69,6 @@ function PipelinesOrDeployments({ type }) {
       label: (
         <Space direction="horizontal" className="action-items">
           <div>
-            <EyeOutlined />
-          </div>
-          <div>
-            <Typography.Text>View Logs</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "4",
-      label: (
-        <Space direction="horizontal" className="action-items">
-          <div>
             <InfoCircleOutlined />
           </div>
           <div>
@@ -92,7 +78,7 @@ function PipelinesOrDeployments({ type }) {
       ),
     },
     {
-      key: "5",
+      key: "4",
       label: (
         <Space direction="horizontal" className="action-items">
           <div>
@@ -105,7 +91,7 @@ function PipelinesOrDeployments({ type }) {
       ),
     },
     {
-      key: "6",
+      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -224,36 +210,38 @@ function PipelinesOrDeployments({ type }) {
       ),
     },
   ];
-
   return (
     <div className="p-or-d-layout">
+      <ToolNavBar
+        title={headerText}
+        CustomButtons={() => {
+          return (
+            <CustomButton
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setOpenEtlOrTaskModal(true)}
+              disabled={true}
+            >
+              App Deployment
+            </CustomButton>
+          );
+        }}
+      />
       <div className="p-or-d-body1">
         <div className="p-or-d-body2">
-          <div className="p-or-d-header">
-            <div className="header-text">
-              <Typography.Text className="typo-text" strong>
-                {headerText}
-              </Typography.Text>
-            </div>
-            <div className="header-btn">
-              <CustomButton
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => setOpenEtlOrTaskModal(true)}
-              >
-                App Deployment
-              </CustomButton>
-            </div>
-          </div>
           <div className="p-or-d-table">
-            <div>
-              <Table
-                size="small"
-                columns={columns}
-                dataSource={tableData}
-                rowKey="id"
-              />
-            </div>
+            {!tableData || tableData?.length === 0 ? (
+              <EmptyState text="Coming soon" />
+            ) : (
+              <div>
+                <Table
+                  size="small"
+                  columns={columns}
+                  dataSource={tableData}
+                  rowKey="id"
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

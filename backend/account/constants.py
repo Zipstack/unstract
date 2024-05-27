@@ -1,10 +1,4 @@
-class OAuthConstant:
-    TOKEN_USER_INFO_FEILD = "userinfo"
-    TOKEN_ORG_ID_FEILD = "org_id"
-    TOKEN_EMAIL_FEILD = "email"
-    TOKEN_Z_ID_FEILD = "sub"
-    TOKEN_USER_NAME_FEILD = "name"
-    TOKEN_PRIMARY_Z_ID_FEILD = "primary_sub"
+from django.conf import settings
 
 
 class LoginConstant:
@@ -23,6 +17,7 @@ class Common:
     USER_IDS = "user_ids"
     USER_ROLE = "role"
     MAX_EMAIL_IN_REQUEST = 10
+    LOG_EVENTS_ID = "log_events_id"
 
 
 class UserModel:
@@ -45,14 +40,21 @@ class Cookie:
 class ErrorMessage:
     ORGANIZATION_EXIST = "Organization already exists"
     DUPLICATE_API = "It appears that a duplicate call may have been made."
+    USER_LOGIN_ERROR = "Invalid username or password. Please try again."
 
 
 class DefaultOrg:
     ORGANIZATION_NAME = "mock_org"
     MOCK_ORG = "mock_org"
-    MOCK_USER = "mock_user"
+    MOCK_USER = settings.DEFAULT_AUTH_USERNAME
     MOCK_USER_ID = "mock_user_id"
     MOCK_USER_EMAIL = "email@mock.com"
+    MOCK_USER_PASSWORD = settings.DEFAULT_AUTH_PASSWORD
+
+
+class UserLoginTemplate:
+    TEMPLATE = "login.html"
+    ERROR_PLACE_HOLDER = "error_message"
 
 
 class PluginConfig:
@@ -65,11 +67,24 @@ class PluginConfig:
     METADATA_IS_ACTIVE = "is_active"
 
 
-class AuthoErrorCode:
-    """Error code reference
-    frontend/src/components/error/GenericError/GenericError.jsx."""
+class AuthorizationErrorCode:
+    """Error codes
+    IDM: INVITATION DENIED MESSAGE (Unauthorized invitation)
+    INF: INVITATION NOT FOUND (Invitation is either invalid or has expired)
+    UMM: USER MEMBERSHIP MISCONDUCT
+    USF: USER FOUND (User Account Already Exists for Organization)
+    INE001: INVALID EMAIL Exception code when an invalid email address is used
+    like disposable.
+    INE002: INVALID EMAIL Exception code when an invalid email address format.
+
+    Error code reference :
+        frontend/src/components/error/GenericError/GenericError.jsx.
+    """
 
     IDM = "IDM"
     UMM = "UMM"
     INF = "INF"
     USF = "USF"
+    USR = "USR"
+    INE001 = "INE001"
+    INE002 = "INE002"

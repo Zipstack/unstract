@@ -12,14 +12,8 @@ class ToolNotValid(APIException):
     default_detail = "Custom tool is not valid."
 
 
-class PromptNotValid(APIException):
-    status_code = 400
-    default_detail = "Input prompt instance is not valid.\
-          Seems it is either empty or no prompt is mapped."
-
-
-class IndexingError(APIException):
-    status_code = 400
+class IndexingAPIError(APIException):
+    status_code = 500
     default_detail = "Error while indexing file"
 
 
@@ -29,9 +23,11 @@ class AnswerFetchError(APIException):
 
 
 class DefaultProfileError(APIException):
-    status_code = 400
-    default_detail = "Default profile is not selected. \
-        Please select one from Profile manager."
+    status_code = 500
+    default_detail = (
+        "Default LLM profile is not configured."
+        "Please set an LLM profile as default to continue."
+    )
 
 
 class EnvRequired(APIException):
@@ -47,3 +43,18 @@ class OutputSaveError(APIException):
 class ToolDeleteError(APIException):
     status_code = 500
     default_detail = "Failed to delete the error"
+
+
+class NoPromptsFound(APIException):
+    status_code = 404
+    default_detail = "No prompts available to process"
+
+
+class PermissionError(APIException):
+    status_code = 403
+    default_detail = "You do not have permission to perform this action."
+
+
+class EmptyPromptError(APIException):
+    status_code = 422
+    default_detail = "Prompt(s) cannot be empty"

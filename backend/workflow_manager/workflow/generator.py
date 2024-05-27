@@ -6,12 +6,13 @@ from rest_framework.request import Request
 from tool_instance.constants import ToolInstanceKey as TIKey
 from tool_instance.exceptions import ToolInstantiationError
 from tool_instance.tool_processor import ToolProcessor
-from unstract.core.llm_workflow_generator.llm_interface import LLMInterface
 from unstract.tool_registry.dto import Tool
 from workflow_manager.workflow.constants import WorkflowKey
 from workflow_manager.workflow.dto import ProvisionalWorkflow
 from workflow_manager.workflow.exceptions import WorkflowGenerationError
 from workflow_manager.workflow.models.workflow import Workflow as WorkflowModel
+
+from unstract.core.llm_workflow_generator.llm_interface import LLMInterface
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +35,7 @@ class WorkflowGenerator:
     def provisional_wf(self) -> ProvisionalWorkflow:
         return self._provisional_wf
 
-    def _get_provisional_workflow(
-        self, tools: list[Tool]
-    ) -> ProvisionalWorkflow:
+    def _get_provisional_workflow(self, tools: list[Tool]) -> ProvisionalWorkflow:
         """Helper to generate the provisional workflow Gets stored as
         `workflow.Workflow.llm_response` eventually."""
         provisional_wf: ProvisionalWorkflow
@@ -47,13 +46,11 @@ class WorkflowGenerator:
                 )
             llm_interface = LLMInterface()
 
-            provisional_wf_dict = (
-                llm_interface.get_provisional_workflow_from_llm(
-                    workflow_id=self._workflow_id,
-                    tools=tools,
-                    user_prompt=self._request.data.get(WorkflowKey.PROMPT_TEXT),
-                    use_cache=True,
-                )
+            provisional_wf_dict = llm_interface.get_provisional_workflow_from_llm(
+                workflow_id=self._workflow_id,
+                tools=tools,
+                user_prompt=self._request.data.get(WorkflowKey.PROMPT_TEXT),
+                use_cache=True,
             )
             provisional_wf = ProvisionalWorkflow(provisional_wf_dict)
             if provisional_wf.result != "OK":
@@ -69,8 +66,8 @@ class WorkflowGenerator:
         self._request = request
 
     def generate_workflow(self, tools: list[Tool]) -> None:
-        """Used to talk to the GPT model through core and obtain a
-        provisional workflow for the user to work with."""
+        """Used to talk to the GPT model through core and obtain a provisional
+        workflow for the user to work with."""
         self._provisional_wf = self._get_provisional_workflow(tools)
 
     @staticmethod
@@ -111,8 +108,6 @@ class WorkflowGenerator:
                 }
                 tool_instance_data_list.append(tool_instance_data)
             except Exception as e:
-                logger.error(
-                    f"Error while getting data for {tool_function}: {e}"
-                )
+                logger.error(f"Error while getting data for {tool_function}: {e}")
                 raise ToolInstantiationError(tool_name=tool_function)
         return tool_instance_data_list

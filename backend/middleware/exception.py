@@ -6,11 +6,13 @@ from typing import Any, Optional
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 from drf_standardized_errors.handler import exception_handler
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 logger = logging.getLogger(__name__)
 
 
+# Set via settings.REST_FRAMEWORK.EXCEPTION_HANDLER.
 def drf_logging_exc_handler(exc: Exception, context: Any) -> Optional[Response]:
     """Custom exception handler for DRF.
 
@@ -29,10 +31,11 @@ def drf_logging_exc_handler(exc: Exception, context: Any) -> Optional[Response]:
             handled by another method in the middleware
     """
     request = context.get("request")
+    response: Optional[Response] = exception_handler(exc=exc, context=context)
     ExceptionLoggingMiddleware.format_exc_and_log(
-        request=request, exception=exc
+        request=request, response=response, exception=exc
     )
-    return exception_handler(exc=exc, context=context)
+    return response
 
 
 class ExceptionLoggingMiddleware:
@@ -70,16 +73,31 @@ class ExceptionLoggingMiddleware:
         return None
 
     @staticmethod
-    def format_exc_and_log(request: HttpRequest, exception: Exception) -> None:
+    def format_exc_and_log(
+        request: Request, response: Optional[Response], exception: Exception
+    ) -> None:
         """Format the exception to be logged and logs it.
 
         Args:
             request (HttpRequest): Request to get API endpoint hit
             exception (Exception): Exception that was raised to be logged
         """
-        message = "**{url}**\n\n{error}\n\n````{tb}````".format(
-            url=request.build_absolute_uri(),
-            error=repr(exception),
-            tb=traceback.format_exc(),
-        )
+        status_code = 500
+        if response:
+            status_code = response.status_code
+        if status_code >= 500:
+            message = "{method} {url} {status}\n\n{error}\n\n````{tb}````".format(
+                method=request.method,
+                url=request.build_absolute_uri(),
+                status=status_code,
+                error=repr(exception),
+                tb=traceback.format_exc(),
+            )
+        else:
+            message = "{method} {url} {status} {error}".format(
+                method=request.method,
+                url=request.build_absolute_uri(),
+                status=status_code,
+                error=repr(exception),
+            )
         logger.error(message)

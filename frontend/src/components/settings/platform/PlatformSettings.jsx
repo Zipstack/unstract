@@ -7,13 +7,14 @@ import { Button, Col, Divider, Input, Radio, Row, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { handleException } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import "./PlatformSettings.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 const defaultKeys = [
   {
@@ -39,6 +40,8 @@ function PlatformSettings() {
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
+  const handleException = useExceptionHandler();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   useEffect(() => {
     const requestOptions = {
@@ -109,6 +112,20 @@ function PlatformSettings() {
     } else {
       // url += "/generate";
       body["is_active"] = activeKey === index;
+    }
+
+    try {
+      if (details?.id?.length > 0) {
+        setPostHogCustomEvent("intent_api_key_refreshed", {
+          info: "API Key has been refreshed",
+        });
+      } else {
+        setPostHogCustomEvent("intent_api_key_generation", {
+          info: "API Key has been generated",
+        });
+      }
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
     const requestOptions = {

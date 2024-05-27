@@ -1,8 +1,10 @@
+import datetime
 import os
 from typing import Any
 
 import psycopg2
 from psycopg2.extensions import connection
+
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 
@@ -33,9 +35,7 @@ class Redshift(UnstractDB):
 
     @staticmethod
     def get_icon() -> str:
-        return (
-            "https://storage.googleapis.com/pandora-static/connector-icons/Redshift.png"
-        )
+        return "/icons/connector-icons/Redshift.png"
 
     @staticmethod
     def get_json_schema() -> str:
@@ -61,3 +61,33 @@ class Redshift(UnstractDB):
             password=self.password,
             options=f"-c search_path={self.schema}",
         )
+
+    @staticmethod
+    def sql_to_db_mapping(value: str) -> str:
+        """
+        Gets the python datatype of value and converts python datatype
+        to corresponding DB datatype
+        Args:
+            value (str): _description_
+
+        Returns:
+            str: _description_
+        """
+        python_type = type(value)
+
+        mapping = {
+            str: "VARCHAR(65535)",
+            int: "BIGINT",
+            float: "DOUBLE PRECISION",
+            datetime.datetime: "TIMESTAMP",
+        }
+        return mapping.get(python_type, "VARCHAR(65535)")
+
+    @staticmethod
+    def get_create_table_query(table: str) -> str:
+        sql_query = (
+            f"CREATE TABLE IF NOT EXISTS {table} "
+            f"(id VARCHAR(65535) ,"
+            f"created_by VARCHAR(65535), created_at TIMESTAMP, "
+        )
+        return sql_query

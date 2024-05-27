@@ -14,9 +14,7 @@ class PromptStudioRegistryKeys:
 class PromptStudioRegistryErrors:
     SERIALIZATION_FAILED = "Data Serialization Failed."
     DUPLICATE_API = "It appears that a duplicate call may have been made."
-    CUSTOM_TOOL_EXISTS = (
-        "Custom tool with similiar configuration already exists"
-    )
+    CUSTOM_TOOL_EXISTS = "Custom tool with similiar configuration already exists"
 
 
 class LogLevels:
@@ -62,8 +60,6 @@ class JsonSchemaKey:
     ASSERTION_FAILURE_PROMPT = "assertion_failure_prompt"
     RETRIEVAL_STRATEGY = "retrieval-strategy"
     SIMPLE = "simple"
-    VECTOR_KEYWORD = "vector+keyword"
-    SUBQUESTION = "subquestion"
     TYPE = "type"
     NUMBER = "number"
     EMAIL = "email"
@@ -91,6 +87,7 @@ class JsonSchemaKey:
     EMBEDDING_SUFFIX = "embedding_suffix"
     FUNCTION_NAME = "function_name"
     PROMPT_REGISTRY_ID = "prompt_registry_id"
+    NOTES = "NOTES"
 
 
 class SpecKey:

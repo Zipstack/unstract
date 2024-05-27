@@ -1,4 +1,5 @@
 import re
+from typing import Optional
 
 # from account.enums import Region
 from account.models import Organization, User
@@ -13,7 +14,8 @@ class OrganizationSignupSerializer(serializers.Serializer):
     def validate_organization_id(self, value):  # type: ignore
         if not re.match(r"^[a-z0-9_-]+$", value):
             raise serializers.ValidationError(
-                "organization_code should only contain alphanumeric characters,_ and -."
+                "organization_code should only contain "
+                "alphanumeric characters,_ and -."
             )
         return value
 
@@ -76,7 +78,7 @@ class ModelTenantSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "email")
+        fields = ("id", "username")
 
 
 class OrganizationSignupResponseSerializer(serializers.Serializer):
@@ -84,3 +86,33 @@ class OrganizationSignupResponseSerializer(serializers.Serializer):
     display_name = serializers.CharField()
     organization_id = serializers.CharField()
     created_at = serializers.CharField()
+
+
+class LoginRequestSerializer(serializers.Serializer):
+    username = serializers.CharField(required=True)
+    password = serializers.CharField(required=True)
+
+    def validate_username(self, value: Optional[str]) -> str:
+        """Check that the username is not empty and has at least 3
+        characters."""
+        if not value or len(value) < 3:
+            raise serializers.ValidationError(
+                "Username must be at least 3 characters long."
+            )
+        return value
+
+    def validate_password(self, value: Optional[str]) -> str:
+        """Check that the password is not empty and has at least 3
+        characters."""
+        if not value or len(value) < 3:
+            raise serializers.ValidationError(
+                "Password must be at least 3 characters long."
+            )
+        return value
+
+
+class UserSessionResponseSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    user_id = serializers.CharField()
+    email = serializers.CharField()
+    organization_id = serializers.CharField()

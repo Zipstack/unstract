@@ -4,6 +4,7 @@ from typing import Any
 
 import aiohttp
 from fsspec.implementations.http import HTTPFileSystem
+
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
@@ -40,7 +41,7 @@ class HttpFS(UnstractFileSystem):
 
     @staticmethod
     def get_icon() -> str:
-        return "https://storage.googleapis.com/pandora-static/connector-icons/HTTP.svg"
+        return "/icons/connector-icons/HTTP.svg"
 
     @staticmethod
     def get_json_schema() -> str:

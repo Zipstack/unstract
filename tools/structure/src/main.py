@@ -1,15 +1,15 @@
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
+from constants import SettingsKeys  # type: ignore [attr-defined]
 from unstract.sdk.constants import LogState, MetadataKey
 from unstract.sdk.index import ToolIndex
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
-
-from .constants import SettingsKeys
 
 
 class StructureTool(BaseTool):
@@ -35,18 +35,12 @@ class StructureTool(BaseTool):
                 tool=self, prompt_registry_id=prompt_registry_id
             )
             tool_metadata = exported_tool[SettingsKeys.TOOL_METADATA]
-            self.stream_log(
-                f"Tool Metadata retrived succesfully: {tool_metadata}"
-            )
+            self.stream_log(f"Tool Metadata retrived succesfully: {tool_metadata}")
         except Exception as e:
-            self.stream_error_and_exit(
-                f"Error loading structure definition: {e}"
-            )
+            self.stream_error_and_exit(f"Error loading structure definition: {e}")
 
         # Update GUI
-        input_log = (
-            f"### Structure Definition:\n```json\n{tool_metadata}\n```\n\n"
-        )
+        input_log = f"### Structure Definition:\n```json\n{tool_metadata}\n```\n\n"
         output_log = "### Indexing..."
         self.stream_update(input_log, state=LogState.INPUT_UPDATE)
         self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
@@ -72,11 +66,13 @@ class StructureTool(BaseTool):
         except Exception as e:
             self.stream_error_and_exit(f"Error fetching data and indexing: {e}")
 
-        # TODO : Check if reindex. If Yes, reindex, else continue.
+        _, file_name = os.path.split(input_file)
+        # TODO : Resolve and pass log events ID
         payload = {
             "outputs": outputs,
             "tool_id": tool_id,
             "file_hash": file_hash,
+            "file_name": file_name,
         }
         self.stream_log("Fetching responses for prompts...")
         prompt_service_resp = responder.answer_prompt(payload=payload)
@@ -95,9 +91,7 @@ class StructureTool(BaseTool):
             f"### Structure Definition:\n"
             f"```json\n{json.dumps(tool_metadata, indent=2)}\n```\n\n"
         )
-        output_log = (
-            f"### Parsed output:\n```json\n{structured_output}\n```\n\n"
-        )
+        output_log = f"### Parsed output:\n```json\n{structured_output}\n```\n\n"
         self.stream_update(input_log, state=LogState.INPUT_UPDATE)
         self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
 

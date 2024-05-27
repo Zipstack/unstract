@@ -5,23 +5,22 @@ import traceback
 import uuid
 from typing import Any, Optional
 
-from account.cache_service import CacheService
 from account.models import Organization
+from api.models import APIDeployment
 from celery import current_task
 from celery import exceptions as celery_exceptions
 from celery import shared_task
 from celery.result import AsyncResult
-from django.conf import settings
 from django.db import IntegrityError, connection
 from django_tenants.utils import get_tenant_model, tenant_context
-from redis import StrictRedis
+from pipeline.models import Pipeline
 from rest_framework import serializers
 from tool_instance.constants import ToolInstanceKey
 from tool_instance.models import ToolInstance
 from tool_instance.tool_instance_helper import ToolInstanceHelper
-from unstract.workflow_execution.enums import LogComponent, LogState
+from unstract.workflow_execution.enums import LogComponent, LogLevel, LogState
 from unstract.workflow_execution.exceptions import StopExecution
-from utils.request import feature_flag
+from utils.cache_service import CacheService
 from workflow_manager.endpoint.destination import DestinationConnector
 from workflow_manager.endpoint.source import SourceConnector
 from workflow_manager.workflow.constants import (
@@ -31,14 +30,11 @@ from workflow_manager.workflow.constants import (
     WorkflowMessages,
 )
 from workflow_manager.workflow.dto import AsyncResultData, ExecutionResponse
-from workflow_manager.workflow.enums import (
-    ExecutionStatus,
-    SchemaEntity,
-    SchemaType,
-)
+from workflow_manager.workflow.enums import ExecutionStatus, SchemaEntity, SchemaType
 from workflow_manager.workflow.exceptions import (
     InvalidRequest,
     TaskDoesNotExistError,
+    ToolValidationError,
     WorkflowDoesNotExistError,
     WorkflowExecutionNotExist,
 )
@@ -116,13 +112,18 @@ class WorkflowHelper:
     ) -> WorkflowExecution:
         input_files = source.list_files_from_source()
         total_files = len(input_files)
+        processed_files = 0
+        error_raised = 0
         execution_service.publish_initial_workflow_logs(total_files)
+        execution_service.update_execution(
+            ExecutionStatus.EXECUTING, increment_attempt=True
+        )
         for index, input_file in enumerate(input_files):
             file_number = index + 1
             try:
-                WorkflowHelper.process_file(
-                    current_step=file_number,
-                    total_step=total_files,
+                is_executed, error = WorkflowHelper.process_file(
+                    current_file_idx=file_number,
+                    total_files=total_files,
                     input_file=input_file,
                     workflow=workflow,
                     source=source,
@@ -131,15 +132,29 @@ class WorkflowHelper:
                     single_step=single_step,
                     hash_values_of_files=hash_values_of_files,
                 )
-            except StopExecution:
+                if is_executed:
+                    processed_files += 1
+                if error:
+                    error_raised += 1
+            except StopExecution as exception:
+                execution_service.update_execution(
+                    ExecutionStatus.STOPPED, error=str(exception)
+                )
                 break
-        execution_service.publish_final_workflow_logs()
+        if error_raised and error_raised == total_files:
+            execution_service.update_execution(ExecutionStatus.ERROR)
+        else:
+            execution_service.update_execution(ExecutionStatus.COMPLETED)
+
+        execution_service.publish_final_workflow_logs(
+            total_files=total_files, processed_files=processed_files
+        )
         return execution_service.get_execution_instance()
 
     @staticmethod
     def process_file(
-        current_step: int,
-        total_step: int,
+        current_file_idx: int,
+        total_files: int,
         input_file: str,
         workflow: Workflow,
         source: SourceConnector,
@@ -147,21 +162,22 @@ class WorkflowHelper:
         execution_service: WorkflowExecutionServiceHelper,
         single_step: bool,
         hash_values_of_files: dict[str, str],
-    ) -> None:
+    ) -> tuple[bool, Optional[str]]:
         file_history = None
         error = None
+        is_executed = False
         file_name, file_hash = source.add_file_to_volume(
             input_file_path=input_file,
             hash_values_of_files=hash_values_of_files,
         )
         try:
             execution_service.initiate_tool_execution(
-                current_step, total_step, file_name, single_step
+                current_file_idx, total_files, file_name, single_step
             )
             file_history = FileHistoryHelper.get_file_history(
                 workflow=workflow, cache_key=file_hash
             )
-            execution_service.execute_input_file(
+            is_executed = execution_service.execute_input_file(
                 file_name=file_name,
                 single_step=single_step,
                 file_history=file_history,
@@ -170,12 +186,13 @@ class WorkflowHelper:
             raise
         except Exception as e:
             execution_service.publish_log(
-                f"Error processing file {input_file}: {str(e)}"
+                f"Error processing file {input_file}: {str(e)}",
+                level=LogLevel.ERROR,
             )
             error = str(e)
         execution_service.publish_update_log(
             LogState.RUNNING,
-            f"{file_name} is processing",
+            f"Processing output for {file_name}",
             LogComponent.DESTINATION,
         )
         destination.handle_output(
@@ -187,9 +204,23 @@ class WorkflowHelper:
         )
         execution_service.publish_update_log(
             LogState.SUCCESS,
-            f"{file_name} is Processed successfully",
+            f"{file_name}'s output is processed successfully",
             LogComponent.DESTINATION,
         )
+        return is_executed, error
+
+    @staticmethod
+    def validate_tool_instances_meta(
+        tool_instances: list[ToolInstance],
+    ) -> None:
+        for tool in tool_instances:
+            valid, message = ToolInstanceHelper.validate_tool_settings(
+                user=tool.workflow.created_by,
+                tool_uid=tool.tool_id,
+                tool_meta=tool.metadata,
+            )
+            if not valid:
+                raise ToolValidationError(message)
 
     @staticmethod
     def run_workflow(
@@ -202,11 +233,13 @@ class WorkflowHelper:
         workflow_execution: Optional[WorkflowExecution] = None,
         execution_mode: Optional[tuple[str, str]] = None,
     ) -> ExecutionResponse:
-        tool_instances: list[
-            ToolInstance
-        ] = ToolInstanceHelper.get_tool_instances_by_workflow(
-            workflow.id, ToolInstanceKey.STEP
+        tool_instances: list[ToolInstance] = (
+            ToolInstanceHelper.get_tool_instances_by_workflow(
+                workflow.id, ToolInstanceKey.STEP
+            )
         )
+
+        WorkflowHelper.validate_tool_instances_meta(tool_instances=tool_instances)
         execution_mode = execution_mode or WorkflowExecution.Mode.INSTANT
         execution_service = WorkflowHelper.build_workflow_execution_service(
             organization_id=organization_id,
@@ -225,9 +258,7 @@ class WorkflowHelper:
             execution_id=execution_id,
             execution_service=execution_service,
         )
-        destination = DestinationConnector(
-            workflow=workflow, execution_id=execution_id
-        )
+        destination = DestinationConnector(workflow=workflow, execution_id=execution_id)
         # Validating endpoints
         source.validate()
         destination.validate()
@@ -405,9 +436,7 @@ class WorkflowHelper:
                 )
             except IntegrityError:
                 # Use existing instance on retry attempt
-                workflow_execution = WorkflowExecution.objects.get(
-                    pk=execution_id
-                )
+                workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
             WorkflowExecutionServiceHelper.update_execution_task(
                 execution_id=execution_id, task_id=task_id
             )
@@ -427,28 +456,17 @@ class WorkflowHelper:
         workflow: Workflow,
         execution_id: Optional[str] = None,
         pipeline_id: Optional[str] = None,
-        log_required: Optional[bool] = True,
         hash_values_of_files: dict[str, str] = {},
     ) -> ExecutionResponse:
-        # For scheduler workflow execution
         if pipeline_id:
-            return WorkflowHelper.run_workflow(workflow=workflow)
-
-        if log_required is not None and not log_required:
-            # Without log and log Id
-            if pipeline_id:
-                # pipeline scheduled execution
-                execution_id = str(uuid.uuid4())
-                response: ExecutionResponse = (
-                    WorkflowHelper.execute_workflow_async(
-                        workflow_id=workflow.id,
-                        pipeline_id=pipeline_id,
-                        execution_id=execution_id,
-                        hash_values_of_files=hash_values_of_files,
-                    )
-                )
-                return response
-            return WorkflowHelper.run_workflow(workflow=workflow)
+            logger.info(f"Executing pipeline: {pipeline_id}")
+            response: ExecutionResponse = WorkflowHelper.execute_workflow_async(
+                workflow_id=workflow.id,
+                pipeline_id=pipeline_id,
+                execution_id=str(uuid.uuid4()),
+                hash_values_of_files=hash_values_of_files,
+            )
+            return response
         if execution_id is None:
             # Creating execution entity and return
             return WorkflowHelper.create_and_make_execution_response(
@@ -459,8 +477,7 @@ class WorkflowHelper:
             workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
             if (
                 workflow_execution.status != ExecutionStatus.PENDING.value
-                or workflow_execution.execution_type
-                != WorkflowExecution.Type.COMPLETE
+                or workflow_execution.execution_type != WorkflowExecution.Type.COMPLETE
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
             return WorkflowHelper.run_workflow(
@@ -481,7 +498,7 @@ class WorkflowHelper:
                 workflow_execution.workflow_id,
                 workflow_execution.id,
                 workflow_execution.status,
-                log_id=workflow_execution.project_settings_id,
+                log_id=workflow_execution.execution_log_id,
                 error=workflow_execution.error_message,
                 mode=workflow_execution.execution_mode,
             )
@@ -495,18 +512,13 @@ class WorkflowHelper:
         execution_id: Optional[str] = None,
         hash_values_of_files: dict[str, str] = {},
     ) -> ExecutionResponse:
-        if (
-            execution_action
-            is Workflow.ExecutionAction.START.value  # type: ignore
-        ):
+        if execution_action is Workflow.ExecutionAction.START.value:  # type: ignore
             if execution_id is None:
                 return WorkflowHelper.create_and_make_execution_response(
                     workflow_id=workflow.id, single_step=True
                 )
             try:
-                workflow_execution = WorkflowExecution.objects.get(
-                    pk=execution_id
-                )
+                workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
                 return WorkflowHelper.run_workflow(
                     workflow=workflow,
                     single_step=True,
@@ -522,34 +534,26 @@ class WorkflowHelper:
             if execution_id is None:
                 raise InvalidRequest("execution_id is missed")
             try:
-                workflow_execution = WorkflowExecution.objects.get(
-                    pk=execution_id
-                )
+                workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
             except WorkflowExecution.DoesNotExist:
-                raise WorkflowExecutionNotExist(
-                    WorkflowErrors.INVALID_EXECUTION_ID
-                )
+                raise WorkflowExecutionNotExist(WorkflowErrors.INVALID_EXECUTION_ID)
             if (
                 workflow_execution.status != ExecutionStatus.PENDING.value
-                or workflow_execution.execution_type
-                != WorkflowExecution.Type.STEP
+                or workflow_execution.execution_type != WorkflowExecution.Type.STEP
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
-            cache_service = CacheService()
-            current_action: Optional[str] = cache_service.get_a_key(
-                execution_id
-            )
+            current_action: Optional[str] = CacheService.get_key(execution_id)
             logger.info(f"workflow_execution.current_action {current_action}")
             if current_action is None:
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
-            cache_service.set_a_key(execution_id, execution_action)
+            CacheService.set_key(execution_id, execution_action)
             workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
 
             return ExecutionResponse(
                 workflow.id,
                 execution_id,
                 workflow_execution.status,
-                log_id=workflow_execution.project_settings_id,
+                log_id=workflow_execution.execution_log_id,
                 error=workflow_execution.error_message,
                 mode=workflow_execution.execution_mode,
             )
@@ -561,19 +565,17 @@ class WorkflowHelper:
         single_step: bool = False,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
     ) -> ExecutionResponse:
-        workflow_execution = (
-            WorkflowExecutionServiceHelper.create_workflow_execution(
-                workflow_id=workflow_id,
-                single_step=single_step,
-                pipeline_id=pipeline_id,
-                mode=mode,
-            )
+        workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
+            workflow_id=workflow_id,
+            single_step=single_step,
+            pipeline_id=pipeline_id,
+            mode=mode,
         )
         return ExecutionResponse(
             workflow_execution.workflow_id,
             workflow_execution.id,
             workflow_execution.status,
-            log_id=workflow_execution.project_settings_id,
+            log_id=workflow_execution.execution_log_id,
             error=workflow_execution.error_message,
             mode=workflow_execution.execution_mode,
         )
@@ -582,23 +584,10 @@ class WorkflowHelper:
     @staticmethod
     def clear_cache(workflow_id: str) -> dict[str, Any]:
         """Function to clear cache with a specific pattern."""
-
-        # TODO: Clear this section if not needed
-        cache = StrictRedis(
-            host=settings.REDIS_HOST,
-            port=int(settings.REDIS_PORT),
-            password=settings.REDIS_PASSWORD,
-            username=settings.REDIS_USER,
-        )
         response: dict[str, Any] = {}
         try:
-            keys = cache.scan_iter(f"cache:{workflow_id}*")
-            for key in keys:
-                if cache.get(key):
-                    cache.delete(key)
-                    logger.info(f"Successfully Cleared Cache, deleted {key!r}")
-                else:
-                    logger.info(f"No key {key!r} exists in cache")
+            key_pattern = f"*:cache:{workflow_id}:*"
+            CacheService.clear_cache(key_pattern)
             response["message"] = WorkflowMessages.CACHE_CLEAR_SUCCESS
             response["status"] = 200
             return response
@@ -652,14 +641,26 @@ class WorkflowHelper:
             "info": obj.info,
         }
 
+    @staticmethod
+    def can_update_workflow(workflow_id: str) -> dict[str, Any]:
+        try:
+            workflow: Workflow = Workflow.objects.get(pk=workflow_id)
+            if not workflow or workflow is None:
+                raise WorkflowDoesNotExistError()
+            used_count = Pipeline.objects.filter(workflow=workflow).count()
+            if used_count == 0:
+                used_count = APIDeployment.objects.filter(workflow=workflow).count()
+            return {"can_update": used_count == 0}
+        except Workflow.DoesNotExist:
+            logger.error(f"Error getting workflow: {id}")
+            raise WorkflowDoesNotExistError()
+
 
 class WorkflowSchemaHelper:
     """Helper class for workflow schema related methods."""
 
     @staticmethod
-    def validate_request(
-        schema_type: SchemaType, schema_entity: SchemaEntity
-    ) -> bool:
+    def validate_request(schema_type: SchemaType, schema_entity: SchemaEntity) -> bool:
         """Validates the given args for reading the JSON schema.
 
         Schema type of `src`, allows entities `file` and `api`
@@ -691,9 +692,7 @@ class WorkflowSchemaHelper:
                 f"should be one of {possible_entities}"
             )
 
-        if (
-            schema_type == SchemaType.SRC and schema_entity == SchemaEntity.DB
-        ) or (
+        if (schema_type == SchemaType.SRC and schema_entity == SchemaEntity.DB) or (
             schema_type == SchemaType.DEST and schema_entity != SchemaEntity.DB
         ):
             raise serializers.ValidationError(
@@ -720,8 +719,7 @@ class WorkflowSchemaHelper:
             dict[str, Any]: JSON schema for the requested entity
         """
         schema_path = (
-            f"{os.path.dirname(__file__)}/static/"
-            f"{schema_type}/{schema_entity}.json"
+            f"{os.path.dirname(__file__)}/static/" f"{schema_type}/{schema_entity}.json"
         )
         with open(schema_path, encoding="utf-8") as file:
             schema = json.load(file)

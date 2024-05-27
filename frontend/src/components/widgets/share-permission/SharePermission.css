@@ -1,0 +1,16 @@
+.shared-user-avatar {
+  background-color: #00a6ed;
+  margin-right: 15px;
+}
+
+.shared-username {
+  font-weight: 500;
+}
+
+.share-permission-search {
+  width: 100%;
+}
+
+.share-per-checkbox {
+  margin: 10px 0px;
+}

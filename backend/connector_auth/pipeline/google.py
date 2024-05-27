@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
 
-from unstract.connectors.filesystems.google_drive.constants import GDriveConstants
-
 from connector_auth.constants import SocialAuthConstants as AuthConstants
 from connector_auth.exceptions import EnrichConnectorMetadataException
 from connector_processor.constants import ConnectorKeys
+
+from unstract.connectors.filesystems.google_drive.constants import GDriveConstants
 
 
 class GoogleAuthHelper:
@@ -24,9 +24,9 @@ class GoogleAuthHelper:
         )
 
         # Used by Unstract
-        kwargs[
-            ConnectorKeys.PATH
-        ] = GDriveConstants.ROOT_PREFIX  # Acts as a prefix for all paths
+        kwargs[ConnectorKeys.PATH] = (
+            GDriveConstants.ROOT_PREFIX
+        )  # Acts as a prefix for all paths
         kwargs[AuthConstants.REFRESH_AFTER] = token_expiry.strftime(
             AuthConstants.REFRESH_AFTER_FORMAT
         )

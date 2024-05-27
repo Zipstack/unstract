@@ -3,6 +3,8 @@ import uuid
 from account.models import User
 from adapter_processor.models import AdapterInstance
 from django.db import models
+from prompt_studio.prompt_studio_core.exceptions import DefaultProfileError
+from prompt_studio.prompt_studio_core.models import CustomTool
 from utils.models.base_model import BaseModel
 
 
@@ -11,13 +13,10 @@ class ProfileManager(BaseModel):
 
     class RetrievalStrategy(models.TextChoices):
         SIMPLE = "simple", "Simple retrieval"
-        SUBQUESTION = "subquestion", "Subquestion from prompt"
-        VECTOR = "vector+keyword", "Uses vector for retrieval"
+        SUBQUESTION = "subquestion", "Subquestion retrieval"
 
-    profile_id = models.UUIDField(
-        primary_key=True, default=uuid.uuid4, editable=False
-    )
-    profile_name = models.TextField(unique=True, blank=False)
+    profile_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile_name = models.TextField(blank=False)
     vector_store = models.ForeignKey(
         AdapterInstance,
         db_comment="Field to store the chosen vector store.",
@@ -58,7 +57,9 @@ class ProfileManager(BaseModel):
         db_comment="Field to store the retrieval strategy for prompts",
     )
     similarity_top_k = models.IntegerField(
-        blank=True, null=True, db_comment="Field to store matching count"
+        blank=True,
+        null=True,
+        db_comment="Field to store number of top embeddings to take into context",  # noqa: E501
     )
     section = models.TextField(
         blank=True, null=True, db_comment="Field to store limit to section"
@@ -79,3 +80,33 @@ class ProfileManager(BaseModel):
         blank=True,
         editable=False,
     )
+
+    prompt_studio_tool = models.ForeignKey(
+        CustomTool, on_delete=models.CASCADE, null=True
+    )
+    is_default = models.BooleanField(
+        default=False,
+        db_comment="Default LLM Profile used in prompt",
+    )
+
+    is_summarize_llm = models.BooleanField(
+        default=False,
+        db_comment="Default LLM Profile used for summarizing",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["prompt_studio_tool", "profile_name"],
+                name="unique_prompt_studio_tool_profile_name",
+            ),
+        ]
+
+    @staticmethod
+    def get_default_llm_profile(tool: CustomTool) -> "ProfileManager":
+        try:
+            return ProfileManager.objects.get(  # type: ignore
+                prompt_studio_tool=tool, is_default=True
+            )
+        except ProfileManager.DoesNotExist:
+            raise DefaultProfileError

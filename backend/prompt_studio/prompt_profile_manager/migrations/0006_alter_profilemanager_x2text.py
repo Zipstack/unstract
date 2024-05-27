@@ -6,9 +6,7 @@ from django.db import connection, migrations, models
 
 def enable_triggers(apps, schema_editor):
     with connection.cursor() as cursor:
-        cursor.execute(
-            "ALTER TABLE adapter_adapterinstance ENABLE TRIGGER ALL;"
-        )
+        cursor.execute("ALTER TABLE adapter_adapterinstance ENABLE TRIGGER ALL;")
 
 
 class Migration(migrations.Migration):
@@ -31,7 +29,9 @@ class Migration(migrations.Migration):
                 to="adapter_processor.adapterinstance",
             ),
         ),
-        migrations.RunPython(
-            enable_triggers,
-        ),
+        # Without superuser role this statement cannot be executed
+        # and this is als0 not recommended.
+        # migrations.RunPython(
+        #     enable_triggers,
+        # ),
     ]

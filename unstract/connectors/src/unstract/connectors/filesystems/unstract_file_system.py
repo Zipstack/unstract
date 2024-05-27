@@ -2,6 +2,7 @@ import logging
 from abc import ABC, abstractmethod
 
 from fsspec import AbstractFileSystem
+
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.enums import ConnectorMode
 

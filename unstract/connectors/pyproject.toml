@@ -7,9 +7,6 @@ build-backend = "pdm.backend"
 name = "unstract-connectors"
 version = "0.0.3"
 description = "All connectors that are part of the Unstract platform"
-authors = [
-    {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
-]
 dependencies = [
     # For GCSHelper
     "google-auth==2.20.0",
@@ -21,6 +18,8 @@ dependencies = [
     "oauth2client==4.1.3", # For GDrive
     "dropboxdrivefs==1.3.1", # For Dropbox
     "boxfs==0.2.1", # For Box
+    "gcsfs==2023.6.0", # For GoogleCloudStorage
+    "adlfs==2023.8.0", # For AzureCloudStorage
     # Database connectors
     "psycopg2-binary==2.9.9", # For Postgres, Redshift
     "snowflake-connector-python[pandas]~=3.6.0", # For Snowflake
@@ -28,12 +27,24 @@ dependencies = [
     "pymssql==2.2.8", # For MSSQL
     "PyMySQL==1.1.0" # For MySQL
 ]
-requires-python = ">=3.9"
 readme = "README.md"
-classifiers = [
-  "Programming Language :: Python"
+urls = { Homepage = "https://unstract.com", Source = "https://github.com/Zipstack/unstract/tree/main/unstract/connectors" }
+license = {text = "AGPL v3"}
+authors = [
+    {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
 ]
-license = {text = "MIT"}
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.9",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 
 [tool.pdm.build]
 includes = ["src"]

@@ -8,3 +8,8 @@
 .add-cus-tool-gap {
     margin-bottom: 16px;
 }
+
+.emoji-modal .ant-modal-content {
+    padding: 0;
+    width: fit-content;
+  }

@@ -1,9 +1,10 @@
 import uuid
 
-from backend.constants import FieldLengthConstants as FieldLength
 from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.db import models
 from django_tenants.models import DomainMixin, TenantMixin
+
+from backend.constants import FieldLengthConstants as FieldLength
 
 NAME_SIZE = 64
 KEY_SIZE = 64
@@ -35,6 +36,10 @@ class Organization(TenantMixin):
     )
     modified_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now=True)
+    allowed_token_limit = models.IntegerField(
+        default=-1,
+        db_comment="token limit set in case of frition less onbaoarded org",
+    )
 
     auto_create_schema = True
 
@@ -98,9 +103,7 @@ class PlatformKey(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     key = models.UUIDField(default=uuid.uuid4)
-    key_name = models.CharField(
-        max_length=KEY_SIZE, null=False, blank=True, default=""
-    )
+    key_name = models.CharField(max_length=KEY_SIZE, null=False, blank=True, default="")
     is_active = models.BooleanField(default=False)
     organization = models.ForeignKey(
         "Organization",
@@ -131,11 +134,3 @@ class PlatformKey(models.Model):
                 name="unique_key_name",
             ),
         ]
-
-
-class EncryptionSecret(models.Model):
-    key = models.CharField(
-        max_length=KEY_SIZE,
-        null=False,
-        blank=True,
-    )

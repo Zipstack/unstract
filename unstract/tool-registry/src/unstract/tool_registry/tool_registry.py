@@ -81,9 +81,7 @@ class ToolRegistry:
             self.helper.remove_tool_from_registry(image_url=image_url)
             logger.info(f"Tool '{tool_id}' removed from registry successfully.")
             self.helper.save_tools(data=tools)
-            logger.info(
-                f"Tool '{tool_id}' removed from tools file successfully."
-            )
+            logger.info(f"Tool '{tool_id}' removed from tools file successfully.")
         except Exception as e:
             logger.error(f"An error occurred: {str(e)}")
 
@@ -154,14 +152,10 @@ class ToolRegistry:
         tools_list = []
         if load_from_source:
             for tool in self.helper.get_all_registry_tools():
-                tool_meta = ToolUtils.get_tool_meta_from_tool_url(
-                    registry_tool=tool
-                )
+                tool_meta = ToolUtils.get_tool_meta_from_tool_url(registry_tool=tool)
                 if not tool_meta:
                     continue
-                properties = self.helper.get_tool_properties(
-                    tool_meta=tool_meta
-                )
+                properties = self.helper.get_tool_properties(tool_meta=tool_meta)
                 icon = self.helper.get_tool_icon(tool_meta=tool_meta)
                 if not properties:
                     continue
@@ -169,9 +163,7 @@ class ToolRegistry:
                     ToolKey.NAME: properties.get(PropKey.DISPLAY_NAME),
                     ToolKey.DESCRIPTION: properties.get(PropKey.DESCRIPTION),
                     ToolKey.ICON: icon,
-                    ToolKey.FUNCTION_NAME: properties.get(
-                        PropKey.FUNCTION_NAME
-                    ),
+                    ToolKey.FUNCTION_NAME: properties.get(PropKey.FUNCTION_NAME),
                 }
                 tools_list.append(tool_data)
         else:
@@ -206,14 +198,12 @@ class ToolRegistry:
         tools_list = {}
         if load_from_source:
             for tool in self.helper.get_all_registry_tools():
-                tool_meta = ToolUtils.get_tool_meta_from_tool_url(
-                    registry_tool=tool
-                )
+                tool_meta = ToolUtils.get_tool_meta_from_tool_url(registry_tool=tool)
                 if not tool_meta:
                     continue
-                properties: Optional[
-                    dict[str, Any]
-                ] = self.helper.get_tool_properties(tool_meta=tool_meta)
+                properties: Optional[dict[str, Any]] = self.helper.get_tool_properties(
+                    tool_meta=tool_meta
+                )
                 spec: Optional[dict[str, Any]] = self.helper.get_tool_spec(
                     tool_meta=tool_meta
                 )
@@ -235,9 +225,7 @@ class ToolRegistry:
                         "icon": icon,
                     }
         else:
-            tools: dict[
-                str, dict[str, Any]
-            ] = self.helper.get_all_tools_from_disk()
+            tools: dict[str, dict[str, Any]] = self.helper.get_all_tools_from_disk()
             for tool, configuration in tools.items():
                 properties = configuration.get("properties")
                 spec = configuration.get("spec")
@@ -287,9 +275,7 @@ class ToolRegistry:
             dict[str, Any]: _description_
         """
         tools = self.helper.get_all_tools_from_disk()
-        properties: dict[str, Any] = tools.get(tool_id, {}).get(
-            "properties", {}
-        )
+        properties: dict[str, Any] = tools.get(tool_id, {}).get("properties", {})
         return properties
 
     def get_tool_icon_by_tool_id(self, tool_id: str) -> dict[str, Any]:

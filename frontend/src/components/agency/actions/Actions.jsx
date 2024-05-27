@@ -8,23 +8,27 @@ import {
   StepForwardOutlined,
   StopOutlined,
 } from "@ant-design/icons";
-import { Button, Divider, Space, Tooltip, Typography } from "antd";
+import { Button, Divider, Space, Tooltip, Typography, Alert } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
 import { StepIcon } from "../../../assets/index.js";
-import { wfExecutionTypes } from "../../../helpers/GetStaticData";
+import {
+  deploymentsStaticContent,
+  wfExecutionTypes,
+} from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
 import { CreateApiDeploymentModal } from "../../deployments/create-api-deployment-modal/CreateApiDeploymentModal.jsx";
-import { SocketMessages } from "../../helpers/socket-messages/SocketMessages";
+import { EtlTaskDeploy } from "../../pipelines-or-deployments/etl-task-deploy/EtlTaskDeploy.jsx";
 import FileUpload from "../file-upload/FileUpload.jsx";
 import "./Actions.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
-  const [logId, setLogId] = useState("");
   const [executionId, setExecutionId] = useState("");
   const [execType, setExecType] = useState("");
   const [stepExecType, setStepExecType] = useState("");
@@ -33,18 +37,60 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   const [wfExecutionParams, setWfExecutionParams] = useState([]);
   const [openAddApiModal, setOpenAddApiModal] = useState(false);
   const [apiOpsPresent, setApiOpsPresent] = useState(false);
-
-  const { details, isLoading, loadingType, updateWorkflow, source } =
-    useWorkflowStore();
+  const [canAddTaskPipeline, setCanAddTaskPipeline] = useState(false);
+  const [canAddETLPipeline, setCanAddETAPipeline] = useState(false);
+  const [openAddTaskModal, setOpenAddTaskModal] = useState(false);
+  const [openAddETLModal, setOpenAddETLModal] = useState(false);
+  const [deploymentName, setDeploymentName] = useState("");
+  const [deploymentType, setDeploymentType] = useState("");
+  const handleException = useExceptionHandler();
+  const {
+    projectName,
+    details,
+    isLoading,
+    loadingType,
+    updateWorkflow,
+    source,
+    destination,
+  } = useWorkflowStore();
   const { setAlertDetails } = useAlertStore();
   const { sessionDetails } = useSessionStore();
-
+  const { orgName } = sessionDetails;
   const axiosPrivate = useAxiosPrivate();
+  const { posthogWfDeploymentEventText, setPostHogCustomEvent } =
+    usePostHogEvents();
 
   useEffect(() => {
-    setApiOpsPresent(source?.connection_type === "API");
-  }, [source]);
-
+    // Enable Deploy as API only when
+    // Source & Destination connection_type are selected as API
+    setApiOpsPresent(
+      source?.connection_type === "API" &&
+        destination?.connection_type === "API"
+    );
+    // Enable Deploy as Task Pipeline only when
+    // destination connection_type is FILESYSTEM and Source & Destination are Configured
+    setCanAddTaskPipeline(
+      destination?.connection_type === "FILESYSTEM" &&
+        source?.connector_instance &&
+        destination?.connector_instance
+    );
+    // Enable Deploy as ETL Pipeline only when
+    // destination connection_type is DATABASE and Source & Destination are Configured
+    setCanAddETAPipeline(
+      destination?.connection_type === "DATABASE" &&
+        source?.connector_instance &&
+        destination.connector_instance
+    );
+  }, [source, destination]);
+  useEffect(() => {
+    if (apiOpsPresent) {
+      setDeploymentType("API");
+    } else if (canAddTaskPipeline) {
+      setDeploymentType("Task Pipeline");
+    } else if (canAddETLPipeline) {
+      setDeploymentType("ETL Pipeline");
+    }
+  }, [deploymentName]);
   useEffect(() => {
     if (stepExecType === wfExecutionTypes[1]) {
       setStepExecType("");
@@ -79,10 +125,8 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
     try {
       const initialRes = await handleWfExecutionApi(body);
       const execIdValue = initialRes?.data?.execution_id;
-      const logIdValue = initialRes?.data?.log_id;
 
       setExecutionId(execIdValue);
-      setLogId(logIdValue);
       body["execution_id"] = execIdValue;
       if (isStepExecution) {
         body["execution_action"] = wfExecutionTypes[executionAction];
@@ -117,6 +161,19 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
     isStepExecution,
     executionAction
   ) => {
+    try {
+      if (isStepExecution) {
+        setPostHogCustomEvent("wf_step", {
+          info: `Clicked on '${wfExecutionTypes[executionAction]}' button (Step Execution)`,
+        });
+      } else {
+        setPostHogCustomEvent("wf_run_wf", {
+          info: "Clicked on 'Run Workflow' button (Normal Execution)",
+        });
+      }
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
     const workflowId = details?.id;
 
     if (!workflowId) {
@@ -141,14 +198,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
       handleWfExecutionApi(body)
         .then(() => {})
         .catch((err) => {
-          const errorDetail =
-            err?.response?.data?.errors?.length > 0
-              ? err.response.data.errors[0].detail
-              : "Something went wrong";
-          setAlertDetails({
-            type: "error",
-            content: errorDetail,
-          });
+          setAlertDetails(handleException(err));
         });
     }
   };
@@ -192,7 +242,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
     return axiosPrivate(requestOptions)
       .then((res) => res)
       .catch((err) => {
-        throw err;
+        setAlertDetails(handleException(err));
       });
   };
 
@@ -233,7 +283,29 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
     setExecutionId("");
   };
 
-  const createAPIDeployment = () => {
+  const isIncompleteWorkflow = () => {
+    if (details?.tool_instances.length === 0) {
+      return true;
+    }
+  };
+
+  // Disable Run & Step execution -
+  // when NO tool present in the workflow
+  // When source OR destination is NOT configured
+  const disableAction = () => {
+    if (isIncompleteWorkflow()) {
+      return true;
+    }
+    if (
+      source?.connection_type === "API" &&
+      destination?.connection_type === "API"
+    ) {
+      return false;
+    }
+    return !source?.connector_instance || !destination?.connector_instance;
+  };
+
+  const createDeployment = (type) => {
     const workflowId = details?.id;
     if (!workflowId) {
       setAlertDetails({
@@ -242,7 +314,15 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
       });
       return;
     }
-    setOpenAddApiModal(true);
+    if (type === "API") {
+      setOpenAddApiModal(true);
+    }
+    if (type === "TASK") {
+      setOpenAddTaskModal(true);
+    }
+    if (type === "ETL") {
+      setOpenAddETLModal(true);
+    }
   };
 
   const handleClearCache = () => {
@@ -311,6 +391,19 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
       });
   };
 
+  const handleDeployBtnClick = (deployType) => {
+    createDeployment(deployType);
+
+    try {
+      setPostHogCustomEvent(posthogWfDeploymentEventText[deployType], {
+        info: `Clicked on 'Deploy as ${deployType}' button`,
+        workflow_name: projectName,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+  };
+
   return (
     <>
       <div className="actions-container">
@@ -322,7 +415,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
                   ? getInputFile(true, false, 4)
                   : handleWfExecution(true, false, 4)
               }
-              disabled={handleDisable(4)}
+              disabled={disableAction() || handleDisable(4)}
               loading={execType === "NORMAL"}
             >
               <PlayCircleOutlined />
@@ -336,7 +429,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
                   ? getInputFile(true, true, 0)
                   : handleWfExecution(true, true, 0)
               }
-              disabled={handleDisable(0)}
+              disabled={disableAction() || handleDisable(0)}
               loading={execType === "STEP"}
             >
               <StepIcon className="step-icon" />
@@ -375,22 +468,56 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
               <ClearOutlined />
             </Button>
           </Tooltip>
-          <Tooltip title="Clear File Marker">
+          <Tooltip title="Clear Processed File History">
             <Button disabled={isLoading} onClick={handleClearFileMarker}>
               <HistoryOutlined />
             </Button>
           </Tooltip>
           <Divider type="vertical" />
-          <Tooltip title="Deploy as ETL Pipeline">
-            <Button disabled={true}>
-              <DeploymentUnitOutlined />
-            </Button>
-          </Tooltip>
-          <Tooltip title="Deploy API">
-            <Button disabled={!apiOpsPresent} onClick={createAPIDeployment}>
+          <Tooltip title="Deploy as API">
+            <Button
+              disabled={isIncompleteWorkflow() || !apiOpsPresent}
+              onClick={() => handleDeployBtnClick("API")}
+            >
               <ApiOutlined />
             </Button>
           </Tooltip>
+          <Tooltip title="Deploy as ETL Pipeline">
+            <Button
+              disabled={isIncompleteWorkflow() || !canAddETLPipeline}
+              onClick={() => handleDeployBtnClick("ETL")}
+            >
+              <DeploymentUnitOutlined />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Deploy as Task Pipeline">
+            <Button
+              onClick={() => handleDeployBtnClick("TASK")}
+              disabled={isIncompleteWorkflow() || !canAddTaskPipeline}
+            >
+              <ApiOutlined />
+            </Button>
+          </Tooltip>
+          <Divider type="vertical" />
+          {deploymentName && (
+            <Alert
+              message={
+                <>
+                  <span>
+                    This Workflow has been deployed as an {deploymentType}:{" "}
+                  </span>
+                  <a
+                    href={`/${orgName}/${deploymentType
+                      .split(" ")[0]
+                      .toLowerCase()}`}
+                  >
+                    {deploymentName}
+                  </a>
+                </>
+              }
+              type="success"
+            />
+          )}
         </Space>
         <div className="status-bar">
           <Typography.Text>{statusBarMsg}</Typography.Text>
@@ -412,9 +539,29 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           setOpen={setOpenAddApiModal}
           isEdit={false}
           workflowId={details?.id}
+          setDeploymentName={setDeploymentName}
         />
       )}
-      <SocketMessages logId={logId} />
+      {openAddTaskModal && (
+        <EtlTaskDeploy
+          open={openAddTaskModal}
+          setOpen={setOpenAddTaskModal}
+          type="task"
+          title={deploymentsStaticContent["task"].modalTitle}
+          workflowId={details?.id}
+          setDeploymentName={setDeploymentName}
+        />
+      )}
+      {openAddETLModal && (
+        <EtlTaskDeploy
+          open={openAddETLModal}
+          setOpen={setOpenAddETLModal}
+          type="etl"
+          title={deploymentsStaticContent["etl"].modalTitle}
+          workflowId={details?.id}
+          setDeploymentName={setDeploymentName}
+        />
+      )}
     </>
   );
 }

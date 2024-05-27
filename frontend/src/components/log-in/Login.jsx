@@ -1,10 +1,17 @@
-import { Button, Typography } from "antd";
+import { Typography, Button } from "antd";
+import { Row, Col } from "antd";
 
 import logo from "../../assets/UnstractLogoBlack.svg";
-import loginBG from "../../assets/login-page-bg.svg";
+import loginRightBanner from "../../assets/login-right-panel.svg";
 import { getBaseUrl } from "../../helpers/GetStaticData";
 import "./Login.css";
 
+let LoginForm = null;
+try {
+  LoginForm = require("../../plugins/login-form/LoginForm").LoginForm;
+} catch {
+  // The components will remain null of it is not available
+}
 function Login() {
   const baseUrl = getBaseUrl();
   const newURL = baseUrl + "/api/v1/login";
@@ -14,46 +21,47 @@ function Login() {
 
   return (
     <div className="login-main">
-      <div className="login-left-section">
-        <div className="button-wraper">
-          <img src={logo} alt="Logo" className="logo" />
-          <div className="text-wrapper">
-            <Typography.Title level={3}>Sign Up</Typography.Title>
-            <Typography>
-              Try Unstract free for 14 days. No credit card required.
-            </Typography>
+      <Row>
+        <Col xs={24} md={12} className="login-left-section">
+          <div className="button-wraper">
+            <img src={logo} alt="Logo" className="logo" />
+            {LoginForm && <LoginForm handleLogin={handleLogin} />}
+            {!LoginForm && (
+              <div>
+                <Button
+                  className="login-button button-margin"
+                  onClick={handleLogin}
+                >
+                  Login
+                </Button>
+              </div>
+            )}
           </div>
-          <Button className="login-button" onClick={handleLogin}>
-            Create Your free account
-          </Button>
-          <div className="signin-text-wrapper">
-            <Typography>
-              Already have an account? <a href={newURL}>Sign in</a>
-            </Typography>
+        </Col>
+        <Col xs={24} md={12} className="login-right-section">
+          <div className="right-section-text-wrapper">
+            <div className="right-title-cover">
+              <Typography.Title className="right-section-title">
+                UNLOCK VALUE FROM UNSTRUCTURED DATA.
+              </Typography.Title>
+            </div>
+            <div className="right-subtitle-cover">
+              <Typography align="center" className="right-subtitle">
+                Unstract is a no-code LLM platform that lets you automate even
+                the most complex workflows involving unstructured data, saving
+                you time, money, and automation headaches.
+              </Typography>
+            </div>
+            <div>
+              <img
+                src={loginRightBanner}
+                alt="login background"
+                className="login-background"
+              />
+            </div>
           </div>
-        </div>
-      </div>
-      <div className="login-right-section">
-        <div className="right-section-text-wrapper">
-          <div className="right-title-cover">
-            <Typography.Title align="center">
-              UNLOCK VALUE FROM UNSTRUCTURED DATA.
-            </Typography.Title>
-          </div>
-          <div className="right-subtitle-cover">
-            <Typography align="center" className="right-subtitle">
-              Unstract is a no-code LLM platform that lets you automate even the
-              most complex workflows involving unstructured data, saving you
-              time, money, and automation headaches.
-            </Typography>
-          </div>
-        </div>
-        <img
-          src={loginBG}
-          alt="login background"
-          className="login-background"
-        />
-      </div>
+        </Col>
+      </Row>
     </div>
   );
 }

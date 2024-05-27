@@ -18,7 +18,11 @@ class AdapterKeys:
     LLM_DEFAULT = "llm_default"
     VECTOR_DB_DEFAULT = "vector_db_default"
     EMBEDDING_DEFAULT = "embedding_default"
+    X2TEXT_DEFAULT = "x2text_default"
+    SHARED_USERS = "shared_users"
     ADAPTER_NAME_EXISTS = (
-        "Configuration with this ID already exists. "
-        "Please try with a different ID"
+        "Configuration with this Name already exists. "
+        "Please try with a different Name"
     )
+    ADAPTER_CREATED_BY = "created_by_email"
+    ADAPTER_CONTEXT_WINDOW_SIZE = "context_window_size"

@@ -14,7 +14,8 @@ from unstract.workflow_execution.exceptions import (
     ToolExecutionException,
     ToolNotFoundException,
 )
-from unstract.workflow_execution.pubsub_helper import LogHelper
+
+from unstract.core.pubsub_helper import LogPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -41,23 +42,15 @@ class ToolsUtils:
         self.platform_service_port = ToolsUtils.get_env(
             ToolRV.PLATFORM_PORT, raise_exception=True
         )
-        self.doc_processor_url = ToolsUtils.get_env(
-            ToolRV.DOCUMENT_PROCESSOR_URL, raise_exception=True
+        self.prompt_host = ToolsUtils.get_env(ToolRV.PROMPT_HOST, raise_exception=True)
+        self.prompt_port = ToolsUtils.get_env(ToolRV.PROMPT_PORT, raise_exception=True)
+        self.x2text_host = ToolsUtils.get_env(ToolRV.X2TEXT_HOST, raise_exception=True)
+        self.x2text_port = ToolsUtils.get_env(ToolRV.X2TEXT_PORT, raise_exception=True)
+        self.llmw_poll_interval = ToolsUtils.get_env(
+            ToolRV.ADAPTER_LLMW_POLL_INTERVAL, raise_exception=False
         )
-        self.doc_processor_api_key = ToolsUtils.get_env(
-            ToolRV.DOCUMENT_PROCESSOR_API_KEY, raise_exception=True
-        )
-        self.prompt_host = ToolsUtils.get_env(
-            ToolRV.PROMPT_HOST, raise_exception=True
-        )
-        self.prompt_port = ToolsUtils.get_env(
-            ToolRV.PROMPT_PORT, raise_exception=True
-        )
-        self.x2text_host = ToolsUtils.get_env(
-            ToolRV.X2TEXT_HOST, raise_exception=True
-        )
-        self.x2text_port = ToolsUtils.get_env(
-            ToolRV.X2TEXT_PORT, raise_exception=True
+        self.llmw_max_polls = ToolsUtils.get_env(
+            ToolRV.ADAPTER_LLMW_MAX_POLLS, raise_exception=False
         )
 
     def set_messaging_channel(self, messaging_channel: str) -> None:
@@ -78,9 +71,9 @@ class ToolsUtils:
             dict[str, dict[str, Any]]: tools
         """
         tool_uids = [tool_instance.tool_id for tool_instance in tool_instances]
-        tools: dict[
-            str, dict[str, Any]
-        ] = self.tool_registry.get_available_tools(tool_uids)
+        tools: dict[str, dict[str, Any]] = self.tool_registry.get_available_tools(
+            tool_uids
+        )
         if not (
             all(tool_uid in tools for tool_uid in tool_uids)
             and len(tool_uids) == len(tools)
@@ -108,11 +101,13 @@ class ToolsUtils:
 
             tool_uid = tool_instance.tool_id
 
-            LogHelper.publish(
+            LogPublisher.publish(
                 self.messaging_channel,
-                LogHelper.log(
+                LogPublisher.log_workflow(
                     "BUILD",
                     f"------ Building step {tool_instance.step}/{tool_uid}",
+                    execution_id=execution_id,
+                    organization_id=self.organization_id,
                 ),
             )
 
@@ -121,9 +116,14 @@ class ToolsUtils:
             image_name = tool_instance.image_name
             image_tag = tool_instance.image_tag
 
-            LogHelper.publish(
+            LogPublisher.publish(
                 self.messaging_channel,
-                LogHelper.log("BUILD", f"Building the tool {tool_uid} now..."),
+                LogPublisher.log_workflow(
+                    "BUILD",
+                    f"Building the tool {tool_uid} now...",
+                    execution_id=execution_id,
+                    organization_id=self.organization_id,
+                ),
             )
             tool_sandbox = ToolSandbox(
                 organization_id=self.organization_id,
@@ -218,13 +218,16 @@ class ToolsUtils:
             ToolRV.PLATFORM_HOST: self.platform_service_host,
             ToolRV.PLATFORM_PORT: self.platform_service_port,
             ToolRV.PLATFORM_SERVICE_API_KEY: self.platform_service_api_key,
-            ToolRV.DOCUMENT_PROCESSOR_URL: self.doc_processor_url,
-            ToolRV.DOCUMENT_PROCESSOR_API_KEY: self.doc_processor_api_key,
             ToolRV.PROMPT_HOST: self.prompt_host,
             ToolRV.PROMPT_PORT: self.prompt_port,
             ToolRV.X2TEXT_HOST: self.x2text_host,
             ToolRV.X2TEXT_PORT: self.x2text_port,
         }
+        # For async LLM Whisperer extraction
+        if self.llmw_poll_interval:
+            platform_vars[ToolRV.ADAPTER_LLMW_POLL_INTERVAL] = self.llmw_poll_interval
+        if self.llmw_max_polls:
+            platform_vars[ToolRV.ADAPTER_LLMW_MAX_POLLS] = self.llmw_max_polls
         if not project_settings:
             project_settings = {}
         return {**project_settings, **platform_vars}

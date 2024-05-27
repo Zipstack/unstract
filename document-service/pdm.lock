@@ -103,15 +103,15 @@ files = [
 
 [[package]]
 name = "importlib-metadata"
-version = "7.0.1"
+version = "7.0.2"
 requires_python = ">=3.8"
 summary = "Read metadata from Python packages"
 dependencies = [
     "zipp>=0.5",
 ]
 files = [
-    {file = "importlib_metadata-7.0.1-py3-none-any.whl", hash = "sha256:4805911c3a4ec7c3966410053e9ec6a1fecd629117df5adee56dfc9432a1081e"},
-    {file = "importlib_metadata-7.0.1.tar.gz", hash = "sha256:f238736bb06590ae52ac1fab06a3a9ef1d8dce2b7a35b5ab329371d6c8f5d2cc"},
+    {file = "importlib_metadata-7.0.2-py3-none-any.whl", hash = "sha256:f4bc4c0c070c490abf4ce96d715f68e95923320370efb66143df00199bb6c100"},
+    {file = "importlib_metadata-7.0.2.tar.gz", hash = "sha256:198f568f3230878cb1b44fbd7975f87906c22336dba2e4a7f05278c281fbd792"},
 ]
 
 [[package]]
@@ -209,12 +209,12 @@ files = [
 
 [[package]]
 name = "packaging"
-version = "23.2"
+version = "24.0"
 requires_python = ">=3.7"
 summary = "Core utilities for Python packages"
 files = [
-    {file = "packaging-23.2-py3-none-any.whl", hash = "sha256:8c491190033a9af7e1d931d0b5dacc2ef47509b34dd0de67ed209b5203fc88c7"},
-    {file = "packaging-23.2.tar.gz", hash = "sha256:048fb0e9405036518eaaf48a55953c750c11e1a1b68e0dd1a9d62ed0c092cfc5"},
+    {file = "packaging-24.0-py3-none-any.whl", hash = "sha256:2ddfb553fdf02fb784c234c7ba6ccc288296ceabec964ad2eae3777778130bc5"},
+    {file = "packaging-24.0.tar.gz", hash = "sha256:eb82c5e3e56209074766e6885bb04b8c38a0c015d0a30036ebe7ece34c9989e9"},
 ]
 
 [[package]]
@@ -229,7 +229,7 @@ files = [
 
 [[package]]
 name = "pytest"
-version = "8.0.1"
+version = "8.1.1"
 requires_python = ">=3.8"
 summary = "pytest: simple powerful testing with Python"
 dependencies = [
@@ -237,12 +237,12 @@ dependencies = [
     "exceptiongroup>=1.0.0rc8; python_version < \"3.11\"",
     "iniconfig",
     "packaging",
-    "pluggy<2.0,>=1.3.0",
-    "tomli>=1.0.0; python_version < \"3.11\"",
+    "pluggy<2.0,>=1.4",
+    "tomli>=1; python_version < \"3.11\"",
 ]
 files = [
-    {file = "pytest-8.0.1-py3-none-any.whl", hash = "sha256:3e4f16fe1c0a9dc9d9389161c127c3edc5d810c38d6793042fb81d9f48a59fca"},
-    {file = "pytest-8.0.1.tar.gz", hash = "sha256:267f6563751877d772019b13aacbe4e860d73fe8f651f28112e9ac37de7513ae"},
+    {file = "pytest-8.1.1-py3-none-any.whl", hash = "sha256:2a8386cfc11fa9d2c50ee7b2a57e7d898ef90470a7a34c4b949ff59662bb78b7"},
+    {file = "pytest-8.1.1.tar.gz", hash = "sha256:ac978141a75948948817d360297b7aae0fcb9d6ff6bc9ec6d514b85d5a65c044"},
 ]
 
 [[package]]
@@ -270,12 +270,12 @@ files = [
 
 [[package]]
 name = "setuptools"
-version = "69.1.0"
+version = "69.2.0"
 requires_python = ">=3.8"
 summary = "Easily download, build, install, upgrade, and uninstall Python packages"
 files = [
-    {file = "setuptools-69.1.0-py3-none-any.whl", hash = "sha256:c054629b81b946d63a9c6e732bc8b2513a7c3ea645f11d0139a2191d735c60c6"},
-    {file = "setuptools-69.1.0.tar.gz", hash = "sha256:850894c4195f09c4ed30dba56213bf7c3f21d86ed6bdaafb5df5972593bfc401"},
+    {file = "setuptools-69.2.0-py3-none-any.whl", hash = "sha256:c21c49fb1042386df081cb5d86759792ab89efca84cf114889191cd09aacc80c"},
+    {file = "setuptools-69.2.0.tar.gz", hash = "sha256:0ff4183f8f42cd8fa3acea16c45205521a4ef28f73c6391d8a25e92893134f2e"},
 ]
 
 [[package]]
@@ -326,10 +326,10 @@ files = [
 
 [[package]]
 name = "zipp"
-version = "3.17.0"
+version = "3.18.1"
 requires_python = ">=3.8"
 summary = "Backport of pathlib-compatible object wrapper for zip files"
 files = [
-    {file = "zipp-3.17.0-py3-none-any.whl", hash = "sha256:0e923e726174922dce09c53c59ad483ff7bbb8e572e00c7f7c46b88556409f31"},
-    {file = "zipp-3.17.0.tar.gz", hash = "sha256:84e64a1c28cf7e91ed2078bb8cc8c259cb19b76942096c8d7b84947690cabaf0"},
+    {file = "zipp-3.18.1-py3-none-any.whl", hash = "sha256:206f5a15f2af3dbaee80769fb7dc6f249695e940acca08dfb2a4769fe61e538b"},
+    {file = "zipp-3.18.1.tar.gz", hash = "sha256:2884ed22e7d8961de1c9a05142eb69a247f120291bc0206a00a7642f09b5b715"},
 ]

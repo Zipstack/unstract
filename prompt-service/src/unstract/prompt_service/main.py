@@ -1,69 +1,43 @@
-import json
-import logging
-import re
-import sqlite3
+import traceback
+from enum import Enum
+from json import JSONDecodeError
 from typing import Any, Optional
 
-import nltk
 import peewee
-from dotenv import load_dotenv
-from flask import Flask, request
-from llama_index import (
-    QueryBundle,
-    ServiceContext,
-    VectorStoreIndex,
-    get_response_synthesizer,
-)
-from llama_index.indices.base_retriever import BaseRetriever
-from llama_index.llms import LLM
-from llama_index.query_engine import (
-    RetrieverQueryEngine,
-    SubQuestionQueryEngine,
-)
-from llama_index.schema import NodeWithScore
-from llama_index.tools import QueryEngineTool, ToolMetadata
-from llama_index.vector_stores.types import (
-    ExactMatchFilter,
-    MetadataFilters,
-    VectorStore,
-    VectorStoreQuery,
-    VectorStoreQueryResult,
-)
-from nltk import ngrams
-from unstract.prompt_service.authentication_middleware import (
-    AuthenticationMiddleware,
-)
+from flask import json, jsonify, request
+from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
+from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
+from unstract.prompt_service.config import create_app
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
-from unstract.prompt_service.constants import Query
-from unstract.prompt_service.helper import PromptServiceHelper, plugin_loader
+from unstract.prompt_service.constants import RunLevel
+from unstract.prompt_service.exceptions import (
+    APIError,
+    ErrorResponse,
+    NoPayloadError,
+    RateLimitError,
+)
+from unstract.prompt_service.helper import EnvLoader, plugin_loader
 from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.sdk.constants import LogLevel
-from unstract.sdk.embedding import ToolEmbedding
-from unstract.sdk.index import ToolIndex
-from unstract.sdk.llm import ToolLLM
-from unstract.sdk.tool.base import BaseTool
-from unstract.sdk.utils.service_context import (
-    ServiceContext as UNServiceContext,
-)
-from unstract.sdk.vector_db import ToolVectorDB
+from unstract.sdk.embedding import Embedding
+from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
+from unstract.sdk.exceptions import SdkError
+from unstract.sdk.index import Index
+from unstract.sdk.llm import LLM
+from unstract.sdk.vector_db import VectorDB
+from werkzeug.exceptions import HTTPException
 
-load_dotenv()
+from unstract.core.pubsub_helper import LogPublisher
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s : %(message)s",
-)
-MAX_RETRIES = 3
-
-db_name = "unstract_vector_db"
 POS_TEXT_PATH = "/tmp/pos.txt"
 USE_UNSTRACT_PROMPT = True
+MAX_RETRIES = 3
 
-PG_BE_HOST = PromptServiceHelper.get_env_or_die("PG_BE_HOST")
-PG_BE_PORT = PromptServiceHelper.get_env_or_die("PG_BE_PORT")
-PG_BE_USERNAME = PromptServiceHelper.get_env_or_die("PG_BE_USERNAME")
-PG_BE_PASSWORD = PromptServiceHelper.get_env_or_die("PG_BE_PASSWORD")
-PG_BE_DATABASE = PromptServiceHelper.get_env_or_die("PG_BE_DATABASE")
+PG_BE_HOST = EnvLoader.get_env_or_die("PG_BE_HOST")
+PG_BE_PORT = EnvLoader.get_env_or_die("PG_BE_PORT")
+PG_BE_USERNAME = EnvLoader.get_env_or_die("PG_BE_USERNAME")
+PG_BE_PASSWORD = EnvLoader.get_env_or_die("PG_BE_PASSWORD")
+PG_BE_DATABASE = EnvLoader.get_env_or_die("PG_BE_DATABASE")
 
 be_db = peewee.PostgresqlDatabase(
     PG_BE_DATABASE,
@@ -77,210 +51,23 @@ be_db.connect()
 
 AuthenticationMiddleware.be_db = be_db
 
-app = Flask("prompt-service")
-
-plugins = plugin_loader()
+app = create_app()
 
 
-def get_keywords_from_pos(text: str) -> list[Any]:
-    text = text.lower()
-    keywords = []
-    sentences = nltk.sent_tokenize(text)
-
-    words_allowed_only_in_middle = [PSKeys.AND, PSKeys.TO, PSKeys.OR, PSKeys.IS]
-    pos_lookup: dict[str, Any] = {
-        "NN": [],
-        "VB": [],
-        "JJ": [],
-        "IN": [],
-        "DT": [],
-        ".": [],
-        "X": [],
-        "PRP": [],
-        "RB": [],
-        "EX": [],
-        "WDT": [],
-        "WP": [],
-        "MD": [],
-    }
-    for sentence in sentences:
-        # TODO : Revisit pos.txt -> non generic usecase
-        with open(POS_TEXT_PATH, "w") as f:
-            f.write("***********\n")
-        pos = nltk.pos_tag(nltk.word_tokenize(str(sentence)))
-
-        for word, posx in pos:
-            if posx.startswith("NN"):
-                posx = "NN"
-            if posx.startswith("VB"):
-                posx = "VB"
-            if posx.endswith("$"):
-                posx = "X"
-            if posx.startswith("RB"):
-                posx = "RB"
-            if posx not in pos_lookup:
-                pos_lookup[posx] = []
-            pos_lookup[posx].append(word)
-        # with open("samples/pos.txt", "a") as f:
-        #     f.write(str(pos_lookup) + "\n")
-        words = nltk.word_tokenize(sentence)
-        trigrams = list(ngrams(words, 3))
-        for trigram in trigrams:
-            allowed = False
-            override_allowed = False
-            p = 0
-            for word in trigram:
-                if (
-                    word in pos_lookup["NN"]
-                    or word in pos_lookup["VB"]
-                    or word in pos_lookup["JJ"]
-                ):
-                    allowed = True
-                if (
-                    word in pos_lookup["IN"]
-                    or word in pos_lookup["DT"]
-                    or word in pos_lookup["."]
-                    or word in pos_lookup["X"]
-                    or word in pos_lookup["PRP"]
-                    or word in pos_lookup["RB"]
-                    or word in pos_lookup["EX"]
-                    or word in pos_lookup["WDT"]
-                    or word in pos_lookup["WP"]
-                    or word in pos_lookup["MD"]
-                    or word in PSKeys.disallowed_words
-                ):
-                    override_allowed = True
-                if p == 0 or p == 2:
-                    if word in words_allowed_only_in_middle:
-                        override_allowed = True
-                p += 1
-            if allowed and not override_allowed:
-                keywords.append(" ".join(trigram))
-        bigrams = list(ngrams(words, 2))
-        for bigram in bigrams:
-            allowed = False
-            override_allowed = False
-            for word in bigram:
-                if (
-                    word in pos_lookup["NN"]
-                    or word in pos_lookup["VB"]
-                    or word in pos_lookup["JJ"]
-                ):
-                    allowed = True
-                if (
-                    word in pos_lookup["IN"]
-                    or word in pos_lookup["DT"]
-                    or word in pos_lookup["."]
-                    or word in pos_lookup["X"]
-                    or word in pos_lookup["PRP"]
-                    or word in pos_lookup["RB"]
-                    or word in pos_lookup["EX"]
-                    or word in pos_lookup["WDT"]
-                    or word in pos_lookup["WP"]
-                    or word in pos_lookup["MD"]
-                    or word in PSKeys.disallowed_words
-                ):
-                    override_allowed = True
-                # In bigrams, these words cannot be in the middle
-                # so if they are preset, remove the bigram
-                if word in words_allowed_only_in_middle:
-                    override_allowed = True
-
-            if allowed and not override_allowed:
-                keywords.append(" ".join(bigram))
-    with open(POS_TEXT_PATH, "a") as f:
-        f.write(str(keywords) + "\n")
-    return keywords
+plugins: dict[str, dict[str, Any]] = plugin_loader(app)
 
 
-class UnstractRetriever_V_K(BaseRetriever):
-    def __init__(
-        self,
-        index: VectorStoreIndex,
-        doc_id: str,
-        vector_db: VectorStore,
-        collection: str,
-        service_context: ServiceContext,
-        tool: BaseTool,
-    ):
-        self.index = index
-        self.db_name = f"/tmp/{doc_id}.db"
-        self.service_context = service_context
-        self.doc_id = doc_id
-        self.collection = collection
-        self.vector_db = vector_db
-        self.tool = tool
-
-    def _retrieve(self, query_bundle: QueryBundle) -> list[NodeWithScore]:
-        print(f"Query: {query_bundle.query_str}")
-        # vec_retriever = self.index.as_retriever(
-        #     similarity_top_k=2,
-        #     filters=MetadataFilters(
-        #         filters=[
-        #             ExactMatchFilter(key=PSKeys.DOC_ID, value=self.doc_id)
-        #         ],
-        #     ),
-        # )
-        keywords = get_keywords_from_pos(query_bundle.query_str)
-        print(f"Keywords: {keywords}")
-
-        db = sqlite3.connect(self.db_name)
-        cursor = db.cursor()
-        cursor.execute(Query.DROP_TABLE)
-        db.commit()
-        cursor.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS nodes "
-            "USING fts5(doc_id, node_id, text, tokenize='porter unicode61');"
-        )
-        db.commit()
-
-        try:
-            embedding_li = self.service_context.embed_model
-            q = VectorStoreQuery(
-                query_embedding=embedding_li.get_query_embedding(" "),
-                doc_ids=[self.doc_id],
-                similarity_top_k=10000,
-            )
-        except Exception as e:
-            self.tool.stream_log(f"Error creating querying : {e}")
-            raise Exception(f"Error creating querying : {e}")
-
-        n: VectorStoreQueryResult = self.vector_db.query(query=q)
-        # all_nodes = n.nodes
-        all_nodes = []
-        for node in n.nodes:  # type:ignore
-            all_nodes.append(NodeWithScore(node=node, score=0.8))
-
-        if len(n.nodes) > 0:  # type:ignore
-            for node in n.nodes:  # type:ignore
-                node_chunk_text = re.sub(" +", " ", node.get_content()).replace(
-                    "\n", " "
-                )
-                node_text = node_chunk_text
-                cursor.execute(
-                    Query.INSERT_INTO,
-                    (self.doc_id, node.node_id, node_text),
-                )
-            db.commit()
-        else:
-            self.tool.stream_log(f"No nodes found for {self.doc_id}")
-
-        keyword_nodes_metadata = get_nodes_with_keywords(self.db_name, keywords)
-        keyword_node_ids = []
-        for node in keyword_nodes_metadata:
-            keyword_node_ids.append(node[1])
-
-        # Get node from index using node_id
-        keyword_nodes = []
-
-        for node in all_nodes:
-            if node.node_id in keyword_node_ids:
-                keyword_nodes.append(node)
-                # print(node)
-
-        return keyword_nodes
-        # return keyword_nodes + vec_nodes
-        # return vec_nodes
+def _publish_log(
+    log_events_id: str,
+    component: dict[str, str],
+    level: Enum,
+    state: Enum,
+    message: str,
+) -> None:
+    LogPublisher.publish(
+        log_events_id,
+        LogPublisher.log_prompt(component, level.value, state.value, message),
+    )
 
 
 def construct_prompt(
@@ -338,7 +125,6 @@ def construct_prompt_for_engine(
     grammar_list: list[dict[str, Any]],
 ) -> str:
     # Let's cleanup the context. Remove if 3 consecutive newlines are found
-
     prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}\n"
     if grammar_list is not None and len(grammar_list) > 0:
         prompt += "\n"
@@ -357,34 +143,11 @@ def construct_prompt_for_engine(
     return prompt
 
 
-def get_nodes_with_keywords(db_name: str, keywords: list[Any]) -> list[Any]:
-    if len(keywords) == 0:
-        return []
-    db = sqlite3.connect(db_name)
-    cursor = db.cursor()
-    keywords = ['"' + k + '"' for k in keywords]
-    # keywords = ['dosing schedules']
-    query = Query.SELECT
-    for i in range(len(keywords)):
-        if i == 0:
-            query += Query.NODE_MATCH
-        else:
-            query += " OR " + Query.NODE_MATCH
-    query += Query.ORDER_BY
-    res = cursor.execute(query, keywords)
-    nodes = []
-    for r in res:
-        nodes.append(r)
-    return nodes
-
-
 def authentication_middleware(func: Any) -> Any:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         token = AuthenticationMiddleware.get_token_from_auth_header(request)
         # Check if bearer token exists and validate it
-        if not token or not AuthenticationMiddleware.validate_bearer_token(
-            token
-        ):
+        if not token or not AuthenticationMiddleware.validate_bearer_token(token):
             return "Unauthorized", 401
 
         return func(*args, **kwargs)
@@ -392,39 +155,72 @@ def authentication_middleware(func: Any) -> Any:
     return wrapper
 
 
-@app.route("/answer-prompt", methods=["POST", "GET", "DELETE"])
+@app.route(
+    "/answer-prompt",
+    endpoint="answer_prompt",
+    methods=["POST"],
+)
 @authentication_middleware
 def prompt_processor() -> Any:
-    result: dict[str, Any] = {}
     platform_key = AuthenticationMiddleware.get_token_from_auth_header(request)
-    if request.method == "POST":
-        payload: dict[Any, Any] = request.json
-        if not payload:
-            result["error"] = "Bad Request / No payload"
-            return result, 400
+    payload: dict[Any, Any] = request.json
+    if not payload:
+        raise NoPayloadError
     outputs = payload.get(PSKeys.OUTPUTS)
-    tool_id = payload.get(PSKeys.TOOL_ID)
+    tool_id: str = payload.get(PSKeys.TOOL_ID, "")
+    run_id: str = payload.get(PSKeys.RUN_ID, "")
     file_hash = payload.get(PSKeys.FILE_HASH)
+    doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
+    log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
+
     structured_output: dict[str, Any] = {}
     variable_names: list[str] = []
+    _publish_log(
+        log_events_id,
+        {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
+        LogLevel.DEBUG,
+        RunLevel.RUN,
+        "Preparing to execute all prompts",
+    )
 
     for output in outputs:  # type:ignore
         variable_names.append(output[PSKeys.NAME])
     for output in outputs:  # type:ignore
-        active = output[PSKeys.ACTIVE]
-        name = output[PSKeys.NAME]
+        is_active = output[PSKeys.ACTIVE]
+        prompt_name = output[PSKeys.NAME]
         promptx = output[PSKeys.PROMPT]
         chunk_size = output[PSKeys.CHUNK_SIZE]
-        util = PromptServiceBaseTool(
-            log_level=LogLevel.INFO, platform_key=platform_key
-        )
-        tool_index = ToolIndex(tool=util)
+        util = PromptServiceBaseTool(log_level=LogLevel.INFO, platform_key=platform_key)
+        tool_index = Index(tool=util)
+        adapter_instance_id = output[PSKeys.LLM]
 
-        app.logger.info(f"Processing output for : {name}")
-
-        if active is False:
-            app.logger.info(f"Output {name} is not active. Skipping")
+        if is_active is False:
+            app.logger.info(f"[{tool_id}] Skipping inactive prompt: {prompt_name}")
+            _publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.INFO,
+                RunLevel.RUN,
+                "Skipping inactive prompt",
+            )
             continue
+
+        app.logger.info(f"[{tool_id}] Executing prompt: {prompt_name}")
+        _publish_log(
+            log_events_id,
+            {
+                "tool_id": tool_id,
+                "prompt_key": prompt_name,
+                "doc_name": doc_name,
+            },
+            LogLevel.DEBUG,
+            RunLevel.RUN,
+            "Executing prompt",
+        )
 
         # Finding and replacing the variables in the prompt
         # The variables are in the form %variable_name%
@@ -433,156 +229,177 @@ def prompt_processor() -> Any:
             structured_output, variable_names, output, promptx
         )
 
-        doc_id = ToolIndex.generate_file_id(
+        doc_id = tool_index.generate_file_id(
             tool_id=tool_id,
             file_hash=file_hash,
             vector_db=output[PSKeys.VECTOR_DB],
             embedding=output[PSKeys.EMBEDDING],
             x2text=output[PSKeys.X2TEXT_ADAPTER],
-            chunk_size=output[PSKeys.CHUNK_SIZE],
-            chunk_overlap=output[PSKeys.CHUNK_OVERLAP],
+            chunk_size=str(output[PSKeys.CHUNK_SIZE]),
+            chunk_overlap=str(output[PSKeys.CHUNK_OVERLAP]),
+        )
+        _publish_log(
+            log_events_id,
+            {
+                "tool_id": tool_id,
+                "prompt_key": prompt_name,
+                "doc_name": doc_name,
+            },
+            LogLevel.DEBUG,
+            RunLevel.RUN,
+            "Retrieved document ID",
         )
 
-        llm_helper = ToolLLM(tool=util)
-        llm_li: Optional[LLM] = llm_helper.get_llm(
-            adapter_instance_id=output[PSKeys.LLM]
-        )
-        if llm_li is None:
-            msg = f"Couldn't fetch LLM {output[PSKeys.LLM]}"
-            app.logger.error(msg)
-            result["error"] = msg
-            return result, 500
-        embedd_helper = ToolEmbedding(tool=util)
-        embedding_li = embedd_helper.get_embedding(
-            adapter_instance_id=output[PSKeys.EMBEDDING]
-        )
-        if embedding_li is None:
-            msg = f"Couldn't fetch embedding {output[PSKeys.EMBEDDING]}"
-            app.logger.error(msg)
-            result["error"] = msg
-            return result, 500
-        embedding_dimension = embedd_helper.get_embedding_length(embedding_li)
+        try:
+            usage_kwargs = {"run_id": run_id}
+            adapter_instance_id = output[PSKeys.LLM]
+            llm = LLM(
+                tool=util,
+                adapter_instance_id=adapter_instance_id,
+                usage_kwargs=usage_kwargs,
+            )
 
-        service_context = UNServiceContext.get_service_context(
-            platform_api_key=platform_key, llm=llm_li, embed_model=embedding_li
-        )
-        vdb_helper = ToolVectorDB(
-            tool=util,
-        )
-        vector_db_li = vdb_helper.get_vector_db(
-            adapter_instance_id=output[PSKeys.VECTOR_DB],
-            embedding_dimension=embedding_dimension,
-        )
-        if vector_db_li is None:
-            msg = f"Couldn't fetch vector DB {output[PSKeys.VECTOR_DB]}"
+            embedding = Embedding(
+                tool=util,
+                adapter_instance_id=output[PSKeys.EMBEDDING],
+                usage_kwargs=usage_kwargs,
+            )
+
+            vector_db = VectorDB(
+                tool=util,
+                adapter_instance_id=output[PSKeys.VECTOR_DB],
+                embedding=embedding,
+            )
+        except SdkError as e:
+            msg = f"Couldn't fetch adapter. {e}"
             app.logger.error(msg)
-            result["error"] = msg
-            return result, 500
-        vector_index = VectorStoreIndex.from_vector_store(
-            vector_store=vector_db_li, service_context=service_context
-        )
+            _publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.ERROR,
+                RunLevel.RUN,
+                "Unable to obtain LLM / embedding / vectorDB",
+            )
+            return APIError(message=msg)
+
+        vector_index = vector_db.get_vector_store_index()
 
         context = ""
         if output[PSKeys.CHUNK_SIZE] == 0:
             # We can do this only for chunkless indexes
-            context = tool_index.get_text_from_index(
-                embedding_type=output[PSKeys.EMBEDDING],
-                vector_db=output[PSKeys.VECTOR_DB],
+            context: Optional[str] = tool_index.get_text_from_index(
+                embedding_instance_id=output[PSKeys.EMBEDDING],
+                vector_db_instance_id=output[PSKeys.VECTOR_DB],
                 doc_id=doc_id,
+                usage_kwargs=usage_kwargs,
+            )
+            if context is None:
+                # TODO: Obtain user set name for vector DB
+                msg = "Couldn't fetch context from vector DB"
+                app.logger.error(
+                    f"{msg} {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
+                )
+                _publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.ERROR,
+                    RunLevel.RUN,
+                    msg,
+                )
+                raise APIError(message=msg)
+            # TODO: Use vectorDB name when available
+            _publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.DEBUG,
+                RunLevel.RUN,
+                "Fetched context from vector DB",
             )
 
-        assertion_failed = False
-        answer = "yes"
-
-        is_assert = output[PSKeys.IS_ASSERT]
-        if is_assert:
-            app.logger.info(f'Asserting prompt: {output["assert_prompt"]}')
+        if chunk_size == 0:
+            _publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.INFO,
+                RunLevel.RUN,
+                "Retrieving answer from LLM",
+            )
             answer = construct_and_run_prompt(
                 output,
-                llm_helper,
-                llm_li,
+                llm,
                 context,
-                "assert_prompt",
+                "promptx",
             )
-            app.logger.info(f"Assert response: {answer}")
-        if answer.startswith("No") or answer.startswith("no"):
-            app.logger.info("Assert failed.")
-            assertion_failed = True
-            answer = ""
-            if (
-                output[PSKeys.ASSERTION_FAILURE_PROMPT]
-                .lower()
-                .startswith("@assign")
-            ):
-                answer = "NA"
-                first_space_index = output[
-                    PSKeys.ASSERTION_FAILURE_PROMPT
-                ].find(" ")
-                if first_space_index > 0:
-                    answer = output[PSKeys.ASSERTION_FAILURE_PROMPT][
-                        first_space_index + 1 :  # noqa
-                    ]
-                app.logger.info(f"[Assigning] {answer} to the output")
-            else:
-                answer = construct_and_run_prompt(
-                    output,
-                    llm_helper,
-                    llm_li,
-                    context,
-                    "assertion_failure_prompt",
-                )
         else:
-            if chunk_size == 0:
-                answer = construct_and_run_prompt(
-                    output,
-                    llm_helper,
-                    llm_li,
-                    context,
-                    "promptx",
+            answer = "NA"
+            _publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.INFO,
+                RunLevel.RUN,
+                "Retrieving context from adapter",
+            )
+
+            if output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SIMPLE:
+                answer, context = run_retrieval(
+                    output, doc_id, llm, vector_index, PSKeys.SIMPLE
+                )
+            elif output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SUBQUESTION:
+                answer, context = run_retrieval(
+                    output, doc_id, llm, vector_index, PSKeys.SUBQUESTION
                 )
             else:
-                answer = "NA"
-                if output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SIMPLE:
-                    answer, context = simple_retriver(
-                        output,
-                        doc_id,
-                        llm_helper,
-                        llm_li,
-                        vector_index,
-                    )
+                app.logger.info(
+                    "Invalid retrieval strategy "
+                    f"passed {output[PSKeys.RETRIEVAL_STRATEGY]}"
+                )
 
-                    # query_engine = vector_index.as_query_engine(
-                    #     filters=MetadataFilters(
-                    #         filters=[ExactMatchFilter(key="doc_id", value=doc_id)],  # noqa
-                    #     ),
-                    #     similarity_top_k=output['similarity-top-k'],
-                    # )
-                    # r = query_engine.query(output['promptx'])
-                    # print(r)
-                    # answer = r.response
+            _publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.DEBUG,
+                RunLevel.RUN,
+                "Retrieved context from adapter",
+            )
 
-                elif output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.VECTOR_KEYWORD:
-                    # TODO: Currently the retriever is restricted to keywords only.  # noqa
-                    # TODO: We need to add the vector retriever as well (removed due to context length)  # noqa
-                    answer, context = vector_keyword_retriver(
-                        output,
-                        util,
-                        doc_id,
-                        service_context,
-                        vector_db_li,
-                        vector_index,
-                    )
-                elif output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SUBQUESTION:
-                    answer, context = subquestion_retriver(
-                        output, doc_id, service_context, vector_index
-                    )
-                    # nodes = response.source_nodes
-                    # print(nodes)
-                else:
-                    app.logger.info("No retrieval strategy matched")
+        _publish_log(
+            log_events_id,
+            {
+                "tool_id": tool_id,
+                "prompt_key": prompt_name,
+                "doc_name": doc_name,
+            },
+            LogLevel.INFO,
+            RunLevel.RUN,
+            f"Processing prompt type: {output[PSKeys.TYPE]}",
+        )
 
         if output[PSKeys.TYPE] == PSKeys.NUMBER:
-            if assertion_failed or answer.lower() == "na":
+            if answer.lower() == "na":
                 structured_output[output[PSKeys.NAME]] = None
             else:
                 # TODO: Extract these prompts as constants after pkging
@@ -597,9 +414,8 @@ def prompt_processor() -> Any:
                     characters. No explanation is required.\
                     If you cannot extract the number, output 0."
                 answer = run_completion(
-                    llm_helper,
-                    llm_li,
-                    prompt,
+                    llm=llm,
+                    prompt=prompt,
                 )
                 try:
                     structured_output[output[PSKeys.NAME]] = float(answer)
@@ -610,20 +426,19 @@ def prompt_processor() -> Any:
                     )
                     structured_output[output[PSKeys.NAME]] = None
         elif output[PSKeys.TYPE] == PSKeys.EMAIL:
-            if assertion_failed or answer.lower() == "na":
+            if answer.lower() == "na":
                 structured_output[output[PSKeys.NAME]] = None
             else:
                 prompt = f'Extract the email from the following text:\n{answer}\n\nOutput just the email. \
                     The email should be directly assignable to a string variable. \
                         No explanation is required. If you cannot extract the email, output "NA".'  # noqa
                 answer = run_completion(
-                    llm_helper,
-                    llm_li,
-                    prompt,
+                    llm=llm,
+                    prompt=prompt,
                 )
                 structured_output[output[PSKeys.NAME]] = answer
         elif output[PSKeys.TYPE] == PSKeys.DATE:
-            if assertion_failed or answer.lower() == "na":
+            if answer.lower() == "na":
                 structured_output[output[PSKeys.NAME]] = None
             else:
                 prompt = f'Extract the date from the following text:\n{answer}\n\nOutput just the date.\
@@ -631,45 +446,48 @@ def prompt_processor() -> Any:
                         The date should be directly assignable to a date variable. \
                             If you cannot convert the string into a date, output "NA".'  # noqa
                 answer = run_completion(
-                    llm_helper,
-                    llm_li,
-                    prompt,
+                    llm=llm,
+                    prompt=prompt,
                 )
                 structured_output[output[PSKeys.NAME]] = answer
 
         elif output[PSKeys.TYPE] == PSKeys.BOOLEAN:
-            if assertion_failed or answer.lower() == "na":
+            if answer.lower() == "na":
                 structured_output[output[PSKeys.NAME]] = None
             else:
+                prompt = f'Extract yes/no from the following text:\n{answer}\n\n\
+                    Output in single word.\
+                    If the context is trying to convey that the answer is true, \
+                    then return "yes", else return "no".'
+                answer = run_completion(
+                    llm=llm,
+                    prompt=prompt,
+                )
                 if answer.lower() == "yes":
                     structured_output[output[PSKeys.NAME]] = True
                 else:
                     structured_output[output[PSKeys.NAME]] = False
         elif output[PSKeys.TYPE] == PSKeys.JSON:
-            if (
-                assertion_failed
-                or answer.lower() == "[]"
-                or answer.lower() == "na"
-            ):
+            if answer.lower() == "[]" or answer.lower() == "na":
                 structured_output[output[PSKeys.NAME]] = None
             else:
-                # Remove any markdown code blocks
-                lines = answer.split("\n")
-                answer = ""
-                for line in lines:
-                    if line.strip().startswith("```"):
-                        continue
-                    answer += line + "\n"
+                prompt = f"Convert the following text into valid JSON string: \
+                    \n{answer}\n\n The JSON string should be able to be parsed \
+                    into a Python dictionary. \
+                    Output just the JSON string. No explanation is required. \
+                    If you cannot extract the JSON string, output {{}}"
+                answer = run_completion(
+                    llm=llm,
+                    prompt=prompt,
+                )
                 try:
                     structured_output[output[PSKeys.NAME]] = json.loads(answer)
-                except Exception as e:
-                    app.logger.info(
-                        f"JSON format error : {answer}", LogLevel.ERROR
-                    )
+                except JSONDecodeError as e:
+                    app.logger.info(f"JSON format error : {answer}", LogLevel.ERROR)
                     app.logger.info(
                         f"Error parsing response (to json): {e}", LogLevel.ERROR
                     )
-                    structured_output[output[PSKeys.NAME]] = []
+                    structured_output[output[PSKeys.NAME]] = {}
         else:
             structured_output[output[PSKeys.NAME]] = answer
 
@@ -679,6 +497,67 @@ def prompt_processor() -> Any:
                 output[PSKeys.NAME]
             ].rstrip("\n")
 
+        # Challenge condition
+        if "enable_challenge" in output and output["enable_challenge"]:
+            challenge_plugin: dict[str, Any] = plugins.get("challenge", {})
+            try:
+                if challenge_plugin:
+                    _publish_log(
+                        log_events_id,
+                        {
+                            "tool_id": tool_id,
+                            "prompt_key": prompt_name,
+                            "doc_name": doc_name,
+                        },
+                        LogLevel.INFO,
+                        RunLevel.CHALLENGE,
+                        "Challenging response",
+                    )
+                    tool_settings: dict[str, Any] = {
+                        PSKeys.PREAMBLE: output[PSKeys.PREAMBLE],
+                        PSKeys.POSTAMBLE: output[PSKeys.POSTAMBLE],
+                        PSKeys.GRAMMAR: output[PSKeys.GRAMMAR],
+                        PSKeys.LLM: adapter_instance_id,
+                        PSKeys.CHALLENGE_LLM: output[PSKeys.CHALLENGE_LLM],
+                    }
+                    challenge_llm = LLM(
+                        tool=util,
+                        adapter_instance_id=output[PSKeys.CHALLENGE_LLM],
+                        usage_kwargs=usage_kwargs,
+                    )
+                    challenge = challenge_plugin["entrypoint_cls"](
+                        challenge_llm=challenge_llm,
+                        run_id=run_id,
+                        context=context,
+                        tool_settings=tool_settings,
+                        output=output,
+                        structured_output=structured_output,
+                        logger=app.logger,
+                        platform_key=platform_key,
+                    )
+                    # Will inline replace the structured output passed.
+                    challenge.run()
+                else:
+                    app.logger.info(
+                        "No challenge plugin found to evaluate prompt: %s",
+                        output["name"],
+                    )
+            except challenge_plugin["exception_cls"] as e:
+                app.logger.error(
+                    "Failed to challenge prompt %s: %s", output["name"], str(e)
+                )
+                _publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.ERROR,
+                    RunLevel.CHALLENGE,
+                    "Error while challenging response",
+                )
+
         #
         # Evaluate the prompt.
         #
@@ -687,8 +566,19 @@ def prompt_processor() -> Any:
             and output[PSKeys.EVAL_SETTINGS][PSKeys.EVAL_SETTINGS_EVALUATE]
         ):
             eval_plugin: dict[str, Any] = plugins.get("evaluation", {})
-            try:
-                if eval_plugin:
+            if eval_plugin:
+                _publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.INFO,
+                    RunLevel.EVAL,
+                    "Evaluating response",
+                )
+                try:
                     evaluator = eval_plugin["entrypoint_cls"](
                         "",
                         context,
@@ -701,18 +591,45 @@ def prompt_processor() -> Any:
                     )
                     # Will inline replace the structured output passed.
                     evaluator.run()
-                else:
-                    app.logger.info(
-                        f'No eval plugin found to evaluate prompt: {output["name"]}'  # noqa: E501
+                except eval_plugin["exception_cls"] as e:
+                    app.logger.error(
+                        f'Failed to evaluate prompt {output["name"]}: {str(e)}'
                     )
-            except eval_plugin["exception_cls"] as e:
-                app.logger.error(
-                    f'Failed to evaluate prompt {output["name"]}: {str(e)}'
+                    _publish_log(
+                        log_events_id,
+                        {
+                            "tool_id": tool_id,
+                            "prompt_key": prompt_name,
+                            "doc_name": doc_name,
+                        },
+                        LogLevel.ERROR,
+                        RunLevel.EVAL,
+                        "Error while evaluation",
+                    )
+                else:
+                    _publish_log(
+                        log_events_id,
+                        {
+                            "tool_id": tool_id,
+                            "prompt_key": prompt_name,
+                            "doc_name": doc_name,
+                        },
+                        LogLevel.DEBUG,
+                        RunLevel.EVAL,
+                        "Evaluation completed",
+                    )
+            else:
+                app.logger.info(
+                    f'No eval plugin found to evaluate prompt: {output["name"]}'  # noqa: E501
                 )
-        #
-        #
-        #
 
+    _publish_log(
+        log_events_id,
+        {"tool_id": tool_id, "doc_name": doc_name},
+        LogLevel.INFO,
+        RunLevel.RUN,
+        "Sanitizing null values",
+    )
     for k, v in structured_output.items():
         if isinstance(v, str) and v.lower() == "na":
             structured_output[k] = None
@@ -729,81 +646,23 @@ def prompt_processor() -> Any:
                 if isinstance(v1, str) and v1.lower() == "na":
                     v[k1] = None
 
-    return structured_output
+    _publish_log(
+        log_events_id,
+        {"tool_id": tool_id, "doc_name": doc_name},
+        LogLevel.INFO,
+        RunLevel.RUN,
+        "Execution complete",
+    )
+    response = {"run_id": run_id, "output": structured_output}
+    return response
 
 
-def subquestion_retriver(
+def run_retrieval(  # type:ignore
     output: dict[str, Any],
     doc_id: str,
-    service_context: ServiceContext,
-    vector_index: VectorStoreIndex,
-) -> tuple[Any, str]:
-    query_engine = vector_index.as_query_engine(
-        filters=MetadataFilters(
-            filters=[ExactMatchFilter(key=PSKeys.DOC_ID, value=doc_id)],
-        ),
-        similarity_top_k=output[PSKeys.SIMILARITY_TOP_K],
-    )
-    query_engine_tools = [
-        QueryEngineTool(
-            query_engine=query_engine,
-            metadata=ToolMetadata(
-                name="unstract-subquestion",
-                description="Subquestion query engine",
-            ),
-        ),
-    ]
-    query_engine = SubQuestionQueryEngine.from_defaults(
-        query_engine_tools=query_engine_tools,
-        service_context=service_context,
-        use_async=True,
-    )
-
-    prompt = f"{output[PSKeys.PREAMBLE]}\n\n{output[PSKeys.PROMPTX]}"
-    response = query_engine.query(prompt)
-    answer = response.response  # type:ignore
-    # Retrieves all the source nodes contents truncated to input length.
-    sources_text = response.get_formatted_sources(10000)
-    return (answer, sources_text)
-
-
-def vector_keyword_retriver(
-    output: dict[str, Any],
-    util: BaseTool,
-    doc_id: str,
-    service_context: ServiceContext,
-    vector_db_li: VectorStore,
-    vector_index: VectorStoreIndex,
-) -> tuple[Any, str]:
-    retriever = UnstractRetriever_V_K(
-        vector_index,
-        doc_id,
-        vector_db_li,
-        "unstract_vector_db",
-        service_context,
-        util,
-    )
-    response_synthesizer = get_response_synthesizer(
-        service_context=service_context,
-        verbose=True,
-    )
-    custom_query_engine = RetrieverQueryEngine(
-        retriever=retriever,
-        response_synthesizer=response_synthesizer,
-    )
-    response = custom_query_engine.query(output[PSKeys.PROMPTX])
-    answer = response.response  # type:ignore
-    # Retrieves all the source nodes contents truncated to input length.
-    sources_text = response.get_formatted_sources(10000)
-    return (answer, sources_text)
-
-
-def simple_retriver(  # type:ignore
-    output: dict[str, Any],
-    doc_id: str,
-    llm_helper: ToolLLM,
-    llm_li: Optional[LLM],
+    llm: LLM,
     vector_index,
+    retrieval_type: str,
 ) -> tuple[str, str]:
     prompt = construct_prompt_for_engine(
         preamble=output["preamble"],
@@ -811,16 +670,28 @@ def simple_retriver(  # type:ignore
         postamble=output["postamble"],
         grammar_list=output["grammar"],
     )
-    subq_prompt = (
-        f"Generate a sub-question from the following verbose prompt that will"
-        f" help extract relevant documents from a vector store:\n\n{prompt}"
-    )
-    answer: str = run_completion(
-        llm_helper,
-        llm_li,
-        subq_prompt,
+    if retrieval_type is PSKeys.SUBQUESTION:
+        subq_prompt = (
+            f"Generate a sub-question from the following verbose prompt that will"
+            f" help extract relevant documents from a vector store:\n\n{prompt}"
+        )
+        prompt = run_completion(
+            llm=llm,
+            prompt=subq_prompt,
+        )
+    context = _retrieve_context(output, doc_id, vector_index, prompt)
+
+    answer = construct_and_run_prompt(  # type:ignore
+        output,
+        llm,
+        context,
+        "promptx",
     )
 
+    return (answer, context)
+
+
+def _retrieve_context(output, doc_id, vector_index, answer) -> str:
     retriever = vector_index.as_retriever(
         similarity_top_k=output[PSKeys.SIMILARITY_TOP_K],
         filters=MetadataFilters(
@@ -838,27 +709,16 @@ def simple_retriver(  # type:ignore
         if node.score > 0.6:
             text += node.get_content() + "\n"
         else:
-            app.logger.info(
-                "Node score is less than 0.6. " f"Ignored: {node.score}"
-            )
-
-    answer: str = construct_and_run_prompt(  # type:ignore
-        output,
-        llm_helper,
-        llm_li,
-        text,
-        "promptx",
-    )
-    return (answer, text)
+            app.logger.info("Node score is less than 0.6. " f"Ignored: {node.score}")
+    return text
 
 
 def construct_and_run_prompt(
     output: dict[str, Any],
-    llm_helper: ToolLLM,
-    llm_li: Optional[LLM],
+    llm: LLM,
     context: str,
     prompt: str,
-) -> str:
+) -> tuple[str, dict[str, Any]]:
     prompt = construct_prompt(
         preamble=output[PSKeys.PREAMBLE],
         prompt=output[prompt],
@@ -866,36 +726,28 @@ def construct_and_run_prompt(
         grammar_list=output[PSKeys.GRAMMAR],
         context=context,
     )
-    try:
-        answer: str = run_completion(
-            llm_helper,
-            llm_li,
-            prompt,
-        )
-        return answer
-    except Exception as e:
-        app.logger.info(f"Error completing prompt: {e}.")
-        raise e
+    return run_completion(
+        llm=llm,
+        prompt=prompt,
+    )
 
 
 def run_completion(
-    llm_helper: ToolLLM,
-    llm_li: Optional[LLM],
+    llm: LLM,
     prompt: str,
-) -> str:
+) -> tuple[str, dict[str, Any]]:
     try:
-        platform_api_key = llm_helper.tool.get_env_or_die(
-            PSKeys.PLATFORM_SERVICE_API_KEY
-        )
-        completion = llm_helper.run_completion(
-            llm_li, platform_api_key, prompt, 3
-        )
+        completion = llm.run_completion(prompt)
 
         answer: str = completion[PSKeys.RESPONSE].text
         return answer
+    # TODO: Catch and handle specific exception here
+    except SdkRateLimitError as e:
+        raise RateLimitError(f"Rate limit error. {str(e)}") from e
     except Exception as e:
-        app.logger.info(f"Error completing prompt: {e}.")
-        raise e
+        app.logger.error(f"Error fetching response for prompt: {e}.")
+        # TODO: Publish this error as a FE update
+        raise APIError(str(e)) from e
 
 
 def extract_variable(
@@ -913,18 +765,86 @@ def extract_variable(
                 )
             else:
                 raise ValueError(
-                    f"Variable {variable_name} not found "
-                    "in structured output"
+                    f"Variable {variable_name} not found " "in structured output"
                 )
 
     if promptx != output[PSKeys.PROMPT]:
         app.logger.info(f"Prompt after variable replacement: {promptx}")
     return promptx
-    # app.logger.info(f"Total Tokens: {total_extraction_tokens}")
-    # with open(f"/tmp/json_of_{file_name_without_path}.json", "w") as f:
-    #     f.write(json.dumps(structured_output, indent=2))
 
 
+def enable_single_pass_extraction() -> None:
+    """Enables single-pass-extraction plugin if available."""
+    single_pass_extration_plugin: dict[str, Any] = plugins.get(
+        "single-pass-extraction", {}
+    )
+    if single_pass_extration_plugin:
+        single_pass_extration_plugin["entrypoint_cls"](
+            app=app, challenge_plugin=plugins.get("challenge", {})
+        )
+
+
+enable_single_pass_extraction()
+
+
+def log_exceptions(e: HTTPException):
+    """Helper method to log exceptions.
+
+    Args:
+        e (HTTPException): Exception to log
+    """
+    code = 500
+    if hasattr(e, "code"):
+        code = e.code
+
+    if code >= 500:
+        message = "{method} {url} {status}\n\n{error}\n\n````{tb}````".format(
+            method=request.method,
+            url=request.url,
+            status=code,
+            error=str(e),
+            tb=traceback.format_exc(),
+        )
+    else:
+        message = "{method} {url} {status} {error}".format(
+            method=request.method,
+            url=request.url,
+            status=code,
+            error=str(e),
+        )
+    app.logger.error(message)
+
+
+@app.errorhandler(HTTPException)
+def handle_http_exception(e: HTTPException):
+    """Return JSON instead of HTML for HTTP errors."""
+    log_exceptions(e)
+    if isinstance(e, APIError):
+        return jsonify(e.to_dict()), e.code
+    else:
+        response = e.get_response()
+        response.data = json.dumps(
+            ErrorResponse(error=e.description, name=e.name, code=e.code)
+        )
+        response.content_type = "application/json"
+        return response
+
+
+@app.errorhandler(Exception)
+def handle_uncaught_exception(e):
+    """Handler for uncaught exceptions.
+
+    Args:
+        e (Exception): Any uncaught exception
+    """
+    # pass through HTTP errors
+    if isinstance(e, HTTPException):
+        return handle_http_exception(e)
+
+    log_exceptions(e)
+    return handle_http_exception(APIError())
+
+
+# TODO: Review if below code is needed
 if __name__ == "__main__":
-    # Start the server
     app.run(host="0.0.0.0", port=5003)

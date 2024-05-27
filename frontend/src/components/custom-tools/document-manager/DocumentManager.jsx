@@ -1,143 +1,208 @@
-import { Button, Space, Tabs, Tooltip, Typography } from "antd";
+import { LeftOutlined, RightOutlined } from "@ant-design/icons";
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
+import { Button, Space, Tabs, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
-
-import "./DocumentManager.css";
-import { LeftOutlined, RightOutlined } from "@ant-design/icons";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { PdfViewer } from "../pdf-viewer/PdfViewer";
-import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
 import { useEffect, useState } from "react";
+import "./DocumentManager.css";
+
+import { base64toBlob, docIndexStatus } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import {
-  base64toBlob,
-  removeFileExtension,
-} from "../../../helpers/GetStaticData";
 import { DocumentViewer } from "../document-viewer/DocumentViewer";
-import { TextViewer } from "../text-viewer/TextViewer";
+import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
+import { PdfViewer } from "../pdf-viewer/PdfViewer";
+import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
+
+const items = [
+  {
+    key: "1",
+    label: "Doc View",
+  },
+  {
+    key: "2",
+    label: "Raw View",
+  },
+];
 
 const viewTypes = {
-  pdf: "PDF",
+  original: "ORIGINAL",
   extract: "EXTRACT",
-  summarize: "SUMMARIZE",
 };
+
+let SummarizeView = null;
+try {
+  SummarizeView =
+    require("../../../plugins/summarize-view/SummarizeView").SummarizeView;
+  const tabLabel =
+    require("../../../plugins/summarize-tab/SummarizeTab").tabLabel;
+  if (tabLabel) {
+    items.push({
+      key: "3",
+      label: tabLabel,
+    });
+  }
+} catch {
+  // The component will remain null of it is not available
+}
 
 function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [openManageDocsModal, setOpenManageDocsModal] = useState(false);
   const [page, setPage] = useState(1);
   const [activeKey, setActiveKey] = useState("1");
   const [fileUrl, setFileUrl] = useState("");
+  const [fileErrMsg, setFileErrMsg] = useState("");
   const [extractTxt, setExtractTxt] = useState("");
-  const [summaryTxt, setSummaryTxt] = useState("");
+  const [extractErrMsg, setExtractErrMsg] = useState("");
   const [isDocLoading, setIsDocLoading] = useState(false);
   const [isExtractLoading, setIsExtractLoading] = useState(false);
-  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
-  const { selectedDoc, listOfDocs, disableLlmOrDocChange, details } =
-    useCustomToolStore();
+  const [currDocIndexStatus, setCurrDocIndexStatus] = useState(
+    docIndexStatus.yet_to_start
+  );
+  const {
+    selectedDoc,
+    listOfDocs,
+    disableLlmOrDocChange,
+    details,
+    indexDocs,
+    isSinglePassExtractLoading,
+  } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
-
-  const items = [
-    {
-      key: "1",
-      label: "Doc View",
-    },
-    {
-      key: "2",
-      label: "Raw View",
-    },
-    {
-      key: "3",
-      label: "Summarize View",
-    },
-  ];
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   useEffect(() => {
-    const fileNameTxt = removeFileExtension(selectedDoc);
-    const files = [
-      {
-        fileName: selectedDoc,
-        viewType: viewTypes.pdf,
-      },
-      {
-        fileName: `extract/${fileNameTxt}.txt`,
-        viewType: viewTypes.extract,
-      },
-      {
-        fileName: `summarize/${fileNameTxt}.txt`,
-        viewType: viewTypes.summarize,
-      },
-    ];
-
     setFileUrl("");
     setExtractTxt("");
-    setSummaryTxt("");
-    files.forEach((item) => {
-      handleFetchContent(item);
+    Object.keys(viewTypes).forEach((item) => {
+      handleFetchContent(viewTypes[item]);
     });
   }, [selectedDoc]);
 
-  const handleFetchContent = (fileDetails) => {
-    if (!selectedDoc) {
+  useEffect(() => {
+    if (currDocIndexStatus === docIndexStatus.done) {
+      handleFetchContent(viewTypes.extract);
+      setCurrDocIndexStatus(docIndexStatus.yet_to_start);
+    }
+  }, [currDocIndexStatus]);
+
+  useEffect(() => {
+    if (docIndexStatus.yet_to_start === currDocIndexStatus) {
+      const isIndexing = indexDocs.find(
+        (item) => item === selectedDoc?.document_id
+      );
+
+      if (isIndexing) {
+        setCurrDocIndexStatus(docIndexStatus.indexing);
+      }
+      return;
+    }
+
+    if (docIndexStatus.indexing === currDocIndexStatus) {
+      const isIndexing = indexDocs.find(
+        (item) => item === selectedDoc?.document_id
+      );
+
+      if (!isIndexing) {
+        setCurrDocIndexStatus(docIndexStatus.done);
+      }
+    }
+  }, [indexDocs]);
+
+  const handleFetchContent = (viewType) => {
+    if (viewType === viewTypes.original) {
       setFileUrl("");
+      setFileErrMsg("");
+    }
+
+    if (viewType === viewTypes.extract) {
       setExtractTxt("");
-      setSummaryTxt("");
+      setExtractErrMsg("");
+    }
+
+    if (!selectedDoc?.document_id) {
       return;
     }
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/fetch_contents?file_name=${fileDetails?.fileName}&tool_id=${details?.tool_id}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}?document_id=${selectedDoc?.document_id}&view_type=${viewType}`,
     };
 
-    handleLoadingStateUpdate(fileDetails?.viewType, true);
+    handleLoadingStateUpdate(viewType, true);
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data?.data;
-        if (fileDetails?.viewType === viewTypes.pdf) {
+        if (viewType === viewTypes.original) {
           const base64String = data || "";
           const blob = base64toBlob(base64String);
           setFileUrl(URL.createObjectURL(blob));
           return;
         }
 
-        if (fileDetails?.viewType === viewTypes?.extract) {
+        if (viewType === viewTypes?.extract) {
           setExtractTxt(data);
         }
-
-        if (fileDetails?.viewType === viewTypes.summarize) {
-          setSummaryTxt(data);
+      })
+      .catch((err) => {
+        if (err?.response?.status === 404) {
+          setErrorMessage(viewType);
         }
       })
-      .catch((err) => {})
       .finally(() => {
-        handleLoadingStateUpdate(fileDetails?.viewType, false);
+        handleLoadingStateUpdate(viewType, false);
       });
   };
 
   const handleLoadingStateUpdate = (viewType, value) => {
-    if (viewType === viewTypes.pdf) {
+    if (viewType === viewTypes.original) {
       setIsDocLoading(value);
     }
 
     if (viewType === viewTypes.extract) {
       setIsExtractLoading(value);
     }
-
-    if (viewType === viewTypes.summarize) {
-      setIsSummaryLoading(value);
-    }
   };
 
   const handleActiveKeyChange = (key) => {
     setActiveKey(key);
+
+    try {
+      if (key === "2") {
+        setPostHogCustomEvent("ps_raw_view_clicked", {
+          info: "Clicked on the 'Raw View' tab",
+        });
+      }
+
+      if (key === "3") {
+        setPostHogCustomEvent("ps_summary_view_clicked", {
+          info: "Clicked on the 'Summary View' tab",
+        });
+      }
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+  };
+
+  const setErrorMessage = (viewType) => {
+    if (viewType === viewTypes.original) {
+      setFileErrMsg("Document not found.");
+    }
+
+    if (viewType === viewTypes.extract) {
+      setExtractErrMsg(
+        "Raw content is not available. Please index or re-index to generate it."
+      );
+    }
   };
 
   useEffect(() => {
-    const index = [...listOfDocs].findIndex((item) => item === selectedDoc);
+    const index = [...listOfDocs].findIndex(
+      (item) => item?.document_id === selectedDoc?.document_id
+    );
     setPage(index + 1);
   }, [selectedDoc, listOfDocs]);
 
@@ -162,7 +227,9 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const updatePageAndDoc = (newPage) => {
     setPage(newPage);
     const newSelectedDoc = listOfDocs[newPage - 1];
-    handleDocChange(newSelectedDoc);
+    if (newSelectedDoc) {
+      handleDocChange(newSelectedDoc);
+    }
   };
 
   return (
@@ -176,15 +243,22 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           />
         </div>
         <Space>
+          <div className="doc-main-title-div">
+            {selectedDoc ? (
+              <Tooltip title={selectedDoc?.document_name}>
+                <Typography.Text className="doc-main-title" ellipsis>
+                  {selectedDoc?.document_name}
+                </Typography.Text>
+              </Tooltip>
+            ) : null}
+          </div>
           <div>
             <Tooltip title="Manage Documents">
               <Button
                 className="doc-manager-btn"
                 onClick={() => setOpenManageDocsModal(true)}
               >
-                <Typography.Text ellipsis>
-                  {selectedDoc || "No Document Selected"}
-                </Typography.Text>
+                <Typography.Text ellipsis>{"Manage Documents"}</Typography.Text>
               </Button>
             </Tooltip>
           </div>
@@ -193,7 +267,10 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
               type="text"
               size="small"
               disabled={
-                !selectedDoc || disableLlmOrDocChange?.length > 0 || page <= 1
+                !selectedDoc ||
+                disableLlmOrDocChange?.length > 0 ||
+                isSinglePassExtractLoading ||
+                page <= 1
               }
               onClick={handlePageLeft}
             >
@@ -205,6 +282,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
               disabled={
                 !selectedDoc ||
                 disableLlmOrDocChange?.length > 0 ||
+                isSinglePassExtractLoading ||
                 page >= listOfDocs?.length
               }
               onClick={handlePageRight}
@@ -216,33 +294,31 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       </div>
       {activeKey === "1" && (
         <DocumentViewer
-          doc={selectedDoc}
+          doc={selectedDoc?.document_name}
           isLoading={isDocLoading}
           isContentAvailable={fileUrl?.length > 0}
           setOpenManageDocsModal={setOpenManageDocsModal}
+          errMsg={fileErrMsg}
         >
           <PdfViewer fileUrl={fileUrl} />
         </DocumentViewer>
       )}
       {activeKey === "2" && (
         <DocumentViewer
-          doc={selectedDoc}
+          doc={selectedDoc?.document_name}
           isLoading={isExtractLoading}
           isContentAvailable={extractTxt?.length > 0}
           setOpenManageDocsModal={setOpenManageDocsModal}
+          errMsg={extractErrMsg}
         >
-          <TextViewer text={extractTxt} />
+          <TextViewerPre text={extractTxt} />
         </DocumentViewer>
       )}
-      {activeKey === "3" && (
-        <DocumentViewer
-          doc={selectedDoc}
-          isLoading={isSummaryLoading}
-          isContentAvailable={summaryTxt?.length > 0}
+      {SummarizeView && activeKey === "3" && (
+        <SummarizeView
           setOpenManageDocsModal={setOpenManageDocsModal}
-        >
-          <TextViewer text={summaryTxt} />
-        </DocumentViewer>
+          currDocIndexStatus={currDocIndexStatus}
+        />
       )}
       <ManageDocsModal
         open={openManageDocsModal}

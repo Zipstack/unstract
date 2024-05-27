@@ -5,12 +5,13 @@ import {
   EditOutlined,
   EllipsisOutlined,
   KeyOutlined,
+  CloudDownloadOutlined,
 } from "@ant-design/icons";
 import { Button, Dropdown, Space, Switch, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { getBaseUrl, handleException } from "../../../helpers/GetStaticData";
+import { getBaseUrl } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
@@ -20,6 +21,7 @@ import { DisplayCode } from "../display-code/DisplayCode";
 import { Layout } from "../layout/Layout";
 import { ManageKeys } from "../manage-keys/ManageKeys";
 import { apiDeploymentsService } from "./api-deployments-service";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 function ApiDeployment() {
   const { sessionDetails } = useSessionStore();
@@ -37,12 +39,100 @@ function ApiDeployment() {
   const [apiKeys, setApiKeys] = useState([]);
   const [isEdit, setIsEdit] = useState(false);
   const [workflowEndpointList, setWorkflowEndpointList] = useState([]);
+  const handleException = useExceptionHandler();
+  const columns = [
+    {
+      title: "API Name",
+      key: "display_name",
+      render: (_, record) => (
+        <Typography.Text strong>{record?.display_name}</Typography.Text>
+      ),
+      align: "left",
+    },
+    {
+      title: "Description",
+      key: "description",
+      render: (_, record) => <Space>{record?.description}</Space>,
+      align: "left",
+    },
+    {
+      title: "API Endpoint",
+      key: "api_endpoint",
+      render: (_, record) => (
+        <Space direction="horizontal" className="display-flex-space-between">
+          <div>
+            <Typography.Text>
+              {displayURL(record?.api_endpoint)}
+            </Typography.Text>
+          </div>
+          <div>
+            <Tooltip title="click to copy">
+              <Button
+                size="small"
+                onClick={() => copyUrl(record?.api_endpoint)}
+              >
+                <CopyOutlined />
+              </Button>
+            </Tooltip>
+          </div>
+        </Space>
+      ),
+      align: "left",
+    },
+    {
+      title: "Workflow",
+      key: "workflow_name",
+      render: (_, record) => (
+        <Tooltip title="view workflow">
+          <Space
+            className="workflowName"
+            onClick={() =>
+              navigate(
+                `/${sessionDetails?.orgName}/workflows/${record?.workflow}`
+              )
+            }
+          >
+            {record?.workflow_name}
+          </Space>
+        </Tooltip>
+      ),
+      align: "left",
+    },
+    {
+      title: "Enabled",
+      key: "active",
+      dataIndex: "active",
+      align: "center",
+      render: (_, record) => (
+        <Switch
+          size="small"
+          checked={record.is_active}
+          onChange={(e) => {
+            updateStatus(record);
+          }}
+        />
+      ),
+    },
+    {
+      title: "Actions",
+      key: "pipeline_id",
+      align: "center",
+      render: (_, record) => (
+        <Dropdown
+          menu={{ items: actionItems }}
+          placement="bottomLeft"
+          onOpenChange={() => setSelectedRow(record)}
+        >
+          <EllipsisOutlined className="cur-pointer" />
+        </Dropdown>
+      ),
+    },
+  ];
 
   useEffect(() => {
     getApiDeploymentList();
     getWorkflows();
   }, []);
-
   const getWorkflows = () => {
     workflowApiService
       .getWorkflowEndpointList("SOURCE", "API")
@@ -144,6 +234,38 @@ function ApiDeployment() {
       });
   };
 
+  const downloadPostmanCollection = () => {
+    apiDeploymentsApiService
+      .downloadPostmanCollection(selectedRow?.id)
+      .then((res) => {
+        const { data, headers } = res;
+        const href = URL.createObjectURL(data);
+        // Get filename from header or use a default
+        const filename =
+          headers["content-disposition"]
+            ?.split("filename=")[1]
+            ?.trim()
+            .replaceAll('"', "") || "postman_collection.json";
+        // create "a" HTML element with href to file & click
+        const link = document.createElement("a");
+        link.href = href;
+        link.setAttribute("download", filename);
+        document.body.appendChild(link);
+        link.click();
+
+        // clean up "a" element & remove ObjectURL
+        document.body.removeChild(link);
+        URL.revokeObjectURL(href);
+        setAlertDetails({
+          type: "success",
+          content: "Collection downloaded successfully",
+        });
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
+  };
+
   const openAddModal = (edit) => {
     setIsEdit(edit);
     setOpenAddApiModal(true);
@@ -173,7 +295,7 @@ function ApiDeployment() {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={() => getApiKeys()}
+          onClick={getApiKeys}
         >
           <div>
             <KeyOutlined />
@@ -190,6 +312,23 @@ function ApiDeployment() {
         <Space
           direction="horizontal"
           className="action-items"
+          onClick={downloadPostmanCollection}
+        >
+          <div>
+            <CloudDownloadOutlined />
+          </div>
+          <div>
+            <Typography.Text>Download Postman Collection</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "4",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
           onClick={() => setOpenCodeModal(true)}
         >
           <div>
@@ -202,7 +341,7 @@ function ApiDeployment() {
       ),
     },
     {
-      key: "4",
+      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -216,95 +355,6 @@ function ApiDeployment() {
             <Typography.Text>Delete</Typography.Text>
           </div>
         </Space>
-      ),
-    },
-  ];
-
-  const columns = [
-    {
-      title: "API Name",
-      key: "display_name",
-      render: (_, record) => (
-        <Typography.Text strong>{record?.display_name}</Typography.Text>
-      ),
-      align: "left",
-    },
-    {
-      title: "Description",
-      key: "description",
-      render: (_, record) => <Space>{record?.description}</Space>,
-      align: "left",
-    },
-    {
-      title: "API Endpoint",
-      key: "api_endpoint",
-      render: (_, record) => (
-        <Space direction="horizontal" className="display-flex-space-between">
-          <div>
-            <Typography.Text>
-              {displayURL(record?.api_endpoint)}
-            </Typography.Text>
-          </div>
-          <div>
-            <Tooltip title="click to copy">
-              <Button
-                size="small"
-                onClick={() => copyUrl(record?.api_endpoint)}
-              >
-                <CopyOutlined />
-              </Button>
-            </Tooltip>
-          </div>
-        </Space>
-      ),
-      align: "left",
-    },
-    {
-      title: "Workflow",
-      key: "workflow_name",
-      render: (_, record) => (
-        <Tooltip title="view workflow">
-          <Space
-            className="workflowName"
-            onClick={() =>
-              navigate(
-                `/${sessionDetails?.orgId}/workflows/${record?.workflow}`
-              )
-            }
-          >
-            {record?.workflow_name}
-          </Space>
-        </Tooltip>
-      ),
-      align: "left",
-    },
-    {
-      title: "Enabled",
-      key: "active",
-      dataIndex: "active",
-      align: "center",
-      render: (_, record) => (
-        <Switch
-          size="small"
-          checked={record.is_active}
-          onChange={(e) => {
-            updateStatus(record);
-          }}
-        />
-      ),
-    },
-    {
-      title: "Actions",
-      key: "pipeline_id",
-      align: "center",
-      render: (_, record) => (
-        <Dropdown
-          menu={{ items: actionItems }}
-          placement="bottomLeft"
-          onOpenChange={() => setSelectedRow(record)}
-        >
-          <EllipsisOutlined className="cur-pointer" />
-        </Dropdown>
       ),
     },
   ];

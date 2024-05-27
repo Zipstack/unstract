@@ -88,10 +88,7 @@ class DestinationConnector(BaseConnector):
             raise MissingDestinationConnectionType()
         if connection_type not in WorkflowEndpoint.ConnectionType.values:
             raise InvalidDestinationConnectionType()
-        if (
-            connection_type != WorkflowEndpoint.ConnectionType.API
-            and connector is None
-        ):
+        if connection_type != WorkflowEndpoint.ConnectionType.API and connector is None:
             raise DestinationConnectorNotConfigured()
 
     def handle_output(
@@ -107,9 +104,7 @@ class DestinationConnector(BaseConnector):
         result: Optional[str] = None
         if error:
             if connection_type == WorkflowEndpoint.ConnectionType.API:
-                self._handle_api_result(
-                    file_name=file_name, error=error, result=result
-                )
+                self._handle_api_result(file_name=file_name, error=error, result=result)
             return
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
@@ -117,15 +112,14 @@ class DestinationConnector(BaseConnector):
             self.insert_into_db(file_history)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
-            self._handle_api_result(
-                file_name=file_name, error=error, result=result
-            )
+            self._handle_api_result(file_name=file_name, error=error, result=result)
         if not file_history:
             FileHistoryHelper.create_file_history(
                 cache_key=file_hash,
                 workflow=workflow,
                 status=ExecutionStatus.COMPLETED,
                 result=result,
+                file_name=file_name,
             )
 
     def copy_output_to_output_directory(self) -> None:
@@ -184,31 +178,20 @@ class DestinationConnector(BaseConnector):
         connector_instance: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector_instance.metadata
         destination_configurations: dict[str, Any] = self.endpoint.configuration
-        table_name: str = str(
-            destination_configurations.get(DestinationKey.TABLE)
-        )
+        table_name: str = str(destination_configurations.get(DestinationKey.TABLE))
         include_agent: bool = bool(
             destination_configurations.get(DestinationKey.INCLUDE_AGENT, False)
         )
         include_timestamp = bool(
-            destination_configurations.get(
-                DestinationKey.INCLUDE_TIMESTAMP, False
-            )
+            destination_configurations.get(DestinationKey.INCLUDE_TIMESTAMP, False)
         )
-        agent_name = str(
-            destination_configurations.get(DestinationKey.AGENT_NAME)
-        )
-        column_mode = str(
-            destination_configurations.get(DestinationKey.COLUMN_MODE)
-        )
+        agent_name = str(destination_configurations.get(DestinationKey.AGENT_NAME))
+        column_mode = str(destination_configurations.get(DestinationKey.COLUMN_MODE))
         single_column_name = str(
-            destination_configurations.get(
-                DestinationKey.SINGLE_COLUMN_NAME, "data"
-            )
+            destination_configurations.get(DestinationKey.SINGLE_COLUMN_NAME, "data")
         )
 
         data = self.get_result(file_history)
-
         values = DatabaseUtils.get_columns_and_values(
             column_mode_str=column_mode,
             data=data,
@@ -217,20 +200,32 @@ class DestinationConnector(BaseConnector):
             agent_name=agent_name,
             single_column_name=single_column_name,
         )
-
-        engine = DatabaseUtils.get_db_engine(
+        db_class = DatabaseUtils.get_db_class(
             connector_id=connector_instance.connector_id,
             connector_settings=connector_settings,
         )
-        sql_values = DatabaseUtils.get_sql_values_for_query(
-            engine=engine, table_name=table_name, values=values
+        engine = db_class.get_engine()
+        # If data is None, don't execute CREATE or INSERT query
+        if data is None:
+            return
+        DatabaseUtils.create_table_if_not_exists(
+            db_class=db_class,
+            engine=engine,
+            table_name=table_name,
+            database_entry=values,
         )
-
+        sql_columns_and_values = DatabaseUtils.get_sql_columns_and_values_for_query(
+            engine=engine,
+            connector_id=connector_instance.connector_id,
+            connector_settings=connector_settings,
+            table_name=table_name,
+            values=values,
+        )
         DatabaseUtils.execute_write_query(
             engine=engine,
             table_name=table_name,
-            sql_keys=list(values.keys()),
-            sql_values=sql_values,
+            sql_keys=list(sql_columns_and_values.keys()),
+            sql_values=list(sql_columns_and_values.values()),
         )
 
     def _handle_api_result(
@@ -313,7 +308,6 @@ class DestinationConnector(BaseConnector):
         """
         if file_history and file_history.result:
             return self.parse_string(file_history.result)
-
         output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         metadata = self.get_workflow_metadata()
         output_type = self.get_output_type(metadata)
@@ -352,9 +346,7 @@ class DestinationConnector(BaseConnector):
         self.delete_api_storage_dir(self.workflow_id, self.execution_id)
 
     @classmethod
-    def delete_api_storage_dir(
-        cls, workflow_id: str, execution_id: str
-    ) -> None:
+    def delete_api_storage_dir(cls, workflow_id: str, execution_id: str) -> None:
         """Delete the api storage path.
 
         Returns:

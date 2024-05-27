@@ -14,19 +14,15 @@ class WorkflowEndpointViewSet(viewsets.ModelViewSet):
     queryset = WorkflowEndpoint.objects.all()
     serializer_class = WorkflowEndpointSerializer
 
-    def get_queryset(self) -> QuerySet:   
-             
+    def get_queryset(self) -> QuerySet:
+
         queryset = (
             WorkflowEndpoint.objects.all()
             .select_related("workflow")
             .filter(workflow__created_by=self.request.user)
         )
-        endpoint_type_filter = self.request.query_params.get(
-            "endpoint_type", None
-        )
-        connection_type_filter = self.request.query_params.get(
-            "connection_type", None
-        )
+        endpoint_type_filter = self.request.query_params.get("endpoint_type", None)
+        connection_type_filter = self.request.query_params.get("connection_type", None)
         if endpoint_type_filter:
             queryset = queryset.filter(endpoint_type=endpoint_type_filter)
         if connection_type_filter:

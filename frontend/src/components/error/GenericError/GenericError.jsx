@@ -30,6 +30,19 @@ function GenericError() {
         subtitle:
           "You'll need to contact the admin of your organization's account to get access or you'll need to use a different email address to sign up.",
       },
+      USR: {
+        title: `Sign-up not allowed.`,
+        subtitle:
+          "You'll need to contact the admin of your organization's account to get access.",
+      },
+      INE001: {
+        title: `Email not allowed`,
+        subtitle: "Disposable emails not allowed.",
+      },
+      INE002: {
+        title: `Invalid Email format`,
+        subtitle: "Please give a valid email address",
+      },
 
       // Add more key-value pairs as needed
     };

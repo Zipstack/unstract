@@ -1,5 +1,4 @@
 import {
-  ArrowDownOutlined,
   CheckCircleOutlined,
   DeleteOutlined,
   EditOutlined,
@@ -14,9 +13,7 @@ import {
   Button,
   Card,
   Col,
-  Collapse,
   Divider,
-  Input,
   Row,
   Select,
   Space,
@@ -25,39 +22,44 @@ import {
   Tooltip,
   Typography,
 } from "antd";
-import debounce from "lodash/debounce";
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useRef, useState } from "react";
-
-import { AssertionIcon } from "../../../assets";
+import { useEffect, useRef, useState } from "react";
 import {
   displayPromptResult,
-  handleException,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
-import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
-import { EvalMetricTag } from "../eval-metric-tag/EvalMetricTag";
-import { EvalModal } from "../eval-modal/EvalModal";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
+
+import { TokenCount } from "../token-count/TokenCount";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
+
+const EvalBtn = null;
+const EvalMetrics = null;
+const EvalModal = null;
+const getEvalMetrics = (param1, param2) => {
+  return [];
+};
 
 function PromptCard({
   promptDetails,
   handleChange,
   handleDelete,
   updateStatus,
+  updatePlaceHolder,
 }) {
   const [enforceTypeList, setEnforceTypeList] = useState([]);
   const [page, setPage] = useState(0);
   const [isRunLoading, setIsRunLoading] = useState(false);
-  const [displayAssertion, setDisplayAssertion] = useState(false);
   const [openEval, setOpenEval] = useState(false);
   const [promptKey, setPromptKey] = useState("");
   const [promptText, setPromptText] = useState("");
@@ -67,13 +69,14 @@ function PromptCard({
   const [result, setResult] = useState({
     promptOutputId: null,
     output: "",
-    evalMetrics: [],
   });
-  const [outputIds, setOutputIds] = useState([]);
   const [coverage, setCoverage] = useState(0);
   const [coverageTotal, setCoverageTotal] = useState(0);
   const [isCoverageLoading, setIsCoverageLoading] = useState(false);
   const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
+  const [progressMsg, setProgressMsg] = useState({});
+  const [docOutputs, setDocOutputs] = useState({});
+  const [tokenCount, setTokenCount] = useState({});
   const divRef = useRef(null);
   const {
     getDropdownItems,
@@ -82,31 +85,49 @@ function PromptCard({
     listOfDocs,
     updateCustomTool,
     details,
+    defaultLlmProfile,
     disableLlmOrDocChange,
+    indexDocs,
+    summarizeIndexStatus,
+    singlePassExtractMode,
+    isSinglePassExtractLoading,
   } = useCustomToolStore();
+  const { messages } = useSocketCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   useEffect(() => {
-    if (promptDetails?.is_assert) {
-      setDisplayAssertion(true);
+    // Find the latest message that matches the criteria
+    const msg = [...messages]
+      .reverse()
+      .find(
+        (item) =>
+          (item?.component?.prompt_id === promptDetails?.prompt_id ||
+            item?.component?.prompt_key === promptKey) &&
+          (item?.level === "INFO" || item?.level === "ERROR")
+      );
+
+    // If no matching message is found, return early
+    if (!msg) {
+      return;
     }
+
+    // Set the progress message state with the found message
+    setProgressMsg({
+      message: msg?.message || "",
+      level: msg?.level || "INFO",
+    });
+  }, [messages]);
+
+  useEffect(() => {
     const outputTypeData = getDropdownItems("output_type");
     const dropdownList1 = Object.keys(outputTypeData).map((item) => {
       return { value: outputTypeData[item] };
     });
     setEnforceTypeList(dropdownList1);
-
-    const llmProfileId = promptDetails?.profile_manager;
-    if (!llmProfileId) {
-      setPage(0);
-      return;
-    }
-    const index = llmProfiles.findIndex(
-      (item) => item?.profile_id === llmProfileId
-    );
-    setPage(index + 1);
   }, []);
 
   useEffect(() => {
@@ -114,9 +135,20 @@ function PromptCard({
   }, [promptDetails]);
 
   useEffect(() => {
+    resetInfoMsgs();
+    if (isSinglePassExtractLoading) {
+      return;
+    }
+
     handleGetOutput();
     handleGetCoverage();
-  }, [selectedLlmProfileId, selectedDoc, listOfDocs]);
+  }, [
+    selectedLlmProfileId,
+    selectedDoc,
+    listOfDocs,
+    singlePassExtractMode,
+    isSinglePassExtractLoading,
+  ]);
 
   useEffect(() => {
     let listOfIds = [...disableLlmOrDocChange];
@@ -155,28 +187,37 @@ function PromptCard({
   }, [page]);
 
   useEffect(() => {
-    if (displayAssertion !== promptDetails?.is_assert) {
-      handleChange(
-        displayAssertion,
-        promptDetails?.prompt_id,
-        "is_assert",
-        true
-      );
-    }
-  }, [displayAssertion]);
-
-  useEffect(() => {
     if (isCoverageLoading && coverageTotal === listOfDocs?.length) {
       setIsCoverageLoading(false);
+      setCoverageTotal(0);
     }
   }, [coverageTotal]);
 
-  const onSearchDebounce = useCallback(
-    debounce((event) => {
-      handleChange(event, promptDetails?.prompt_id, false, true);
-    }, 1000),
-    []
-  );
+  const resetInfoMsgs = () => {
+    setProgressMsg({}); // Reset Progress Message
+    setTokenCount({}); // Reset Token Count
+  };
+
+  useEffect(() => {
+    const isProfilePresent = llmProfiles.some(
+      (profile) => profile.profile_id === selectedLlmProfileId
+    );
+
+    // If selectedLlmProfileId is not present, set it to null
+    if (!isProfilePresent) {
+      setSelectedLlmProfileId(null);
+    }
+
+    const llmProfileId = promptDetails?.profile_manager;
+    if (!llmProfileId) {
+      setPage(0);
+      return;
+    }
+    const index = llmProfiles.findIndex(
+      (item) => item?.profile_id === llmProfileId
+    );
+    setPage(index + 1);
+  }, [llmProfiles]);
 
   const handlePageLeft = () => {
     if (page <= 1) {
@@ -196,34 +237,32 @@ function PromptCard({
     setPage(newPage);
   };
 
-  const sortEvalMetricsByType = (metrics) => {
-    const sieve = {};
-    for (const metric of metrics) {
-      if (!sieve[metric.type]) {
-        sieve[metric.type] = [metric];
-      } else {
-        sieve[metric.type].push(metric);
-      }
-    }
-
-    let sortedMetrics = [];
-    for (const type of Object.keys(sieve)) {
-      sortedMetrics = sortedMetrics.concat(sieve[type]);
-    }
-
-    return sortedMetrics;
+  const handleTypeChange = (value) => {
+    handleChange(value, promptDetails?.prompt_id, "enforce_type", true);
   };
 
-  const handleTypeChange = (value) => {
-    handleChange(value, promptDetails?.prompt_id, "enforce_type", true).then(
-      () => {
-        handleRun();
-      }
-    );
+  const handleDocOutputs = (docId, isLoading, output) => {
+    setDocOutputs((prev) => {
+      const updatedDocOutputs = { ...prev };
+      // Update the entry for the provided docId with isLoading and output
+      updatedDocOutputs[docId] = {
+        isLoading,
+        output,
+      };
+      return updatedDocOutputs;
+    });
   };
 
   // Generate the result for the currently selected document
   const handleRun = () => {
+    try {
+      setPostHogCustomEvent("ps_prompt_run", {
+        info: "Click on 'Run Prompt' button (Multi Pass)",
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
     if (!promptDetails?.profile_manager?.length) {
       setAlertDetails({
         type: "error",
@@ -260,45 +299,64 @@ function PromptCard({
     setIsCoverageLoading(true);
     setCoverage(0);
     setCoverageTotal(0);
+    setDocOutputs({});
+    resetInfoMsgs();
 
-    let method = "POST";
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/`;
-    if (result?.promptOutputId) {
-      method = "PATCH";
-      url += `${result?.promptOutputId}/`;
+    const docId = selectedDoc?.document_id;
+    const isSummaryIndexed = [...summarizeIndexStatus].find(
+      (item) => item?.docId === docId && item?.isIndexed === true
+    );
+
+    if (
+      !isSummaryIndexed &&
+      details?.summarize_as_source &&
+      details?.summarize_llm_profile
+    ) {
+      // Summary needs to be indexed before running the prompt
+      setIsRunLoading(false);
+      handleStepsAfterRunCompletion();
+      setAlertDetails({
+        type: "error",
+        content: `Summary needs to be indexed before running the prompt - ${selectedDoc?.document_name}.`,
+      });
+      return;
     }
-    handleRunApiRequest(selectedDoc)
+
+    handleDocOutputs(docId, true, null);
+    handleRunApiRequest(docId)
       .then((res) => {
         const data = res?.data;
         const value = data[promptDetails?.prompt_key];
-        if (value !== null && String(value)?.length > 0) {
+        if (value || value === 0) {
           setCoverage((prev) => prev + 1);
         }
+        handleDocOutputs(docId, false, value);
+        handleGetOutput();
 
-        // Handle Eval
-        let evalMetrics = [];
-        if (promptDetails?.evaluate) {
-          evalMetrics = data[`${promptDetails?.prompt_key}__evaluation`] || [];
-        }
-        handleUpdateOutput(value, selectedDoc, evalMetrics, method, url);
+        const usage = data[`${promptDetails?.prompt_key}__usage`] || {};
+        setTokenCount(usage);
       })
       .catch((err) => {
-        handleUpdateOutput(null, selectedDoc, [], method, url);
+        setIsRunLoading(false);
+        handleDocOutputs(docId, false, null);
         setAlertDetails(
-          handleException(err, `Failed to generate output for ${selectedDoc}`)
+          handleException(err, `Failed to generate output for ${docId}`)
         );
       })
       .finally(() => {
-        setIsRunLoading(false);
-        setCoverageTotal((prev) => prev + 1);
-        handleCoverage();
+        handleStepsAfterRunCompletion();
       });
+  };
+
+  const handleStepsAfterRunCompletion = () => {
+    setCoverageTotal(1);
+    handleCoverage();
   };
 
   // Get the coverage for all the documents except the one that's currently selected
   const handleCoverage = () => {
     const listOfDocsToProcess = [...listOfDocs].filter(
-      (item) => item !== selectedDoc
+      (item) => item?.document_id !== selectedDoc?.document_id
     );
 
     if (listOfDocsToProcess?.length === 0) {
@@ -306,54 +364,63 @@ function PromptCard({
       return;
     }
 
+    let totalCoverageValue = 1;
     listOfDocsToProcess.forEach((item) => {
-      let method = "POST";
-      let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/`;
-      const outputId = outputIds.find((output) => output?.docName === item);
-      if (outputId?.promptOutputId?.length) {
-        method = "PATCH";
-        url += `${outputId?.promptOutputId}/`;
+      const docId = item?.document_id;
+      const isSummaryIndexed = [...summarizeIndexStatus].find(
+        (indexStatus) =>
+          indexStatus?.docId === docId && indexStatus?.isIndexed === true
+      );
+
+      if (
+        !isSummaryIndexed &&
+        details?.summarize_as_source &&
+        details?.summarize_llm_profile
+      ) {
+        // Summary needs to be indexed before running the prompt
+        totalCoverageValue++;
+        setCoverageTotal(totalCoverageValue);
+        setAlertDetails({
+          type: "error",
+          content: `Summary needs to be indexed before running the prompt - ${item?.document_name}.`,
+        });
+        return;
       }
-      handleRunApiRequest(item)
+
+      handleDocOutputs(docId, true, null);
+      handleRunApiRequest(docId)
         .then((res) => {
           const data = res?.data;
           const outputValue = data[promptDetails?.prompt_key];
-          if (outputValue !== null && String(outputValue)?.length > 0) {
+          if (outputValue || outputValue === 0) {
             setCoverage((prev) => prev + 1);
           }
-
-          // Handle Eval
-          let evalMetrics = [];
-          if (promptDetails?.evaluate) {
-            evalMetrics =
-              data[`${promptDetails?.prompt_key}__evaluation`] || [];
-          }
-          handleUpdateOutput(outputValue, item, evalMetrics, method, url);
+          handleDocOutputs(docId, false, outputValue);
         })
         .catch((err) => {
-          handleUpdateOutput(null, item, [], method, url);
+          handleDocOutputs(docId, false, null);
           setAlertDetails(
-            handleException(err, `Failed to generate output for ${item}`)
+            handleException(err, `Failed to generate output for ${docId}`)
           );
         })
         .finally(() => {
-          setCoverageTotal((prev) => prev + 1);
+          totalCoverageValue++;
+          setCoverageTotal(totalCoverageValue);
         });
     });
   };
 
-  const handleRunApiRequest = async (doc) => {
+  const handleRunApiRequest = async (docId) => {
     const promptId = promptDetails?.prompt_id;
 
     const body = {
-      file_name: doc,
+      document_id: docId,
       id: promptId,
-      tool_id: details?.tool_id,
     };
 
     const requestOptions = {
       method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/${details?.tool_id}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
@@ -368,80 +435,23 @@ function PromptCard({
       });
   };
 
-  const handleUpdateOutput = (
-    outputValue,
-    docName,
-    evalMetrics,
-    method,
-    url
-  ) => {
-    let output = outputValue;
-    if (output !== null && typeof output !== "string") {
-      output = JSON.stringify(output);
-    }
-    const body = {
-      output: output !== null ? output : null,
-      tool_id: details?.tool_id,
-      prompt_id: promptDetails?.prompt_id,
-      profile_manager: promptDetails?.profile_manager,
-      doc_name: docName,
-      eval_metrics: evalMetrics,
-    };
-
-    const requestOptions = {
-      method,
-      url,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json",
-      },
-      data: body,
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        const promptOutputId = data?.prompt_output_id || null;
-        if (docName === selectedDoc) {
-          setResult({
-            promptOutputId: promptOutputId,
-            output: data?.output,
-            evalMetrics: sortEvalMetricsByType(data?.eval_metrics || []),
-          });
-        }
-
-        const isOutputIdAvailable = outputIds.find(
-          (item) => item?.promptOutputId === promptOutputId
-        );
-        if (!isOutputIdAvailable) {
-          const listOfOutputIds = [...outputIds];
-          listOfOutputIds.push({ promptOutputId, docName });
-          setOutputIds(listOfOutputIds);
-        }
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to persist the result"));
-      });
-  };
-
   const handleGetOutput = () => {
-    if (!selectedDoc || !selectedLlmProfileId) {
+    if (!selectedDoc || (!singlePassExtractMode && !selectedLlmProfileId)) {
       setResult({
         promptOutputId: null,
         output: "",
-        evalMetrics: [],
       });
       return;
     }
 
     setIsRunLoading(true);
     handleOutputApiRequest(true)
-      .then((data) => {
+      .then((res) => {
+        const data = res?.data;
         if (!data || data?.length === 0) {
           setResult({
             promptOutputId: null,
             output: "",
-            evalMetrics: [],
           });
           return;
         }
@@ -450,11 +460,14 @@ function PromptCard({
         setResult({
           promptOutputId: outputResult?.prompt_output_id,
           output: outputResult?.output,
-          evalMetrics: sortEvalMetricsByType(outputResult?.eval_metrics || []),
+          evalMetrics: getEvalMetrics(
+            promptDetails?.evaluate,
+            outputResult?.eval_metrics || []
+          ),
         });
       })
       .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to generate the output"));
+        setAlertDetails(handleException(err, "Failed to generate the result"));
       })
       .finally(() => {
         setIsRunLoading(false);
@@ -462,26 +475,35 @@ function PromptCard({
   };
 
   const handleGetCoverage = () => {
-    if (!selectedLlmProfileId) {
+    if (
+      (singlePassExtractMode && !defaultLlmProfile) ||
+      (!singlePassExtractMode && !selectedLlmProfileId)
+    ) {
+      setCoverage(0);
       return;
     }
 
-    setCoverage(0);
-    handleOutputApiRequest()
-      .then((data) => {
+    handleOutputApiRequest(false)
+      .then((res) => {
+        const data = res?.data;
         handleGetCoverageData(data);
       })
       .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to generate result"));
+        setAlertDetails(handleException(err, "Failed to generate the result"));
       });
   };
 
   const handleOutputApiRequest = async (isOutput) => {
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${selectedLlmProfileId}`;
+    let profileManager = selectedLlmProfileId;
+    if (singlePassExtractMode) {
+      profileManager = defaultLlmProfile;
+    }
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${profileManager}&is_single_pass_extract=${singlePassExtractMode}`;
 
     if (isOutput) {
-      url += `&doc_name=${selectedDoc}`;
+      url += `&document_manager=${selectedDoc?.document_id}`;
     }
+
     const requestOptions = {
       method: "GET",
       url,
@@ -491,41 +513,21 @@ function PromptCard({
     };
 
     return axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        data.sort((a, b) => {
-          return new Date(b.modified_at) - new Date(a.modified_at);
-        });
-        return data;
-      })
+      .then((res) => res)
       .catch((err) => {
         throw err;
       });
   };
 
   const handleGetCoverageData = (data) => {
-    const ids = [];
-    data.forEach((item) => {
-      const isOutputAdded = ids.findIndex(
-        (output) => output?.docName === item?.doc_name
-      );
-
-      if (isOutputAdded > -1) {
-        return;
+    const coverageValue = data.reduce((acc, item) => {
+      if (item?.output || item?.output === 0) {
+        return acc + 1;
+      } else {
+        return acc;
       }
-
-      if (
-        item?.output !== undefined &&
-        [...listOfDocs].includes(item?.doc_name)
-      ) {
-        ids.push({
-          promptOutputId: item?.prompt_output_id,
-          docName: item?.doc_name,
-        });
-      }
-    });
-    setOutputIds(ids);
-    setCoverage(ids?.length);
+    }, 0);
+    setCoverage(coverageValue);
   };
 
   const enableEdit = (event) => {
@@ -537,225 +539,182 @@ function PromptCard({
   return (
     <>
       <Card className="prompt-card">
-        <Collapse
-          className="assertion-comp"
-          ghost
-          activeKey={displayAssertion ? "1" : null}
-        >
-          <Collapse.Panel key={"1"} showArrow={false}>
-            <Row className="prompt-card-div">
-              <Col span={8} className="assert-p-r-4">
-                <Typography.Text strong className="font-size-12">
-                  Missing Context Prompt
-                </Typography.Text>
-                <div className="prompt-card-gap" />
-                <Input.TextArea
-                  rows={2}
-                  defaultValue={promptDetails?.assert_prompt}
-                  name="assert_prompt"
-                  onChange={onSearchDebounce}
-                  disabled={disableLlmOrDocChange.includes(
-                    promptDetails?.prompt_id
-                  )}
+        <div className="prompt-card-div prompt-card-bg-col1 prompt-card-rad">
+          <Space direction="vertical" className="width-100" ref={divRef}>
+            <Row>
+              <Col span={12}>
+                <EditableText
+                  isEditing={isEditingTitle}
+                  setIsEditing={setIsEditingTitle}
+                  text={promptKey}
+                  setText={setPromptKey}
+                  promptId={promptDetails?.prompt_id}
+                  defaultText={promptDetails?.prompt_key}
+                  handleChange={handleChange}
+                  placeHolder={updatePlaceHolder}
                 />
               </Col>
-              <Col span={8} className="assert-p-l-4 assert-p-r-4">
-                <Typography.Text className="font-size-12" strong>
-                  False
-                </Typography.Text>
-                <div className="prompt-card-gap" />
-                <Input.TextArea
-                  rows={2}
-                  defaultValue={promptDetails?.assertion_failure_prompt}
-                  name="assertion_failure_prompt"
-                  onChange={onSearchDebounce}
-                  disabled={disableLlmOrDocChange.includes(
-                    promptDetails?.prompt_id
-                  )}
-                />
-              </Col>
-              <Col span={8} className="assert-p-l-4">
-                <Typography.Text className="font-size-12" strong>
-                  True
-                </Typography.Text>
-                <div className="prompt-card-gap" />
-                <SpaceWrapper>
-                  <Typography.Text className="font-size-12">
-                    The below prompt will be executed.
-                  </Typography.Text>
-                  <ArrowDownOutlined />
-                </SpaceWrapper>
-              </Col>
-            </Row>
-          </Collapse.Panel>
-        </Collapse>
-        <>
-          {displayAssertion && <Divider className="prompt-card-divider" />}
-          <div
-            className={`prompt-card-div prompt-card-bg-col1 ${
-              displayAssertion ? "" : "prompt-card-rad"
-            }`}
-          >
-            <Space direction="vertical" className="width-100" ref={divRef}>
-              <Row>
-                <Col span={16}>
-                  <EditableText
-                    isEditing={isEditingTitle}
-                    setIsEditing={setIsEditingTitle}
-                    text={promptKey}
-                    setText={setPromptKey}
-                    promptId={promptDetails?.prompt_id}
-                    defaultText={promptDetails?.prompt_key}
-                    handleChange={handleChange}
-                  />
-                </Col>
-                <Col span={8} className="display-flex-right">
-                  {isCoverageLoading && (
+              <Col span={12} className="display-flex-right">
+                {progressMsg?.message && (
+                  <Tooltip title={progressMsg?.message || ""}>
                     <Tag
-                      icon={<LoadingOutlined spin />}
-                      color="processing"
+                      icon={isCoverageLoading && <LoadingOutlined spin />}
+                      color={
+                        progressMsg?.level === "ERROR" ? "error" : "processing"
+                      }
                       className="display-flex-align-center"
                     >
-                      Generating Response
+                      <div className="tag-max-width ellipsis">
+                        {progressMsg?.message}
+                      </div>
                     </Tag>
-                  )}
-                  {updateStatus?.promptId === promptDetails?.prompt_id && (
-                    <>
-                      {updateStatus?.status ===
-                        promptStudioUpdateStatus.isUpdating && (
-                        <Tag
-                          icon={<SyncOutlined spin />}
-                          color="processing"
-                          className="display-flex-align-center"
-                        >
-                          Updating
-                        </Tag>
-                      )}
-                      {updateStatus?.status ===
-                        promptStudioUpdateStatus.done && (
-                        <Tag
-                          icon={<CheckCircleOutlined />}
-                          color="success"
-                          className="display-flex-align-center"
-                        >
-                          Done
-                        </Tag>
-                      )}
-                    </>
-                  )}
-                  <Tooltip title="Edit">
-                    <Button
-                      size="small"
-                      type="text"
-                      className="display-flex-align-center"
-                      onClick={enableEdit}
-                      disabled={disableLlmOrDocChange.includes(
+                  </Tooltip>
+                )}
+                {updateStatus?.promptId === promptDetails?.prompt_id && (
+                  <>
+                    {updateStatus?.status ===
+                      promptStudioUpdateStatus.isUpdating && (
+                      <Tag
+                        icon={<SyncOutlined spin />}
+                        color="processing"
+                        className="display-flex-align-center"
+                      >
+                        Updating
+                      </Tag>
+                    )}
+                    {updateStatus?.status === promptStudioUpdateStatus.done && (
+                      <Tag
+                        icon={<CheckCircleOutlined />}
+                        color="success"
+                        className="display-flex-align-center"
+                      >
+                        Done
+                      </Tag>
+                    )}
+                    {updateStatus?.status ===
+                      promptStudioUpdateStatus.validationError && (
+                      <Tag
+                        icon={<CheckCircleOutlined />}
+                        color="error"
+                        className="display-flex-align-center"
+                      >
+                        Invalid JSON Key
+                      </Tag>
+                    )}
+                  </>
+                )}
+                <Tooltip title="Edit">
+                  <Button
+                    size="small"
+                    type="text"
+                    className="display-flex-align-center prompt-card-action-button"
+                    onClick={enableEdit}
+                    disabled={
+                      disableLlmOrDocChange.includes(
                         promptDetails?.prompt_id
-                      )}
-                    >
-                      <EditOutlined className="prompt-card-actions-head" />
-                    </Button>
-                  </Tooltip>
-                  <Tooltip title="Assertion">
-                    <Button
-                      size="small"
-                      type="text"
-                      className="display-flex-align-center"
-                      onClick={() => setDisplayAssertion(!displayAssertion)}
-                      disabled={true}
-                    >
-                      <AssertionIcon className="prompt-card-actions-head" />
-                    </Button>
-                  </Tooltip>
+                      ) ||
+                      isSinglePassExtractLoading ||
+                      indexDocs.includes(selectedDoc?.document_id)
+                    }
+                  >
+                    <EditOutlined className="prompt-card-actions-head" />
+                  </Button>
+                </Tooltip>
+                {!singlePassExtractMode && (
                   <Tooltip title="Run">
                     <Button
                       size="small"
                       type="text"
+                      className="prompt-card-action-button"
                       onClick={handleRun}
                       disabled={
                         (updateStatus?.promptId === promptDetails?.prompt_id &&
                           updateStatus?.status ===
                             promptStudioUpdateStatus.isUpdating) ||
-                        disableLlmOrDocChange.includes(promptDetails?.prompt_id)
+                        disableLlmOrDocChange.includes(
+                          promptDetails?.prompt_id
+                        ) ||
+                        indexDocs.includes(selectedDoc?.document_id)
                       }
                     >
                       <PlayCircleOutlined className="prompt-card-actions-head" />
                     </Button>
                   </Tooltip>
-                  <ConfirmModal
-                    handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
-                    content="The prompt will be permanently deleted."
-                  >
-                    <Tooltip title="Delete">
-                      <Button
-                        size="small"
-                        type="text"
-                        disabled={disableLlmOrDocChange.includes(
+                )}
+                <ConfirmModal
+                  handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
+                  content="The prompt will be permanently deleted."
+                >
+                  <Tooltip title="Delete">
+                    <Button
+                      size="small"
+                      type="text"
+                      className="prompt-card-action-button"
+                      disabled={
+                        disableLlmOrDocChange.includes(
                           promptDetails?.prompt_id
-                        )}
-                      >
-                        <DeleteOutlined className="prompt-card-actions-head" />
-                      </Button>
-                    </Tooltip>
-                  </ConfirmModal>
-                </Col>
-              </Row>
-              <EditableText
-                isEditing={isEditingPrompt}
-                setIsEditing={setIsEditingPrompt}
-                text={promptText}
-                setText={setPromptText}
-                promptId={promptDetails?.prompt_id}
-                defaultText={promptDetails.prompt}
-                handleChange={handleChange}
-                isTextarea={true}
-              />
-            </Space>
-          </div>
-        </>
+                        ) ||
+                        isSinglePassExtractLoading ||
+                        indexDocs.includes(selectedDoc?.document_id)
+                      }
+                    >
+                      <DeleteOutlined className="prompt-card-actions-head" />
+                    </Button>
+                  </Tooltip>
+                </ConfirmModal>
+              </Col>
+            </Row>
+            <EditableText
+              isEditing={isEditingPrompt}
+              setIsEditing={setIsEditingPrompt}
+              text={promptText}
+              setText={setPromptText}
+              promptId={promptDetails?.prompt_id}
+              defaultText={promptDetails.prompt}
+              handleChange={handleChange}
+              isTextarea={true}
+              placeHolder={updatePlaceHolder}
+            />
+          </Space>
+        </div>
         <>
           <Divider className="prompt-card-divider" />
           <Space
             direction="vertical"
             className={`prompt-card-comp-layout ${
-              !(
-                isRunLoading ||
-                (result?.output !== undefined && outputIds?.length > 0)
-              ) && "prompt-card-comp-layout-border"
+              !(isRunLoading || result?.output || result?.output === 0) &&
+              "prompt-card-comp-layout-border"
             }`}
           >
             <div className="prompt-card-llm-profiles">
               <Space direction="horizontal">
-                <div>
-                  <Button
-                    size="small"
-                    onClick={() => setOpenEval(true)}
-                    disabled={disableLlmOrDocChange.includes(
-                      promptDetails?.prompt_id
-                    )}
-                  >
-                    <Space>
-                      <Typography.Text className="font-size-12">
-                        Eval: {promptDetails?.evaluate ? "On" : "Off"}
-                      </Typography.Text>
-                    </Space>
-                  </Button>
-                </div>
+                {EvalBtn && !singlePassExtractMode && (
+                  <EvalBtn
+                    btnText={promptDetails?.evaluate ? "On" : "Off"}
+                    promptId={promptDetails.prompt_id}
+                    setOpenEval={setOpenEval}
+                  />
+                )}
                 <Button
                   size="small"
                   type="link"
-                  className="display-flex-align-center"
-                  icon={<SearchOutlined className="font-size-12" />}
-                  loading={isCoverageLoading}
+                  className="display-flex-align-center prompt-card-action-button"
                   onClick={() => setOpenOutputForDoc(true)}
-                  disabled={outputIds?.length === 0}
                 >
-                  <Typography.Link className="font-size-12">
-                    Coverage: {coverage} of {listOfDocs?.length || 0} docs
-                  </Typography.Link>
+                  <Space>
+                    {isCoverageLoading ? (
+                      <SpinnerLoader size="small" />
+                    ) : (
+                      <SearchOutlined className="font-size-12" />
+                    )}
+                    <Typography.Link className="font-size-12">
+                      Coverage: {coverage} of {listOfDocs?.length || 0} docs
+                    </Typography.Link>
+                  </Space>
                 </Button>
               </Space>
-              <div>
+              <Space>
+                <TokenCount tokenCount={tokenCount} />
                 <Select
                   className="prompt-card-select-type"
                   size="small"
@@ -763,70 +722,87 @@ function PromptCard({
                   optionFilterProp="children"
                   options={enforceTypeList}
                   value={promptDetails?.enforce_type || null}
-                  disabled={disableLlmOrDocChange.includes(
-                    promptDetails?.prompt_id
-                  )}
+                  disabled={
+                    disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                    isSinglePassExtractLoading ||
+                    indexDocs.includes(selectedDoc?.document_id)
+                  }
                   onChange={(value) => handleTypeChange(value)}
                 />
-              </div>
+              </Space>
             </div>
             <div className="prompt-card-llm-profiles">
-              {llmProfiles?.length > 0 &&
-              promptDetails?.profile_manager?.length > 0 ? (
-                <div>
-                  <Tag>{llmProfiles[page - 1]?.llm}</Tag>
-                  <Tag>{llmProfiles[page - 1]?.vector_store}</Tag>
-                  <Tag>{llmProfiles[page - 1]?.embedding_model}</Tag>
-                  <Tag>{llmProfiles[page - 1]?.x2text}</Tag>
-                  <Tag>{`${llmProfiles[page - 1]?.chunk_size}/${
-                    llmProfiles[page - 1]?.chunk_overlap
-                  }/${llmProfiles[page - 1]?.retrieval_strategy}/${
-                    llmProfiles[page - 1]?.similarity_top_k
-                  }/${llmProfiles[page - 1]?.section}`}</Tag>
-                </div>
-              ) : (
-                <div>
-                  <Typography.Text className="font-size-12">
-                    No LLM Profile Selected
-                  </Typography.Text>
+              {!singlePassExtractMode && (
+                <>
+                  {llmProfiles?.length > 0 &&
+                  promptDetails?.profile_manager?.length > 0 &&
+                  selectedLlmProfileId ? (
+                    <div>
+                      {llmProfiles
+                        .filter(
+                          (profile) =>
+                            profile.profile_id === selectedLlmProfileId
+                        )
+                        .map((profile, index) => (
+                          <div key={index}>
+                            <Tag>{profile.llm}</Tag>
+                            <Tag>{profile.vector_store}</Tag>
+                            <Tag>{profile.embedding_model}</Tag>
+                            <Tag>{profile.x2text}</Tag>
+                            <Tag>{`${profile.chunk_size}/${profile.chunk_overlap}/${profile.retrieval_strategy}/${profile.similarity_top_k}/${profile.section}`}</Tag>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
+                    <div>
+                      <Typography.Text className="font-size-12">
+                        No LLM Profile Selected
+                      </Typography.Text>
+                    </div>
+                  )}
+                </>
+              )}
+              {!singlePassExtractMode && (
+                <div className="display-flex-right prompt-card-paginate-div">
+                  <Button
+                    type="text"
+                    size="small"
+                    className="prompt-card-action-button"
+                    disabled={
+                      page <= 1 ||
+                      disableLlmOrDocChange.includes(
+                        promptDetails?.prompt_id
+                      ) ||
+                      isSinglePassExtractLoading ||
+                      indexDocs.includes(selectedDoc?.document_id)
+                    }
+                    onClick={handlePageLeft}
+                  >
+                    <LeftOutlined className="prompt-card-paginate" />
+                  </Button>
+                  <Button
+                    type="text"
+                    size="small"
+                    className="prompt-card-action-button"
+                    disabled={
+                      page >= llmProfiles?.length ||
+                      disableLlmOrDocChange.includes(
+                        promptDetails?.prompt_id
+                      ) ||
+                      isSinglePassExtractLoading ||
+                      indexDocs.includes(selectedDoc?.document_id)
+                    }
+                    onClick={handlePageRight}
+                  >
+                    <RightOutlined className="prompt-card-paginate" />
+                  </Button>
                 </div>
               )}
-              <div className="display-flex-right prompt-card-paginate-div">
-                <Button
-                  type="text"
-                  size="small"
-                  disabled={
-                    page <= 1 ||
-                    disableLlmOrDocChange.includes(promptDetails?.prompt_id)
-                  }
-                  onClick={handlePageLeft}
-                >
-                  <LeftOutlined className="prompt-card-paginate" />
-                </Button>
-                <Button
-                  type="text"
-                  size="small"
-                  disabled={
-                    page >= llmProfiles?.length ||
-                    disableLlmOrDocChange.includes(promptDetails?.prompt_id)
-                  }
-                  onClick={handlePageRight}
-                >
-                  <RightOutlined className="prompt-card-paginate" />
-                </Button>
-              </div>
             </div>
-            {result?.evalMetrics?.length > 0 && (
-              <div>
-                {result?.evalMetrics.map((evalMetric) => (
-                  <EvalMetricTag key={evalMetric.id} metric={evalMetric} />
-                ))}
-              </div>
-            )}
+            {EvalMetrics && <EvalMetrics result={result} />}
           </Space>
         </>
-        {(isRunLoading ||
-          (result?.output !== undefined && outputIds?.length > 0)) && (
+        {(isRunLoading || result?.output || result?.output === 0) && (
           <>
             <Divider className="prompt-card-divider" />
             <div className="prompt-card-result prompt-card-div">
@@ -834,25 +810,28 @@ function PromptCard({
                 <Spin indicator={<SpinnerLoader size="small" />} />
               ) : (
                 <Typography.Paragraph className="prompt-card-res font-size-12">
-                  <div>{displayPromptResult(result?.output)}</div>
+                  <div>{displayPromptResult(result?.output, true)}</div>
                 </Typography.Paragraph>
               )}
             </div>
           </>
         )}
       </Card>
-      <EvalModal
-        open={openEval}
-        setOpen={setOpenEval}
-        promptDetails={promptDetails}
-        handleChange={handleChange}
-      />
+      {EvalModal && !singlePassExtractMode && (
+        <EvalModal
+          open={openEval}
+          setOpen={setOpenEval}
+          promptDetails={promptDetails}
+          handleChange={handleChange}
+        />
+      )}
       <OutputForDocModal
         open={openOutputForDoc}
         setOpen={setOpenOutputForDoc}
         promptId={promptDetails?.prompt_id}
         promptKey={promptDetails?.prompt_key}
         profileManagerId={promptDetails?.profile_manager}
+        docOutputs={docOutputs}
       />
     </>
   );
@@ -863,6 +842,7 @@ PromptCard.propTypes = {
   handleChange: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
   updateStatus: PropTypes.object.isRequired,
+  updatePlaceHolder: PropTypes.string,
 };
 
 export { PromptCard };

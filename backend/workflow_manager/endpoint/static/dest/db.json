@@ -40,10 +40,9 @@
             "type": "string",
             "title": "Select how you want to write the output",
             "enum": [
-                "Split JSON into columns",
                 "Write JSON to a single column"
             ],
-            "default": "Split JSON into columns"
+            "default": "Write JSON to a single column"
         },
         "singleColumnName": {
             "type": "string",

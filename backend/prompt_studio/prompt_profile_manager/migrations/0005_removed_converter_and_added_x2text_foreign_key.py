@@ -4,18 +4,17 @@ import json
 
 import django.db.models.deletion
 from cryptography.fernet import Fernet
+from django.conf import settings
 from django.db import connection, migrations, models
 
 
 def fill_with_default_x2text(apps, schema):
     ProfileManager = apps.get_model("prompt_profile_manager", "ProfileManager")
     AdapterInstance = apps.get_model("adapter_processor", "AdapterInstance")
-    EncryptionSecret = apps.get_model("account", "EncryptionSecret")
-    encryption_secret = EncryptionSecret.objects.get()
-    f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
-    metadata = {
-        "url": "http://unstract-unstructured-io:8000/general/v0/general"
-    }
+
+    encryption_secret: str = settings.ENCRYPTION_KEY
+    f: Fernet = Fernet(encryption_secret.encode("utf-8"))
+    metadata = {"url": "http://unstract-unstructured-io:8000/general/v0/general"}
     json_string = json.dumps(metadata)
     metadata_b = f.encrypt(json_string.encode("utf-8"))
 
@@ -26,9 +25,7 @@ def fill_with_default_x2text(apps, schema):
         adapter_metadata_b=metadata_b,
     )
     adapter_instance.save()
-    ProfileManager.objects.filter(x2text__isnull=True).update(
-        x2text=adapter_instance
-    )
+    ProfileManager.objects.filter(x2text__isnull=True).update(x2text=adapter_instance)
 
 
 def reversal_x2text(*args):
@@ -37,14 +34,11 @@ def reversal_x2text(*args):
 
 def disable_triggers(apps, schema_editor):
     with connection.cursor() as cursor:
-        cursor.execute(
-            "ALTER TABLE adapter_adapterinstance DISABLE TRIGGER ALL;"
-        )
+        cursor.execute("ALTER TABLE adapter_adapterinstance DISABLE TRIGGER ALL;")
 
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("account", "0005_encryptionsecret"),
         ("adapter_processor", "0004_alter_adapterinstance_adapter_type"),
         (
             "prompt_profile_manager",
@@ -57,9 +51,9 @@ class Migration(migrations.Migration):
             model_name="profilemanager",
             name="pdf_to_text_converters",
         ),
-        migrations.RunPython(
-            disable_triggers, reverse_code=migrations.RunPython.noop
-        ),
+        # migrations.RunPython(
+        #     disable_triggers, reverse_code=migrations.RunPython.noop
+        # ),
         migrations.AddField(
             model_name="profilemanager",
             name="x2text",
@@ -71,5 +65,7 @@ class Migration(migrations.Migration):
                 to="adapter_processor.adapterinstance",
             ),
         ),
-        migrations.RunPython(fill_with_default_x2text, reversal_x2text),
+        # This function is not required for fresh instances as the profile manager table itself will be empty.
+        # The existing environments have already completed this migration. Hence it won't be necessary.
+        # migrations.RunPython(fill_with_default_x2text, reversal_x2text),
     ]

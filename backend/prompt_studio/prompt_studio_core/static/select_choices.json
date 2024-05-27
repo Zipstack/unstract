@@ -24,8 +24,7 @@
     },
     "retrieval_strategy":{
         "simple":"simple",
-        "subquestion":"subquestion",
-        "vector+keyword":"vector+keyword"
+        "subquestion":"subquestion"
     },
     "vector_store":{
         "Postgres pg_vector":"Postgres pg_vector",

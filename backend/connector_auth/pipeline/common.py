@@ -46,7 +46,8 @@ def cache_oauth_creds(
     regarding expiry, uid (unique ID given by provider) and provider.
     """
     cache_key = kwargs.get("cache_key") or backend.strategy.session_get(
-        settings.SOCIAL_AUTH_FIELDS_STORED_IN_SESSION[0], ConnectorAuthKey.OAUTH_KEY
+        settings.SOCIAL_AUTH_FIELDS_STORED_IN_SESSION[0],
+        ConnectorAuthKey.OAUTH_KEY,
     )
     extra_data = backend.extra_data(user, uid, response, details, *args, **kwargs)
     extra_data[SocialAuthConstants.PROVIDER] = backend.name

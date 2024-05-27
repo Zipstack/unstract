@@ -1,7 +1,6 @@
 import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
@@ -10,6 +9,7 @@ import { useToolSettingsStore } from "../../../store/tool-settings";
 import { useWorkflowStore } from "../../../store/workflow-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./ToolSettings.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 function ToolSettings({ spec, isSpecLoading }) {
   const formRef = createRef(null);
@@ -19,6 +19,7 @@ function ToolSettings({ spec, isSpecLoading }) {
   const { toolSettings } = useToolSettingsStore();
   const { updateMetadata, getMetadata, isLoading } = useWorkflowStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     // Set existing metadata

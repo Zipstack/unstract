@@ -1,12 +1,16 @@
-import PropTypes from "prop-types";
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { SocketContext } from "../../../helpers/SocketContext";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
-function SocketMessages({ logId }) {
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
+import { useSessionStore } from "../../../store/session-store";
+import { useUsageStore } from "../../../store/usage-store";
+
+function SocketMessages() {
+  const [logId, setLogId] = useState("");
   const {
     pushStagedMessage,
     updateMessage,
@@ -15,18 +19,37 @@ function SocketMessages({ logId }) {
     setPointer,
   } = useSocketMessagesStore();
   const { pushLogMessages } = useSocketLogsStore();
+  const { updateCusToolMessages } = useSocketCustomToolStore();
+  const { sessionDetails } = useSessionStore();
   const socket = useContext(SocketContext);
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
+  const { setLLMTokenUsage } = useUsageStore();
+
+  useEffect(() => {
+    setLogId(sessionDetails?.logEventsId || "");
+  }, [sessionDetails]);
 
   const onMessage = (data) => {
     try {
       const msg = JSON.parse(new TextDecoder().decode(data.data));
-      if (msg?.type === "LOG" || msg?.type === "COST") {
+      if (
+        (msg?.type === "LOG" || msg?.type === "COST") &&
+        msg?.service !== "prompt"
+      ) {
         msg.message = msg?.log;
         pushLogMessages(msg);
       }
       if (msg?.type === "UPDATE") {
         pushStagedMessage(msg);
+      }
+      if (msg?.type === "LOG" && msg?.service === "prompt") {
+        updateCusToolMessages(msg);
+      }
+      if (msg?.type === "LOG" && msg?.service === "usage") {
+        const remainingTokens =
+          msg?.max_token_count_set - msg?.added_token_count;
+        setLLMTokenUsage(Math.max(remainingTokens, 0));
       }
     } catch (err) {
       setAlertDetails(handleException(err, "Failed to process socket message"));
@@ -58,9 +81,5 @@ function SocketMessages({ logId }) {
     }, 0);
   }, [stagedMessages, pointer]);
 }
-
-SocketMessages.propTypes = {
-  logId: PropTypes.string,
-};
 
 export { SocketMessages };

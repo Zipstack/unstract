@@ -1,13 +1,105 @@
 /* Styles for ListView */
 
 .list-view-wrapper {
-    height: 100%;
-    overflow: hidden auto;
+  height: 100%;
+  overflow: hidden auto;
+  width: 70%;
+  min-width: 800px;
+  max-width: 1400px;
+  padding: 0px 10px;
 }
 
 .list-view-item {
-    display: grid;
-    grid-auto-flow: row;
-    row-gap: 2px;
-    cursor: pointer;
+  display: grid;
+  grid-auto-flow: row;
+  row-gap: 2px;
+  cursor: pointer;
+}
+
+.cur-pointer {
+  padding: 10px 0 !important;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.action-icon-buttons {
+  font-size: 18px;
+  margin-left: 20px;
+  z-index: 20;
+  color: #092c4c;
+  flex: content;
+}
+
+.cur-pointer .ant-list-item-meta {
+  align-self: flex-start;
+}
+
+.cur-pointer.centered .ant-list-item-meta {
+  align-self: center !important;
+}
+
+.cur-pointer .ant-list-item-meta-description {
+  -webkit-line-clamp: 2;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+}
+
+.list-view-divider {
+  border-inline-start: solid rgba(5, 5, 5, 0.13);
+  height: 20px;
+}
+
+.adapter-cover-img .fit-cover {
+  width: 120px;
+  height: 90px;
+  object-fit: contain;
+}
+
+.adapters-list-profile-container {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+
+.adapters-list-user-prefix {
+  margin: 0 5px;
+  font-weight: 500;
+}
+
+.adapters-list-title {
+  font-size: 16px;
+}
+
+.adapter-cover-img {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.list-view-content {
+  display: flex;
+  width: 80%;
+}
+
+.adapters-list-title-container {
+  width: 50%;
+  padding-right: 12px;
+}
+
+.list-item-desc {
+  padding-bottom: 10px;
+}
+
+.edit-icon {
+  margin-right: 10px;
+}
+
+.edit-icon:hover {
+  color: #1890ff;
+}
+
+.delete-icon:hover {
+  color: #ff4d4f;
 }

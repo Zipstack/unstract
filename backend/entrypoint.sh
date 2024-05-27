@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-chown -R unstract /data
-
-su unstract
-
 cmd=$1
 if [ "$cmd" = "migrate" ]; then
     echo "Migration initiated"
@@ -16,7 +12,7 @@ fi
 .venv/bin/gunicorn \
     --bind 0.0.0.0:8000 \
     --workers 2 \
-    --threads 4 \
+    --threads 2 \
     --log-level debug \
     --timeout 600 \
     --access-logfile - \

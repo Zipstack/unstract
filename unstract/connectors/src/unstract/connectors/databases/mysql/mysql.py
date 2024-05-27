@@ -1,8 +1,10 @@
+import datetime
 import os
 from typing import Any
 
 import pymysql
 from pymysql.connections import Connection
+
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 
@@ -30,7 +32,7 @@ class MySQL(UnstractDB):
 
     @staticmethod
     def get_icon() -> str:
-        return "https://storage.googleapis.com/pandora-static/connector-icons/MySql.png"
+        return "/icons/connector-icons/MySql.png"
 
     @staticmethod
     def get_json_schema() -> str:
@@ -56,3 +58,23 @@ class MySQL(UnstractDB):
             password=self.password,
         )
         return con
+
+    @staticmethod
+    def sql_to_db_mapping(value: str) -> str:
+        """
+        Gets the python datatype of value and converts python datatype
+        to corresponding DB datatype
+        Args:
+            value (str): _description_
+
+        Returns:
+            str: _description_
+        """
+        python_type = type(value)
+        mapping = {
+            str: "LONGTEXT",
+            int: "BIGINT",
+            float: "FLOAT",
+            datetime.datetime: "TIMESTAMP",
+        }
+        return mapping.get(python_type, "LONGTEXT")

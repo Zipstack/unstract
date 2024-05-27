@@ -41,17 +41,21 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
 
   const generatePythonCode = () => {
     let code = `import requests
-      api_url = '{{url}}'
-      headers = {
-        'Authorization': 'Bearer REPLACE_WITH_API_KEY'
-      }
       {{#if isPost}}
+        api_url = '{{url}}'
+        headers = {
+          'Authorization': 'Bearer REPLACE_WITH_API_KEY'
+        }
         payload = {'timeout': '80'}
         filepath = '/path/to/file'
-        files=[('file',('file',open(filepath,'rb'),'application/octet-stream'))]
+        files=[('files',('file',open(filepath,'rb'),'application/octet-stream'))]
         response = requests.request("POST", api_url, headers=headers, data=payload, files=files)
       {{else}}
-        response = requests.request("GET", api_url, headers=headers, data=payload)
+        api_url = '{{url}}?execution_id=REPLACE_WITH_EXECUTION_ID'
+        headers = {
+          'Authorization': 'Bearer REPLACE_WITH_API_KEY'
+        }
+        response = requests.request("GET", api_url, headers=headers)
       {{/if}}
       print('Response:', response.json())
     `;
@@ -63,9 +67,14 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
   };
 
   const generateCurlCode = () => {
-    let code = `curl --location '{{url}}'
+    let code = `{{#if isPost}}
+    curl --request POST --location '{{url}}'
     --header 'Authorization: Bearer REPLACE_WITH_API_KEY'
-    {{#if isPost}}--form 'files=@"{{pathToFile}}"' --form 'timeout="80"'{{/if}}
+    --form 'files=@"{{pathToFile}}"' --form 'timeout="80"'
+    {{else}}
+    curl --location '{{url}}?execution_id=REPLACE_WITH_EXECUTION_ID'
+    --header 'Authorization: Bearer REPLACE_WITH_API_KEY'
+    {{/if}}
   `;
     code = trimIndent(code);
     const template = Handlebars.compile(code);
@@ -85,10 +94,11 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
     formdata.append("files", fileInput.files[0], "file");
     formdata.append("timeout", "80");
     var requestOptions = { method: 'POST', body: formdata, redirect: 'follow', headers: myHeaders };
+    fetch("{{url}}", requestOptions)
     {{else}}
     var requestOptions = { method: 'GET', redirect: 'follow', headers: myHeaders};
+    fetch("{{url}}?execution_id=REPLACE_WITH_EXECUTION_ID", requestOptions)
     {{/if}}
-    fetch("{{url}}", requestOptions)
     .then(response => response.text())
     .then(result => console.log(result))
     .catch(error => console.log('error', error));
@@ -117,12 +127,12 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
   const TAB_ITEMS = [
     {
       key: "POST",
-      label: "POST",
+      label: "POST Document",
       children: <CodeSnippet code={code} />,
     },
     {
       key: "GET",
-      label: "GET",
+      label: "GET Status",
       children: <CodeSnippet code={code} />,
     },
   ];

@@ -2,12 +2,13 @@ import json
 import uuid
 from typing import Any
 
-from account.models import EncryptionSecret, User
+from account.models import User
 from connector.fields import ConnectorAuthJSONField
 from connector_auth.models import ConnectorAuth
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from cryptography.fernet import Fernet
+from django.conf import settings
 from django.db import models
 from project.models import Project
 from utils.models.base_model import BaseModel
@@ -47,17 +48,13 @@ class ConnectorInstance(BaseModel):
         null=False,
         blank=False,
     )
-    connector_id = models.CharField(
-        max_length=FLC.CONNECTOR_ID_LENGTH, default=""
-    )
+    connector_id = models.CharField(max_length=FLC.CONNECTOR_ID_LENGTH, default="")
     # TODO Required to be removed
     connector_metadata = ConnectorAuthJSONField(
         db_column="connector_metadata", null=False, blank=False, default=dict
     )
     connector_metadata_b = models.BinaryField(null=True)
-    connector_version = models.CharField(
-        max_length=VERSION_NAME_SIZE, default=""
-    )
+    connector_version = models.CharField(max_length=VERSION_NAME_SIZE, default="")
     connector_type = models.CharField(choices=ConnectorType.choices)
     connector_auth = models.ForeignKey(
         ConnectorAuth, on_delete=models.SET_NULL, null=True, blank=True
@@ -112,8 +109,8 @@ class ConnectorInstance(BaseModel):
 
     @property
     def metadata(self) -> Any:
-        encryption_secret: EncryptionSecret = EncryptionSecret.objects.get()
-        cipher_suite: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
+        encryption_secret: str = settings.ENCRYPTION_KEY
+        cipher_suite: Fernet = Fernet(encryption_secret.encode("utf-8"))
         decrypted_value = cipher_suite.decrypt(
             bytes(self.connector_metadata_b).decode("utf-8")
         )

@@ -16,17 +16,17 @@ class ToolSaveError(APIException):
     default_detail = "Error while saving the tool."
 
 
-class MandatoryFieldMissingError(APIException):
-    status_code = 400
-    default_detail = "Mandatory field missing."
+class EmptyToolExportError(APIException):
+    status_code = 500
+    default_detail = (
+        "Empty Prompt Studio project without prompts cannot be exported. "
+        "Try adding a prompt and executing it."
+    )
 
 
-class ProfileErrors(APIException):
-    status_code = 400
-    default_detail = f"""Looks like some default values are 
-        not selected. Please check profile managers."""
-
-
-class DuplicateData(APIException):
-    status_code = 400
-    default_detail = "Duplicate Data"
+class InValidCustomToolError(APIException):
+    status_code = 500
+    default_detail = (
+        "This prompt studio project cannot be exported. It probably "
+        "has some empty or unexecuted prompts."
+    )

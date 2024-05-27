@@ -1,10 +1,12 @@
 class TableColumns:
     CREATED_BY = "created_by"
     CREATED_AT = "created_at"
+    PERMANENT_COLUMNS = ["created_by", "created_at"]
 
 
 class DBConnectionClass:
     SNOWFLAKE = "SnowflakeConnection"
+    BIGQUERY = "Client"
 
 
 class Snowflake:
@@ -63,16 +65,12 @@ class OutputJsonKey:
 class FileType:
     PDF_DOCUMENTS = "PDF documents"
     TEXT_DOCUMENTS = "Text documents"
-    WORD_DOCUMENTS = "Word documents"
-    OPENOFFICE_DOCUMENTS = "Openoffice documents"
     IMAGES = "Images"
 
 
 class FilePattern:
     PDF_DOCUMENTS = ["*.pdf"]
     TEXT_DOCUMENTS = ["*.txt"]
-    WORD_DOCUMENTS = ["*.doc", "*.docx"]
-    OPENOFFICE_DOCUMENTS = ["*.odt"]
     IMAGES = ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp"]
 
 
@@ -83,3 +81,19 @@ class SourceConstant:
 class ApiDeploymentResultStatus:
     SUCCESS = "Success"
     FAILED = "Failed"
+
+
+class BigQuery:
+    """In big query, table name has to be in the format {db}.{schema}.{table}
+    Throws error if any of the params not set.
+
+    When converted to list table size should be 3
+    """
+
+    TABLE_NAME_SIZE = 3
+    COLUMN_TYPES = [
+        "DATE",
+        "DATETIME",
+        "TIME",
+        "TIMESTAMP",
+    ]

@@ -20,6 +20,7 @@ dependencies = [
     #
     # Hence instead, add the dependencies without version constraints where the
     # assumption is they are added as direct dependencies in main project itself.
+    "unstract-core",
     "unstract-tool-registry",
     "unstract-tool-sandbox",
 ]

@@ -3,17 +3,16 @@ import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
-import {
-  handleException,
-  sourceTypes,
-} from "../../../helpers/GetStaticData.js";
+import { sourceTypes } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { OAuthDs } from "../../oauth-ds/oauth-ds/OAuthDs.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./ConfigureDs.css";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 function ConfigureDs({
   spec,
@@ -28,6 +27,10 @@ function ConfigureDs({
   editItemId,
   sourceType,
   handleUpdate,
+  connDetails,
+  metadata,
+  selectedSourceName,
+  connType,
 }) {
   const formRef = createRef(null);
   const axiosPrivate = useAxiosPrivate();
@@ -38,6 +41,14 @@ function ConfigureDs({
   const [status, setStatus] = useState("");
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
+  const { updateSessionDetails } = useSessionStore();
+  const {
+    posthogTcEventText,
+    posthogSubmitEventText,
+    posthogConnectorAddedEventText,
+    setPostHogCustomEvent,
+  } = usePostHogEvents();
 
   const { id } = useParams();
 
@@ -46,6 +57,17 @@ function ConfigureDs({
       setIsTcSuccessful(false);
     }
   }, [formData]);
+
+  useEffect(() => {
+    const { connector_id: connectorId } = connDetails || {};
+
+    // Check if connectorId matches selectedSourceId and metadata is available
+    const shouldSetMetadata = connectorId === selectedSourceId && metadata;
+    if (!shouldSetMetadata) return;
+
+    // Set formData based on the condition
+    setFormData(metadata);
+  }, [selectedSourceId]);
 
   const isFormValid = () => {
     if (formRef) {
@@ -91,6 +113,14 @@ function ConfigureDs({
         adapter_type: type.toUpperCase(),
       };
       url += "test_adapters/";
+
+      try {
+        setPostHogCustomEvent(posthogTcEventText[type], {
+          info: `Test connection was triggered: ${selectedSourceName}`,
+        });
+      } catch (err) {
+        // If an error occurs while setting custom posthog event, ignore it and continue
+      }
     }
 
     if (oAuthProvider?.length > 0) {
@@ -162,6 +192,18 @@ function ConfigureDs({
         connector_name: connectorName,
       };
       url += "connector/";
+
+      try {
+        setPostHogCustomEvent(
+          posthogConnectorAddedEventText[`${connType}:${type}`],
+          {
+            info: `Clicked on 'Submit' button`,
+            connector_name: selectedSourceName,
+          }
+        );
+      } catch (err) {
+        // If an error occurs while setting custom posthog event, ignore it and continue
+      }
     } else {
       const adapterMetadata = { ...formData };
       const adapterName = adapterMetadata?.adapter_name;
@@ -173,6 +215,15 @@ function ConfigureDs({
         adapter_name: adapterName,
       };
       url += "adapter/";
+
+      try {
+        setPostHogCustomEvent(posthogSubmitEventText[type], {
+          info: "Clicked on 'Submit' button",
+          adpater_name: selectedSourceName,
+        });
+      } catch (err) {
+        // If an error occurs while setting custom posthog event, ignore it and continue
+      }
     }
 
     let method = "POST";
@@ -202,14 +253,19 @@ function ConfigureDs({
         const data = res?.data;
         if (sourceTypes.connectors.includes(type)) {
           handleUpdate({ connector_instance: data?.id });
-          setAlertDetails({
-            type: "success",
-            content: "Successfully added connector",
-          });
           return;
         }
         if (data) {
           addNewItem(data, !!editItemId);
+        }
+        setAlertDetails({
+          type: "success",
+          content: `Successfully ${
+            method === "POST" ? "added" : "updated"
+          } connector`,
+        });
+        if (sourceType === Object.keys(sourceTypes)[1] && method === "POST") {
+          updateSession(type);
         }
         setOpen(false);
       })
@@ -219,6 +275,16 @@ function ConfigureDs({
       .finally(() => {
         setIsSubmitApiLoading(false);
       });
+  };
+
+  const updateSession = (type) => {
+    const adapterType = type.toLowerCase();
+    const adaptersList = sessionDetails?.adapters;
+    if (adaptersList && !adaptersList.includes(adapterType)) {
+      adaptersList.push(adapterType);
+      const adaptersListInSession = { adapters: adaptersList };
+      updateSessionDetails(adaptersListInSession);
+    }
   };
 
   return (
@@ -281,6 +347,10 @@ ConfigureDs.propTypes = {
   editItemId: PropTypes.string,
   sourceType: PropTypes.string.isRequired,
   handleUpdate: PropTypes.func,
+  connDetails: PropTypes.object,
+  metadata: PropTypes.object,
+  selectedSourceName: PropTypes.string.isRequired,
+  connType: PropTypes.string,
 };
 
 export { ConfigureDs };

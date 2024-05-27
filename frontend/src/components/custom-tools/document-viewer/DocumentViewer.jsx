@@ -1,7 +1,8 @@
 import PropTypes from "prop-types";
+import { Typography } from "antd";
+
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
-import { Typography } from "antd";
 
 function DocumentViewer({
   children,
@@ -9,6 +10,7 @@ function DocumentViewer({
   isLoading,
   isContentAvailable,
   setOpenManageDocsModal,
+  errMsg,
 }) {
   if (isLoading) {
     return <SpinnerLoader />;
@@ -26,8 +28,10 @@ function DocumentViewer({
 
   if (!isContentAvailable) {
     return (
-      <div className="display-flex-center display-align-center">
-        <Typography.Text>Failed to load the document</Typography.Text>
+      <div className="height-100 display-flex-center display-flex-align-center">
+        <Typography.Text>
+          {errMsg || "Failed to load the document"}
+        </Typography.Text>
       </div>
     );
   }
@@ -41,6 +45,7 @@ DocumentViewer.propTypes = {
   isLoading: PropTypes.bool.isRequired,
   isContentAvailable: PropTypes.bool.isRequired,
   setOpenManageDocsModal: PropTypes.func,
+  errMsg: PropTypes.string,
 };
 
 export { DocumentViewer };

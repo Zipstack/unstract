@@ -6,8 +6,10 @@ LABEL maintainer="Zipstack Inc."
 ENV PYTHONDONTWRITEBYTECODE 1
 # Set to immediately flush stdout and stderr streams without first buffering
 ENV PYTHONUNBUFFERED 1
+ENV PYTHONPATH /unstract
 
 ENV BUILD_CONTEXT_PATH worker
+ENV BUILD_PACKAGES_PATH unstract
 ENV PDM_VERSION 2.12.3
 
 RUN apt-get update \
@@ -19,6 +21,8 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY ${BUILD_CONTEXT_PATH} .
+# Copy local dependency packages
+COPY ${BUILD_PACKAGES_PATH}/core /unstract/core
 
 RUN set -e; \
     \
@@ -33,13 +37,7 @@ RUN set -e; \
     # REF: https://docs.gunicorn.org/en/stable/deploy.html#using-virtualenv
     pip install --no-cache-dir gunicorn gevent;
 
-
 EXPOSE 5002
-
-# Creates a non-root user with an explicit UID and adds permission to access the /app folder
-# For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-RUN adduser -u 5678 --disabled-password --gecos "" unstract; \
-    chown -R unstract /app;
 
 # During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
 # The suggested maximum concurrent requests when using workers and threads is (2*CPU)+1

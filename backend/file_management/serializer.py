@@ -22,11 +22,11 @@ class FileUploadSerializer(serializers.Serializer):
         required=True,
         validators=[
             FileValidator(
-                allowed_extensions=FileInformationKey.FILE_UPLOAD_ALLOWED_EXTENSIONS,
-                allowed_mimetypes=FileInformationKey.FILE_UPLOAD_ALLOWED_MIMETYPES,
+                allowed_extensions=FileInformationKey.FILE_UPLOAD_ALLOWED_EXT,
+                allowed_mimetypes=FileInformationKey.FILE_UPLOAD_ALLOWED_MIME,
                 min_size=0,
                 max_size=FileInformationKey.FILE_UPLOAD_MAX_SIZE,
-            )  # type: ignore
+            )
         ],
     )
     # FileExtensionValidator(allowed_extensions=['pdf'])
@@ -40,18 +40,19 @@ class FileUploadIdeSerializer(serializers.Serializer):
         required=True,
         validators=[
             FileValidator(
-                allowed_extensions=FileInformationKey.FILE_UPLOAD_ALLOWED_EXTENSIONS,
-                allowed_mimetypes=FileInformationKey.FILE_UPLOAD_ALLOWED_MIMETYPES,
+                allowed_extensions=FileInformationKey.FILE_UPLOAD_ALLOWED_EXT,
+                allowed_mimetypes=FileInformationKey.FILE_UPLOAD_ALLOWED_MIME,
                 min_size=0,
                 max_size=FileInformationKey.FILE_UPLOAD_MAX_SIZE,
-            )  # type: ignore
+            )
         ],
     )
 
 
 class FileInfoIdeSerializer(serializers.Serializer):
-    file_name = serializers.CharField()
+    document_id = serializers.CharField()
     tool_id = serializers.CharField()
+    view_type = serializers.CharField(required=False)
 
 
 class FileListRequestIdeSerializer(serializers.Serializer):

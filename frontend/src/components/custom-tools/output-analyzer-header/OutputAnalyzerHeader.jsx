@@ -1,6 +1,7 @@
 import { Button, Space, Typography } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
+
 import { useSessionStore } from "../../../store/session-store";
 
 function OutputAnalyzerHeader() {
@@ -20,7 +21,7 @@ function OutputAnalyzerHeader() {
             <ArrowLeftOutlined />
           </Button>
           <Typography.Text className="font-size-16" strong>
-            Output Viewer
+            Output Analyzer
           </Typography.Text>
         </Space>
       </div>

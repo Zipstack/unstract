@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote_plus
 
 from dotenv import find_dotenv, load_dotenv
 
@@ -43,10 +44,20 @@ def get_required_setting(
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Load default log from env
+DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {"request_id": {"()": "log_request_id.filters.RequestIDFilter"}},
     "formatters": {
+        "enriched": {
+            "format": (
+                "%(levelname)s : [%(asctime)s] {module:%(module)s process:%(process)d "
+                "thread:%(thread)d request_id:%(request_id)s} :- %(message)s"
+            ),
+        },
         "verbose": {
             "format": "[%(asctime)s] %(levelname)s %(name)s: %(message)s",
             "datefmt": "%d/%b/%Y %H:%M:%S",
@@ -58,14 +69,16 @@ LOGGING = {
     },
     "handlers": {
         "console": {
-            "level": "INFO",  # Set the desired logging level here
+            "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
             "class": "logging.StreamHandler",
-            "formatter": "verbose",
+            "filters": ["request_id"],
+            "formatter": "enriched",
         },
     },
     "root": {
         "handlers": ["console"],
-        "level": "INFO",  # Set the desired logging level here as well
+        "level": DEFAULT_LOG_LEVEL,
+        # Set the desired logging level here as well
     },
 }
 
@@ -79,9 +92,7 @@ if ENV_FILE:
 WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND", 10800
 )
-WEB_APP_ORIGIN_URL = os.environ.get(
-    "WEB_APP_ORIGIN_URL", "http://localhost:3000"
-)
+WEB_APP_ORIGIN_URL = os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
 
 WEB_APP_TEMPLATE_ORIGIN_URL = os.environ.get(
     "WEB_APP_TEMPLATE_ORIGIN_URL", "http://localhost:3000"
@@ -98,9 +109,7 @@ DJANGO_APP_BACKEND_URL = os.environ.get(
 INTERNAL_SERVICE_API_KEY = os.environ.get("INTERNAL_SERVICE_API_KEY")
 
 GOOGLE_STORAGE_ACCESS_KEY_ID = os.environ.get("GOOGLE_STORAGE_ACCESS_KEY_ID")
-GOOGLE_STORAGE_SECRET_ACCESS_KEY = os.environ.get(
-    "GOOGLE_STORAGE_SECRET_ACCESS_KEY"
-)
+GOOGLE_STORAGE_SECRET_ACCESS_KEY = os.environ.get("GOOGLE_STORAGE_SECRET_ACCESS_KEY")
 UNSTRACT_FREE_STORAGE_BUCKET_NAME = os.environ.get(
     "UNSTRACT_FREE_STORAGE_BUCKET_NAME", "pandora-user-storage"
 )
@@ -113,8 +122,8 @@ REDIS_DB = os.environ.get("REDIS_DB", "")
 SESSION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "SESSION_EXPIRATION_TIME_IN_SECOND", 3600
 )
-SESSION_COOKIE_SECURE=True
-CSRF_COOKIE_SECURE=True
+SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", True)
+CSRF_COOKIE_SECURE = os.environ.get("CSRF_COOKIE_SECURE", True)
 
 PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
 API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
@@ -145,11 +154,29 @@ STRUCTURE_TOOL_IMAGE_NAME = get_required_setting("STRUCTURE_TOOL_IMAGE_NAME")
 STRUCTURE_TOOL_IMAGE_TAG = get_required_setting("STRUCTURE_TOOL_IMAGE_TAG")
 WORKFLOW_DATA_DIR = os.environ.get("WORKFLOW_DATA_DIR")
 API_STORAGE_DIR = os.environ.get("API_STORAGE_DIR")
+CACHE_TTL_SEC = os.environ.get("CACHE_TTL_SEC", 10800)
+
+DEFAULT_AUTH_USERNAME = os.environ.get("DEFAULT_AUTH_USERNAME", "unstract")
+DEFAULT_AUTH_PASSWORD = os.environ.get("DEFAULT_AUTH_PASSWORD", "unstract")
+SYSTEM_ADMIN_USERNAME = get_required_setting("SYSTEM_ADMIN_USERNAME")
+SYSTEM_ADMIN_PASSWORD = get_required_setting("SYSTEM_ADMIN_PASSWORD")
+SYSTEM_ADMIN_EMAIL = get_required_setting("SYSTEM_ADMIN_EMAIL")
+SESSION_COOKIE_AGE = int(get_required_setting("SESSION_COOKIE_AGE", "86400"))
+ENABLE_LOG_HISTORY = get_required_setting("ENABLE_LOG_HISTORY")
+LOG_HISTORY_CONSUMER_INTERVAL = int(
+    get_required_setting("LOG_HISTORY_CONSUMER_INTERVAL", "60")
+)
+LOGS_BATCH_LIMIT = int(get_required_setting("LOGS_BATCH_LIMIT", "30"))
+
+# Flag to Enable django admin
+ADMIN_ENABLED = False
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = get_required_setting("DJANGO_SECRET_KEY")
+ENCRYPTION_KEY = get_required_setting("ENCRYPTION_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -157,7 +184,6 @@ DEBUG = True
 ALLOWED_HOSTS = ["*"]
 CSRF_TRUSTED_ORIGINS = WEB_APP_ALLOWED_ORIGIN_URLS
 CORS_ALLOW_ALL_ORIGINS = False
-SESSION_COOKIE_AGE = 86400
 
 
 # Application definition
@@ -185,7 +211,6 @@ SHARED_APPS = (
     "docs",
     # Plugins
     "plugins",
-    "log_events",
     "feature_flag",
     "django_celery_beat",
     "apps.traffic_routing",
@@ -196,7 +221,6 @@ TENANT_APPS = (
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
-    "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "tenant_account",
@@ -209,7 +233,6 @@ TENANT_APPS = (
     "workflow_manager.workflow",
     "tool_instance",
     "pipeline",
-    "cron_expression_generator",
     "platform_settings",
     "api",
     "prompt_studio.prompt_profile_manager",
@@ -222,6 +245,9 @@ TENANT_APPS = (
     "apps.chat_history",
     "apps.chat_transcript",
     "apps.document_management",
+    "prompt_studio.prompt_studio_document_manager",
+    "prompt_studio.prompt_studio_index_manager",
+    "usage",
 )
 
 INSTALLED_APPS = list(SHARED_APPS) + [
@@ -241,6 +267,7 @@ AUTH_USER_MODEL = "account.User"
 PUBLIC_ORG_ID = "public"
 
 MIDDLEWARE = [
+    "log_request_id.middleware.RequestIDMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django_tenants.middleware.TenantSubfolderMiddleware",
     "django.middleware.security.SecurityMiddleware",
@@ -253,6 +280,7 @@ MIDDLEWARE = [
     "account.custom_auth_middleware.CustomAuthMiddleware",
     "middleware.exception.ExceptionLoggingMiddleware",
     "social_django.middleware.SocialAuthExceptionMiddleware",
+    "middleware.remove_allow_header.RemoveAllowHeaderMiddleware",
 ]
 
 PUBLIC_SCHEMA_URLCONF = "backend.public_urls"
@@ -307,9 +335,11 @@ CACHES = {
             "USERNAME": REDIS_USER,
             "PASSWORD": REDIS_PASSWORD,
         },
-        "KEY_FUNCTION": "account.cache_service.custom_key_function",
+        "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
     }
 }
+
+SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 
 RQ_QUEUES = {
     "default": {"USE_REDIS_CACHE": "default"},
@@ -322,7 +352,8 @@ CELERY_BROKER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
 # CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/1"
 # Postgres as result backend
 CELERY_RESULT_BACKEND = (
-    f"db+postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    f"db+postgresql://{DB_USER}:{quote_plus(DB_PASSWORD)}"
+    f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
@@ -332,16 +363,7 @@ CELERY_TASK_MAX_RETRIES = 3
 CELERY_TASK_RETRY_BACKOFF = 60  # Time in seconds before retrying the task
 
 # Feature Flag
-FEATURE_FLAG_SERVICE_URL = {
-    "evaluate": f"{FLIPT_BASE_URL}/api/v1/flags/evaluate/"
-}
-
-SCHEDULER_KWARGS = {
-    "coalesce": True,
-    "misfire_grace_time": 300,
-    "max_instances": 1,
-    "replace_existing": True,
-}
+FEATURE_FLAG_SERVICE_URL = {"evaluate": f"{FLIPT_BASE_URL}/api/v1/flags/evaluate/"}
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
@@ -352,16 +374,13 @@ AUTH_PASSWORD_VALIDATORS = [
         "UserAttributeSimilarityValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation."
-        "MinimumLengthValidator",
+        "NAME": "django.contrib.auth.password_validation." "MinimumLengthValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation."
-        "CommonPasswordValidator",
+        "NAME": "django.contrib.auth.password_validation." "CommonPasswordValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation."
-        "NumericPasswordValidator",
+        "NAME": "django.contrib.auth.password_validation." "NumericPasswordValidator",
     },
 ]
 
@@ -381,6 +400,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 STATIC_URL = f"/{PATH_PREFIX}/static/"
+STATIC_ROOT = os.path.join(BASE_DIR, "static")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -401,6 +421,7 @@ WHITELISTED_PATHS_LIST = [
     "/favicon.ico",
     "/logout",
     "/signup",
+    "/static",
 ]
 WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
 # White lists workflow-api-deployment path
@@ -417,6 +438,7 @@ TENANT_ACCESSIBLE_PUBLIC_PATHS = [
     f"/{PATH_PREFIX}{PATH}" for PATH in TENANT_ACCESSIBLE_PUBLIC_PATHS_LIST
 ]
 
+
 # API Doc Generator Settings
 # https://drf-yasg.readthedocs.io/en/stable/settings.html
 REDOC_SETTINGS = {
@@ -425,9 +447,7 @@ REDOC_SETTINGS = {
 }
 
 # Social Auth Settings
-SOCIAL_AUTH_LOGIN_REDIRECT_URL = (
-    f"{WEB_APP_ORIGIN_URL}/oauth-status/?status=success"
-)
+SOCIAL_AUTH_LOGIN_REDIRECT_URL = f"{WEB_APP_ORIGIN_URL}/oauth-status/?status=success"
 SOCIAL_AUTH_LOGIN_ERROR_URL = f"{WEB_APP_ORIGIN_URL}/oauth-status/?status=error"
 SOCIAL_AUTH_EXTRA_DATA_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "SOCIAL_AUTH_EXTRA_DATA_EXPIRATION_TIME_IN_SECOND", 3600

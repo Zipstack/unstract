@@ -1,10 +1,9 @@
 import { CloseOutlined } from "@ant-design/icons";
-import { Card, Col, Image, Progress, Row, Typography } from "antd";
+import { Card, Col, Progress, Row, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useRef } from "react";
 import { useDrag, useDrop } from "react-dnd";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -13,6 +12,8 @@ import { useWorkflowStore } from "../../../store/workflow-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import "../step-card/StepCard.css";
 import "./CardList.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { ToolIcon } from "../tool-icon/ToolIcon";
 
 const CardsList = ({ step, index, activeTool, moveItem }) => {
   const ref = useRef(null);
@@ -22,6 +23,7 @@ const CardsList = ({ step, index, activeTool, moveItem }) => {
   const { deleteToolInstance } = useWorkflowStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
   const handleClick = (id, toolId, index) => {
     const toolSettings = { id, tool_id: toolId };
     setToolSettings(toolSettings);
@@ -125,12 +127,7 @@ const CardsList = ({ step, index, activeTool, moveItem }) => {
                 </Typography.Text>
               </div>
               <div className="wf-step-card-progress display-flex-center">
-                <Progress
-                  type="circle"
-                  percent={step?.progress === "SUCCESS" ? 100 : 0}
-                  size="small"
-                  format={() => index + 1}
-                />
+                <Progress type="circle" size="small" format={() => index + 1} />
               </div>
             </div>
           </Col>
@@ -143,12 +140,7 @@ const CardsList = ({ step, index, activeTool, moveItem }) => {
             <div className="card-col-div">
               <Row align="middle">
                 <Col span={2}>
-                  <Image
-                    src={`data:image/svg+xml,${encodeURIComponent(step?.icon)}`}
-                    preview={false}
-                    height={20}
-                    width={20}
-                  />
+                  <ToolIcon iconSrc={step?.icon} showBorder={false} />
                 </Col>
                 <Col span={21}>
                   <div className="step-name">

@@ -6,14 +6,20 @@ import {
 } from "@ant-design/icons";
 import { Button, Card, Col, Row, Space, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
-
 import "./NotesCard.css";
-import { EditableText } from "../editable-text/EditableText";
 import { useState } from "react";
+
+import { EditableText } from "../editable-text/EditableText";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";
 
-function NotesCard({ details, handleChange, handleDelete, updateStatus }) {
+function NotesCard({
+  details,
+  handleChange,
+  handleDelete,
+  updateStatus,
+  updatePlaceHolder,
+}) {
   const [promptKey, setPromptKey] = useState("");
   const [promptText, setPromptText] = useState("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -38,6 +44,7 @@ function NotesCard({ details, handleChange, handleDelete, updateStatus }) {
               promptId={details?.prompt_id}
               defaultText={details?.prompt_key}
               handleChange={handleChange}
+              placeHolder={updatePlaceHolder}
             />
           </Col>
           <Col span={6} className="display-flex-right">
@@ -95,6 +102,7 @@ function NotesCard({ details, handleChange, handleDelete, updateStatus }) {
           defaultText={details?.prompt}
           handleChange={handleChange}
           isTextarea={true}
+          placeHolder={updatePlaceHolder}
         />
       </Space>
     </Card>
@@ -106,6 +114,7 @@ NotesCard.propTypes = {
   handleChange: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
   updateStatus: PropTypes.object.isRequired,
+  updatePlaceHolder: PropTypes.string,
 };
 
 export { NotesCard };

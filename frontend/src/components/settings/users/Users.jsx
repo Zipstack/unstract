@@ -10,7 +10,6 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Users.css";
 
-import { handleException } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
@@ -18,11 +17,15 @@ import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { TopBar } from "../../widgets/top-bar/TopBar.jsx";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 function Users() {
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
   const navigate = useNavigate();
+  const handleException = useExceptionHandler();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   const [userList, setUserList] = useState([]);
   const [filteredUserList, setFilteredUserList] = useState(userList);
@@ -164,15 +167,26 @@ function Users() {
       ),
     },
   ];
+
+  const handleInviteUsers = () => {
+    navigate(`/${sessionDetails?.orgName}/users/invite`);
+
+    try {
+      setPostHogCustomEvent("intent_add_user", {
+        info: "Clicked on '+ Invite User' button",
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+  };
+
   const inviteUserButtons = () => {
     return (
       <>
         <CustomButton
           type="primary"
           icon={<PlusOutlined />}
-          onClick={() => {
-            navigate(`/${sessionDetails?.orgName}/users/invite`);
-          }}
+          onClick={handleInviteUsers}
         >
           Invite User
         </CustomButton>

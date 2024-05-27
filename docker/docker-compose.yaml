@@ -7,7 +7,8 @@ services:
   backend:
     image: unstract/backend:${VERSION}
     container_name: unstract-backend
-    command: migrate  
+    restart: unless-stopped
+    command: migrate
     ports:
       - "8000:8000"
     env_file:
@@ -17,7 +18,11 @@ services:
       - redis
       - reverse-proxy
       - minio
-    volumes:  
+      - platform-service
+      - prompt-service
+      - x2text-service
+    volumes:
+      - prompt_studio_data:/app/prompt-studio-data
       - ./workflow_data:/data
     environment:
       - ENVIRONMENT=development
@@ -33,9 +38,10 @@ services:
   # Celery execution consumer
   execution-consumer:
     image: unstract/backend:${VERSION}
-    container_name: unstract-execution-consumer    
-    entrypoint: /app/.venv/bin/celery   
-    command: "-A backend worker --loglevel=info"
+    container_name: unstract-execution-consumer
+    restart: unless-stopped
+    entrypoint: .venv/bin/celery
+    command: "-A backend worker --loglevel=info -Q celery,celery_periodic_logs --autoscale=8,1"
     env_file:
       - ../backend/.env
     depends_on:
@@ -51,8 +57,9 @@ services:
   celery-flower:
     image: unstract/backend:${VERSION}
     container_name: unstract-celery-flower
-    entrypoint: /app/.venv/bin/celery
-    command: "-A backend flower --port=5555"
+    restart: unless-stopped
+    entrypoint: .venv/bin/celery
+    command: "-A backend flower --port=5555 --purge_offline_workers=5"
     env_file:
       - ../backend/.env
     depends_on:
@@ -66,17 +73,19 @@ services:
       - ENVIRONMENT=development
     volumes:
       - unstract_data:/data
+    profiles:
+      - optional
 
   # Celery Beat
   celery-beat:
     image: unstract/backend:${VERSION}
     container_name: unstract-celery-beat
-    entrypoint: /app/.venv/bin/celery
+    restart: unless-stopped
+    entrypoint: .venv/bin/celery
     command: "-A backend beat --scheduler django_celery_beat.schedulers:DatabaseScheduler -l INFO"
     env_file:
       - ../backend/.env
       - ./essentials.env
-    restart: on-failure
     depends_on:
         - db
         - redis
@@ -85,6 +94,7 @@ services:
   frontend:
     image: unstract/frontend:${VERSION}
     container_name: unstract-frontend
+    restart: unless-stopped
     ports:
       - "3000:80"
     depends_on:
@@ -99,6 +109,7 @@ services:
   platform-service:
     image: unstract/platform-service:${VERSION}
     container_name: unstract-platform-service
+    restart: unless-stopped
     ports:
       - "3001:3001"
     env_file:
@@ -112,6 +123,9 @@ services:
   prompt-service:
     image: unstract/prompt-service:${VERSION}
     container_name: unstract-prompt-service
+    restart: unless-stopped
+    depends_on:
+      - db
     ports:
       - "3003:3003"
     env_file:
@@ -122,6 +136,7 @@ services:
   x2text-service:
     image: unstract/x2text-service:${VERSION}
     container_name: unstract-x2text-service
+    restart: unless-stopped
     ports:
       - "3004:3004"
     env_file:
@@ -134,12 +149,14 @@ services:
   worker:
     image: unstract/worker:${VERSION}
     container_name: unstract-worker
+    restart: unless-stopped
     ports:
       - 5002:5002
     env_file:
       - ../worker/.env
     volumes:
       - ./workflow_data:/data
+      # Docker socket bind mount to spawn tool containers
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - redis
@@ -147,8 +164,11 @@ services:
       - traefik.enable=false
 
   document-service:
+    profiles:
+        - optional
     image: unstract/document-service:${VERSION}
     container_name: unstract-document-service
+    restart: unless-stopped
     ports:
       - 3002:3002
     depends_on:
@@ -175,7 +195,8 @@ services:
       - traefik.enable=true
       - traefik.http.services.app-deployment.loadbalancer.server.port=80
 
-volumes:   
+volumes:
+  prompt_studio_data:
   unstract_data:
 
 networks:

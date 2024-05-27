@@ -1,8 +1,9 @@
+import { useEffect, useState } from "react";
+
 import { OutputAnalyzerHeader } from "../output-analyzer-header/OutputAnalyzerHeader";
 import "./OutputAnalyzerList.css";
 import { OutputAnalyzerCard } from "../output-analyzer-card/OutputAnalyzerCard";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { useEffect, useState } from "react";
 import { promptType } from "../../../helpers/GetStaticData";
 
 function OutputAnalyzerList() {
@@ -25,7 +26,7 @@ function OutputAnalyzerList() {
       <div className="output-analyzer-body">
         {listOfDocs.map((doc) => {
           return (
-            <div className="output-analyzer-card-gap" key={doc}>
+            <div className="output-analyzer-card-gap" key={doc?.document_id}>
               <OutputAnalyzerCard doc={doc} totalFields={totalFields} />
             </div>
           );

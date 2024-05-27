@@ -1,9 +1,7 @@
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { Button, Input, Select, Space, Table, Typography } from "antd";
-import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -12,6 +10,7 @@ import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./CustomSynonyms.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 const columns = [
   {
@@ -33,7 +32,7 @@ const columns = [
   },
 ];
 
-function CustomSynonyms({ setOpen }) {
+function CustomSynonyms() {
   const [synonyms, setSynonyms] = useState([]);
   const [rows, setRows] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -41,6 +40,7 @@ function CustomSynonyms({ setOpen }) {
   const { details, updateCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   useEffect(() => {
     const promptGrammar = details?.prompt_grammer;
@@ -130,89 +130,107 @@ function CustomSynonyms({ setOpen }) {
     setSynonyms(updatedSynonyms);
   };
 
+  function isEmpty(obj) {
+    if (typeof obj !== "object" || obj === null) {
+      return true;
+    }
+    return Object.values(obj).every(
+      (arr) => Array.isArray(arr) && arr.length === 0
+    );
+  }
+
   const handleSave = () => {
     const promptGrammar = {};
     [...synonyms].forEach((item) => {
-      promptGrammar[item?.word] = item?.synonyms || [];
+      if (
+        !item?.word ||
+        !item?.synonyms?.length ||
+        item.word in promptGrammar
+      ) {
+        return;
+      }
+      promptGrammar[item.word] = item.synonyms || [];
     });
+    if (promptGrammar && !isEmpty(promptGrammar)) {
+      const body = {
+        prompt_grammer: promptGrammar,
+      };
+      const requestOptions = {
+        method: "PATCH",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/`,
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: body,
+      };
 
-    const body = {
-      prompt_grammer: promptGrammar,
-    };
-
-    const requestOptions = {
-      method: "PATCH",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json",
-      },
-      data: body,
-    };
-
-    setIsLoading(true);
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const grammar = res?.data?.prompt_grammer;
-        const updatedDetails = { ...details };
-        updatedDetails["prompt_grammer"] = grammar;
-        updateCustomTool(updatedDetails);
-        setAlertDetails({
-          type: "success",
-          content: "Saved synonyms successfully",
+      setIsLoading(true);
+      axiosPrivate(requestOptions)
+        .then((res) => {
+          const grammar = res?.data?.prompt_grammer;
+          const updatedDetails = { ...details };
+          updatedDetails["prompt_grammer"] = grammar;
+          updateCustomTool({ details: updatedDetails });
+          setAlertDetails({
+            type: "success",
+            content: "Saved synonyms successfully",
+          });
+        })
+        .catch((err) => {
+          setAlertDetails(handleException(err, "Failed to update"));
+        })
+        .finally(() => {
+          setIsLoading(false);
         });
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to update"));
-      })
-      .finally(() => {
-        setIsLoading(false);
+    } else {
+      setAlertDetails({
+        type: "warning",
+        content: "Please add synonyms to save",
       });
+    }
   };
 
   return (
-    <div>
-      <div className="pre-post-amble-body">
-        <SpaceWrapper>
-          <div>
-            <Typography.Text className="add-cus-tool-header">
-              Custom Synonyms
-            </Typography.Text>
-          </div>
-          <div>
-            <Table
-              columns={columns}
-              dataSource={rows}
-              size="small"
-              bordered
-              pagination={{ position: [] }}
-            />
-          </div>
-          <div>
+    <div className="settings-body-pad-top">
+      <SpaceWrapper>
+        <div>
+          <Typography.Text className="add-cus-tool-header">
+            Custom Synonyms
+          </Typography.Text>
+        </div>
+        <div>
+          <Table
+            columns={columns}
+            dataSource={rows}
+            size="small"
+            bordered
+            pagination={{ position: [] }}
+          />
+        </div>
+        <div>
+          <CustomButton
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={handleAddRow}
+          >
+            Rows
+          </CustomButton>
+        </div>
+        <div className="display-flex-right">
+          <Space>
             <CustomButton
               type="primary"
-              icon={<PlusOutlined />}
-              onClick={handleAddRow}
+              onClick={handleSave}
+              loading={isLoading}
             >
-              Rows
+              Save
             </CustomButton>
-          </div>
-        </SpaceWrapper>
-      </div>
-      <div className="pre-post-amble-footer display-flex-right">
-        <Space>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <CustomButton type="primary" onClick={handleSave} loading={isLoading}>
-            Save
-          </CustomButton>
-        </Space>
-      </div>
+          </Space>
+        </div>
+      </SpaceWrapper>
     </div>
   );
 }
-
-CustomSynonyms.propTypes = {
-  setOpen: PropTypes.func.isRequired,
-};
 
 export { CustomSynonyms };

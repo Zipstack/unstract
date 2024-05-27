@@ -1,8 +1,6 @@
 import logging
 from typing import Any, Optional, Union
 
-from backend.constants import RequestKey
-from backend.serializers import AuditSerializer
 from project.constants import ProjectKey
 from rest_framework.serializers import (
     CharField,
@@ -19,7 +17,12 @@ from workflow_manager.endpoint.models import WorkflowEndpoint
 from workflow_manager.workflow.constants import WorkflowExecutionKey, WorkflowKey
 from workflow_manager.workflow.exceptions import WorkflowGenerationError
 from workflow_manager.workflow.generator import WorkflowGenerator
+from workflow_manager.workflow.models.execution import WorkflowExecution
+from workflow_manager.workflow.models.execution_log import ExecutionLog
 from workflow_manager.workflow.models.workflow import Workflow
+
+from backend.constants import RequestKey
+from backend.serializers import AuditSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,7 @@ class WorkflowSerializer(AuditSerializer):
             many=True,
             context=self.context,
         ).data
+        representation["created_by_email"] = instance.created_by.email
         return representation
 
     def create(self, validated_data: dict[str, Any]) -> Any:
@@ -146,4 +150,16 @@ class WorkflowEndpointSerializer(ModelSerializer):
 
     class Meta:
         model = WorkflowEndpoint
+        fields = "__all__"
+
+
+class WorkflowExecutionSerializer(ModelSerializer):
+    class Meta:
+        model = WorkflowExecution
+        fields = "__all__"
+
+
+class WorkflowExecutionLogSerializer(ModelSerializer):
+    class Meta:
+        model = ExecutionLog
         fields = "__all__"

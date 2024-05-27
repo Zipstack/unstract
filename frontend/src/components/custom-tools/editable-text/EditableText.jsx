@@ -5,7 +5,6 @@ import debounce from "lodash/debounce";
 
 import "./EditableText.css";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
-
 function EditableText({
   isEditing,
   setIsEditing,
@@ -15,16 +14,22 @@ function EditableText({
   defaultText,
   handleChange,
   isTextarea,
+  placeHolder,
 }) {
   const name = isTextarea ? "prompt" : "prompt_key";
   const [triggerHandleChange, setTriggerHandleChange] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const divRef = useRef(null);
-  const { disableLlmOrDocChange } = useCustomToolStore();
+  const {
+    disableLlmOrDocChange,
+    indexDocs,
+    selectedDoc,
+    isSinglePassExtractLoading,
+  } = useCustomToolStore();
 
   useEffect(() => {
     setText(defaultText);
-  }, [defaultText]);
+  }, []);
 
   useEffect(() => {
     // Attach the event listener when the component mounts
@@ -57,7 +62,7 @@ function EditableText({
     if (!triggerHandleChange) {
       return;
     }
-    handleChange(text, promptId, name, true, true);
+    handleChange(text, promptId, name, true, false);
     setTriggerHandleChange(false);
   }, [triggerHandleChange]);
 
@@ -74,7 +79,7 @@ function EditableText({
         className="font-size-12 width-100"
         value={text}
         onChange={handleTextChange}
-        placeholder="Enter Prompt"
+        placeholder={placeHolder}
         name={name}
         size="small"
         style={{ backgroundColor: "transparent" }}
@@ -84,14 +89,16 @@ function EditableText({
         onMouseOut={() => setIsHovered(false)}
         onBlur={handleBlur}
         onClick={() => setIsEditing(true)}
-        disabled={disableLlmOrDocChange.includes(promptId)}
+        disabled={
+          disableLlmOrDocChange.includes(promptId) || isSinglePassExtractLoading
+        }
       />
     );
   }
 
   return (
     <Input
-      className="font-size-12 width-100"
+      className="font-size-14 width-100 input-header-text"
       value={text}
       onChange={handleTextChange}
       placeholder="Enter Key"
@@ -104,7 +111,11 @@ function EditableText({
       onMouseOut={() => setIsHovered(false)}
       onBlur={handleBlur}
       onClick={() => setIsEditing(true)}
-      disabled={disableLlmOrDocChange.includes(promptId)}
+      disabled={
+        disableLlmOrDocChange.includes(promptId) ||
+        indexDocs.includes(selectedDoc?.document_id) ||
+        isSinglePassExtractLoading
+      }
     />
   );
 }
@@ -118,6 +129,7 @@ EditableText.propTypes = {
   defaultText: PropTypes.string.isRequired,
   handleChange: PropTypes.func.isRequired,
   isTextarea: PropTypes.bool,
+  placeHolder: PropTypes.string,
 };
 
 export { EditableText };

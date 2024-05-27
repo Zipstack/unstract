@@ -1,5 +1,6 @@
 import { Col, Row, Typography } from "antd";
 import PropTypes from "prop-types";
+
 import { SettingsForm } from "../settings-form/SettingsForm";
 import { AddSource } from "../../input-output/add-source/AddSource";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
@@ -15,6 +16,9 @@ function ConfigureFormsLayout({
   formDataConfig,
   setFormDataConfig,
   isSpecConfigLoading,
+  connDetails,
+  connType,
+  selectedItemName,
 }) {
   return (
     <Row className="conn-modal-tab-body">
@@ -38,6 +42,9 @@ function ConfigureFormsLayout({
                 type={type}
                 editItemId={editItemId}
                 handleUpdate={handleUpdate}
+                connDetails={connDetails}
+                connType={connType}
+                selectedSourceName={selectedItemName}
               />
             )}
           </div>
@@ -78,6 +85,9 @@ ConfigureFormsLayout.propTypes = {
   formDataConfig: PropTypes.object,
   setFormDataConfig: PropTypes.func.isRequired,
   isSpecConfigLoading: PropTypes.bool.isRequired,
+  connDetails: PropTypes.object,
+  connType: PropTypes.string,
+  selectedItemName: PropTypes.string,
 };
 
 export { ConfigureFormsLayout };

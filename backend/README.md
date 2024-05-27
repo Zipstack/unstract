@@ -35,6 +35,25 @@ python manage.py runserver localhost:8000
 ```
 
 - Server will start and run at port 8000. (<http://localhost:8000>)
+  
+## Authentication
+
+The default username is `unstract` and the default password is `unstract`.
+
+To customize the username or password:
+
+1. Navigate to `/backend/.env` created from [/backend/sample.env](/backend/sample.env)
+1. Update the values for `DEFAULT_AUTH_USERNAME` and `DEFAULT_AUTH_PASSWORD` with strong, unique credentials of your choosing
+1. Save the `/backend/.env` file and restart the server to apply changes
+
+> **NOTE**: The username `admin` is reserved for Django admin, hence cannot be used
+
+To update the username or password after it's been set:
+
+1. Modify the username and password in the same `/backend/.env`
+1. Restart server to apply updates
+1. Login with the new credentials
+
 
 ## Asynchronous execution/pipeline execution
 
@@ -46,8 +65,10 @@ python manage.py runserver localhost:8000
 Run the following command to start the worker:
 
 ```bash
-celery -A backend worker --loglevel=info
+celery -A backend worker --loglevel=info -Q celery,celery_periodic_logs
 ```
+- The `celery` queue is used for default Celery tasks.
+- The `celery_periodic_logs` queue is utilized for logging history tasks.
 
 ### Worker Dashboard
 
@@ -99,6 +120,10 @@ as envs in `backend/.env`
 GOOGLE_OAUTH2_KEY="<client-id>"
 GOOGLE_OAUTH2_SECRET="<client-secret>"
 ```
+
+## Tool Registry
+
+Information regarding how tools are added and maintained can be found [here](/unstract/tool-registry/README.md).
 
 
 # Archived - (EXPERIMENTAL)

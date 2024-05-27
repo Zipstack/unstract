@@ -1,199 +1,144 @@
+<div align="center">
+<img src="docs/assets/unstract_u_logo.png" style="height: 120px">
+
 # Unstract
 
+## No-code LLM Platform to launch APIs and ETL Pipelines to structure unstructured documents
+
 [![pdm-managed](https://img.shields.io/badge/pdm-managed-blueviolet)](https://pdm-project.org)
+[![CLA assistant](https://cla-assistant.io/readme/badge/Zipstack/unstract)](https://cla-assistant.io/Zipstack/unstract)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/Zipstack/unstract/main.svg)](https://results.pre-commit.ci/latest/github/Zipstack/unstract/main)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=bugs)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=coverage)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
+[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
 
-TODO: Write few lines about the project.
+</div>
 
-## System Requirements
+## 🤖 Go beyond co-pilots
 
-- docker
-- git
+While co-pilots enable machine-to-human automation, with Unstract, you can go beyond co-pilots by enabling machine-to-machine automation. You can launch APIs that take in complex documents and return structured JSON all with a simple no-code approach. You can also launch unstructured data ETL Pipelines that can read complex documents from a variety of cloud file / object storage systems and write structured data into popular data warehouses and databases.
 
-## Running with docker compose
+![img Prompt Studio](docs/assets/prompt_studio.png)
 
-- All services needed by the backend can be run with
+## 🧘‍♀️ Three step nirvana
 
-```
-cd docker/
-VERSION=test docker compose -f docker-compose.build.yaml build
-VERSION=test docker compose -f docker-compose.yaml up -d
-```
+Automate critical business processes that involve complex documents with a human in the loop. Go beyond RPA with the power of Large Language Models.
 
-Additional information on running with Docker can be found in [DOCKERISING.md](/DOCKERISING.md)
+🌟 **Step 1**: Add documents to no-code Prompt Studio and do prompt engineering to extract required fields <br>
+🌟 **Step 2**: Configure Prompt Studio project as API deployment or configure input source and output destination for ETL Pipeline<br>
+🌟 **Step 3**: Deploy Workflows as unstructured data APIs or unstructured data ETL Pipelines!
 
-- Use the `-f` flag to run all dependencies necessary for development, this runs containers needed for testing as well such as Minio.
+![img Using Unstract](docs/assets/Using_Unstract.png)
 
-```
-docker compose -f docker-compose-dev-essentials.yaml up
-```
+## 🚀 Getting started
 
-- It might take sometime on the first run to pull the images.
+### System Requirements
 
-## Running locally
+- 8GB RAM (recommended)
 
-### Installation
+### Prerequisites
 
-- Install the below libraries which are needed to run Unstract
-  - Linux
+- Linux or MacOS (Intel or M-series)
+- Docker
+- Docker Compose (if you need to install it separately)
+- Git
 
-    ```
-    sudo apt install build-essential pkg-config libpoppler-cpp-dev libmagic-dev python3-dev
-    ```
+Next, either download a release or clone this repo and do the following:
 
-  - Mac
+✅ `./run-platform.sh`<br>
+✅ Now visit [http://frontend.unstract.localhost](http://frontend.unstract.localhost) in your browser <br>
+✅ Use user name and password `unstract` to login
 
-    ```
-    brew install pkg-config poppler freetds libmagic
-    ```
+That's all there is to it!
 
-### Create your virtual env
+Another really quick way to experience Unstract is by signing up for our [hosted version](https://us-central.unstract.com/).
 
-- In order to install dependencies and run a package, ensure that you've sourced a virtual environment within that package. All commands in this repository assumes that you have sourced your required venv.
+## ⏩ Quick Start Guide
 
-```
-cd <package_to_use>
-python -m venv .venv
-source ./venv/bin/activate
-```
+Unstract comes well documented. You can get introduced to the [basics of Unstract](https://docs.unstract.com/), and [learn how to connect](https://docs.unstract.com/unstract_platform/setup_accounts/whats_needed) various systems like LLMs, Vector Databases, Embedding Models and Text Extractors to it. The easiest way to wet your feet is to go through our [Quick Start Guide](https://docs.unstract.com/unstract_platform/quick_start) where you actually get to do some prompt engineering in Prompt Studio and launch an API to structure varied credit card statements!
+
+## 🤝 Ecosystem support
+
+### LLM Providers
+
+|| Provider | Status |
+|---|---|---|
+|<img src="docs/assets/3rd_party/openai.png" width="32"/>| OpenAI | ✅ Working |
+|<img src="docs/assets/3rd_party/vertex_ai.png" width="32"/>| Google VertexAI, Gemini Pro | ✅ Working |
+|<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure OpenAI | ✅ Working  |
+|<img src="docs/assets/3rd_party/palm.png" width="32"/>| Google PaLM | ✅ Working  |
+|<img src="docs/assets/3rd_party/anyscale.png" width="32"/>| Anyscale | ✅ Working |
+|<img src="docs/assets/3rd_party/mistral_ai.png" width="32"/>| Mistral AI | ✅ Working |
+|<img src="docs/assets/3rd_party/anthropic.png" width="32"/>| Anthropic | ✅ Working |
+|<img src="docs/assets/3rd_party/replicate.png" width="32"/>| Replicate | 🗓️ Coming soon! |
 
 
-### Install dependencies with PDM
+### Vector Databases
 
-- This repository makes use of [PDM](https://github.com/pdm-project/pdm) for managing dependencies with the help of a virtual
-environment.
-- If you haven't installed PDM in your machine yet, 
-  - Install it using the below command
-  ```
-  curl -sSL https://pdm.fming.dev/install-pdm.py | python3 -
-  ```
-  - Or install it from PyPI using `pip`
-  ```
-  pip install pdm
-  ```
+|| Provider | Status |
+|---|---|---|
+|<img src="docs/assets/3rd_party/qdrant.png" width="32"/>| Qdrant | ✅ Working |
+|<img src="docs/assets/3rd_party/weaviate.png" width="32"/>| Weaviate | ✅ Working |
+|<img src="docs/assets/3rd_party/pinecone.png" width="32"/>| Pinecone | ✅ Working |
+|<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | ✅ Working |
+|<img src="docs/assets/3rd_party/milvus.png" width="32"/>| Milvus | 🗓️ Coming soon! |
 
-Ensure you're running the PDM commands from the corresponding package root
-- Install dependencies for running the package with
 
-```
-pdm install
-```
-This install dev dependencies as well by default
-- For production, install the requirements with
 
-```
-pdm install --prod
-```
+### Embeddings
 
-- With PDM its possible to run some services from any directory within this
-repository. To list the possible scripts that can be executed
-```
-pdm run -l
-```
+|| Provider | Status |
+|---|---|---|
+|<img src="docs/assets/3rd_party/openai.png" width="32"/>| OpenAI | ✅ Working |
+|<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure OpenAI | ✅ Working  |
+|<img src="docs/assets/3rd_party/palm.png" width="32"/>| Google PaLM | ✅ Working  |
 
-- Add a new dependency with (ensure you're running it from the correct project's root)
-Perform an editable install with `-e` only for local development.
-```
-pdm add <package_from_PyPI>
-pdm add -e <relative_path_to_local_package>
-```
-- List all dependencies with
-```
-pdm list
-```
-- After updating `pyproject.toml`s with a newly added dependency, the lock file can be updated with
-```
-pdm lock
-```
-- Refer [PDM's documentation](https://pdm.fming.dev/latest/reference/cli/) for further details.
+### Text Extractors
 
-### Configuring Postgres
+|| Provider | Status |
+|---|---|---|
+|<img src="docs/assets/unstract_u_logo.png" width="32"/>| Unstract LLMWhisperer | ✅ Working |
+|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Community | 🗓️ Coming soon!  |
+|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Enterprise | 🗓️ Coming soon!  |
+|<img src="docs/assets/3rd_party/llamaindex.png" width="32"/>| LlamaIndex Parse | 🗓️ Coming soon! |
 
-- Create a Postgres user and DB for the BE and configure it like so
+### ETL Sources
 
-```
-POSTGRES_USER: unstract_dev
-POSTGRES_PASSWORD: unstract_pass
-POSTGRES_DB: unstract_db
-```
+|| Provider | Status |
+|---|---|---|
+|<img src="docs/assets/3rd_party/s3.png" width="32"/>| AWS S3 | ✅ Working |
+|<img src="docs/assets/3rd_party/minio.png" width="32"/>| Minio | ✅ Working |
+|<img src="docs/assets/3rd_party/dropbox.png" width="32"/>| Dropbox | ✅ Working |
+|<img src="docs/assets/3rd_party/google_drive.png" width="32"/>| Google Drive | 🗓️ Coming soon! |
+|<img src="docs/assets/3rd_party/box.png" width="32"/>| Box | 🗓️ Coming soon! |
+|<img src="docs/assets/3rd_party/gcp.png" width="32"/>| Google Cloud Storage | 🗓️ Coming soon! |
+|<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure Cloud Storage | 🗓️ Coming soon! |
+|<img src="docs/assets/3rd_party/http.png" width="32"/>| HTTP/HTTPS | 🗓️ Coming soon! |
 
-If you require a different config, make sure the necessary envs from [backend/sample.env](/backend/sample.env) are exported.
+### ETL Destinations
 
-- Execute the script [backend/init.sql](/backend/init.sql) that adds roles and creates a DB and extension for ZS Document Indexer tool to work.
-Make sure that [pgvector](https://github.com/pgvector/pgvector#installation) is installed.
+|| Provider | Status |
+|---|---|---|
+|<img src="docs/assets/3rd_party/snowflake.png" width="32"/>| Snowflake | ✅ Working |
+|<img src="docs/assets/3rd_party/amazon_redshift.png" width="32"/>| Amazon Redshift | ✅ Working |
+|<img src="docs/assets/3rd_party/google_bigquery.png" width="32"/>| Google Bigquery | ✅ Working |
+|<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | ✅ Working |
+|<img src="docs/assets/3rd_party/mysql.png" width="32"/>| MySQL | 🗓️ Coming soon! |
+|<img src="docs/assets/3rd_party/mariadb.png" width="32"/>| MariaDB | 🗓️ Coming soon! |
+|<img src="docs/assets/3rd_party/ms_sql.png" width="32"/>| Microsoft SQL Server | 🗓️ Coming soon! |
 
-### Pre-commit hooks
+## 🙌 Contributing
 
-- We use pre-commit to run some hooks whenever code is pushed to perform linting and static code analysis among other checks.
-- Ensure dev dependencies are installed and you're in the virtual env
-- Install hooks with `pre-commit install` or `pdm run pre-commit install`
-- Manually trigger pre-commit hooks in following ways:
-  ```bash
-  #
-  # Using the tool directly
-  #
-  # Run all pre-commit hooks
-  pre-commit run
-  # Run specific pre-commit hook
-  pre-commit run flake8
-  # Run mypy pre-commit hook for selected folder
-  pre-commit run mypy --files prompt-service/**/*.py
-  # Run mypy for selected folder
-  mypy prompt-service/**/*.py
+Contributions are welcome! Please read [CONTRIBUTE.md](CONTRIBUTE.md) for further details on setting up the development environment, etc. It also points you to other detailed documents as needed.
 
-  #
-  # Using pdm to run the scripts
-  #
-  # Run all pre-commit hooks
-  pdm run pre-commit run
-  # Run specific pre-commit hook
-  pdm run pre-commit run flake8
-  # Run mypy pre-commit hook for selected folder
-  pdm run pre-commit run mypy --files prompt-service/**/*.py
-  # Run mypy for selected folder
-  pdm run mypy prompt-service/**/*.py
-  ```
+## 👋 Join the LLM-powered automation community
 
-### Backend
+- On Slack, [join great conversations](https://join-slack.unstract.com) around LLMs, their ecosystem and leveraging them to automate the previously unautomatable!
+- [Follow us on X/Twitter](https://twitter.com/GetUnstract)
+- [Follow us on LinkedIn](https://www.linkedin.com/showcase/unstract/)
 
-- Check [backend/README.md](/backend/README.md) for running the backend.
+## 📊 A note on analytics
 
-### Frontend
-
-- Install dependencies with `npm install`
-- Start the server with `npm start`
-
-### Traefik Proxy Overrides
-
-It is possible to simultaneously run few services directly on docker host while others are run as docker containers via docker compose.  
-This enables seamless development without worrying about deployment of other services which you are not concerned with.
-
-We just need to override default Traefik proxy routing to allow this, that's all.
-
-1. Copy `docker/sample.proxy_overrides.yaml` to `docker/proxy_overrides.yaml`.  
-   Modify to update Traefik proxy routes for services running directly on docker host (`host.docker.internal:<port>`).
-
-2. Update host name of dependency components in config of services running directly on docker host:
-    - Replace as `*.localhost` IF container port is exposed on docker host
-    - **OR** use container IPs obtained via `docker network inspect unstract-network`
-    - **OR** run `dockers/scripts/resolve_container_svc_from_host.sh` IF container port is NOT exposed on docker host or if you want to keep dependency host names unchanged
-
-Run the services.
-
-#### Conflicting Host Names
-
-When same host name environment variables are used by both the service running locally and a service
-running in a container (for example, running in from a tool), host name resolution conflicts can arise for the following:
-
-- `localhost` -> Using this inside a container points to the container itself, and not the host.
-- `host.docker.internal` -> Meant to be used inside containers only, to get host IP.
-Does not make sense to use in services running locally.
-
-*In such cases, use another host name and point the same to host IP in `/etc/hosts`.*
-
-For example, the backend uses the PROMPT_HOST environment variable, which is also supplied
-in the Tool configuration when spawning Tool containers. If the backend is running
-locally and the Tools are in containers, we could set the value to
-`prompt-service` and add it to `/etc/hosts` as shown below.
-```
-<host_local_ip>    prompt-service
-```
+In full disclosure, Unstract integrates Posthog to track usage analytics. As you can inspect the relevant code here, we collect the minimum possible metrics.

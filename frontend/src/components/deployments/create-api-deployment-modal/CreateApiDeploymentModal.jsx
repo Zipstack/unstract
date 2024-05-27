@@ -1,13 +1,12 @@
 import { Form, Input, Modal, Select } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-
-import {
-  getBackendErrorDetail,
-  handleException,
-} from "../../../helpers/GetStaticData.js";
+import { getBackendErrorDetail } from "../../../helpers/GetStaticData.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { useWorkflowStore } from "../../../store/workflow-store.js";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 const defaultFromDetails = {
   display_name: "",
@@ -26,10 +25,13 @@ const CreateApiDeploymentModal = ({
   setSelectedRow,
   workflowId,
   workflowEndpointList,
+  setDeploymentName,
 }) => {
+  const workflowStore = useWorkflowStore();
+  const { updateWorkflow } = workflowStore;
   const apiDeploymentsApiService = apiDeploymentsService();
   const { setAlertDetails } = useAlertStore();
-
+  const handleException = useExceptionHandler();
   const { Option } = Select;
   const [formDetails, setFormDetails] = useState(
     isEdit ? { ...selectedRow } : { ...defaultFromDetails }
@@ -38,6 +40,7 @@ const CreateApiDeploymentModal = ({
   const [form] = Form.useForm();
   const [backendErrors, setBackendErrors] = useState(null);
   const [isFormChanged, setIsFormChanged] = useState(false);
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   const handleInputChange = (changedValues, allValues) => {
     setIsFormChanged(true);
@@ -92,12 +95,29 @@ const CreateApiDeploymentModal = ({
   };
 
   const createApiDeployment = () => {
+    try {
+      const wf = workflowEndpointList.find(
+        (item) => item?.workflow === formDetails?.workflow
+      );
+      setPostHogCustomEvent("intent_success_api_deployment", {
+        info: "Clicked on 'Save' button",
+        deployment_name: formDetails?.api_name,
+        workflow_name: wf?.workflow_name,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
     setIsLoading(true);
     const body = formDetails;
     apiDeploymentsApiService
       .createApiDeployment(body)
       .then((res) => {
-        if (!workflowId) {
+        if (workflowId) {
+          // Update - can update workflow endpoint status in store
+          updateWorkflow({ allowChangeEndpoint: false });
+          setDeploymentName(body.display_name);
+        } else {
           updateTableData();
           setSelectedRow(res?.data);
           openCodeModal(true);
@@ -110,7 +130,7 @@ const CreateApiDeploymentModal = ({
         });
       })
       .catch((err) => {
-        setAlertDetails(handleException(err));
+        handleException(err, "", setBackendErrors);
       })
       .finally(() => {
         setIsLoading(false);
@@ -133,7 +153,7 @@ const CreateApiDeploymentModal = ({
         });
       })
       .catch((err) => {
-        setAlertDetails(handleException(err));
+        handleException(err, "", setBackendErrors);
       })
       .finally(() => {
         setIsLoading(false);
@@ -177,7 +197,6 @@ const CreateApiDeploymentModal = ({
         <Form.Item
           label="Description"
           name="description"
-          rules={[{ required: true, message: "Please enter description" }]}
           validateStatus={
             getBackendErrorDetail("description", backendErrors) ? "error" : ""
           }
@@ -248,6 +267,7 @@ CreateApiDeploymentModal.propTypes = {
   setSelectedRow: PropTypes.func,
   workflowId: PropTypes.string,
   workflowEndpointList: PropTypes.object,
+  setDeploymentName: PropTypes.func,
 };
 
 export { CreateApiDeploymentModal };

@@ -1,20 +1,20 @@
-import datetime
-import json
 import logging
 import os
 import uuid
+from datetime import datetime
 from typing import Any, Literal, Optional
 
 import peewee
 import redis
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
-from flask import Flask, Request, Response, jsonify, request
+from flask import Flask, Request, Response, json, jsonify, make_response, request
 from unstract.platform_service.exceptions import CustomException
 from unstract.platform_service.helper import (
     AdapterInstanceRequestHelper,
     PromptStudioRequestHelper,
 )
+from unstract.platform_service.utils import EnvManager
 
 load_dotenv()
 
@@ -22,46 +22,26 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s : %(message)s",
 )
+# Configuring envs
 MAX_FILE_SIZE = 100 * 1024 * 1024
 INVALID_ORGANIZATOIN = "Invalid organization"
 INVALID_PAYLOAD = "Bad Request / No payload"
 BAD_REQUEST = "Bad Request"
-REDIS_HOST = os.environ.get("REDIS_HOST")
-REDIS_PORT = int(os.environ.get("REDIS_PORT", 6379))
+REDIS_HOST = EnvManager.get_required_setting("REDIS_HOST")
+REDIS_PORT = int(EnvManager.get_required_setting("REDIS_PORT", 6379))
 REDIS_USERNAME = os.environ.get("REDIS_USERNAME")
 REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD")
-PG_HOST = os.environ.get("PG_HOST")
-PG_PORT = int(os.environ.get("PG_PORT", 5432))
-PG_USERNAME = os.environ.get("PG_USERNAME")
-PG_PASSWORD = os.environ.get("PG_PASSWORD")
-PG_DATABASE = os.environ.get("PG_DATABASE")
 PG_BE_HOST = os.environ.get("PG_BE_HOST")
 PG_BE_PORT = int(os.environ.get("PG_BE_PORT", 5432))
 PG_BE_USERNAME = os.environ.get("PG_BE_USERNAME")
 PG_BE_PASSWORD = os.environ.get("PG_BE_PASSWORD")
 PG_BE_DATABASE = os.environ.get("PG_BE_DATABASE")
-PG_V_HOST = os.environ.get("PG_V_HOST", "127.0.0.1")
-PG_V_PORT = int(os.environ.get("PG_V_PORT", 5432))
-PG_V_USERNAME = os.environ.get("PG_V_USERNAME", "user")
-PG_V_PASSWORD = os.environ.get("PG_V_PASSWORD", "")
-PG_V_DATABASE = os.environ.get("PG_V_DATABASE", "")
-if not (REDIS_HOST and REDIS_PORT):
-    raise ValueError(
-        "REDIS_HOST and REDIS_PORT must be set in the environment."
-    )
+ENCRYPTION_KEY = EnvManager.get_required_setting("ENCRYPTION_KEY")
+
+EnvManager.raise_for_missing_envs()
 
 # TODO: Follow Flask best practices and refactor accordingly
 app = Flask("platform_service")
-
-doc_db = peewee.PostgresqlDatabase(
-    PG_DATABASE,
-    user=PG_USERNAME,
-    password=PG_PASSWORD,
-    host=PG_HOST,
-    port=PG_PORT,
-)
-doc_db.init(PG_DATABASE)
-doc_db.connect()
 
 be_db = peewee.PostgresqlDatabase(
     PG_BE_DATABASE,
@@ -74,43 +54,15 @@ be_db.init(PG_BE_DATABASE)
 be_db.connect()
 
 
-class EncryptionSecret(peewee.Model):
-    id = peewee.IntegerField()
-    key = peewee.CharField()
-
-    class Meta:
-        table_name = "account_encryptionsecret"
-        database = be_db  # This model uses the "BE_DB" database.
-
-    def save(self, force_insert: bool = False, only: Any = None) -> Any:
-        self.modified_at = datetime.datetime.now()
-        return super().save(force_insert=force_insert, only=only)
+def drop_unstract_usage_table() -> None:
+    query = "DROP TABLE IF EXISTS unstract_usage"
+    try:
+        be_db.execute_sql(query)
+    except Exception as e:
+        app.logger.error(f"Error dropping 'unstract_usage' table: {e}")
 
 
-class UnstractUsage(peewee.Model):
-    id = peewee.UUIDField(primary_key=True, default=uuid.uuid4)
-    created_at = peewee.DateTimeField(default=datetime.datetime.now)
-    organization_id = peewee.CharField()
-    workflow_id = peewee.CharField()
-    execution_id = peewee.CharField()
-    status = peewee.CharField()
-    usage_type = peewee.CharField()
-    external_service = peewee.CharField()
-    tokens_valid = peewee.BooleanField(default=False)
-    embedding_tokens = peewee.IntegerField()
-    prompt_tokens = peewee.IntegerField()
-    completion_tokens = peewee.IntegerField()
-    total_tokens = peewee.IntegerField()
-    usage_value_valid = peewee.BooleanField(peewee.BooleanField(default=False))
-    usage_value = peewee.FloatField()
-    usage_units = peewee.CharField()
-
-    class Meta:
-        database = be_db  # This model uses the "BE_DB" database.
-        table_name = "unstract_usage"
-
-
-UnstractUsage.create_table()
+drop_unstract_usage_table()
 
 
 def get_token_from_auth_header(request: Request) -> Any:
@@ -138,14 +90,10 @@ def authentication_middleware(func: Any) -> Any:
 
 
 def get_account_from_bearer_token(token: Optional[str]) -> str:
-    query = (
-        "SELECT organization_id FROM account_platformkey "
-        f"WHERE key='{token}'"
-    )
+    query = "SELECT organization_id FROM account_platformkey " f"WHERE key='{token}'"
     organization = execute_query(query)
     query_org = (
-        "SELECT schema_name FROM account_organization "
-        f"WHERE id='{organization}'"
+        "SELECT schema_name FROM account_organization " f"WHERE id='{organization}'"
     )
     schema_name: str = execute_query(query_org)
     return schema_name
@@ -171,9 +119,7 @@ def validate_bearer_token(token: Optional[str]) -> bool:
         result_row = cursor.fetchone()
         cursor.close()
         if not result_row or len(result_row) == 0:
-            app.logger.error(
-                f"Authentication failed. bearer token not found {token}"
-            )
+            app.logger.error(f"Authentication failed. bearer token not found {token}")
             return False
         platform_key = str(result_row[1])
         is_active = bool(result_row[2])
@@ -183,9 +129,7 @@ def validate_bearer_token(token: Optional[str]) -> bool:
             )
             return False
         if platform_key != token:
-            app.logger.error(
-                f"Authentication failed. Invalid bearer token: {token}"
-            )
+            app.logger.error(f"Authentication failed. Invalid bearer token: {token}")
             return False
 
     except Exception as e:
@@ -213,8 +157,6 @@ def usage() -> Any:
             ....
         }'
     """
-    bearer_token = get_token_from_auth_header(request)
-    organization_id = get_account_from_bearer_token(bearer_token)
     result: dict[str, Any] = {
         "status": "ERROR",
         "error": "",
@@ -223,45 +165,54 @@ def usage() -> Any:
     payload: Optional[dict[Any, Any]] = request.json
     if not payload:
         result["error"] = INVALID_PAYLOAD
-        return result, 400
-
-    org_id = organization_id
+        return make_response(result, 400)
+    bearer_token = get_token_from_auth_header(request)
+    org_id = get_account_from_bearer_token(bearer_token)
     workflow_id = payload.get("workflow_id")
     execution_id = payload.get("execution_id", "")
-    status = payload.get("status", "")
+    adapter_instance_id = payload.get("adapter_instance_id", "")
+    run_id = payload.get("run_id", "")
     usage_type = payload.get("usage_type", "")
-    external_service = payload.get("external_service", "")
-    tokens_valid = payload.get("tokens_valid", False)
+    model_name = payload.get("model_name", "")
     embedding_tokens = payload.get("embedding_tokens", 0)
     prompt_tokens = payload.get("prompt_tokens", 0)
     completion_tokens = payload.get("completion_tokens", 0)
     total_tokens = payload.get("total_tokens", 0)
-    usage_value_valid = payload.get("usage_value_valid", False)
-    usage_value = payload.get("usage_value", 0.0)
-    usage_units = payload.get("usage_units", "")
-
-    usage: UnstractUsage = UnstractUsage.create(
-        organization_id=org_id,
-        workflow_id=workflow_id,
-        execution_id=execution_id,
-        status=status,
-        usage_type=usage_type,
-        external_service=external_service,
-        tokens_valid=tokens_valid,
-        embedding_tokens=embedding_tokens,
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        total_tokens=total_tokens,
-        usage_value_valid=usage_value_valid,
-        usage_value=usage_value,
-        usage_units=usage_units,
+    query = f"""
+        INSERT INTO "{org_id}"."token_usage" (id, workflow_id, execution_id,
+        adapter_instance_id, run_id, usage_type, model_name, embedding_tokens,
+        prompt_tokens, completion_tokens, total_tokens, created_at, modified_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+    usage_id = uuid.uuid4()
+    current_time = datetime.now()
+    params = (
+        usage_id,
+        workflow_id,
+        execution_id,
+        adapter_instance_id,
+        run_id,
+        usage_type,
+        model_name,
+        embedding_tokens,
+        prompt_tokens,
+        completion_tokens,
+        total_tokens,
+        current_time,
+        current_time,
     )
-    app.logger.info(
-        "Entry created with id %s for %s", usage.id, organization_id
-    )
-    result["status"] = "OK"
-    result["unique_id"] = usage.id
-    return result
+    try:
+        with be_db.atomic() as transaction:
+            be_db.execute_sql(query, params)
+            transaction.commit()
+            app.logger.info("Entry created with id %s for %s", usage_id, org_id)
+            result["status"] = "OK"
+            result["unique_id"] = usage_id
+            return make_response(result, 200)
+    except Exception as e:
+        app.logger.error(f"Error while creating usage entry: {e}")
+        result["error"] = "Internal Server Error"
+        return make_response(result, 500)
 
 
 @app.route(
@@ -400,21 +351,16 @@ def adapter_instance() -> Any:
         adapter_instance_id = request.args.get("adapter_instance_id")
 
         try:
-            data_dict = (
-                AdapterInstanceRequestHelper.get_adapter_instance_from_db(
-                    db_instance=be_db,
-                    organization_id=organization_id,
-                    adapter_instance_id=adapter_instance_id,
-                )
+            data_dict = AdapterInstanceRequestHelper.get_adapter_instance_from_db(
+                db_instance=be_db,
+                organization_id=organization_id,
+                adapter_instance_id=adapter_instance_id,
             )
 
-            encryption_secret: EncryptionSecret = EncryptionSecret.get()
-            f: Fernet = Fernet(encryption_secret.key.encode("utf-8"))
+            f: Fernet = Fernet(ENCRYPTION_KEY.encode("utf-8"))
 
             data_dict["adapter_metadata"] = json.loads(
-                f.decrypt(
-                    bytes(data_dict.pop("adapter_metadata_b")).decode("utf-8")
-                )
+                f.decrypt(bytes(data_dict.pop("adapter_metadata_b")).decode("utf-8"))
             )
 
             return jsonify(data_dict)

@@ -4,4 +4,3 @@ ALTER ROLE unstract_dev SET timezone TO 'UTC';
 ALTER USER unstract_dev CREATEDB;
 GRANT ALL PRIVILEGES ON DATABASE unstract_db TO unstract_dev;
 CREATE DATABASE unstract;
-CREATE EXTENSION vector;

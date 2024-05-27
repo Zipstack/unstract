@@ -2,38 +2,54 @@ import { FullscreenExitOutlined, FullscreenOutlined } from "@ant-design/icons";
 import { Col, Collapse, Modal, Row } from "antd";
 import { useState } from "react";
 
-import { handleException } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import { AddLlmProfileModal } from "../add-llm-profile-modal/AddLlmProfileModal";
 import { CustomSynonymsModal } from "../custom-synonyms-modal/CustomSynonymsModal";
 import { DisplayLogs } from "../display-logs/DisplayLogs";
 import { DocumentManager } from "../document-manager/DocumentManager";
-import { GenerateIndex } from "../generate-index/GenerateIndex";
 import { Header } from "../header/Header";
-import { ManageLlmProfilesModal } from "../manage-llm-profiles-modal/ManageLlmProfilesModal";
+import { LogsLabel } from "../logs-label/LogsLabel";
+import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+
+let OnboardMessagesModal;
+let slides;
+try {
+  OnboardMessagesModal =
+    require("../../../plugins/onboarding-messages/OnboardMessagesModal.jsx").OnboardMessagesModal;
+  slides =
+    require("../../../plugins/onboarding-messages/prompt-slides.jsx").PromptSlides;
+} catch (err) {
+  OnboardMessagesModal = null;
+  slides = [];
+}
 
 function ToolIde() {
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [activeKey, setActiveKey] = useState([]);
   const [openCusSynonymsModal, setOpenCusSynonymsModal] = useState(false);
-  const [openManageLlmModal, setOpenManageLlmModal] = useState(false);
-  const [openAddLlmModal, setOpenAddLlmModal] = useState(false);
-  const [editLlmProfileId, setEditLlmProfileId] = useState(null);
-  const [isGenerateIndexOpen, setIsGenerateIndexOpen] = useState(false);
-  const [isGeneratingIndex, setIsGeneratingIndex] = useState(false);
-  const [generateIndexResult, setGenerateIndexResult] = useState("");
-  const [modalTitle, setModalTitle] = useState("");
-  const { details, updateCustomTool, disableLlmOrDocChange, selectedDoc } =
-    useCustomToolStore();
+  const [openSettings, setOpenSettings] = useState(false);
+  const {
+    details,
+    updateCustomTool,
+    disableLlmOrDocChange,
+    selectedDoc,
+    indexDocs,
+    pushIndexDoc,
+    deleteIndexDoc,
+  } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
+  const { promptOnboardingMessage } = sessionDetails;
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
+  const [loginModalOpen, setLoginModalOpen] = useState(true);
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   const openLogsModal = () => {
     setShowLogsModal(true);
@@ -55,12 +71,10 @@ function ToolIde() {
   const getItems = () => [
     {
       key: "1",
-      label: !activeKey?.length > 0 && "Logs",
+      label: activeKey?.length > 0 ? <LogsLabel /> : "Logs",
       children: (
         <div className="tool-ide-logs">
-          <IslandLayout>
-            <DisplayLogs />
-          </IslandLayout>
+          <DisplayLogs />
         </div>
       ),
       extra: genExtra(),
@@ -71,24 +85,24 @@ function ToolIde() {
     setActiveKey(keys);
   };
 
-  const handleGenerateIndexModal = (isOpen) => {
-    if (isGeneratingIndex) {
+  const generateIndex = async (doc) => {
+    const docId = doc?.document_id;
+
+    if (indexDocs.includes(docId)) {
+      setAlertDetails({
+        type: "error",
+        content: "This document is already getting indexed",
+      });
       return;
     }
-    setIsGenerateIndexOpen(isOpen);
-  };
-
-  const generateIndex = async (fileName) => {
-    setIsGenerateIndexOpen(true);
-    setIsGeneratingIndex(true);
 
     const body = {
-      tool_id: details?.tool_id,
-      file_name: fileName,
+      document_id: docId,
     };
+
     const requestOptions = {
       method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/index-document/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/index-document/${details?.tool_id}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
@@ -96,16 +110,29 @@ function ToolIde() {
       data: body,
     };
 
+    pushIndexDoc(docId);
     return axiosPrivate(requestOptions)
       .then(() => {
-        setGenerateIndexResult("SUCCESS");
+        setAlertDetails({
+          type: "success",
+          content: `${doc?.document_name} - Indexed successfully`,
+        });
+
+        try {
+          setPostHogCustomEvent("intent_success_ps_indexed_file", {
+            info: "Indexing completed",
+          });
+        } catch (err) {
+          // If an error occurs while setting custom posthog event, ignore it and continue
+        }
       })
       .catch((err) => {
-        setGenerateIndexResult("FAILED");
-        setAlertDetails(handleException(err, "Failed to index"));
+        setAlertDetails(
+          handleException(err, `${doc?.document_name} - Failed to index`)
+        );
       })
       .finally(() => {
-        setIsGeneratingIndex(false);
+        deleteIndexDoc(docId);
       });
   };
 
@@ -129,7 +156,7 @@ function ToolIde() {
       });
   };
 
-  const handleDocChange = (docName) => {
+  const handleDocChange = (doc) => {
     if (disableLlmOrDocChange?.length > 0) {
       setAlertDetails({
         type: "error",
@@ -140,12 +167,12 @@ function ToolIde() {
 
     const prevSelectedDoc = selectedDoc;
     const data = {
-      selectedDoc: docName,
+      selectedDoc: doc,
     };
     updateCustomTool(data);
 
     const body = {
-      output: docName,
+      output: doc?.document_id,
     };
 
     handleUpdateTool(body).catch((err) => {
@@ -161,9 +188,8 @@ function ToolIde() {
     <div className="tool-ide-layout">
       <div>
         <Header
-          setOpenCusSynonymsModal={setOpenCusSynonymsModal}
-          setOpenManageLlmModal={setOpenManageLlmModal}
           handleUpdateTool={handleUpdateTool}
+          setOpenSettings={setOpenSettings}
         />
       </div>
       <div className="tool-ide-body">
@@ -171,7 +197,7 @@ function ToolIde() {
           <Row className="tool-ide-main">
             <Col span={12} className="tool-ide-col">
               <div className="tool-ide-prompts">
-                <ToolsMain setOpenAddLlmModal={setOpenAddLlmModal} />
+                <ToolsMain />
               </div>
             </Col>
             <Col span={12} className="tool-ide-col">
@@ -195,12 +221,12 @@ function ToolIde() {
             />
           </div>
           <Modal
-            title="Logs"
+            title={<LogsLabel />}
             open={showLogsModal}
             onCancel={closeLogsModal}
             className="agency-ide-log-modal"
             footer={null}
-            width={1000}
+            width={1400}
             closeIcon={<FullscreenExitOutlined />}
           >
             <div className="agency-ide-logs">
@@ -213,34 +239,18 @@ function ToolIde() {
         open={openCusSynonymsModal}
         setOpen={setOpenCusSynonymsModal}
       />
-      <ManageLlmProfilesModal
-        open={openManageLlmModal}
-        setOpen={setOpenManageLlmModal}
-        setOpenLlm={setOpenAddLlmModal}
-        setEditLlmProfileId={setEditLlmProfileId}
-        setModalTitle={setModalTitle}
+      <SettingsModal
+        open={openSettings}
+        setOpen={setOpenSettings}
+        handleUpdateTool={handleUpdateTool}
       />
-      <AddLlmProfileModal
-        open={openAddLlmModal}
-        setOpen={setOpenAddLlmModal}
-        editLlmProfileId={editLlmProfileId}
-        setEditLlmProfileId={setEditLlmProfileId}
-        modalTitle={modalTitle}
-        setModalTitle={setModalTitle}
-      />
-      <Modal
-        open={isGenerateIndexOpen}
-        footer={false}
-        centered={true}
-        width={400}
-        closable={!isGeneratingIndex}
-        onCancel={() => handleGenerateIndexModal(false)}
-      >
-        <GenerateIndex
-          isGeneratingIndex={isGeneratingIndex}
-          result={generateIndexResult}
+      {!promptOnboardingMessage && OnboardMessagesModal && (
+        <OnboardMessagesModal
+          open={loginModalOpen}
+          setOpen={setLoginModalOpen}
+          slides={slides}
         />
-      </Modal>
+      )}
     </div>
   );
 }

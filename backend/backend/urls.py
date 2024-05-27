@@ -14,9 +14,10 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
-from backend.constants import UrlPathConstants
 from django.conf.urls import *  # noqa: F401, F403
 from django.urls import include, path
+
+from backend.constants import UrlPathConstants
 
 urlpatterns = [
     path("", include("tenant_account.urls")),
@@ -27,7 +28,6 @@ urlpatterns = [
     path("", include("adapter_processor.urls")),
     path("", include("file_management.urls")),
     path("", include("tool_instance.urls")),
-    path("", include("cron_expression_generator.urls")),
     path("", include("pipeline.urls")),
     path("workflow/", include("workflow_manager.urls")),
     path("platform/", include("platform_settings.urls")),
@@ -54,4 +54,21 @@ urlpatterns = [
     path("", include("apps.chat_history.urls")),
     path("", include("apps.chat_transcript.urls")),
     path("", include("apps.document_management.urls")),
+    path(
+        UrlPathConstants.PROMPT_STUDIO,
+        include("prompt_studio.prompt_studio_document_manager.urls"),
+    ),
+    path(
+        UrlPathConstants.PROMPT_STUDIO,
+        include("prompt_studio.prompt_studio_index_manager.urls"),
+    ),
 ]
+
+try:
+    import pluggable_apps.subscription.urls  # noqa: F401
+
+    urlpatterns += [
+        path("", include("pluggable_apps.subscription.urls")),
+    ]
+except ImportError:
+    pass

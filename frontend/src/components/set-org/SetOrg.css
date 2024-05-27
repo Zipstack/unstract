@@ -1,0 +1,114 @@
+.org-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+}
+
+.card-list-container {
+  margin: 10%;
+  width: 80%;
+}
+.org-list {
+  background: #ffffff;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 20;
+}
+
+.org-svg {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.select-org {
+  width: 320px;
+  margin-bottom: 16px;
+}
+
+.continue-button {
+  width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+}
+
+.org-avatar {
+  display: flex;
+  width: 100px;
+  height: 80px;
+}
+.org-card-container {
+  box-shadow: 8px 8px 24px 0px #0202460d;
+  margin-top: 15px;
+}
+
+.org-card-container .ant-card-body {
+  padding: 12px;
+}
+
+.org-card-container .ant-card-body {
+  display: flex;
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.org-card-container .ant-card-meta {
+  align-items: center;
+  width: 75%;
+}
+
+.yellow-grad-circle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+}
+
+.red-grad-circle {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.select-org-unstract-logo {
+  width: 200px;
+  margin-top: 10%;
+}
+
+.select-org-button {
+  background: #ff4d6d;
+  color: #fff;
+}
+
+.select-org-button:active,
+.select-org-button:hover {
+  color: #fff !important;
+  border-color: #fff !important;
+}
+
+.org-card-container .ant-card-meta-title {
+  color: #0d3a63;
+  font-weight: 700;
+  font-size: 20px;
+  text-overflow: ellipsis;
+}
+
+.org-svg {
+  background: #f5f7f9;
+}
+
+.org-selection-svg {
+  padding-left: 50px;
+  width: 95%;
+}

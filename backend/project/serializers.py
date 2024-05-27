@@ -1,9 +1,10 @@
 from typing import Any
 
-from backend.serializers import AuditSerializer
 from project.models import Project
 from workflow_manager.workflow.constants import WorkflowKey
 from workflow_manager.workflow.serializers import WorkflowSerializer
+
+from backend.serializers import AuditSerializer
 
 
 class ProjectSerializer(AuditSerializer):

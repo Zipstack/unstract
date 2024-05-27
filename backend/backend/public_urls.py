@@ -17,6 +17,7 @@ Including another URLconf
 from account.admin import admin
 from django.conf import settings
 from django.conf.urls import *  # noqa: F401, F403
+from django.conf.urls.static import static
 from django.urls import include, path
 
 path_prefix = settings.PATH_PREFIX
@@ -25,15 +26,10 @@ internal_path_prefix = settings.INTERNAL_PATH_PREFIX
 
 urlpatterns = [
     path(f"{path_prefix}/", include("account.urls")),
-    # Admin URLs
-    path(f"{path_prefix}/admin/doc/", include("django.contrib.admindocs.urls")),
-    path(f"{path_prefix}/admin/", admin.site.urls),
     # Connector OAuth
     path(f"{path_prefix}/", include("connector_auth.urls")),
     # Docs
     path(f"{path_prefix}/", include("docs.urls")),
-    # Socket.io
-    path(f"{path_prefix}/", include("log_events.urls")),
     # API deployment
     path(f"{api_path_prefix}/", include("api.urls")),
     # Feature flags
@@ -49,3 +45,23 @@ urlpatterns = [
         include("apps.traffic_routing.internal_urls"),
     ),
 ]
+if settings.ADMIN_ENABLED:
+    # Admin URLs
+    urlpatterns += [
+        path(f"{path_prefix}/admin/", admin.site.urls),
+        path(
+            f"{path_prefix}/admin/doc/",
+            include("django.contrib.admindocs.urls"),
+        ),
+    ]
+urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
+
+try:
+    import pluggable_apps.platform_admin.urls  # noqa: F401
+
+    urlpatterns += [
+        path(f"{path_prefix}/", include("pluggable_apps.platform_admin.urls")),
+    ]
+except ImportError:
+    pass

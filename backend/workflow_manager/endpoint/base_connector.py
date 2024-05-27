@@ -4,14 +4,11 @@ from typing import Any
 from django.conf import settings
 from django.db import connection
 from fsspec import AbstractFileSystem
-from unstract.connectors.filesystems import connectors
-from unstract.connectors.filesystems.unstract_file_system import (
-    UnstractFileSystem,
-)
-from unstract.workflow_execution.execution_file_handler import (
-    ExecutionFileHandler,
-)
+from unstract.workflow_execution.execution_file_handler import ExecutionFileHandler
 from utils.constants import Common
+
+from unstract.connectors.filesystems import connectors
+from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 
 class BaseConnector(ExecutionFileHandler):
@@ -75,9 +72,7 @@ class BaseConnector(ExecutionFileHandler):
         return schema
 
     @classmethod
-    def get_api_storage_dir_path(
-        cls, workflow_id: str, execution_id: str
-    ) -> str:
+    def get_api_storage_dir_path(cls, workflow_id: str, execution_id: str) -> str:
         """Get the directory path for storing api files.
 
         Parameters:

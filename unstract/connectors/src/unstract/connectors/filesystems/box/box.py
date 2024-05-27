@@ -7,6 +7,7 @@ from typing import Any
 from boxfs import BoxFileSystem
 from boxsdk import JWTAuth
 from boxsdk.exception import BoxOAuthException
+
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
@@ -81,7 +82,7 @@ class BoxFS(UnstractFileSystem):
 
     @staticmethod
     def get_icon() -> str:
-        return "https://storage.googleapis.com/pandora-static/connector-icons/Box.png"
+        return "/icons/connector-icons/Box.png"
 
     @staticmethod
     def get_json_schema() -> str:

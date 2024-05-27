@@ -47,7 +47,7 @@ class PipelineKey:
     CRON_DATA = "cron_data"
     WORKFLOW_NAME = "workflow_name"
     WORKFLOW_ID = "workflow_id"
-    CRON_SUMMARY = "cron_summary"
+    CRON_STRING = "cron_string"
     PIPELINE_ID = "pipeline_id"
 
 
@@ -61,5 +61,6 @@ class PipelineURL:
     """Constants for URL names."""
 
     DETAIL = "pipeline-detail"
+    EXECUTIONS = "pipeline-executions"
     LIST = "pipeline-list"
     EXECUTE = "pipeline-execute"

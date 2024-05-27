@@ -6,6 +6,7 @@ import { ListOfConnectors } from "../list-of-connectors/ListOfConnectors";
 import "./ConfigureConnectorModal.css";
 import { ConfigureFormsLayout } from "../configure-forms-layout/ConfigureFormsLayout";
 import { ManageFiles } from "../../input-output/manage-files/ManageFiles";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 function ConfigureConnectorModal({
   open,
@@ -21,9 +22,14 @@ function ConfigureConnectorModal({
   formDataConfig,
   setFormDataConfig,
   isSpecConfigLoading,
+  connDetails,
+  connType,
+  selectedItemName,
+  setSelectedItemName,
 }) {
   const [activeKey, setActiveKey] = useState("1");
-
+  const { setPostHogCustomEvent, posthogConnectorEventText } =
+    usePostHogEvents();
   const tabItems = [
     {
       key: "1",
@@ -32,13 +38,29 @@ function ConfigureConnectorModal({
     {
       key: "2",
       label: "File System",
-      disabled: !connectorId,
+      disabled:
+        !connectorId ||
+        connDetails?.connector_id !== selectedId ||
+        connType === "DATABASE",
     },
   ];
 
   const handleSelectItem = (e) => {
     const id = e.key;
     setSelectedId(id?.toString());
+    setActiveKey("1");
+
+    const connectorData = [...filteredList].find((item) => item?.key === id);
+    setSelectedItemName(connectorData?.label);
+
+    try {
+      setPostHogCustomEvent(posthogConnectorEventText[`${connType}:${type}`], {
+        info: `Selected a connector`,
+        connector_name: connectorData?.label,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
   };
 
   const onTabChange = (key) => {
@@ -88,6 +110,9 @@ function ConfigureConnectorModal({
                 formDataConfig={formDataConfig}
                 setFormDataConfig={setFormDataConfig}
                 isSpecConfigLoading={isSpecConfigLoading}
+                connDetails={connDetails}
+                connType={connType}
+                selectedItemName={selectedItemName}
               />
             )}
             {activeKey === "2" && <ManageFiles selectedItem={connectorId} />}
@@ -112,6 +137,10 @@ ConfigureConnectorModal.propTypes = {
   formDataConfig: PropTypes.object,
   setFormDataConfig: PropTypes.func.isRequired,
   isSpecConfigLoading: PropTypes.bool.isRequired,
+  connDetails: PropTypes.object,
+  connType: PropTypes.string.isRequired,
+  selectedItemName: PropTypes.string,
+  setSelectedItemName: PropTypes.func.isRequired,
 };
 
 export { ConfigureConnectorModal };

@@ -1,3 +1,6 @@
+import moment from "moment";
+import momentTz from "moment-timezone";
+
 const THEME = {
   DARK: "dark",
   LIGHT: "light",
@@ -129,11 +132,9 @@ const listOfAppDeployments = [
     cron: null,
     workflow_name: "demo",
     source_name: "MinioFS/S3",
-    source_icon:
-      "https://storage.googleapis.com/pandora-static/connector-icons/S3.png",
+    source_icon: "/icons/connector-icons/S3.png",
     destination_name: "Unstract Cloud Storage",
-    destination_icon:
-      "https://storage.googleapis.com/pandora-static/connector-icons/Pandora%20Storage.png",
+    destination_icon: "/icons/connector-icons/Pandora%20Storage.png",
     goto: "https://finance-qa.pandora-demo.zipstack.io/",
   },
   {
@@ -150,11 +151,9 @@ const listOfAppDeployments = [
     cron: null,
     workflow_name: "demo",
     source_name: "MinioFS/S3",
-    source_icon:
-      "https://storage.googleapis.com/pandora-static/connector-icons/S3.png",
+    source_icon: "/icons/connector-icons/S3.png",
     destination_name: "Unstract Cloud Storage",
-    destination_icon:
-      "https://storage.googleapis.com/pandora-static/connector-icons/Pandora%20Storage.png",
+    destination_icon: "/icons/connector-icons/Pandora%20Storage.png",
     goto: "https://legal-qa.pandora-demo.zipstack.io/",
   },
 ];
@@ -227,6 +226,7 @@ const endpointType = {
 const promptStudioUpdateStatus = {
   isUpdating: "IS_UPDATING",
   done: "DONE",
+  validationError: "VALIDATION_ERROR",
 };
 
 const getTimeForLogs = () => {
@@ -241,30 +241,24 @@ const getTimeForLogs = () => {
   return formattedDate;
 };
 
-const handleException = (err, errMessage) => {
-  if (err?.response?.data?.type === "validation_error") {
-    // Handle validation errors
-    return {
-      type: "error",
-      content: errMessage || "Something went wrong",
-    };
-  }
+const getDateTimeString = (timestamp) => {
+  // Convert to milliseconds
+  const timestampInMilliseconds = timestamp * 1000;
 
-  if (["client_error", "server_error"].includes(err?.response?.data?.type)) {
-    // Handle client_error, server_error
-    return {
-      type: "error",
-      content:
-        err?.response?.data?.errors[0].detail ||
-        errMessage ||
-        "Something went wrong",
-    };
-  }
+  // Create a new Date object
+  const date = new Date(timestampInMilliseconds);
 
-  return {
-    type: "error",
-    content: errMessage || err?.message,
-  };
+  // Extract date components
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, "0"); // Months are zero-indexed
+  const day = date.getDate().toString().padStart(2, "0");
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  const seconds = date.getSeconds().toString().padStart(2, "0");
+  const milliseconds = date.getMilliseconds().toString().padStart(3, "0");
+
+  // Formatted date-time string
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
 };
 
 const base64toBlob = (data) => {
@@ -305,26 +299,59 @@ const isJson = (text) => {
   }
 };
 
-const displayPromptResult = (output) => {
-  try {
-    if (isJson(output)) {
-      return JSON.stringify(JSON.parse(output), null, 4);
-    }
+const displayPromptResult = (output, isFormat = false) => {
+  /*
+    output: The data to be displayed or parsed
+    isFormat: A flag indicating whether the output should be formatted
+  */
 
-    const outputParsed = JSON.parse(output);
-    return outputParsed;
-  } catch (err) {
-    return output;
+  let i = 0;
+  let parsedData = output;
+
+  while (i < 3) {
+    i++;
+    try {
+      parsedData = JSON.parse(parsedData);
+    } catch {
+      // Break the loop if parsing fails
+      break;
+    }
   }
+
+  if (!isFormat) {
+    // If formatting is not requested, return the parsed data directly
+    return parsedData;
+  }
+
+  // Check if the parsed data is an array or object and formatting is requested
+  if (Array.isArray(parsedData) || typeof parsedData === "object") {
+    // If formatting is requested, return the JSON string with indentation
+    return JSON.stringify(parsedData, null, 4);
+  }
+
+  return String(parsedData);
 };
 
 const onboardCompleted = (adaptersList) => {
   if (!Array.isArray(adaptersList)) {
     return false;
   }
-  const MANDATORY_ADAPTERS = ["llm", "vector_db", "embedding"];
+  const MANDATORY_ADAPTERS = ["llm", "vector_db", "embedding", "x2text"];
   adaptersList = adaptersList.map((element) => element.toLowerCase());
   return MANDATORY_ADAPTERS.every((value) => adaptersList.includes(value));
+};
+
+// Input: ISOdateTime format
+// Output: Mar 10, 2023 7:33 PM IST
+const formattedDateTime = (ISOdateTime) => {
+  if (ISOdateTime) {
+    const validIsoDate = moment.utc(ISOdateTime).toISOString();
+    // eslint-disable-next-line new-cap
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return momentTz.tz(validIsoDate, zone).format("lll z");
+  } else {
+    return "";
+  }
 };
 
 const getBackendErrorDetail = (attr, backendErrors) => {
@@ -333,6 +360,38 @@ const getBackendErrorDetail = (attr, backendErrors) => {
     return error ? error?.detail : null;
   }
   return null;
+};
+
+const titleCase = (str) => {
+  if (str === null || str.length === 0) {
+    return "";
+  }
+  const words = str.toLowerCase().split(" ");
+  for (let i = 0; i < words.length; i++) {
+    words[i] = words[i][0].toUpperCase() + words[i].slice(1);
+  }
+  return words.join(" ");
+};
+
+const getMenuItem = (label, key, icon, children, type, isDisabled) => {
+  return {
+    key,
+    icon,
+    children,
+    label,
+    type,
+    isDisabled,
+  };
+};
+
+const docIndexStatus = {
+  yet_to_start: "YET_TO_START",
+  indexing: "INDEXING",
+  done: "DONE",
+};
+
+const isNonNegativeNumber = (value) => {
+  return typeof value === "number" && !isNaN(value) && value >= 0;
 };
 
 export {
@@ -344,11 +403,12 @@ export {
   deploymentsStaticContent,
   endpointType,
   formatBytes,
+  formattedDateTime,
   getBaseUrl,
   getOrgNameFromPathname,
   getReadableDateAndTime,
   getTimeForLogs,
-  handleException,
+  getDateTimeString,
   listOfAppDeployments,
   onboardCompleted,
   promptStudioUpdateStatus,
@@ -365,4 +425,8 @@ export {
   isJson,
   displayPromptResult,
   getBackendErrorDetail,
+  titleCase,
+  getMenuItem,
+  docIndexStatus,
+  isNonNegativeNumber,
 };

@@ -20,16 +20,22 @@ from unstract.workflow_execution.exceptions import (
     StopExecution,
     ToolOutputNotFoundException,
 )
-from unstract.workflow_execution.execution_file_handler import (
-    ExecutionFileHandler,
-)
-from unstract.workflow_execution.pubsub_helper import LogHelper
+from unstract.workflow_execution.execution_file_handler import ExecutionFileHandler
 from unstract.workflow_execution.tools_utils import ToolsUtils
+
+from unstract.core.pubsub_helper import LogPublisher
 
 logger = logging.getLogger(__name__)
 
 
 class WorkflowExecutionService:
+    redis_con = redis.Redis(
+        host=os.environ.get("REDIS_HOST", "http://127.0.0.1"),
+        port=int(os.environ.get("REDIS_PORT", "6379")),
+        password=os.environ.get("REDIS_USER"),
+        username=os.environ.get("REDIS_PASSWORD"),
+    )
+
     def __init__(
         self,
         organization_id: str,
@@ -42,17 +48,7 @@ class WorkflowExecutionService:
         self.organization_id = organization_id
         self.workflow_id = workflow_id
 
-        self.redis_host = os.environ.get("REDIS_HOST", "http://127.0.0.1")
-        self.redis_port = os.environ.get("REDIS_PORT", "6379")
-        self.redis_user = os.environ.get("REDIS_USER")
-        self.redis_password = os.environ.get("REDIS_PASSWORD")
         self.tool_instances = tool_instances
-        self.redis_con = redis.Redis(
-            host=self.redis_host,
-            port=int(self.redis_port),
-            password=self.redis_password,
-            username=self.redis_user,
-        )
         self.tool_utils = ToolsUtils(
             organization_id=organization_id,
             redis=self.redis_con,
@@ -208,7 +204,8 @@ class WorkflowExecutionService:
             )
             if not self.validate_execution_result(step + 1):
                 raise ToolOutputNotFoundException(
-                    f"Tool exception raised for tool {tool_uid}"
+                    f"Tool exception raised for tool {tool_uid}, "
+                    "check logs for more information"
                 )
             log_message = f"Step {actual_step} executed successfully"
             self.publish_update_log(
@@ -221,7 +218,7 @@ class WorkflowExecutionService:
             self.publish_log(log_message, step=actual_step)
 
         except Exception as error:
-            logger.info(f"Error while execution tool {tool_uid}: {str(error)}")
+            logger.info(f"Error while running tool {tool_uid}: {str(error)}")
             self.publish_log(str(error), LogLevel.ERROR, step=actual_step)
             self.publish_update_log(
                 state=LogState.ERROR,
@@ -244,8 +241,7 @@ class WorkflowExecutionService:
         """
         with self.redis_con as red:
             logger.info(
-                f"Setting single stepping flag to "
-                f"{ExecutionAction.START.value}"
+                f"Setting single stepping flag to " f"{ExecutionAction.START.value}"
             )
             red.setex(
                 self.execution_id,
@@ -274,8 +270,7 @@ class WorkflowExecutionService:
                     execution_action = ExecutionAction(execution_value)
                 if execution_action == ExecutionAction.NEXT:
                     log_message = (
-                        f"Execution '{self.execution_id}' Executing "
-                        "NEXT step"
+                        f"Execution '{self.execution_id}' Executing " "NEXT step"
                     )
                     self.publish_log(log_message)
                     break
@@ -338,17 +333,12 @@ class WorkflowExecutionService:
         Args:
             execution_type (ExecutionType): ExecutionType
         """
-        if (
-            execution_type == ExecutionType.STEP
-            and not self.override_single_step
-        ):
+        if execution_type == ExecutionType.STEP and not self.override_single_step:
             self._handling_step_execution()
 
     def validate_execution_result(self, step: int) -> bool:
         workflow_metadata = self.file_handler.get_workflow_metadata()
-        metadata_list = self.file_handler.get_list_of_tool_metadata(
-            workflow_metadata
-        )
+        metadata_list = self.file_handler.get_list_of_tool_metadata(workflow_metadata)
         if len(metadata_list) == step:
             return True
         return False
@@ -378,17 +368,17 @@ class WorkflowExecutionService:
         Returns:
             None
         """
-        log_details = LogHelper.log(
+        log_details = LogPublisher.log_workflow(
             self.log_stage.value,
             message,
             level.value,
             step=step,
             iteration=iteration,
             iteration_total=iteration_total,
+            execution_id=self.execution_id,
+            organization_id=self.organization_id,
         )
-        LogHelper.publish(
-            messaging_channel=self.messaging_channel, message=log_details
-        )
+        LogPublisher.publish(self.messaging_channel, log_details)
 
     def publish_update_log(
         self,
@@ -410,5 +400,5 @@ class WorkflowExecutionService:
         if isinstance(component, LogComponent):
             component = component.value
 
-        log_details = LogHelper.update(state.value, message, component)
-        LogHelper.publish(self.messaging_channel, log_details)
+        log_details = LogPublisher.log_workflow_update(state.value, message, component)
+        LogPublisher.publish(self.messaging_channel, log_details)

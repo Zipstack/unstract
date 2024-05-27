@@ -6,6 +6,8 @@ class ToolStudioKeys:
     TOOL_ID = "tool_id"
     PROMPTS = "prompts"
     PLATFORM_SERVICE_API_KEY = "PLATFORM_SERVICE_API_KEY"
+    SUMMARIZE_LLM_PROFILE = "summarize_llm_profile"
+    DEFAULT_PROFILE = "default_profile"
 
 
 class ToolStudioErrors:
@@ -19,6 +21,7 @@ class ToolStudioErrors:
 class ToolStudioPromptKeys:
     CREATED_BY = "created_by"
     TOOL_ID = "tool_id"
+    RUN_ID = "run_id"
     NUMBER = "Number"
     FLOAT = "Float"
     PG_VECTOR = "Postgres pg_vector"
@@ -27,7 +30,6 @@ class ToolStudioPromptKeys:
     ID = "id"
     FILE_NAME = "file_name"
     FILE_HASH = "file_hash"
-    UNDEFINED = "undefined"
     TOOL_ID = "tool_id"
     NAME = "name"
     ACTIVE = "active"
@@ -43,8 +45,6 @@ class ToolStudioPromptKeys:
     ASSERTION_FAILURE_PROMPT = "assertion_failure_prompt"
     RETRIEVAL_STRATEGY = "retrieval-strategy"
     SIMPLE = "simple"
-    VECTOR_KEYWORD = "vector+keyword"
-    SUBQUESTION = "subquestion"
     TYPE = "type"
     NUMBER = "number"
     EMAIL = "email"
@@ -75,6 +75,21 @@ class ToolStudioPromptKeys:
     EVAL_SETTINGS_EXCLUDE_FAILED = "exclude_failed"
     SUMMARIZE = "summarize"
     SUMMARIZED_RESULT = "summarized_result"
+    DOCUMENT_ID = "document_id"
+    EXTRACT = "extract"
+    TOOL_SETTINGS = "tool_settings"
+    ENABLE_CHALLENGE = "enable_challenge"
+    CHALLENGE_LLM = "challenge_llm"
+    SINGLE_PASS_EXTRACTION_MODE = "single_pass_extraction_mode"
+    SINGLE_PASS_EXTRACTION = "single_pass_extraction"
+    NOTES = "NOTES"
+    OUTPUT = "output"
+
+
+class FileViewTypes:
+    ORIGINAL = "ORIGINAL"
+    EXTRACT = "EXTRACT"
+    SUMMARIZE = "SUMMARIZE"
 
 
 class LogLevels:
@@ -90,3 +105,19 @@ class LogLevel(Enum):
     WARN = "WARN"
     ERROR = "ERROR"
     FATAL = "FATAL"
+
+
+class DefaultPrompts:
+    PREAMBLE = (
+        "Your ability to extract and summarize this context accurately "
+        "is essential for effective analysis. "
+        "Pay close attention to the context's language, structure, and any "
+        "cross-references to ensure a comprehensive and precise extraction "
+        "of information. Do not use prior knowledge or information from "
+        "outside the context to answer the questions. Only use the "
+        "information provided in the context to answer the questions."
+    )
+    POSTAMBLE = (
+        "Do not include any explanation in the reply. "
+        "Only include the extracted information in the reply."
+    )

@@ -1,64 +1,59 @@
 import {
   ArrowLeftOutlined,
-  CodeOutlined,
-  DiffOutlined,
   EditOutlined,
-  ExportOutlined,
-  FileTextOutlined,
-  MessageOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
 import { Button, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Header.css";
 
-import { handleException } from "../../../helpers/GetStaticData";
+import { ExportToolIcon } from "../../../assets";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
-import { SelectLlmProfileModal } from "../select-llm-profile-modal/SelectLlmProfileModal";
+import { ExportTool } from "../export-tool/ExportTool";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
-function Header({
-  setOpenCusSynonymsModal,
-  setOpenManageLlmModal,
-  handleUpdateTool,
-}) {
-  const [openPreOrPostAmbleModal, setOpenPreOrPostAmbleModal] = useState(false);
-  const [openSummLlmProfileModal, setOpenSummLlmProfileModal] = useState(false);
-  const [preOrPostAmble, setPreOrPostAmble] = useState("");
+let SinglePassToggleSwitch;
+try {
+  SinglePassToggleSwitch =
+    require("../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch").SinglePassToggleSwitch;
+} catch {
+  // The variable will remain undefined if the component is not available.
+}
+function Header({ setOpenSettings, handleUpdateTool }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
-  const [summarizeLlmBtnText, setSummarizeLlmBtnText] = useState(null);
-  const [llmItems, setLlmItems] = useState([]);
-  const { details, llmProfiles } = useCustomToolStore();
+  const { details } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
+  const handleException = useExceptionHandler();
+  const [userList, setUserList] = useState([]);
+  const [openExportToolModal, setOpenExportToolModal] = useState(false);
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
-  useEffect(() => {
-    getLlmProfilesDropdown();
-  }, [llmProfiles]);
+  const [toolDetails, setToolDetails] = useState(null);
 
-  const handleOpenPreOrPostAmbleModal = (type) => {
-    setOpenPreOrPostAmbleModal(true);
-    setPreOrPostAmble(type);
-  };
-
-  const handleClosePreOrPostAmbleModal = () => {
-    setOpenPreOrPostAmbleModal(false);
-    setPreOrPostAmble("");
-  };
-
-  const handleExport = () => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/?prompt_registry_id=${details?.tool_id}`,
+  const handleExport = (selectedUsers, toolDetail, isSharedWithEveryone) => {
+    const body = {
+      is_shared_with_org: isSharedWithEveryone,
+      user_id: isSharedWithEveryone ? [] : selectedUsers,
     };
-
+    const requestOptions = {
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/${details?.tool_id}`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: body,
+    };
     setIsExportLoading(true);
     axiosPrivate(requestOptions)
       .then(() => {
@@ -72,17 +67,73 @@ function Header({
       })
       .finally(() => {
         setIsExportLoading(false);
+        setOpenExportToolModal(false);
       });
   };
 
-  const getLlmProfilesDropdown = () => {
-    const items = [...llmProfiles].map((item) => {
-      return {
-        value: item?.profile_id,
-        label: item?.profile_name,
-      };
+  const handleShare = (isEdit) => {
+    try {
+      setPostHogCustomEvent("ps_exported_tool", {
+        info: `Clicked on the 'Export' button`,
+        tool_name: details?.tool_name,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/${details?.tool_id}`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+    };
+    setIsExportLoading(true);
+    getAllUsers().then((users) => {
+      if (users.length < 2) {
+        handleExport([details?.created_by], details, false);
+      } else {
+        axiosPrivate(requestOptions)
+          .then((res) => {
+            setOpenExportToolModal(true);
+            setToolDetails({ ...res?.data, created_by: details?.created_by });
+          })
+          .catch((err) => {
+            setAlertDetails(handleException(err));
+          })
+          .finally(() => {
+            setIsExportLoading(false);
+          });
+      }
     });
-    setLlmItems(items);
+  };
+
+  const getAllUsers = async () => {
+    setIsExportLoading(true);
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
+    };
+
+    const userList = axiosPrivate(requestOptions)
+      .then((response) => {
+        const users = response?.data?.members || [];
+        setUserList(
+          users.map((user) => ({
+            id: user?.id,
+            email: user?.email,
+          }))
+        );
+        return users;
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to load"));
+      })
+      .finally(() => {
+        setIsExportLoading(false);
+      });
+
+    return userList;
   };
 
   return (
@@ -105,81 +156,44 @@ function Header({
         </Button>
       </div>
       <div className="custom-tools-header-btns">
+        {SinglePassToggleSwitch && (
+          <SinglePassToggleSwitch handleUpdateTool={handleUpdateTool} />
+        )}
         <div>
-          <Button
-            className="doc-manager-btn"
-            onClick={() => setOpenSummLlmProfileModal(true)}
-            icon={<FileTextOutlined />}
-          >
-            <Typography.Text ellipsis>
-              Summarize: {summarizeLlmBtnText || "Select LLM"}
-            </Typography.Text>
-          </Button>
-        </div>
-        <div>
-          <Button
-            onClick={() => setOpenCusSynonymsModal(true)}
-            icon={<MessageOutlined />}
-          >
-            Manage Grammar
-          </Button>
-        </div>
-        <div>
-          <Button
-            onClick={() => setOpenManageLlmModal(true)}
-            icon={<CodeOutlined />}
-          >
-            Manage LLM Profiles
-          </Button>
-        </div>
-        <div className="custom-tools-header-v-divider" />
-        <div>
-          <Tooltip title="Preamble">
-            <Button onClick={() => handleOpenPreOrPostAmbleModal("PREAMBLE")}>
-              <DiffOutlined />
-            </Button>
-          </Tooltip>
-        </div>
-        <div>
-          <Tooltip title="Postamble">
-            <Button onClick={() => handleOpenPreOrPostAmbleModal("POSTAMBLE")}>
-              <FileTextOutlined />
-            </Button>
+          <Tooltip title="Settings">
+            <Button
+              icon={<SettingOutlined />}
+              onClick={() => setOpenSettings(true)}
+            />
           </Tooltip>
         </div>
         <div className="custom-tools-header-v-divider" />
         <div>
-          <Tooltip title="Export">
+          <Tooltip title="Export as tool">
             <CustomButton
               type="primary"
-              onClick={handleExport}
+              onClick={() => handleShare(true)}
               loading={isExportLoading}
             >
-              <ExportOutlined />
+              <ExportToolIcon />
             </CustomButton>
           </Tooltip>
         </div>
+        <ExportTool
+          allUsers={userList}
+          open={openExportToolModal}
+          setOpen={setOpenExportToolModal}
+          onApply={handleExport}
+          loading={isExportLoading}
+          toolDetails={toolDetails}
+        />
       </div>
-      <PreAndPostAmbleModal
-        isOpen={openPreOrPostAmbleModal}
-        closeModal={handleClosePreOrPostAmbleModal}
-        type={preOrPostAmble}
-        handleUpdateTool={handleUpdateTool}
-      />
-      <SelectLlmProfileModal
-        open={openSummLlmProfileModal}
-        setOpen={setOpenSummLlmProfileModal}
-        llmItems={llmItems}
-        setBtnText={setSummarizeLlmBtnText}
-        handleUpdateTool={handleUpdateTool}
-      />
     </div>
   );
 }
 
 Header.propTypes = {
-  setOpenCusSynonymsModal: PropTypes.func.isRequired,
-  setOpenManageLlmModal: PropTypes.func.isRequired,
+  setOpenSettings: PropTypes.func.isRequired,
   handleUpdateTool: PropTypes.func.isRequired,
 };
 

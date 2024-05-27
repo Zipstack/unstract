@@ -1,31 +1,27 @@
 import {
-  ArrowRightOutlined,
   ClearOutlined,
   DeleteOutlined,
-  EditOutlined,
   EllipsisOutlined,
-  EyeOutlined,
-  HighlightOutlined,
-  InfoCircleOutlined,
   SyncOutlined,
+  HighlightOutlined,
+  FileSearchOutlined,
 } from "@ant-design/icons";
 import { Dropdown, Image, Space, Switch, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import cronstrue from "cronstrue";
 
-import {
-  deploymentsStaticContent,
-  handleException,
-} from "../../../helpers/GetStaticData";
+import { deploymentsStaticContent } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { useSessionStore } from "../../../store/session-store.js";
 import { Layout } from "../../deployments/layout/Layout.jsx";
-import { SocketMessages } from "../../helpers/socket-messages/SocketMessages.js";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
+import { LogsModal } from "../log-modal/LogsModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import "./Pipelines.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -33,14 +29,23 @@ function Pipelines({ type }) {
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [selectedPorD, setSelectedPorD] = useState({});
   const [tableLoading, setTableLoading] = useState(true);
-  const [logId, setLogId] = useState("");
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
+  const [isEdit, setIsEdit] = useState(false);
+  const [openLogsModal, setOpenLogsModal] = useState(false);
+  const [executionLogs, setExecutionLogs] = useState([]);
+  const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
 
   useEffect(() => {
     getPipelineList();
   }, [type]);
+
+  const openAddModal = (edit) => {
+    setIsEdit(edit);
+    setOpenEtlOrTaskModal(true);
+  };
 
   const getPipelineList = () => {
     setTableLoading(true);
@@ -74,8 +79,6 @@ function Pipelines({ type }) {
 
     handleSyncApiReq(body)
       .then((res) => {
-        const logIdValue = res?.data?.execution?.log_id;
-        setLogId(logIdValue);
         const executionId = res?.data?.execution?.execution_id;
         body["execution_id"] = executionId;
         return handleSyncApiReq(body);
@@ -177,6 +180,34 @@ function Pipelines({ type }) {
       });
   };
 
+  const fetchExecutionLogs = (page = 1, pageSize = 10) => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${selectedPorD.id}/executions/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+      params: {
+        page: page,
+        page_size: pageSize,
+      },
+    };
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const logs = res?.data?.results?.map((result) => ({
+          created_at: result.created_at,
+          execution_id: result.id,
+          status: result.status,
+          execution_time: result.execution_time,
+        }));
+        setExecutionLogs(logs);
+        setExecutionLogsTotalCount(res.data.count);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
+  };
+
   const clearCache = () => {
     const requestOptions = {
       method: "GET",
@@ -223,19 +254,6 @@ function Pipelines({ type }) {
     {
       key: "1",
       label: (
-        <Space direction="horizontal" className="action-items">
-          <div>
-            <EditOutlined />
-          </div>
-          <div>
-            <Typography.Text>Edit</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "2",
-      label: (
         <Space
           direction="horizontal"
           className="action-items"
@@ -251,11 +269,18 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "3",
+      key: "2",
       label: (
-        <Space direction="horizontal" className="action-items">
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() => {
+            setOpenLogsModal(true);
+            fetchExecutionLogs();
+          }}
+        >
           <div>
-            <EyeOutlined />
+            <FileSearchOutlined />
           </div>
           <div>
             <Typography.Text>View Logs</Typography.Text>
@@ -264,20 +289,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "4",
-      label: (
-        <Space direction="horizontal" className="action-items">
-          <div>
-            <InfoCircleOutlined />
-          </div>
-          <div>
-            <Typography.Text>View Information</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "5",
+      key: "3",
       label: (
         <Space
           direction="horizontal"
@@ -294,7 +306,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "6",
+      key: "4",
       label: (
         <Space
           direction="horizontal"
@@ -305,13 +317,13 @@ function Pipelines({ type }) {
             <HighlightOutlined />
           </div>
           <div>
-            <Typography.Text>Clear File Marker</Typography.Text>
+            <Typography.Text>Clear Processed File History</Typography.Text>
           </div>
         </Space>
       ),
     },
     {
-      key: "7",
+      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -330,26 +342,6 @@ function Pipelines({ type }) {
           </div>
         </Space>
       ),
-    },
-    {
-      key: "8",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => window.open(selectedPorD?.goto, "_blank")}
-        >
-          <div>
-            <ArrowRightOutlined />
-          </div>
-          <div>
-            <Typography.Text disabled={type !== "app"}>
-              Go to App
-            </Typography.Text>
-          </div>
-        </Space>
-      ),
-      disabled: type !== "app",
     },
   ];
 
@@ -399,7 +391,7 @@ function Pipelines({ type }) {
       align: "center",
     },
     {
-      title: "Status",
+      title: "Status of Previous Run",
       dataIndex: "last_run_status",
       key: "last_run_status",
       align: "center",
@@ -416,7 +408,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      title: "Last Run",
+      title: "Previous Run At",
       key: "last_run_time",
       dataIndex: "last_run_time",
       align: "center",
@@ -424,6 +416,19 @@ function Pipelines({ type }) {
         <div>
           <Typography.Text className="p-or-d-typography" strong>
             {record?.last_run_time}
+          </Typography.Text>
+        </div>
+      ),
+    },
+    {
+      title: "Frequency",
+      key: "last_run_time",
+      dataIndex: "last_run_time",
+      align: "center",
+      render: (_, record) => (
+        <div>
+          <Typography.Text className="p-or-d-typography" strong>
+            {cronstrue.toString(record?.cron_string)}
           </Typography.Text>
         </div>
       ),
@@ -457,35 +462,41 @@ function Pipelines({ type }) {
       ),
     },
   ];
-  const openAddModal = () => {
-    setOpenEtlOrTaskModal(true);
-  };
 
   return (
-    <>
-      <div className="p-or-d-layout">
-        <Layout
-          type={type}
-          columns={columns}
-          tableData={tableData}
-          isTableLoading={tableLoading}
-          openAddModal={openAddModal}
-        />
+    <div className="p-or-d-layout">
+      <Layout
+        type={type}
+        columns={columns}
+        tableData={tableData}
+        isTableLoading={tableLoading}
+        openAddModal={openAddModal}
+      />
+      {openEtlOrTaskModal && (
         <EtlTaskDeploy
           open={openEtlOrTaskModal}
           setOpen={setOpenEtlOrTaskModal}
           setTableData={setTableData}
           type={type}
           title={deploymentsStaticContent[type].modalTitle}
+          isEdit={isEdit}
+          selectedRow={selectedPorD}
+          setSelectedRow={setSelectedPorD}
         />
-        <DeleteModal
-          open={openDeleteModal}
-          setOpen={setOpenDeleteModal}
-          deleteRecord={deletePipeline}
-        />
-      </div>
-      <SocketMessages logId={logId} />
-    </>
+      )}
+      <LogsModal
+        open={openLogsModal}
+        setOpen={setOpenLogsModal}
+        logRecord={executionLogs}
+        totalLogs={executionLogsTotalCount}
+        fetchExecutionLogs={fetchExecutionLogs}
+      />
+      <DeleteModal
+        open={openDeleteModal}
+        setOpen={setOpenDeleteModal}
+        deleteRecord={deletePipeline}
+      />
+    </div>
   );
 }
 

@@ -4,10 +4,7 @@ import { useEffect } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 
-import {
-  handleException,
-  sourceTypes,
-} from "../../../helpers/GetStaticData.js";
+import { sourceTypes } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -16,8 +13,10 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DsSettingsCard } from "../ds-settings-card/DsSettingsCard.jsx";
 import { StepCard } from "../step-card/StepCard.jsx";
 import "./Steps.css";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
-function Steps({ steps, setSteps, activeToolId, sourceMsg, destinationMsg }) {
+function Steps({ setSteps, activeToolId, sourceMsg, destinationMsg }) {
   const workflowStore = useWorkflowStore();
   const {
     projectId,
@@ -32,17 +31,49 @@ function Steps({ steps, setSteps, activeToolId, sourceMsg, destinationMsg }) {
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   useEffect(() => {
     getWfEndpointDetails();
+    canUpdateWorkflow();
   }, []);
 
+  const canUpdateWorkflow = () => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${projectId}/can-update/`,
+    };
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const data = res?.data || {};
+        const body = {
+          allowChangeEndpoint: data?.can_update,
+        };
+        updateWorkflow(body);
+      })
+      .catch((err) => {
+        setAlertDetails(
+          handleException(err, "Failed to get can update status")
+        );
+      });
+  };
+
   const moveItem = (fromIndex, toIndex, funcName, dragging) => {
+    const toolInstance = details?.tool_instances || [];
     if (fromIndex === undefined && funcName) {
+      try {
+        setPostHogCustomEvent("wf_tool_drag_dropped", {
+          info: `Tool dragged and dropped`,
+          tool_name: funcName,
+        });
+      } catch (err) {
+        // If an error occurs while setting custom posthog event, ignore it and continue
+      }
       handleAddToolInstance(funcName)
         .then((res) => {
           const data = res?.data;
-          const newList = [...steps];
+          const newList = [...toolInstance];
           newList.push(data);
           addNewTool(data);
           return rearrangeTools(newList);
@@ -55,11 +86,11 @@ function Steps({ steps, setSteps, activeToolId, sourceMsg, destinationMsg }) {
           setAlertDetails(handleException(err, msg));
         });
     } else {
-      const updatedSteps = [...steps];
+      const updatedSteps = [...toolInstance];
       const [movedStep] = updatedSteps.splice(fromIndex, 1);
       updatedSteps.splice(toIndex, 0, movedStep);
       if (!dragging) {
-        rearrangeTools(steps).then((res) => {
+        rearrangeTools(toolInstance).then((res) => {
           setSteps(res);
         });
       } else {
@@ -170,7 +201,7 @@ function Steps({ steps, setSteps, activeToolId, sourceMsg, destinationMsg }) {
           ) : (
             <DndProvider backend={HTML5Backend}>
               <StepCard
-                steps={steps}
+                steps={details?.tool_instances}
                 activeTool={activeToolId}
                 moveItem={moveItem}
               />
@@ -191,7 +222,6 @@ function Steps({ steps, setSteps, activeToolId, sourceMsg, destinationMsg }) {
 }
 
 Steps.propTypes = {
-  steps: PropTypes.array,
   setSteps: PropTypes.func,
   activeToolId: PropTypes.string,
   sourceMsg: PropTypes.string,

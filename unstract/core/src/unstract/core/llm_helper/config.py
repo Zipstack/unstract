@@ -42,13 +42,16 @@ class AzureOpenAIConfig:
             ),
             "api_key": UnstractUtils.get_env(OpenAIKeys.OPENAI_API_KEY, raise_err=True),
             "api_version": UnstractUtils.get_env(
-                OpenAIKeys.OPENAI_API_VERSION, default=OpenAIDefaults.OPENAI_API_VERSION
+                OpenAIKeys.OPENAI_API_VERSION,
+                default=OpenAIDefaults.OPENAI_API_VERSION,
             ),
             "azure_endpoint": UnstractUtils.get_env(
-                OpenAIKeys.OPENAI_API_BASE, default=OpenAIDefaults.OPENAI_API_BASE
+                OpenAIKeys.OPENAI_API_BASE,
+                default=OpenAIDefaults.OPENAI_API_BASE,
             ),
             "api_type": UnstractUtils.get_env(
-                OpenAIKeys.OPENAI_API_TYPE, default=OpenAIDefaults.OPENAI_API_TYPE
+                OpenAIKeys.OPENAI_API_TYPE,
+                default=OpenAIDefaults.OPENAI_API_TYPE,
             ),
         }
         return cls(**kwargs)

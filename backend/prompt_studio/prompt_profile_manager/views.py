@@ -9,9 +9,7 @@ from prompt_studio.prompt_profile_manager.constants import (
     ProfileManagerErrors,
     ProfileManagerKeys,
 )
-from prompt_studio.prompt_profile_manager.serializers import (
-    ProfileManagerSerializer,
-)
+from prompt_studio.prompt_profile_manager.serializers import ProfileManagerSerializer
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -33,27 +31,20 @@ class ProfileManagerView(viewsets.ModelViewSet):
             ProfileManagerKeys.CREATED_BY,
         )
         if filter_args:
-            queryset = ProfileManager.objects.filter(
-                created_by=self.request.user, **filter_args
-            )
+            queryset = ProfileManager.objects.filter(**filter_args)
         else:
-            queryset = ProfileManager.objects.filter(
-                created_by=self.request.user
-            )
+            queryset = ProfileManager.objects.all()
         return queryset
 
     def create(
         self, request: HttpRequest, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        serializer = self.get_serializer(data=request.data)
+        serializer: ProfileManagerSerializer = self.get_serializer(data=request.data)
         # Overriding default exception behaviour
         # TO DO : Handle model related exceptions.
         serializer.is_valid(raise_exception=True)
         try:
             self.perform_create(serializer)
         except IntegrityError:
-            raise DuplicateData(
-                f"{ProfileManagerErrors.PROFILE_NAME_EXISTS}, \
-                    {ProfileManagerErrors.DUPLICATE_API}"
-            )
+            raise DuplicateData(ProfileManagerErrors.PROFILE_NAME_EXISTS)
         return Response(serializer.data, status=status.HTTP_201_CREATED)

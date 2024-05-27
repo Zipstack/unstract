@@ -28,9 +28,7 @@ class ToolStudioPrompt(BaseModel):
     class Mode(models.TextChoices):
         DEFAULT = "Default", "Default choice for output"
 
-    prompt_id = models.UUIDField(
-        primary_key=True, default=uuid.uuid4, editable=False
-    )
+    prompt_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     prompt_key = models.TextField(
         blank=False,
         db_comment="Field to store the prompt key",
@@ -66,6 +64,7 @@ class ToolStudioPrompt(BaseModel):
         blank=True,
     )
     output = models.TextField(blank=True)
+    # TODO: Remove below 3 fields related to assertion
     assert_prompt = models.TextField(
         blank=True,
         null=True,

@@ -4,15 +4,20 @@ from typing import Any, Optional
 from account.models import User
 from django.conf import settings
 from django.db import IntegrityError
+from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.models import CustomTool
-from prompt_studio.prompt_studio_core.prompt_studio_helper import (
-    PromptStudioHelper,
-)
+from prompt_studio.prompt_studio_core.prompt_studio_helper import PromptStudioHelper
+from prompt_studio.prompt_studio_output_manager.models import PromptStudioOutputManager
 from unstract.tool_registry.dto import Properties, Spec, Tool
 
 from .constants import JsonSchemaKey
-from .exceptions import InternalError, ProfileErrors, ToolSaveError
+from .exceptions import (
+    EmptyToolExportError,
+    InternalError,
+    InValidCustomToolError,
+    ToolSaveError,
+)
 from .models import PromptStudioRegistry
 from .serializers import PromptStudioRegistrySerializer
 
@@ -92,7 +97,7 @@ class PromptStudioRegistryHelper:
 
     @staticmethod
     def update_or_create_psr_tool(
-        custom_tool: CustomTool,
+        custom_tool: CustomTool, shared_with_org: bool, user_ids: set[int]
     ) -> PromptStudioRegistry:
         """Updates or creates the PromptStudioRegistry record.
 
@@ -110,13 +115,11 @@ class PromptStudioRegistryHelper:
             obj: PromptStudioRegistry instance that was updated or created
         """
         try:
-            properties: Properties = (
-                PromptStudioRegistryHelper.frame_properties(tool=custom_tool)
+            properties: Properties = PromptStudioRegistryHelper.frame_properties(
+                tool=custom_tool
             )
             spec: Spec = PromptStudioRegistryHelper.frame_spec(tool=custom_tool)
-            prompts: list[
-                ToolStudioPrompt
-            ] = PromptStudioHelper.fetch_prompt_from_tool(
+            prompts: list[ToolStudioPrompt] = PromptStudioHelper.fetch_prompt_from_tool(
                 tool_id=custom_tool.tool_id
             )
             metadata = PromptStudioRegistryHelper.frame_export_json(
@@ -142,6 +145,21 @@ class PromptStudioRegistryHelper:
                 logger.info(f"PSR {obj.prompt_registry_id} was created")
             else:
                 logger.info(f"PSR {obj.prompt_registry_id} was updated")
+
+            obj.shared_to_org = shared_with_org
+            if not shared_with_org:
+                obj.shared_users.clear()
+                obj.shared_users.add(*user_ids)
+                # add prompt studio users
+                # for shared_user in custom_tool.shared_users:
+                obj.shared_users.add(
+                    *custom_tool.shared_users.all().values_list("id", flat=True)
+                )
+                # add prompt studio owner
+                obj.shared_users.add(custom_tool.created_by)
+            else:
+                obj.shared_users.clear()
+            obj.save()
             return obj
         except IntegrityError as error:
             logger.error(
@@ -161,6 +179,12 @@ class PromptStudioRegistryHelper:
         grammer_dict = {}
         outputs: list[dict[str, Any]] = []
         output: dict[str, Any] = {}
+        invalidated_prompts: list[str] = []
+        invalidated_outputs: list[str] = []
+
+        if not prompts:
+            raise EmptyToolExportError()
+
         if prompt_grammer:
             for word, synonyms in prompt_grammer.items():
                 synonyms = prompt_grammer[word]
@@ -180,11 +204,27 @@ class PromptStudioRegistryHelper:
         llm = ""
         embedding_model = ""
 
+        default_llm_profile = ProfileManager.get_default_llm_profile(tool)
         for prompt in prompts:
-            if not tool.default_profile:
-                raise ProfileErrors()
+
+            if not prompt.prompt:
+                invalidated_prompts.append(prompt.prompt_key)
+                continue
+
+            prompt_output = PromptStudioOutputManager.objects.filter(
+                tool_id=tool.tool_id,
+                prompt_id=prompt.prompt_id,
+                profile_manager=prompt.profile_manager,
+            ).all()
+
+            if not prompt_output:
+                invalidated_outputs.append(prompt.prompt_key)
+                continue
+
+            if prompt.prompt_type == JsonSchemaKey.NOTES:
+                continue
             if not prompt.profile_manager:
-                prompt.profile_manager = tool.default_profile
+                prompt.profile_manager = default_llm_profile
 
             vector_db = str(prompt.profile_manager.vector_store.id)
             embedding_model = str(prompt.profile_manager.embedding_model.id)
@@ -193,9 +233,10 @@ class PromptStudioRegistryHelper:
             adapter_id = str(prompt.profile_manager.embedding_model.adapter_id)
             embedding_suffix = adapter_id.split("|")[0]
 
-            output[
-                JsonSchemaKey.ASSERTION_FAILURE_PROMPT
-            ] = prompt.assertion_failure_prompt
+            # TODO: Remove these fields related to assertion
+            output[JsonSchemaKey.ASSERTION_FAILURE_PROMPT] = (
+                prompt.assertion_failure_prompt
+            )
             output[JsonSchemaKey.ASSERT_PROMPT] = prompt.assert_prompt
             output[JsonSchemaKey.IS_ASSERT] = prompt.is_assert
             output[JsonSchemaKey.PROMPT] = prompt.prompt
@@ -204,21 +245,19 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.VECTOR_DB] = vector_db
             output[JsonSchemaKey.EMBEDDING] = embedding_model
             output[JsonSchemaKey.X2TEXT_ADAPTER] = x2text
-            output[
-                JsonSchemaKey.CHUNK_OVERLAP
-            ] = prompt.profile_manager.chunk_overlap
+            output[JsonSchemaKey.CHUNK_OVERLAP] = prompt.profile_manager.chunk_overlap
             output[JsonSchemaKey.LLM] = llm
             output[JsonSchemaKey.PREAMBLE] = tool.preamble
             output[JsonSchemaKey.POSTAMBLE] = tool.postamble
             output[JsonSchemaKey.GRAMMAR] = grammar_list
             output[JsonSchemaKey.TYPE] = prompt.enforce_type
             output[JsonSchemaKey.NAME] = prompt.prompt_key
-            output[
-                JsonSchemaKey.RETRIEVAL_STRATEGY
-            ] = prompt.profile_manager.retrieval_strategy
-            output[
-                JsonSchemaKey.SIMILARITY_TOP_K
-            ] = prompt.profile_manager.similarity_top_k
+            output[JsonSchemaKey.RETRIEVAL_STRATEGY] = (
+                prompt.profile_manager.retrieval_strategy
+            )
+            output[JsonSchemaKey.SIMILARITY_TOP_K] = (
+                prompt.profile_manager.similarity_top_k
+            )
             output[JsonSchemaKey.SECTION] = prompt.profile_manager.section
             output[JsonSchemaKey.REINDEX] = prompt.profile_manager.reindex
             output[JsonSchemaKey.EMBEDDING_SUFFIX] = embedding_suffix
@@ -230,20 +269,30 @@ class PromptStudioRegistryHelper:
             llm = ""
             embedding_model = ""
 
+        if invalidated_prompts:
+            raise InValidCustomToolError(
+                f"Cannot export tool. Prompt(s): {', '.join(invalidated_prompts)} "
+                "are empty. Please enter a valid prompt."
+            )
+        if invalidated_outputs:
+            raise InValidCustomToolError(
+                f"Cannot export tool. Prompt(s): {', '.join(invalidated_outputs)} "
+                "were not run. Please run them before exporting."
+            )
+
         export_metadata[JsonSchemaKey.OUTPUTS] = outputs
         return export_metadata
 
     @staticmethod
     def fetch_json_for_registry(user: User) -> list[dict[str, Any]]:
         try:
-            prompt_studio_tools = PromptStudioRegistry.objects.all()
+            # filter the Prompt studio registry based on the users and org flag
+            prompt_studio_tools = PromptStudioRegistry.objects.list_tools(user)
             pi_serializer = PromptStudioRegistrySerializer(
                 instance=prompt_studio_tools, many=True
             )
         except Exception as error:
-            logger.error(
-                f"Error occured while fetching tool for tool_id: {error}"
-            )
+            logger.error(f"Error occured while fetching tool for tool_id: {error}")
             raise InternalError()
         tool_metadata: dict[str, Any] = {}
         tool_list = []
