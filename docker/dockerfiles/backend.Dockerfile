@@ -40,7 +40,18 @@ RUN set -e; \
     pdm sync --prod --no-editable; \
     \
     # REF: https://docs.gunicorn.org/en/stable/deploy.html#using-virtualenv
-    pip install --no-cache-dir gunicorn;
+    pip install --no-cache-dir gunicorn; \
+    \
+    # Install opentelemetry for instrumentation
+    pip install opentelemetry-distro[otlp] ; \
+    \
+    pentelemetry-bootstrap -a install;
+
+# Disable all telemetry by default
+ENV OTEL_TRACES_EXPORTER none
+ENV OTEL_METRICS_EXPORTER none
+ENV OTEL_LOGS_EXPORTER none
+ENV OTEL_SERVICE_NAME unstract_backend
 
 EXPOSE 8000
 
