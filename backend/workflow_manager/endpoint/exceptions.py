@@ -75,57 +75,80 @@ class BigQueryTableNotFound(APIException):
 
 class UnstractDBException(APIException):
     status_code = 400
-    default_detail = "Error writing to database"
+    default_detail = "Error creating/inserting to database. "
 
     def __init__(self, code: Any = status_code, detail: str = default_detail) -> None:
         super().__init__(detail=detail, code=code)
 
 
 class InvalidSyntaxException(UnstractDBException):
-    def __init__(self, code: Any, detail: Any) -> None:
-        default_detail = "Syntax incorrect. Please check your table-name or schema. "
+    def __init__(self, code: Any, detail: Any, table_name: str) -> None:
+        default_detail = (
+            f"Error creating/writing to {table_name}. Syntax incorrect. "
+            f"Please check your table-name or schema. "
+        )
         super().__init__(code=code, detail=default_detail + detail)
 
 
 class InvalidSchemaException(UnstractDBException):
-    def __init__(self, code: Any, detail: Any) -> None:
-        default_detail = "Schema not valid. "
+
+    def __init__(self, code: Any, detail: Any, table_name: str) -> None:
+        default_detail = f"Error creating/writing to {table_name}. Schema not valid. "
         super().__init__(code=code, detail=default_detail + detail)
 
 
 class UnderfinedTableException(UnstractDBException):
-    def __init__(self, code: Any, detail: Any) -> None:
-        default_detail = "Undefined table. "
+    def __init__(self, code: Any, detail: Any, table_name: str) -> None:
+        default_detail = (
+            f"Error creating/writing to {table_name}. Undefined table. "
+            f"Please check your table-name or schema. "
+        )
         super().__init__(code=code, detail=default_detail + detail)
 
 
 class ValueTooLongException(UnstractDBException):
-    def __init__(self, code: Any, detail: Any) -> None:
-        default_detail = "Size of the inserted data exceeds the limit. "
+    def __init__(self, code: Any, detail: Any, table_name: str) -> None:
+        default_detail = (
+            f"Error creating/writing to {table_name}. "
+            f"Size of the inserted data exceeds the limit provided by the database. "
+        )
         super().__init__(code=code, detail=default_detail + detail)
 
 
 class FeatureNotSupportedException(UnstractDBException):
-    def __init__(self, code: Any, detail: Any) -> None:
-        default_detail = "feature not supported sql error. "
+
+    def __init__(self, code: Any, detail: Any, table_name: str) -> None:
+        default_detail = (
+            f"Error creating/writing to {table_name}. "
+            f"Feature not supported sql error. "
+        )
         super().__init__(code=code, detail=default_detail + detail)
 
 
 class SnowflakeProgrammingException(UnstractDBException):
-    def __init__(self, code: Any, detail: Any) -> None:
-        default_detail = "Error while creating/inserting data. "
+
+    def __init__(self, code: Any, detail: Any, table_name: str) -> None:
+        default_detail = (
+            f"Error creating/writing to {table_name}. "
+            f"Please check your snowflake credentials. "
+        )
         super().__init__(code, default_detail + detail)
 
 
 class BigQueryForbiddenException(UnstractDBException):
-    default_detail = "Access forbidden. Check your permissions."
-
-    def __init__(self, code: Any, detail: str = default_detail) -> None:
-        super().__init__(detail=detail, code=code)
+    def __init__(self, code: Any, detail: Any, table_name: str) -> None:
+        default_detail = (
+            f"Error creating/writing to {table_name}. "
+            f"Access forbidden in bigquery. Please check your permissions. "
+        )
+        super().__init__(code=code, detail=default_detail + detail)
 
 
 class BigQueryNotFoundException(UnstractDBException):
-    default_detail = "The requested resource was not found."
 
-    def __init__(self, code: Any, detail: str = default_detail) -> None:
-        super().__init__(detail=detail, code=code)
+    def __init__(self, code: Any, detail: str, table_name: str) -> None:
+        default_detail = (
+            f"Error creating/writing to {table_name}. "
+            f"The requested resource was not found. "
+        )
+        super().__init__(code=code, detail=default_detail + detail)

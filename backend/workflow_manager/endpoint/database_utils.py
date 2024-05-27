@@ -318,27 +318,56 @@ class DatabaseUtils:
                 DBConnectorQueryHelper.execute_generic_query(engine, sql, sql_values)
         except PsycopgError.UndefinedTable as e:
             logger.error(f"Undefined table in inserting: {e.pgerror}")
-            raise UnderfinedTableException(code=e.pgcode, detail=e.pgerror)
+            raise UnderfinedTableException(
+                code=e.pgcode, detail=e.pgerror, table_name=table_name
+            )
         except PsycopgError.SyntaxError as e:
             logger.error(f"Invalid syntax in inserting data: {e.pgerror}")
-            raise InvalidSyntaxException(code=e.pgcode, detail=e.pgerror)
+            raise InvalidSyntaxException(
+                code=e.pgcode, detail=e.pgerror, table_name=table_name
+            )
         except PsycopgError.FeatureNotSupported as e:
             logger.error(f"feature not supported in inserting data: {e.pgerror}")
-            raise FeatureNotSupportedException(code=e.pgcode, detail=e.pgerror)
-        except PsycopgError.StringDataRightTruncation as e:
-            logger.error(f"value too long for character datatype: {e.pgerror}")
-            raise ValueTooLongException(code=e.pgcode, detail=e.pgerror)
+            raise FeatureNotSupportedException(
+                code=e.pgcode, detail=e.pgerror, table_name=table_name
+            )
+        except (
+            PsycopgError.StringDataRightTruncation,
+            PsycopgError.InternalError_,
+        ) as e:
+            logger.error(f"value too long for datatype: {e.pgerror}")
+            raise ValueTooLongException(
+                code=e.pgcode, detail=e.pgerror, table_name=table_name
+            )
         except SnowflakeError.ProgrammingError as e:
             logger.error(f"snowflake error in inserting table: {e.msg} {e.errno}")
-            raise SnowflakeProgrammingException(code=e.errno, detail=e.msg)
+            raise SnowflakeProgrammingException(
+                code=e.errno, detail=e.msg, table_name=table_name
+            )
+        except google.api_core.exceptions.Forbidden as e:
+            logger.error(f"Forbidden exception in creating table: {str(e)}")
+            raise BigQueryForbiddenException(
+                code=e.code,
+                detail=e.message,
+                table_name=table_name,
+            )
+        except google.api_core.exceptions.NotFound as e:
+            logger.error(f"Resource not found in creating table: {str(e)}")
+            raise BigQueryNotFoundException(
+                code=e.code, detail=e.message, table_name=table_name
+            )
         except (PyMssql.ProgrammingError, PyMssql.OperationalError) as e:
             error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
             logger.error(f"Invalid syntax in inserting mssql table: {error_details}")
-            raise InvalidSyntaxException(code=error_code, detail=error_details)
+            raise InvalidSyntaxException(
+                code=error_code, detail=error_details, table_name=table_name
+            )
         except MysqlError.ProgrammingError as e:
             error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
             logger.error(f"Invalid syntax in inserting mysql table: {error_details}")
-            raise InvalidSyntaxException(code=error_code, detail=error_details)
+            raise InvalidSyntaxException(
+                code=error_code, detail=error_details, table_name=table_name
+            )
         logger.debug(f"sucessfully inserted into table {table_name} with: {sql} query")
 
     @staticmethod
@@ -391,30 +420,48 @@ class DatabaseUtils:
                 engine.query(sql)
         except PsycopgError.InvalidSchemaName as e:
             logger.error(f"Invalid schema in creating table: {e.pgerror}")
-            raise InvalidSchemaException(code=e.pgcode, detail=e.pgerror)
+            raise InvalidSchemaException(
+                code=e.pgcode, detail=e.pgerror, table_name=table_name
+            )
         except PsycopgError.FeatureNotSupported as e:
             logger.error(f"feature not supported in creating table: {e.pgerror}")
-            raise FeatureNotSupportedException(code=e.pgcode, detail=e.pgerror)
+            raise FeatureNotSupportedException(
+                code=e.pgcode, detail=e.pgerror, table_name=table_name
+            )
         except PsycopgError.SyntaxError as e:
             logger.error(f"Invalid syntax in creating table: {e.pgerror}")
-            raise InvalidSyntaxException(code=e.pgcode, detail=e.pgerror)
+            raise InvalidSyntaxException(
+                code=e.pgcode, detail=e.pgerror, table_name=table_name
+            )
         except SnowflakeError.ProgrammingError as e:
             logger.error(f"snowflake error in creating table: {e.msg} {e.errno}")
-            raise SnowflakeProgrammingException(code=e.errno, detail=e.msg)
+            raise SnowflakeProgrammingException(
+                code=e.errno, detail=e.msg, table_name=table_name
+            )
         except google.api_core.exceptions.Forbidden as e:
             logger.error(f"Forbidden exception in creating table: {str(e)}")
-            raise BigQueryForbiddenException(code=e.code)
+            raise BigQueryForbiddenException(
+                code=e.code,
+                detail=e.message,
+                table_name=table_name,
+            )
         except google.api_core.exceptions.NotFound as e:
             logger.error(f"Resource not found in creating table: {str(e)}")
-            raise BigQueryNotFoundException(code=e.code)
+            raise BigQueryNotFoundException(
+                code=e.code, detail=e.message, table_name=table_name
+            )
         except (PyMssql.ProgrammingError, PyMssql.OperationalError) as e:
             error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
             logger.error(f"Invalid syntax in creating mssql table: {error_details}")
-            raise InvalidSyntaxException(code=error_code, detail=error_details)
+            raise InvalidSyntaxException(
+                code=error_code, detail=error_details, table_name=table_name
+            )
         except MysqlError.ProgrammingError as e:
             error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
             logger.error(f"Invalid syntax in creating mysql table: {error_details}")
-            raise InvalidSyntaxException(code=error_code, detail=error_details)
+            raise InvalidSyntaxException(
+                code=error_code, detail=error_details, table_name=table_name
+            )
         logger.debug(f"successfully created table {table_name} with: {sql} query")
 
 
