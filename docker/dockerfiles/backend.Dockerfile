@@ -37,15 +37,16 @@ RUN set -e; \
     # source command may not be availble in sh
     . .venv/bin/activate; \
     \
+    # Install opentelemetry for instrumentation.
+    pip install opentelemetry-distro opentelemetry-exporter-otlp; \
+    \
+    opentelemetry-bootstrap -a install; \
+    \
+    # Applicaiton dependencies.
     pdm sync --prod --no-editable; \
     \
     # REF: https://docs.gunicorn.org/en/stable/deploy.html#using-virtualenv
-    pip install --no-cache-dir gunicorn; \
-    \
-    # Install opentelemetry for instrumentation
-    pip install opentelemetry-distro opentelemetry-exporter-otlp; \
-    \
-    opentelemetry-bootstrap -a install;
+    pip install --no-cache-dir gunicorn;
 
 # Disable all telemetry by default
 ENV OTEL_TRACES_EXPORTER none
