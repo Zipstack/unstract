@@ -1,9 +1,9 @@
 import { Space } from "antd";
 import PropTypes from "prop-types";
 
-const SpaceWrapper = ({ children }) => {
+const SpaceWrapper = ({ children, direction = "vertical" }) => {
   return (
-    <Space direction="vertical" className="width-100">
+    <Space direction={direction} className="width-100">
       {children}
     </Space>
   );
@@ -11,6 +11,7 @@ const SpaceWrapper = ({ children }) => {
 
 SpaceWrapper.propTypes = {
   children: PropTypes.any,
+  direction: PropTypes.string,
 };
 
 export default SpaceWrapper;

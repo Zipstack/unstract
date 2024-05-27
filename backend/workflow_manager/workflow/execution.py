@@ -195,10 +195,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                 status=ExecutionStatus.ERROR,
                 error=self.compilation_result["problems"][0],
             )
-            raise self.__execution_error(
-                error_message=self.compilation_result["problems"][0],
-                detailed_message=self.compilation_result["problems"][0],
-            )
+            raise WorkflowExecutionError(self.compilation_result["problems"][0])
 
     def execute(self, single_step: bool = False) -> None:
         execution_type = ExecutionType.COMPLETE
@@ -224,23 +221,18 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                     end_time = time.time()
                     execution_time = end_time - start_time
                     message = str(exception)[:EXECUTION_ERROR_LENGTH]
-                    logger.info(f"Execution {self.execution_id} Error {exception}")
-                    raise self.__execution_error(
-                        error_message=message,
-                        detailed_message=message,
-                        execution_time=execution_time,
+                    logger.info(
+                        f"Execution {self.execution_id} in {execution_time}s, "
+                        f" Error {exception}"
                     )
+                    raise WorkflowExecutionError(message) from exception
             else:
                 error_message = f"Unknown Execution Method {self.execution_mode}"
-                raise self.__execution_error(
-                    error_message=error_message, detailed_message=error_message
-                )
+                raise WorkflowExecutionError(error_message)
 
         else:
             error_message = f"Errors while compiling workflow {self.compilation_result['problems'][0]}"  # noqa
-            raise self.__execution_error(
-                error_message=error_message, detailed_message=error_message
-            )
+            raise WorkflowExecutionError(error_message)
 
     def publish_initial_workflow_logs(self, total_files: int) -> None:
         """Publishes the initial logs for the workflow.

@@ -252,7 +252,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 pipeline_id=pipeline_guid,
                 hash_values_of_files=hash_values_of_files,
             )
-            update_pipeline(pipeline_guid, Pipeline.PipelineStatus.SUCCESS)
         else:
             execution_response = WorkflowHelper.complete_execution(
                 workflow=workflow,
