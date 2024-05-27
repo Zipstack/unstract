@@ -51,17 +51,6 @@ class TestConnectorInputException(UnstractBaseException):
         self.status_code = 400
 
 
-class TestConnectionException(Exception):
-    DEFAULT_MESSAGE = "Test connection failed! "
-
-    def __init__(self, message: str = DEFAULT_MESSAGE):
-        super().__init__(message)
-        self.message = message
-
-    def __str__(self) -> str:
-        return self.message
-
-
 class KeyNotFoundException(APIException):
     def __init__(self, message: str) -> None:
         status_code = 400
