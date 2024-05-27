@@ -1,3 +1,4 @@
+import time
 import traceback
 from enum import Enum
 from json import JSONDecodeError
@@ -297,24 +298,37 @@ def prompt_processor() -> Any:
                 doc_id=doc_id,
                 usage_kwargs=usage_kwargs,
             )
-            if context is None:
-                # TODO: Obtain user set name for vector DB
-                msg = "Couldn't fetch context from vector DB"
-                app.logger.error(
-                    f"{msg} {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
+            if not context:
+                # UN-1288 For Pinecone, we are seeing an inconsistent case where
+                # query with doc_id fails even though indexing just happened.
+                # This causes the following retrieve to return no text.
+                # To rule out any lag on the Pinecone vector DB write,
+                # the following sleep is added
+                time.sleep(2)
+                context: Optional[str] = tool_index.get_text_from_index(
+                    embedding_instance_id=output[PSKeys.EMBEDDING],
+                    vector_db_instance_id=output[PSKeys.VECTOR_DB],
+                    doc_id=doc_id,
+                    usage_kwargs=usage_kwargs,
                 )
-                _publish_log(
-                    log_events_id,
-                    {
-                        "tool_id": tool_id,
-                        "prompt_key": prompt_name,
-                        "doc_name": doc_name,
-                    },
-                    LogLevel.ERROR,
-                    RunLevel.RUN,
-                    msg,
-                )
-                raise APIError(message=msg)
+                if context is None:
+                    # TODO: Obtain user set name for vector DB
+                    msg = "Couldn't fetch context from vector DB"
+                    app.logger.error(
+                        f"{msg} {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
+                    )
+                    _publish_log(
+                        log_events_id,
+                        {
+                            "tool_id": tool_id,
+                            "prompt_key": prompt_name,
+                            "doc_name": doc_name,
+                        },
+                        LogLevel.ERROR,
+                        RunLevel.RUN,
+                        msg,
+                    )
+                    raise APIError(message=msg)
             # TODO: Use vectorDB name when available
             _publish_log(
                 log_events_id,
@@ -680,6 +694,15 @@ def run_retrieval(  # type:ignore
             prompt=subq_prompt,
         )
     context = _retrieve_context(output, doc_id, vector_index, prompt)
+
+    if not context:
+        # UN-1288 For Pinecone, we are seeing an inconsistent case where
+        # query with doc_id fails even though indexing just happened.
+        # This causes the following retrieve to return no text.
+        # To rule out any lag on the Pinecone vector DB write,
+        # the following sleep is added
+        time.sleep(2)
+        context = _retrieve_context(output, doc_id, vector_index, prompt)
 
     answer = construct_and_run_prompt(  # type:ignore
         output,
