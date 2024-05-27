@@ -24,8 +24,11 @@ import {
 } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
+
 import {
+  defaultTokenUsage,
   displayPromptResult,
+  generateUUID,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -40,8 +43,9 @@ import { EditableText } from "../editable-text/EditableText";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
 
-import { TokenCount } from "../token-count/TokenCount";
+import { TokenUsage } from "../token-usage/TokenUsage";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import useTokenUsage from "../../../hooks/useTokenUsage";
 
 const EvalBtn = null;
 const EvalMetrics = null;
@@ -76,7 +80,7 @@ function PromptCard({
   const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
   const [progressMsg, setProgressMsg] = useState({});
   const [docOutputs, setDocOutputs] = useState({});
-  const [tokenCount, setTokenCount] = useState({});
+  const [tokenUsage, setTokenUsage] = useState({});
   const divRef = useRef(null);
   const {
     getDropdownItems,
@@ -98,6 +102,7 @@ function PromptCard({
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const { getTokenUsage } = useTokenUsage();
 
   useEffect(() => {
     // Find the latest message that matches the criteria
@@ -195,7 +200,6 @@ function PromptCard({
 
   const resetInfoMsgs = () => {
     setProgressMsg({}); // Reset Progress Message
-    setTokenCount({}); // Reset Token Count
   };
 
   useEffect(() => {
@@ -300,6 +304,7 @@ function PromptCard({
     setCoverage(0);
     setCoverageTotal(0);
     setDocOutputs({});
+    setTokenUsage({});
     resetInfoMsgs();
 
     const docId = selectedDoc?.document_id;
@@ -332,9 +337,6 @@ function PromptCard({
         }
         handleDocOutputs(docId, false, value);
         handleGetOutput();
-
-        const usage = data[`${promptDetails?.prompt_key}__usage`] || {};
-        setTokenCount(usage);
       })
       .catch((err) => {
         setIsRunLoading(false);
@@ -411,11 +413,25 @@ function PromptCard({
   };
 
   const handleRunApiRequest = async (docId) => {
+    const runId = generateUUID();
+
+    setTokenUsage((prev) => {
+      const data = { ...(prev || {}) };
+      data[docId] = defaultTokenUsage;
+      return data;
+    });
+
+    const intervalId = setInterval(
+      () => getTokenUsage(runId, docId, setTokenUsage),
+      5000
+    );
+
     const promptId = promptDetails?.prompt_id;
 
     const body = {
       document_id: docId,
       id: promptId,
+      run_id: runId,
     };
 
     const requestOptions = {
@@ -432,6 +448,10 @@ function PromptCard({
       .then((res) => res)
       .catch((err) => {
         throw err;
+      })
+      .finally(() => {
+        clearInterval(intervalId);
+        getTokenUsage(runId, docId, setTokenUsage);
       });
   };
 
@@ -714,7 +734,10 @@ function PromptCard({
                 </Button>
               </Space>
               <Space>
-                <TokenCount tokenCount={tokenCount} />
+                <TokenUsage
+                  tokenUsage={tokenUsage}
+                  docId={selectedDoc?.document_id}
+                />
                 <Select
                   className="prompt-card-select-type"
                   size="small"
@@ -832,6 +855,7 @@ function PromptCard({
         promptKey={promptDetails?.prompt_key}
         profileManagerId={promptDetails?.profile_manager}
         docOutputs={docOutputs}
+        tokenUsage={tokenUsage}
       />
     </>
   );
