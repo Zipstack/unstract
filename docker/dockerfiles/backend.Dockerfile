@@ -43,7 +43,7 @@ RUN set -e; \
     pip install --no-cache-dir gunicorn; \
     \
     # Install opentelemetry for instrumentation
-    pip install opentelemetry-distro[otlp] ; \
+    pip install opentelemetry-distro opentelemetry-exporter-otlp; \
     \
     opentelemetry-bootstrap -a install;
 
