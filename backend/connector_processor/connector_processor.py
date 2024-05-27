@@ -130,7 +130,7 @@ class ConnectorProcessor:
             logger.error(f"Error while testing {connector_id}: {e}")
             raise TestConnectorInputException(core_err=e)
         except KeyError as e:
-            logger.error(f"Path not found while testing {connector_id}: {e}")
+            logger.error(f"{str(e)} not found while testing {connector_id}: {e}")
             raise KeyNotFoundException(message=str(e))
         except Exception as e:
             logger.error(f"Error while testing {connector_id}: {e}")

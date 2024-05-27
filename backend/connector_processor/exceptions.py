@@ -62,7 +62,12 @@ class TestConnectionException(Exception):
         return self.message
 
 
-class KeyNotFoundException(TestConnectionException):
-    def __init__(self, message: str):
-        error_message = f"Test connection failed! Please check key {message}"
-        super().__init__(error_message)
+class KeyNotFoundException(APIException):
+    def __init__(self, message: str) -> None:
+        status_code = 400
+        default_detail = (
+            "Test connection failed. "
+            "The provided parameter {} not found while testing connector."
+        )
+        detail = default_detail.format(message)
+        super().__init__(detail=detail, code=status_code)
