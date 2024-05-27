@@ -303,7 +303,9 @@ def prompt_processor() -> Any:
                 # query with doc_id fails even though indexing just happened.
                 # This causes the following retrieve to return no text.
                 # To rule out any lag on the Pinecone vector DB write,
-                # the following sleep is added
+                # the following sleep is added.
+                # Note: This will not fix the issue. Since this issue is inconsistent
+                # and not reproducible easily, this is just a safety net.
                 time.sleep(2)
                 context: Optional[str] = tool_index.get_text_from_index(
                     embedding_instance_id=output[PSKeys.EMBEDDING],
@@ -701,6 +703,8 @@ def run_retrieval(  # type:ignore
         # This causes the following retrieve to return no text.
         # To rule out any lag on the Pinecone vector DB write,
         # the following sleep is added
+        # Note: This will not fix the issue. Since this issue is inconsistent
+        # and not reproducible easily, this is just a safety net.
         time.sleep(2)
         context = _retrieve_context(output, doc_id, vector_index, prompt)
 
