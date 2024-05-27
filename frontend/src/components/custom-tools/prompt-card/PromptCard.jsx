@@ -223,6 +223,11 @@ function PromptCard({
     setPage(index + 1);
   }, [llmProfiles]);
 
+  useEffect(() => {
+    // Reset the token usage object when the single pass extraction mode is enabled or disabled.
+    setTokenUsage({});
+  }, [singlePassExtractMode]);
+
   const handlePageLeft = () => {
     if (page <= 1) {
       return;
