@@ -433,11 +433,6 @@ class DatabaseUtils:
             raise InvalidSyntaxException(
                 code=e.pgcode, detail=e.pgerror, table_name=table_name
             )
-        except SnowflakeError.ProgrammingError as e:
-            logger.error(f"snowflake error in creating table: {e.msg} {e.errno}")
-            raise SnowflakeProgrammingException(
-                code=e.errno, detail=e.msg, table_name=table_name
-            )
         except google.api_core.exceptions.Forbidden as e:
             logger.error(f"Forbidden exception in creating table: {str(e)}")
             raise BigQueryForbiddenException(
@@ -445,16 +440,21 @@ class DatabaseUtils:
                 detail=e.message,
                 table_name=table_name,
             )
-        except google.api_core.exceptions.NotFound as e:
-            logger.error(f"Resource not found in creating table: {str(e)}")
-            raise BigQueryNotFoundException(
-                code=e.code, detail=e.message, table_name=table_name
-            )
         except (PyMssql.ProgrammingError, PyMssql.OperationalError) as e:
             error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
             logger.error(f"Invalid syntax in creating mssql table: {error_details}")
             raise InvalidSyntaxException(
                 code=error_code, detail=error_details, table_name=table_name
+            )
+        except google.api_core.exceptions.NotFound as e:
+            logger.error(f"Resource not found in creating table: {str(e)}")
+            raise BigQueryNotFoundException(
+                code=e.code, detail=e.message, table_name=table_name
+            )
+        except SnowflakeError.ProgrammingError as e:
+            logger.error(f"snowflake error in creating table: {e.msg} {e.errno}")
+            raise SnowflakeProgrammingException(
+                code=e.errno, detail=e.msg, table_name=table_name
             )
         except MysqlError.ProgrammingError as e:
             error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
