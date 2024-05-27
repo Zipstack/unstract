@@ -49,14 +49,3 @@ class TestConnectorInputException(UnstractBaseException):
         super().__init__(detail=core_err.message, core_err=core_err)
         self.default_detail = core_err.message
         self.status_code = 400
-
-
-class KeyNotFoundException(APIException):
-    def __init__(self, message: str) -> None:
-        status_code = 400
-        default_detail = (
-            "Test connection failed. "
-            "The provided parameter {} not found while testing connector."
-        )
-        detail = default_detail.format(message)
-        super().__init__(detail=detail, code=status_code)
