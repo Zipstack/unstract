@@ -1,5 +1,4 @@
 import {
-  ArrowDownOutlined,
   CheckCircleOutlined,
   DeleteOutlined,
   EditOutlined,
@@ -14,9 +13,7 @@ import {
   Button,
   Card,
   Col,
-  Collapse,
   Divider,
-  Input,
   Row,
   Select,
   Space,
@@ -25,13 +22,13 @@ import {
   Tooltip,
   Typography,
 } from "antd";
-import debounce from "lodash/debounce";
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { AssertionIcon } from "../../../assets";
 import {
+  defaultTokenUsage,
   displayPromptResult,
+  generateUUID,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -41,14 +38,14 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
-import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import "./PromptCard.css";
 
-import { TokenCount } from "../token-count/TokenCount";
+import { TokenUsage } from "../token-usage/TokenUsage";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import useTokenUsage from "../../../hooks/useTokenUsage";
 
 const EvalBtn = null;
 const EvalMetrics = null;
@@ -67,7 +64,6 @@ function PromptCard({
   const [enforceTypeList, setEnforceTypeList] = useState([]);
   const [page, setPage] = useState(0);
   const [isRunLoading, setIsRunLoading] = useState(false);
-  const [displayAssertion, setDisplayAssertion] = useState(false);
   const [openEval, setOpenEval] = useState(false);
   const [promptKey, setPromptKey] = useState("");
   const [promptText, setPromptText] = useState("");
@@ -84,7 +80,7 @@ function PromptCard({
   const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
   const [progressMsg, setProgressMsg] = useState({});
   const [docOutputs, setDocOutputs] = useState({});
-  const [tokenCount, setTokenCount] = useState({});
+  const [tokenUsage, setTokenUsage] = useState({});
   const divRef = useRef(null);
   const {
     getDropdownItems,
@@ -106,6 +102,7 @@ function PromptCard({
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const { getTokenUsage } = useTokenUsage();
 
   useEffect(() => {
     // Find the latest message that matches the criteria
@@ -131,9 +128,6 @@ function PromptCard({
   }, [messages]);
 
   useEffect(() => {
-    if (promptDetails?.is_assert) {
-      setDisplayAssertion(true);
-    }
     const outputTypeData = getDropdownItems("output_type");
     const dropdownList1 = Object.keys(outputTypeData).map((item) => {
       return { value: outputTypeData[item] };
@@ -198,17 +192,6 @@ function PromptCard({
   }, [page]);
 
   useEffect(() => {
-    if (displayAssertion !== promptDetails?.is_assert) {
-      handleChange(
-        displayAssertion,
-        promptDetails?.prompt_id,
-        "is_assert",
-        true
-      );
-    }
-  }, [displayAssertion]);
-
-  useEffect(() => {
     if (isCoverageLoading && coverageTotal === listOfDocs?.length) {
       setIsCoverageLoading(false);
       setCoverageTotal(0);
@@ -217,15 +200,7 @@ function PromptCard({
 
   const resetInfoMsgs = () => {
     setProgressMsg({}); // Reset Progress Message
-    setTokenCount({}); // Reset Token Count
   };
-
-  const onSearchDebounce = useCallback(
-    debounce((event) => {
-      handleChange(event, promptDetails?.prompt_id, false, true);
-    }, 1000),
-    []
-  );
 
   useEffect(() => {
     const isProfilePresent = llmProfiles.some(
@@ -247,6 +222,11 @@ function PromptCard({
     );
     setPage(index + 1);
   }, [llmProfiles]);
+
+  useEffect(() => {
+    // Reset the token usage object when the single pass extraction mode is enabled or disabled.
+    setTokenUsage({});
+  }, [singlePassExtractMode]);
 
   const handlePageLeft = () => {
     if (page <= 1) {
@@ -329,6 +309,7 @@ function PromptCard({
     setCoverage(0);
     setCoverageTotal(0);
     setDocOutputs({});
+    setTokenUsage({});
     resetInfoMsgs();
 
     const docId = selectedDoc?.document_id;
@@ -354,16 +335,13 @@ function PromptCard({
     handleDocOutputs(docId, true, null);
     handleRunApiRequest(docId)
       .then((res) => {
-        const data = res?.data;
+        const data = res?.data?.output;
         const value = data[promptDetails?.prompt_key];
         if (value || value === 0) {
           setCoverage((prev) => prev + 1);
         }
         handleDocOutputs(docId, false, value);
         handleGetOutput();
-
-        const usage = data[`${promptDetails?.prompt_key}__usage`] || {};
-        setTokenCount(usage);
       })
       .catch((err) => {
         setIsRunLoading(false);
@@ -419,7 +397,7 @@ function PromptCard({
       handleDocOutputs(docId, true, null);
       handleRunApiRequest(docId)
         .then((res) => {
-          const data = res?.data;
+          const data = res?.data?.output;
           const outputValue = data[promptDetails?.prompt_key];
           if (outputValue || outputValue === 0) {
             setCoverage((prev) => prev + 1);
@@ -440,11 +418,26 @@ function PromptCard({
   };
 
   const handleRunApiRequest = async (docId) => {
+    const runId = generateUUID();
+
+    // Update the token usage state with default token usage for a specific document ID
+    setTokenUsage((prev) => ({
+      ...prev,
+      [docId]: defaultTokenUsage,
+    }));
+
+    // Set up an interval to fetch token usage data at regular intervals
+    const intervalId = setInterval(
+      () => getTokenUsage(runId, docId, setTokenUsage),
+      5000 // Fetch token usage data every 5000 milliseconds (5 seconds)
+    );
+
     const promptId = promptDetails?.prompt_id;
 
     const body = {
       document_id: docId,
       id: promptId,
+      run_id: runId,
     };
 
     const requestOptions = {
@@ -461,6 +454,10 @@ function PromptCard({
       .then((res) => res)
       .catch((err) => {
         throw err;
+      })
+      .finally(() => {
+        clearInterval(intervalId);
+        getTokenUsage(runId, docId, setTokenUsage);
       });
   };
 
@@ -568,85 +565,24 @@ function PromptCard({
   return (
     <>
       <Card className="prompt-card">
-        <Collapse
-          className="assertion-comp"
-          ghost
-          activeKey={displayAssertion ? "1" : null}
-        >
-          <Collapse.Panel key={"1"} showArrow={false}>
-            <Row className="prompt-card-div">
-              <Col span={8} className="assert-p-r-4">
-                <Typography.Text strong className="font-size-12">
-                  Missing Context Prompt
-                </Typography.Text>
-                <div className="prompt-card-gap" />
-                <Input.TextArea
-                  rows={2}
-                  defaultValue={promptDetails?.assert_prompt}
-                  name="assert_prompt"
-                  onChange={onSearchDebounce}
-                  disabled={
-                    disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
-                    isSinglePassExtractLoading ||
-                    indexDocs.includes(selectedDoc?.document_id)
-                  }
+        <div className="prompt-card-div prompt-card-bg-col1 prompt-card-rad">
+          <Space direction="vertical" className="width-100" ref={divRef}>
+            <Row>
+              <Col span={12}>
+                <EditableText
+                  isEditing={isEditingTitle}
+                  setIsEditing={setIsEditingTitle}
+                  text={promptKey}
+                  setText={setPromptKey}
+                  promptId={promptDetails?.prompt_id}
+                  defaultText={promptDetails?.prompt_key}
+                  handleChange={handleChange}
+                  placeHolder={updatePlaceHolder}
                 />
               </Col>
-              <Col span={8} className="assert-p-l-4 assert-p-r-4">
-                <Typography.Text className="font-size-12" strong>
-                  False
-                </Typography.Text>
-                <div className="prompt-card-gap" />
-                <Input.TextArea
-                  rows={2}
-                  defaultValue={promptDetails?.assertion_failure_prompt}
-                  name="assertion_failure_prompt"
-                  onChange={onSearchDebounce}
-                  disabled={
-                    disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
-                    isSinglePassExtractLoading ||
-                    indexDocs.includes(selectedDoc?.document_id)
-                  }
-                />
-              </Col>
-              <Col span={8} className="assert-p-l-4">
-                <Typography.Text className="font-size-12" strong>
-                  True
-                </Typography.Text>
-                <div className="prompt-card-gap" />
-                <SpaceWrapper>
-                  <Typography.Text className="font-size-12">
-                    The below prompt will be executed.
-                  </Typography.Text>
-                  <ArrowDownOutlined />
-                </SpaceWrapper>
-              </Col>
-            </Row>
-          </Collapse.Panel>
-        </Collapse>
-        <>
-          {displayAssertion && <Divider className="prompt-card-divider" />}
-          <div
-            className={`prompt-card-div prompt-card-bg-col1 ${
-              displayAssertion ? "" : "prompt-card-rad"
-            }`}
-          >
-            <Space direction="vertical" className="width-100" ref={divRef}>
-              <Row>
-                <Col span={12}>
-                  <EditableText
-                    isEditing={isEditingTitle}
-                    setIsEditing={setIsEditingTitle}
-                    text={promptKey}
-                    setText={setPromptKey}
-                    promptId={promptDetails?.prompt_id}
-                    defaultText={promptDetails?.prompt_key}
-                    handleChange={handleChange}
-                    placeHolder={updatePlaceHolder}
-                  />
-                </Col>
-                <Col span={12} className="display-flex-right">
-                  {progressMsg?.message && (
+              <Col span={12} className="display-flex-right">
+                {progressMsg?.message && (
+                  <Tooltip title={progressMsg?.message || ""}>
                     <Tag
                       icon={isCoverageLoading && <LoadingOutlined spin />}
                       color={
@@ -654,49 +590,92 @@ function PromptCard({
                       }
                       className="display-flex-align-center"
                     >
-                      {progressMsg?.message}
+                      <div className="tag-max-width ellipsis">
+                        {progressMsg?.message}
+                      </div>
                     </Tag>
-                  )}
-                  {updateStatus?.promptId === promptDetails?.prompt_id && (
-                    <>
-                      {updateStatus?.status ===
-                        promptStudioUpdateStatus.isUpdating && (
-                        <Tag
-                          icon={<SyncOutlined spin />}
-                          color="processing"
-                          className="display-flex-align-center"
-                        >
-                          Updating
-                        </Tag>
-                      )}
-                      {updateStatus?.status ===
-                        promptStudioUpdateStatus.done && (
-                        <Tag
-                          icon={<CheckCircleOutlined />}
-                          color="success"
-                          className="display-flex-align-center"
-                        >
-                          Done
-                        </Tag>
-                      )}
-                      {updateStatus?.status ===
-                        promptStudioUpdateStatus.validationError && (
-                        <Tag
-                          icon={<CheckCircleOutlined />}
-                          color="error"
-                          className="display-flex-align-center"
-                        >
-                          Invalid JSON Key
-                        </Tag>
-                      )}
-                    </>
-                  )}
-                  <Tooltip title="Edit">
+                  </Tooltip>
+                )}
+                {updateStatus?.promptId === promptDetails?.prompt_id && (
+                  <>
+                    {updateStatus?.status ===
+                      promptStudioUpdateStatus.isUpdating && (
+                      <Tag
+                        icon={<SyncOutlined spin />}
+                        color="processing"
+                        className="display-flex-align-center"
+                      >
+                        Updating
+                      </Tag>
+                    )}
+                    {updateStatus?.status === promptStudioUpdateStatus.done && (
+                      <Tag
+                        icon={<CheckCircleOutlined />}
+                        color="success"
+                        className="display-flex-align-center"
+                      >
+                        Done
+                      </Tag>
+                    )}
+                    {updateStatus?.status ===
+                      promptStudioUpdateStatus.validationError && (
+                      <Tag
+                        icon={<CheckCircleOutlined />}
+                        color="error"
+                        className="display-flex-align-center"
+                      >
+                        Invalid JSON Key
+                      </Tag>
+                    )}
+                  </>
+                )}
+                <Tooltip title="Edit">
+                  <Button
+                    size="small"
+                    type="text"
+                    className="display-flex-align-center prompt-card-action-button"
+                    onClick={enableEdit}
+                    disabled={
+                      disableLlmOrDocChange.includes(
+                        promptDetails?.prompt_id
+                      ) ||
+                      isSinglePassExtractLoading ||
+                      indexDocs.includes(selectedDoc?.document_id)
+                    }
+                  >
+                    <EditOutlined className="prompt-card-actions-head" />
+                  </Button>
+                </Tooltip>
+                {!singlePassExtractMode && (
+                  <Tooltip title="Run">
                     <Button
                       size="small"
                       type="text"
-                      className="display-flex-align-center prompt-card-action-button"
-                      onClick={enableEdit}
+                      className="prompt-card-action-button"
+                      onClick={handleRun}
+                      disabled={
+                        (updateStatus?.promptId === promptDetails?.prompt_id &&
+                          updateStatus?.status ===
+                            promptStudioUpdateStatus.isUpdating) ||
+                        disableLlmOrDocChange.includes(
+                          promptDetails?.prompt_id
+                        ) ||
+                        indexDocs.includes(selectedDoc?.document_id)
+                      }
+                    >
+                      <PlayCircleOutlined className="prompt-card-actions-head" />
+                    </Button>
+                  </Tooltip>
+                )}
+                <ConfirmModal
+                  handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
+                  content="The prompt will be permanently deleted."
+                >
+                  <Tooltip title="Delete">
+                    <Button
+                      size="small"
+                      type="text"
+                      className="prompt-card-action-button"
                       disabled={
                         disableLlmOrDocChange.includes(
                           promptDetails?.prompt_id
@@ -705,78 +684,25 @@ function PromptCard({
                         indexDocs.includes(selectedDoc?.document_id)
                       }
                     >
-                      <EditOutlined className="prompt-card-actions-head" />
+                      <DeleteOutlined className="prompt-card-actions-head" />
                     </Button>
                   </Tooltip>
-                  <Tooltip title="Assertion">
-                    <Button
-                      size="small"
-                      type="text"
-                      className="display-flex-align-center prompt-card-action-button"
-                      onClick={() => setDisplayAssertion(!displayAssertion)}
-                      disabled={true}
-                    >
-                      <AssertionIcon className="prompt-card-actions-head assertion-icon" />
-                    </Button>
-                  </Tooltip>
-                  {!singlePassExtractMode && (
-                    <Tooltip title="Run">
-                      <Button
-                        size="small"
-                        type="text"
-                        onClick={handleRun}
-                        disabled={
-                          (updateStatus?.promptId ===
-                            promptDetails?.prompt_id &&
-                            updateStatus?.status ===
-                              promptStudioUpdateStatus.isUpdating) ||
-                          disableLlmOrDocChange.includes(
-                            promptDetails?.prompt_id
-                          ) ||
-                          indexDocs.includes(selectedDoc?.document_id)
-                        }
-                      >
-                        <PlayCircleOutlined className="prompt-card-actions-head" />
-                      </Button>
-                    </Tooltip>
-                  )}
-                  <ConfirmModal
-                    handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
-                    content="The prompt will be permanently deleted."
-                  >
-                    <Tooltip title="Delete">
-                      <Button
-                        size="small"
-                        type="text"
-                        className="prompt-card-action-button"
-                        disabled={
-                          disableLlmOrDocChange.includes(
-                            promptDetails?.prompt_id
-                          ) ||
-                          isSinglePassExtractLoading ||
-                          indexDocs.includes(selectedDoc?.document_id)
-                        }
-                      >
-                        <DeleteOutlined className="prompt-card-actions-head" />
-                      </Button>
-                    </Tooltip>
-                  </ConfirmModal>
-                </Col>
-              </Row>
-              <EditableText
-                isEditing={isEditingPrompt}
-                setIsEditing={setIsEditingPrompt}
-                text={promptText}
-                setText={setPromptText}
-                promptId={promptDetails?.prompt_id}
-                defaultText={promptDetails.prompt}
-                handleChange={handleChange}
-                isTextarea={true}
-                placeHolder={updatePlaceHolder}
-              />
-            </Space>
-          </div>
-        </>
+                </ConfirmModal>
+              </Col>
+            </Row>
+            <EditableText
+              isEditing={isEditingPrompt}
+              setIsEditing={setIsEditingPrompt}
+              text={promptText}
+              setText={setPromptText}
+              promptId={promptDetails?.prompt_id}
+              defaultText={promptDetails.prompt}
+              handleChange={handleChange}
+              isTextarea={true}
+              placeHolder={updatePlaceHolder}
+            />
+          </Space>
+        </div>
         <>
           <Divider className="prompt-card-divider" />
           <Space
@@ -814,7 +740,10 @@ function PromptCard({
                 </Button>
               </Space>
               <Space>
-                <TokenCount tokenCount={tokenCount} />
+                <TokenUsage
+                  tokenUsage={tokenUsage}
+                  docId={selectedDoc?.document_id}
+                />
                 <Select
                   className="prompt-card-select-type"
                   size="small"
@@ -932,6 +861,7 @@ function PromptCard({
         promptKey={promptDetails?.prompt_key}
         profileManagerId={promptDetails?.profile_manager}
         docOutputs={docOutputs}
+        tokenUsage={tokenUsage}
       />
     </>
   );

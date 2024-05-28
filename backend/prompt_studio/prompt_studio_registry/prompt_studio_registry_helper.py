@@ -293,6 +293,7 @@ class PromptStudioRegistryHelper:
             adapter_id = str(prompt.profile_manager.embedding_model.adapter_id)
             embedding_suffix = adapter_id.split("|")[0]
 
+            # TODO: Remove these fields related to assertion
             output[JsonSchemaKey.ASSERTION_FAILURE_PROMPT] = (
                 prompt.assertion_failure_prompt
             )
@@ -330,12 +331,12 @@ class PromptStudioRegistryHelper:
 
         if invalidated_prompts:
             raise InValidCustomToolError(
-                f"Cannot export tool. Prompt(s) : {invalidated_prompts} "
-                "are not valid. Please enter a valid prompt."
+                f"Cannot export tool. Prompt(s): {', '.join(invalidated_prompts)} "
+                "are empty. Please enter a valid prompt."
             )
         if invalidated_outputs:
             raise InValidCustomToolError(
-                f"Cannot export tool. Prompt(s) : {invalidated_outputs} "
+                f"Cannot export tool. Prompt(s): {', '.join(invalidated_outputs)} "
                 "were not run. Please run them before exporting."
             )
         export_metadata[JsonSchemaKey.TOOL_SETTINGS] = tool_settings

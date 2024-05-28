@@ -85,7 +85,6 @@ function ToolsMain() {
     prompt: "",
     tool_id: details?.tool_id,
     prompt_type: promptType.prompt,
-    is_assert: false,
     profile_manager: defaultLlmProfile,
     sequence_number: getSequenceNumber(),
   };
@@ -167,6 +166,7 @@ function ToolsMain() {
         </div>
         <div className="display-flex-align-center">
           <Space>
+            {singlePassExtractMode && RunSinglePassBtn && <RunSinglePassBtn />}
             <Tooltip title="Output Analyzer">
               <Button
                 icon={<BarChartOutlined />}
@@ -177,7 +177,6 @@ function ToolsMain() {
                 }
               />
             </Tooltip>
-            {singlePassExtractMode && RunSinglePassBtn && <RunSinglePassBtn />}
           </Space>
         </div>
       </div>

@@ -52,6 +52,7 @@ class PromptStudioOutputManager(BaseModel):
         on_delete=models.CASCADE,
         related_name="prompt_ouput_linked_tool",
     )
+    run_id = models.UUIDField(default=uuid.uuid4, editable=False)
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,

@@ -14,7 +14,6 @@ from prompt_studio.prompt_profile_manager.constants import ProfileManagerErrors
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_profile_manager.serializers import ProfileManagerSerializer
 from prompt_studio.prompt_studio.constants import ToolStudioPromptErrors
-from prompt_studio.prompt_studio.exceptions import FilenameMissingError
 from prompt_studio.prompt_studio.serializers import ToolStudioPromptSerializer
 from prompt_studio.prompt_studio_core.constants import (
     FileViewTypes,
@@ -44,6 +43,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance.models import ToolInstance
+from utils.common_utils import CommonUtils
 from utils.user_session import UserSessionUtils
 
 from unstract.connectors.filesystems.local_storage.local_storage import LocalStorageFS
@@ -204,12 +204,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         )
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
+        # Generate a run_id
+        run_id = CommonUtils.get_uuid()
         unique_id = PromptStudioHelper.index_document(
             tool_id=str(tool.tool_id),
             file_name=file_name,
             org_id=UserSessionUtils.get_organization_id(request),
             user_id=tool.created_by.user_id,
             document_id=document_id,
+            run_id=run_id,
         )
 
         for processor_plugin in self.processor_plugins:
@@ -249,20 +252,19 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         custom_tool = self.get_object()
         tool_id: str = str(custom_tool.tool_id)
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
-        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
-        file_name: str = document.document_name
         id: str = request.data.get(ToolStudioPromptKeys.ID)
+        run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
+        if not run_id:
+            # Generate a run_id
+            run_id = CommonUtils.get_uuid()
 
-        if not file_name or file_name == ToolStudioPromptKeys.UNDEFINED:
-            logger.error("Mandatory field file_name is missing")
-            raise FilenameMissingError()
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,
             tool_id=tool_id,
-            file_name=file_name,
             org_id=UserSessionUtils.get_organization_id(request),
             user_id=custom_tool.created_by.user_id,
             document_id=document_id,
+            run_id=run_id,
         )
         return Response(response, status=status.HTTP_200_OK)
 
@@ -274,9 +276,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             request (HttpRequest): _description_
             pk (Any): Primary key of the CustomTool
 
-        Raises:
-            FilenameMissingError: _description_
-
         Returns:
             Response
         """
@@ -285,18 +284,16 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         custom_tool = self.get_object()
         tool_id: str = str(custom_tool.tool_id)
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
-        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
-        file_name: str = document.document_name
-
-        if not file_name or file_name == ToolStudioPromptKeys.UNDEFINED:
-            logger.error("Mandatory field file_name is missing")
-            raise FilenameMissingError()
+        run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
+        if not run_id:
+            # Generate a run_id
+            run_id = CommonUtils.get_uuid()
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             tool_id=tool_id,
-            file_name=file_name,
             org_id=UserSessionUtils.get_organization_id(request),
             user_id=custom_tool.created_by.user_id,
             document_id=document_id,
+            run_id=run_id,
         )
         return Response(response, status=status.HTTP_200_OK)
 

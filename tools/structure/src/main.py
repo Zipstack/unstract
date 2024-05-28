@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -57,12 +58,14 @@ class StructureTool(BaseTool):
         tool_settings["enable_single_pass_extraction"] = single_pass_extraction_mode
 
         prompt_service_resp = None
-        # TODO : Check if reindex. If Yes, reindex, else continue.
+        _, file_name = os.path.split(input_file)
+        # TODO : Resolve and pass log events ID
         payload = {
             "tool_settings": tool_settings,
             "outputs": outputs,
             "tool_id": tool_id,
             "file_hash": file_hash,
+            "file_name": file_name,
         }
 
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:

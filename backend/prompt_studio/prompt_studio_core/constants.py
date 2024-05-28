@@ -21,6 +21,7 @@ class ToolStudioErrors:
 class ToolStudioPromptKeys:
     CREATED_BY = "created_by"
     TOOL_ID = "tool_id"
+    RUN_ID = "run_id"
     NUMBER = "Number"
     FLOAT = "Float"
     PG_VECTOR = "Postgres pg_vector"
@@ -29,7 +30,6 @@ class ToolStudioPromptKeys:
     ID = "id"
     FILE_NAME = "file_name"
     FILE_HASH = "file_hash"
-    UNDEFINED = "undefined"
     TOOL_ID = "tool_id"
     NAME = "name"
     ACTIVE = "active"
@@ -83,6 +83,7 @@ class ToolStudioPromptKeys:
     SINGLE_PASS_EXTRACTION_MODE = "single_pass_extraction_mode"
     SINGLE_PASS_EXTRACTION = "single_pass_extraction"
     NOTES = "NOTES"
+    OUTPUT = "output"
 
 
 class FileViewTypes:

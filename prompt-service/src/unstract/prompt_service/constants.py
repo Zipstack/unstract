@@ -6,6 +6,7 @@ class PromptServiceContants:
     SYNONYMS = "synonyms"
     OUTPUTS = "outputs"
     TOOL_ID = "tool_id"
+    RUN_ID = "run_id"
     FILE_NAME = "file_name"
     FILE_HASH = "file_hash"
     NAME = "name"
@@ -22,6 +23,7 @@ class PromptServiceContants:
     ASSERTION_FAILURE_PROMPT = "assertion_failure_prompt"
     RETRIEVAL_STRATEGY = "retrieval-strategy"
     SIMPLE = "simple"
+    SUBQUESTION = "subquestion"
     TYPE = "type"
     NUMBER = "number"
     EMAIL = "email"
@@ -63,3 +65,4 @@ class RunLevel(Enum):
 
     RUN = "RUN"
     EVAL = "EVAL"
+    CHALLENGE = "CHALLENGE"

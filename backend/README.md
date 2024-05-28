@@ -65,8 +65,10 @@ To update the username or password after it's been set:
 Run the following command to start the worker:
 
 ```bash
-celery -A backend worker --loglevel=info
+celery -A backend worker --loglevel=info -Q celery,celery_periodic_logs
 ```
+- The `celery` queue is used for default Celery tasks.
+- The `celery_periodic_logs` queue is utilized for logging history tasks.
 
 ### Worker Dashboard
 

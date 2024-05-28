@@ -3,13 +3,13 @@ import ReactDOM from "react-dom/client";
 import posthog from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
 
-import { Logo64 } from "./assets";
+import { GenericLoader } from "./components/generic-loader/GenericLoader";
 import { LazyLoader } from "./components/widgets/lazy-loader/LazyLoader.jsx";
 import { SocketProvider } from "./helpers/SocketContext.js";
 import "./index.css";
 
-const API_KEY = "phc_f1kLKkipCK3kBtA9bT0SfAChvFrlUxYSMD91GBNbwr1"; // gitleaks:allow
-const API_HOST = "https://app.posthog.com";
+const API_KEY = "phc_PTafesyRuRB5hceRILaNPeyu2IDuzPshyjIPYGvgoBd"; // gitleaks:allow
+const API_HOST = "https://eu.i.posthog.com/";
 posthog.init(API_KEY, {
   api_host: API_HOST,
   capture_pageview: false,
@@ -22,11 +22,7 @@ root.render(
     <PostHogProvider client={posthog}>
       <SocketProvider>
         <LazyLoader
-          loader={
-            <div className="center">
-              <Logo64 />
-            </div>
-          }
+          loader={<GenericLoader />}
           component={() => import("./App.jsx")}
           componentName="App"
         />
