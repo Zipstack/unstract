@@ -101,11 +101,11 @@ class BaseTestDB:
     @pytest.fixture(
         params=[
             ("valid_postgres_creds", PostgreSQL),
-            ("valid_redshift_creds", Redshift),
             ("snowflake_creds", SnowflakeDB),
             ("mssql_creds", MSSQL),
             ("mysql_creds", MySQL),
             ("mariadb_creds", MariaDB),
+            ("valid_redshift_creds", Redshift),
         ]
     )
     def valid_dbs_instance(self, request: Any) -> Any:

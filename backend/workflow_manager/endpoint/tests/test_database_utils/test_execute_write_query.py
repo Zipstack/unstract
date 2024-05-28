@@ -3,8 +3,6 @@ import uuid
 from typing import Any
 
 import pytest  # type: ignore
-from base_test_db import BaseTestDB
-from dotenv import load_dotenv
 from workflow_manager.endpoint.database_utils import DatabaseUtils
 from workflow_manager.endpoint.exceptions import (
     FeatureNotSupportedException,
@@ -17,7 +15,7 @@ from workflow_manager.endpoint.exceptions import (
 from unstract.connectors.databases.redshift import Redshift
 from unstract.connectors.databases.unstract_db import UnstractDB
 
-load_dotenv("test.env")
+from .base_test_db import BaseTestDB
 
 
 class TestExecuteWriteQuery(BaseTestDB):

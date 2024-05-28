@@ -1,5 +1,4 @@
 import pytest  # type: ignore
-from base_test_db import BaseTestDB
 from workflow_manager.endpoint.database_utils import DatabaseUtils
 from workflow_manager.endpoint.exceptions import (
     FeatureNotSupportedException,
@@ -9,6 +8,8 @@ from workflow_manager.endpoint.exceptions import (
 )
 
 from unstract.connectors.databases.unstract_db import UnstractDB
+
+from .base_test_db import BaseTestDB
 
 
 class TestCreateTableIfNotExists(BaseTestDB):
