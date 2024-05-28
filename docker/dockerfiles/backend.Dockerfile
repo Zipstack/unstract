@@ -13,6 +13,12 @@ ENV BUILD_PACKAGES_PATH unstract
 ENV DJANGO_SETTINGS_MODULE "backend.settings.dev"
 ENV PDM_VERSION 2.12.3
 
+# Disable all telemetry by default
+ENV OTEL_TRACES_EXPORTER none
+ENV OTEL_METRICS_EXPORTER none
+ENV OTEL_LOGS_EXPORTER none
+ENV OTEL_SERVICE_NAME unstract_backend
+
 RUN apt-get update; \
     apt-get --no-install-recommends install -y \
         # unstract sdk
@@ -47,12 +53,6 @@ RUN set -e; \
     \
     # REF: https://docs.gunicorn.org/en/stable/deploy.html#using-virtualenv
     pip install --no-cache-dir gunicorn;
-
-# Disable all telemetry by default
-ENV OTEL_TRACES_EXPORTER none
-ENV OTEL_METRICS_EXPORTER none
-ENV OTEL_LOGS_EXPORTER none
-ENV OTEL_SERVICE_NAME unstract_backend
 
 EXPOSE 8000
 
