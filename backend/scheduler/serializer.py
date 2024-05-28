@@ -1,7 +1,6 @@
 import logging
 from typing import Any
 
-from django.conf import settings
 from pipeline.manager import PipelineManager
 from rest_framework import serializers
 from scheduler.constants import SchedulerConstants as SC
@@ -19,15 +18,7 @@ class JobKwargsSerializer(serializers.Serializer):
     # url = serializers.URLField()
     url = serializers.CharField(max_length=128)
     headers = serializers.JSONField()
-    params = serializers.JSONField()
     data = serializers.JSONField()
-
-
-class SchedulerKwargsSerializer(serializers.Serializer):
-    coalesce = serializers.BooleanField()
-    misfire_grace_time = serializers.IntegerField(allow_null=True, required=False)
-    max_instances = serializers.IntegerField()
-    replace_existing = serializers.BooleanField()
 
 
 class AddJobSerializer(serializers.Serializer):
@@ -37,7 +28,6 @@ class AddJobSerializer(serializers.Serializer):
         max_length=JOB_NAME_LENGTH, required=False, allow_blank=True
     )
     job_kwargs = JobKwargsSerializer(write_only=True)
-    scheduler_kwargs = SchedulerKwargsSerializer(write_only=True)
 
     def to_internal_value(self, data: dict[str, Any]) -> dict[str, Any]:
         if SC.NAME not in data:
@@ -47,5 +37,4 @@ class AddJobSerializer(serializers.Serializer):
                 pipeline_id=data[SC.ID]
             )
         )
-        data[SC.SCHEDULER_KWARGS] = settings.SCHEDULER_KWARGS
         return super().to_internal_value(data)  # type: ignore

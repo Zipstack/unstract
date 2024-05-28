@@ -1,0 +1,15 @@
+.error {
+  color: #FF0000;
+}
+
+.completed {
+    color:  #034e03;
+}
+
+.warning {
+    color: #af6714;
+}
+
+table .ant-btn {
+    padding: 0;
+}

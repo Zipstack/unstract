@@ -1,7 +1,9 @@
 import json
+import logging
 from typing import Any
 
 from prompt_studio.prompt_profile_manager.models import ProfileManager
+from prompt_studio.prompt_studio.exceptions import AnswerFetchError
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from prompt_studio.prompt_studio_output_manager.constants import (
@@ -9,10 +11,13 @@ from prompt_studio.prompt_studio_output_manager.constants import (
 )
 from prompt_studio.prompt_studio_output_manager.models import PromptStudioOutputManager
 
+logger = logging.getLogger(__name__)
+
 
 class OutputManagerHelper:
     @staticmethod
     def handle_prompt_output_update(
+        run_id: str,
         prompts: list[ToolStudioPrompt],
         outputs: Any,
         document_id: str,
@@ -48,11 +53,44 @@ class OutputManagerHelper:
             # Attempt to update an existing output manager,
             # for the given criteria,
             # or create a new one if it doesn't exist
-            PromptStudioOutputManager.objects.update_or_create(
-                document_manager=document_manager,
-                tool_id=tool,
-                profile_manager=profile_manager,
-                prompt_id=prompt,
-                is_single_pass_extract=is_single_pass_extract,
-                defaults={"output": output, "eval_metrics": eval_metrics},
-            )
+            try:
+                # Create or get the existing record for this document, prompt and
+                # profile combo
+                _, success = PromptStudioOutputManager.objects.get_or_create(
+                    document_manager=document_manager,
+                    tool_id=tool,
+                    profile_manager=profile_manager,
+                    prompt_id=prompt,
+                    is_single_pass_extract=is_single_pass_extract,
+                    defaults={
+                        "output": output,
+                        "eval_metrics": eval_metrics,
+                    },
+                )
+
+                if success:
+                    logger.info(
+                        f"Created record for prompt_id: {prompt.prompt_id} and "
+                        f"profile {profile_manager.profile_id}"
+                    )
+                else:
+                    logger.info(
+                        f"Updated record for prompt_id: {prompt.prompt_id} and "
+                        f"profile {profile_manager.profile_id}"
+                    )
+
+                args: dict[str, str] = dict()
+                args["run_id"] = run_id
+                args["output"] = output
+                args["eval_metrics"] = eval_metrics
+                # Update the record with the run id and other params
+                PromptStudioOutputManager.objects.filter(
+                    document_manager=document_manager,
+                    tool_id=tool,
+                    profile_manager=profile_manager,
+                    prompt_id=prompt,
+                    is_single_pass_extract=is_single_pass_extract,
+                ).update(**args)
+
+            except Exception as e:
+                raise AnswerFetchError(f"Error updating prompt output {e}") from e
