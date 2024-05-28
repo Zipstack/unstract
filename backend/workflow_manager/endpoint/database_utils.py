@@ -16,6 +16,7 @@ from workflow_manager.endpoint.constants import (
     DBConnectionClass,
     TableColumns,
 )
+from workflow_manager.endpoint.exception_helper import ExceptionHelper
 from workflow_manager.endpoint.exceptions import (
     BigQueryForbiddenException,
     BigQueryNotFoundException,
@@ -548,13 +549,3 @@ class DBConnectorQueryHelper:
     @staticmethod
     def execute_generic_query(engine: Any, sql: str, sql_values: Any) -> None:
         engine.query(sql)
-
-
-class ExceptionHelper:
-    @staticmethod
-    def extract_byte_exception(e: Exception) -> tuple[str, str]:
-        error_message = str(e)
-        error_code, error_details = eval(error_message)
-        if isinstance(error_details, bytes):
-            error_details = error_details.decode("utf-8")
-        return error_code, error_message
