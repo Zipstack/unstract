@@ -5,7 +5,7 @@
 groups = ["default", "hook-check-django-migrations", "lint"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:e4ab8c38fc0b99db72fe5f2752e1a0b925856906ef83068b3bff381a4016c3c0"
+content_hash = "sha256:93fc398b5184cddb431edc0e6da07a7271a2e7c567a853d3764230f1fb52a837"
 
 [[package]]
 name = "adlfs"
@@ -197,7 +197,7 @@ files = [
 
 [[package]]
 name = "anyio"
-version = "4.3.0"
+version = "4.4.0"
 requires_python = ">=3.8"
 summary = "High level compatibility layer for multiple asynchronous event loop implementations"
 groups = ["hook-check-django-migrations"]
@@ -208,8 +208,8 @@ dependencies = [
     "typing-extensions>=4.1; python_version < \"3.11\"",
 ]
 files = [
-    {file = "anyio-4.3.0-py3-none-any.whl", hash = "sha256:048e05d0f6caeed70d731f3db756d35dcc1f35747c8c403364a8332c630441b8"},
-    {file = "anyio-4.3.0.tar.gz", hash = "sha256:f75253795a87df48568485fd18cdd2a3fa5c4f7c5be8e5e36637733fce06fed6"},
+    {file = "anyio-4.4.0-py3-none-any.whl", hash = "sha256:c1b2d8f46a8a812513012e1107cb0e68c17159a7a594208005a57dc776e1bdc7"},
+    {file = "anyio-4.4.0.tar.gz", hash = "sha256:5aadc6a1bbb7cdb0bede386cac5e2940f5e2ff3aa20277e991cf028e0585ce94"},
 ]
 
 [[package]]
@@ -1826,7 +1826,7 @@ files = [
 
 [[package]]
 name = "httpx"
-version = "0.25.2"
+version = "0.27.0"
 requires_python = ">=3.8"
 summary = "The next generation HTTP client."
 groups = ["hook-check-django-migrations"]
@@ -1838,29 +1838,29 @@ dependencies = [
     "sniffio",
 ]
 files = [
-    {file = "httpx-0.25.2-py3-none-any.whl", hash = "sha256:a05d3d052d9b2dfce0e3896636467f8a5342fb2b902c819428e1ac65413ca118"},
-    {file = "httpx-0.25.2.tar.gz", hash = "sha256:8b8fcaa0c8ea7b05edd69a094e63a2094c4efcb48129fb757361bc423c0ad9e8"},
+    {file = "httpx-0.27.0-py3-none-any.whl", hash = "sha256:71d5465162c13681bff01ad59b2cc68dd838ea1f10e51574bac27103f00c91a5"},
+    {file = "httpx-0.27.0.tar.gz", hash = "sha256:a0cb88a46f32dc874e04ee956e4c2764aba2aa228f650b06788ba6bda2962ab5"},
 ]
 
 [[package]]
 name = "httpx"
-version = "0.25.2"
+version = "0.27.0"
 extras = ["http2"]
 requires_python = ">=3.8"
 summary = "The next generation HTTP client."
 groups = ["hook-check-django-migrations"]
 dependencies = [
     "h2<5,>=3",
-    "httpx==0.25.2",
+    "httpx==0.27.0",
 ]
 files = [
-    {file = "httpx-0.25.2-py3-none-any.whl", hash = "sha256:a05d3d052d9b2dfce0e3896636467f8a5342fb2b902c819428e1ac65413ca118"},
-    {file = "httpx-0.25.2.tar.gz", hash = "sha256:8b8fcaa0c8ea7b05edd69a094e63a2094c4efcb48129fb757361bc423c0ad9e8"},
+    {file = "httpx-0.27.0-py3-none-any.whl", hash = "sha256:71d5465162c13681bff01ad59b2cc68dd838ea1f10e51574bac27103f00c91a5"},
+    {file = "httpx-0.27.0.tar.gz", hash = "sha256:a0cb88a46f32dc874e04ee956e4c2764aba2aa228f650b06788ba6bda2962ab5"},
 ]
 
 [[package]]
 name = "huggingface-hub"
-version = "0.23.1"
+version = "0.23.2"
 requires_python = ">=3.8.0"
 summary = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
 groups = ["hook-check-django-migrations"]
@@ -1874,8 +1874,8 @@ dependencies = [
     "typing-extensions>=3.7.4.3",
 ]
 files = [
-    {file = "huggingface_hub-0.23.1-py3-none-any.whl", hash = "sha256:720a5bffd2b1b449deb793da8b0df7a9390a7e238534d5a08c9fbcdecb1dd3cb"},
-    {file = "huggingface_hub-0.23.1.tar.gz", hash = "sha256:4f62dbf6ae94f400c6d3419485e52bce510591432a5248a65d0cb72e4d479eb4"},
+    {file = "huggingface_hub-0.23.2-py3-none-any.whl", hash = "sha256:48727a16e704d409c4bb5913613308499664f22a99743435dc3a13b23c485827"},
+    {file = "huggingface_hub-0.23.2.tar.gz", hash = "sha256:f6829b62d5fdecb452a76fdbec620cba4c1573655a8d710c1df71735fd9edbd2"},
 ]
 
 [[package]]
@@ -2074,7 +2074,7 @@ files = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.10.38.post2"
+version = "0.10.39.post1"
 requires_python = "<4.0,>=3.8.1"
 summary = "Interface between LLMs and your data"
 groups = ["hook-check-django-migrations"]
@@ -2104,8 +2104,8 @@ dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "llama_index_core-0.10.38.post2-py3-none-any.whl", hash = "sha256:b4b55449bac458d339e84d8d26f322b4dc9f36d3682ebb41fccf5594c295620f"},
-    {file = "llama_index_core-0.10.38.post2.tar.gz", hash = "sha256:9eff6e16e9045deca9cb58bcf2a4b9ba39d0da12d7493e6aebaa5badd3b3ebb5"},
+    {file = "llama_index_core-0.10.39.post1-py3-none-any.whl", hash = "sha256:d6aef2ff952cbd2c04f1a10ab865af8618b489a64bfbda925855881f3bfddbf3"},
+    {file = "llama_index_core-0.10.39.post1.tar.gz", hash = "sha256:abc9d18107d8d2017d6e693bdab8ed8c1a8b8093dc9a0093127f83778ecff10f"},
 ]
 
 [[package]]
@@ -2277,7 +2277,7 @@ files = [
 
 [[package]]
 name = "llama-index-llms-openai"
-version = "0.1.20"
+version = "0.1.21"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms openai integration"
 groups = ["hook-check-django-migrations"]
@@ -2285,8 +2285,8 @@ dependencies = [
     "llama-index-core<0.11.0,>=0.10.24",
 ]
 files = [
-    {file = "llama_index_llms_openai-0.1.20-py3-none-any.whl", hash = "sha256:f27401acdf9f65bf4d866a100615dcbd81987b890ae5fa9c513d544ba6d711e7"},
-    {file = "llama_index_llms_openai-0.1.20.tar.gz", hash = "sha256:0282e4e252893487afd72383b46da5b28ddcd3fb73bace1caefce8a36e9cf492"},
+    {file = "llama_index_llms_openai-0.1.21-py3-none-any.whl", hash = "sha256:fd2fa240238c7dca0170bf55957bb088d9b6acf63c80924eb59498f3a5ac0df3"},
+    {file = "llama_index_llms_openai-0.1.21.tar.gz", hash = "sha256:e9d631135160ac87093cd7d5ae3e32c4debf8eeaafa29ee4739675867155d773"},
 ]
 
 [[package]]
@@ -2382,19 +2382,19 @@ files = [
 
 [[package]]
 name = "llama-index-readers-file"
-version = "0.1.22"
+version = "0.1.23"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index readers file integration"
 groups = ["hook-check-django-migrations"]
 dependencies = [
     "beautifulsoup4<5.0.0,>=4.12.3",
-    "llama-index-core<0.11.0,>=0.10.1",
+    "llama-index-core<0.11.0,>=0.10.37.post1",
     "pypdf<5.0.0,>=4.0.1",
     "striprtf<0.0.27,>=0.0.26",
 ]
 files = [
-    {file = "llama_index_readers_file-0.1.22-py3-none-any.whl", hash = "sha256:a8d4a69a9ea659c14ebb22ca9a5560b9c7ec6f501e7f68f6c52f591374165376"},
-    {file = "llama_index_readers_file-0.1.22.tar.gz", hash = "sha256:37de54ad0cfbdc607c195532b9a292417a4714f57773570b87027b8dc381f0e2"},
+    {file = "llama_index_readers_file-0.1.23-py3-none-any.whl", hash = "sha256:32450d0a3edc6ef6af575f814beec39cd3a3351eaf0e3c97045bdd72a7a7b38d"},
+    {file = "llama_index_readers_file-0.1.23.tar.gz", hash = "sha256:fde8ecb588e703849e51dc0f075f56d1f5db3bc1479dd00c21b42e93b81b6267"},
 ]
 
 [[package]]
@@ -2559,18 +2559,18 @@ files = [
 
 [[package]]
 name = "mistralai"
-version = "0.1.8"
+version = "0.2.0"
 requires_python = "<4.0,>=3.9"
 summary = ""
 groups = ["hook-check-django-migrations"]
 dependencies = [
-    "httpx<0.26.0,>=0.25.2",
+    "httpx<1,>=0.25.2",
     "orjson<4.0.0,>=3.9.10",
     "pydantic<3.0.0,>=2.5.2",
 ]
 files = [
-    {file = "mistralai-0.1.8-py3-none-any.whl", hash = "sha256:3d74146d26ce0e93333614a5c591d407867c78a09855d4550c94a51c1775a1a6"},
-    {file = "mistralai-0.1.8.tar.gz", hash = "sha256:c2e645f1cd26b35c728de9ef954927384d190f439a165a041bd935937fbc3f04"},
+    {file = "mistralai-0.2.0-py3-none-any.whl", hash = "sha256:756c373ac77f36a4a65092e72ccfbeddb50771d18f490013c7877e4e7efd46a1"},
+    {file = "mistralai-0.2.0.tar.gz", hash = "sha256:dba8c8ec142f0a9612d0d3787f8b05e321089d1b8563280c7a5f2b46964e69e5"},
 ]
 
 [[package]]
@@ -4507,13 +4507,13 @@ files = [
 
 [[package]]
 name = "types-pymysql"
-version = "1.1.0.20240425"
+version = "1.1.0.20240524"
 requires_python = ">=3.8"
 summary = "Typing stubs for PyMySQL"
 groups = ["lint"]
 files = [
-    {file = "types-PyMySQL-1.1.0.20240425.tar.gz", hash = "sha256:afe24e8eba5f4851b729835530a1698b1b1645a93f9f9c83ae45228866ed31fc"},
-    {file = "types_PyMySQL-1.1.0.20240425-py3-none-any.whl", hash = "sha256:32a472233de53b913e934695530a2d083146b81ed6de1669ecb845f76b6ddc15"},
+    {file = "types-PyMySQL-1.1.0.20240524.tar.gz", hash = "sha256:93058fef2077c407e29bdcd1a7dfbbf06a59324a5440df30dd002f572199ac17"},
+    {file = "types_PyMySQL-1.1.0.20240524-py3-none-any.whl", hash = "sha256:8be5be228bf6376f9055ec03bec0dfa6f1a84163f9a89305db446f0b31f87be3"},
 ]
 
 [[package]]
@@ -4584,13 +4584,13 @@ files = [
 
 [[package]]
 name = "types-setuptools"
-version = "70.0.0.20240523"
+version = "70.0.0.20240524"
 requires_python = ">=3.8"
 summary = "Typing stubs for setuptools"
 groups = ["lint"]
 files = [
-    {file = "types-setuptools-70.0.0.20240523.tar.gz", hash = "sha256:268c782f9d657bb0447a97bb9d50debd3a48721bb9d1d8194548d4835798beac"},
-    {file = "types_setuptools-70.0.0.20240523-py3-none-any.whl", hash = "sha256:1828c1e2bc93cdb371fd0955fa51e27c3143490fe40a650db3fca22ea44233b3"},
+    {file = "types-setuptools-70.0.0.20240524.tar.gz", hash = "sha256:e31fee7b9d15ef53980526579ac6089b3ae51a005a281acf97178e90ac71aff6"},
+    {file = "types_setuptools-70.0.0.20240524-py3-none-any.whl", hash = "sha256:8f5379b9948682d72a9ab531fbe52932e84c4f38deda570255f9bae3edd766bc"},
 ]
 
 [[package]]
@@ -4619,13 +4619,13 @@ files = [
 
 [[package]]
 name = "typing-extensions"
-version = "4.11.0"
+version = "4.12.0"
 requires_python = ">=3.8"
 summary = "Backported and Experimental Type Hints for Python 3.8+"
 groups = ["hook-check-django-migrations", "lint"]
 files = [
-    {file = "typing_extensions-4.11.0-py3-none-any.whl", hash = "sha256:c1f94d72897edaf4ce775bb7558d5b79d8126906a14ea5ed1635921406c0387a"},
-    {file = "typing_extensions-4.11.0.tar.gz", hash = "sha256:83f085bd5ca59c80295fc2a82ab5dac679cbe02b9f33f7d83af68e241bea51b0"},
+    {file = "typing_extensions-4.12.0-py3-none-any.whl", hash = "sha256:b349c66bea9016ac22978d800cfff206d5f9816951f12a7d0ec5578b0a819594"},
+    {file = "typing_extensions-4.12.0.tar.gz", hash = "sha256:8cbcdc8606ebcb0d95453ad7dc5065e6237b6aa230a31e81d0f440c30fed5fd8"},
 ]
 
 [[package]]
@@ -4712,7 +4712,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.16.0"
+version = "0.17.0"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract interface for LLMs, Embeddings and VectorDBs"
 groups = ["hook-check-django-migrations"]
@@ -4740,8 +4740,8 @@ dependencies = [
     "singleton-decorator~=1.0.0",
 ]
 files = [
-    {file = "unstract_adapters-0.16.0-py3-none-any.whl", hash = "sha256:e599e11fd422508c13b3762df929e3be7b2719b7f91837dd7e38ce37f74aa0fb"},
-    {file = "unstract_adapters-0.16.0.tar.gz", hash = "sha256:13aac40042bb64def782493a74f0f0bc39fc4b1ff4b61846060236fa7c1b4e00"},
+    {file = "unstract_adapters-0.17.0-py3-none-any.whl", hash = "sha256:9407c17d270ff8126abf83502d371941fdf325362e4e9a5221980efbc028d064"},
+    {file = "unstract_adapters-0.17.0.tar.gz", hash = "sha256:ad32d7338c9bf0ab4fab129736c44bd6014b6192c8ec796985a208900f47978f"},
 ]
 
 [[package]]
@@ -4802,7 +4802,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.27.0"
+version = "0.28.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["hook-check-django-migrations"]
@@ -4814,11 +4814,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.16.0",
+    "unstract-adapters~=0.17.0",
 ]
 files = [
-    {file = "unstract_sdk-0.27.0-py3-none-any.whl", hash = "sha256:211135346e24ec7af260ff2f25f80e4f956ba0b7680e8a05b890adb40c810758"},
-    {file = "unstract_sdk-0.27.0.tar.gz", hash = "sha256:92f7e5bc8e2546fecae84aee8f1ade82f2e3c56443a2cbe44ebda6750845d19b"},
+    {file = "unstract_sdk-0.28.0-py3-none-any.whl", hash = "sha256:3654b8a0efcf1c171f7d51edce7b2ac2fa26326f3d3ca769834a465c835da1a2"},
+    {file = "unstract_sdk-0.28.0.tar.gz", hash = "sha256:435c13218187d8540a2759860da35cb4ba26e528aa9ff4cdc66179fcc0e9f957"},
 ]
 
 [[package]]
@@ -4833,7 +4833,7 @@ dependencies = [
     "PyYAML~=6.0.1",
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
-    "unstract-adapters~=0.16.0",
+    "unstract-adapters~=0.17.0",
     "unstract-tool-sandbox",
 ]
 
@@ -4887,13 +4887,13 @@ files = [
 
 [[package]]
 name = "validators"
-version = "0.28.1"
+version = "0.28.3"
 requires_python = ">=3.8"
 summary = "Python Data Validation for Humans™"
 groups = ["hook-check-django-migrations"]
 files = [
-    {file = "validators-0.28.1-py3-none-any.whl", hash = "sha256:890c98789ad884037f059af6ea915ec2d667129d509180c2c590b8009a4c4219"},
-    {file = "validators-0.28.1.tar.gz", hash = "sha256:5ac88e7916c3405f0ce38ac2ac82a477fcf4d90dbbeddd04c8193171fc17f7dc"},
+    {file = "validators-0.28.3-py3-none-any.whl", hash = "sha256:53cafa854f13850156259d9cc479b864ee901f6a96e6b109e6fc33f98f37d99f"},
+    {file = "validators-0.28.3.tar.gz", hash = "sha256:c6c79840bcde9ba77b19f6218f7738188115e27830cbaff43264bc4ed24c429d"},
 ]
 
 [[package]]
