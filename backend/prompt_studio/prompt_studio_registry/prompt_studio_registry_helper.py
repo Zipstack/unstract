@@ -52,21 +52,21 @@ class PromptStudioRegistryHelper:
             },
             "enable_challenge": {
                 "type": "boolean",
-                "title": "Enable Challenge",
+                "title": "Challenge",
                 "default": False,
-                "description": "Enable Challenge",
+                "description": "Enables Challenge",
             },
             "summarize_as_Source": {
                 "type": "boolean",
                 "title": "Summarize and use summary as source",
                 "default": False,
-                "description": "Flag to use summarized content as source",
+                "description": "Enables summary and use summarized content as source",
             },
             "single_pass_extraction_mode": {
                 "type": "boolean",
-                "title": "Enable single pass extraction",
+                "title": "Single pass extraction",
                 "default": False,
-                "description": "Enable single pass extraction",
+                "description": "Enables single pass extraction",
             },
         }
 
