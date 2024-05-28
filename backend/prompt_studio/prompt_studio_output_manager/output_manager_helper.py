@@ -81,7 +81,9 @@ class OutputManagerHelper:
 
                 args: dict[str, str] = dict()
                 args["run_id"] = run_id
-                # Update the record with the run id
+                args["output"] = output
+                args["eval_metrics"] = eval_metrics
+                # Update the record with the run id and other params
                 PromptStudioOutputManager.objects.filter(
                     document_manager=document_manager,
                     tool_id=tool,
