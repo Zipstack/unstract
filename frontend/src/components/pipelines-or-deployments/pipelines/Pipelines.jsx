@@ -116,6 +116,9 @@ function Pipelines({ type }) {
         setAlertDetails(
           handleException(err, `Failed to update pipeline status.`)
         );
+        const date = new Date();
+        fieldsToUpdate["last_run_status"] = "FAILURE";
+        fieldsToUpdate["last_run_time"] = date.toISOString();
       })
       .finally(() => {
         handleLoaderInTableData(fieldsToUpdate, pipelineId);
@@ -434,7 +437,7 @@ function Pipelines({ type }) {
           {record.last_run_status === "processing" ? (
             <SpinnerLoader />
           ) : (
-            <SpaceWrapper>
+            <Space>
               <Typography.Text className="p-or-d-typography" strong>
                 {record?.last_run_status}
               </Typography.Text>
@@ -444,7 +447,7 @@ function Pipelines({ type }) {
                 size="small"
                 onClick={() => handleStatusRefresh(record?.id)}
               />
-            </SpaceWrapper>
+            </Space>
           )}
         </>
       ),
