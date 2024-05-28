@@ -5,7 +5,7 @@
 groups = ["default", "hook-check-django-migrations", "lint"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:e4ab8c38fc0b99db72fe5f2752e1a0b925856906ef83068b3bff381a4016c3c0"
+content_hash = "sha256:93fc398b5184cddb431edc0e6da07a7271a2e7c567a853d3764230f1fb52a837"
 
 [[package]]
 name = "adlfs"
@@ -1860,7 +1860,7 @@ files = [
 
 [[package]]
 name = "huggingface-hub"
-version = "0.23.1"
+version = "0.23.2"
 requires_python = ">=3.8.0"
 summary = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
 groups = ["hook-check-django-migrations"]
@@ -1874,8 +1874,8 @@ dependencies = [
     "typing-extensions>=3.7.4.3",
 ]
 files = [
-    {file = "huggingface_hub-0.23.1-py3-none-any.whl", hash = "sha256:720a5bffd2b1b449deb793da8b0df7a9390a7e238534d5a08c9fbcdecb1dd3cb"},
-    {file = "huggingface_hub-0.23.1.tar.gz", hash = "sha256:4f62dbf6ae94f400c6d3419485e52bce510591432a5248a65d0cb72e4d479eb4"},
+    {file = "huggingface_hub-0.23.2-py3-none-any.whl", hash = "sha256:48727a16e704d409c4bb5913613308499664f22a99743435dc3a13b23c485827"},
+    {file = "huggingface_hub-0.23.2.tar.gz", hash = "sha256:f6829b62d5fdecb452a76fdbec620cba4c1573655a8d710c1df71735fd9edbd2"},
 ]
 
 [[package]]
@@ -4712,7 +4712,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.16.0"
+version = "0.17.0"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract interface for LLMs, Embeddings and VectorDBs"
 groups = ["hook-check-django-migrations"]
@@ -4740,8 +4740,8 @@ dependencies = [
     "singleton-decorator~=1.0.0",
 ]
 files = [
-    {file = "unstract_adapters-0.16.0-py3-none-any.whl", hash = "sha256:e599e11fd422508c13b3762df929e3be7b2719b7f91837dd7e38ce37f74aa0fb"},
-    {file = "unstract_adapters-0.16.0.tar.gz", hash = "sha256:13aac40042bb64def782493a74f0f0bc39fc4b1ff4b61846060236fa7c1b4e00"},
+    {file = "unstract_adapters-0.17.0-py3-none-any.whl", hash = "sha256:9407c17d270ff8126abf83502d371941fdf325362e4e9a5221980efbc028d064"},
+    {file = "unstract_adapters-0.17.0.tar.gz", hash = "sha256:ad32d7338c9bf0ab4fab129736c44bd6014b6192c8ec796985a208900f47978f"},
 ]
 
 [[package]]
@@ -4802,7 +4802,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.27.0"
+version = "0.28.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["hook-check-django-migrations"]
@@ -4814,11 +4814,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.16.0",
+    "unstract-adapters~=0.17.0",
 ]
 files = [
-    {file = "unstract_sdk-0.27.0-py3-none-any.whl", hash = "sha256:211135346e24ec7af260ff2f25f80e4f956ba0b7680e8a05b890adb40c810758"},
-    {file = "unstract_sdk-0.27.0.tar.gz", hash = "sha256:92f7e5bc8e2546fecae84aee8f1ade82f2e3c56443a2cbe44ebda6750845d19b"},
+    {file = "unstract_sdk-0.28.0-py3-none-any.whl", hash = "sha256:3654b8a0efcf1c171f7d51edce7b2ac2fa26326f3d3ca769834a465c835da1a2"},
+    {file = "unstract_sdk-0.28.0.tar.gz", hash = "sha256:435c13218187d8540a2759860da35cb4ba26e528aa9ff4cdc66179fcc0e9f957"},
 ]
 
 [[package]]
@@ -4833,7 +4833,7 @@ dependencies = [
     "PyYAML~=6.0.1",
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
-    "unstract-adapters~=0.16.0",
+    "unstract-adapters~=0.17.0",
     "unstract-tool-sandbox",
 ]
 
