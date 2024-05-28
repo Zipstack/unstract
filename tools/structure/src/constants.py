@@ -49,3 +49,5 @@ class SettingsKeys:
     STRUCTURE_OUTPUT = "structure_output"
     TOOL_SETTINGS = "tool_settings"
     ENABLE_SINGLE_PASS_EXTRACTION = "enable_single_pass_extraction"
+    CHALLENGE_LLM = "challenge_llm"
+    ENABLE_CHALLENGE = "enable_challenge"

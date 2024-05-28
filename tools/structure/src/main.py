@@ -53,9 +53,11 @@ class StructureTool(BaseTool):
         tool_id = tool_metadata[SettingsKeys.TOOL_ID]
         tool_settings = tool_metadata[SettingsKeys.TOOL_SETTINGS]
         outputs = tool_metadata[SettingsKeys.OUTPUTS]
-        tool_settings["challenge_llm"] = challenge_llm
-        tool_settings["enable_challenge"] = enable_challenge
-        tool_settings["enable_single_pass_extraction"] = single_pass_extraction_mode
+        tool_settings[SettingsKeys.CHALLENGE_LLM] = challenge_llm
+        tool_settings[SettingsKeys.ENABLE_CHALLENGE] = enable_challenge
+        tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION] = (
+            single_pass_extraction_mode
+        )
 
         prompt_service_resp = None
         _, file_name = os.path.split(input_file)
@@ -79,7 +81,7 @@ class StructureTool(BaseTool):
                 file_hash=file_hash,
                 chunk_size=tool_settings[SettingsKeys.CHUNK_SIZE],
                 chunk_overlap=tool_settings[SettingsKeys.CHUNK_OVERLAP],
-                # reindex=output[SettingsKeys.REINDEX],
+                reindex=True,
             )
             self.stream_log("Fetching response for single pass extraction...")
             prompt_service_resp = responder.single_pass_extraction(payload=payload)
