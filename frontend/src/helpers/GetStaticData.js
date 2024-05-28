@@ -1,5 +1,6 @@
 import moment from "moment";
 import momentTz from "moment-timezone";
+import { v4 as uuidv4 } from "uuid";
 
 const THEME = {
   DARK: "dark",
@@ -394,6 +395,20 @@ const isNonNegativeNumber = (value) => {
   return typeof value === "number" && !isNaN(value) && value >= 0;
 };
 
+// Default token usage object with all counts initialized to 0
+const defaultTokenUsage = {
+  embedding_tokens: 0,
+  prompt_tokens: 0,
+  completion_tokens: 0,
+  total_tokens: 0,
+};
+
+// Generate a UUID
+const generateUUID = () => {
+  const uuid = uuidv4();
+  return uuid;
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -429,4 +444,6 @@ export {
   getMenuItem,
   docIndexStatus,
   isNonNegativeNumber,
+  defaultTokenUsage,
+  generateUUID,
 };
