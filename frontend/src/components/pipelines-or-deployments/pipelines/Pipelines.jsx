@@ -23,7 +23,6 @@ import { LogsModal } from "../log-modal/LogsModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import "./Pipelines.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
