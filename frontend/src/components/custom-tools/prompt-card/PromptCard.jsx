@@ -335,7 +335,7 @@ function PromptCard({
     handleDocOutputs(docId, true, null);
     handleRunApiRequest(docId)
       .then((res) => {
-        const data = res?.data;
+        const data = res?.data?.output;
         const value = data[promptDetails?.prompt_key];
         if (value || value === 0) {
           setCoverage((prev) => prev + 1);
@@ -397,7 +397,7 @@ function PromptCard({
       handleDocOutputs(docId, true, null);
       handleRunApiRequest(docId)
         .then((res) => {
-          const data = res?.data;
+          const data = res?.data?.output;
           const outputValue = data[promptDetails?.prompt_key];
           if (outputValue || outputValue === 0) {
             setCoverage((prev) => prev + 1);
