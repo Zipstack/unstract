@@ -4,8 +4,10 @@ import {
   EllipsisOutlined,
   SyncOutlined,
   HighlightOutlined,
+  FileSearchOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
-import { Dropdown, Image, Space, Switch, Typography } from "antd";
+import { Button, Dropdown, Image, Space, Switch, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import cronstrue from "cronstrue";
@@ -17,6 +19,7 @@ import { useSessionStore } from "../../../store/session-store.js";
 import { Layout } from "../../deployments/layout/Layout.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
+import { LogsModal } from "../log-modal/LogsModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import "./Pipelines.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
@@ -32,6 +35,9 @@ function Pipelines({ type }) {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const [isEdit, setIsEdit] = useState(false);
+  const [openLogsModal, setOpenLogsModal] = useState(false);
+  const [executionLogs, setExecutionLogs] = useState([]);
+  const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
 
   useEffect(() => {
     getPipelineList();
@@ -74,11 +80,6 @@ function Pipelines({ type }) {
 
     handleSyncApiReq(body)
       .then((res) => {
-        const executionId = res?.data?.execution?.execution_id;
-        body["execution_id"] = executionId;
-        return handleSyncApiReq(body);
-      })
-      .then((res) => {
         const data = res?.data?.pipeline;
         fieldsToUpdate["last_run_status"] = data?.last_run_status;
         fieldsToUpdate["last_run_time"] = data?.last_run_time;
@@ -89,6 +90,31 @@ function Pipelines({ type }) {
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to sync."));
+        const date = new Date();
+        fieldsToUpdate["last_run_status"] = "FAILURE";
+        fieldsToUpdate["last_run_time"] = date.toISOString();
+      })
+      .finally(() => {
+        handleLoaderInTableData(fieldsToUpdate, pipelineId);
+      });
+  };
+
+  const handleStatusRefresh = (pipelineId) => {
+    const fieldsToUpdate = {
+      last_run_status: "processing",
+    };
+    handleLoaderInTableData(fieldsToUpdate, pipelineId);
+
+    getPipelineData(pipelineId)
+      .then((res) => {
+        const data = res?.data;
+        fieldsToUpdate["last_run_status"] = data?.last_run_status;
+        fieldsToUpdate["last_run_time"] = data?.last_run_time;
+      })
+      .catch((err) => {
+        setAlertDetails(
+          handleException(err, `Failed to update pipeline status.`)
+        );
         const date = new Date();
         fieldsToUpdate["last_run_status"] = "FAILURE";
         fieldsToUpdate["last_run_time"] = date.toISOString();
@@ -175,6 +201,49 @@ function Pipelines({ type }) {
       });
   };
 
+  const getPipelineData = (pipelineId) => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${pipelineId}/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+    };
+    return axiosPrivate(requestOptions)
+      .then((res) => res)
+      .catch((err) => {
+        throw err;
+      });
+  };
+
+  const fetchExecutionLogs = (page = 1, pageSize = 10) => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${selectedPorD.id}/executions/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+      params: {
+        page: page,
+        page_size: pageSize,
+      },
+    };
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const logs = res?.data?.results?.map((result) => ({
+          created_at: result.created_at,
+          execution_id: result.id,
+          status: result.status,
+          execution_time: result.execution_time,
+        }));
+        setExecutionLogs(logs);
+        setExecutionLogsTotalCount(res.data.count);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
+  };
+
   const clearCache = () => {
     const requestOptions = {
       method: "GET",
@@ -241,6 +310,26 @@ function Pipelines({ type }) {
         <Space
           direction="horizontal"
           className="action-items"
+          onClick={() => {
+            setOpenLogsModal(true);
+            fetchExecutionLogs();
+          }}
+        >
+          <div>
+            <FileSearchOutlined />
+          </div>
+          <div>
+            <Typography.Text>View Logs</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "3",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
           onClick={() => clearCache()}
         >
           <div>
@@ -253,7 +342,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "3",
+      key: "4",
       label: (
         <Space
           direction="horizontal"
@@ -270,7 +359,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "4",
+      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -347,9 +436,17 @@ function Pipelines({ type }) {
           {record.last_run_status === "processing" ? (
             <SpinnerLoader />
           ) : (
-            <Typography.Text className="p-or-d-typography" strong>
-              {record?.last_run_status}
-            </Typography.Text>
+            <Space>
+              <Typography.Text className="p-or-d-typography" strong>
+                {record?.last_run_status}
+              </Typography.Text>
+              <Button
+                icon={<ReloadOutlined />}
+                type="text"
+                size="small"
+                onClick={() => handleStatusRefresh(record?.id)}
+              />
+            </Space>
           )}
         </>
       ),
@@ -431,6 +528,13 @@ function Pipelines({ type }) {
           setSelectedRow={setSelectedPorD}
         />
       )}
+      <LogsModal
+        open={openLogsModal}
+        setOpen={setOpenLogsModal}
+        logRecord={executionLogs}
+        totalLogs={executionLogsTotalCount}
+        fetchExecutionLogs={fetchExecutionLogs}
+      />
       <DeleteModal
         open={openDeleteModal}
         setOpen={setOpenDeleteModal}

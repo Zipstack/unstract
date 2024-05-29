@@ -34,6 +34,7 @@ urlpatterns = [
     path("workflow/", include("workflow_manager.urls")),
     path("platform/", include("platform_settings.urls")),
     path("api/", include("api.urls")),
+    path("usage/", include("usage.urls")),
     path(
         UrlPathConstants.PROMPT_STUDIO,
         include("prompt_studio.prompt_profile_manager.urls"),
