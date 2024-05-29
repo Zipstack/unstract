@@ -185,9 +185,9 @@ class FileManagerHelper:
     def delete_file(file_system: UnstractFileSystem, path: str, file_name: str) -> bool:
         fs = file_system.get_fsspec_fs()
 
-        if hasattr(file_system, 'path') and (not path or path == "/"):
+        if hasattr(file_system, "path") and (not path or path == "/"):
             base_path = file_system.path
-        elif hasattr(fs, 'path') and (not path or path == "/"):
+        elif hasattr(fs, "path") and (not path or path == "/"):
             base_path = fs.path
         else:
             base_path = path
