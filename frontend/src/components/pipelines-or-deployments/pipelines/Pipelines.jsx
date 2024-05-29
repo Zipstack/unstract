@@ -5,8 +5,9 @@ import {
   SyncOutlined,
   HighlightOutlined,
   FileSearchOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
-import { Dropdown, Image, Space, Switch, Typography } from "antd";
+import { Button, Dropdown, Image, Space, Switch, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import cronstrue from "cronstrue";
@@ -79,11 +80,6 @@ function Pipelines({ type }) {
 
     handleSyncApiReq(body)
       .then((res) => {
-        const executionId = res?.data?.execution?.execution_id;
-        body["execution_id"] = executionId;
-        return handleSyncApiReq(body);
-      })
-      .then((res) => {
         const data = res?.data?.pipeline;
         fieldsToUpdate["last_run_status"] = data?.last_run_status;
         fieldsToUpdate["last_run_time"] = data?.last_run_time;
@@ -94,6 +90,31 @@ function Pipelines({ type }) {
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to sync."));
+        const date = new Date();
+        fieldsToUpdate["last_run_status"] = "FAILURE";
+        fieldsToUpdate["last_run_time"] = date.toISOString();
+      })
+      .finally(() => {
+        handleLoaderInTableData(fieldsToUpdate, pipelineId);
+      });
+  };
+
+  const handleStatusRefresh = (pipelineId) => {
+    const fieldsToUpdate = {
+      last_run_status: "processing",
+    };
+    handleLoaderInTableData(fieldsToUpdate, pipelineId);
+
+    getPipelineData(pipelineId)
+      .then((res) => {
+        const data = res?.data;
+        fieldsToUpdate["last_run_status"] = data?.last_run_status;
+        fieldsToUpdate["last_run_time"] = data?.last_run_time;
+      })
+      .catch((err) => {
+        setAlertDetails(
+          handleException(err, `Failed to update pipeline status.`)
+        );
         const date = new Date();
         fieldsToUpdate["last_run_status"] = "FAILURE";
         fieldsToUpdate["last_run_time"] = date.toISOString();
@@ -177,6 +198,21 @@ function Pipelines({ type }) {
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
+      });
+  };
+
+  const getPipelineData = (pipelineId) => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${pipelineId}/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+    };
+    return axiosPrivate(requestOptions)
+      .then((res) => res)
+      .catch((err) => {
+        throw err;
       });
   };
 
@@ -400,9 +436,17 @@ function Pipelines({ type }) {
           {record.last_run_status === "processing" ? (
             <SpinnerLoader />
           ) : (
-            <Typography.Text className="p-or-d-typography" strong>
-              {record?.last_run_status}
-            </Typography.Text>
+            <Space>
+              <Typography.Text className="p-or-d-typography" strong>
+                {record?.last_run_status}
+              </Typography.Text>
+              <Button
+                icon={<ReloadOutlined />}
+                type="text"
+                size="small"
+                onClick={() => handleStatusRefresh(record?.id)}
+              />
+            </Space>
           )}
         </>
       ),
