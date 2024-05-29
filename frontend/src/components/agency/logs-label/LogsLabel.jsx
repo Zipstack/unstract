@@ -1,8 +1,13 @@
 import { Col, Row, Typography } from "antd";
 
 import "./LogsLabel.css";
+import { useLocation } from "react-router-dom";
 
 function LogsLabel() {
+  const location = useLocation(); // Get the current route location
+  const isWorkflowSubPage = /^\/[^/]+\/workflows\/.+/.test(location.pathname);
+  const isPromptStudioPage = /^\/[^/]+\/tools\/.+/.test(location.pathname);
+
   return (
     <div className="pl-5">
       <Row className="logs-label-row">
@@ -12,32 +17,34 @@ function LogsLabel() {
         <Col className="logs-label-col" span={2}>
           <Typography className="pl-5">Level</Typography>
         </Col>
+        <Col className="logs-label-col" span={3}>
+          <Typography className="pl-5">Type</Typography>
+        </Col>
         <Col className="logs-label-col" span={2}>
           <Typography className="pl-5">Stage</Typography>
         </Col>
-        <Col className="logs-label-col" span={2}>
-          <Typography className="pl-5">Step</Typography>
-        </Col>
-        <Col className="logs-label-col" span={2}>
-          <Typography className="pl-5">State</Typography>
-        </Col>
-        <Col className="logs-label-col" span={2}>
-          <Typography className="pl-5">Prompt Key</Typography>
-        </Col>
-        <Col className="logs-label-col" span={2}>
-          <Typography className="pl-5">Doc Name</Typography>
-        </Col>
-        <Col className="logs-label-col" span={2}>
-          <Typography className="pl-5">Cost Value</Typography>
-        </Col>
-        <Col className="logs-label-col" span={4}>
+        {isWorkflowSubPage && (
+          <>
+            <Col className="logs-label-col" span={2}>
+              <Typography className="pl-5">Step</Typography>
+            </Col>
+            <Col className="logs-label-col" span={2}>
+              <Typography className="pl-5">State</Typography>
+            </Col>
+          </>
+        )}
+        {isPromptStudioPage && (
+          <>
+            <Col className="logs-label-col" span={2}>
+              <Typography className="pl-5">Prompt Key</Typography>
+            </Col>
+            <Col className="logs-label-col" span={2}>
+              <Typography className="pl-5">Doc Name</Typography>
+            </Col>
+          </>
+        )}
+        <Col className="logs-label-col" flex="auto">
           <Typography className="pl-5">Message</Typography>
-        </Col>
-        <Col className="logs-label-col" span={2}>
-          <Typography className="pl-5">Iteration</Typography>
-        </Col>
-        <Col style={{}} span={2}>
-          <Typography className="pl-5">Iteration Total</Typography>
         </Col>
       </Row>
     </div>

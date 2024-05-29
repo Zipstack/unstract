@@ -1,5 +1,6 @@
 import logging
 import os
+import json
 from datetime import datetime, timezone
 
 import redis
@@ -39,13 +40,17 @@ class LogsHelperView(viewsets.ModelViewSet):
             # Retrieve keys matching the pattern
             keys = self.r.keys(redis_key)
 
-            # Retrieve values corresponding to the keys
-            data = {}
+            # Retrieve values corresponding to the keys and sort them by timestamp
+            logs = []
             for key in keys:
-                # Decode the byte response to string and store in the data dictionary
-                data[key.decode()] = self.r.get(key).decode()
+                log_data = self.r.get(key).decode()
+                log_entry = json.loads(log_data)
+                logs.append(log_entry)
 
-            return Response({"data": data}, status=status.HTTP_200_OK)
+            # Sort logs based on timestamp
+            sorted_logs = sorted(logs, key=lambda x: x['timestamp'])
+
+            return Response({"data": sorted_logs}, status=status.HTTP_200_OK)
         except Exception as e:
             # Handle other exceptions
             error_msg = "An unexpected error occurred while retrieving logs"
@@ -57,19 +62,20 @@ class LogsHelperView(viewsets.ModelViewSet):
         """Store log message in Redis."""
         try:
             # Extract the session ID
+            logs_expiry = int(os.environ.get("LOGS_EXPIRATION_TIME_IN_SECOND", 3600))
             session_id: str = StateStore.get(LogsHelperKeys.LOG_EVENTS_ID)
 
             serializer = StoreLogMessagesSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
             # Extract the log message from the validated data
-            log: str = serializer.validated_data.get(LogsHelperKeys.LOG)
+            log: str = serializer.validated_data.get("log")
 
             timestamp = datetime.now(timezone.utc).timestamp()
 
             redis_key = f"logs:{session_id}:{timestamp}"
-
-            self.r.setex(redis_key, 60, log)
+            
+            self.r.setex(redis_key, logs_expiry, log)
 
             return Response({"message": "Successfully stored the message in redis"})
         except KeyError as e:

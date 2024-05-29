@@ -1,10 +1,10 @@
 import {
+  ExceptionOutlined,
   FullscreenExitOutlined,
-  FullscreenOutlined,
   LeftOutlined,
   RightOutlined,
 } from "@ant-design/icons";
-import { Button, Collapse, Layout, Modal } from "antd";
+import { Button, Collapse, Layout, Modal, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import "./PageLayout.css";
@@ -15,14 +15,34 @@ import { Footer } from "antd/es/layout/layout.js";
 import { DisplayLogs } from "../../components/custom-tools/display-logs/DisplayLogs.jsx";
 import { LogsLabel } from "../../components/agency/logs-label/LogsLabel.jsx";
 import { useResize } from "../../hooks/useResize.jsx";
+import axios from "axios";
+import { useSessionStore } from "../../store/session-store.js";
+import { useSocketLogsStore } from "../../store/socket-logs-store.js";
 
 function PageLayout() {
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [activeKey, setActiveKey] = useState([]);
   const { height, enableResize, setHeight } = useResize({ minHeight: 50 });
+  const { sessionDetails } = useSessionStore();
+  const initialCollapsedValue =
+    JSON.parse(localStorage.getItem("collapsed")) || false;
+  const [collapsed, setCollapsed] = useState(initialCollapsedValue);
 
-  const openLogsModal = () => {
-    setShowLogsModal(true);
+  const getLogs = async () => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails.orgId}/logs/`,
+      headers: {
+        "X-CSRFToken": sessionDetails.csrfToken,
+      },
+    };
+
+    try {
+      const response = await axios(requestOptions);
+      return response.data;
+    } catch (error) {
+      return;
+    }
   };
 
   const closeLogsModal = () => {
@@ -54,33 +74,29 @@ function PageLayout() {
             <LogsLabel />
           </>
         ) : (
-          "Logs"
+          <Typography className="logs-title">
+            <ExceptionOutlined />
+            Logs
+          </Typography>
         ),
       children: (
-        <div className="agency-ide-logs">
+        <div className="agency-ide-logs" style={{ height: height - 50 }}>
           <DisplayLogs />
         </div>
       ),
-      extra: genExtra(),
     },
   ];
 
-  const genExtra = () => (
-    <FullscreenOutlined
-      onClick={(event) => {
-        // If you don't want click extra trigger collapse, you can prevent this:
-        openLogsModal();
-        event.stopPropagation();
-      }}
-    />
-  );
-
-  const initialCollapsedValue =
-    JSON.parse(localStorage.getItem("collapsed")) || false;
-  const [collapsed, setCollapsed] = useState(initialCollapsedValue);
   useEffect(() => {
     localStorage.setItem("collapsed", JSON.stringify(collapsed));
-  }, [collapsed]);
+    if (activeKey.length > 0) {
+      getLogs().then((res) =>
+        useSocketLogsStore.setState(() => ({
+          logs: [...res.data],
+        }))
+      );
+    }
+  }, [collapsed, activeKey]);
 
   return (
     <div className="landingPage">

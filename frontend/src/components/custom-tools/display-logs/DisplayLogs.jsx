@@ -2,15 +2,17 @@ import { useEffect, useRef } from "react";
 import { Col, Row, Typography } from "antd";
 
 import "../../agency/display-logs/DisplayLogs.css";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useSessionStore } from "../../../store/session-store";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
+import { uniqueId } from "lodash";
+import { convertTimestampToHHMMSS } from "../../../helpers/GetStaticData";
+import { useLocation } from "react-router-dom";
 
 function DisplayLogs() {
   const bottomRef = useRef(null);
-  const { logs, pushLogMessages } = useSocketLogsStore();
-  const axiosPrivate = useAxiosPrivate();
-  const { sessionDetails } = useSessionStore();
+  const { logs } = useSocketLogsStore();
+  const location = useLocation(); // Get the current route location
+  const isWorkflowSubPage = /^\/[^/]+\/workflows\/.+/.test(location.pathname);
+  const isPromptStudioPage = /^\/[^/]+\/tools\/.+/.test(location.pathname);
 
   useEffect(() => {
     if (logs?.length) {
@@ -19,35 +21,20 @@ function DisplayLogs() {
     }
   }, [logs]);
 
-  useEffect(() => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/logs/`,
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data?.data || {};
-        const keys = Object.keys(data);
-
-        keys.forEach((key) => {
-          pushLogMessages(JSON.parse(data[key]));
-        });
-      })
-      .catch((err) => {
-        console.log(err);
-      });
-  }, []);
-
   return (
     <div className="tool-logs">
       {logs.map((log) => {
         return (
-          <div key={log?.timestamp}>
+          <div
+            key={`${log?.timestamp}-${uniqueId()}`}
+            className={`display-logs-container ${
+              log?.level === "ERROR" && "display-logs-error-bg"
+            }`}
+          >
             <Row>
               <Col span={2}>
                 <Typography className="display-logs-col-first">
-                  {log?.timestamp}
+                  {convertTimestampToHHMMSS(log?.timestamp)}
                 </Typography>
               </Col>
               <Col span={2}>
@@ -55,49 +42,47 @@ function DisplayLogs() {
                   {log?.level}
                 </Typography>
               </Col>
+              <Col span={3}>
+                <Typography className="display-logs-col">
+                  {log?.type}
+                </Typography>
+              </Col>
               <Col span={2}>
                 <Typography className="display-logs-col">
                   {log?.stage}
                 </Typography>
               </Col>
-              <Col span={2}>
-                <Typography className="display-logs-col">
-                  {log?.step}
-                </Typography>
-              </Col>
-              <Col span={2}>
-                <Typography className="display-logs-col">
-                  {log?.state}
-                </Typography>
-              </Col>
-              <Col span={2}>
-                <Typography className="display-logs-col">
-                  {log?.component?.prompt_key}
-                </Typography>
-              </Col>
-              <Col span={2}>
-                <Typography className="display-logs-col">
-                  {log?.component?.doc_name}
-                </Typography>
-              </Col>
-              <Col span={2}>
-                <Typography className="display-logs-col">
-                  {log?.cost}
-                </Typography>
-              </Col>
+              {isWorkflowSubPage && (
+                <>
+                  <Col span={2}>
+                    <Typography className="display-logs-col">
+                      {log?.step}
+                    </Typography>
+                  </Col>
+                  <Col span={2}>
+                    <Typography className="display-logs-col">
+                      {log?.state}
+                    </Typography>
+                  </Col>
+                </>
+              )}
+              {isPromptStudioPage && (
+                <>
+                  <Col span={2}>
+                    <Typography className="display-logs-col">
+                      {log?.component?.prompt_key}
+                    </Typography>
+                  </Col>
+                  <Col span={2}>
+                    <Typography className="display-logs-col">
+                      {log?.component?.doc_name}
+                    </Typography>
+                  </Col>
+                </>
+              )}
               <Col span={4}>
                 <Typography className="display-logs-col">
                   {log?.message}
-                </Typography>
-              </Col>
-              <Col span={2}>
-                <Typography className="display-logs-col">
-                  {log?.iteration}
-                </Typography>
-              </Col>
-              <Col span={2}>
-                <Typography className="display-logs-col">
-                  {log?.iteration_total}
                 </Typography>
               </Col>
             </Row>

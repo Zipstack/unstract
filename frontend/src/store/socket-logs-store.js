@@ -1,6 +1,8 @@
 import { create } from "zustand";
 
-import { getTimeForLogs } from "../helpers/GetStaticData";
+import axios from "axios";
+import { useSessionStore } from "./session-store";
+import { useAlertStore } from "./alert-store";
 
 const STORE_VARIABLES = {
   logs: [],
@@ -10,10 +12,12 @@ const useSocketLogsStore = create((setState, getState) => ({
   ...STORE_VARIABLES,
   pushLogMessages: (msg) => {
     const existingState = { ...getState() };
+    const { sessionDetails } = useSessionStore.getState();
+    const { setAlertDetails } = useAlertStore.getState();
     let logsData = [...(existingState?.logs || [])];
 
     const newLog = {
-      timestamp: getTimeForLogs(),
+      timestamp: Math.floor(Date.now() / 1000),
       key: logsData?.length + 1,
       level: msg?.level,
       stage: msg?.stage,
@@ -25,10 +29,27 @@ const useSocketLogsStore = create((setState, getState) => ({
       cost_value: msg?.cost,
       iteration: msg?.iteration,
       iteration_total: msg?.iteration_total,
+      type: msg?.type,
     };
 
     logsData.push(newLog);
-
+    if (newLog?.type === "LOG" && newLog?.level === "ERROR") {
+      setAlertDetails({
+        type: "ERROR_LOG",
+        message: newLog?.message,
+      });
+    }
+    if (newLog?.type === "NOTIFICATION" && sessionDetails?.isLoggedIn) {
+      const requestOptions = {
+        method: "POST",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/logs/`,
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+        },
+        data: { log: JSON.stringify(newLog) },
+      };
+      axios(requestOptions).catch((err) => {});
+    }
     // Remove the previous logs if the length exceeds 200
     const logsDataLength = logsData?.length;
     if (logsDataLength > 200) {

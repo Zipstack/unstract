@@ -10,7 +10,7 @@ urlpatterns = format_suffix_patterns(
         path(
             "logs/",
             logs_helper_get,
-            name="logs-helper-ping-pong",
+            name="logs-helper",
         ),
     ]
 )

@@ -4,6 +4,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
+  padding-bottom: 10px;
 }
 
 .agency-sider-layout {
@@ -40,20 +41,16 @@
   padding: 12px;
 }
 
-.agency-ide-logs {
-  height: 10vh;
-}
-
 .agency-ide-collapse-panel {
   background-color: var(--white);
   border: none;
   border-radius: 0px;
 }
 
-.agency-ide-log-modal .ant-modal-content{
+.agency-ide-log-modal .ant-modal-content {
   height: 80vh;
 }
 
-.agency-ide-log-modal .agency-ide-logs{
+.agency-ide-log-modal .agency-ide-logs {
   height: 70vh !important;
 }

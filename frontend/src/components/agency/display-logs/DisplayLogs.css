@@ -1,15 +1,25 @@
 /* Styles for DisplayLogs */
 
 .tool-logs {
-    height: 100%;
-    overflow-y: auto;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .display-logs-col-first {
-    font-size: 12px;
+  font-size: 12px;
 }
 
 .display-logs-col {
-    font-size: 12px;
-    padding-left: 5px;
+  font-size: 12px;
+  padding-left: 5px;
+}
+
+.display-logs-container {
+  padding-right: 25px;
+  padding-top: 2px;
+  border-top: 1px rgba(0, 0, 0, 0.15) solid;
+}
+
+.display-logs-error-bg {
+  background-color: #fad4d4;
 }

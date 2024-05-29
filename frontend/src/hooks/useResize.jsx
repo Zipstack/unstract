@@ -16,7 +16,7 @@ const useResize = ({ minHeight }) => {
   const resize = useCallback(
     (e) => {
       if (isResizing) {
-        const newHeight = window.innerHeight - e.clientY; // Adjusting for height
+        const newHeight = window.innerHeight - e.clientY;
         if (newHeight >= minHeight) {
           setHeight(newHeight);
         }
