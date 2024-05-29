@@ -1,6 +1,6 @@
+import json
 import logging
 import os
-import json
 from datetime import datetime, timezone
 
 import redis
@@ -48,7 +48,7 @@ class LogsHelperView(viewsets.ModelViewSet):
                 logs.append(log_entry)
 
             # Sort logs based on timestamp
-            sorted_logs = sorted(logs, key=lambda x: x['timestamp'])
+            sorted_logs = sorted(logs, key=lambda x: x["timestamp"])
 
             return Response({"data": sorted_logs}, status=status.HTTP_200_OK)
         except Exception as e:
@@ -74,7 +74,7 @@ class LogsHelperView(viewsets.ModelViewSet):
             timestamp = datetime.now(timezone.utc).timestamp()
 
             redis_key = f"logs:{session_id}:{timestamp}"
-            
+
             self.r.setex(redis_key, logs_expiry, log)
 
             return Response({"message": "Successfully stored the message in redis"})
