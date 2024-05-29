@@ -688,7 +688,7 @@ class PromptStudioHelper:
             usage_kwargs = {"run_id": run_id}
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = Index(tool=util)
-            doc_id: str = tool_index.index_file(
+            doc_id: str = tool_index.index(
                 tool_id=tool_id,
                 embedding_instance_id=embedding_model,
                 vector_db_instance_id=vector_db,

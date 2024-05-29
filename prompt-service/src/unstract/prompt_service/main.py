@@ -191,8 +191,7 @@ def prompt_processor() -> Any:
         promptx = output[PSKeys.PROMPT]
         chunk_size = output[PSKeys.CHUNK_SIZE]
         util = PromptServiceBaseTool(log_level=LogLevel.INFO, platform_key=platform_key)
-        tool_index = Index(tool=util)
-        adapter_instance_id = output[PSKeys.LLM]
+        index = Index(tool=util)
 
         if is_active is False:
             app.logger.info(f"[{tool_id}] Skipping inactive prompt: {prompt_name}")
@@ -229,7 +228,7 @@ def prompt_processor() -> Any:
             structured_output, variable_names, output, promptx
         )
 
-        doc_id = tool_index.generate_file_id(
+        doc_id = index.generate_file_id(
             tool_id=tool_id,
             file_hash=file_hash,
             vector_db=output[PSKeys.VECTOR_DB],
@@ -291,7 +290,7 @@ def prompt_processor() -> Any:
         context = ""
         if output[PSKeys.CHUNK_SIZE] == 0:
             # We can do this only for chunkless indexes
-            context: Optional[str] = tool_index.get_text_from_index(
+            context: Optional[str] = index.query_text_from_index(
                 embedding_instance_id=output[PSKeys.EMBEDDING],
                 vector_db_instance_id=output[PSKeys.VECTOR_DB],
                 doc_id=doc_id,
@@ -737,7 +736,7 @@ def run_completion(
     prompt: str,
 ) -> tuple[str, dict[str, Any]]:
     try:
-        completion = llm.run_completion(prompt)
+        completion = llm.complete(prompt)
 
         answer: str = completion[PSKeys.RESPONSE].text
         return answer

@@ -6,10 +6,11 @@ from typing import Any
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
 from unstract.sdk.constants import LogState, MetadataKey
-from unstract.sdk.index import ToolIndex
+from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
+from unstract.sdk.utils.common_utils import CommonUtils
 
 
 class StructureTool(BaseTool):
@@ -47,21 +48,25 @@ class StructureTool(BaseTool):
 
         self.stream_log("Indexing document...")
         file_hash = self.get_exec_metadata.get(MetadataKey.SOURCE_HASH)
-        tool_index = ToolIndex(tool=self)
+        index = Index(tool=self)
         tool_id = tool_metadata[SettingsKeys.TOOL_ID]
         outputs = tool_metadata[SettingsKeys.OUTPUTS]
         try:
+            usage_kwargs: dict[Any, Any] = dict()
+            run_id = CommonUtils.get_uuid()
+            usage_kwargs["run_id"] = run_id
             for output in outputs:
-                tool_index.index_file(
+                index.index(
                     tool_id=tool_metadata[SettingsKeys.TOOL_ID],
-                    embedding_type=output[SettingsKeys.EMBEDDING],
-                    vector_db=output[SettingsKeys.VECTOR_DB],
-                    x2text_adapter=output[SettingsKeys.X2TEXT_ADAPTER],
+                    embedding_instance_id=output[SettingsKeys.EMBEDDING],
+                    vector_db_instance_id=output[SettingsKeys.VECTOR_DB],
+                    x2text_instance_id=output[SettingsKeys.X2TEXT_ADAPTER],
                     file_path=input_file,
-                    file_hash=file_hash,
                     chunk_size=output[SettingsKeys.CHUNK_SIZE],
                     chunk_overlap=output[SettingsKeys.CHUNK_OVERLAP],
                     reindex=output[SettingsKeys.REINDEX],
+                    file_hash=file_hash,
+                    usage_kwargs=usage_kwargs,
                 )
         except Exception as e:
             self.stream_error_and_exit(f"Error fetching data and indexing: {e}")
@@ -71,10 +76,11 @@ class StructureTool(BaseTool):
         payload = {
             "outputs": outputs,
             "tool_id": tool_id,
+            "run_id": run_id,
             "file_hash": file_hash,
             "file_name": file_name,
         }
-        self.stream_log("Fetching responses for prompts...")
+        self.stream_log(f"Fetching responses for prompts for run_id: {run_id} ...")
         prompt_service_resp = responder.answer_prompt(payload=payload)
 
         # TODO: Make use of dataclasses
