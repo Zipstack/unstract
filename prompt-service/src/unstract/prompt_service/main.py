@@ -167,7 +167,7 @@ def prompt_processor() -> Any:
     payload: dict[Any, Any] = request.json
     if not payload:
         raise NoPayloadError
-    tool_settings = payload.get(PSKeys.TOOL_SETTINGS)
+    tool_settings = payload.get(PSKeys.TOOL_SETTINGS, {})
     outputs = payload.get(PSKeys.OUTPUTS)
     tool_id: str = payload.get(PSKeys.TOOL_ID, "")
     run_id: str = payload.get(PSKeys.RUN_ID, "")
