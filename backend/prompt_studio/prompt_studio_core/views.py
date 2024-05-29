@@ -454,7 +454,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             # Delete the document record
             document.delete()
 
-            # Delete the file
+            # Delete the files
             FileManagerHelper.delete_file(file_system, path, file_name)
             return Response(
                 {"data": "File deleted succesfully."},

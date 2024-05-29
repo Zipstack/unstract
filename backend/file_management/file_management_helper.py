@@ -185,24 +185,32 @@ class FileManagerHelper:
     def delete_file(file_system: UnstractFileSystem, path: str, file_name: str) -> bool:
         fs = file_system.get_fsspec_fs()
 
-        file_path = f"{path}"
-        try:
-            if file_system.path and (not path or path == "/"):
-                file_path = f"{file_system.path}/"
-        except AttributeError:
-            if fs.path and (not path or path == "/"):
-                file_path = f"{fs.path}/"
+        if hasattr(file_system, 'path') and (not path or path == "/"):
+            base_path = file_system.path
+        elif hasattr(fs, 'path') and (not path or path == "/"):
+            base_path = fs.path
+        else:
+            base_path = path
+        base_path = base_path if base_path.endswith("/") else base_path + "/"
 
-        file_path = file_path + "/" if not file_path.endswith("/") else file_path
+        # Directories to delete the file from
+        directories = ["", "extract/", "summarize/"]
 
-        # adding filename with path
-        file_path += file_name
-        try:
-            with fs.open(file_path, mode="wb") as remote_file:
-                return remote_file.fs.delete(remote_file.path)  # type:ignore
-        except Exception as e:
-            FileManagerHelper.logger.info(f"Unable to delete file {e}")
-            raise FileDeletionFailed(f"Unable to delete file {e}")
+        base_file_name, _ = os.path.splitext(file_name)
+        file_name_txt = base_file_name + ".txt"
+
+        for directory in directories:
+            # Use the .txt file name for the extract and summarize
+            file_name_to_delete = file_name if directory == "" else file_name_txt
+            file_path = f"{base_path}{directory}{file_name_to_delete}"
+            try:
+                fs.rm(file_path)
+            except FileNotFoundError:
+                FileManagerHelper.logger.info(f"File not found: {file_path}")
+            except Exception as e:
+                FileManagerHelper.logger.info(f"Unable to delete file {e}")
+                raise FileDeletionFailed(f"Unable to delete file {e}")
+        return True
 
     @staticmethod
     def handle_sub_directory_for_tenants(
