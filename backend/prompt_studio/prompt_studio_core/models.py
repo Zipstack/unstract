@@ -7,7 +7,10 @@ from django.db import models
 from django.db.models import QuerySet
 from prompt_studio.prompt_studio_core.constants import DefaultPrompts
 from utils.models.base_model import BaseModel
-
+import logging
+from file_management.file_management_helper import FileManagerHelper
+import shutil
+logger = logging.getLogger(__name__)
 
 class CustomToolModelManager(models.Manager):
     def get_queryset(self) -> QuerySet[Any]:
@@ -120,3 +123,21 @@ class CustomTool(BaseModel):
     shared_users = models.ManyToManyField(User, related_name="shared_custom_tool")
 
     objects = CustomToolModelManager()
+
+    def delete(self, organization_id=None, *args, **kwargs):
+        # Delete the documents associated with the tool
+        file_path = FileManagerHelper.handle_sub_directory_for_tenants(
+            organization_id,
+            is_create=False,
+            user_id=self.created_by.user_id,
+            tool_id=str(self.tool_id),
+        )
+        if organization_id:
+            try:
+                shutil.rmtree(file_path)
+            except FileNotFoundError:
+                logger.error(f"The folder {file_path} does not exist.")
+            except OSError as e:
+                logger.error(f"Error: {file_path} : {e.strerror}")
+                # Continue with the deletion of the tool
+        super().delete(*args, **kwargs)

@@ -90,6 +90,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    def perform_destroy(self, instance: CustomTool) -> None:
+        organization_id = UserSessionUtils.get_organization_id(self.request)
+        instance.delete(organization_id)
+
     def destroy(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
