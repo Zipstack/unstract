@@ -324,7 +324,7 @@ class DatabaseUtils:
         try:
             return connector_class.execute(query=query)
         except ConnectorError as e:
-            raise UnstractDBException(detail=e.message)
+            raise UnstractDBException(detail=e.message) from e
 
     @staticmethod
     def create_table_if_not_exists(
