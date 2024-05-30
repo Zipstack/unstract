@@ -6,7 +6,10 @@ on:
       tag:
         description: "Docker image tag for the hotfix"
         required: true
-        default: "hotfix"
+      branch:
+        description: "Hotfix branch to be used"
+        required: true
+
   release:
     types:
       - created
@@ -31,6 +34,8 @@ jobs:
       - name: Checkout code for branch
         if: github.event_name != 'release'
         uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.inputs.branch }}
 
 
       - name: Login to Docker Hub
