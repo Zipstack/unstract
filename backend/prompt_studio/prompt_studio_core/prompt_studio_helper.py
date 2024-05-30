@@ -698,7 +698,7 @@ class PromptStudioHelper:
                 chunk_overlap=profile_manager.chunk_overlap,
                 reindex=reindex,
                 output_file_path=extract_file_path,
-                usage_kwargs=usage_kwargs,
+                usage_kwargs=usage_kwargs.copy(),
             )
 
             PromptStudioIndexHelper.handle_index_manager(

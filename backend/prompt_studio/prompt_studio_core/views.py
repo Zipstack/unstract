@@ -227,7 +227,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 org_id=UserSessionUtils.get_organization_id(request),
                 user_id=tool.created_by.user_id,
                 document_id=document_id,
-                usage_kwargs=usage_kwargs,
+                usage_kwargs=usage_kwargs.copy(),
             )
 
         if unique_id:
