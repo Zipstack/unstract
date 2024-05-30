@@ -11,7 +11,7 @@ on:
     types:
       - created
 
-run-name: "[${{ github.event.release.tag_name }}] Docker Image Build and Push (Production)"
+run-name: "[${{ github.event.release.tag_name || github.event.inputs.tag }}] Docker Image Build and Push (Production)"
 
 jobs:
   build-and-push:
