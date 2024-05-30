@@ -347,10 +347,5 @@ class DatabaseUtils:
             conn_cls=db_class, table=table_name, database_entry=database_entry
         )
         logger.debug(f"creating table {table_name} with: {sql} query")
-
-        print(f"creating table {table_name} with: {sql} query")
-
         db_class.execute_query(engine=engine, sql_query=sql, sql_values=None)
-
         logger.debug(f"successfully created table {table_name} with: {sql} query")
-        print(f"successfully created table {table_name} with: {sql} query")
