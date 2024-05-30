@@ -215,6 +215,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             run_id=run_id,
         )
 
+        usage_kwargs: dict[Any, Any] = dict()
+        usage_kwargs[ToolStudioPromptKeys.RUN_ID] = run_id
         for processor_plugin in self.processor_plugins:
             cls = processor_plugin[ProcessorConfig.METADATA][
                 ProcessorConfig.METADATA_SERVICE_CLASS
@@ -225,6 +227,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 org_id=UserSessionUtils.get_organization_id(request),
                 user_id=tool.created_by.user_id,
                 document_id=document_id,
+                usage_kwargs=usage_kwargs,
             )
 
         if unique_id:
