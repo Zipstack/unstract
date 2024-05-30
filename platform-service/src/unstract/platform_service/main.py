@@ -96,6 +96,7 @@ def get_account_from_bearer_token(token: Optional[str]) -> str:
     schema_name: str = execute_query(query_org, (organization,))
     return schema_name
 
+
 def execute_query(query: str, params: tuple = ()) -> Any:
     cursor = be_db.execute_sql(query, params)
     result_row = cursor.fetchone()
