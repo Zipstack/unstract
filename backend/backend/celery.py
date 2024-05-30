@@ -27,7 +27,6 @@ app.autodiscover_tasks()
 
 # Define the queues to purge when the Celery broker is restarted.
 queues_to_purge = [ExecutionLogConstants.CELERY_QUEUE_NAME]
-
 with app.connection() as connection:
     channel = connection.channel()
 
