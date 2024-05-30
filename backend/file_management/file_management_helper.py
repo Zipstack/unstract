@@ -194,7 +194,9 @@ class FileManagerHelper:
     @staticmethod
     def _get_base_path(file_system: UnstractFileSystem, path: str):
         fs = file_system.get_fsspec_fs()
-        base_path = getattr(file_system if hasattr(file_system, "path") else fs, "path", path)
+        base_path = getattr(
+            file_system if hasattr(file_system, "path") else fs, "path", path
+        )
         base_path = base_path.rstrip("/") + "/"
         return base_path
 
