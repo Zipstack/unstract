@@ -4,14 +4,14 @@ from typing import Any
 
 import pytest  # type: ignore
 from workflow_manager.endpoint.database_utils import DatabaseUtils
-from workflow_manager.endpoint.exceptions import (
+
+from unstract.connectors.databases.exceptions import (
     FeatureNotSupportedException,
     InvalidSyntaxException,
     SnowflakeProgrammingException,
     UnderfinedTableException,
     ValueTooLongException,
 )
-
 from unstract.connectors.databases.redshift import Redshift
 from unstract.connectors.databases.unstract_db import UnstractDB
 
@@ -29,11 +29,10 @@ class TestExecuteWriteQuery(BaseTestDB):
         }
 
     def test_execute_write_query_valid(self, valid_dbs_instance: Any) -> None:
-        cls_name = valid_dbs_instance.__class__.__name__
         engine = valid_dbs_instance.get_engine()
         result = DatabaseUtils.execute_write_query(
+            db_class=valid_dbs_instance,
             engine=engine,
-            cls_name=cls_name,
             table_name=self.valid_table_name,
             sql_keys=list(self.sql_columns_and_values.keys()),
             sql_values=list(self.sql_columns_and_values.values()),
@@ -43,24 +42,22 @@ class TestExecuteWriteQuery(BaseTestDB):
     def test_execute_write_query_invalid_schema(
         self, invalid_dbs_instance: Any
     ) -> None:
-        cls_name = invalid_dbs_instance.__class__.__name__
         engine = invalid_dbs_instance.get_engine()
         with pytest.raises(UnderfinedTableException):
             DatabaseUtils.execute_write_query(
+                db_class=invalid_dbs_instance,
                 engine=engine,
-                cls_name=cls_name,
                 table_name=self.valid_table_name,
                 sql_keys=list(self.sql_columns_and_values.keys()),
                 sql_values=list(self.sql_columns_and_values.values()),
             )
 
     def test_execute_write_query_invalid_syntax(self, valid_dbs_instance: Any) -> None:
-        cls_name = valid_dbs_instance.__class__.__name__
         engine = valid_dbs_instance.get_engine()
         with pytest.raises((InvalidSyntaxException, SnowflakeProgrammingException)):
             DatabaseUtils.execute_write_query(
+                db_class=valid_dbs_instance,
                 engine=engine,
-                cls_name=cls_name,
                 table_name=self.invalid_syntax_table_name,
                 sql_keys=list(self.sql_columns_and_values.keys()),
                 sql_values=list(self.sql_columns_and_values.values()),
@@ -69,12 +66,11 @@ class TestExecuteWriteQuery(BaseTestDB):
     def test_execute_write_query_feature_not_supported(
         self, invalid_dbs_instance: Any
     ) -> None:
-        cls_name = invalid_dbs_instance.__class__.__name__
         engine = invalid_dbs_instance.get_engine()
         with pytest.raises(FeatureNotSupportedException):
             DatabaseUtils.execute_write_query(
+                db_class=invalid_dbs_instance,
                 engine=engine,
-                cls_name=cls_name,
                 table_name=self.invalid_wrong_table_name,
                 sql_keys=list(self.sql_columns_and_values.keys()),
                 sql_values=list(self.sql_columns_and_values.values()),
@@ -95,13 +91,12 @@ class TestExecuteWriteQuery(BaseTestDB):
     def test_execute_write_query_datatype_too_large_redshift(
         self, valid_redshift_db_instance: Any
     ) -> None:
-        sql_columns_and_values = self.load_text_to_sql_values()
-        cls_name = valid_redshift_db_instance.__class__.__name__
         engine = valid_redshift_db_instance.get_engine()
+        sql_columns_and_values = self.load_text_to_sql_values()
         with pytest.raises(ValueTooLongException):
             DatabaseUtils.execute_write_query(
+                db_class=valid_redshift_db_instance,
                 engine=engine,
-                cls_name=cls_name,
                 table_name=self.valid_table_name,
                 sql_keys=list(sql_columns_and_values.keys()),
                 sql_values=list(sql_columns_and_values.values()),
@@ -110,11 +105,10 @@ class TestExecuteWriteQuery(BaseTestDB):
     def test_execute_write_query_bigquery_valid(
         self, valid_bigquery_db_instance: Any
     ) -> None:
-        cls_name = valid_bigquery_db_instance.__class__.__name__
         engine = valid_bigquery_db_instance.get_engine()
         result = DatabaseUtils.execute_write_query(
+            db_class=valid_bigquery_db_instance,
             engine=engine,
-            cls_name=cls_name,
             table_name=self.valid_bigquery_table_name,
             sql_keys=list(self.sql_columns_and_values.keys()),
             sql_values=list(self.sql_columns_and_values.values()),
@@ -124,7 +118,6 @@ class TestExecuteWriteQuery(BaseTestDB):
     def test_execute_write_query_wrong_table_name(
         self, valid_dbs_instance: UnstractDB
     ) -> None:
-        cls_name = valid_dbs_instance.__class__.__name__
         engine = valid_dbs_instance.get_engine()
         with pytest.raises(
             (
@@ -135,8 +128,8 @@ class TestExecuteWriteQuery(BaseTestDB):
             )
         ):
             DatabaseUtils.execute_write_query(
+                db_class=valid_dbs_instance,
                 engine=engine,
-                cls_name=cls_name,
                 table_name=self.invalid_wrong_table_name,
                 sql_keys=list(self.sql_columns_and_values.keys()),
                 sql_values=list(self.sql_columns_and_values.values()),
@@ -145,12 +138,11 @@ class TestExecuteWriteQuery(BaseTestDB):
     def test_execute_write_query_bigquery_large_doc(
         self, valid_bigquery_db_instance: Any
     ) -> None:
-        sql_columns_and_values = self.load_text_to_sql_values()
-        cls_name = valid_bigquery_db_instance.__class__.__name__
         engine = valid_bigquery_db_instance.get_engine()
+        sql_columns_and_values = self.load_text_to_sql_values()
         result = DatabaseUtils.execute_write_query(
+            db_class=valid_bigquery_db_instance,
             engine=engine,
-            cls_name=cls_name,
             table_name=self.valid_bigquery_table_name,
             sql_keys=list(sql_columns_and_values.keys()),
             sql_values=list(sql_columns_and_values.values()),
@@ -162,23 +154,23 @@ class TestExecuteWriteQuery(BaseTestDB):
     ) -> None:
         engine = invalid_snowflake_db_instance.get_engine()
         with pytest.raises(SnowflakeProgrammingException):
-            DatabaseUtils.create_table_if_not_exists(
+            DatabaseUtils.execute_write_query(
                 db_class=invalid_snowflake_db_instance,
                 engine=engine,
                 table_name=self.invalid_wrong_table_name,
-                database_entry=self.database_entry,
+                sql_keys=list(self.sql_columns_and_values.keys()),
+                sql_values=list(self.sql_columns_and_values.values()),
             )
 
     # Make this function at last to cover all large doc
     def test_execute_write_query_large_doc(
         self, valid_dbs_instance_to_handle_large_doc: Any
     ) -> None:
-        sql_columns_and_values = self.load_text_to_sql_values()
-        cls_name = valid_dbs_instance_to_handle_large_doc.__class__.__name__
         engine = valid_dbs_instance_to_handle_large_doc.get_engine()
+        sql_columns_and_values = self.load_text_to_sql_values()
         result = DatabaseUtils.execute_write_query(
+            db_class=valid_dbs_instance_to_handle_large_doc,
             engine=engine,
-            cls_name=cls_name,
             table_name=self.valid_table_name,
             sql_keys=list(sql_columns_and_values.keys()),
             sql_values=list(sql_columns_and_values.values()),

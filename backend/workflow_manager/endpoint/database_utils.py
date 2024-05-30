@@ -4,30 +4,16 @@ import logging
 import uuid
 from typing import Any, Optional
 
-import google.api_core.exceptions
-import pymssql._pymssql as PyMssql
-import pymysql.err as MysqlError
-import snowflake.connector.errors as SnowflakeError
-from google.cloud import bigquery
-from psycopg2 import errors as PsycopgError
 from utils.constants import Common
 from workflow_manager.endpoint.constants import (
     BigQuery,
     DBConnectionClass,
     TableColumns,
 )
-from workflow_manager.endpoint.exception_helper import ExceptionHelper
+from workflow_manager.endpoint.db_connector_helper import DBConnectorQueryHelper
 from workflow_manager.endpoint.exceptions import (
-    BigQueryForbiddenException,
-    BigQueryNotFoundException,
     BigQueryTableNotFound,
-    FeatureNotSupportedException,
-    InvalidSchemaException,
-    InvalidSyntaxException,
-    SnowflakeProgrammingException,
-    UnderfinedTableException,
     UnstractDBException,
-    ValueTooLongException,
 )
 from workflow_manager.workflow.enums import AgentName, ColumnModes
 
@@ -239,7 +225,6 @@ class DatabaseUtils:
 
     @staticmethod
     def get_sql_query_data(
-        engine: Any,
         cls_name: str,
         connector_id: str,
         connector_settings: dict[str, Any],
@@ -250,7 +235,6 @@ class DatabaseUtils:
         provided values and table schema.
 
         Args:
-            engine (Any): The database engine.
             connector_id: The connector id of the connector provided
             connector_settings: Connector settings provided by user
             table_name (str): The name of the target table for the insert query.
@@ -283,8 +267,8 @@ class DatabaseUtils:
 
     @staticmethod
     def execute_write_query(
+        db_class: UnstractDB,
         engine: Any,
-        cls_name: str,
         table_name: str,
         sql_keys: list[str],
         sql_values: Any,
@@ -302,73 +286,21 @@ class DatabaseUtils:
           So we need to use INSERT INTO ... SELECT ... syntax
         - sql values can contain data with single quote. It needs to
         """
+        cls_name = db_class.__class__.__name__
         sql = DBConnectorQueryHelper.build_sql_insert_query(table_name, sql_keys)
         logger.debug(f"inserting into table {table_name} with: {sql} query")
 
         sql_values = DBConnectorQueryHelper.prepare_sql_values(cls_name, sql_values)
         logger.debug(f"sql_values: {sql_values}")
 
-        try:
-            if cls_name == DBConnectionClass.BIGQUERY:
-                DBConnectorQueryHelper.execute_bigquery(
-                    engine, table_name, sql_keys, sql_values
-                )
-            elif hasattr(engine, "cursor"):
-                DBConnectorQueryHelper.execute_cursor_query(engine, sql, sql_values)
-            else:
-                DBConnectorQueryHelper.execute_generic_query(engine, sql, sql_values)
-        except PsycopgError.UndefinedTable as e:
-            logger.error(f"Undefined table in inserting: {e.pgerror}")
-            raise UnderfinedTableException(
-                code=e.pgcode, detail=e.pgerror, table_name=table_name
-            )
-        except PsycopgError.SyntaxError as e:
-            logger.error(f"Invalid syntax in inserting data: {e.pgerror}")
-            raise InvalidSyntaxException(
-                code=e.pgcode, detail=e.pgerror, table_name=table_name
-            )
-        except PsycopgError.FeatureNotSupported as e:
-            logger.error(f"feature not supported in inserting data: {e.pgerror}")
-            raise FeatureNotSupportedException(
-                code=e.pgcode, detail=e.pgerror, table_name=table_name
-            )
-        except (
-            PsycopgError.StringDataRightTruncation,
-            PsycopgError.InternalError_,
-        ) as e:
-            logger.error(f"value too long for datatype: {e.pgerror}")
-            raise ValueTooLongException(
-                code=e.pgcode, detail=e.pgerror, table_name=table_name
-            )
-        except SnowflakeError.ProgrammingError as e:
-            logger.error(f"snowflake error in inserting table: {e.msg} {e.errno}")
-            raise SnowflakeProgrammingException(
-                code=e.errno, detail=e.msg, table_name=table_name
-            )
-        except google.api_core.exceptions.Forbidden as e:
-            logger.error(f"Forbidden exception in creating table: {str(e)}")
-            raise BigQueryForbiddenException(
-                code=e.code,
-                detail=e.message,
-                table_name=table_name,
-            )
-        except google.api_core.exceptions.NotFound as e:
-            logger.error(f"Resource not found in creating table: {str(e)}")
-            raise BigQueryNotFoundException(
-                code=e.code, detail=e.message, table_name=table_name
-            )
-        except (PyMssql.ProgrammingError, PyMssql.OperationalError) as e:
-            error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
-            logger.error(f"Invalid syntax in inserting mssql table: {error_details}")
-            raise InvalidSyntaxException(
-                code=error_code, detail=error_details, table_name=table_name
-            )
-        except MysqlError.ProgrammingError as e:
-            error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
-            logger.error(f"Invalid syntax in inserting mysql table: {error_details}")
-            raise InvalidSyntaxException(
-                code=error_code, detail=error_details, table_name=table_name
-            )
+        db_class.execute_query(
+            engine=engine,
+            sql_query=sql,
+            sql_values=sql_values,
+            table_name=table_name,
+            sql_keys=sql_keys,
+        )
+
         logger.debug(f"sucessfully inserted into table {table_name} with: {sql} query")
 
     @staticmethod
@@ -401,7 +333,6 @@ class DatabaseUtils:
 
         Args:
             class_name (UnstractDB): Type of Unstract DB connector
-            engine (Any): _description_
             table_name (str): _description_
             database_entry (dict[str, Any]): _description_
 
@@ -412,140 +343,10 @@ class DatabaseUtils:
             conn_cls=db_class, table=table_name, database_entry=database_entry
         )
         logger.debug(f"creating table {table_name} with: {sql} query")
-        try:
-            if hasattr(engine, "cursor"):
-                with engine.cursor() as cursor:
-                    cursor.execute(sql)
-                engine.commit()
-            else:
-                engine.query(sql)
-        except PsycopgError.InvalidSchemaName as e:
-            logger.error(f"Invalid schema in creating table: {e.pgerror}")
-            raise InvalidSchemaException(
-                code=e.pgcode, detail=e.pgerror, table_name=table_name
-            )
-        except PsycopgError.FeatureNotSupported as e:
-            logger.error(f"feature not supported in creating table: {e.pgerror}")
-            raise FeatureNotSupportedException(
-                code=e.pgcode, detail=e.pgerror, table_name=table_name
-            )
-        except PsycopgError.SyntaxError as e:
-            logger.error(f"Invalid syntax in creating table: {e.pgerror}")
-            raise InvalidSyntaxException(
-                code=e.pgcode, detail=e.pgerror, table_name=table_name
-            )
-        except google.api_core.exceptions.Forbidden as e:
-            logger.error(f"Forbidden exception in creating table: {str(e)}")
-            raise BigQueryForbiddenException(
-                code=e.code,
-                detail=e.message,
-                table_name=table_name,
-            )
-        except (PyMssql.ProgrammingError, PyMssql.OperationalError) as e:
-            error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
-            logger.error(f"Invalid syntax in creating mssql table: {error_details}")
-            raise InvalidSyntaxException(
-                code=error_code, detail=error_details, table_name=table_name
-            )
-        except google.api_core.exceptions.NotFound as e:
-            logger.error(f"Resource not found in creating table: {str(e)}")
-            raise BigQueryNotFoundException(
-                code=e.code, detail=e.message, table_name=table_name
-            )
-        except SnowflakeError.ProgrammingError as e:
-            logger.error(f"snowflake error in creating table: {e.msg} {e.errno}")
-            raise SnowflakeProgrammingException(
-                code=e.errno, detail=e.msg, table_name=table_name
-            )
-        except MysqlError.ProgrammingError as e:
-            error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
-            logger.error(f"Invalid syntax in creating mysql table: {error_details}")
-            raise InvalidSyntaxException(
-                code=error_code, detail=error_details, table_name=table_name
-            )
+
+        print(f"creating table {table_name} with: {sql} query")
+
+        db_class.execute_query(engine=engine, sql_query=sql, sql_values=None)
+
         logger.debug(f"successfully created table {table_name} with: {sql} query")
-
-
-class DBConnectorQueryHelper:
-    """A class that helps to generate query for connector table operations."""
-
-    @staticmethod
-    def create_table_query(
-        conn_cls: UnstractDB, table: str, database_entry: dict[str, Any]
-    ) -> Any:
-        sql_query = ""
-        """Generate a SQL query to create a table, based on the provided
-        database entry.
-
-        Args:
-            conn_cls (str): The database connector class.
-                Should be one of 'BIGQUERY', 'SNOWFLAKE', or other.
-            table (str): The name of the table to be created.
-            database_entry (dict[str, Any]):
-                A dictionary containing column names as keys
-                and their corresponding values.
-
-                These values are used to determine the data types,
-                for the columns in the table.
-
-        Returns:
-            str: A SQL query string to create a table with the specified name,
-            and column definitions.
-
-        Note:
-            - Each conn_cls have it's implementation for SQL create table query
-            Based on the implementation, a base SQL create table query will be
-            created containing Permanent columns
-            - Each conn_cls also has a mapping to convert python datatype to
-            corresponding column type (string, VARCHAR etc)
-            - keys in database_entry will be converted to column type, and
-            column values will be the valus in database_entry
-            - base SQL create table will be appended based column type and
-            values, and generates a complete SQL create table query
-        """
-        create_table_query = conn_cls.get_create_table_query(table=table)
-        sql_query += create_table_query
-
-        for key, val in database_entry.items():
-            if key not in TableColumns.PERMANENT_COLUMNS:
-                sql_type = conn_cls.sql_to_db_mapping(val)
-                sql_query += f"{key} {sql_type}, "
-
-        return sql_query.rstrip(", ") + ");"
-
-    @staticmethod
-    def build_sql_insert_query(table_name: str, sql_keys: list[str]) -> str:
-        keys_str = ",".join(sql_keys)
-        values_placeholder = ",".join(["%s" for _ in sql_keys])
-        return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
-
-    @staticmethod
-    def prepare_sql_values(cls_name: str, sql_values: Any) -> Any:
-        if cls_name == DBConnectionClass.MSSQL:
-            return tuple(sql_values)
-        return sql_values
-
-    @staticmethod
-    def execute_cursor_query(engine: Any, sql: str, sql_values: tuple[Any]) -> None:
-        with engine.cursor() as cursor:
-            cursor.execute(sql, sql_values)
-        engine.commit()
-
-    @staticmethod
-    def execute_bigquery(
-        engine: Any, table_name: str, sql_keys: list[str], sql_values: list[Any]
-    ) -> None:
-        query = f"""
-            INSERT INTO {table_name} ({', '.join(sql_keys)})
-            VALUES ({', '.join(['@' + key for key in sql_keys])})
-        """
-        query_parameters = [
-            bigquery.ScalarQueryParameter(key, "STRING", value)
-            for key, value in zip(sql_keys, sql_values)
-        ]
-        job_config = bigquery.QueryJobConfig(query_parameters=query_parameters)
-        engine.query(query, job_config=job_config)
-
-    @staticmethod
-    def execute_generic_query(engine: Any, sql: str, sql_values: Any) -> None:
-        engine.query(sql)
+        print(f"successfully created table {table_name} with: {sql} query")

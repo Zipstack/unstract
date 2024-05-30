@@ -1,12 +1,12 @@
 import pytest  # type: ignore
 from workflow_manager.endpoint.database_utils import DatabaseUtils
-from workflow_manager.endpoint.exceptions import (
+
+from unstract.connectors.databases.exceptions import (
     FeatureNotSupportedException,
     InvalidSchemaException,
     InvalidSyntaxException,
     SnowflakeProgrammingException,
 )
-
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 from .base_test_db import BaseTestDB

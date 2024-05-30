@@ -1,13 +1,21 @@
 import datetime
 import json
+import logging
 import os
 from typing import Any
 
+import google.api_core.exceptions
 from google.cloud import bigquery
 from google.cloud.bigquery import Client
 
+from unstract.connectors.databases.exceptions import (
+    BigQueryForbiddenException,
+    BigQueryNotFoundException,
+)
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
+
+logger = logging.getLogger(__name__)
 
 
 class BigQuery(UnstractDB):
@@ -87,3 +95,45 @@ class BigQuery(UnstractDB):
             f"created_by string, created_at TIMESTAMP, "
         )
         return sql_query
+
+    def execute_write_bigquery(
+        self, engine: Any, table_name: str, sql_keys: Any, sql_values: list[Any]
+    ) -> None:
+        query = f"""
+            INSERT INTO {table_name} ({', '.join(sql_keys)})
+            VALUES ({', '.join(['@' + key for key in sql_keys])})
+        """
+        query_parameters = [
+            bigquery.ScalarQueryParameter(key, "STRING", value)
+            for key, value in zip(sql_keys, sql_values)
+        ]
+        job_config = bigquery.QueryJobConfig(query_parameters=query_parameters)
+        engine.query(query, job_config=job_config)
+
+    def execute_query(
+        self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
+    ) -> None:
+        table_name = str(kwargs.get("table_name"))
+        sql_keys = kwargs.get("sql_keys")
+        try:
+            if sql_values:
+                self.execute_write_bigquery(
+                    engine=engine,
+                    table_name=table_name,
+                    sql_keys=sql_keys,
+                    sql_values=sql_values,
+                )
+            else:
+                engine.query(sql_query)
+        except google.api_core.exceptions.Forbidden as e:
+            logger.error(f"Forbidden exception in creating/inserting data: {str(e)}")
+            raise BigQueryForbiddenException(
+                code=e.code,
+                detail=e.message,
+                table_name=table_name,
+            ) from e
+        except google.api_core.exceptions.NotFound as e:
+            logger.error(f"Resource not found in creating/inserting table: {str(e)}")
+            raise BigQueryNotFoundException(
+                code=e.code, detail=e.message, table_name=table_name
+            ) from e
