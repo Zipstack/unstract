@@ -6,15 +6,12 @@ on:
       tag:
         description: "Docker image tag"
         required: true
-      branch:
-        description: "Branch to be used"
-        required: true
 
   release:
     types:
       - created
 
-run-name: "[${{ github.event.release.tag_name || github.event.inputs.branch }}] Docker Image Build and Push (Production)"
+run-name: "[${{ github.event.release.tag_name || github.event.inputs.tag }}] Docker Image Build and Push (Production)"
 
 jobs:
   build-and-push:
@@ -34,8 +31,6 @@ jobs:
       - name: Checkout code for branch
         if: github.event_name != 'release'
         uses: actions/checkout@v2
-        with:
-          ref: ${{ github.event.inputs.branch }}
 
 
       - name: Login to Docker Hub
