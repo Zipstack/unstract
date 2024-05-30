@@ -96,7 +96,7 @@ class BigQuery(UnstractDB):
         )
         return sql_query
 
-    def execute_write_bigquery(
+    def execute_insert_bigquery(
         self, engine: Any, table_name: str, sql_keys: Any, sql_values: list[Any]
     ) -> None:
         query = f"""
@@ -117,7 +117,7 @@ class BigQuery(UnstractDB):
         sql_keys = kwargs.get("sql_keys")
         try:
             if sql_values:
-                self.execute_write_bigquery(
+                self.execute_insert_bigquery(
                     engine=engine,
                     table_name=table_name,
                     sql_keys=sql_keys,
