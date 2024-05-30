@@ -287,10 +287,14 @@ class DatabaseUtils:
         - sql values can contain data with single quote. It needs to
         """
         cls_name = db_class.__class__.__name__
-        sql = DBConnectorQueryHelper.build_sql_insert_query(table_name, sql_keys)
+        sql = DBConnectorQueryHelper.build_sql_insert_query(
+            cls_name=cls_name, table_name=table_name, sql_keys=sql_keys
+        )
         logger.debug(f"inserting into table {table_name} with: {sql} query")
 
-        sql_values = DBConnectorQueryHelper.prepare_sql_values(cls_name, sql_values)
+        sql_values = DBConnectorQueryHelper.prepare_sql_values(
+            cls_name=cls_name, sql_values=sql_values, sql_keys=sql_keys
+        )
         logger.debug(f"sql_values: {sql_values}")
 
         db_class.execute_query(

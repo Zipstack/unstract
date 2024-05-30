@@ -1,5 +1,6 @@
 from typing import Any
 
+from google.cloud import bigquery
 from workflow_manager.endpoint.constants import DBConnectionClass, TableColumns
 
 from unstract.connectors.databases.unstract_db import UnstractDB
@@ -53,13 +54,24 @@ class DBConnectorQueryHelper:
         return sql_query.rstrip(", ") + ");"
 
     @staticmethod
-    def build_sql_insert_query(table_name: str, sql_keys: list[str]) -> str:
+    def build_sql_insert_query(
+        cls_name: str, table_name: str, sql_keys: list[str]
+    ) -> str:
         keys_str = ",".join(sql_keys)
-        values_placeholder = ",".join(["%s" for _ in sql_keys])
+        if cls_name == DBConnectionClass.BIGQUERY:
+            values_placeholder = ",".join(["@" + key for key in sql_keys])
+        else:
+            values_placeholder = ",".join(["%s" for _ in sql_keys])
         return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
 
     @staticmethod
-    def prepare_sql_values(cls_name: str, sql_values: Any) -> Any:
+    def prepare_sql_values(cls_name: str, sql_values: Any, sql_keys: list[str]) -> Any:
         if cls_name == DBConnectionClass.MSSQL:
             return tuple(sql_values)
+        elif cls_name == DBConnectionClass.BIGQUERY:
+            query_parameters = [
+                bigquery.ScalarQueryParameter(key, "STRING", value)
+                for key, value in zip(sql_keys, sql_values)
+            ]
+            return bigquery.QueryJobConfig(query_parameters=query_parameters)
         return sql_values

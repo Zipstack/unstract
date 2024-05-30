@@ -96,33 +96,13 @@ class BigQuery(UnstractDB):
         )
         return sql_query
 
-    def execute_insert_bigquery(
-        self, engine: Any, table_name: str, sql_keys: Any, sql_values: list[Any]
-    ) -> None:
-        query = f"""
-            INSERT INTO {table_name} ({', '.join(sql_keys)})
-            VALUES ({', '.join(['@' + key for key in sql_keys])})
-        """
-        query_parameters = [
-            bigquery.ScalarQueryParameter(key, "STRING", value)
-            for key, value in zip(sql_keys, sql_values)
-        ]
-        job_config = bigquery.QueryJobConfig(query_parameters=query_parameters)
-        engine.query(query, job_config=job_config)
-
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
         table_name = str(kwargs.get("table_name"))
-        sql_keys = kwargs.get("sql_keys")
         try:
             if sql_values:
-                self.execute_insert_bigquery(
-                    engine=engine,
-                    table_name=table_name,
-                    sql_keys=sql_keys,
-                    sql_values=sql_values,
-                )
+                engine.query(sql_query, job_config=sql_values)
             else:
                 engine.query(sql_query)
         except google.api_core.exceptions.Forbidden as e:
