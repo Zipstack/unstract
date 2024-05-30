@@ -182,34 +182,47 @@ class FileManagerHelper:
             raise InvalidFileType
 
     @staticmethod
+    def _delete_file(fs, file_path):
+        try:
+            fs.rm(file_path)
+        except FileNotFoundError:
+            FileManagerHelper.logger.info(f"File not found: {file_path}")
+        except Exception as e:
+            FileManagerHelper.logger.info(f"Unable to delete file {e}")
+            raise FileDeletionFailed(f"Unable to delete file {e}")
+
+    @staticmethod
+    def _get_base_path(file_system: UnstractFileSystem, path: str):
+        fs = file_system.get_fsspec_fs()
+        base_path = getattr(file_system if hasattr(file_system, "path") else fs, "path", path)
+        base_path = base_path.rstrip("/") + "/"
+        return base_path
+
+    @staticmethod
     def delete_file(file_system: UnstractFileSystem, path: str, file_name: str) -> bool:
         fs = file_system.get_fsspec_fs()
+        base_path = FileManagerHelper._get_base_path(file_system, path)
+        file_path = str(Path(base_path) / file_name)
+        FileManagerHelper._delete_file(fs, file_path)
+        return True
 
-        if hasattr(file_system, "path") and (not path or path == "/"):
-            base_path = file_system.path
-        elif hasattr(fs, "path") and (not path or path == "/"):
-            base_path = fs.path
-        else:
-            base_path = path
-        base_path = base_path if base_path.endswith("/") else base_path + "/"
+    @staticmethod
+    def delete_related_files(
+        file_system: UnstractFileSystem, path: str, file_name: str
+    ) -> bool:
+        print("Deleting related files")
+        fs = file_system.get_fsspec_fs()
+        base_path = FileManagerHelper._get_base_path(file_system, path)
 
         # Directories to delete the file from
-        directories = ["", "extract/", "summarize/"]
+        directories = ["extract/", "summarize/"]
 
         base_file_name, _ = os.path.splitext(file_name)
         file_name_txt = base_file_name + ".txt"
 
         for directory in directories:
-            # Use the .txt file name for the extract and summarize
-            file_name_to_delete = file_name if directory == "" else file_name_txt
-            file_path = f"{base_path}{directory}{file_name_to_delete}"
-            try:
-                fs.rm(file_path)
-            except FileNotFoundError:
-                FileManagerHelper.logger.info(f"File not found: {file_path}")
-            except Exception as e:
-                FileManagerHelper.logger.info(f"Unable to delete file {e}")
-                raise FileDeletionFailed(f"Unable to delete file {e}")
+            file_path = str(Path(base_path) / directory / file_name_txt)
+            FileManagerHelper._delete_file(fs, file_path)
         return True
 
     @staticmethod
