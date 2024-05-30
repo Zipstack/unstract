@@ -1,6 +1,12 @@
 name: Unstract Docker Image Build and Push (Production)
 
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Docker image tag for the hotfix"
+        required: true
+        default: "hotfix"
   release:
     types:
       - created
@@ -15,10 +21,17 @@ jobs:
         service_name: [backend, frontend, document-service, platform-service, prompt-service, worker, x2text-service]
 
     steps:
-      - name: Checkout code
+      - name: Checkout code for release
+        if: github.event_name == 'release'
         uses: actions/checkout@v2
         with:
           ref: ${{ github.event.release.tag_name }}
+
+
+      - name: Checkout code for branch
+        if: github.event_name != 'release'
+        uses: actions/checkout@v2
+
 
       - name: Login to Docker Hub
         uses: docker/login-action@v1
@@ -29,7 +42,14 @@ jobs:
       - name: Build and push images
         working-directory: ./docker
         run: |
-          VERSION=${{ github.event.release.tag_name }} docker-compose -f docker-compose.build.yaml build --no-cache ${{ matrix.service_name }}
-          docker tag unstract/${{ matrix.service_name }}:${{ github.event.release.tag_name }} unstract/${{ matrix.service_name }}:latest
-          docker push unstract/${{ matrix.service_name }}:${{ github.event.release.tag_name }}
-          docker push unstract/${{ matrix.service_name }}:latest
+            if [ "${{ github.event_name }}" = "release" ]; then
+              echo "This workflow was triggered by a release event."
+              VERSION=${{ github.event.release.tag_name }} docker-compose -f docker-compose.build.yaml build --no-cache ${{ matrix.service_name }}
+              docker tag unstract/${{ matrix.service_name }}:${{ github.event.release.tag_name }} unstract/${{ matrix.service_name }}:latest
+              docker push unstract/${{ matrix.service_name }}:${{ github.event.release.tag_name }}
+              docker push unstract/${{ matrix.service_name }}:latest
+            else
+              echo "This workflow was triggered manually."
+              VERSION=${{ github.event.inputs.tag }} docker-compose -f docker-compose.build.yaml build --no-cache ${{ matrix.service_name }}
+               docker push unstract/${{ matrix.service_name }}:${{ github.event.inputs.tag }}
+            fi
