@@ -6,6 +6,7 @@ from adapter_processor.models import AdapterInstance
 from django.db import models
 from django.db.models import QuerySet
 from prompt_studio.prompt_studio_core.constants import DefaultPrompts
+from public_shares.share_manager.models import ShareManager
 from utils.models.base_model import BaseModel
 
 
@@ -113,6 +114,13 @@ class CustomTool(BaseModel):
     )
     enable_challenge = models.BooleanField(
         db_comment="Flag to enable or disable challenge", default=False
+    )
+    share_id = models.ForeignKey(
+        ShareManager,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="share_linked_tool",
     )
 
     # Introduced field to establish M2M relation between users and custom_tool.
