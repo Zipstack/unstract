@@ -1,3 +1,4 @@
+import time
 import traceback
 from enum import Enum
 from json import JSONDecodeError
@@ -683,6 +684,17 @@ def run_retrieval(  # type:ignore
             prompt=subq_prompt,
         )
     context = _retrieve_context(output, doc_id, vector_index, prompt)
+
+    if not context:
+        # UN-1288 For Pinecone, we are seeing an inconsistent case where
+        # query with doc_id fails even though indexing just happened.
+        # This causes the following retrieve to return no text.
+        # To rule out any lag on the Pinecone vector DB write,
+        # the following sleep is added
+        # Note: This will not fix the issue. Since this issue is inconsistent
+        # and not reproducible easily, this is just a safety net.
+        time.sleep(2)
+        context = _retrieve_context(output, doc_id, vector_index, prompt)
 
     answer = construct_and_run_prompt(  # type:ignore
         output,

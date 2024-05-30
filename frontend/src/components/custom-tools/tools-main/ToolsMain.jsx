@@ -166,6 +166,7 @@ function ToolsMain() {
         </div>
         <div className="display-flex-align-center">
           <Space>
+            {singlePassExtractMode && RunSinglePassBtn && <RunSinglePassBtn />}
             <Tooltip title="Output Analyzer">
               <Button
                 icon={<BarChartOutlined />}
@@ -176,7 +177,6 @@ function ToolsMain() {
                 }
               />
             </Tooltip>
-            {singlePassExtractMode && RunSinglePassBtn && <RunSinglePassBtn />}
           </Space>
         </div>
       </div>
