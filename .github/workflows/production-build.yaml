@@ -4,17 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Docker image tag for the hotfix"
+        description: "Docker image tag"
         required: true
       branch:
-        description: "Hotfix branch to be used"
+        description: "Branch to be used"
         required: true
 
   release:
     types:
       - created
 
-run-name: "[${{ github.event.release.tag_name || github.event.inputs.tag }}] Docker Image Build and Push (Production)"
+run-name: "[${{ github.event.release.tag_name || github.event.inputs.branch }}] Docker Image Build and Push (Production)"
 
 jobs:
   build-and-push:
@@ -47,14 +47,12 @@ jobs:
       - name: Build and push images
         working-directory: ./docker
         run: |
+
+            DOCKER_VERSION_TAG = ${{ github.event.release.tag_name  || github.event.inputs.tag}}
+            VERSION=$DOCKER_VERSION_TAG docker-compose -f docker-compose.build.yaml build --no-cache ${{ matrix.service_name }}
+            docker push unstract/${{ matrix.service_name }}:$DOCKER_VERSION_TAG
             if [ "${{ github.event_name }}" = "release" ]; then
               echo "This workflow was triggered by a release event."
-              VERSION=${{ github.event.release.tag_name }} docker-compose -f docker-compose.build.yaml build --no-cache ${{ matrix.service_name }}
-              docker tag unstract/${{ matrix.service_name }}:${{ github.event.release.tag_name }} unstract/${{ matrix.service_name }}:latest
-              docker push unstract/${{ matrix.service_name }}:${{ github.event.release.tag_name }}
+              docker tag unstract/${{ matrix.service_name }}:$DOCKER_VERSION_TAG unstract/${{ matrix.service_name }}:latest
               docker push unstract/${{ matrix.service_name }}:latest
-            else
-              echo "This workflow was triggered manually."
-              VERSION=${{ github.event.inputs.tag }} docker-compose -f docker-compose.build.yaml build --no-cache ${{ matrix.service_name }}
-               docker push unstract/${{ matrix.service_name }}:${{ github.event.inputs.tag }}
             fi
