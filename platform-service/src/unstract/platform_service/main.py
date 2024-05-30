@@ -90,17 +90,14 @@ def authentication_middleware(func: Any) -> Any:
 
 
 def get_account_from_bearer_token(token: Optional[str]) -> str:
-    query = "SELECT organization_id FROM account_platformkey " f"WHERE key='{token}'"
-    organization = execute_query(query)
-    query_org = (
-        "SELECT schema_name FROM account_organization " f"WHERE id='{organization}'"
-    )
-    schema_name: str = execute_query(query_org)
+    query = "SELECT organization_id FROM account_platformkey WHERE key=%s"
+    organization = execute_query(query, (token,))
+    query_org = "SELECT schema_name FROM account_organization WHERE id=%s"
+    schema_name: str = execute_query(query_org, (organization,))
     return schema_name
 
-
-def execute_query(query: str) -> Any:
-    cursor = be_db.execute_sql(query)
+def execute_query(query: str, params: tuple = ()) -> Any:
+    cursor = be_db.execute_sql(query, params)
     result_row = cursor.fetchone()
     cursor.close()
     if not result_row or len(result_row) == 0:
