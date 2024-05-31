@@ -1,3 +1,4 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -5,11 +6,11 @@ from typing import Any
 class ContainerClientInterface(ABC):
 
     @abstractmethod
-    def __init__(self, image_name: str, image_tag: str) -> None:
+    def __init__(self, image_name: str, image_tag: str, logger: logging.Logger) -> None:
         pass
 
     @abstractmethod
-    def run_container(config: dict[Any, Any]):
+    def run_container(self, config: dict[Any, Any]):
         """Method to run a container with provided config.
 
         Args:
