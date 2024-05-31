@@ -416,7 +416,8 @@ class ToolInstanceHelper:
                 raise PermissionDenied(error_msg)
 
             if not (
-                adapter_instance.created_by == user
+                adapter_instance.shared_to_org
+                or adapter_instance.created_by == user
                 or adapter_instance.shared_users.filter(pk=user.pk).exists()
             ):
                 logger.error(
