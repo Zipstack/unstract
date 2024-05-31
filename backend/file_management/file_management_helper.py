@@ -210,7 +210,10 @@ class FileManagerHelper:
 
     @staticmethod
     def delete_related_files(
-        file_system: UnstractFileSystem, path: str, file_name: str, directories: list[str]
+        file_system: UnstractFileSystem,
+        path: str,
+        file_name: str,
+        directories: list[str],
     ) -> bool:
         print("Deleting related files")
         fs = file_system.get_fsspec_fs()
