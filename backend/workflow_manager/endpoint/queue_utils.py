@@ -1,9 +1,10 @@
 import logging
-
 from typing import Any
+
 from utils.constants import Common
-from unstract.connectors.queues.redis import RedisQueue
+
 from unstract.connectors.queues import connectors as queue_connectors
+from unstract.connectors.queues.redis import RedisQueue
 
 logger = logging.getLogger(__name__)
 
