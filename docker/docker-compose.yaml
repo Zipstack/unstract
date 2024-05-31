@@ -130,6 +130,9 @@ services:
       - ../prompt-service/.env
     labels:
       - traefik.enable=false
+    extra_hosts:
+      # "host-gateway" is a special string that translates to host docker0 i/f IP.
+      - "host.docker.internal:host-gateway"
 
   x2text-service:
     image: unstract/x2text-service:${VERSION}
