@@ -97,3 +97,8 @@ class BigQuery:
         "TIME",
         "TIMESTAMP",
     ]
+
+
+class QueueResultStatus:
+    SUCCESS = "Success"
+    FAILED = "Failed"

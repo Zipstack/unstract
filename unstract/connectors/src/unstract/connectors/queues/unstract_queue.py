@@ -1,8 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
 
-from fsspec import AbstractFileSystem
-
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.enums import ConnectorMode
 
@@ -48,22 +46,16 @@ class UnstractQueue(UnstractConnector, ABC):
         return False
 
     @staticmethod
-    @abstractmethod
     def requires_oauth() -> bool:
         return False
 
     @staticmethod
-    @abstractmethod
     def python_social_auth_backend() -> str:
         return ""
 
     @staticmethod
     def get_connector_mode() -> ConnectorMode:
         return ConnectorMode.QUEUE
-
-    @abstractmethod
-    def get_fsspec_fs(self) -> AbstractFileSystem:
-        pass
 
     @abstractmethod
     def test_credentials(self) -> bool:

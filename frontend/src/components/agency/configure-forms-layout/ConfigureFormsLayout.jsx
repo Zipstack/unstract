@@ -50,26 +50,28 @@ function ConfigureFormsLayout({
           </div>
         </div>
       </Col>
-      <Col span={12} className="conn-modal-form-left">
-        <div className="conn-modal-flex">
-          <Typography.Text strong>Configuration</Typography.Text>
-          <div className="conn-modal-gap" />
-          <div className="conn-modal-flex-1">
-            {!specConfig || Object.keys(specConfig)?.length === 0 ? (
-              <EmptyState text="Failed to load the configuration form" />
-            ) : (
-              <SettingsForm
-                selectedId={selectedId}
-                handleUpdate={handleUpdate}
-                spec={specConfig}
-                formData={formDataConfig}
-                setFormData={setFormDataConfig}
-                isLoading={isSpecConfigLoading}
-              />
-            )}
+      {connType !== "QUEUE" && (
+        <Col span={12} className="conn-modal-form-left">
+          <div className="conn-modal-flex">
+            <Typography.Text strong>Configuration</Typography.Text>
+            <div className="conn-modal-gap" />
+            <div className="conn-modal-flex-1">
+              {!specConfig || Object.keys(specConfig)?.length === 0 ? (
+                <EmptyState text="Failed to load the configuration form" />
+              ) : (
+                <SettingsForm
+                  selectedId={selectedId}
+                  handleUpdate={handleUpdate}
+                  spec={specConfig}
+                  formData={formDataConfig}
+                  setFormData={setFormDataConfig}
+                  isLoading={isSpecConfigLoading}
+                />
+              )}
+            </div>
           </div>
-        </div>
-      </Col>
+        </Col>
+      )}
     </Row>
   );
 }

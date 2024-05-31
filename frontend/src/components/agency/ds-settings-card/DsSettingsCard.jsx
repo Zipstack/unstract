@@ -46,12 +46,16 @@ const inputOptions = [
     value: "DATABASE",
     label: "Database",
   },
-  {
-    value: "QUEUE",
-    label: "Queue",
-  },
 ];
-
+try {
+  const inputOption =
+    require("../../../plugins/dscard-input-options/DsSettingsCardInputOptions").inputOption;
+  if (inputOption) {
+    inputOptions.push(inputOption);
+  }
+} catch {
+  // The component will remain null of it is not available
+}
 const disabledIdsByType = {
   FILE_SYSTEM: [
     "box|4d94d237-ce4b-45d8-8f34-ddeefc37c0bf",

@@ -15,6 +15,7 @@ from workflow_manager.endpoint.base_connector import BaseConnector
 from workflow_manager.endpoint.constants import (
     ApiDeploymentResultStatus,
     DestinationKey,
+    QueueResultStatus,
     WorkflowFileType,
 )
 from workflow_manager.endpoint.database_utils import DatabaseUtils
@@ -26,6 +27,7 @@ from workflow_manager.endpoint.exceptions import (
     ToolOutputTypeMismatch,
 )
 from workflow_manager.endpoint.models import WorkflowEndpoint
+from workflow_manager.endpoint.queue_utils import QueueUtils
 from workflow_manager.workflow.enums import ExecutionStatus
 from workflow_manager.workflow.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow.models.file_history import FileHistory
@@ -57,6 +59,7 @@ class DestinationConnector(BaseConnector):
         self.endpoint = self._get_endpoint_for_workflow(workflow=workflow)
         self.execution_id = execution_id
         self.api_results: list[dict[str, Any]] = []
+        self.queue_results: list[dict[str, Any]] = []
 
     def _get_endpoint_for_workflow(
         self,
@@ -115,7 +118,7 @@ class DestinationConnector(BaseConnector):
             self._handle_api_result(file_name=file_name, error=error, result=result)
         elif connection_type == WorkflowEndpoint.ConnectionType.QUEUE:
             result = self.get_result(file_history)
-            self._handle_api_result(file_name=file_name, error=error, result=result)
+            self._push_to_queue(file_name=file_name, error=error, result=result)
         if not file_history:
             FileHistoryHelper.create_file_history(
                 cache_key=file_hash,
@@ -412,3 +415,42 @@ class DestinationConnector(BaseConnector):
             os.path.dirname(__file__), "static", "dest", "api.json"
         )
         return cls.get_json_schema(file_path=schema_path)
+
+    def _push_to_queue(
+        self,
+        file_name: str,
+        error: Optional[str] = None,
+        result: Optional[str] = None,
+    ) -> None:
+        """Handle the QUEUE result.
+
+        This method is responsible for pushing the input file and result to
+        review queue.
+        Args:
+            file_name (str): The name of the file.
+            result (Optional[str], optional): The result of the API call.
+                Defaults to None.
+
+        Returns:
+            None
+        """
+        connector: ConnectorInstance = self.endpoint.connector_instance
+        connector_settings: dict[str, Any] = connector.connector_metadata
+        queue_result = {"file": file_name}
+        if error:
+            return
+        if result:
+            queue_result.update(
+                {
+                    "status": QueueResultStatus.SUCCESS,
+                    "result": result,
+                    "workflow_id": self.workflow_id,
+                    "connector_id": connector.id,
+                }
+            )
+            queue_class = QueueUtils.get_queue_class(
+                connector_id=connector.connector_id,
+                connector_settings=connector_settings,
+            )
+            # TODO: Replace queue name with document class name (tool name)
+            queue_class.enqueue(queue_name="review_queue", message=str(queue_result))
