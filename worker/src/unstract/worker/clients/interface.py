@@ -24,7 +24,7 @@ class ContainerClientInterface(ABC):
         pass
 
     @abstractmethod
-    def get_image() -> str:
+    def get_image(self) -> str:
         """Consturct image name with tag and repo name. Pulls the image if
         needed.
 
