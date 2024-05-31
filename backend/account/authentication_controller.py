@@ -194,10 +194,15 @@ class AuthenticationController:
                 except MethodNotImplemented:
                     Logger.info("frictionless_onboarding not implemented")
 
-            if new_organization:
+                try:
+                    self.auth_service.hubspot_signup_api(request=request)
+                except MethodNotImplemented:
+                    Logger.info("hubspot_signup_api not implemented")
+
                 self.authentication_helper.create_initial_platform_key(
                     user=user, organization=organization
                 )
+
             user_info: Optional[UserInfo] = self.get_user_info(request)
             serialized_user_info = SetOrganizationsResponseSerializer(user_info).data
             organization_info = OrganizationSerializer(organization).data
