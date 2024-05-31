@@ -22,6 +22,7 @@ from django.urls import include, path
 
 path_prefix = settings.PATH_PREFIX
 api_path_prefix = settings.API_DEPLOYMENT_PATH_PREFIX
+share_path_prefix = settings.SHARE_MANAGER_PATH_PREFIX
 
 urlpatterns = [
     path(f"{path_prefix}/", include("account.urls")),
@@ -33,6 +34,8 @@ urlpatterns = [
     path(f"{api_path_prefix}/", include("api.urls")),
     # Feature flags
     path(f"{path_prefix}/flags/", include("feature_flag.urls")),
+    # Public Sharing
+    path(f"{share_path_prefix}/", include("public_shares.share_controller.urls")),
 ]
 if settings.ADMIN_ENABLED:
     # Admin URLs
