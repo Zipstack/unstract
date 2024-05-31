@@ -4,14 +4,8 @@ from typing import Any
 
 import pytest  # type: ignore
 from workflow_manager.endpoint.database_utils import DatabaseUtils
+from workflow_manager.endpoint.exceptions import UnstractDBException
 
-from unstract.connectors.databases.exceptions import (
-    FeatureNotSupportedException,
-    InvalidSyntaxException,
-    SnowflakeProgrammingException,
-    UnderfinedTableException,
-    ValueTooLongException,
-)
 from unstract.connectors.databases.redshift import Redshift
 from unstract.connectors.databases.unstract_db import UnstractDB
 
@@ -43,7 +37,7 @@ class TestExecuteWriteQuery(BaseTestDB):
         self, invalid_dbs_instance: Any
     ) -> None:
         engine = invalid_dbs_instance.get_engine()
-        with pytest.raises(UnderfinedTableException):
+        with pytest.raises(UnstractDBException):
             DatabaseUtils.execute_write_query(
                 db_class=invalid_dbs_instance,
                 engine=engine,
@@ -54,7 +48,7 @@ class TestExecuteWriteQuery(BaseTestDB):
 
     def test_execute_write_query_invalid_syntax(self, valid_dbs_instance: Any) -> None:
         engine = valid_dbs_instance.get_engine()
-        with pytest.raises((InvalidSyntaxException, SnowflakeProgrammingException)):
+        with pytest.raises(UnstractDBException):
             DatabaseUtils.execute_write_query(
                 db_class=valid_dbs_instance,
                 engine=engine,
@@ -67,7 +61,7 @@ class TestExecuteWriteQuery(BaseTestDB):
         self, invalid_dbs_instance: Any
     ) -> None:
         engine = invalid_dbs_instance.get_engine()
-        with pytest.raises(FeatureNotSupportedException):
+        with pytest.raises(UnstractDBException):
             DatabaseUtils.execute_write_query(
                 db_class=invalid_dbs_instance,
                 engine=engine,
@@ -93,7 +87,7 @@ class TestExecuteWriteQuery(BaseTestDB):
     ) -> None:
         engine = valid_redshift_db_instance.get_engine()
         sql_columns_and_values = self.load_text_to_sql_values()
-        with pytest.raises(ValueTooLongException):
+        with pytest.raises(UnstractDBException):
             DatabaseUtils.execute_write_query(
                 db_class=valid_redshift_db_instance,
                 engine=engine,
@@ -119,14 +113,7 @@ class TestExecuteWriteQuery(BaseTestDB):
         self, valid_dbs_instance: UnstractDB
     ) -> None:
         engine = valid_dbs_instance.get_engine()
-        with pytest.raises(
-            (
-                FeatureNotSupportedException,
-                UnderfinedTableException,
-                InvalidSyntaxException,
-                SnowflakeProgrammingException,
-            )
-        ):
+        with pytest.raises(UnstractDBException):
             DatabaseUtils.execute_write_query(
                 db_class=valid_dbs_instance,
                 engine=engine,
@@ -153,7 +140,7 @@ class TestExecuteWriteQuery(BaseTestDB):
         self, invalid_snowflake_db_instance: UnstractDB
     ) -> None:
         engine = invalid_snowflake_db_instance.get_engine()
-        with pytest.raises(SnowflakeProgrammingException):
+        with pytest.raises(UnstractDBException):
             DatabaseUtils.execute_write_query(
                 db_class=invalid_snowflake_db_instance,
                 engine=engine,

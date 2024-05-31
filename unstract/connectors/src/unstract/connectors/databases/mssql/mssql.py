@@ -85,10 +85,10 @@ class MSSQL(UnstractDB):
                     cursor.execute(sql_query)
             engine.commit()
         except (PyMssql.ProgrammingError, PyMssql.OperationalError) as e:
-            error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
+            error_details = ExceptionHelper.extract_byte_exception(e=e)
             logger.error(
                 f"Invalid syntax in creating/inserting mssql data: {error_details}"
             )
             raise InvalidSyntaxException(
-                code=error_code, detail=error_details, database=self.database
+                detail=error_details, database=self.database
             ) from e

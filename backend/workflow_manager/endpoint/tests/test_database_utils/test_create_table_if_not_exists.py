@@ -1,12 +1,7 @@
 import pytest  # type: ignore
 from workflow_manager.endpoint.database_utils import DatabaseUtils
+from workflow_manager.endpoint.exceptions import UnstractDBException
 
-from unstract.connectors.databases.exceptions import (
-    FeatureNotSupportedException,
-    InvalidSchemaException,
-    InvalidSyntaxException,
-    SnowflakeProgrammingException,
-)
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 from .base_test_db import BaseTestDB
@@ -41,7 +36,7 @@ class TestCreateTableIfNotExists(BaseTestDB):
         self, invalid_dbs_instance: UnstractDB
     ) -> None:
         engine = invalid_dbs_instance.get_engine()
-        with pytest.raises(InvalidSchemaException):
+        with pytest.raises(UnstractDBException):
             DatabaseUtils.create_table_if_not_exists(
                 db_class=invalid_dbs_instance,
                 engine=engine,
@@ -53,7 +48,7 @@ class TestCreateTableIfNotExists(BaseTestDB):
         self, valid_dbs_instance: UnstractDB
     ) -> None:
         engine = valid_dbs_instance.get_engine()
-        with pytest.raises((InvalidSyntaxException, SnowflakeProgrammingException)):
+        with pytest.raises(UnstractDBException):
             DatabaseUtils.create_table_if_not_exists(
                 db_class=valid_dbs_instance,
                 engine=engine,
@@ -65,13 +60,7 @@ class TestCreateTableIfNotExists(BaseTestDB):
         self, valid_dbs_instance: UnstractDB
     ) -> None:
         engine = valid_dbs_instance.get_engine()
-        with pytest.raises(
-            (
-                FeatureNotSupportedException,
-                SnowflakeProgrammingException,
-                InvalidSyntaxException,
-            )
-        ):
+        with pytest.raises(UnstractDBException):
             DatabaseUtils.create_table_if_not_exists(
                 db_class=valid_dbs_instance,
                 engine=engine,
@@ -83,7 +72,7 @@ class TestCreateTableIfNotExists(BaseTestDB):
         self, invalid_dbs_instance: UnstractDB
     ) -> None:
         engine = invalid_dbs_instance.get_engine()
-        with pytest.raises(FeatureNotSupportedException):
+        with pytest.raises(UnstractDBException):
             DatabaseUtils.create_table_if_not_exists(
                 db_class=invalid_dbs_instance,
                 engine=engine,
@@ -95,7 +84,7 @@ class TestCreateTableIfNotExists(BaseTestDB):
         self, invalid_snowflake_db_instance: UnstractDB
     ) -> None:
         engine = invalid_snowflake_db_instance.get_engine()
-        with pytest.raises(SnowflakeProgrammingException):
+        with pytest.raises(UnstractDBException):
             DatabaseUtils.create_table_if_not_exists(
                 db_class=invalid_snowflake_db_instance,
                 engine=engine,

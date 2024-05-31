@@ -18,6 +18,7 @@ from workflow_manager.endpoint.exceptions import (
 from workflow_manager.workflow.enums import AgentName, ColumnModes
 
 from unstract.connectors.databases import connectors as db_connectors
+from unstract.connectors.databases.exceptions import UnstractDBConnectorException
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
 
@@ -297,14 +298,16 @@ class DatabaseUtils:
         )
         logger.debug(f"sql_values: {sql_values}")
 
-        db_class.execute_query(
-            engine=engine,
-            sql_query=sql,
-            sql_values=sql_values,
-            table_name=table_name,
-            sql_keys=sql_keys,
-        )
-
+        try:
+            db_class.execute_query(
+                engine=engine,
+                sql_query=sql,
+                sql_values=sql_values,
+                table_name=table_name,
+                sql_keys=sql_keys,
+            )
+        except UnstractDBConnectorException as e:
+            raise UnstractDBException(detail=e.detail) from e
         logger.debug(f"sucessfully inserted into table {table_name} with: {sql} query")
 
     @staticmethod
@@ -347,5 +350,8 @@ class DatabaseUtils:
             conn_cls=db_class, table=table_name, database_entry=database_entry
         )
         logger.debug(f"creating table {table_name} with: {sql} query")
-        db_class.execute_query(engine=engine, sql_query=sql, sql_values=None)
+        try:
+            db_class.execute_query(engine=engine, sql_query=sql, sql_values=None)
+        except UnstractDBConnectorException as e:
+            raise UnstractDBException(detail=e.detail) from e
         logger.debug(f"successfully created table {table_name} with: {sql} query")

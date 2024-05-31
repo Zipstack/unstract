@@ -1,5 +1,3 @@
-from typing import Any
-
 from rest_framework.exceptions import APIException
 
 
@@ -74,8 +72,8 @@ class BigQueryTableNotFound(APIException):
 
 
 class UnstractDBException(APIException):
-    status_code = 400
     default_detail = "Error creating/inserting to database. "
 
-    def __init__(self, code: Any = status_code, detail: str = default_detail) -> None:
-        super().__init__(detail=detail, code=code)
+    def __init__(self, detail: str = default_detail) -> None:
+        status_code = 400
+        super().__init__(detail=detail, code=status_code)

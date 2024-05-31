@@ -92,5 +92,5 @@ class SnowflakeDB(UnstractDB):
                 f"{e.msg} {e.errno}"
             )
             raise SnowflakeProgrammingException(
-                code=e.errno, detail=e.msg, database=self.database
+                detail=e.msg, database=self.database
             ) from e

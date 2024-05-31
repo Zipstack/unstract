@@ -22,10 +22,8 @@ class MysqlHandler:
                     cursor.execute(sql_query)
             engine.commit()
         except MysqlError.ProgrammingError as e:
-            error_code, error_details = ExceptionHelper.extract_byte_exception(e=e)
+            error_details = ExceptionHelper.extract_byte_exception(e=e)
             logger.error(
                 f"Invalid syntax in creating/inserting mysql data: {error_details}"
             )
-            raise InvalidSyntaxException(
-                code=error_code, detail=error_details, database=database
-            ) from e
+            raise InvalidSyntaxException(detail=error_details, database=database) from e

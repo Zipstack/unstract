@@ -28,31 +28,23 @@ class PsycoPgHandler:
             engine.commit()
         except PsycopgError.InvalidSchemaName as e:
             logger.error(f"Invalid schema in creating table: {e.pgerror}")
-            raise InvalidSchemaException(
-                code=e.pgcode, detail=e.pgerror, database=database
-            ) from e
+            raise InvalidSchemaException(detail=e.pgerror, database=database) from e
         except PsycopgError.UndefinedTable as e:
             logger.error(f"Undefined table in inserting: {e.pgerror}")
-            raise UnderfinedTableException(
-                code=e.pgcode, detail=e.pgerror, database=database
-            ) from e
+            raise UnderfinedTableException(detail=e.pgerror, database=database) from e
         except PsycopgError.SyntaxError as e:
             logger.error(f"Invalid syntax in creating/inserting data: {e.pgerror}")
-            raise InvalidSyntaxException(
-                code=e.pgcode, detail=e.pgerror, database=database
-            ) from e
+            raise InvalidSyntaxException(detail=e.pgerror, database=database) from e
         except PsycopgError.FeatureNotSupported as e:
             logger.error(
                 f"feature not supported in creating/inserting data: {e.pgerror}"
             )
             raise FeatureNotSupportedException(
-                code=e.pgcode, detail=e.pgerror, database=database
+                detail=e.pgerror, database=database
             ) from e
         except (
             PsycopgError.StringDataRightTruncation,
             PsycopgError.InternalError_,
         ) as e:
             logger.error(f"value too long for datatype: {e.pgerror}")
-            raise ValueTooLongException(
-                code=e.pgcode, detail=e.pgerror, database=database
-            ) from e
+            raise ValueTooLongException(detail=e.pgerror, database=database) from e

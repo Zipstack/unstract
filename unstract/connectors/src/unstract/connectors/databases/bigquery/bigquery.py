@@ -108,12 +108,11 @@ class BigQuery(UnstractDB):
         except google.api_core.exceptions.Forbidden as e:
             logger.error(f"Forbidden exception in creating/inserting data: {str(e)}")
             raise BigQueryForbiddenException(
-                code=e.code,
                 detail=e.message,
                 table_name=table_name,
             ) from e
         except google.api_core.exceptions.NotFound as e:
             logger.error(f"Resource not found in creating/inserting table: {str(e)}")
             raise BigQueryNotFoundException(
-                code=e.code, detail=e.message, table_name=table_name
+                detail=e.message, table_name=table_name
             ) from e
