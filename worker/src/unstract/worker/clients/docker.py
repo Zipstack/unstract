@@ -3,6 +3,7 @@ import os
 from typing import Any
 
 from docker.errors import APIError, ImageNotFound
+from docker.models.containers import Container
 from unstract.worker.constants import Env
 
 from docker import DockerClient, from_env
@@ -15,12 +16,12 @@ class Client(ContainerClientInterface):
         self.image_name = image_name
         # If no image_tag is provided will assume the `latest` tag
         self.image_tag = image_tag or "latest"
+        self.logger = logger
 
         # Create a Docker client that communicates with
         #   the Docker daemon in the host environment
         self.client: DockerClient = from_env()
         self.__private_login()
-        self.image = self.__get_image()
 
     def __private_login(self):
         """Performs login for private registry if required."""
@@ -36,6 +37,9 @@ class Client(ContainerClientInterface):
         ):
             return
         try:
+            self.logger.info(
+                "Performing private docker login for %s.", private_registry_url
+            )
             with open(private_registry_credential_path, encoding="utf-8") as file:
                 password = file.read()
             self.client.login(
@@ -63,7 +67,7 @@ class Client(ContainerClientInterface):
                 f"Internal service error occured while authentication: {exc}"
             )
 
-    def __get_image(self) -> str:
+    def get_image(self) -> str:
         """Will check if image exists locally and pulls the image using
         `self.image_name` and `self.image_tag` if necessary.
 
@@ -125,5 +129,5 @@ class Client(ContainerClientInterface):
             self.logger.error(f"An API error occurred: {e}")
             return False
 
-    def run_container(self, config: dict[Any, Any]):
-        self.client.containers.run(**config)
+    def run_container(self, config: dict[Any, Any]) -> Container:
+        return self.client.containers.run(**config)

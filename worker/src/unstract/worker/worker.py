@@ -28,6 +28,7 @@ class UnstractWorker:
         self.client: ContainerClientInterface = client_class(
             self.image_name, self.image_tag, self.logger
         )
+        self.image = self.client.get_image()
 
     def normalize_container_name(self, name: str) -> str:
         return name.replace("/", "-") + "-" + str(uuid.uuid4())
@@ -43,7 +44,7 @@ class UnstractWorker:
     ) -> None:
         for line in container.logs(stream=True, follow=True):
             log_message = line.decode().strip()
-            self.logger.info(f"[{self.container_name}] - {log_message}")
+            self.logger.debug(f"[{self.container_name}] - {log_message}")
             self.process_log_message(
                 log_message=log_message,
                 tool_instance_id=tool_instance_id,
@@ -184,7 +185,6 @@ class UnstractWorker:
             self.normalize_container_name(self.image_name) + "-" + self.workflow_id
         )
         container_config = self.get_container_run_config()
-        remove_container_on_exit = Utils.remove_container_on_exit()
         # Add labels to container for logging with Loki.
         # This only required for observability.
         try:
@@ -213,8 +213,7 @@ class UnstractWorker:
         except Exception as e:
             self.logger.error(f"Failed to run docker container: {e}")
             result = {"type": "RESULT", "result": None, "error": str(e)}
-        if container and remove_container_on_exit:
-            self._cleanup_container(container)
+        self._cleanup_container(container)
         return result
 
     def get_container_run_config(self) -> dict[str, Any]:
@@ -251,6 +250,9 @@ class UnstractWorker:
         }
 
     def _cleanup_container(self, container: Any) -> None:
+        # NOTE: This method might need to be
+        if not container or not Utils.remove_container_on_exit():
+            return
         try:
             container.remove(force=True)
         except Exception as remove_error:
