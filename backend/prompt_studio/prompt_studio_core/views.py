@@ -455,7 +455,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             document.delete()
             # Delete the files
             FileManagerHelper.delete_file(file_system, path, file_name)
-            FileManagerHelper.delete_related_files(file_system, path, file_name)
+            # Directories to delete the text files
+            directories = ["extract/", "summarize/"]
+            FileManagerHelper.delete_related_files(file_system, path, file_name, directories)
             return Response(
                 {"data": "File deleted succesfully."},
                 status=status.HTTP_200_OK,

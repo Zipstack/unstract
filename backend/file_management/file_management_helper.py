@@ -210,14 +210,11 @@ class FileManagerHelper:
 
     @staticmethod
     def delete_related_files(
-        file_system: UnstractFileSystem, path: str, file_name: str
+        file_system: UnstractFileSystem, path: str, file_name: str, directories: list[str]
     ) -> bool:
         print("Deleting related files")
         fs = file_system.get_fsspec_fs()
         base_path = FileManagerHelper._get_base_path(file_system, path)
-
-        # Directories to delete the file from
-        directories = ["extract/", "summarize/"]
 
         base_file_name, _ = os.path.splitext(file_name)
         file_name_txt = base_file_name + ".txt"
