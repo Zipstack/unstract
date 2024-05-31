@@ -76,5 +76,4 @@ class UnstractDBException(APIException):
 
     def __init__(self, detail: str = default_detail) -> None:
         status_code = 400
-        print("*** detail ** ", detail)
         super().__init__(detail=detail, code=status_code)
