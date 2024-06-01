@@ -127,6 +127,8 @@ class StructureTool(BaseTool):
                             outputs=output,
                             index=index,
                         )
+                        # For summary indexing should be done
+                        # only once. So breaking the loop
                         break
                     reindex = False
             except Exception as e:
