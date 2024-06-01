@@ -6,7 +6,7 @@ from typing import Any
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
 from unstract.sdk.constants import LogState, MetadataKey
-from unstract.sdk.index import ToolIndex
+from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
@@ -23,11 +23,13 @@ class StructureTool(BaseTool):
         output_dir: str,
     ) -> None:
         prompt_registry_id: str = settings[SettingsKeys.PROMPT_REGISTRY_ID]
-        challenge_llm: str = settings["challenge_llm_adapter_id"]
-        enable_challenge: bool = settings["enable_challenge"]
-        # summarize_as_Source: bool = settings["summarize_as_Source"]
-        single_pass_extraction_mode: bool = settings["single_pass_extraction_mode"]
-        responder = PromptTool(
+        challenge_llm: str = settings[SettingsKeys.CHALLENGE_LLM_ADAPTER_ID]
+        enable_challenge: bool = settings[SettingsKeys.ENABLE_CHALLENGE]
+        summarize_as_source: bool = settings[SettingsKeys.SUMMARIZE_AS_SOURCE]
+        single_pass_extraction_mode: bool = settings[
+            SettingsKeys.SINGLE_PASS_EXTRACTION_MODE
+        ]
+        responder: PromptTool = PromptTool(
             tool=self,
             prompt_port=self.get_env_or_die(SettingsKeys.PROMPT_PORT),
             prompt_host=self.get_env_or_die(SettingsKeys.PROMPT_HOST),
@@ -49,7 +51,7 @@ class StructureTool(BaseTool):
         self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
 
         file_hash = self.get_exec_metadata.get(MetadataKey.SOURCE_HASH)
-        tool_index = ToolIndex(tool=self)
+        index = Index(tool=self)
         tool_id = tool_metadata[SettingsKeys.TOOL_ID]
         tool_settings = tool_metadata[SettingsKeys.TOOL_SETTINGS]
         outputs = tool_metadata[SettingsKeys.OUTPUTS]
@@ -61,6 +63,7 @@ class StructureTool(BaseTool):
 
         prompt_service_resp = None
         _, file_name = os.path.split(input_file)
+        tool_data_dir = Path(self.get_env_or_die(SettingsKeys.TOOL_DATA_DIR))
         # TODO : Resolve and pass log events ID
         payload = {
             "tool_settings": tool_settings,
@@ -70,46 +73,72 @@ class StructureTool(BaseTool):
             "file_name": file_name,
         }
 
+        # TODO: Need to split extraction and indexing
+        # to avoid unwanted indexing
+        self.stream_log("Indexing document")
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
-            self.stream_log("Indexing document...")
-            tool_index.index_file(
+            index.index_file(
                 tool_id=tool_metadata[SettingsKeys.TOOL_ID],
-                embedding_type=tool_settings[SettingsKeys.EMBEDDING],
-                vector_db=tool_settings[SettingsKeys.VECTOR_DB],
-                x2text_adapter=tool_settings[SettingsKeys.X2TEXT_ADAPTER],
+                embedding_instance_id=tool_settings[SettingsKeys.EMBEDDING],
+                vector_db_instance_id=tool_settings[SettingsKeys.VECTOR_DB],
+                x2text_instance_id=tool_settings[SettingsKeys.X2TEXT_ADAPTER],
                 file_path=input_file,
                 file_hash=file_hash,
                 chunk_size=tool_settings[SettingsKeys.CHUNK_SIZE],
                 chunk_overlap=tool_settings[SettingsKeys.CHUNK_OVERLAP],
+                output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
                 reindex=True,
             )
-            self.stream_log("Fetching response for single pass extraction...")
+            if summarize_as_source:
+                self._summarize_and_index(
+                    tool_id=tool_id,
+                    tool_settings=tool_settings,
+                    tool_data_dir=tool_data_dir,
+                    responder=responder,
+                    outputs=outputs,
+                    index=index,
+                )
+            self.stream_log("Fetching response for single pass extraction")
             prompt_service_resp = responder.single_pass_extraction(payload=payload)
         else:
-            self.stream_log("Indexing document...")
             try:
+                # To reindex even if file is already
+                # indexed to get the output in required path
+                reindex = True
                 for output in outputs:
-                    tool_index.index_file(
+                    index.index_file(
                         tool_id=tool_metadata[SettingsKeys.TOOL_ID],
-                        embedding_type=output[SettingsKeys.EMBEDDING],
-                        vector_db=output[SettingsKeys.VECTOR_DB],
-                        x2text_adapter=output[SettingsKeys.X2TEXT_ADAPTER],
+                        embedding_instance_id=output[SettingsKeys.EMBEDDING],
+                        vector_db_instance_id=output[SettingsKeys.VECTOR_DB],
+                        x2text_instance_id=output[SettingsKeys.X2TEXT_ADAPTER],
                         file_path=input_file,
                         file_hash=file_hash,
                         chunk_size=output[SettingsKeys.CHUNK_SIZE],
                         chunk_overlap=output[SettingsKeys.CHUNK_OVERLAP],
-                        reindex=output[SettingsKeys.REINDEX],
+                        output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
+                        reindex=reindex,
                     )
+                    if summarize_as_source:
+                        self._summarize_and_index(
+                            tool_id=tool_id,
+                            tool_settings=tool_settings,
+                            tool_data_dir=tool_data_dir,
+                            responder=responder,
+                            outputs=output,
+                            index=index,
+                        )
+                        break
+                    reindex = False
             except Exception as e:
                 self.stream_error_and_exit(f"Error fetching data and indexing: {e}")
             self.stream_log("Fetching responses for prompts...")
             prompt_service_resp = responder.answer_prompt(payload=payload)
 
         # TODO: Make use of dataclasses
-        if prompt_service_resp["status"] == "ERROR":
+        if prompt_service_resp[SettingsKeys.STATUS] != SettingsKeys.OK:
             self.stream_error_and_exit(
                 f"Failed to fetch responses for "
-                f"prompts: {prompt_service_resp['error']}"
+                f"prompts: {prompt_service_resp[SettingsKeys.ERROR]}"
             )
 
         structured_output = prompt_service_resp[SettingsKeys.STRUCTURE_OUTPUT]
@@ -135,6 +164,53 @@ class StructureTool(BaseTool):
         except json.JSONDecodeError as e:
             self.stream_error_and_exit(f"Error encoding JSON: {e}")
         self.write_tool_result(data=json.loads(structured_output))
+
+    def _summarize_and_index(
+        self,
+        tool_id: str,
+        tool_settings: str,
+        tool_data_dir: Path,
+        responder: PromptTool,
+        outputs: dict[str, Any],
+        index: Index,
+    ) -> str:
+        llm_adapter_instance_id: str = tool_settings[SettingsKeys.LLM]
+        summarize_prompt: str = tool_settings[SettingsKeys.SUMMARIZE_PROMPT]
+        context = ""
+        extract_file_path = tool_data_dir / SettingsKeys.EXTRACT
+        with open(extract_file_path, encoding="utf-8") as file:
+            context = file.read()
+        prompt_keys = [output["name"] for output in outputs]
+        self.stream_log("Summarizing context")
+        # Handle run_id along with prompt run
+        payload = {
+            SettingsKeys.LLM_ADAPTER_INSTANCE_ID: llm_adapter_instance_id,
+            SettingsKeys.SUMMARIZE_PROMPT: summarize_prompt,
+            SettingsKeys.CONTEXT: context,
+            SettingsKeys.PROMPT_KEYS: prompt_keys,
+        }
+        response = responder.summarize(payload=payload)
+        if response[SettingsKeys.STATUS] != SettingsKeys.OK:
+            self.stream_error_and_exit(
+                f"Error summarizing response: {response[SettingsKeys.ERROR]}"
+            )
+        structure_output = json.loads(response["structure_output"])
+        summarized_context = structure_output.get(SettingsKeys.DATA, "")
+        self.stream_log("Writing summarized context to a file")
+        summarize_file_path = tool_data_dir / "SUMMARIZE"
+        with open(summarize_file_path, "w", encoding="utf-8") as f:
+            f.write(summarized_context)
+        self.stream_log("Indexing summarized context")
+        file_hash: str = index.index_file(
+            tool_id=tool_id,
+            embedding_instance_id=tool_settings[SettingsKeys.EMBEDDING],
+            vector_db_instance_id=tool_settings[SettingsKeys.VECTOR_DB],
+            x2text_instance_id=tool_settings[SettingsKeys.X2TEXT_ADAPTER],
+            file_path=summarize_file_path,
+            chunk_size=0,
+            chunk_overlap=0,
+        )
+        return file_hash
 
 
 if __name__ == "__main__":

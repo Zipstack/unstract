@@ -677,10 +677,10 @@ def run_retrieval(  # type:ignore
     retrieval_type: str,
 ) -> tuple[str, str]:
     prompt = construct_prompt_for_engine(
-        preamble=tool_settings[PSKeys.PREAMBLE],
+        preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
         prompt=output[PSKeys.PROMPTX],
-        postamble=tool_settings[PSKeys.POSTAMBLE],
-        grammar_list=tool_settings[PSKeys.GRAMMAR],
+        postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
+        grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
     )
     if retrieval_type is PSKeys.SUBQUESTION:
         subq_prompt = (
@@ -745,10 +745,10 @@ def construct_and_run_prompt(
     prompt: str,
 ) -> tuple[str, dict[str, Any]]:
     prompt = construct_prompt(
-        preamble=tool_settings[PSKeys.PREAMBLE],
+        preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
         prompt=output[prompt],
-        postamble=tool_settings[PSKeys.POSTAMBLE],
-        grammar_list=tool_settings[PSKeys.GRAMMAR],
+        postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
+        grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
         context=context,
     )
     return run_completion(
@@ -798,18 +798,23 @@ def extract_variable(
     return promptx
 
 
-def enable_single_pass_extraction() -> None:
-    """Enables single-pass-extraction plugin if available."""
+def enable_plugins() -> None:
+    """Enables plugins if available."""
     single_pass_extration_plugin: dict[str, Any] = plugins.get(
         "single-pass-extraction", {}
     )
+    summarize_plugin: dict[str, Any] = plugins.get("summarize", {})
     if single_pass_extration_plugin:
         single_pass_extration_plugin["entrypoint_cls"](
             app=app, challenge_plugin=plugins.get("challenge", {})
         )
+    if summarize_plugin:
+        summarize_plugin["entrypoint_cls"](
+            app=app,
+        )
 
 
-enable_single_pass_extraction()
+enable_plugins()
 
 
 def log_exceptions(e: HTTPException):

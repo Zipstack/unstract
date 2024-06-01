@@ -56,8 +56,6 @@ class JsonSchemaKey:
     X2TEXT_ADAPTER = "x2text_adapter"
     CHUNK_OVERLAP = "chunk-overlap"
     LLM = "llm"
-    IS_ASSERT = "is_assert"
-    ASSERTION_FAILURE_PROMPT = "assertion_failure_prompt"
     RETRIEVAL_STRATEGY = "retrieval-strategy"
     SIMPLE = "simple"
     TYPE = "type"
@@ -77,7 +75,6 @@ class JsonSchemaKey:
     WORD = "word"
     SYNONYMS = "synonyms"
     OUTPUTS = "outputs"
-    ASSERT_PROMPT = "assert_prompt"
     SECTION = "section"
     DEFAULT = "default"
     AUTHOR = "author"
@@ -92,6 +89,11 @@ class JsonSchemaKey:
     ENABLE_CHALLENGE = "enable_challenge"
     CHALLENGE_LLM = "challenge_llm"
     ENABLE_SINGLE_PASS_EXTRACTION = "enable_single_pass_extraction"
+    IMAGE_URL = "image_url"
+    IMAGE_NAME = "image_name"
+    IMAGE_TAG = "image_tag"
+    SUMMARIZE_PROMPT = "summarize_prompt"
+    SUMMARIZE_AS_SOURCE = "summarize_as_source"
 
 
 class SpecKey:
