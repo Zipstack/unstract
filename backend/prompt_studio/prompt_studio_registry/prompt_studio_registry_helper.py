@@ -52,7 +52,7 @@ class PromptStudioRegistryHelper:
             },
             "enable_challenge": {
                 "type": "boolean",
-                "title": "Challenge",
+                "title": "Enable challenge",
                 "default": False,
                 "description": "Enables Challenge",
             },
@@ -64,7 +64,7 @@ class PromptStudioRegistryHelper:
             },
             "single_pass_extraction_mode": {
                 "type": "boolean",
-                "title": "Single pass extraction",
+                "title": "Enable Single pass extraction",
                 "default": False,
                 "description": "Enables single pass extraction",
             },
