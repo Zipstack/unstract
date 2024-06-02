@@ -23,8 +23,9 @@ import { Layout } from "../layout/Layout";
 import { ManageKeys } from "../manage-keys/ManageKeys";
 import { apiDeploymentsService } from "./api-deployments-service";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
+import { fetchExecutionLogs } from "../../pipelines-or-deployments/log-modal/fetchExecutionLogs";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 
 function ApiDeployment() {
   const { sessionDetails } = useSessionStore();
@@ -43,10 +44,24 @@ function ApiDeployment() {
   const [isEdit, setIsEdit] = useState(false);
   const [workflowEndpointList, setWorkflowEndpointList] = useState([]);
   const handleException = useExceptionHandler();
-  const axiosPrivate = useAxiosPrivate();
   const [openLogsModal, setOpenLogsModal] = useState(false);
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
+  const axiosPrivate = useAxiosPrivate();
+
+  const handleFetchLogs = (page, pageSize) => {
+    fetchExecutionLogs(
+      axiosPrivate,
+      handleException,
+      sessionDetails,
+      selectedRow,
+      setExecutionLogs,
+      setExecutionLogsTotalCount,
+      setAlertDetails,
+      page,
+      pageSize
+    );
+  };
 
   const columns = [
     {
@@ -356,7 +371,15 @@ function ApiDeployment() {
           className="action-items"
           onClick={() => {
             setOpenLogsModal(true);
-            fetchExecutionLogs();
+            fetchExecutionLogs(
+              axiosPrivate,
+              handleException,
+              sessionDetails,
+              selectedRow,
+              setExecutionLogs,
+              setExecutionLogsTotalCount,
+              setAlertDetails
+            );
           }}
         >
           <div>
@@ -386,34 +409,6 @@ function ApiDeployment() {
       ),
     },
   ];
-
-  const fetchExecutionLogs = (page = 1, pageSize = 10) => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${selectedRow.id}/executions/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-      params: {
-        page: page,
-        page_size: pageSize,
-      },
-    };
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const logs = res?.data?.results?.map((result) => ({
-          created_at: result.created_at,
-          execution_id: result.id,
-          status: result.status,
-          execution_time: result.execution_time,
-        }));
-        setExecutionLogs(logs);
-        setExecutionLogsTotalCount(res.data.count);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      });
-  };
 
   return (
     <>
@@ -458,7 +453,7 @@ function ApiDeployment() {
         setOpen={setOpenLogsModal}
         logRecord={executionLogs}
         totalLogs={executionLogsTotalCount}
-        fetchExecutionLogs={fetchExecutionLogs}
+        fetchExecutionLogs={handleFetchLogs}
       />
     </>
   );
