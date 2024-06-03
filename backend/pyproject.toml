@@ -78,7 +78,7 @@ migrate_db.cmd = "python manage.py migrate"
 migrate_db.env_file = ".env"
 migrate_db.help = "Performs DB migrations for Unstract backend"
 # Commands for backend execution
-consumer.cmd = "celery -A backend worker --loglevel=info -Q celery,celery_periodic_logs"
+consumer.cmd = "celery -A backend worker --loglevel=info -Q celery,celery_periodic_logs --autoscale=8,1"
 consumer.env_file = ".env"
 consumer.help = "Runs the Unstract consumer"
 # Celery Flower

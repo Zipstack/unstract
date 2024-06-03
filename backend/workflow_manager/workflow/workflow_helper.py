@@ -5,6 +5,7 @@ import traceback
 import uuid
 from typing import Any, Optional
 
+from account.constants import Common
 from account.models import Organization
 from api.models import APIDeployment
 from celery import current_task
@@ -14,6 +15,7 @@ from celery.result import AsyncResult
 from django.db import IntegrityError, connection
 from django_tenants.utils import get_tenant_model, tenant_context
 from pipeline.models import Pipeline
+from pipeline.pipeline_processor import PipelineProcessor
 from rest_framework import serializers
 from tool_instance.constants import ToolInstanceKey
 from tool_instance.models import ToolInstance
@@ -21,6 +23,7 @@ from tool_instance.tool_instance_helper import ToolInstanceHelper
 from unstract.workflow_execution.enums import LogComponent, LogLevel, LogState
 from unstract.workflow_execution.exceptions import StopExecution
 from utils.cache_service import CacheService
+from utils.local_context import StateStore
 from workflow_manager.endpoint.destination import DestinationConnector
 from workflow_manager.endpoint.source import SourceConnector
 from workflow_manager.workflow.constants import (
@@ -272,14 +275,20 @@ class WorkflowHelper:
                 single_step=single_step,
                 hash_values_of_files=hash_values_of_files,
             )
-            log_id = str(execution_service.execution_log_id)
-            if log_id:
-                log_id = str(log_id)
+            # Update pipeline status
+            if updated_execution.status != ExecutionStatus.ERROR.value:
+                PipelineProcessor.update_pipeline(
+                    pipeline_id, Pipeline.PipelineStatus.SUCCESS
+                )
+            else:
+                PipelineProcessor.update_pipeline(
+                    pipeline_id, Pipeline.PipelineStatus.FAILURE
+                )
             return ExecutionResponse(
                 str(workflow.id),
                 str(updated_execution.id),
                 updated_execution.status,
-                log_id=log_id,
+                log_id=str(execution_service.execution_log_id),
                 error=updated_execution.error_message,
                 mode=updated_execution.execution_mode,
                 result=destination.api_results,
@@ -339,12 +348,14 @@ class WorkflowHelper:
         """
         try:
             org_schema = connection.tenant.schema_name
+            log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
             async_execution = WorkflowHelper.execute_bin.delay(
                 org_schema,
                 workflow_id,
                 hash_values_of_files=hash_values_of_files,
                 execution_id=execution_id,
                 pipeline_id=pipeline_id,
+                log_events_id=log_events_id,
             )
             if timeout > -1:
                 async_execution.wait(
@@ -399,6 +410,7 @@ class WorkflowHelper:
         scheduled: bool = False,
         execution_mode: Optional[tuple[str, str]] = None,
         pipeline_id: Optional[str] = None,
+        **kwargs: dict[str, Any],
     ) -> Optional[list[Any]]:
         """Asynchronous Execution By celery.
 
@@ -413,6 +425,10 @@ class WorkflowHelper:
                 WorkflowExecution Mode. Defaults to None.
             pipeline_id (Optional[str], optional): Id of pipeline.
                 Defaults to None.
+
+        Kwargs:
+            log_events_id (str): Session ID of the user, helps establish
+                WS connection for streaming logs to the FE
 
         Returns:
             dict[str, list[Any]]: Returns a dict with result from
@@ -432,6 +448,7 @@ class WorkflowHelper:
                         pipeline_id=pipeline_id,
                         mode=WorkflowExecution.Mode.QUEUE,
                         execution_id=execution_id,
+                        **kwargs,  # type: ignore
                     )
                 )
             except IntegrityError:

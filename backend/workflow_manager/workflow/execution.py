@@ -91,6 +91,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             self.execution_type = workflow_execution.execution_type
             self.execution_log_id = workflow_execution.execution_log_id
 
+        logger.info(f"Web socket messaging channel ID: {str(self.execution_log_id)}")
         self.set_messaging_channel(str(self.execution_log_id))
         project_settings = {}
         project_settings[WorkflowKey.WF_PROJECT_GUID] = str(self.execution_log_id)
@@ -115,7 +116,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         pipeline_id: Optional[str] = None,
         single_step: bool = False,
         scheduled: bool = False,
-        log_guid: Optional[str] = None,
+        log_events_id: Optional[str] = None,
         execution_id: Optional[str] = None,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
     ) -> WorkflowExecution:
@@ -129,7 +130,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             if single_step
             else WorkflowExecution.Type.COMPLETE
         )
-        log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
         execution_log_id = log_events_id if log_events_id else pipeline_id
         workflow_execution = WorkflowExecution(
             pipeline_id=pipeline_id,
@@ -254,8 +254,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             LogState.SUCCESS, "Executed successfully", LogComponent.WORKFLOW
         )
         self.publish_log(
-            f"Execution completed successfully for the files {processed_files} "
-            f"out of {total_files}"
+            f"Execution completed for {processed_files} files out of {total_files}"
         )
 
     def publish_initial_tool_execution_logs(
