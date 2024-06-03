@@ -17,6 +17,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { TokenUsage } from "../token-usage/TokenUsage";
+import { useTokenUsageStore } from "../../../store/token-usage-store";
 
 const columns = [
   {
@@ -53,7 +54,6 @@ function OutputForDocModal({
   promptKey,
   profileManagerId,
   docOutputs,
-  tokenUsage,
 }) {
   const [promptOutputs, setPromptOutputs] = useState([]);
   const [rows, setRows] = useState([]);
@@ -72,6 +72,7 @@ function OutputForDocModal({
   const navigate = useNavigate();
   const { setAlertDetails } = useAlertStore();
   const { handleException } = useExceptionHandler();
+  const { tokenUsage } = useTokenUsageStore();
 
   useEffect(() => {
     if (!open) {
@@ -208,7 +209,7 @@ function OutputForDocModal({
         key: item,
         document: item?.document_name,
         token_count: (
-          <TokenUsage tokenUsage={tokenUsage} docId={item?.document_id} />
+          <TokenUsage tokenUsageId={promptId + "__" + item?.document_id} />
         ),
         value: (
           <>
@@ -287,7 +288,6 @@ OutputForDocModal.propTypes = {
   promptKey: PropTypes.string.isRequired,
   profileManagerId: PropTypes.string,
   docOutputs: PropTypes.object,
-  tokenUsage: PropTypes.object.isRequired,
 };
 
 export { OutputForDocModal };
