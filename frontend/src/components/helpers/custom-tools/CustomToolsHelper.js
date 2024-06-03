@@ -92,7 +92,6 @@ function CustomToolsHelper() {
   useEffect(() => {
     return () => {
       setDefaultCustomTool();
-      emptyCusToolMessages();
       resetTokenUsage();
     };
   }, []);
