@@ -1,26 +1,27 @@
 import { Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { useTokenUsageStore } from "../../../store/token-usage-store";
 
 /**
  * TokenUsage component displays token usage details in a tag with a tooltip.
  *
- * @param {Object} tokenUsage - An object containing token usage details.
- * @param {string} docId - The document ID to fetch token usage for.
+ * @param {string} tokenUsageId - The token usage ID to fetch token usage for.
  * @return {JSX.Element} - The TokenUsage component.
  */
-function TokenUsage({ tokenUsage, docId }) {
+function TokenUsage({ tokenUsageId }) {
   const [tokens, setTokens] = useState({});
+  const { tokenUsage } = useTokenUsageStore();
 
   useEffect(() => {
-    // Check if the token usage for the given docId is available
-    if (tokenUsage[docId] === undefined) {
+    // Check if the token usage for the given tokenUsageId is available
+    if (tokenUsage[tokenUsageId] === undefined) {
       setTokens({}); // Reset tokens state if token usage is not available
       return;
     }
 
-    setTokens(tokenUsage[docId]); // Update tokens state with the token usage data for the given docId
-  }, [tokenUsage, docId]);
+    setTokens(tokenUsage[tokenUsageId]); // Update tokens state with the token usage data for the given tokenUsageId
+  }, [tokenUsage, tokenUsageId]);
 
   // If no tokens data is available, render nothing
   if (!tokens || !Object.keys(tokens)?.length) {
@@ -35,8 +36,7 @@ function TokenUsage({ tokenUsage, docId }) {
 }
 
 TokenUsage.propTypes = {
-  tokenUsage: PropTypes.object.isRequired,
-  docId: PropTypes.string.isRequired,
+  tokenUsageId: PropTypes.string.isRequired,
 };
 
 export { TokenUsage };
