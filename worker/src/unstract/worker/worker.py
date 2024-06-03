@@ -217,12 +217,21 @@ class UnstractWorker:
             return log_type
         return None
 
-    def get_spec(self) -> Optional[Any]:
+    def run_command(self, command: str) -> Optional[Any]:
+        """Runs any given command on the container.
+
+        Args:
+            command (str): Command to be executed.
+
+        Returns:
+            Optional[Any]: Response from container or None if error occures.
+        """
+        command = command.upper()
         self.container_name = self.normalize_container_name(self.image_name)
         container_config = {
             "name": self.container_name,
             "image": self.image,
-            "command": ["--command", "SPEC"],
+            "command": ["--command", command],
             "detach": True,
             "stream": True,
             "auto_remove": True,
@@ -237,85 +246,7 @@ class UnstractWorker:
             for line in container.logs(stream=True):
                 text = line.decode().strip()
                 self.logger.info(text)
-                if '"type": "SPEC"' in text:
-                    return json.loads(text)
-        except Exception as e:
-            self.logger.error(f"Failed to run docker container: {e}")
-        return None
-
-    def get_properties(self) -> Optional[Any]:
-        self.container_name = self.normalize_container_name(self.image_name)
-        container_config = {
-            "name": self.container_name,
-            "image": self.image,
-            "command": ["--command", "PROPERTIES"],
-            "detach": True,
-            "stream": True,
-            "auto_remove": True,
-            "stderr": True,
-            "stdout": True,
-        }
-        self.logger.info(f"Docker config: {container_config}")
-
-        # Run the Docker container
-        try:
-            container = self.client.containers.run(**container_config)
-            for line in container.logs(stream=True):
-                text = line.decode().strip()
-                self.logger.info(text)
-                if '"type": "PROPERTIES"' in text:
-                    return json.loads(text)
-        except Exception as e:
-            self.logger.error(f"Failed to run docker container: {e}")
-        return None
-
-    def get_icon(self) -> Optional[Any]:
-        self.container_name = self.normalize_container_name(self.image_name)
-        container_config = {
-            "name": self.container_name,
-            "image": self.image,
-            "command": ["--command", "ICON"],
-            "detach": True,
-            "stream": True,
-            "auto_remove": True,
-            "stderr": True,
-            "stdout": True,
-        }
-        self.logger.info(f"Docker config: {container_config}")
-
-        # Run the Docker container
-        try:
-            container = self.client.containers.run(**container_config)
-            for line in container.logs(stream=True):
-                text = line.decode().strip()
-                self.logger.info(text)
-                if '"type": "ICON"' in text:
-                    return json.loads(text)
-        except Exception as e:
-            self.logger.error(f"Failed to run docker container: {e}")
-        return None
-
-    def get_variables(self) -> Optional[Any]:
-        self.container_name = self.normalize_container_name(self.image_name)
-        container_config = {
-            "name": self.container_name,
-            "image": self.image,
-            "command": ["--command", "VARIABLES"],
-            "detach": True,
-            "stream": True,
-            "auto_remove": True,
-            "stderr": True,
-            "stdout": True,
-        }
-        self.logger.info(f"Docker config: {container_config}")
-
-        # Run the Docker container
-        try:
-            container = self.client.containers.run(**container_config)
-            for line in container.logs(stream=True):
-                text = line.decode().strip()
-                self.logger.info(text)
-                if '"type": "VARIABLES"' in text:
+                if f'"type": "${command}"' in text:
                     return json.loads(text)
         except Exception as e:
             self.logger.error(f"Failed to run docker container: {e}")
