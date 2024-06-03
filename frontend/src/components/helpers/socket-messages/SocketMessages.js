@@ -7,6 +7,7 @@ import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { useSessionStore } from "../../../store/session-store";
+import { useUsageStore } from "../../../store/usage-store";
 
 function SocketMessages() {
   const [logId, setLogId] = useState("");
@@ -23,6 +24,7 @@ function SocketMessages() {
   const socket = useContext(SocketContext);
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
+  const { setLLMTokenUsage } = useUsageStore();
 
   useEffect(() => {
     setLogId(sessionDetails?.logEventsId || "");
@@ -43,6 +45,11 @@ function SocketMessages() {
       }
       if (msg?.type === "LOG" && msg?.service === "prompt") {
         updateCusToolMessages(msg);
+      }
+      if (msg?.type === "LOG" && msg?.service === "usage") {
+        const remainingTokens =
+          msg?.max_token_count_set - msg?.added_token_count;
+        setLLMTokenUsage(Math.max(remainingTokens, 0));
       }
     } catch (err) {
       setAlertDetails(handleException(err, "Failed to process socket message"));
