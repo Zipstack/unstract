@@ -75,5 +75,5 @@ class UnstractDBException(APIException):
     default_detail = "Error creating/inserting to database. "
 
     def __init__(self, detail: str = default_detail) -> None:
-        status_code = 400
+        status_code = 500
         super().__init__(detail=detail, code=status_code)
