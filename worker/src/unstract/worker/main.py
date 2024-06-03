@@ -1,8 +1,7 @@
 from typing import Any, Optional
 
-from flask import Blueprint, Flask, Response, jsonify, request
+from flask import Blueprint, Flask, Response, abort, jsonify, request
 from unstract.worker import UnstractWorker
-from unstract.worker.constants import ToolCommandKey
 from unstract.worker.utils import Utils
 
 app = Flask(__name__)
@@ -45,41 +44,24 @@ def run_container() -> Optional[Any]:
     return result
 
 
-@bp.route("container/spec", methods=["GET"])
-def get_spec() -> Optional[Any]:
-    return get_resource(ToolCommandKey.SPEC)
+@bp.route("container/<command>", methods=["GET"])
+def run_command(command: str) -> Optional[Any]:
+    """Endpoint which will can execute any of the below commands.
 
+    Args:
+        command (str): AnyOf("properties","spec","variables","icon")
 
-@bp.route("container/properties", methods=["GET"])
-def get_properties() -> Optional[Any]:
-    return get_resource(ToolCommandKey.PROPERTIES)
-
-
-@bp.route("container/icon", methods=["GET"])
-def get_icon() -> Optional[Any]:
-    return get_resource(ToolCommandKey.ICON)
-
-
-@bp.route("container/variables", methods=["GET"])
-def get_variables() -> Optional[Any]:
-    return get_resource(ToolCommandKey.VARIABLES)
-
-
-def get_resource(endpoint: str) -> Optional[Any]:
+    Returns:
+        Optional[Any]: Response from container for the specific command.
+                       Returns None in case of error.
+    """
+    if command not in {"properties", "spec", "variables", "icon"}:
+        abort(404)
     image_name = request.args.get("image_name")
     image_tag = request.args.get("image_tag")
     worker = UnstractWorker(image_name, image_tag)
 
-    if endpoint == ToolCommandKey.PROPERTIES:
-        return worker.get_properties()
-    elif endpoint == ToolCommandKey.ICON:
-        return worker.get_icon()
-    elif endpoint == ToolCommandKey.VARIABLES:
-        return worker.get_variables()
-    elif endpoint == ToolCommandKey.SPEC:
-        return worker.get_spec()
-    else:
-        return None
+    return worker.run_command(command)
 
 
 # Register the Blueprint with the Flask app
