@@ -3,6 +3,7 @@ import logging
 from django.db.models import Sum
 from rest_framework.exceptions import APIException
 
+from .constants import UsageKeys
 from .models import Usage
 
 logger = logging.getLogger(__name__)
@@ -31,20 +32,24 @@ class UsageHelper:
         try:
             # Aggregate the token counts for the given run_id
             usage_summary = Usage.objects.filter(run_id=run_id).aggregate(
-                embedding_tokens=Sum("embedding_tokens"),
-                prompt_tokens=Sum("prompt_tokens"),
-                completion_tokens=Sum("completion_tokens"),
-                total_tokens=Sum("total_tokens"),
+                embedding_tokens=Sum(UsageKeys.EMBEDDING_TOKENS),
+                prompt_tokens=Sum(UsageKeys.PROMPT_TOKENS),
+                completion_tokens=Sum(UsageKeys.COMPLETION_TOKENS),
+                total_tokens=Sum(UsageKeys.TOTAL_TOKENS),
             )
 
             logger.info(f"Token counts aggregated successfully for run_id: {run_id}")
 
             # Prepare the result dictionary with None as the default value
             result = {
-                "embedding_tokens": usage_summary.get("embedding_tokens"),
-                "prompt_tokens": usage_summary.get("prompt_tokens"),
-                "completion_tokens": usage_summary.get("completion_tokens"),
-                "total_tokens": usage_summary.get("total_tokens"),
+                UsageKeys.EMBEDDING_TOKENS: usage_summary.get(
+                    UsageKeys.EMBEDDING_TOKENS
+                ),
+                UsageKeys.PROMPT_TOKENS: usage_summary.get(UsageKeys.PROMPT_TOKENS),
+                UsageKeys.COMPLETION_TOKENS: usage_summary.get(
+                    UsageKeys.COMPLETION_TOKENS
+                ),
+                UsageKeys.TOTAL_TOKENS: usage_summary.get(UsageKeys.TOTAL_TOKENS),
             }
             return result
         except Usage.DoesNotExist:
