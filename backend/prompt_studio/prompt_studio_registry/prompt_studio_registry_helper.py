@@ -2,6 +2,7 @@ import logging
 from typing import Any, Optional
 
 from account.models import User
+from adapter_processor.models import AdapterInstance
 from django.conf import settings
 from django.db import IntegrityError
 from prompt_studio.prompt_profile_manager.models import ProfileManager
@@ -41,7 +42,40 @@ class PromptStudioRegistryHelper:
         Returns:
             dict: spec dict
         """
-        spec = Spec(title=str(tool.tool_id), description=tool.description)
+        properties = {
+            "challenge_llm": {
+                "type": "string",
+                "title": "Challenge LLM",
+                "adapterType": "LLM",
+                "description": "LLM to use for challenge",
+                "adapterIdKey": "challenge_llm_adapter_id",
+            },
+            "enable_challenge": {
+                "type": "boolean",
+                "title": "Enable challenge",
+                "default": False,
+                "description": "Enables Challenge",
+            },
+            "summarize_as_source": {
+                "type": "boolean",
+                "title": "Summarize and use summary as source",
+                "default": False,
+                "description": "Enables summary and use summarized content as source",
+            },
+            "single_pass_extraction_mode": {
+                "type": "boolean",
+                "title": "Enable Single pass extraction",
+                "default": False,
+                "description": "Enables single pass extraction",
+            },
+        }
+
+        spec = Spec(
+            title=str(tool.tool_id),
+            description=tool.description,
+            required=[JsonSchemaKey.CHALLENGE_LLM],
+            properties=properties,
+        )
         return spec
 
     @staticmethod
@@ -85,14 +119,25 @@ class PromptStudioRegistryHelper:
                 f"ID {prompt_registry_id}: {e} "
             )
             return None
+        # The below properties are introduced after 0.20.0
+        # So defaulting to 0.20.0 if the properties are not found
+        image_url = prompt_registry_tool.tool_metadata.get(
+            JsonSchemaKey.IMAGE_URL, "docker:unstract/tool-structure:0.0.20"
+        )
+        image_name = prompt_registry_tool.tool_metadata.get(
+            JsonSchemaKey.IMAGE_NAME, "unstract/tool-structure"
+        )
+        image_tag = prompt_registry_tool.tool_metadata.get(
+            JsonSchemaKey.IMAGE_TAG, "0.0.20"
+        )
         return Tool(
             tool_uid=prompt_registry_tool.prompt_registry_id,
             properties=Properties.from_dict(prompt_registry_tool.tool_property),
             spec=Spec.from_dict(prompt_registry_tool.tool_spec),
             icon=prompt_registry_tool.icon,
-            image_url=settings.STRUCTURE_TOOL_IMAGE_URL,
-            image_name=settings.STRUCTURE_TOOL_IMAGE_NAME,
-            image_tag=settings.STRUCTURE_TOOL_IMAGE_TAG,
+            image_url=image_url,
+            image_name=image_name,
+            image_tag=image_tag,
         )
 
     @staticmethod
@@ -197,14 +242,45 @@ class PromptStudioRegistryHelper:
         export_metadata[JsonSchemaKey.DESCRIPTION] = tool.description
         export_metadata[JsonSchemaKey.AUTHOR] = tool.author
         export_metadata[JsonSchemaKey.TOOL_ID] = str(tool.tool_id)
-
-        vector_db = ""
-        embedding_suffix = ""
-        adapter_id = ""
-        llm = ""
-        embedding_model = ""
+        export_metadata[JsonSchemaKey.IMAGE_URL] = settings.STRUCTURE_TOOL_IMAGE_URL
+        export_metadata[JsonSchemaKey.IMAGE_NAME] = settings.STRUCTURE_TOOL_IMAGE_NAME
+        export_metadata[JsonSchemaKey.IMAGE_TAG] = settings.STRUCTURE_TOOL_IMAGE_TAG
 
         default_llm_profile = ProfileManager.get_default_llm_profile(tool)
+        challenge_llm_instance: Optional[AdapterInstance] = tool.challenge_llm
+        challenge_llm: Optional[str] = None
+        # Using default profile manager llm if challenge_llm is None
+        if challenge_llm_instance:
+            challenge_llm = str(challenge_llm_instance.id)
+        else:
+            challenge_llm = str(default_llm_profile.llm.id)
+
+        embedding_suffix = ""
+        adapter_id = ""
+        vector_db = str(default_llm_profile.vector_store.id)
+        embedding_model = str(default_llm_profile.embedding_model.id)
+        llm = str(default_llm_profile.llm.id)
+        x2text = str(default_llm_profile.x2text.id)
+
+        # Tool settings
+        tool_settings = {}
+        tool_settings[JsonSchemaKey.SUMMARIZE_PROMPT] = tool.summarize_prompt
+        tool_settings[JsonSchemaKey.SUMMARIZE_AS_SOURCE] = tool.summarize_as_source
+        tool_settings[JsonSchemaKey.PREAMBLE] = tool.preamble
+        tool_settings[JsonSchemaKey.POSTAMBLE] = tool.postamble
+        tool_settings[JsonSchemaKey.GRAMMAR] = grammar_list
+        tool_settings[JsonSchemaKey.LLM] = llm
+        tool_settings[JsonSchemaKey.X2TEXT_ADAPTER] = x2text
+        tool_settings[JsonSchemaKey.VECTOR_DB] = vector_db
+        tool_settings[JsonSchemaKey.EMBEDDING] = embedding_model
+        tool_settings[JsonSchemaKey.CHUNK_SIZE] = default_llm_profile.chunk_size
+        tool_settings[JsonSchemaKey.CHUNK_OVERLAP] = default_llm_profile.chunk_overlap
+        tool_settings[JsonSchemaKey.ENABLE_CHALLENGE] = tool.enable_challenge
+        tool_settings[JsonSchemaKey.CHALLENGE_LLM] = challenge_llm
+        tool_settings[JsonSchemaKey.ENABLE_SINGLE_PASS_EXTRACTION] = (
+            tool.single_pass_extraction_mode
+        )
+
         for prompt in prompts:
 
             if not prompt.prompt:
@@ -233,12 +309,6 @@ class PromptStudioRegistryHelper:
             adapter_id = str(prompt.profile_manager.embedding_model.adapter_id)
             embedding_suffix = adapter_id.split("|")[0]
 
-            # TODO: Remove these fields related to assertion
-            output[JsonSchemaKey.ASSERTION_FAILURE_PROMPT] = (
-                prompt.assertion_failure_prompt
-            )
-            output[JsonSchemaKey.ASSERT_PROMPT] = prompt.assert_prompt
-            output[JsonSchemaKey.IS_ASSERT] = prompt.is_assert
             output[JsonSchemaKey.PROMPT] = prompt.prompt
             output[JsonSchemaKey.ACTIVE] = prompt.active
             output[JsonSchemaKey.CHUNK_SIZE] = prompt.profile_manager.chunk_size
@@ -279,7 +349,7 @@ class PromptStudioRegistryHelper:
                 f"Cannot export tool. Prompt(s): {', '.join(invalidated_outputs)} "
                 "were not run. Please run them before exporting."
             )
-
+        export_metadata[JsonSchemaKey.TOOL_SETTINGS] = tool_settings
         export_metadata[JsonSchemaKey.OUTPUTS] = outputs
         return export_metadata
 

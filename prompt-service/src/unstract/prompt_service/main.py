@@ -167,6 +167,7 @@ def prompt_processor() -> Any:
     payload: dict[Any, Any] = request.json
     if not payload:
         raise NoPayloadError
+    tool_settings = payload.get(PSKeys.TOOL_SETTINGS, {})
     outputs = payload.get(PSKeys.OUTPUTS)
     tool_id: str = payload.get(PSKeys.TOOL_ID, "")
     run_id: str = payload.get(PSKeys.RUN_ID, "")
@@ -331,18 +332,18 @@ def prompt_processor() -> Any:
                             msg,
                         )
                         raise APIError(message=msg)
-                    # TODO: Use vectorDB name when available
-                    _publish_log(
-                        log_events_id,
-                        {
-                            "tool_id": tool_id,
-                            "prompt_key": prompt_name,
-                            "doc_name": doc_name,
-                        },
-                        LogLevel.DEBUG,
-                        RunLevel.RUN,
-                        "Fetched context from vector DB",
-                    )
+                # TODO: Use vectorDB name when available
+                _publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.DEBUG,
+                    RunLevel.RUN,
+                    "Fetched context from vector DB",
+                )
 
             if chunk_size == 0:
                 _publish_log(
@@ -357,10 +358,11 @@ def prompt_processor() -> Any:
                     "Retrieving answer from LLM",
                 )
                 answer = construct_and_run_prompt(
-                    output,
-                    llm,
-                    context,
-                    "promptx",
+                    tool_settings=tool_settings,
+                    output=output,
+                    llm=llm,
+                    context=context,
+                    prompt="promptx",
                 )
             else:
                 answer = "NA"
@@ -376,31 +378,33 @@ def prompt_processor() -> Any:
                     "Retrieving context from adapter",
                 )
 
-                if output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SIMPLE:
-                    answer, context = run_retrieval(
-                        output, doc_id, llm, vector_index, PSKeys.SIMPLE
-                    )
-                elif output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SUBQUESTION:
-                    answer, context = run_retrieval(
-                        output, doc_id, llm, vector_index, PSKeys.SUBQUESTION
-                    )
-                else:
-                    app.logger.info(
-                        "Invalid retrieval strategy "
-                        f"passed {output[PSKeys.RETRIEVAL_STRATEGY]}"
-                    )
+            retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
 
-                _publish_log(
-                    log_events_id,
-                    {
-                        "tool_id": tool_id,
-                        "prompt_key": prompt_name,
-                        "doc_name": doc_name,
-                    },
-                    LogLevel.DEBUG,
-                    RunLevel.RUN,
-                    "Retrieved context from adapter",
+            if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
+                answer, context = run_retrieval(
+                    tool_settings=tool_settings,
+                    output=output,
+                    doc_id=doc_id,
+                    llm=llm,
+                    vector_index=vector_index,
+                    retrieval_type=retrieval_strategy,
                 )
+            else:
+                app.logger.info(
+                    "Invalid retrieval strategy passed: %s", retrieval_strategy
+                )
+
+            _publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.DEBUG,
+                RunLevel.RUN,
+                "Retrieved context from adapter",
+            )
 
             _publish_log(
                 log_events_id,
@@ -515,7 +519,7 @@ def prompt_processor() -> Any:
                 ].rstrip("\n")
 
             # Challenge condition
-            if "enable_challenge" in output and output["enable_challenge"]:
+            if tool_settings.get("enable_challenge"):
                 challenge_plugin: dict[str, Any] = plugins.get("challenge", {})
                 try:
                     if challenge_plugin:
@@ -530,16 +534,9 @@ def prompt_processor() -> Any:
                             RunLevel.CHALLENGE,
                             "Challenging response",
                         )
-                        tool_settings: dict[str, Any] = {
-                            PSKeys.PREAMBLE: output[PSKeys.PREAMBLE],
-                            PSKeys.POSTAMBLE: output[PSKeys.POSTAMBLE],
-                            PSKeys.GRAMMAR: output[PSKeys.GRAMMAR],
-                            PSKeys.LLM: adapter_instance_id,
-                            PSKeys.CHALLENGE_LLM: output[PSKeys.CHALLENGE_LLM],
-                        }
                         challenge_llm = LLM(
                             tool=util,
-                            adapter_instance_id=output[PSKeys.CHALLENGE_LLM],
+                            adapter_instance_id=tool_settings[PSKeys.CHALLENGE_LLM],
                             usage_kwargs=usage_kwargs,
                         )
                         challenge = challenge_plugin["entrypoint_cls"](
@@ -561,9 +558,7 @@ def prompt_processor() -> Any:
                         )
                 except challenge_plugin["exception_cls"] as e:
                     app.logger.error(
-                        "Failed to challenge prompt %s: %s",
-                        output["name"],
-                        str(e),
+                        "Failed to challenge prompt %s: %s", output["name"], str(e)
                     )
                     _publish_log(
                         log_events_id,
@@ -678,6 +673,7 @@ def prompt_processor() -> Any:
 
 
 def run_retrieval(  # type:ignore
+    tool_settings: dict[str, Any],
     output: dict[str, Any],
     doc_id: str,
     llm: LLM,
@@ -685,10 +681,10 @@ def run_retrieval(  # type:ignore
     retrieval_type: str,
 ) -> tuple[str, str]:
     prompt = construct_prompt_for_engine(
-        preamble=output["preamble"],
-        prompt=output["promptx"],
-        postamble=output["postamble"],
-        grammar_list=output["grammar"],
+        preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
+        prompt=output[PSKeys.PROMPTX],
+        postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
+        grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
     )
     if retrieval_type is PSKeys.SUBQUESTION:
         subq_prompt = (
@@ -713,10 +709,11 @@ def run_retrieval(  # type:ignore
         context = _retrieve_context(output, doc_id, vector_index, prompt)
 
     answer = construct_and_run_prompt(  # type:ignore
-        output,
-        llm,
-        context,
-        "promptx",
+        tool_settings=tool_settings,
+        output=output,
+        llm=llm,
+        context=context,
+        prompt="promptx",
     )
 
     return (answer, context)
@@ -745,16 +742,17 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
 
 
 def construct_and_run_prompt(
+    tool_settings: dict[str, Any],
     output: dict[str, Any],
     llm: LLM,
     context: str,
     prompt: str,
 ) -> tuple[str, dict[str, Any]]:
     prompt = construct_prompt(
-        preamble=output[PSKeys.PREAMBLE],
+        preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
         prompt=output[prompt],
-        postamble=output[PSKeys.POSTAMBLE],
-        grammar_list=output[PSKeys.GRAMMAR],
+        postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
+        grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
         context=context,
     )
     return run_completion(
@@ -804,18 +802,23 @@ def extract_variable(
     return promptx
 
 
-def enable_single_pass_extraction() -> None:
-    """Enables single-pass-extraction plugin if available."""
+def enable_plugins() -> None:
+    """Enables plugins if available."""
     single_pass_extration_plugin: dict[str, Any] = plugins.get(
         "single-pass-extraction", {}
     )
+    summarize_plugin: dict[str, Any] = plugins.get("summarize", {})
     if single_pass_extration_plugin:
         single_pass_extration_plugin["entrypoint_cls"](
             app=app, challenge_plugin=plugins.get("challenge", {})
         )
+    if summarize_plugin:
+        summarize_plugin["entrypoint_cls"](
+            app=app,
+        )
 
 
-enable_single_pass_extraction()
+enable_plugins()
 
 
 def log_exceptions(e: HTTPException):
