@@ -3,12 +3,12 @@ import logging
 import os
 from datetime import datetime, timezone
 
-import redis
 from logs_helper.constants import LogsHelperKeys
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from utils.local_context import StateStore
+from django_redis import get_redis_connection
 
 from .serializers import StoreLogMessagesSerializer
 
@@ -18,15 +18,10 @@ logger = logging.getLogger(__name__)
 class LogsHelperView(viewsets.ModelViewSet):
     """Viewset to handle all Tool Studio prompt related API logics."""
 
-    r = redis.Redis(
-        host=os.environ.get("REDIS_HOST", "http://localhost"),
-        port=os.environ.get("REDIS_PORT", "6379"),
-        username=os.environ.get("REDIS_USER", ""),
-        password=os.environ.get("REDIS_PASSWORD", ""),
-    )
+    r = get_redis_connection("default")
 
     @action(detail=False, methods=["get"])
-    def get_logs(self):
+    def get_logs(self, request):
         # Extract the session ID
         session_id: str = StateStore.get(LogsHelperKeys.LOG_EVENTS_ID)
 

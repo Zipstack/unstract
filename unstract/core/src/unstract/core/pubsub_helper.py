@@ -3,17 +3,11 @@ import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Optional
-
-import redis
+from django_redis import get_redis_connection
 
 
 class LogPublisher:
-    r = redis.Redis(
-        host=os.environ.get("REDIS_HOST", "http://localhost"),
-        port=os.environ.get("REDIS_PORT", "6379"),
-        username=os.environ.get("REDIS_USER", ""),
-        password=os.environ.get("REDIS_PASSWORD", ""),
-    )
+    r = get_redis_connection("default")
 
     @staticmethod
     def log_usage(

@@ -41,7 +41,7 @@ function PageLayout() {
       const response = await axios(requestOptions);
       return response.data;
     } catch (error) {
-      return;
+      return { data: [] };
     }
   };
 
