@@ -234,7 +234,6 @@ class StructureTool(BaseTool):
             file_hash=summarize_file_hash,
             chunk_size=0,
             chunk_overlap=0,
-            reindex=True,
         )
         return summarize_file_hash
 
