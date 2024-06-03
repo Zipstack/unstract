@@ -10,6 +10,7 @@ from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
+from unstract.sdk.utils import ToolUtils
 
 
 class StructureTool(BaseTool):
@@ -63,14 +64,16 @@ class StructureTool(BaseTool):
 
         prompt_service_resp = None
         _, file_name = os.path.split(input_file)
+        if summarize_as_source:
+            file_name = SettingsKeys.SUMMARIZE
         tool_data_dir = Path(self.get_env_or_die(SettingsKeys.TOOL_DATA_DIR))
         # TODO : Resolve and pass log events ID
         payload = {
-            "tool_settings": tool_settings,
-            "outputs": outputs,
-            "tool_id": tool_id,
-            "file_hash": file_hash,
-            "file_name": file_name,
+            SettingsKeys.TOOL_SETTINGS: tool_settings,
+            SettingsKeys.OUTPUTS: outputs,
+            SettingsKeys.TOOL_ID: tool_id,
+            SettingsKeys.FILE_HASH: file_hash,
+            SettingsKeys.FILE_NAME: file_name,
         }
 
         # TODO: Need to split extraction and indexing
@@ -90,7 +93,7 @@ class StructureTool(BaseTool):
                 reindex=True,
             )
             if summarize_as_source:
-                self._summarize_and_index(
+                summarize_file_hash = self._summarize_and_index(
                     tool_id=tool_id,
                     tool_settings=tool_settings,
                     tool_data_dir=tool_data_dir,
@@ -98,6 +101,7 @@ class StructureTool(BaseTool):
                     outputs=outputs,
                     index=index,
                 )
+                payload[SettingsKeys.FILE_HASH] = summarize_file_hash
             self.stream_log("Fetching response for single pass extraction")
             prompt_service_resp = responder.single_pass_extraction(payload=payload)
         else:
@@ -119,14 +123,15 @@ class StructureTool(BaseTool):
                         reindex=reindex,
                     )
                     if summarize_as_source:
-                        self._summarize_and_index(
+                        summarize_file_hash = self._summarize_and_index(
                             tool_id=tool_id,
                             tool_settings=tool_settings,
                             tool_data_dir=tool_data_dir,
                             responder=responder,
-                            outputs=output,
+                            outputs=outputs,
                             index=index,
                         )
+                        payload[SettingsKeys.FILE_HASH] = summarize_file_hash
                         # For summary indexing should be done
                         # only once. So breaking the loop
                         break
@@ -170,12 +175,26 @@ class StructureTool(BaseTool):
     def _summarize_and_index(
         self,
         tool_id: str,
-        tool_settings: str,
+        tool_settings: dict[str, Any],
         tool_data_dir: Path,
         responder: PromptTool,
         outputs: dict[str, Any],
         index: Index,
     ) -> str:
+        """Summarizes the context of the file and indexes the summarized
+        content.
+
+        Args:
+            tool_id (str): The identifier of the tool.
+            tool_settings (dict[str, Any]): Settings for the tool.
+            tool_data_dir (Path): Directory where tool data is stored.
+            responder (PromptTool): Instance of a tool used to generate the summary.
+            outputs (dict[str, Any]): Dictionary containing prompt details.
+            index (Index): Instance used to index the summarized content.
+
+        Returns:
+            str: The hash of the summarized file.
+        """
         llm_adapter_instance_id: str = tool_settings[SettingsKeys.LLM]
         summarize_prompt: str = tool_settings[SettingsKeys.SUMMARIZE_PROMPT]
         context = ""
@@ -203,16 +222,20 @@ class StructureTool(BaseTool):
         with open(summarize_file_path, "w", encoding="utf-8") as f:
             f.write(summarized_context)
         self.stream_log("Indexing summarized context")
-        file_hash: str = index.index_file(
+        summarize_file_hash: str = ToolUtils.get_hash_from_file(
+            file_path=summarize_file_path
+        )
+        index.index_file(
             tool_id=tool_id,
             embedding_instance_id=tool_settings[SettingsKeys.EMBEDDING],
             vector_db_instance_id=tool_settings[SettingsKeys.VECTOR_DB],
             x2text_instance_id=tool_settings[SettingsKeys.X2TEXT_ADAPTER],
             file_path=summarize_file_path,
+            file_hash=summarize_file_hash,
             chunk_size=0,
             chunk_overlap=0,
         )
-        return file_hash
+        return summarize_file_hash
 
 
 if __name__ == "__main__":

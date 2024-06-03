@@ -60,5 +60,8 @@ class SettingsKeys:
     PROMPT_KEYS = "prompt_keys"
     DATA = "data"
     EXTRACT = "EXTRACT"
+    SUMMARIZE = "SUMMARIZE"
     STATUS = "status"
     OK = "OK"
+    FILE_NAME = "file_name"
+    FILE_HASH = "file_hash"
