@@ -8,6 +8,7 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
+import { useTokenUsageStore } from "../../../store/token-usage-store";
 
 function CustomToolsHelper() {
   const [isLoading, setIsLoading] = useState(true);
@@ -19,6 +20,7 @@ function CustomToolsHelper() {
   const navigate = useNavigate();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const { resetTokenUsage } = useTokenUsageStore();
 
   useEffect(() => {
     const updatedCusTool = {
@@ -93,6 +95,7 @@ function CustomToolsHelper() {
     return () => {
       setDefaultCustomTool();
       emptyCusToolMessages();
+      resetTokenUsage();
     };
   }, []);
 
