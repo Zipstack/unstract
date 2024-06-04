@@ -215,7 +215,6 @@ class FileManagerHelper:
         file_name: str,
         directories: list[str],
     ) -> bool:
-        print("Deleting related files")
         fs = file_system.get_fsspec_fs()
         base_path = FileManagerHelper._get_base_path(file_system, path)
 
