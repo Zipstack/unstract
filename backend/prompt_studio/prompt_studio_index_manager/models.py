@@ -1,21 +1,23 @@
+import json
+import logging
 import uuid
 
 from account.models import User
-from django.db import models, connection
-from prompt_studio.prompt_profile_manager.models import ProfileManager
-from prompt_studio.prompt_studio_document_manager.models import DocumentManager
-from utils.models.base_model import BaseModel
+from django.db import connection, models
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
+from prompt_studio.prompt_profile_manager.models import ProfileManager
+from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
+from prompt_studio.prompt_studio_document_manager.models import DocumentManager
+from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import Embedding
 from unstract.sdk.exceptions import SdkError
 from unstract.sdk.vector_db import VectorDB
 from utils.common_utils import CommonUtils
-from unstract.sdk.constants import LogLevel
-from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
-import json
-import logging
+from utils.models.base_model import BaseModel
+
 logger = logging.getLogger(__name__)
+
 
 class IndexManager(BaseModel):
     """Model to store the index details."""
@@ -88,6 +90,7 @@ class IndexManager(BaseModel):
                 name="unique_document_manager_profile_manager",
             ),
         ]
+
 
 # Function will be executed every time an instance of IndexManager is deleted.
 @receiver(post_delete, sender=IndexManager)
