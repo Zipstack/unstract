@@ -12,7 +12,7 @@ class WorkflowRegenerationError(APIException):
 
 
 class WorkflowExecutionError(APIException):
-    status_code = 400
+    status_code = 500
     default_detail = "Error executing workflow."
 
 

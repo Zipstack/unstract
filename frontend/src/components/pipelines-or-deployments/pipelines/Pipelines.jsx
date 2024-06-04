@@ -5,8 +5,9 @@ import {
   SyncOutlined,
   HighlightOutlined,
   FileSearchOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
-import { Dropdown, Image, Space, Switch, Typography } from "antd";
+import { Button, Dropdown, Image, Space, Switch, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import cronstrue from "cronstrue";
@@ -37,6 +38,21 @@ function Pipelines({ type }) {
   const [openLogsModal, setOpenLogsModal] = useState(false);
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
+  const { fetchExecutionLogs } = require("../log-modal/fetchExecutionLogs.js");
+
+  const handleFetchLogs = (page, pageSize) => {
+    fetchExecutionLogs(
+      axiosPrivate,
+      handleException,
+      sessionDetails,
+      selectedPorD,
+      setExecutionLogs,
+      setExecutionLogsTotalCount,
+      setAlertDetails,
+      page,
+      pageSize
+    );
+  };
 
   useEffect(() => {
     getPipelineList();
@@ -79,11 +95,6 @@ function Pipelines({ type }) {
 
     handleSyncApiReq(body)
       .then((res) => {
-        const executionId = res?.data?.execution?.execution_id;
-        body["execution_id"] = executionId;
-        return handleSyncApiReq(body);
-      })
-      .then((res) => {
         const data = res?.data?.pipeline;
         fieldsToUpdate["last_run_status"] = data?.last_run_status;
         fieldsToUpdate["last_run_time"] = data?.last_run_time;
@@ -94,6 +105,31 @@ function Pipelines({ type }) {
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to sync."));
+        const date = new Date();
+        fieldsToUpdate["last_run_status"] = "FAILURE";
+        fieldsToUpdate["last_run_time"] = date.toISOString();
+      })
+      .finally(() => {
+        handleLoaderInTableData(fieldsToUpdate, pipelineId);
+      });
+  };
+
+  const handleStatusRefresh = (pipelineId) => {
+    const fieldsToUpdate = {
+      last_run_status: "processing",
+    };
+    handleLoaderInTableData(fieldsToUpdate, pipelineId);
+
+    getPipelineData(pipelineId)
+      .then((res) => {
+        const data = res?.data;
+        fieldsToUpdate["last_run_status"] = data?.last_run_status;
+        fieldsToUpdate["last_run_time"] = data?.last_run_time;
+      })
+      .catch((err) => {
+        setAlertDetails(
+          handleException(err, `Failed to update pipeline status.`)
+        );
         const date = new Date();
         fieldsToUpdate["last_run_status"] = "FAILURE";
         fieldsToUpdate["last_run_time"] = date.toISOString();
@@ -180,31 +216,18 @@ function Pipelines({ type }) {
       });
   };
 
-  const fetchExecutionLogs = (page = 1, pageSize = 10) => {
+  const getPipelineData = (pipelineId) => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${selectedPorD.id}/executions/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${pipelineId}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
-      params: {
-        page: page,
-        page_size: pageSize,
-      },
     };
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const logs = res?.data?.results?.map((result) => ({
-          created_at: result.created_at,
-          execution_id: result.id,
-          status: result.status,
-          execution_time: result.execution_time,
-        }));
-        setExecutionLogs(logs);
-        setExecutionLogsTotalCount(res.data.count);
-      })
+    return axiosPrivate(requestOptions)
+      .then((res) => res)
       .catch((err) => {
-        setAlertDetails(handleException(err));
+        throw err;
       });
   };
 
@@ -276,7 +299,15 @@ function Pipelines({ type }) {
           className="action-items"
           onClick={() => {
             setOpenLogsModal(true);
-            fetchExecutionLogs();
+            fetchExecutionLogs(
+              axiosPrivate,
+              handleException,
+              sessionDetails,
+              selectedPorD,
+              setExecutionLogs,
+              setExecutionLogsTotalCount,
+              setAlertDetails
+            );
           }}
         >
           <div>
@@ -400,9 +431,17 @@ function Pipelines({ type }) {
           {record.last_run_status === "processing" ? (
             <SpinnerLoader />
           ) : (
-            <Typography.Text className="p-or-d-typography" strong>
-              {record?.last_run_status}
-            </Typography.Text>
+            <Space>
+              <Typography.Text className="p-or-d-typography" strong>
+                {record?.last_run_status}
+              </Typography.Text>
+              <Button
+                icon={<ReloadOutlined />}
+                type="text"
+                size="small"
+                onClick={() => handleStatusRefresh(record?.id)}
+              />
+            </Space>
           )}
         </>
       ),
@@ -489,7 +528,7 @@ function Pipelines({ type }) {
         setOpen={setOpenLogsModal}
         logRecord={executionLogs}
         totalLogs={executionLogsTotalCount}
-        fetchExecutionLogs={fetchExecutionLogs}
+        fetchExecutionLogs={handleFetchLogs}
       />
       <DeleteModal
         open={openDeleteModal}

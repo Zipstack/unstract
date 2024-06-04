@@ -92,25 +92,29 @@ class PromptStudioHelper:
         profile_manager_owner = profile_manager.created_by
 
         is_llm_owned = (
-            profile_manager.llm.created_by == profile_manager_owner
+            profile_manager.llm.shared_to_org
+            or profile_manager.llm.created_by == profile_manager_owner
             or profile_manager.llm.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
         )
         is_vector_store_owned = (
-            profile_manager.vector_store.created_by == profile_manager_owner
+            profile_manager.llm.shared_to_org
+            or profile_manager.vector_store.created_by == profile_manager_owner
             or profile_manager.vector_store.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
         )
         is_embedding_model_owned = (
-            profile_manager.embedding_model.created_by == profile_manager_owner
+            profile_manager.llm.shared_to_org
+            or profile_manager.embedding_model.created_by == profile_manager_owner
             or profile_manager.embedding_model.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
         )
         is_x2text_owned = (
-            profile_manager.x2text.created_by == profile_manager_owner
+            profile_manager.llm.shared_to_org
+            or profile_manager.x2text.created_by == profile_manager_owner
             or profile_manager.x2text.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
@@ -573,10 +577,6 @@ class PromptStudioHelper:
                 grammar_list.append(grammer_dict)
                 grammer_dict = {}
 
-        # TODO: Deprecate and remove assertion related elements
-        output[TSPKeys.ASSERTION_FAILURE_PROMPT] = prompt.assertion_failure_prompt
-        output[TSPKeys.ASSERT_PROMPT] = prompt.assert_prompt
-        output[TSPKeys.IS_ASSERT] = prompt.is_assert
         output[TSPKeys.PROMPT] = prompt.prompt
         output[TSPKeys.ACTIVE] = prompt.active
         output[TSPKeys.CHUNK_SIZE] = prompt.profile_manager.chunk_size
@@ -584,9 +584,6 @@ class PromptStudioHelper:
         output[TSPKeys.EMBEDDING] = embedding_model
         output[TSPKeys.CHUNK_OVERLAP] = prompt.profile_manager.chunk_overlap
         output[TSPKeys.LLM] = llm
-        output[TSPKeys.PREAMBLE] = tool.preamble
-        output[TSPKeys.POSTAMBLE] = tool.postamble
-        output[TSPKeys.GRAMMAR] = grammar_list
         output[TSPKeys.TYPE] = prompt.enforce_type
         output[TSPKeys.NAME] = prompt.prompt_key
         output[TSPKeys.RETRIEVAL_STRATEGY] = prompt.profile_manager.retrieval_strategy
@@ -600,9 +597,6 @@ class PromptStudioHelper:
         output[TSPKeys.EVAL_SETTINGS][
             TSPKeys.EVAL_SETTINGS_EXCLUDE_FAILED
         ] = tool.exclude_failed
-        output[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
-        output[TSPKeys.CHALLENGE_LLM] = challenge_llm
-        output[TSPKeys.SINGLE_PASS_EXTRACTION_MODE] = tool.single_pass_extraction_mode
         for attr in dir(prompt):
             if attr.startswith(TSPKeys.EVAL_METRIC_PREFIX):
                 attr_val = getattr(prompt, attr)
@@ -610,11 +604,22 @@ class PromptStudioHelper:
 
         outputs.append(output)
 
+        tool_settings = {}
+        tool_settings[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
+        tool_settings[TSPKeys.CHALLENGE_LLM] = challenge_llm
+        tool_settings[TSPKeys.SINGLE_PASS_EXTRACTION_MODE] = (
+            tool.single_pass_extraction_mode
+        )
+        tool_settings[TSPKeys.PREAMBLE] = tool.preamble
+        tool_settings[TSPKeys.POSTAMBLE] = tool.postamble
+        tool_settings[TSPKeys.GRAMMAR] = grammar_list
+
         tool_id = str(tool.tool_id)
 
         file_hash = ToolUtils.get_hash_from_file(file_path=doc_path)
 
         payload = {
+            TSPKeys.TOOL_SETTINGS: tool_settings,
             TSPKeys.OUTPUTS: outputs,
             TSPKeys.TOOL_ID: tool_id,
             TSPKeys.RUN_ID: run_id,
