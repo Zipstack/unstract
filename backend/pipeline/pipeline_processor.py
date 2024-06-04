@@ -74,9 +74,8 @@ class PipelineProcessor:
     ) -> Any:
         if not pipeline_guid:
             return
-        check_active = True
-        if is_active is True:
-            check_active = False
+        # Skip check if we are enabling an inactive pipeline
+        check_active = not is_active
         pipeline: Pipeline = PipelineProcessor.fetch_pipeline(
             pipeline_id=pipeline_guid, check_active=check_active
         )
