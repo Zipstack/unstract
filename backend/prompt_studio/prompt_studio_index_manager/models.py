@@ -1,11 +1,21 @@
 import uuid
 
 from account.models import User
-from django.db import models
+from django.db import models, connection
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from utils.models.base_model import BaseModel
-
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
+from unstract.sdk.embedding import Embedding
+from unstract.sdk.exceptions import SdkError
+from unstract.sdk.vector_db import VectorDB
+from utils.common_utils import CommonUtils
+from unstract.sdk.constants import LogLevel
+from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
+import json
+import logging
+logger = logging.getLogger(__name__)
 
 class IndexManager(BaseModel):
     """Model to store the index details."""
@@ -78,3 +88,37 @@ class IndexManager(BaseModel):
                 name="unique_document_manager_profile_manager",
             ),
         ]
+
+# Function will be executed every time an instance of IndexManager is deleted.
+@receiver(post_delete, sender=IndexManager)
+def perform_vector_db_cleanup(sender, instance, **kwargs):
+    """Signal to perform vector db cleanup."""
+    logger.info("Performing vector db cleanup")
+    # Get the index_ids_history to clean up from the vector db
+    index_ids_history = json.loads(instance.index_ids_history)
+    embedding_instance_id = str(instance.profile_manager.embedding_model.id)
+    vector_db_instance_id = str(instance.profile_manager.vector_store.id)
+    # Generate a run_id
+    run_id = CommonUtils.get_uuid()
+    usage_kwargs = {"run_id": run_id}
+    org_schema = connection.tenant.schema_name
+    util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_schema)
+    try:
+        embedding = Embedding(
+            tool=util,
+            adapter_instance_id=embedding_instance_id,
+            usage_kwargs=usage_kwargs,
+        )
+
+        vector_db = VectorDB(
+            tool=util,
+            adapter_instance_id=vector_db_instance_id,
+            embedding=embedding,
+        )
+        for index_id in index_ids_history:
+            logger.info(f"Deleting index_id: {index_id}")
+            vector_db.delete(ref_doc_id=index_id)
+    # Not raising any exception as the cleanup should not fail the deletion of the index manager
+    except SdkError as e:
+        logger.error(f"Error while performing vector db cleanup: {e}")
+        return
