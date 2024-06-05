@@ -80,6 +80,9 @@ class StructureTool(BaseTool):
         # TODO: Need to split extraction and indexing
         # to avoid unwanted indexing
         self.stream_log("Indexing document")
+        usage_kwargs: dict[Any, Any] = dict()
+        run_id = CommonUtils.generate_uuid()
+        usage_kwargs["run_id"] = run_id
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             index.index(
                 tool_id=tool_metadata[SettingsKeys.TOOL_ID],
@@ -92,6 +95,7 @@ class StructureTool(BaseTool):
                 chunk_overlap=tool_settings[SettingsKeys.CHUNK_OVERLAP],
                 output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
                 reindex=True,
+                usage_kwargs=usage_kwargs,
             )
             if summarize_as_source:
                 summarize_file_hash = self._summarize_and_index(
@@ -110,9 +114,6 @@ class StructureTool(BaseTool):
                 # To reindex even if file is already
                 # indexed to get the output in required path
                 reindex = True
-                usage_kwargs: dict[Any, Any] = dict()
-                run_id = CommonUtils.generate_uuid()
-                usage_kwargs["run_id"] = run_id
                 for output in outputs:
                     index.index(
                         tool_id=tool_metadata[SettingsKeys.TOOL_ID],
