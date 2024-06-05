@@ -1,6 +1,5 @@
 import logging
 
-from django.db.models import Sum
 from django.http import HttpRequest
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -8,7 +7,7 @@ from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.response import Response
 
 from .constants import UsageKeys
-from .models import Usage
+from .helper import UsageHelper
 from .serializers import GetUsageSerializer
 
 logger = logging.getLogger(__name__)
@@ -45,22 +44,8 @@ class UsageView(viewsets.ModelViewSet):
             serializer.is_valid(raise_exception=True)
             run_id = serializer.validated_data.get(UsageKeys.RUN_ID)
 
-            # Aggregate the token counts for the given run_id
-            # This uses Django's ORM to sum up the token counts
-            usage_summary = Usage.objects.filter(run_id=run_id).aggregate(
-                embedding_tokens=Sum("embedding_tokens"),
-                prompt_tokens=Sum("prompt_tokens"),
-                completion_tokens=Sum("completion_tokens"),
-                total_tokens=Sum("total_tokens"),
-            )
-
-            # Prepare the result dictionary with None as the default value
-            result = {
-                "embedding_tokens": usage_summary.get("embedding_tokens"),
-                "prompt_tokens": usage_summary.get("prompt_tokens"),
-                "completion_tokens": usage_summary.get("completion_tokens"),
-                "total_tokens": usage_summary.get("total_tokens"),
-            }
+            # Retrieve aggregated token count for the given run_id.
+            result: dict = UsageHelper.get_aggregated_token_count(run_id=run_id)
 
             # Log the successful completion of the operation
             logger.info(f"Token usage retrieved successfully for run_id: {run_id}")

@@ -1,5 +1,6 @@
 import { useAlertStore } from "../store/alert-store";
 import { useSessionStore } from "../store/session-store";
+import { useTokenUsageStore } from "../store/token-usage-store";
 import { useAxiosPrivate } from "./useAxiosPrivate";
 import { useExceptionHandler } from "./useExceptionHandler";
 
@@ -13,8 +14,9 @@ const useTokenUsage = () => {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
+  const { setTokenUsage } = useTokenUsageStore();
 
-  const getTokenUsage = (runId, docId, setTokenUsage, defaultTokenUsage) => {
+  const getTokenUsage = (runId, tokenUsageId) => {
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/usage/get_token_usage/?run_id=${runId}`,
@@ -23,15 +25,11 @@ const useTokenUsage = () => {
     // Make the API request using the axios instance
     axiosPrivate(requestOptions)
       .then((res) => {
-        const tokens = res?.data || defaultTokenUsage; // Use default token usage if response data is null or undefined
-        // Update the token usage state with token usage data for a specific document ID
-        setTokenUsage((prev) => ({
-          ...prev,
-          [docId]: tokens,
-        }));
+        const tokens = res?.data;
+        // Update the token usage state with token usage data for a specific tokenUsageId
+        setTokenUsage(tokenUsageId, tokens);
       })
       .catch((err) => {
-        // Handle any errors that occur during the request
         setAlertDetails(handleException(err, "Failed to get token usage"));
       });
   };
