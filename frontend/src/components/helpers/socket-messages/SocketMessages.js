@@ -69,7 +69,6 @@ function SocketMessages() {
     if (!logId) {
       return;
     }
-    console.log("================", socket);
     const logMessageChannel = `logs:${logId}`;
     socket.on(logMessageChannel, onMessage);
 
