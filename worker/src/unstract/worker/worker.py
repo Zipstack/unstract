@@ -191,7 +191,7 @@ class UnstractWorker:
         # Add labels to container for logging with Loki.
         # This only required for observability.
         try:
-            labels = ast.literal_eval(os.environ.get(Env.TOOL_CONTAINER_LABELS, ""))
+            labels = ast.literal_eval(os.environ.get(Env.TOOL_CONTAINER_LABELS, "[]"))
             container_config["labels"] = labels
         except Exception as e:
             self.logger.info(f"Invalid labels for logging: {e}")
