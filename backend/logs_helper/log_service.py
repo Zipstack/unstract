@@ -8,10 +8,9 @@ class LogService:
             # Get the Redis connection
             r = get_redis_connection("default")
 
-            # Construct the Redis key pattern to match keys associated with the session ID
-            redis_key_pattern = f"logs:{session_id}*"
+            key_pattern = f"logs:{session_id}*"
 
             # Retrieve keys matching the pattern and delete them
-            keys = r.keys(redis_key_pattern)
+            keys = r.keys(key_pattern)
             if keys:
                 r.delete(*keys)
