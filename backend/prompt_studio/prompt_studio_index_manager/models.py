@@ -100,26 +100,16 @@ def perform_vector_db_cleanup(sender, instance, **kwargs):
     try:
         # Get the index_ids_history to clean up from the vector db
         index_ids_history = json.loads(instance.index_ids_history)
-        embedding_instance_id = str(instance.profile_manager.embedding_model.id)
         vector_db_instance_id = str(instance.profile_manager.vector_store.id)
         # Generate a run_id
-        run_id = CommonUtils.get_uuid()
-        usage_kwargs = {"run_id": run_id}
         org_schema = connection.tenant.schema_name
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_schema)
-        embedding = Embedding(
-            tool=util,
-            adapter_instance_id=embedding_instance_id,
-            usage_kwargs=usage_kwargs,
-        )
-
         vector_db = VectorDB(
             tool=util,
             adapter_instance_id=vector_db_instance_id,
-            embedding=embedding,
         )
         for index_id in index_ids_history:
-            logger.info(f"Deleting index_id: {index_id}")
+            logger.info(f"Deleting from VectorDB - index id: {index_id}")
             vector_db.delete(ref_doc_id=index_id)
     # Not raising any exception.
     # Cleanup should not fail the deletion of the index manager.
