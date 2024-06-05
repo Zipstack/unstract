@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Any
 from collections.abc import Iterator
+from typing import Any
 
 
 class ContainerInterface(ABC):

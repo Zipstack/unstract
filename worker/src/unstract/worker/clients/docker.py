@@ -1,7 +1,7 @@
 import logging
 import os
-from typing import Any
 from collections.abc import Iterator
+from typing import Any
 
 from docker.errors import APIError, ImageNotFound
 from docker.models.containers import Container
