@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from docker.errors import APIError, ImageNotFound
 from docker.models.containers import Container
 from unstract.worker.constants import Env
+from unstract.worker.utils import Utils
 
 from docker import DockerClient, from_env
 
@@ -20,7 +21,7 @@ class DockerContainer(ContainerInterface):
         return self.container.logs(stream=True, follow=follow)
 
     def cleanup(self) -> None:
-        if not self.container:
+        if not self.container or not Utils.remove_container_on_exit():
             return
         try:
             self.container.remove(force=True)
