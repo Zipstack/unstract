@@ -97,16 +97,16 @@ class IndexManager(BaseModel):
 def perform_vector_db_cleanup(sender, instance, **kwargs):
     """Signal to perform vector db cleanup."""
     logger.info("Performing vector db cleanup")
-    # Get the index_ids_history to clean up from the vector db
-    index_ids_history = json.loads(instance.index_ids_history)
-    embedding_instance_id = str(instance.profile_manager.embedding_model.id)
-    vector_db_instance_id = str(instance.profile_manager.vector_store.id)
-    # Generate a run_id
-    run_id = CommonUtils.get_uuid()
-    usage_kwargs = {"run_id": run_id}
-    org_schema = connection.tenant.schema_name
-    util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_schema)
     try:
+        # Get the index_ids_history to clean up from the vector db
+        index_ids_history = json.loads(instance.index_ids_history)
+        embedding_instance_id = str(instance.profile_manager.embedding_model.id)
+        vector_db_instance_id = str(instance.profile_manager.vector_store.id)
+        # Generate a run_id
+        run_id = CommonUtils.get_uuid()
+        usage_kwargs = {"run_id": run_id}
+        org_schema = connection.tenant.schema_name
+        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_schema)
         embedding = Embedding(
             tool=util,
             adapter_instance_id=embedding_instance_id,
@@ -125,4 +125,3 @@ def perform_vector_db_cleanup(sender, instance, **kwargs):
     # Cleanup should not fail the deletion of the index manager.
     except SdkError as e:
         logger.error(f"Error while performing vector db cleanup: {e}")
-        return
