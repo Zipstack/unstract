@@ -1,19 +1,16 @@
-import json
 import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-import redis
+from kombu import Connection
+
+from unstract.core.constants import LogEventArgument, LogProcessingTask
 
 
 class LogPublisher:
-    r = redis.Redis(
-        host=os.environ.get("REDIS_HOST", "http://localhost"),
-        port=os.environ.get("REDIS_PORT", "6379"),
-        username=os.environ.get("REDIS_USER", ""),
-        password=os.environ.get("REDIS_PASSWORD", ""),
-    )
+
+    kombu_conn = Connection(os.environ.get("CELERY_BROKER_URL"))
 
     @staticmethod
     def log_usage(
@@ -94,11 +91,52 @@ class LogPublisher:
         }
 
     @classmethod
+    def _get_task_message(
+        cls, user_session_id: str, event: str, message: Any
+    ) -> dict[str, Any]:
+
+        task_kwargs = {
+            LogEventArgument.EVENT: event,
+            LogEventArgument.MESSAGE: message,
+            LogEventArgument.USER_SESSION_ID: user_session_id,
+        }
+        task_message = {
+            "args": [],
+            "kwargs": task_kwargs,
+            "retries": 0,
+            "utc": True,
+        }
+        return task_message
+
+    @classmethod
+    def _get_task_header(cls, task_name: str) -> dict[str, Any]:
+        return {
+            "task": task_name,
+        }
+
+    @classmethod
     def publish(cls, channel_id: str, payload: dict[str, Any]) -> bool:
-        channel = f"logs:{channel_id}"
+        """Publish a message to the queue."""
         try:
-            cls.r.publish(channel, json.dumps(payload))
+            with cls.kombu_conn.Producer(serializer="json") as producer:
+                event = f"logs:{channel_id}"
+                task_message = cls._get_task_message(
+                    user_session_id=channel_id,
+                    event=event,
+                    message=payload,
+                )
+                headers = cls._get_task_header(LogProcessingTask.TASK_NAME)
+                # Publish the message to the queue
+                producer.publish(
+                    body=task_message,
+                    exchange="",
+                    headers=headers,
+                    routing_key=LogProcessingTask.QUEUE_NAME,
+                    compression=None,
+                    retry=True,
+                )
+                logging.info(f"Published '{channel_id}' <= {payload}")
         except Exception as e:
-            logging.error(f"Failed to publish '{channel}' <= {payload}: {e}")
+            logging.error(f"Failed to publish '{channel_id}' <= {payload}: {e}")
             return False
         return True
