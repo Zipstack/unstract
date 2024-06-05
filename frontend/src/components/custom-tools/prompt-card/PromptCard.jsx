@@ -46,6 +46,7 @@ import "./PromptCard.css";
 import { TokenUsage } from "../token-usage/TokenUsage";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import useTokenUsage from "../../../hooks/useTokenUsage";
+import { useTokenUsageStore } from "../../../store/token-usage-store";
 
 const EvalBtn = null;
 const EvalMetrics = null;
@@ -80,7 +81,6 @@ function PromptCard({
   const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
   const [progressMsg, setProgressMsg] = useState({});
   const [docOutputs, setDocOutputs] = useState({});
-  const [tokenUsage, setTokenUsage] = useState({});
   const divRef = useRef(null);
   const {
     getDropdownItems,
@@ -102,6 +102,7 @@ function PromptCard({
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const { tokenUsage, setTokenUsage } = useTokenUsageStore();
   const { getTokenUsage } = useTokenUsage();
 
   useEffect(() => {
@@ -223,11 +224,6 @@ function PromptCard({
     setPage(index + 1);
   }, [llmProfiles]);
 
-  useEffect(() => {
-    // Reset the token usage object when the single pass extraction mode is enabled or disabled.
-    setTokenUsage({});
-  }, [singlePassExtractMode]);
-
   const handlePageLeft = () => {
     if (page <= 1) {
       return;
@@ -309,7 +305,6 @@ function PromptCard({
     setCoverage(0);
     setCoverageTotal(0);
     setDocOutputs({});
-    setTokenUsage({});
     resetInfoMsgs();
 
     const docId = selectedDoc?.document_id;
@@ -418,21 +413,18 @@ function PromptCard({
   };
 
   const handleRunApiRequest = async (docId) => {
+    const promptId = promptDetails?.prompt_id;
     const runId = generateUUID();
 
     // Update the token usage state with default token usage for a specific document ID
-    setTokenUsage((prev) => ({
-      ...prev,
-      [docId]: defaultTokenUsage,
-    }));
+    const tokenUsageId = promptId + "__" + docId;
+    setTokenUsage(tokenUsageId, defaultTokenUsage);
 
     // Set up an interval to fetch token usage data at regular intervals
     const intervalId = setInterval(
-      () => getTokenUsage(runId, docId, setTokenUsage),
+      () => getTokenUsage(runId, tokenUsageId),
       5000 // Fetch token usage data every 5000 milliseconds (5 seconds)
     );
-
-    const promptId = promptDetails?.prompt_id;
 
     const body = {
       document_id: docId,
@@ -457,7 +449,7 @@ function PromptCard({
       })
       .finally(() => {
         clearInterval(intervalId);
-        getTokenUsage(runId, docId, setTokenUsage);
+        getTokenUsage(runId, tokenUsageId);
       });
   };
 
@@ -539,7 +531,27 @@ function PromptCard({
     };
 
     return axiosPrivate(requestOptions)
-      .then((res) => res)
+      .then((res) => {
+        const data = res?.data || [];
+
+        if (singlePassExtractMode) {
+          const tokenUsageId = `single_pass__${selectedDoc?.document_id}`;
+          const usage = data.find((item) => item?.run_id !== undefined);
+
+          if (!tokenUsage[tokenUsageId] && usage) {
+            setTokenUsage(tokenUsageId, usage?.token_usage);
+          }
+        } else {
+          data.forEach((item) => {
+            const tokenUsageId = `${item?.prompt_id}__${item?.document_manager}`;
+
+            if (tokenUsage[tokenUsageId] === undefined) {
+              setTokenUsage(tokenUsageId, item?.token_usage);
+            }
+          });
+        }
+        return res;
+      })
       .catch((err) => {
         throw err;
       });
@@ -740,10 +752,13 @@ function PromptCard({
                 </Button>
               </Space>
               <Space>
-                <TokenUsage
-                  tokenUsage={tokenUsage}
-                  docId={selectedDoc?.document_id}
-                />
+                {!singlePassExtractMode && (
+                  <TokenUsage
+                    tokenUsageId={
+                      promptDetails?.prompt_id + "__" + selectedDoc?.document_id
+                    }
+                  />
+                )}
                 <Select
                   className="prompt-card-select-type"
                   size="small"
@@ -861,7 +876,6 @@ function PromptCard({
         promptKey={promptDetails?.prompt_key}
         profileManagerId={promptDetails?.profile_manager}
         docOutputs={docOutputs}
-        tokenUsage={tokenUsage}
       />
     </>
   );
