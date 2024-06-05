@@ -33,6 +33,12 @@ from unstract.core.pubsub_helper import LogPublisher
 POS_TEXT_PATH = "/tmp/pos.txt"
 USE_UNSTRACT_PROMPT = True
 MAX_RETRIES = 3
+NO_CONTEXT_ERROR = (
+    "Couldn't fetch context from vector DB. "
+    "This happens usually due to a delay by the Vector DB "
+    "provider to confirm writes to db. "
+    "Please try again after some time"
+)
 
 PG_BE_HOST = EnvLoader.get_env_or_die("PG_BE_HOST")
 PG_BE_PORT = EnvLoader.get_env_or_die("PG_BE_PORT")
@@ -292,7 +298,7 @@ def prompt_processor() -> Any:
             context = ""
             if output[PSKeys.CHUNK_SIZE] == 0:
                 # We can do this only for chunkless indexes
-                context: Optional[str] = index.query_text_from_index(
+                context: Optional[str] = index.query_index(
                     embedding_instance_id=output[PSKeys.EMBEDDING],
                     vector_db_instance_id=output[PSKeys.VECTOR_DB],
                     doc_id=doc_id,
@@ -308,7 +314,7 @@ def prompt_processor() -> Any:
                     # inconsistent, and not reproducible easily,
                     # this is just a safety net.
                     time.sleep(2)
-                    context: Optional[str] = index.query_text_from_index(
+                    context: Optional[str] = index.query_index(
                         embedding_instance_id=output[PSKeys.EMBEDDING],
                         vector_db_instance_id=output[PSKeys.VECTOR_DB],
                         doc_id=doc_id,
@@ -316,7 +322,7 @@ def prompt_processor() -> Any:
                     )
                     if context is None:
                         # TODO: Obtain user set name for vector DB
-                        msg = "Couldn't fetch context from vector DB"
+                        msg = NO_CONTEXT_ERROR
                         app.logger.error(
                             f"{msg} {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
                         )
@@ -558,7 +564,9 @@ def prompt_processor() -> Any:
                         )
                 except challenge_plugin["exception_cls"] as e:
                     app.logger.error(
-                        "Failed to challenge prompt %s: %s", output["name"], str(e)
+                        "Failed to challenge prompt %s: %s",
+                        output["name"],
+                        str(e),
                     )
                     _publish_log(
                         log_events_id,

@@ -114,7 +114,7 @@ class StructureTool(BaseTool):
                 run_id = CommonUtils.generate_uuid()
                 usage_kwargs["run_id"] = run_id
                 for output in outputs:
-                    index.index_file(
+                    index.index(
                         tool_id=tool_metadata[SettingsKeys.TOOL_ID],
                         embedding_instance_id=output[SettingsKeys.EMBEDDING],
                         vector_db_instance_id=output[SettingsKeys.VECTOR_DB],
@@ -230,7 +230,7 @@ class StructureTool(BaseTool):
         summarize_file_hash: str = ToolUtils.get_hash_from_file(
             file_path=summarize_file_path
         )
-        index.index_file(
+        index.index(
             tool_id=tool_id,
             embedding_instance_id=tool_settings[SettingsKeys.EMBEDDING],
             vector_db_instance_id=tool_settings[SettingsKeys.VECTOR_DB],

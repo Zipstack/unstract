@@ -205,7 +205,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         # Generate a run_id
-        run_id = CommonUtils.get_uuid()
+        run_id = CommonUtils.generate_uuid()
         unique_id = PromptStudioHelper.index_document(
             tool_id=str(tool.tool_id),
             file_name=file_name,
@@ -259,7 +259,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
         if not run_id:
             # Generate a run_id
-            run_id = CommonUtils.get_uuid()
+            run_id = CommonUtils.generate_uuid()
 
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,
@@ -290,7 +290,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
         if not run_id:
             # Generate a run_id
-            run_id = CommonUtils.get_uuid()
+            run_id = CommonUtils.generate_uuid()
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             tool_id=tool_id,
             org_id=UserSessionUtils.get_organization_id(request),
