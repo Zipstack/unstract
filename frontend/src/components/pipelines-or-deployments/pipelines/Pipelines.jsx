@@ -38,6 +38,21 @@ function Pipelines({ type }) {
   const [openLogsModal, setOpenLogsModal] = useState(false);
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
+  const { fetchExecutionLogs } = require("../log-modal/fetchExecutionLogs.js");
+
+  const handleFetchLogs = (page, pageSize) => {
+    fetchExecutionLogs(
+      axiosPrivate,
+      handleException,
+      sessionDetails,
+      selectedPorD,
+      setExecutionLogs,
+      setExecutionLogsTotalCount,
+      setAlertDetails,
+      page,
+      pageSize
+    );
+  };
 
   useEffect(() => {
     getPipelineList();
@@ -216,34 +231,6 @@ function Pipelines({ type }) {
       });
   };
 
-  const fetchExecutionLogs = (page = 1, pageSize = 10) => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${selectedPorD.id}/executions/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-      params: {
-        page: page,
-        page_size: pageSize,
-      },
-    };
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const logs = res?.data?.results?.map((result) => ({
-          created_at: result.created_at,
-          execution_id: result.id,
-          status: result.status,
-          execution_time: result.execution_time,
-        }));
-        setExecutionLogs(logs);
-        setExecutionLogsTotalCount(res.data.count);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      });
-  };
-
   const clearCache = () => {
     const requestOptions = {
       method: "GET",
@@ -312,7 +299,15 @@ function Pipelines({ type }) {
           className="action-items"
           onClick={() => {
             setOpenLogsModal(true);
-            fetchExecutionLogs();
+            fetchExecutionLogs(
+              axiosPrivate,
+              handleException,
+              sessionDetails,
+              selectedPorD,
+              setExecutionLogs,
+              setExecutionLogsTotalCount,
+              setAlertDetails
+            );
           }}
         >
           <div>
@@ -533,7 +528,7 @@ function Pipelines({ type }) {
         setOpen={setOpenLogsModal}
         logRecord={executionLogs}
         totalLogs={executionLogsTotalCount}
-        fetchExecutionLogs={fetchExecutionLogs}
+        fetchExecutionLogs={handleFetchLogs}
       />
       <DeleteModal
         open={openDeleteModal}
