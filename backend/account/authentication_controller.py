@@ -39,6 +39,7 @@ from django.db.utils import IntegrityError
 from django.middleware import csrf
 from django.shortcuts import redirect
 from django_tenants.utils import tenant_context
+from logs_helper.log_service import LogService
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -47,7 +48,6 @@ from tenant_account.organization_member_service import OrganizationMemberService
 from utils.cache_service import CacheService
 from utils.local_context import StateStore
 from utils.user_session import UserSessionUtils
-from logs_helper.log_service import LogService
 
 Logger = logging.getLogger(__name__)
 

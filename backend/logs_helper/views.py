@@ -3,12 +3,12 @@ import logging
 import os
 from datetime import datetime, timezone
 
+from django_redis import get_redis_connection
 from logs_helper.constants import LogsHelperKeys
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from utils.local_context import StateStore
-from django_redis import get_redis_connection
 
 from .serializers import StoreLogMessagesSerializer
 
