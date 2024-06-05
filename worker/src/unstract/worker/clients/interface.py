@@ -1,13 +1,14 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Iterator
+from typing import Any
+from collections.abc import Iterator
 
 
 class ContainerInterface(ABC):
 
     @abstractmethod
     def logs(self, follow=False) -> Iterator[str]:
-        """Returns an iterator object of logs
+        """Returns an iterator object of logs.
 
         Args:
             follow (bool, optional): Should the logs be followed. Defaults to False.
@@ -31,8 +32,8 @@ class ContainerClientInterface(ABC):
 
     @abstractmethod
     def run_container(self, config: dict[Any, Any]) -> ContainerInterface:
-        """Method to run a container with provided config.
-        This method will run the container
+        """Method to run a container with provided config. This method will run
+        the container.
 
         Args:
             config (dict[Any, Any]): Configuration for container.

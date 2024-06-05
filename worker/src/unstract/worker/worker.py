@@ -13,7 +13,6 @@ from unstract.worker.clients.interface import (
     ContainerInterface,
 )
 from unstract.worker.constants import Env, LogType, ToolKey
-from unstract.worker.utils import Utils
 
 from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
