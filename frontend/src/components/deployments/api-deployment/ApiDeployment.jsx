@@ -6,6 +6,7 @@ import {
   EllipsisOutlined,
   KeyOutlined,
   CloudDownloadOutlined,
+  FileSearchOutlined,
 } from "@ant-design/icons";
 import { Button, Dropdown, Space, Switch, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
@@ -22,6 +23,9 @@ import { Layout } from "../layout/Layout";
 import { ManageKeys } from "../manage-keys/ManageKeys";
 import { apiDeploymentsService } from "./api-deployments-service";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
+import { fetchExecutionLogs } from "../../pipelines-or-deployments/log-modal/fetchExecutionLogs";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 
 function ApiDeployment() {
   const { sessionDetails } = useSessionStore();
@@ -40,6 +44,25 @@ function ApiDeployment() {
   const [isEdit, setIsEdit] = useState(false);
   const [workflowEndpointList, setWorkflowEndpointList] = useState([]);
   const handleException = useExceptionHandler();
+  const [openLogsModal, setOpenLogsModal] = useState(false);
+  const [executionLogs, setExecutionLogs] = useState([]);
+  const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
+  const axiosPrivate = useAxiosPrivate();
+
+  const handleFetchLogs = (page, pageSize) => {
+    fetchExecutionLogs(
+      axiosPrivate,
+      handleException,
+      sessionDetails,
+      selectedRow,
+      setExecutionLogs,
+      setExecutionLogsTotalCount,
+      setAlertDetails,
+      page,
+      pageSize
+    );
+  };
+
   const columns = [
     {
       title: "API Name",
@@ -346,6 +369,34 @@ function ApiDeployment() {
         <Space
           direction="horizontal"
           className="action-items"
+          onClick={() => {
+            setOpenLogsModal(true);
+            fetchExecutionLogs(
+              axiosPrivate,
+              handleException,
+              sessionDetails,
+              selectedRow,
+              setExecutionLogs,
+              setExecutionLogsTotalCount,
+              setAlertDetails
+            );
+          }}
+        >
+          <div>
+            <FileSearchOutlined />
+          </div>
+          <div>
+            <Typography.Text>View Logs</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "6",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
           onClick={() => setOpenDeleteModal(true)}
         >
           <div>
@@ -396,6 +447,13 @@ function ApiDeployment() {
         isDialogOpen={openCodeModal}
         setDialogOpen={setOpenCodeModal}
         url={displayURL(selectedRow?.api_endpoint)}
+      />
+      <LogsModal
+        open={openLogsModal}
+        setOpen={setOpenLogsModal}
+        logRecord={executionLogs}
+        totalLogs={executionLogsTotalCount}
+        fetchExecutionLogs={handleFetchLogs}
       />
     </>
   );
