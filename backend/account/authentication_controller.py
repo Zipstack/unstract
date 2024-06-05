@@ -47,6 +47,7 @@ from tenant_account.organization_member_service import OrganizationMemberService
 from utils.cache_service import CacheService
 from utils.local_context import StateStore
 from utils.user_session import UserSessionUtils
+from logs_helper.log_service import LogService
 
 Logger = logging.getLogger(__name__)
 
@@ -259,6 +260,8 @@ class AuthenticationController:
         return self.auth_service.make_user_organization_display_name(user_name)
 
     def user_logout(self, request: Request) -> Response:
+        session_id: str = request.COOKIES.get("sessionid")
+        LogService.remove_logs_on_logout(session_id=session_id)
         response = self.auth_service.user_logout(request=request)
         organization_id = UserSessionUtils.get_organization_id(request)
         user_id = UserSessionUtils.get_user_id(request)
