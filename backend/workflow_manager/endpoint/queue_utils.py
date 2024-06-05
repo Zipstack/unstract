@@ -2,9 +2,9 @@ import logging
 from typing import Any
 
 from utils.constants import Common
-from unstract.connectors.queues.unstract_queue import UnstractQueue
-from unstract.connectors.queues import connectors as queue_connectors
 
+from unstract.connectors.queues import connectors as queue_connectors
+from unstract.connectors.queues.unstract_queue import UnstractQueue
 
 logger = logging.getLogger(__name__)
 

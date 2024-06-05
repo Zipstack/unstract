@@ -415,7 +415,7 @@ class DestinationConnector(BaseConnector):
             os.path.dirname(__file__), "static", "dest", "api.json"
         )
         return cls.get_json_schema(file_path=schema_path)
-    
+
     def _push_to_queue(
         self,
         file_name: str,
