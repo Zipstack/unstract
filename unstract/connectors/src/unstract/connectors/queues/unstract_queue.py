@@ -55,7 +55,7 @@ class UnstractQueue(UnstractConnector, ABC):
 
     @staticmethod
     def get_connector_mode() -> ConnectorMode:
-        return ConnectorMode.QUEUE
+        return ConnectorMode.MANUAL_REVIEW
 
     @abstractmethod
     def test_credentials(self) -> bool:

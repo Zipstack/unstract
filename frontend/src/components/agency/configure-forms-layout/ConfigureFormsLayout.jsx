@@ -50,7 +50,7 @@ function ConfigureFormsLayout({
           </div>
         </div>
       </Col>
-      {connType !== "QUEUE" && (
+      {connType !== "MANUALREVIEW" && (
         <Col span={12} className="conn-modal-form-left">
           <div className="conn-modal-flex">
             <Typography.Text strong>Configuration</Typography.Text>

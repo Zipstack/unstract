@@ -116,9 +116,9 @@ class DestinationConnector(BaseConnector):
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
             self._handle_api_result(file_name=file_name, error=error, result=result)
-        elif connection_type == WorkflowEndpoint.ConnectionType.QUEUE:
+        elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
             result = self.get_result(file_history)
-            self._push_to_queue(file_name=file_name, error=error, result=result)
+            self._push_to_queue(file_name=file_name, result=result)
         if not file_history:
             FileHistoryHelper.create_file_history(
                 cache_key=file_hash,
@@ -415,14 +415,13 @@ class DestinationConnector(BaseConnector):
             os.path.dirname(__file__), "static", "dest", "api.json"
         )
         return cls.get_json_schema(file_path=schema_path)
-
+    
     def _push_to_queue(
         self,
         file_name: str,
-        error: Optional[str] = None,
         result: Optional[str] = None,
     ) -> None:
-        """Handle the QUEUE result.
+        """Handle the Manual Review QUEUE result.
 
         This method is responsible for pushing the input file and result to
         review queue.
@@ -434,23 +433,22 @@ class DestinationConnector(BaseConnector):
         Returns:
             None
         """
+        if not result:
+            return
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
         queue_result = {"file": file_name}
-        if error:
-            return
-        if result:
-            queue_result.update(
-                {
-                    "status": QueueResultStatus.SUCCESS,
-                    "result": result,
-                    "workflow_id": self.workflow_id,
-                    "connector_id": connector.id,
-                }
-            )
-            queue_class = QueueUtils.get_queue_class(
-                connector_id=connector.connector_id,
-                connector_settings=connector_settings,
-            )
-            # TODO: Replace queue name with document class name (tool name)
-            queue_class.enqueue(queue_name="review_queue", message=str(queue_result))
+        queue_result.update(
+            {
+                "status": QueueResultStatus.SUCCESS,
+                "result": result,
+                "workflow_id": self.workflow_id,
+                "connector_id": connector.id,
+            }
+        )
+        queue_class = QueueUtils.get_queue_inst(
+            connector_id=connector.connector_id,
+            connector_settings=connector_settings,
+        )
+        # TODO: Replace queue name with document class name (tool name)
+        queue_class.enqueue(queue_name="review_queue", message=str(queue_result))

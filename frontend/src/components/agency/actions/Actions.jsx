@@ -78,7 +78,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
     // destination connection_type is DATABASE and Source & Destination are Configured
     setCanAddETLPipeline(
       (destination?.connection_type === "DATABASE" ||
-        destination.connection_type === "QUEUE") &&
+        destination.connection_type === "MANUALREVIEW") &&
         source?.connector_instance &&
         destination.connector_instance
     );

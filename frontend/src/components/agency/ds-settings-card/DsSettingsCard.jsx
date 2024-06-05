@@ -107,7 +107,8 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         // Filter options based on source connection type
         const filteredOptions = ["API"].includes(source?.connection_type)
           ? inputOptions.filter(
-              (option) => option.value === "API" || option.value === "QUEUE"
+              (option) =>
+                option.value === "API" || option.value === "MANUALREVIEW"
             )
           : inputOptions.filter((option) => option.value !== "API");
 
@@ -118,7 +119,8 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     if (type === "input") {
       // Remove Database from Source Dropdown
       const filteredOptions = inputOptions.filter(
-        (option) => option.value !== "DATABASE" && option.value !== "QUEUE"
+        (option) =>
+          option.value !== "DATABASE" && option.value !== "MANUALREVIEW"
       );
       setOptions(filteredOptions);
     }
@@ -143,7 +145,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
   useEffect(() => {
     const menuItems = [];
-    console.log(listOfConnectors, "sdgsdfsdfsd");
     [...listOfConnectors].forEach((item) => {
       if (
         endpointDetails?.connection_type &&

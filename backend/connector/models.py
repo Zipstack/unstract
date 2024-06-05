@@ -29,7 +29,7 @@ class ConnectorInstance(BaseModel):
         UNKNOWN = 0, "UNKNOWN"
         FILE_SYSTEM = 1, "FILE_SYSTEM"
         DATABASE = 2, "DATABASE"
-        QUEUE = 3, "QUEUE"
+        MANUAL_REVIEW = 3, "MANUAL_REVIEW"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     connector_name = models.TextField(
@@ -63,7 +63,7 @@ class ConnectorInstance(BaseModel):
     connector_mode = models.CharField(
         choices=ConnectorMode.choices,
         default=ConnectorMode.UNKNOWN,
-        db_comment="0: UNKNOWN, 1: FILE_SYSTEM, 2: DATABASE, 3: QUEUE",
+        db_comment="0: UNKNOWN, 1: FILE_SYSTEM, 2: DATABASE, 3: MANUAL_REVIEW",
     )
 
     created_by = models.ForeignKey(

@@ -42,7 +42,7 @@ function ConfigureConnectorModal({
         !connectorId ||
         connDetails?.connector_id !== selectedId ||
         connType === "DATABASE" ||
-        connType === "QUEUE",
+        connType === "MANUALREVIEW",
     },
   ];
 
