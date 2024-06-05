@@ -91,7 +91,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             self.execution_type = workflow_execution.execution_type
             self.execution_log_id = workflow_execution.execution_log_id
 
-        logger.info(f"Web socket messaging channel ID: {str(self.execution_log_id)}")
         self.set_messaging_channel(str(self.execution_log_id))
         project_settings = {}
         project_settings[WorkflowKey.WF_PROJECT_GUID] = str(self.execution_log_id)
@@ -99,6 +98,11 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.project_settings = project_settings
         self.pipeline_id = pipeline_id
         self.execution_id = str(workflow_execution.id)
+        logger.info(
+            f"Executing for Pipeline ID: {pipeline_id}, "
+            f"workflow ID: {self.workflow_id}, execution ID: {self.execution_id}, "
+            f"web socket messaging channel ID: {self.execution_log_id}"
+        )
 
         self.compilation_result = self.compile_workflow(execution_id=self.execution_id)
 
@@ -109,7 +113,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             raise InvalidAPIRequest("File shouldn't be empty")
         tool_instance.metadata[JsonSchemaKey.ROOT_FOLDER] = execution_path
 
-    # TODO: Review and remove log_guid if its unused
     @staticmethod
     def create_workflow_execution(
         workflow_id: str,
@@ -131,6 +134,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             else WorkflowExecution.Type.COMPLETE
         )
         execution_log_id = log_events_id if log_events_id else pipeline_id
+        # TODO: Using objects.create() instead
         workflow_execution = WorkflowExecution(
             pipeline_id=pipeline_id,
             workflow_id=workflow_id,

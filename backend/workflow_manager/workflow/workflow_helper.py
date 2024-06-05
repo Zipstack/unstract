@@ -275,15 +275,16 @@ class WorkflowHelper:
                 single_step=single_step,
                 hash_values_of_files=hash_values_of_files,
             )
-            # Update pipeline status
-            if updated_execution.status != ExecutionStatus.ERROR.value:
-                PipelineProcessor.update_pipeline(
-                    pipeline_id, Pipeline.PipelineStatus.SUCCESS
-                )
-            else:
-                PipelineProcessor.update_pipeline(
-                    pipeline_id, Pipeline.PipelineStatus.FAILURE
-                )
+            if pipeline_id:
+                # Update pipeline status
+                if updated_execution.status != ExecutionStatus.ERROR.value:
+                    PipelineProcessor.update_pipeline(
+                        pipeline_id, Pipeline.PipelineStatus.SUCCESS
+                    )
+                else:
+                    PipelineProcessor.update_pipeline(
+                        pipeline_id, Pipeline.PipelineStatus.FAILURE
+                    )
             return ExecutionResponse(
                 str(workflow.id),
                 str(updated_execution.id),
@@ -582,11 +583,13 @@ class WorkflowHelper:
         single_step: bool = False,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
     ) -> ExecutionResponse:
+        log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
         workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
             workflow_id=workflow_id,
             single_step=single_step,
             pipeline_id=pipeline_id,
             mode=mode,
+            log_events_id=log_events_id,
         )
         return ExecutionResponse(
             workflow_execution.workflow_id,
