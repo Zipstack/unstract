@@ -97,6 +97,7 @@ class IndexManager(BaseModel):
 def perform_vector_db_cleanup(sender, instance, **kwargs):
     """Signal to perform vector db cleanup."""
     logger.info("Performing vector db cleanup")
+    logger.debug("Document tool id: %s", instance.document_manager.tool_id)
     try:
         # Get the index_ids_history to clean up from the vector db
         index_ids_history = json.loads(instance.index_ids_history)
@@ -109,7 +110,7 @@ def perform_vector_db_cleanup(sender, instance, **kwargs):
             adapter_instance_id=vector_db_instance_id,
         )
         for index_id in index_ids_history:
-            logger.info(f"Deleting from VectorDB - index id: {index_id}")
+            logger.debug(f"Deleting from VectorDB - index id: {index_id}")
             vector_db.delete(ref_doc_id=index_id)
     # Not raising any exception.
     # Cleanup should not fail the deletion of the index manager.
