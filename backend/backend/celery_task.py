@@ -16,6 +16,15 @@ class TaskRegistry:
         name=LogProcessingTask.TASK_NAME,
     )
     def log_consumer(**kwargs: Any) -> None:
+        """Task to process the logs from log publisher.
+
+        Args:
+            kwargs: The arguments to process the logs.
+            Expected arguments:
+                USER_SESSION_ID: The room to be processed.
+                EVENT: The event to be processed Ex: logs:{session_id}.
+                MESSAGE: The message to be processed Ex: execution log.
+        """
         log_message = kwargs.get(LogEventArgument.MESSAGE)
         room = kwargs.get(LogEventArgument.USER_SESSION_ID)
         event = kwargs.get(LogEventArgument.EVENT)
