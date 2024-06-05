@@ -10,10 +10,8 @@ from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
 from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from unstract.sdk.constants import LogLevel
-from unstract.sdk.embedding import Embedding
 from unstract.sdk.exceptions import SdkError
 from unstract.sdk.vector_db import VectorDB
-from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel
 
 logger = logging.getLogger(__name__)
