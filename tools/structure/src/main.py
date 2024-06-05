@@ -105,6 +105,7 @@ class StructureTool(BaseTool):
                     responder=responder,
                     outputs=outputs,
                     index=index,
+                    usage_kwargs=usage_kwargs,
                 )
                 payload[SettingsKeys.FILE_HASH] = summarize_file_hash
             self.stream_log("Fetching response for single pass extraction")
@@ -136,6 +137,7 @@ class StructureTool(BaseTool):
                             responder=responder,
                             outputs=outputs,
                             index=index,
+                            usage_kwargs=usage_kwargs,
                         )
                         payload[SettingsKeys.FILE_HASH] = summarize_file_hash
                         # For summary indexing should be done
@@ -186,6 +188,7 @@ class StructureTool(BaseTool):
         responder: PromptTool,
         outputs: dict[str, Any],
         index: Index,
+        usage_kwargs: dict[Any, Any] = {},
     ) -> str:
         """Summarizes the context of the file and indexes the summarized
         content.
@@ -240,6 +243,7 @@ class StructureTool(BaseTool):
             file_hash=summarize_file_hash,
             chunk_size=0,
             chunk_overlap=0,
+            usage_kwargs=usage_kwargs,
         )
         return summarize_file_hash
 
