@@ -217,8 +217,8 @@ class WorkflowExecutionService:
             logger.info(log_message)
             self.publish_log(log_message, step=actual_step)
 
+        # TODO: Catch specific workflow execution error to avoid showing pythonic error
         except Exception as error:
-            logger.info(f"Error while running tool {tool_uid}: {str(error)}")
             self.publish_log(str(error), LogLevel.ERROR, step=actual_step)
             self.publish_update_log(
                 state=LogState.ERROR,

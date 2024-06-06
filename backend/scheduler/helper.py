@@ -92,7 +92,7 @@ class SchedulerHelper:
             delete_periodic_task(pipeline_id)
         except Exception as e:
             logger.error(f"Exception while removing job: {e}")
-            raise JobDeletionError
+            raise JobDeletionError from e
 
     @staticmethod
     def pause_job(pipeline_id: str) -> None:
@@ -102,7 +102,7 @@ class SchedulerHelper:
             disable_task(pipeline_id)
         except Exception as e:
             logger.error(f"Exception while pausing job: {e}")
-            raise JobSchedulingError
+            raise JobSchedulingError from e
 
     @staticmethod
     def resume_job(pipeline_id: str) -> None:
@@ -112,4 +112,4 @@ class SchedulerHelper:
             enable_task(pipeline_id)
         except Exception as e:
             logger.error(f"Exception while resuming job: {e}")
-            raise JobSchedulingError
+            raise JobSchedulingError from e
