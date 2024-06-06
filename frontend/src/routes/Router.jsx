@@ -21,7 +21,6 @@ import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
 import { LandingPage } from "../pages/LandingPage.jsx";
 import { OnBoardPage } from "../pages/OnBoardPage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
-import { PipelinesOrDeploymentsPage } from "../pages/PipelinesOrDeploymentsPage.jsx";
 import { ProfilePage } from "../pages/ProfilePage.jsx";
 import { SetOrgPage } from "../pages/SetOrgPage.jsx";
 import { SettingsPage } from "../pages/SettingsPage.jsx";
@@ -33,6 +32,7 @@ import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
 let TrialRoutes;
 let RequirePlatformAdmin;
 let PlatformAdminPage;
+let PipelinesOrDeploymentsPage;
 try {
   TrialRoutes =
     require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
@@ -40,6 +40,8 @@ try {
     require("../plugins/frictionless-onboard/RequirePlatformAdmin.jsx").RequirePlatformAdmin;
   PlatformAdminPage =
     require("../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx").PlatformAdminPage;
+  PipelinesOrDeploymentsPage =
+    require("../plugins/app-deployments/app-deployment-page/PipelinesOrDeploymentsPage.jsx").PipelinesOrDeploymentsPage;
 } catch (err) {
   TrialRoutes = NotFound;
 }
@@ -73,10 +75,12 @@ function Router() {
               path="task"
               element={<DeploymentsPage type={deploymentTypes.task} />}
             />
-            <Route
-              path="app"
-              element={<PipelinesOrDeploymentsPage type="app" />}
-            />
+            {PipelinesOrDeploymentsPage && (
+              <Route
+                path="app"
+                element={<PipelinesOrDeploymentsPage type="app" />}
+              />
+            )}
             <Route path="workflows" element={<WorkflowsPage />} />
             <Route path="workflows/:id" element={<ProjectHelper />}>
               <Route path="" element={<AgencyPage />} />
