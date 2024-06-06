@@ -1,9 +1,0 @@
-{
-  "title": "Structure Tool",
-  "description": "Helper tool used to export tools from Prompt Studio",
-  "type": "object",
-  "required": [
-  ],
-  "properties": {
-  }
-}
