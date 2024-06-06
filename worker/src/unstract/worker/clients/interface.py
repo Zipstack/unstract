@@ -1,8 +1,27 @@
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from typing import Any
 
-from docker.models.containers import Container
+
+class ContainerInterface(ABC):
+
+    @abstractmethod
+    def logs(self, follow=False) -> Iterator[str]:
+        """Returns an iterator object of logs.
+
+        Args:
+            follow (bool, optional): Should the logs be followed. Defaults to False.
+
+        Yields:
+            Iterator[str]: Yields logs line by line.
+        """
+        pass
+
+    @abstractmethod
+    def cleanup(self) -> None:
+        """Stops and removes the running container."""
+        pass
 
 
 class ContainerClientInterface(ABC):
@@ -12,8 +31,9 @@ class ContainerClientInterface(ABC):
         pass
 
     @abstractmethod
-    def run_container(self, config: dict[Any, Any]) -> Container:
-        """Method to run a container with provided config.
+    def run_container(self, config: dict[Any, Any]) -> ContainerInterface:
+        """Method to run a container with provided config. This method will run
+        the container.
 
         Args:
             config (dict[Any, Any]): Configuration for container.
