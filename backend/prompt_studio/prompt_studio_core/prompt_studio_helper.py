@@ -213,7 +213,7 @@ class PromptStudioHelper:
         """
         prompt_instances: list[ToolStudioPrompt] = ToolStudioPrompt.objects.filter(
             tool_id=tool_id
-        )
+        ).order_by(TSPKeys.SEQUENCE_NUMBER)
         return prompt_instances
 
     @staticmethod
