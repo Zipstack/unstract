@@ -135,7 +135,7 @@ class LogPublisher:
                     compression=None,
                     retry=True,
                 )
-                logging.info(f"Published '{channel_id}' <= {payload}")
+                logging.debug(f"Published '{channel_id}' <= {payload}")
         except Exception as e:
             logging.error(f"Failed to publish '{channel_id}' <= {payload}: {e}")
             return False
