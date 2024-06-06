@@ -2,9 +2,11 @@ import {
   CheckCircleOutlined,
   DeleteOutlined,
   EditOutlined,
+  FullscreenExitOutlined,
+  FullscreenOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
-import { Button, Card, Col, Row, Space, Tag, Tooltip } from "antd";
+import { Button, Card, Col, Collapse, Row, Space, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 import "./NotesCard.css";
 import { useState } from "react";
@@ -24,6 +26,7 @@ function NotesCard({
   const [promptText, setPromptText] = useState("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
+  const [expandCard, setExpandCard] = useState(true);
 
   const enableEdit = (event) => {
     event.stopPropagation();
@@ -33,7 +36,11 @@ function NotesCard({
 
   return (
     <Card className="tool-ide-notes-card">
-      <Space direction="vertical" className="width-100">
+      <Space
+        direction="vertical"
+        className="width-100"
+        size={expandCard ? 10 : 0}
+      >
         <Row>
           <Col span={18}>
             <EditableText
@@ -71,6 +78,29 @@ function NotesCard({
                 )}
               </>
             )}
+            {expandCard ? (
+              <Tooltip>
+                <Button
+                  size="small"
+                  type="text"
+                  className="prompt-card-action-button"
+                  onClick={() => setExpandCard(false)}
+                >
+                  <FullscreenExitOutlined className="prompt-card-actions-head" />
+                </Button>
+              </Tooltip>
+            ) : (
+              <Tooltip>
+                <Button
+                  size="small"
+                  type="text"
+                  className="prompt-card-action-button"
+                  onClick={() => setExpandCard(true)}
+                >
+                  <FullscreenOutlined className="prompt-card-actions-head" />
+                </Button>
+              </Tooltip>
+            )}
             <Tooltip title="Edit">
               <Button
                 size="small"
@@ -93,17 +123,25 @@ function NotesCard({
             </ConfirmModal>
           </Col>
         </Row>
-        <EditableText
-          isEditing={isEditingNote}
-          setIsEditing={setIsEditingNote}
-          text={promptText}
-          setText={setPromptText}
-          promptId={details?.prompt_id}
-          defaultText={details?.prompt}
-          handleChange={handleChange}
-          isTextarea={true}
-          placeHolder={updatePlaceHolder}
-        />
+        <Collapse
+          className="prompt-card-collapse"
+          ghost
+          activeKey={expandCard && "1"}
+        >
+          <Collapse.Panel key={"1"}>
+            <EditableText
+              isEditing={isEditingNote}
+              setIsEditing={setIsEditingNote}
+              text={promptText}
+              setText={setPromptText}
+              promptId={details?.prompt_id}
+              defaultText={details?.prompt}
+              handleChange={handleChange}
+              isTextarea={true}
+              placeHolder={updatePlaceHolder}
+            />
+          </Collapse.Panel>
+        </Collapse>
       </Space>
     </Card>
   );

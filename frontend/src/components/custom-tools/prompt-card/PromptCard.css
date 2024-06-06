@@ -12,6 +12,10 @@
   padding: 12px;
 }
 
+.prompt-card-div-body {
+  padding: 0px 12px 12px;
+}
+
 .prompt-card-bg-col1 {
   background-color: #eceff3;
 }
@@ -97,4 +101,18 @@
 
 .tag-max-width {
   max-width: 150px;
+}
+
+.prompt-card-collapse {
+  border-start-start-radius: 0px;
+  border-start-end-radius: 0px;
+}
+
+.prompt-card-collapse .ant-collapse-header {
+  display: none !important;
+  padding: 0 !important;
+}
+
+.prompt-card-collapse .ant-collapse-content-box {
+  padding: 0px !important;
 }
