@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:756cc7348d34401d3339efd7b8480f6b78a3734617549e14445fc09f2ec9dc2e"
+content_hash = "sha256:d25d7fe24972f9351f95ef5843d2b4c4ebf3725add3d47ab487bb41b91a86c3a"
 
 [[package]]
 name = "aiohttp"
@@ -1187,7 +1187,7 @@ files = [
 
 [[package]]
 name = "httpx"
-version = "0.27.0"
+version = "0.25.2"
 requires_python = ">=3.8"
 summary = "The next generation HTTP client."
 groups = ["default"]
@@ -1199,29 +1199,29 @@ dependencies = [
     "sniffio",
 ]
 files = [
-    {file = "httpx-0.27.0-py3-none-any.whl", hash = "sha256:71d5465162c13681bff01ad59b2cc68dd838ea1f10e51574bac27103f00c91a5"},
-    {file = "httpx-0.27.0.tar.gz", hash = "sha256:a0cb88a46f32dc874e04ee956e4c2764aba2aa228f650b06788ba6bda2962ab5"},
+    {file = "httpx-0.25.2-py3-none-any.whl", hash = "sha256:a05d3d052d9b2dfce0e3896636467f8a5342fb2b902c819428e1ac65413ca118"},
+    {file = "httpx-0.25.2.tar.gz", hash = "sha256:8b8fcaa0c8ea7b05edd69a094e63a2094c4efcb48129fb757361bc423c0ad9e8"},
 ]
 
 [[package]]
 name = "httpx"
-version = "0.27.0"
+version = "0.25.2"
 extras = ["http2"]
 requires_python = ">=3.8"
 summary = "The next generation HTTP client."
 groups = ["default"]
 dependencies = [
     "h2<5,>=3",
-    "httpx==0.27.0",
+    "httpx==0.25.2",
 ]
 files = [
-    {file = "httpx-0.27.0-py3-none-any.whl", hash = "sha256:71d5465162c13681bff01ad59b2cc68dd838ea1f10e51574bac27103f00c91a5"},
-    {file = "httpx-0.27.0.tar.gz", hash = "sha256:a0cb88a46f32dc874e04ee956e4c2764aba2aa228f650b06788ba6bda2962ab5"},
+    {file = "httpx-0.25.2-py3-none-any.whl", hash = "sha256:a05d3d052d9b2dfce0e3896636467f8a5342fb2b902c819428e1ac65413ca118"},
+    {file = "httpx-0.25.2.tar.gz", hash = "sha256:8b8fcaa0c8ea7b05edd69a094e63a2094c4efcb48129fb757361bc423c0ad9e8"},
 ]
 
 [[package]]
 name = "huggingface-hub"
-version = "0.23.2"
+version = "0.23.3"
 requires_python = ">=3.8.0"
 summary = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
 groups = ["default"]
@@ -1235,8 +1235,8 @@ dependencies = [
     "typing-extensions>=3.7.4.3",
 ]
 files = [
-    {file = "huggingface_hub-0.23.2-py3-none-any.whl", hash = "sha256:48727a16e704d409c4bb5913613308499664f22a99743435dc3a13b23c485827"},
-    {file = "huggingface_hub-0.23.2.tar.gz", hash = "sha256:f6829b62d5fdecb452a76fdbec620cba4c1573655a8d710c1df71735fd9edbd2"},
+    {file = "huggingface_hub-0.23.3-py3-none-any.whl", hash = "sha256:22222c41223f1b7c209ae5511d2d82907325a0e3cdbce5f66949d43c598ff3bc"},
+    {file = "huggingface_hub-0.23.3.tar.gz", hash = "sha256:1a1118a0b3dea3bab6c325d71be16f5ffe441d32f3ac7c348d6875911b694b5b"},
 ]
 
 [[package]]
@@ -1413,7 +1413,7 @@ files = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.10.43"
+version = "0.10.43.post1"
 requires_python = "<4.0,>=3.8.1"
 summary = "Interface between LLMs and your data"
 groups = ["default"]
@@ -1443,8 +1443,8 @@ dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "llama_index_core-0.10.43-py3-none-any.whl", hash = "sha256:355a5f7808dfa09dc27b6bd564926fa697e0279344b829732a9f91b8000157ac"},
-    {file = "llama_index_core-0.10.43.tar.gz", hash = "sha256:c7dce5158e112d3cbc8d331c303e830b2eabcae55c9636e8050dc85320522c1b"},
+    {file = "llama_index_core-0.10.43.post1-py3-none-any.whl", hash = "sha256:673d0e7965b712150a1bc0bfff5512606dc1d8581fcfe617e18fd3ccd4e3d8b1"},
+    {file = "llama_index_core-0.10.43.post1.tar.gz", hash = "sha256:fad9babac97172d0c6a3cd006fe48f0dfae88c481cf7d5ca5703dbaf8985ac54"},
 ]
 
 [[package]]
@@ -1901,7 +1901,7 @@ files = [
 
 [[package]]
 name = "marshmallow"
-version = "3.21.2"
+version = "3.21.3"
 requires_python = ">=3.8"
 summary = "A lightweight library for converting complex datatypes to and from native Python datatypes."
 groups = ["default"]
@@ -1909,8 +1909,8 @@ dependencies = [
     "packaging>=17.0",
 ]
 files = [
-    {file = "marshmallow-3.21.2-py3-none-any.whl", hash = "sha256:70b54a6282f4704d12c0a41599682c5c5450e843b9ec406308653b47c59648a1"},
-    {file = "marshmallow-3.21.2.tar.gz", hash = "sha256:82408deadd8b33d56338d2182d455db632c6313aa2af61916672146bb32edc56"},
+    {file = "marshmallow-3.21.3-py3-none-any.whl", hash = "sha256:86ce7fb914aa865001a4b2092c4c2872d13bc347f3d42673272cabfdbad386f1"},
+    {file = "marshmallow-3.21.3.tar.gz", hash = "sha256:4f57c5e050a54d66361e826f94fba213eb10b67b2fdb02c3e0343ce207ba1662"},
 ]
 
 [[package]]
@@ -1927,18 +1927,18 @@ files = [
 
 [[package]]
 name = "mistralai"
-version = "0.3.0"
+version = "0.4.0"
 requires_python = "<4.0,>=3.9"
 summary = ""
 groups = ["default"]
 dependencies = [
-    "httpx<1,>=0.25.2",
-    "orjson<4.0.0,>=3.9.10",
+    "httpx<0.26,>=0.25",
+    "orjson<3.11,>=3.9.10",
     "pydantic<3.0.0,>=2.5.2",
 ]
 files = [
-    {file = "mistralai-0.3.0-py3-none-any.whl", hash = "sha256:7aca38baf9008d6c690b750ccd78b27cf5b2b052c26649ccae5cc573bb6fb246"},
-    {file = "mistralai-0.3.0.tar.gz", hash = "sha256:61da3ab8d9f83251e9e5d8c8fd77c076511b5d83525b4d5550444c2eb00b0a7b"},
+    {file = "mistralai-0.4.0-py3-none-any.whl", hash = "sha256:54d6a7ff03cd11214477ff6b9bc052e655ec7a07028a7dd0898cd852da71a220"},
+    {file = "mistralai-0.4.0.tar.gz", hash = "sha256:1f21f02dec1fd6fefe12ca100d5937fd62542c11008c193d16df6f4a2d8554da"},
 ]
 
 [[package]]
@@ -3473,7 +3473,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.30.0"
+version = "0.31.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3488,8 +3488,8 @@ dependencies = [
     "unstract-adapters~=0.18.0",
 ]
 files = [
-    {file = "unstract_sdk-0.30.0-py3-none-any.whl", hash = "sha256:f6d31ba9dd3b29ec6e21ff1760dea328c979290b0096fbc94e7c960c90ed837e"},
-    {file = "unstract_sdk-0.30.0.tar.gz", hash = "sha256:68f5b9c0747effff1d375bb32b3691f6e75ee7c5e66ccdefdf9f96b83c17ee64"},
+    {file = "unstract_sdk-0.31.0-py3-none-any.whl", hash = "sha256:1a468e1f7272f45397d9d0592937049462096ee4c0f7f4486110f06bb3800b9e"},
+    {file = "unstract_sdk-0.31.0.tar.gz", hash = "sha256:9230e2540bf5d5130bfd171d17ae7cb7a016dd74047449b521d1cf3a4c8cc8ab"},
 ]
 
 [[package]]
