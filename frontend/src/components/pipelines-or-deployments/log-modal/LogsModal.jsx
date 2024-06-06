@@ -128,7 +128,6 @@ const LogsModal = ({
           rowKey="id"
           align="left"
           pagination={{
-            pageSize: 10,
             total: totalLogs,
             onChange: (page, pageSize) => {
               fetchExecutionLogs(page, pageSize);
