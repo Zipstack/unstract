@@ -66,6 +66,11 @@ try:
 
     urlpatterns += [
         path("", include("pluggable_apps.subscription.urls")),
+        path("", include("pluggable_apps.apps.canned_question.urls")),
+        path("", include("pluggable_apps.apps.app_deployment.urls")),
+        path("", include("pluggable_apps.apps.chat_history.urls")),
+        path("", include("pluggable_apps.apps.chat_transcript.urls")),
+        path("", include("pluggable_apps.apps.document_management.urls")),
     ]
 except ImportError:
     pass

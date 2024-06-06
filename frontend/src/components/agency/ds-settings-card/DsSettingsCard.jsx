@@ -47,6 +47,16 @@ const inputOptions = [
     label: "Database",
   },
 ];
+try {
+  console.log(inputOptions);
+  const inputOption =
+    require("../../../plugins/dscard-input-options/AppDeploymentCardInputOptions").appDeploymentInputOption;
+  if (inputOption) {
+    inputOptions.push(inputOption);
+  }
+} catch {
+  // The component will remain null of it is not available
+}
 
 const disabledIdsByType = {
   FILE_SYSTEM: [
@@ -108,9 +118,11 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     if (type === "input") {
       // Remove Database from Source Dropdown
       const filteredOptions = inputOptions.filter(
-        (option) => option.value !== "DATABASE"
+        (option) =>
+          option.value !== "DATABASE" && option.value !== "APPDEPLOYMENT"
       );
       setOptions(filteredOptions);
+      console.log(filteredOptions);
     }
   }, [source, destination]);
 
@@ -357,7 +369,9 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                   size="small"
                   onClick={() => setOpenModal(true)}
                   disabled={
-                    !endpointDetails?.connection_type || connType === "API"
+                    !endpointDetails?.connection_type ||
+                    connType === "API" ||
+                    connType === "APPDEPLOYMENT"
                   }
                 >
                   <SettingOutlined />

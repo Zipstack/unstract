@@ -29,6 +29,7 @@ class ConnectorInstance(BaseModel):
         UNKNOWN = 0, "UNKNOWN"
         FILE_SYSTEM = 1, "FILE_SYSTEM"
         DATABASE = 2, "DATABASE"
+        APPDEPLOYMENT = 3, "APPDEPLOYMENT"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     connector_name = models.TextField(
