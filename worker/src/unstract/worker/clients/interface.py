@@ -8,9 +8,7 @@ class ContainerInterface(ABC):
     @property
     @abstractmethod
     def name(self):
-        """
-        The name of the container.
-        """
+        """The name of the container."""
         pass
 
     @abstractmethod
@@ -63,13 +61,13 @@ class ContainerClientInterface(ABC):
     @abstractmethod
     def get_container_run_config(
         self,
-        command: List[str],
+        command: list[str],
         organization_id: str,
         workflow_id: str,
         execution_id: str,
         envs: Optional[dict[str, Any]] = None,
         auto_remove: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate the configuration dictionary to run the container.
 
         Returns:

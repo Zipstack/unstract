@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 from collections.abc import Iterator
@@ -155,13 +154,13 @@ class Client(ContainerClientInterface):
 
     def get_container_run_config(
         self,
-        command: List[str],
+        command: list[str],
         organization_id: str,
         workflow_id: str,
         execution_id: str,
         envs: Optional[dict[str, Any]] = None,
         auto_remove: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         if envs is None:
             envs = {}
         mounts = []
