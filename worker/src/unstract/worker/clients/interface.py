@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 
 class ContainerInterface(ABC):
@@ -71,6 +71,6 @@ class ContainerClientInterface(ABC):
         """Generate the configuration dictionary to run the container.
 
         Returns:
-            Dict[str, Any]: Configuration for running the container.
+            dict[str, Any]: Configuration for running the container.
         """
         pass
