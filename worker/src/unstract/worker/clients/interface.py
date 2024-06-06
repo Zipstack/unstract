@@ -1,13 +1,20 @@
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 
 class ContainerInterface(ABC):
+    @property
+    @abstractmethod
+    def name(self):
+        """
+        The name of the container.
+        """
+        pass
 
     @abstractmethod
-    def logs(self, follow=False) -> Iterator[str]:
+    def logs(self, follow=True) -> Iterator[str]:
         """Returns an iterator object of logs.
 
         Args:
@@ -50,5 +57,22 @@ class ContainerClientInterface(ABC):
 
         Returns:
             str: full image name with tag.
+        """
+        pass
+
+    @abstractmethod
+    def get_container_run_config(
+        self,
+        command: List[str],
+        organization_id: str,
+        workflow_id: str,
+        execution_id: str,
+        envs: Optional[dict[str, Any]] = None,
+        auto_remove: bool = False,
+    ) -> Dict[str, Any]:
+        """Generate the configuration dictionary to run the container.
+
+        Returns:
+            Dict[str, Any]: Configuration for running the container.
         """
         pass

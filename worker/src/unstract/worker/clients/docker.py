@@ -1,7 +1,8 @@
+import json
 import logging
 import os
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from docker.errors import APIError, ImageNotFound
 from docker.models.containers import Container
@@ -10,6 +11,7 @@ from unstract.worker.utils import Utils
 
 from docker import DockerClient, from_env
 
+from .helper import normalize_container_name
 from .interface import ContainerClientInterface, ContainerInterface
 
 
@@ -17,7 +19,11 @@ class DockerContainer(ContainerInterface):
     def __init__(self, container: Container) -> None:
         self.container: Container = container
 
-    def logs(self, follow=False) -> Iterator[str]:
+    @property
+    def name(self):
+        return self.container.name
+
+    def logs(self, follow=True) -> Iterator[str]:
         return self.container.logs(stream=True, follow=follow)
 
     def cleanup(self) -> None:
@@ -147,5 +153,45 @@ class Client(ContainerClientInterface):
 
         return image_name_with_tag
 
+    def get_container_run_config(
+        self,
+        command: List[str],
+        organization_id: str,
+        workflow_id: str,
+        execution_id: str,
+        envs: Optional[dict[str, Any]] = None,
+        auto_remove: bool = False,
+    ) -> Dict[str, Any]:
+        if envs is None:
+            envs = {}
+        mounts = []
+        if organization_id and workflow_id and execution_id:
+            mounts.append(
+                {
+                    "type": "bind",
+                    "source": os.path.join(
+                        os.environ.get(Env.WORKFLOW_DATA_DIR, ""),
+                        organization_id,
+                        workflow_id,
+                        execution_id,
+                    ),
+                    "target": os.environ.get(Env.TOOL_DATA_DIR, "/data"),
+                }
+            )
+        return {
+            "name": normalize_container_name(self.image_name),
+            "image": self.get_image(),
+            "command": command,
+            "detach": True,
+            "stream": True,
+            "auto_remove": auto_remove,
+            "environment": envs,
+            "stderr": True,
+            "stdout": True,
+            "network": os.environ.get(Env.TOOL_CONTAINER_NETWORK, ""),
+            "mounts": mounts,
+        }
+
     def run_container(self, config: dict[Any, Any]) -> Any:
+        self.logger.info(f"Docker config: {config}")
         return DockerContainer(self.client.containers.run(**config))
