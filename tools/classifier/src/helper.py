@@ -1,8 +1,8 @@
 from typing import Any, Optional
 
-from llama_index.core.llms import LLM
 from unstract.sdk.cache import ToolCache
 from unstract.sdk.constants import ToolEnv
+from unstract.sdk.llm import LLM
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.utils import ToolUtils
 from unstract.sdk.x2txt import X2Text
@@ -42,14 +42,13 @@ class ClassifierHelper:
         self.tool.stream_log(
             "Creating text extraction adapter " f"using adapter_id: {adapter_id}"
         )
-        tool_extraction = X2Text(tool=self.tool)
-        adapter = tool_extraction.get_x2text(adapter_id)
+        x2text = X2Text(tool=self.tool, adapter_instance_id=adapter_id)
 
         self.tool.stream_log("Text extraction adapter has been created successfully.")
         self.tool.stream_log("Adapter created")
 
         try:
-            extracted_text: str = adapter.process(input_file_path=file)
+            extracted_text: str = x2text.process(input_file_path=file)
             return extracted_text
         except Exception as e:
             self.tool.stream_log(f"Adapter error: {e}")
@@ -130,9 +129,9 @@ class ClassifierHelper:
             str: Classification
         """
         try:
-            response = llm.complete(prompt, max_tokens=50, stop=["\n"])
-            classification: str = response.text.strip()
-            self.tool.stream_log(f"LLM response: {response}")
+            completion = llm.complete(prompt, max_tokens=50, stop=["\n"])[LLM.RESPONSE]
+            classification: str = completion.text.strip()
+            self.tool.stream_log(f"LLM response: {completion}")
             return classification
         except Exception as e:
             self.tool.stream_error_and_exit(f"Error calling LLM {e}")

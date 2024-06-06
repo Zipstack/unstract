@@ -107,7 +107,7 @@ class ConnectorInstanceHelper:
             filter_params["connector_name"] = connector_name
 
         connector_instances = ConnectorInstance.objects.filter(**filter_params).all()
-        logger.info(f"Retrived connector instance values {connector_instances}")
+        logger.debug(f"Retrieved connector instance values {connector_instances}")
         if values is not None:
             filtered_connector_instances = connector_instances.values(*values)
             logger.info(
@@ -328,5 +328,4 @@ class ConnectorInstanceHelper:
             "workflow": workflow_id,
         }
         connector_instances = ConnectorInstance.objects.filter(**filter_params).all()
-        logger.info(f"Retrived connector instance values {connector_instances}")
         return list(connector_instances)
