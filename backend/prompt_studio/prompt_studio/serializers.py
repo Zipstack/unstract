@@ -14,3 +14,9 @@ class ToolStudioPromptSerializer(AuditSerializer):
 class ToolStudioIndexSerializer(serializers.Serializer):
     file_name = serializers.CharField()
     tool_id = serializers.CharField()
+
+
+class ReorderPromptsSerializer(serializers.Serializer):
+    start_sequence_number = serializers.IntegerField(required=True)
+    drop_sequence_number = serializers.IntegerField(required=True)
+    prompt_id = serializers.CharField(required=True)
