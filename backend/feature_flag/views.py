@@ -10,7 +10,6 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
-
 from utils.request.feature_flag import check_feature_flag_status
 
 logger = logging.getLogger(__name__)
