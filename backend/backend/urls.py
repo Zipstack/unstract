@@ -62,7 +62,11 @@ urlpatterns = [
 ]
 
 try:
-    import pluggable_apps.subscription.urls  # noqa: F401
+    import pluggable_apps.apps.app_deployment.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.apps.canned_question.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.apps.chat_history.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.apps.chat_transcript.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.subscription.urls  # noqa # pylint: disable=unused-import
 
     urlpatterns += [
         path("", include("pluggable_apps.subscription.urls")),
