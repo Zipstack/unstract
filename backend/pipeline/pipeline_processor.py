@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 
 from django.utils import timezone
-from pipeline.exceptions import InactivePipelineError, PipelineSaveError
+from pipeline.exceptions import InactivePipelineError
 from pipeline.models import Pipeline
 
 logger = logging.getLogger(__name__)
@@ -59,11 +59,7 @@ class PipelineProcessor:
         if is_active is not None:
             pipeline.active = is_active
 
-        try:
-            pipeline.save()
-        except Exception as exc:
-            logger.error(f"Error occured while saving pipeline : {exc}")
-            raise PipelineSaveError() from exc
+        pipeline.save()
         return pipeline
 
     @staticmethod

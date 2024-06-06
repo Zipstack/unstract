@@ -3,11 +3,6 @@ from typing import Optional
 from rest_framework.exceptions import APIException
 
 
-class PipelineSaveError(APIException):
-    status_code = 500
-    default_detail = "Error saving pipeline"
-
-
 class WorkflowTriggerError(APIException):
     status_code = 400
     default_detail = "Error triggering workflow. Pipeline created"
