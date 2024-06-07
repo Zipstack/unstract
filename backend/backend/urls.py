@@ -29,7 +29,6 @@ urlpatterns = [
     path("", include("file_management.urls")),
     path("", include("tool_instance.urls")),
     path("", include("pipeline.urls")),
-    path("", include("apps.urls")),
     path("", include("feature_flag.urls")),
     path("workflow/", include("workflow_manager.urls")),
     path("platform/", include("platform_settings.urls")),
