@@ -30,7 +30,6 @@ class UnstractWorker:
         self.client: ContainerClientInterface = client_class(
             self.image_name, self.image_tag, self.logger
         )
-        self.image = self.client.get_image()
 
     # Function to stream logs
     def stream_logs(
@@ -137,8 +136,7 @@ class UnstractWorker:
         # Run the Docker container
         try:
             container: ContainerInterface = self.client.run_container(container_config)
-            for line in container.logs(follow=True):
-                text = line.decode().strip()
+            for text in container.logs(follow=True):
                 self.logger.info(f"[{container.name}] - {text}")
                 if f'"type": "{command}"' in text:
                     return json.loads(text)
@@ -169,7 +167,7 @@ class UnstractWorker:
         Returns:
             Optional[Any]: _description_
         """
-        tool_data_dir = os.environ.get(Env.TOOL_DATA_DIR, "/data")
+        tool_data_dir = os.getenv(Env.TOOL_DATA_DIR, "/data")
         envs[Env.TOOL_DATA_DIR] = tool_data_dir
         container_config = self.client.get_container_run_config(
             command=[
@@ -188,7 +186,7 @@ class UnstractWorker:
         # Add labels to container for logging with Loki.
         # This only required for observability.
         try:
-            labels = ast.literal_eval(os.environ.get(Env.TOOL_CONTAINER_LABELS, "[]"))
+            labels = ast.literal_eval(os.getenv(Env.TOOL_CONTAINER_LABELS, "[]"))
             container_config["labels"] = labels
         except Exception as e:
             self.logger.info(f"Invalid labels for logging: {e}")

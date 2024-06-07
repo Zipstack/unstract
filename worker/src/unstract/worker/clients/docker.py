@@ -23,7 +23,8 @@ class DockerContainer(ContainerInterface):
         return self.container.name
 
     def logs(self, follow=True) -> Iterator[str]:
-        return self.container.logs(stream=True, follow=follow)
+        for line in self.container.logs(stream=True, follow=follow):
+            yield line.decode().strip()
 
     def cleanup(self) -> None:
         if not self.container or not Utils.remove_container_on_exit():
@@ -169,12 +170,12 @@ class Client(ContainerClientInterface):
                 {
                     "type": "bind",
                     "source": os.path.join(
-                        os.environ.get(Env.WORKFLOW_DATA_DIR, ""),
+                        os.getenv(Env.WORKFLOW_DATA_DIR, ""),
                         organization_id,
                         workflow_id,
                         execution_id,
                     ),
-                    "target": os.environ.get(Env.TOOL_DATA_DIR, "/data"),
+                    "target": os.getenv(Env.TOOL_DATA_DIR, "/data"),
                 }
             )
         return {
@@ -187,7 +188,7 @@ class Client(ContainerClientInterface):
             "environment": envs,
             "stderr": True,
             "stdout": True,
-            "network": os.environ.get(Env.TOOL_CONTAINER_NETWORK, ""),
+            "network": os.getenv(Env.TOOL_CONTAINER_NETWORK, ""),
             "mounts": mounts,
         }
 
