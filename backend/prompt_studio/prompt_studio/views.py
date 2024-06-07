@@ -3,11 +3,11 @@ from typing import Optional
 
 from django.db.models import QuerySet
 from django.http import HttpRequest
-from prompt_studio.helper import PromptStudioHelper
-from prompt_studio.models import ToolStudioPrompt
 from prompt_studio.permission import PromptAcesssToUser
 from prompt_studio.prompt_studio.constants import ToolStudioPromptKeys
-from prompt_studio.serializers import (
+from prompt_studio.prompt_studio.helper import PromptStudioHelper
+from prompt_studio.prompt_studio.models import ToolStudioPrompt
+from prompt_studio.prompt_studio.serializers import (
     ReorderPromptsSerializer,
     ToolStudioPromptSerializer,
 )
