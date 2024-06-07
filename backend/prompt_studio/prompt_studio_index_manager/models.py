@@ -109,7 +109,11 @@ def perform_vector_db_cleanup(sender, instance, **kwargs):
         )
         for index_id in index_ids_history:
             logger.debug(f"Deleting from VectorDB - index id: {index_id}")
-            vector_db.delete(ref_doc_id=index_id)
+            try:
+                vector_db.delete(ref_doc_id=index_id)
+            except Exception as e:
+                # Log error and continue with the next index id
+                logger.error(f"Error deleting index: {index_id} - {e}")
     # Not raising any exception.
     # Cleanup should not fail the deletion of the index manager.
     except SdkError as e:
