@@ -138,12 +138,3 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
             return Response(
                 status=status.HTTP_404_NOT_FOUND, data={"detail": "Prompt not found."}
             )
-
-        except Exception as e:
-            logger.exception(
-                f"An unexpected error occurred while re-ordering the prompts: {e}"
-            )
-            return Response(
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                data={"detail": "An unexpected error occurred."},
-            )
