@@ -2,8 +2,6 @@ import {
   CheckCircleOutlined,
   DeleteOutlined,
   EditOutlined,
-  FullscreenExitOutlined,
-  FullscreenOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
 import { Button, Card, Col, Collapse, Row, Space, Tag, Tooltip } from "antd";
@@ -14,6 +12,7 @@ import { useState } from "react";
 import { EditableText } from "../editable-text/EditableText";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";
+import { ExpandCardBtn } from "../prompt-card/ExpandCardBtn";
 
 function NotesCard({
   details,
@@ -78,29 +77,10 @@ function NotesCard({
                 )}
               </>
             )}
-            {expandCard ? (
-              <Tooltip>
-                <Button
-                  size="small"
-                  type="text"
-                  className="prompt-card-action-button"
-                  onClick={() => setExpandCard(false)}
-                >
-                  <FullscreenExitOutlined className="prompt-card-actions-head" />
-                </Button>
-              </Tooltip>
-            ) : (
-              <Tooltip>
-                <Button
-                  size="small"
-                  type="text"
-                  className="prompt-card-action-button"
-                  onClick={() => setExpandCard(true)}
-                >
-                  <FullscreenOutlined className="prompt-card-actions-head" />
-                </Button>
-              </Tooltip>
-            )}
+            <ExpandCardBtn
+              expandCard={expandCard}
+              setExpandCard={setExpandCard}
+            />
             <Tooltip title="Edit">
               <Button
                 size="small"

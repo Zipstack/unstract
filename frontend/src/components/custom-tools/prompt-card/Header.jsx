@@ -2,8 +2,6 @@ import {
   CheckCircleOutlined,
   DeleteOutlined,
   EditOutlined,
-  FullscreenExitOutlined,
-  FullscreenOutlined,
   LoadingOutlined,
   PlayCircleOutlined,
   SyncOutlined,
@@ -15,6 +13,7 @@ import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EditableText } from "../editable-text/EditableText";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { ExpandCardBtn } from "./ExpandCardBtn";
 
 function Header({
   promptDetails,
@@ -106,29 +105,7 @@ function Header({
             )}
           </>
         )}
-        {expandCard ? (
-          <Tooltip>
-            <Button
-              size="small"
-              type="text"
-              className="prompt-card-action-button"
-              onClick={() => setExpandCard(false)}
-            >
-              <FullscreenExitOutlined className="prompt-card-actions-head" />
-            </Button>
-          </Tooltip>
-        ) : (
-          <Tooltip>
-            <Button
-              size="small"
-              type="text"
-              className="prompt-card-action-button"
-              onClick={() => setExpandCard(true)}
-            >
-              <FullscreenOutlined className="prompt-card-actions-head" />
-            </Button>
-          </Tooltip>
-        )}
+        <ExpandCardBtn expandCard={expandCard} setExpandCard={setExpandCard} />
         <Tooltip title="Edit">
           <Button
             size="small"
