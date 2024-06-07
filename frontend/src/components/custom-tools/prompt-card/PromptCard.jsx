@@ -12,12 +12,11 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
-import "./PromptCard.css";
-
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import useTokenUsage from "../../../hooks/useTokenUsage";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { PromptCardItems } from "./PromptCardItems";
+import "./PromptCard.css";
 
 const EvalModal = null;
 const getEvalMetrics = (param1, param2) => {
