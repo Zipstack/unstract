@@ -18,5 +18,5 @@ class ToolStudioIndexSerializer(serializers.Serializer):
 
 class ReorderPromptsSerializer(serializers.Serializer):
     start_sequence_number = serializers.IntegerField(required=True)
-    drop_sequence_number = serializers.IntegerField(required=True)
+    end_sequence_number = serializers.IntegerField(required=True)
     prompt_id = serializers.CharField(required=True)

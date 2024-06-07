@@ -74,8 +74,8 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
             start_sequence_number = serializer.validated_data.get(
                 ToolStudioPromptKeys.START_SEQUENCE_NUMBER
             )
-            drop_sequence_number = serializer.validated_data.get(
-                ToolStudioPromptKeys.DROP_SEQUENCE_NUMBER
+            end_sequence_number = serializer.validated_data.get(
+                ToolStudioPromptKeys.END_SEQUENCE_NUMBER
             )
             prompt_id = serializer.validated_data.get(ToolStudioPromptKeys.PROMPT_ID)
 
@@ -87,14 +87,14 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
 
             # Determine the direction of sequence adjustment based on start and
             # drop sequence numbers
-            if start_sequence_number < drop_sequence_number:
+            if start_sequence_number < end_sequence_number:
                 logger.info(
                     "Start sequence number is less than drop sequence number. "
                     "Decrementing sequence numbers."
                 )
                 filters = {
                     "sequence_number__gt": start_sequence_number,
-                    "sequence_number__lte": drop_sequence_number,
+                    "sequence_number__lte": end_sequence_number,
                     "tool_id": tool_id,
                 }
                 # Call helper method to update sequence numbers and
@@ -103,14 +103,14 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
                     filters, increment=False
                 )
 
-            elif start_sequence_number > drop_sequence_number:
+            elif start_sequence_number > end_sequence_number:
                 logger.info(
                     "Start sequence number is greater than drop sequence number. "
                     "Incrementing sequence numbers."
                 )
                 filters = {
                     "sequence_number__lt": start_sequence_number,
-                    "sequence_number__gte": drop_sequence_number,
+                    "sequence_number__gte": end_sequence_number,
                     "tool_id": tool_id,
                 }
                 # Call helper method to update sequence numbers and
@@ -132,7 +132,7 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
                 )
 
             # Update the sequence number of the moved prompt
-            prompt_instance.sequence_number = drop_sequence_number
+            prompt_instance.sequence_number = end_sequence_number
             prompt_instance.save()
             # Append the updated prompt instance data to the response
             filtered_prompts_data.append(

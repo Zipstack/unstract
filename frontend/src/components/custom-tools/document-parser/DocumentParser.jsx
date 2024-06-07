@@ -201,8 +201,8 @@ function DocumentParser({
       });
   };
 
-  const moveItem = (startIndex, dropIndex) => {
-    if (startIndex === dropIndex) {
+  const moveItem = (startIndex, endIndex) => {
+    if (startIndex === endIndex) {
       return;
     }
 
@@ -211,7 +211,7 @@ function DocumentParser({
 
     // Move the item within the updated prompts array
     const [movedStep] = updatedPrompts.splice(startIndex, 1);
-    updatedPrompts.splice(dropIndex, 0, movedStep);
+    updatedPrompts.splice(endIndex, 0, movedStep);
 
     // Modify the prompts order and update
     const modifiedDetails = { ...details, prompts: updatedPrompts };
@@ -220,7 +220,7 @@ function DocumentParser({
     // Prepare the body for the POST request
     const body = {
       start_sequence_number: details.prompts[startIndex]?.sequence_number,
-      drop_sequence_number: details.prompts[dropIndex]?.sequence_number,
+      end_sequence_number: details.prompts[endIndex]?.sequence_number,
       prompt_id: details.prompts[startIndex]?.prompt_id,
     };
 

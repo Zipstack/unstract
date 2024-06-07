@@ -15,7 +15,7 @@ class ToolStudioPromptKeys:
     EVAL_RESULT_DELIM = "__"
     SEQUENCE_NUMBER = "sequence_number"
     START_SEQUENCE_NUMBER = "start_sequence_number"
-    DROP_SEQUENCE_NUMBER = "drop_sequence_number"
+    END_SEQUENCE_NUMBER = "end_sequence_number"
     PROMPT_ID = "prompt_id"
 
 
