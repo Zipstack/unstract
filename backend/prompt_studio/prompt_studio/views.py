@@ -1,23 +1,17 @@
-import logging
 from typing import Optional
 
 from django.db.models import QuerySet
-from django.http import HttpRequest
 from prompt_studio.permission import PromptAcesssToUser
 from prompt_studio.prompt_studio.constants import ToolStudioPromptKeys
-from prompt_studio.prompt_studio.helper import PromptStudioHelper
+from prompt_studio.prompt_studio.controller import PromptStudioController
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
-from prompt_studio.prompt_studio.serializers import (
-    ReorderPromptsSerializer,
-    ToolStudioPromptSerializer,
-)
-from rest_framework import status, viewsets
+from prompt_studio.prompt_studio.serializers import ToolStudioPromptSerializer
+from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.filtering import FilterHelper
-
-logger = logging.getLogger(__name__)
 
 
 class ToolStudioPromptView(viewsets.ModelViewSet):
@@ -49,92 +43,14 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
         return queryset
 
     @action(detail=True, methods=["post"])
-    def reorder_prompts(self, request: HttpRequest) -> Response:
-        """Reorder the sequence of prompts based on the start and end sequence
-        numbers.
-
-        This action handles the reordering of prompts by updating their sequence
-        numbers. It increments or decrements the sequence numbers of the relevant
-        prompts to reflect the new order. If the start and end sequence numbers
-        are equal, it returns a bad request response.
+    def reorder_prompts(self, request: Request) -> Response:
+        """Reorder the sequence of prompts based on the provided data.
 
         Args:
-            request (HttpRequest): The HTTP request object containing the data to
-            reorder prompts.
+            request (Request): The HTTP request containing the reorder data.
 
         Returns:
-            Response: A Response object with the status of the reordering operation.
+            Response: The HTTP response indicating the status of the reorder operation.
         """
-        try:
-            # Validate request data
-            serializer = ReorderPromptsSerializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-
-            # Extract validated data from the serializer
-            start_sequence_number = serializer.validated_data.get(
-                ToolStudioPromptKeys.START_SEQUENCE_NUMBER
-            )
-            end_sequence_number = serializer.validated_data.get(
-                ToolStudioPromptKeys.END_SEQUENCE_NUMBER
-            )
-            prompt_id = serializer.validated_data.get(ToolStudioPromptKeys.PROMPT_ID)
-
-            prompt_instance: ToolStudioPrompt = ToolStudioPrompt.objects.get(
-                pk=prompt_id
-            )
-            filtered_prompts_data = []
-            tool_id = prompt_instance.tool_id
-
-            # Determine the direction of sequence adjustment based on start and
-            # end sequence numbers
-            if start_sequence_number < end_sequence_number:
-                logger.info(
-                    "Start sequence number is less than end sequence number. "
-                    "Decrementing sequence numbers."
-                )
-                filters = {
-                    "sequence_number__gt": start_sequence_number,
-                    "sequence_number__lte": end_sequence_number,
-                    "tool_id": tool_id,
-                }
-                # Call helper method to update sequence numbers and
-                # get filtered prompt data
-                filtered_prompts_data = PromptStudioHelper.update_sequence_numbers(
-                    filters, increment=False
-                )
-
-            elif start_sequence_number > end_sequence_number:
-                logger.info(
-                    "Start sequence number is greater than end sequence number. "
-                    "Incrementing sequence numbers."
-                )
-                filters = {
-                    "sequence_number__lt": start_sequence_number,
-                    "sequence_number__gte": end_sequence_number,
-                    "tool_id": tool_id,
-                }
-                # Call helper method to update sequence numbers and
-                # get filtered prompt data
-                filtered_prompts_data = PromptStudioHelper.update_sequence_numbers(
-                    filters, increment=True
-                )
-
-            # Update the sequence number of the moved prompt
-            prompt_instance.sequence_number = end_sequence_number
-            prompt_instance.save()
-            # Append the updated prompt instance data to the response
-            filtered_prompts_data.append(
-                {
-                    "id": prompt_instance.prompt_id,
-                    "sequence_number": prompt_instance.sequence_number,
-                }
-            )
-
-            logger.info("Re-ordering completed successfully.")
-            return Response(status=status.HTTP_200_OK, data=filtered_prompts_data)
-
-        except ToolStudioPrompt.DoesNotExist:
-            logger.error(f"Prompt with ID {prompt_id} not found.")
-            return Response(
-                status=status.HTTP_404_NOT_FOUND, data={"detail": "Prompt not found."}
-            )
+        prompt_studio_controller = PromptStudioController()
+        return prompt_studio_controller.reorder_prompts(request)
