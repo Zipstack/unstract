@@ -44,7 +44,7 @@ def consume_log_history(self):
         store_to_db(organization_id, logs)
 
 
-def create_log_consumer_scheduler_if_not_exists():
+def create_log_consumer_scheduler_if_not_exists() -> None:
     try:
         interval, _ = IntervalSchedule.objects.get_or_create(
             every=ExecutionLogConstants.CONSUMER_INTERVAL,

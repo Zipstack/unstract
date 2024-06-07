@@ -1,8 +1,7 @@
+import http
 import json
 import logging
 import os
-import threading
-import time
 from typing import Any, Optional
 
 import redis
@@ -24,7 +23,9 @@ sio = socketio.Server(
     logger=False,
     engineio_logger=False,
     always_connect=True,
+    client_manager=socketio.KombuManager(url=settings.SOCKET_IO_MANAGER_URL),
 )
+
 redis_conn = redis.Redis(
     host=settings.REDIS_HOST,
     port=int(settings.REDIS_PORT),
@@ -35,13 +36,47 @@ redis_conn = redis.Redis(
 
 @sio.event
 def connect(sid: str, environ: Any, auth: Any) -> None:
-    # TODO Authenticate websocket connections
+    """This function is called when a client connects to the server.
+
+    It handles the connection and authentication of the client.
+    """
     logger.info(f"[{os.getpid()}] Client with SID:{sid} connected")
+    session_id = _get_user_session_id_from_cookies(sid, environ)
+    if session_id:
+        sio.enter_room(sid, session_id)
+        logger.info(f"Entered room {session_id} for socket {sid}")
+    else:
+        sio.disconnect(sid)
 
 
 @sio.event
 def disconnect(sid: str) -> None:
     logger.info(f"[{os.getpid()}] Client with SID:{sid} disconnected")
+
+
+def _get_user_session_id_from_cookies(sid: str, environ: Any) -> Optional[str]:
+    """Get the user session ID from cookies.
+
+    Args:
+        sid (str): The socket ID of the client.
+        environ (Any): The environment variables of the client.
+
+    Returns:
+        Optional[str]: The user session ID.
+    """
+    cookie_str = environ.get("HTTP_COOKIE")
+    if not cookie_str:
+        logger.warning(f"No cookies found in {environ} for the sid {sid}")
+        return None
+
+    cookie = http.cookies.SimpleCookie(cookie_str)
+    session_id = cookie.get(settings.SESSION_COOKIE_NAME)
+
+    if not session_id:
+        logger.warning(f"No session ID found in cookies for SID {sid}")
+        return None
+
+    return session_id.value
 
 
 def _get_validated_log_data(json_data: Any) -> Optional[LogDataDTO]:
@@ -82,7 +117,7 @@ def _get_validated_log_data(json_data: Any) -> Optional[LogDataDTO]:
 
     # Check if all required fields are present
     if not all((execution_id, organization_id, timestamp)):
-        logger.warning(f"Missing required fields while validating {json_data}")
+        logger.debug(f"Missing required fields while validating {json_data}")
         return
 
     return LogDataDTO(
@@ -94,10 +129,10 @@ def _get_validated_log_data(json_data: Any) -> Optional[LogDataDTO]:
     )
 
 
-def _store_execution_log(data: bytes) -> None:
+def _store_execution_log(data: dict[str, Any]) -> None:
     """Store execution log in database
     Args:
-        data (bytes): Execution log data in bytes format
+        data (dict[str, Any]): Execution log data
     """
     if not ExecutionLogConstants.IS_ENABLED:
         return
@@ -109,69 +144,36 @@ def _store_execution_log(data: bytes) -> None:
         logger.error(f"Error storing execution log: {e}")
 
 
-def _emit_websocket_event(channel: str, data: bytes) -> None:
+def _emit_websocket_event(room: str, event: str, data: dict[str, Any]) -> None:
     """Emit websocket event
     Args:
-        channel (str): WebSocket channel
-        data (bytes): Execution log data in bytes format
+        room (str): Room to emit event to
+        event (str): Event name
+        channel (str): Channel name
+        data (bytes): Data to emit
     """
     payload = {"data": data}
     try:
-        logger.debug(f"[{os.getpid()}] Push websocket event: {channel}, {payload}")
-        sio.emit(channel, payload)
+        logger.debug(f"[{os.getpid()}] Push websocket event: {event}, {payload}")
+        sio.emit(event, data=payload, room=room)
     except Exception as e:
         logger.error(f"Error emitting WebSocket event: {e}")
 
 
-def _handle_pubsub_messages(message: dict[str, Any]) -> None:
-    """Handle pubsub messages
+def handle_user_logs(room: str, event: str, message: dict[str, Any]) -> None:
+    """Handle user logs from applications
     Args:
-        message (dict[str, Any]): Pub sub message
+        message (dict[str, Any]): log message
     """
-    channel = message.get("channel")
-    data = message.get("data")
 
-    if not channel or not data:
-        logger.warning(f"Invalid message received: {message}")
+    if not room or not event:
+        logger.warning(f"Message received without room and event: {message}")
         return
 
-    try:
-        channel_str = channel.decode("utf-8")
-    except UnicodeDecodeError as e:
-        logger.error(f"Error decoding channel: {e}")
-        return
-
-    _store_execution_log(data)
-    _emit_websocket_event(channel_str, data)
-
-
-def _pubsub_listen_forever() -> None:
-    global shutdown
-
-    try:
-        pubsub = redis_conn.pubsub(ignore_subscribe_messages=True)
-        pubsub.psubscribe("logs:*")
-
-        logger.info(f"[{os.getpid()}] Listening for pub sub messages...")
-        while True:
-            message = pubsub.get_message()
-
-            if message:
-                logger.debug(f"[{os.getpid()}] Pub sub message received: {message}")
-                if message["type"] == "pmessage":
-                    _handle_pubsub_messages(message)
-
-            # TODO Add graceful shutdown
-
-            time.sleep(0.01)
-    except Exception as e:
-        logger.error(f"[{os.getpid()}] Failed to do pubsub: {e}")
+    _store_execution_log(message)
+    _emit_websocket_event(room, event, message)
 
 
 def start_server(django_app: WSGIHandler, namespace: str) -> WSGIHandler:
     django_app = socketio.WSGIApp(sio, django_app, socketio_path=namespace)
-
-    pubsub_listener = threading.Thread(target=_pubsub_listen_forever, daemon=True)
-    pubsub_listener.start()
-
     return django_app

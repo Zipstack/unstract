@@ -3,15 +3,16 @@ import Cookies from "js-cookie";
 import { useNavigate } from "react-router-dom";
 
 import { getSessionData } from "../helpers/GetSessionData";
-
 import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
 import { useSessionStore } from "../store/session-store";
 import { useUserSession } from "./useUserSession.js";
 
 let getTrialDetails;
 let isPlatformAdmin;
+let getFlagStatus;
 try {
   getTrialDetails = require("../plugins/subscription/trial-helper/fetchTrialDetails.jsx");
+  getFlagStatus = require("../plugins/enterprise-utils/fetchFeatureFlagStatus.jsx");
   isPlatformAdmin =
     require("../plugins/hooks/usePlatformAdmin.js").usePlatformAdmin();
 } catch (err) {
@@ -105,6 +106,16 @@ function useSessionValid() {
         if (remainingTrialDays)
           userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
       }
+
+      if (getFlagStatus) {
+        const appDeploymentFlag = await getFlagStatus.fetchFeatureFlagStatus(
+          orgId,
+          csrfToken,
+          "app_deployment"
+        );
+        userAndOrgDetails["appDeployment"] = appDeploymentFlag;
+      }
+
       userAndOrgDetails["allOrganization"] = orgs;
       if (isPlatformAdmin) {
         userAndOrgDetails["isPlatformAdmin"] = await isPlatformAdmin();

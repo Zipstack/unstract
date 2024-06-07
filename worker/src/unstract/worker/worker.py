@@ -8,9 +8,11 @@ from typing import Any, Optional
 from dotenv import load_dotenv
 from flask import Flask
 from unstract.worker.clients.helper import get_container_client
-from unstract.worker.clients.interface import ContainerClientInterface
+from unstract.worker.clients.interface import (
+    ContainerClientInterface,
+    ContainerInterface,
+)
 from unstract.worker.constants import Env, LogType, ToolKey
-from unstract.worker.utils import Utils
 
 from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
@@ -36,13 +38,13 @@ class UnstractWorker:
     # Function to stream logs
     def stream_logs(
         self,
-        container: Any,
+        container: ContainerInterface,
         tool_instance_id: str,
         execution_id: str,
         organization_id: str,
         channel: Optional[str] = None,
     ) -> None:
-        for line in container.logs(stream=True, follow=True):
+        for line in container.logs(follow=True):
             log_message = line.decode().strip()
             self.logger.debug(f"[{self.container_name}] - {log_message}")
             self.process_log_message(
@@ -141,8 +143,8 @@ class UnstractWorker:
 
         # Run the Docker container
         try:
-            container = self.client.run_container(container_config)
-            for line in container.logs(stream=True):
+            container: ContainerInterface = self.client.run_container(container_config)
+            for line in container.logs():
                 text = line.decode().strip()
                 self.logger.info(text)
                 if f'"type": "${command}"' in text:
@@ -188,7 +190,7 @@ class UnstractWorker:
         # Add labels to container for logging with Loki.
         # This only required for observability.
         try:
-            labels = ast.literal_eval(os.environ.get(Env.TOOL_CONTAINER_LABELS, ""))
+            labels = ast.literal_eval(os.environ.get(Env.TOOL_CONTAINER_LABELS, "[]"))
             container_config["labels"] = labels
         except Exception as e:
             self.logger.info(f"Invalid labels for logging: {e}")
@@ -199,7 +201,7 @@ class UnstractWorker:
         container = None
         result = {"type": "RESULT", "result": None}
         try:
-            container = self.client.run_container(container_config)
+            container: ContainerInterface = self.client.run_container(container_config)
             self.logger.info(f"Running Docker container: {self.container_name}")
             tool_instance_id = str(self.settings.get(ToolKey.TOOL_INSTANCE_ID))
             # Stream logs
@@ -213,7 +215,8 @@ class UnstractWorker:
         except Exception as e:
             self.logger.error(f"Failed to run docker container: {e}")
             result = {"type": "RESULT", "result": None, "error": str(e)}
-        self._cleanup_container(container)
+        if container:
+            container.cleanup()
         return result
 
     def get_container_run_config(self) -> dict[str, Any]:
@@ -248,12 +251,3 @@ class UnstractWorker:
                 }
             ],
         }
-
-    def _cleanup_container(self, container: Any) -> None:
-        # NOTE: This method might need to be
-        if not container or not Utils.remove_container_on_exit():
-            return
-        try:
-            container.remove(force=True)
-        except Exception as remove_error:
-            self.logger.error(f"Failed to remove docker container: {remove_error}")
