@@ -50,12 +50,12 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def reorder_prompts(self, request: HttpRequest) -> Response:
-        """Reorder the sequence of prompts based on the start and drop sequence
+        """Reorder the sequence of prompts based on the start and end sequence
         numbers.
 
         This action handles the reordering of prompts by updating their sequence
         numbers. It increments or decrements the sequence numbers of the relevant
-        prompts to reflect the new order. If the start and drop sequence numbers
+        prompts to reflect the new order. If the start and end sequence numbers
         are equal, it returns a bad request response.
 
         Args:
@@ -86,10 +86,10 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
             tool_id = prompt_instance.tool_id
 
             # Determine the direction of sequence adjustment based on start and
-            # drop sequence numbers
+            # end sequence numbers
             if start_sequence_number < end_sequence_number:
                 logger.info(
-                    "Start sequence number is less than drop sequence number. "
+                    "Start sequence number is less than end sequence number. "
                     "Decrementing sequence numbers."
                 )
                 filters = {
@@ -105,7 +105,7 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
 
             elif start_sequence_number > end_sequence_number:
                 logger.info(
-                    "Start sequence number is greater than drop sequence number. "
+                    "Start sequence number is greater than end sequence number. "
                     "Incrementing sequence numbers."
                 )
                 filters = {
@@ -117,18 +117,6 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
                 # get filtered prompt data
                 filtered_prompts_data = PromptStudioHelper.update_sequence_numbers(
                     filters, increment=True
-                )
-
-            # If the start and drop sequence numbers are equal,
-            # return a bad request response
-            else:
-                logger.warning(
-                    "Start and drop sequence numbers are equal. "
-                    "Returning bad request response."
-                )
-                return Response(
-                    status=status.HTTP_400_BAD_REQUEST,
-                    data={"detail": "Start and drop sequence numbers are equal."},
                 )
 
             # Update the sequence number of the moved prompt
