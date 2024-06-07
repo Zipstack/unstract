@@ -1,7 +1,6 @@
 import ast
 import json
 import os
-import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -18,6 +17,8 @@ from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
 
 load_dotenv()
+# Loads the container clinet class.
+client_class = get_container_client()
 
 
 class UnstractWorker:
@@ -26,14 +27,9 @@ class UnstractWorker:
         # If no image_tag is provided will assume the `latest` tag
         self.image_tag = image_tag or "latest"
         self.logger = app.logger
-        client_class = get_container_client()
         self.client: ContainerClientInterface = client_class(
             self.image_name, self.image_tag, self.logger
         )
-        self.image = self.client.get_image()
-
-    def normalize_container_name(self, name: str) -> str:
-        return name.replace("/", "-") + "-" + str(uuid.uuid4())
 
     # Function to stream logs
     def stream_logs(
@@ -46,7 +42,7 @@ class UnstractWorker:
     ) -> None:
         for line in container.logs(follow=True):
             log_message = line.decode().strip()
-            self.logger.debug(f"[{self.container_name}] - {log_message}")
+            self.logger.debug(f"[{container.name}] - {log_message}")
             self.process_log_message(
                 log_message=log_message,
                 tool_instance_id=tool_instance_id,
@@ -128,29 +124,26 @@ class UnstractWorker:
             Optional[Any]: Response from container or None if error occures.
         """
         command = command.upper()
-        self.container_name = self.normalize_container_name(self.image_name)
-        container_config = {
-            "name": self.container_name,
-            "image": self.image,
-            "command": ["--command", command],
-            "detach": True,
-            "stream": True,
-            "auto_remove": True,
-            "stderr": True,
-            "stdout": True,
-        }
-        self.logger.info(f"Docker config: {container_config}")
+        container_config = self.client.get_container_run_config(
+            command=["--command", command],
+            organization_id="",
+            workflow_id="",
+            execution_id="",
+            auto_remove=True,
+        )
+        container = None
 
         # Run the Docker container
         try:
             container: ContainerInterface = self.client.run_container(container_config)
-            for line in container.logs():
-                text = line.decode().strip()
-                self.logger.info(text)
-                if f'"type": "${command}"' in text:
+            for text in container.logs(follow=True):
+                self.logger.info(f"[{container.name}] - {text}")
+                if f'"type": "{command}"' in text:
                     return json.loads(text)
         except Exception as e:
             self.logger.error(f"Failed to run docker container: {e}")
+        if container:
+            container.cleanup()
         return None
 
     def run_container(
@@ -174,41 +167,44 @@ class UnstractWorker:
         Returns:
             Optional[Any]: _description_
         """
-        tool_data_dir = os.environ.get(Env.TOOL_DATA_DIR, "/data")
+        tool_data_dir = os.getenv(Env.TOOL_DATA_DIR, "/data")
         envs[Env.TOOL_DATA_DIR] = tool_data_dir
-        self.organization_id = organization_id
-        self.workflow_id = workflow_id
-        self.execution_id = execution_id
-        self.params: dict[str, Any] = {}
-        self.settings = settings
-        self.envs = envs
-        self.messaging_channel = messaging_channel
-        self.container_name = (
-            self.normalize_container_name(self.image_name) + "-" + self.workflow_id
+        container_config = self.client.get_container_run_config(
+            command=[
+                "--command",
+                "RUN",
+                "--settings",
+                json.dumps(settings),
+                "--log-level",
+                "DEBUG",
+            ],
+            organization_id=organization_id,
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            envs=envs,
         )
-        container_config = self.get_container_run_config()
         # Add labels to container for logging with Loki.
         # This only required for observability.
         try:
-            labels = ast.literal_eval(os.environ.get(Env.TOOL_CONTAINER_LABELS, "[]"))
+            labels = ast.literal_eval(os.getenv(Env.TOOL_CONTAINER_LABELS, "[]"))
             container_config["labels"] = labels
         except Exception as e:
             self.logger.info(f"Invalid labels for logging: {e}")
-
-        self.logger.info(f"Docker config: {container_config}")
 
         # Run the Docker container
         container = None
         result = {"type": "RESULT", "result": None}
         try:
             container: ContainerInterface = self.client.run_container(container_config)
-            self.logger.info(f"Running Docker container: {self.container_name}")
-            tool_instance_id = str(self.settings.get(ToolKey.TOOL_INSTANCE_ID))
+            self.logger.info(
+                f"Running Docker container: {container_config.get('name')}"
+            )
+            tool_instance_id = str(settings.get(ToolKey.TOOL_INSTANCE_ID))
             # Stream logs
             self.stream_logs(
                 container=container,
                 tool_instance_id=tool_instance_id,
-                channel=self.messaging_channel,
+                channel=messaging_channel,
                 execution_id=execution_id,
                 organization_id=organization_id,
             )
@@ -218,36 +214,3 @@ class UnstractWorker:
         if container:
             container.cleanup()
         return result
-
-    def get_container_run_config(self) -> dict[str, Any]:
-        return {
-            "name": self.container_name,
-            "image": self.image,
-            "command": [
-                "--command",
-                "RUN",
-                "--settings",
-                json.dumps(self.settings),
-                "--log-level",
-                "DEBUG",
-            ],
-            "detach": True,
-            "stream": True,
-            "auto_remove": False,
-            "environment": self.envs,
-            "stderr": True,
-            "stdout": True,
-            "network": os.environ.get(Env.TOOL_CONTAINER_NETWORK, ""),
-            "mounts": [
-                {
-                    "type": "bind",
-                    "source": os.path.join(
-                        os.environ.get(Env.WORKFLOW_DATA_DIR, ""),
-                        self.organization_id,
-                        self.workflow_id,
-                        self.execution_id,
-                    ),
-                    "target": os.environ.get(Env.TOOL_DATA_DIR, "/data"),
-                }
-            ],
-        }
