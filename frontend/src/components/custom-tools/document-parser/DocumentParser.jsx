@@ -239,28 +239,34 @@ function DocumentParser({
         const data = res?.data || [];
 
         // Update sequence numbers based on the response
-        const updatedPromptSequenceNum = updatedPrompts.map((promptItem) => {
-          const newPromptSeqNum = data.find(
-            (item) => item?.id === promptItem?.prompt_id
-          );
-          if (newPromptSeqNum) {
-            return {
-              ...promptItem,
-              sequence_number: newPromptSeqNum.sequence_number,
-            };
-          }
-          return promptItem;
-        });
-
-        // Update details with the new sequence numbers
-        updateCustomTool({
-          details: { ...details, prompts: updatedPromptSequenceNum },
-        });
+        handleMoveItemSuccess(updatedPrompts, data);
       })
       .catch((err) => {
         // Revert to the original prompts on error
-        updateCustomTool({ details: { ...details, prompts: details.prompts } });
+        updateCustomTool({
+          details: { ...details, prompts: details?.prompts },
+        });
+        setAlertDetails(handleException(err, "Failed to re-order the prompts"));
       });
+  };
+
+  const handleMoveItemSuccess = (updatedPrompts, updatedSequenceNums) => {
+    const updatedPromptSequenceNum = updatedPrompts.map((promptItem) => {
+      const newPromptSeqNum = updatedSequenceNums.find(
+        (item) => item?.id === promptItem?.prompt_id
+      );
+      if (newPromptSeqNum) {
+        return {
+          ...promptItem,
+          sequence_number: newPromptSeqNum.sequence_number,
+        };
+      }
+      return promptItem;
+    });
+
+    updateCustomTool({
+      details: { ...details, prompts: updatedPromptSequenceNum },
+    });
   };
 
   if (!details?.prompts?.length) {

@@ -192,7 +192,7 @@ function PromptCardItems({
                               profile.profile_id === selectedLlmProfileId
                           )
                           .map((profile, index) => (
-                            <div key={index}>
+                            <div key={profile?.profile_id}>
                               <Tag>{profile.llm}</Tag>
                               <Tag>{profile.vector_store}</Tag>
                               <Tag>{profile.embedding_model}</Tag>
