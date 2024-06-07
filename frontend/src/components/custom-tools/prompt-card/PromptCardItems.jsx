@@ -11,7 +11,7 @@ import {
   Tag,
   Typography,
 } from "antd";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { displayPromptResult } from "../../../helpers/GetStaticData";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
@@ -61,6 +61,10 @@ function PromptCardItems({
     isSinglePassExtractLoading,
     indexDocs,
   } = useCustomToolStore();
+
+  useEffect(() => {
+    setExpandCard(true);
+  }, [isSinglePassExtractLoading]);
 
   const enableEdit = (event) => {
     event.stopPropagation();
