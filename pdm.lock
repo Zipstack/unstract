@@ -4778,6 +4778,7 @@ groups = ["hook-check-django-migrations"]
 dependencies = [
     "boto3~=1.28.17",
     "botocore~=1.31.17",
+    "kombu==5.3.7",
     "llama-index-llms-azure-openai==0.1.5",
     "llama-index==0.10.28",
     "redis~=5.0.1",
