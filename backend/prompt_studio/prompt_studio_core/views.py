@@ -148,6 +148,23 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             return Response(select_choices, status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get"])
+    def clone_project(self, request: HttpRequest) -> Response:
+        try:
+            custom_tool = self.get_object()
+            PromptStudioHelper.clone_project(
+                tool_id=custom_tool.tool_id, user=request.user
+            )
+            return Response(
+                {"message": "Project cloned succesfully."}, status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            logger.error(f"Error occured while cloing project {e}")
+            return Response(
+                {"message": "Error while cloning."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["get"])
     def list_profiles(self, request: HttpRequest, pk: Any = None) -> Response:
         prompt_tool = (
             self.get_object()

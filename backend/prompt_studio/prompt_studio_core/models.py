@@ -126,5 +126,12 @@ class CustomTool(BaseModel):
     # Introduced field to establish M2M relation between users and custom_tool.
     # This will introduce intermediary table which relates both the models.
     shared_users = models.ManyToManyField(User, related_name="shared_custom_tool")
+    parent_id = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="linked_parent_id",
+    )
 
     objects = CustomToolModelManager()

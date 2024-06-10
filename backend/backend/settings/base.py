@@ -124,7 +124,7 @@ PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
 API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
     "API_DEPLOYMENT_PATH_PREFIX", "deployment"
 ).strip("/")
-SHARE_MANAGER_PATH_PREFIX = os.environ.get("SHARE_MANAGER_PATH_PREFIX", "share").strip(
+SHARE_MANAGER_PATH_PREFIX = os.environ.get("SHARE_MANAGER_PATH_PREFIX", "public").strip(
     "/"
 )
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")

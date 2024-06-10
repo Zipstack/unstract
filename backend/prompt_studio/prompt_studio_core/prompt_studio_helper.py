@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from account.constants import Common
+from account.models import User
 from adapter_processor.models import AdapterInstance
 from django.conf import settings
 from file_management.file_management_helper import FileManagerHelper
@@ -35,6 +36,7 @@ from unstract.sdk.exceptions import IndexingError, SdkError
 from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
+from utils.clone_util import CloneUtil
 from utils.local_context import StateStore
 
 from unstract.core.pubsub_helper import LogPublisher
@@ -215,6 +217,24 @@ class PromptStudioHelper:
             tool_id=tool_id
         )
         return prompt_instances
+
+    @staticmethod
+    def fetch_prompt_studio_project_instance(tool_id: str) -> CustomTool:
+        try:
+            tool: CustomTool = CustomTool.objects.get(tool_id=tool_id)
+        except Exception as e:
+            # TO DO : Add better exception handling
+            logger.error(f"Error occured : {e}")
+        return tool
+
+    @staticmethod
+    def fetch_shared_project_instance(share_id: str) -> CustomTool:
+        try:
+            tool: CustomTool = CustomTool.objects.get(share_id=share_id)
+        except Exception as e:
+            # TO DO : Add better exception handling
+            logger.error(f"Error occured : {e}")
+        return tool
 
     @staticmethod
     def index_document(
@@ -826,3 +846,11 @@ class PromptStudioHelper:
             )
         output_response = json.loads(answer["structure_output"])
         return output_response
+
+    @staticmethod
+    def clone_project(tool_id: str, user: User) -> None:
+        # TODO:Handle Exceptions
+        tool_instance = CustomTool.objects.get(tool_id=tool_id)
+        cloned_instance = CloneUtil.clone_model_instance(
+            instance=tool_instance, new_user=user, null_fields=["share_id", "parent_id"]
+        )

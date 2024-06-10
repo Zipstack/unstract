@@ -50,3 +50,25 @@ def document_manager(request: Request) -> Response:
     share_id = request.GET.get("id")
     document_metadata = PromptShareController.get_document_metadata(share_id)
     return Response(data=document_metadata)
+
+
+@api_view(
+    [
+        "GET",
+    ]
+)
+def profile_manager(request: Request) -> Response:
+    share_id = request.GET.get("id")
+    profile_metadata = PromptShareController.get_profile_manager_metadata(share_id)
+    return Response(data=profile_metadata)
+
+
+@api_view(
+    [
+        "GET",
+    ]
+)
+def prompt_manager(request: Request) -> Response:
+    share_id = request.GET.get("id")
+    prompt_metadata = PromptShareController.get_prompt_manager_metadata(share_id)
+    return Response(data=prompt_metadata)
