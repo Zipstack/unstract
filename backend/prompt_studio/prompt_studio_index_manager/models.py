@@ -1,10 +1,11 @@
 import json
 import logging
 import uuid
+from django.core.exceptions import ObjectDoesNotExist
 
 from account.models import User
 from django.db import connection, models
-from django.db.models.signals import post_delete
+from django.db.models.signals import post_delete, pre_delete
 from django.dispatch import receiver
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
@@ -89,32 +90,38 @@ class IndexManager(BaseModel):
             ),
         ]
 
+def delete_from_vector_db(index_ids_history, vector_db_instance_id):
+    org_schema = connection.tenant.schema_name
+    util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_schema)
+    vector_db = VectorDB(
+        tool=util,
+        adapter_instance_id=vector_db_instance_id,
+    )
+    for index_id in index_ids_history:
+        logger.debug(f"Deleting from VectorDB - index id: {index_id}")
+        try:
+            vector_db.delete(ref_doc_id=index_id)
+        except Exception as e:
+            # Log error and continue with the next index id
+            logger.error(f"Error deleting index: {index_id} - {e}")
+
 
 # Function will be executed every time an instance of IndexManager is deleted.
-@receiver(post_delete, sender=IndexManager)
+@receiver(pre_delete, sender=IndexManager)
 def perform_vector_db_cleanup(sender, instance, **kwargs):
     """Signal to perform vector db cleanup."""
     logger.info("Performing vector db cleanup")
-    logger.debug("Document tool id: %s", instance.document_manager.tool_id)
+    logger.debug(f"Document tool id: {instance.document_manager.tool_id}")
     try:
         # Get the index_ids_history to clean up from the vector db
         index_ids_history = json.loads(instance.index_ids_history)
         vector_db_instance_id = str(instance.profile_manager.vector_store.id)
-        # Generate a run_id
-        org_schema = connection.tenant.schema_name
-        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_schema)
-        vector_db = VectorDB(
-            tool=util,
-            adapter_instance_id=vector_db_instance_id,
-        )
-        for index_id in index_ids_history:
-            logger.debug(f"Deleting from VectorDB - index id: {index_id}")
-            try:
-                vector_db.delete(ref_doc_id=index_id)
-            except Exception as e:
-                # Log error and continue with the next index id
-                logger.error(f"Error deleting index: {index_id} - {e}")
-    # Not raising any exception.
-    # Cleanup should not fail the deletion of the index manager.
+        delete_from_vector_db(index_ids_history, vector_db_instance_id)
     except SdkError as e:
         logger.error(f"Error while performing vector db cleanup: {e}")
+    except ObjectDoesNotExist:
+        logger.error(f"No ProfileManager found for tool_id {instance.document_manager.tool_id}")
+    except AttributeError:
+        logger.error("ProfileManager or vector_store is None")
+    except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}")
