@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from account.models import Organization
 from celery import shared_task
@@ -45,25 +45,6 @@ def create_periodic_task(
     )
 
 
-def update_pipeline(
-    pipeline_guid: Optional[str],
-    status: tuple[str, str],
-    is_active: Optional[bool] = None,
-) -> Any:
-    if not pipeline_guid:
-        return
-    check_active = True
-    if is_active is True:
-        check_active = False
-    pipeline: Pipeline = PipelineProcessor.fetch_pipeline(
-        pipeline_id=pipeline_guid, check_active=check_active
-    )
-    PipelineProcessor.update_pipeline_status(
-        pipeline=pipeline, is_end=True, status=status, is_active=is_active
-    )
-    logger.info(f"Updated pipeline status: {status}")
-
-
 # TODO: Remove unused args with a migration
 @shared_task
 def execute_pipeline_task(
@@ -85,16 +66,16 @@ def execute_pipeline_task(
         with tenant_context(tenant):
             workflow = Workflow.objects.get(id=workflow_id)
             logger.info(f"Executing workflow: {workflow}")
-            update_pipeline(pipepline_id, Pipeline.PipelineStatus.INPROGRESS)
+            PipelineProcessor.update_pipeline(
+                pipepline_id, Pipeline.PipelineStatus.INPROGRESS
+            )
             execution_response = WorkflowHelper.complete_execution(
                 workflow, execution_id, pipepline_id
             )
             logger.info(f"Execution response: {execution_response}")
-            update_pipeline(pipepline_id, Pipeline.PipelineStatus.SUCCESS)
         logger.info(f"Execution completed for pipeline: {name}")
     except Exception as e:
         logger.error(f"Failed to execute pipeline: {name}. Error: {e}")
-        update_pipeline(pipepline_id, Pipeline.PipelineStatus.FAILURE)
 
 
 def delete_periodic_task(task_name: str) -> None:
@@ -105,8 +86,6 @@ def delete_periodic_task(task_name: str) -> None:
         logger.info(f"Deleted periodic task: {task_name}")
     except PeriodicTask.DoesNotExist:
         logger.error(f"Periodic task does not exist: {task_name}")
-    except Exception as e:
-        logger.error(f"Failed to delete periodic task: {e}")
 
 
 @shared_task
@@ -114,7 +93,7 @@ def disable_task(task_name: str) -> None:
     task = PeriodicTask.objects.get(name=task_name)
     task.enabled = False
     task.save()
-    update_pipeline(task_name, Pipeline.PipelineStatus.PAUSED, False)
+    PipelineProcessor.update_pipeline(task_name, Pipeline.PipelineStatus.PAUSED, False)
 
 
 @shared_task
@@ -122,4 +101,6 @@ def enable_task(task_name: str) -> None:
     task = PeriodicTask.objects.get(name=task_name)
     task.enabled = True
     task.save()
-    update_pipeline(task_name, Pipeline.PipelineStatus.RESTARTING, True)
+    PipelineProcessor.update_pipeline(
+        task_name, Pipeline.PipelineStatus.RESTARTING, True
+    )

@@ -1,14 +1,38 @@
 import logging
 import os
-from typing import Any
+from collections.abc import Iterator
+from typing import Any, Optional
 
 from docker.errors import APIError, ImageNotFound
 from docker.models.containers import Container
 from unstract.worker.constants import Env
+from unstract.worker.utils import Utils
 
 from docker import DockerClient, from_env
 
-from .interface import ContainerClientInterface
+from .helper import normalize_container_name
+from .interface import ContainerClientInterface, ContainerInterface
+
+
+class DockerContainer(ContainerInterface):
+    def __init__(self, container: Container) -> None:
+        self.container: Container = container
+
+    @property
+    def name(self):
+        return self.container.name
+
+    def logs(self, follow=True) -> Iterator[str]:
+        for line in self.container.logs(stream=True, follow=follow):
+            yield line.decode().strip()
+
+    def cleanup(self) -> None:
+        if not self.container or not Utils.remove_container_on_exit():
+            return
+        try:
+            self.container.remove(force=True)
+        except Exception as remove_error:
+            self.logger.error(f"Failed to remove docker container: {remove_error}")
 
 
 class Client(ContainerClientInterface):
@@ -67,6 +91,32 @@ class Client(ContainerClientInterface):
                 f"Internal service error occured while authentication: {exc}"
             )
 
+    def __image_exists(self, image_name_with_tag: str) -> bool:
+        """Check if the container image exists in system.
+
+        Args:
+            image_name_with_tag (str): The image name with tag.
+
+        Returns:
+            bool: True if the image exists, False otherwise.
+        """
+
+        try:
+            # Attempt to get the image information
+            self.client.images.get(image_name_with_tag)
+            self.logger.info(
+                f"Image '{image_name_with_tag}' found in the local system."
+            )
+            return True
+        except ImageNotFound:  # type: ignore[attr-defined]
+            self.logger.info(
+                f"Image '{image_name_with_tag}' not found in the local system."
+            )
+            return False
+        except APIError as e:  # type: ignore[attr-defined]
+            self.logger.error(f"An API error occurred: {e}")
+            return False
+
     def get_image(self) -> str:
         """Will check if image exists locally and pulls the image using
         `self.image_name` and `self.image_tag` if necessary.
@@ -103,31 +153,45 @@ class Client(ContainerClientInterface):
 
         return image_name_with_tag
 
-    def __image_exists(self, image_name_with_tag: str) -> bool:
-        """Check if the container image exists in system.
-
-        Args:
-            image_name_with_tag (str): The image name with tag.
-
-        Returns:
-            bool: True if the image exists, False otherwise.
-        """
-
-        try:
-            # Attempt to get the image information
-            self.client.images.get(image_name_with_tag)
-            self.logger.info(
-                f"Image '{image_name_with_tag}' found in the local system."
+    def get_container_run_config(
+        self,
+        command: list[str],
+        organization_id: str,
+        workflow_id: str,
+        execution_id: str,
+        envs: Optional[dict[str, Any]] = None,
+        auto_remove: bool = False,
+    ) -> dict[str, Any]:
+        if envs is None:
+            envs = {}
+        mounts = []
+        if organization_id and workflow_id and execution_id:
+            mounts.append(
+                {
+                    "type": "bind",
+                    "source": os.path.join(
+                        os.getenv(Env.WORKFLOW_DATA_DIR, ""),
+                        organization_id,
+                        workflow_id,
+                        execution_id,
+                    ),
+                    "target": os.getenv(Env.TOOL_DATA_DIR, "/data"),
+                }
             )
-            return True
-        except ImageNotFound:  # type: ignore[attr-defined]
-            self.logger.info(
-                f"Image '{image_name_with_tag}' not found in the local system."
-            )
-            return False
-        except APIError as e:  # type: ignore[attr-defined]
-            self.logger.error(f"An API error occurred: {e}")
-            return False
+        return {
+            "name": normalize_container_name(self.image_name),
+            "image": self.get_image(),
+            "command": command,
+            "detach": True,
+            "stream": True,
+            "auto_remove": auto_remove,
+            "environment": envs,
+            "stderr": True,
+            "stdout": True,
+            "network": os.getenv(Env.TOOL_CONTAINER_NETWORK, ""),
+            "mounts": mounts,
+        }
 
-    def run_container(self, config: dict[Any, Any]) -> Container:
-        return self.client.containers.run(**config)
+    def run_container(self, config: dict[Any, Any]) -> Any:
+        self.logger.info(f"Docker config: {config}")
+        return DockerContainer(self.client.containers.run(**config))
