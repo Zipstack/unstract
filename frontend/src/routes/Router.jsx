@@ -7,6 +7,7 @@ import { RequireAdmin } from "../components/helpers/auth/RequireAdmin.js";
 import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
 import { RequireGuest } from "../components/helpers/auth/RequireGuest.js";
 import { CustomToolsHelper } from "../components/helpers/custom-tools/CustomToolsHelper.js";
+import { PublicPromptStudioHelper } from "../components/helpers/custom-tools/PublicPromptStudioHelper.js";
 import { ProjectHelper } from "../components/helpers/project/ProjectHelper.js";
 import { OAuthStatus } from "../components/oauth-ds/oauth-status/OAuthStatus.jsx";
 import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
@@ -50,6 +51,13 @@ function Router() {
       <Route path="error" element={<GenericError />} />
       <Route path="" element={<PersistentLogin />}>
         {/* public routes */}
+        <Route path="/share/:id" element={<PublicPromptStudioHelper />}>
+          <Route path="" element={<ToolIdePage />} />
+          <Route
+            path="/share/:id/outputAnalyzer"
+            element={<OutputAnalyzerPage />}
+          />
+        </Route>
         <Route path="" element={<RequireGuest />}>
           <Route path="landing" element={<LandingPage />} />
         </Route>

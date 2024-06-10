@@ -640,7 +640,8 @@ function PromptCard({
                         promptDetails?.prompt_id
                       ) ||
                       isSinglePassExtractLoading ||
-                      indexDocs.includes(selectedDoc?.document_id)
+                      indexDocs.includes(selectedDoc?.document_id) ||
+                      window.location.pathname.startsWith(`/share`)
                     }
                   >
                     <EditOutlined className="prompt-card-actions-head" />
@@ -660,7 +661,8 @@ function PromptCard({
                         disableLlmOrDocChange.includes(
                           promptDetails?.prompt_id
                         ) ||
-                        indexDocs.includes(selectedDoc?.document_id)
+                        indexDocs.includes(selectedDoc?.document_id) ||
+                        window.location.pathname.startsWith(`/share`)
                       }
                     >
                       <PlayCircleOutlined className="prompt-card-actions-head" />
@@ -681,7 +683,8 @@ function PromptCard({
                           promptDetails?.prompt_id
                         ) ||
                         isSinglePassExtractLoading ||
-                        indexDocs.includes(selectedDoc?.document_id)
+                        indexDocs.includes(selectedDoc?.document_id) ||
+                        window.location.pathname.startsWith(`/share`)
                       }
                     >
                       <DeleteOutlined className="prompt-card-actions-head" />

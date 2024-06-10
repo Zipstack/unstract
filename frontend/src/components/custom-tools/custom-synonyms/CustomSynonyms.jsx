@@ -88,6 +88,7 @@ function CustomSynonyms() {
             value={listOfSynonyms}
             className="cus-syn-select"
             variant="borderless"
+            disabled={window.location.pathname.startsWith(`/share`)}
             onChange={(value) => handleChange(index, "synonyms", value)}
           />
         ),
@@ -97,7 +98,8 @@ function CustomSynonyms() {
             content="The word, along with its corresponding synonyms, will be permanently deleted."
           >
             <Button size="small" type="text">
-              <DeleteOutlined className="cus-syn-del" />
+              <DeleteOutlined className="cus-syn-del"
+              disabled={window.location.pathname.startsWith(`/share`)}/>
             </Button>
           </ConfirmModal>
         ),
@@ -211,6 +213,7 @@ function CustomSynonyms() {
         <div>
           <CustomButton
             type="primary"
+            disabled={window.location.pathname.startsWith(`/share`)}
             icon={<PlusOutlined />}
             onClick={handleAddRow}
           >
@@ -221,6 +224,7 @@ function CustomSynonyms() {
           <Space>
             <CustomButton
               type="primary"
+              disabled={window.location.pathname.startsWith(`/share`)}
               onClick={handleSave}
               loading={isLoading}
             >

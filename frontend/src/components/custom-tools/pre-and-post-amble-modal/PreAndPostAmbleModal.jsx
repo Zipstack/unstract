@@ -93,13 +93,13 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
-          <Button size="small" type="link" onClick={setDefaultPrompt}>
+          <Button size="small" type="link" onClick={setDefaultPrompt} disabled={window.location.pathname.startsWith(`/share`)}>
             Reset with default prompt
           </Button>
         </div>
         <div className="display-flex-right">
           <Space>
-            <CustomButton type="primary" onClick={handleSave}>
+            <CustomButton type="primary" onClick={handleSave} disabled={window.location.pathname.startsWith(`/share`)}>
               Save
             </CustomButton>
           </Space>

@@ -125,7 +125,7 @@ function ManageLlmProfiles() {
             handleConfirm={() => handleDelete(item?.profile_id)}
             content="The LLM profile will be permanently deleted."
           >
-            <Button size="small" className="display-flex-align-center">
+            <Button size="small" className="display-flex-align-center" disabled={window.location.pathname.startsWith(`/share`)}>
               <DeleteOutlined classID="manage-llm-pro-icon" />
             </Button>
           </ConfirmModal>
@@ -135,6 +135,7 @@ function ManageLlmProfiles() {
             size="small"
             className="display-flex-align-center"
             onClick={() => handleEdit(item?.profile_id)}
+            disabled={window.location.pathname.startsWith(`/share`)}
           >
             <EditOutlined classID="manage-llm-pro-icon" />
           </Button>
@@ -143,6 +144,7 @@ function ManageLlmProfiles() {
           <Radio
             checked={defaultLlmProfile === item?.profile_id}
             onClick={() => handleDefaultLlm(item?.profile_id)}
+            disabled={window.location.pathname.startsWith(`/share`)}
           />
         ),
       };
@@ -228,7 +230,7 @@ function ManageLlmProfiles() {
         </div>
       </SpaceWrapper>
       <div className="display-flex-right">
-        <CustomButton type="primary" onClick={handleAddNewLlmProfileBtnClick}>
+        <CustomButton type="primary" onClick={handleAddNewLlmProfileBtnClick} disabled={window.location.pathname.startsWith(`/share`)}>
           Add New LLM Profile
         </CustomButton>
       </div>

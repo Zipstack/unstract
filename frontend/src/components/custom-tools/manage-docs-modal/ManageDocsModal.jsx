@@ -384,7 +384,8 @@ function ManageDocsModal({
                       isSinglePassExtractLoading ||
                       indexDocs.includes(item?.document_id) ||
                       isUploading ||
-                      !defaultLlmProfile
+                      !defaultLlmProfile ||
+                      window.location.pathname.startsWith(`/share`)
                     }
                   />
                 </Tooltip>
@@ -408,7 +409,7 @@ function ManageDocsModal({
                   disableLlmOrDocChange?.length > 0 ||
                   isSinglePassExtractLoading ||
                   indexDocs.includes(item?.document_id) ||
-                  isUploading
+                  isUploading || window.location.pathname.startsWith(`/share`)
                 }
               >
                 <DeleteOutlined className="manage-llm-pro-icon" />
@@ -589,7 +590,8 @@ function ManageDocsModal({
                   disabled={
                     !defaultLlmProfile ||
                     disableLlmOrDocChange?.length > 0 ||
-                    isSinglePassExtractLoading
+                    isSinglePassExtractLoading ||
+                    window.location.pathname.startsWith(`/share`)
                   }
                 >
                   Upload New File

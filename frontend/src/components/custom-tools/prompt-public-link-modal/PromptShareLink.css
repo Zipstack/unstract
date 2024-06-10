@@ -1,0 +1,25 @@
+.prompt-share-typography-title{
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.prompt-share-typography-info{
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 22px;
+}
+
+.prompt-share-info{
+    padding-left:32px;
+    padding-right: 35px;
+    text-wrap: wrap;
+}
+
+.prompt-share-title{
+    padding-top:15px;
+    padding-left: 15px;
+}
+
+.prompt-share-icons{
+    padding-right: 5px;
+}

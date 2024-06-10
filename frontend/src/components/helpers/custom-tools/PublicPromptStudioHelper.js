@@ -9,7 +9,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
-function CustomToolsHelper() {
+function PublicPromptStudioHelper() {
   const [isLoading, setIsLoading] = useState(true);
   const { id } = useParams();
   const { sessionDetails } = useSessionStore();
@@ -29,32 +29,26 @@ function CustomToolsHelper() {
       selectedDoc: null,
     };
 
-    const reqOpsPromptStudio = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${id}`,
-    };
-
     const reqOpsPublicPromptStudio = {
       method: "GET",
-      url: `/share/prompt-metadata/${id}`,
+      url: `/public/share/prompt-metadata/?id=${id}`,
     };
 
     let selectedDocId = null;
     setIsLoading(true);
-    console.log(reqOpsPublicPromptStudio)
-    handleApiRequest(reqOpsPromptStudio)
+    console.log(reqOpsPublicPromptStudio);
+    handleApiRequest(reqOpsPublicPromptStudio)
       .then((res) => {
         const data = res?.data;
         updatedCusTool["defaultLlmProfile"] = data?.default_profile;
         updatedCusTool["details"] = data;
         updatedCusTool["singlePassExtractMode"] =
           data?.single_pass_extraction_mode;
-        updatedCusTool["shareId"] = data?.share_id;
         selectedDocId = data?.output;
 
         const reqOpsDocs = {
           method: "GET",
-          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-document?tool_id=${data?.tool_id}`,
+          url: `/public/share/document-metadata/?id=${id}`,
         };
         return handleApiRequest(reqOpsDocs);
       })
@@ -67,7 +61,7 @@ function CustomToolsHelper() {
 
         const reqOpsDropdownItems = {
           method: "GET",
-          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/select_choices`,
+          url: `/public/share/select-choices`,
         };
         return handleApiRequest(reqOpsDropdownItems);
       })
@@ -77,7 +71,7 @@ function CustomToolsHelper() {
 
         const reqOpsLlmProfiles = {
           method: "GET",
-          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-studio-profile/${id}`,
+          url: `/public/share/profiles-metadata/?id=${id}`,
         };
 
         return handleApiRequest(reqOpsLlmProfiles);
@@ -117,4 +111,4 @@ function CustomToolsHelper() {
   return <Outlet />;
 }
 
-export { CustomToolsHelper };
+export { PublicPromptStudioHelper };

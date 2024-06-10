@@ -2,13 +2,16 @@ import {
   ArrowLeftOutlined,
   EditOutlined,
   SettingOutlined,
+  ShareAltOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
 import { Button, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import "./Header.css";
-
+import { PromptShareModal } from "../prompt-public-share-modal/PromptShareModal";
+import { PromptShareLink } from "../prompt-public-link-modal/PromptShareLink";
 import { ExportToolIcon } from "../../../assets";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -26,7 +29,7 @@ try {
 } catch {
   // The variable will remain undefined if the component is not available.
 }
-function Header({ setOpenSettings, handleUpdateTool }) {
+function Header({ setOpenSettings, handleUpdateTool, setOpenShareModal }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
   const { details } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
@@ -37,22 +40,25 @@ function Header({ setOpenSettings, handleUpdateTool }) {
   const [userList, setUserList] = useState([]);
   const [openExportToolModal, setOpenExportToolModal] = useState(false);
   const { setPostHogCustomEvent } = usePostHogEvents();
-
+  const location = useLocation()
   const [toolDetails, setToolDetails] = useState(null);
 
   const handleExport = (selectedUsers, toolDetail, isSharedWithEveryone) => {
-    const body = {
-      is_shared_with_org: isSharedWithEveryone,
-      user_id: isSharedWithEveryone ? [] : selectedUsers,
-    };
+    // const body = {
+    //   is_shared_with_org: isSharedWithEveryone,
+    //   user_id: isSharedWithEveryone ? [] : selectedUsers,
+    // };
     const requestOptions = {
       method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/${details?.tool_id}`,
+      // url: `/api/v1/unstract/${sessionDetails?.orgId}/public-share-manager/prompt-metadata/?id=d0134a50-e7b6-4918-b660-d8bb3fff465d`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/share-manager/?id=21468f4d-ca25-4050-8c51-917d85964816`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
-      data: body,
+      data: {
+        share_type: "PROMPT_STUDIO",
+      },
     };
     setIsExportLoading(true);
     axiosPrivate(requestOptions)
@@ -71,6 +77,24 @@ function Header({ setOpenSettings, handleUpdateTool }) {
       });
   };
 
+  const handleClone = (isClone) => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/clone/?id=${id}`,
+    };
+
+    const userList = axiosPrivate(requestOptions)
+      .then((response) => {
+        const cloned_tool = response?.data?.tool_id || undefined;
+        navigate(`/${sessionDetails?.orgName}/tools/${cloned_tool}`);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to clone project"));
+      });
+
+    return userList;
+  };
+  };
   const handleShare = (isEdit) => {
     try {
       setPostHogCustomEvent("ps_exported_tool", {
@@ -82,8 +106,12 @@ function Header({ setOpenSettings, handleUpdateTool }) {
     }
 
     const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/${details?.tool_id}`,
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/share-manager/`,
+      data: {
+        id: "21468f4d-ca25-4050-8c51-917d85964816",
+        share_type: "PROMPT_STUDIO",
+      },
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -142,6 +170,7 @@ function Header({ setOpenSettings, handleUpdateTool }) {
         <Button
           size="small"
           type="text"
+          disabled={window.location.pathname.startsWith(`/share`)}
           onClick={() => navigate(`/${sessionDetails?.orgName}/tools`)}
         >
           <ArrowLeftOutlined />
@@ -157,7 +186,9 @@ function Header({ setOpenSettings, handleUpdateTool }) {
       </div>
       <div className="custom-tools-header-btns">
         {SinglePassToggleSwitch && (
-          <SinglePassToggleSwitch handleUpdateTool={handleUpdateTool} />
+          <SinglePassToggleSwitch handleUpdateTool={handleUpdateTool}
+          disabled={window.location.pathname.startsWith(`/share`)}
+          />
         )}
         <div>
           <Tooltip title="Settings">
@@ -167,11 +198,26 @@ function Header({ setOpenSettings, handleUpdateTool }) {
             />
           </Tooltip>
         </div>
+        <div>
+            <Tooltip title="Public Share">
+              <Button
+                icon={<ShareAltOutlined />}
+                disabled={window.location.pathname.startsWith(`/share`)}
+                onClick={() => setOpenShareModal(true)}
+              />
+            </Tooltip>
+        </div>
+        <div>
+          <Tooltip title="Clone">
+            <Button icon={<CopyOutlined />} onClick={() => handleClone(true)} />
+          </Tooltip>
+        </div>
         <div className="custom-tools-header-v-divider" />
         <div>
           <Tooltip title="Export as tool">
             <CustomButton
               type="primary"
+              disabled={window.location.pathname.startsWith(`/share`)}
               onClick={() => handleShare(true)}
               loading={isExportLoading}
             >

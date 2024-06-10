@@ -193,7 +193,8 @@ function ToolsMain() {
         )}
       </div>
       <div className="tools-main-footer">
-        <Footer activeKey={activeKey} addPromptInstance={addPromptInstance} />
+        <Footer activeKey={activeKey} addPromptInstance={addPromptInstance}
+        disabled={window.location.pathname.startsWith(`/share`)} />
       </div>
     </div>
   );

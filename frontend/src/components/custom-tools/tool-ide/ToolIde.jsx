@@ -1,11 +1,11 @@
 import { FullscreenExitOutlined, FullscreenOutlined } from "@ant-design/icons";
 import { Col, Collapse, Modal, Row } from "antd";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { useCustomToolStore, details } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomSynonymsModal } from "../custom-synonyms-modal/CustomSynonymsModal";
 import { DisplayLogs } from "../display-logs/DisplayLogs";
@@ -15,6 +15,8 @@ import { LogsLabel } from "../logs-label/LogsLabel";
 import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
+import { PromptShareModal } from "../prompt-public-share-modal/PromptShareModal";
+import { PromptShareLink } from "../prompt-public-link-modal/PromptShareLink";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 let OnboardMessagesModal;
@@ -34,6 +36,9 @@ function ToolIde() {
   const [activeKey, setActiveKey] = useState([]);
   const [openCusSynonymsModal, setOpenCusSynonymsModal] = useState(false);
   const [openSettings, setOpenSettings] = useState(false);
+  const [openShareLink, setOpenShareLink] = useState(false);
+  const [openShareConfirmation, setOpenShareConfirmation] = useState(false);
+  const [openShareModal, setOpenShareModal] = useState(false);
   const {
     details,
     updateCustomTool,
@@ -42,6 +47,7 @@ function ToolIde() {
     indexDocs,
     pushIndexDoc,
     deleteIndexDoc,
+    shareId,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { promptOnboardingMessage } = sessionDetails;
@@ -50,6 +56,18 @@ function ToolIde() {
   const handleException = useExceptionHandler();
   const [loginModalOpen, setLoginModalOpen] = useState(true);
   const { setPostHogCustomEvent } = usePostHogEvents();
+
+  useEffect(() => {
+    if (shareId === null && openShareModal) {
+      setOpenShareConfirmation(true);
+      setOpenShareLink(false);
+    }
+    if (shareId !== null && openShareModal){
+      console.log(details)
+      setOpenShareConfirmation(false);
+      setOpenShareLink(true);
+    }
+  }, [shareId, openShareModal]);
 
   const openLogsModal = () => {
     setShowLogsModal(true);
@@ -140,6 +158,7 @@ function ToolIde() {
     const requestOptions = {
       method: "PATCH",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/`,
+      // url: `/share/prompt-metadata/${id}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
@@ -190,6 +209,7 @@ function ToolIde() {
         <Header
           handleUpdateTool={handleUpdateTool}
           setOpenSettings={setOpenSettings}
+          setOpenShareModal={setOpenShareModal}
         />
       </div>
       <div className="tool-ide-body">
@@ -240,10 +260,13 @@ function ToolIde() {
         setOpen={setOpenCusSynonymsModal}
       />
       <SettingsModal
+        disabled
         open={openSettings}
         setOpen={setOpenSettings}
         handleUpdateTool={handleUpdateTool}
       />
+      <PromptShareModal open={openShareConfirmation} setOpenShareModal={setOpenShareModal} setOpenShareConfirmation={setOpenShareConfirmation}/>
+      <PromptShareLink open={openShareLink} setOpenShareModal={setOpenShareModal} setOpenShareLink={setOpenShareLink}/>
       {!promptOnboardingMessage && OnboardMessagesModal && (
         <OnboardMessagesModal
           open={loginModalOpen}
