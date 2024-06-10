@@ -1,11 +1,11 @@
 import json
 import logging
 import uuid
-from django.core.exceptions import ObjectDoesNotExist
 
 from account.models import User
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import connection, models
-from django.db.models.signals import post_delete, pre_delete
+from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
@@ -90,6 +90,7 @@ class IndexManager(BaseModel):
             ),
         ]
 
+
 def delete_from_vector_db(index_ids_history, vector_db_instance_id):
     org_schema = connection.tenant.schema_name
     util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_schema)
@@ -120,7 +121,9 @@ def perform_vector_db_cleanup(sender, instance, **kwargs):
     except SdkError as e:
         logger.error(f"Error while performing vector db cleanup: {e}")
     except ObjectDoesNotExist:
-        logger.error(f"No ProfileManager found for tool_id {instance.document_manager.tool_id}")
+        logger.error(
+            f"No ProfileManager found for tool_id {instance.document_manager.tool_id}"
+        )
     except AttributeError:
         logger.error("ProfileManager or vector_store is None")
     except Exception as e:
