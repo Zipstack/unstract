@@ -47,7 +47,7 @@ class CacheService:
     @staticmethod
     def delete_a_key(key: str, version: Any = None) -> None:
         cache.delete(key, version)
-    
+
     @staticmethod
     def set_user_organizations(user_id: str, organizations: list[str]) -> None:
         key: str = f"{user_id}|organizations"
