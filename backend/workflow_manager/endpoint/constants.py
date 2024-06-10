@@ -5,8 +5,9 @@ class TableColumns:
 
 
 class DBConnectionClass:
-    SNOWFLAKE = "SnowflakeConnection"
-    BIGQUERY = "Client"
+    SNOWFLAKE = "SnowflakeDB"
+    BIGQUERY = "BigQuery"
+    MSSQL = "MSSQL"
 
 
 class Snowflake:
