@@ -31,8 +31,8 @@ dependencies = [
     "python-socketio==5.9.0", # For log_events
     "social-auth-app-django==5.3.0", # For OAuth
     "social-auth-core==4.4.2", # For OAuth
-    "unstract-sdk~=0.28.0",
-    "unstract-adapters~=0.17.0",
+    "unstract-sdk~=0.31.0",
+    "unstract-adapters~=0.18.0",
     # ! IMPORTANT!
     # Indirect local dependencies usually need to be added in their own projects
     # as: https://pdm-project.org/latest/usage/dependency/#local-dependencies.
@@ -66,7 +66,12 @@ deploy = [
 ]
 test = [
     "pytest>=8.0.1",
+    "pytest-dotenv==0.5.2",
 ]
+
+[tool.pytest.ini_options]
+env_files = "test.env" # Load env from particular env file
+addopts = "-s"
 
 [tool.pdm.scripts]
 # Commands for backend
@@ -78,7 +83,7 @@ migrate_db.cmd = "python manage.py migrate"
 migrate_db.env_file = ".env"
 migrate_db.help = "Performs DB migrations for Unstract backend"
 # Commands for backend execution
-consumer.cmd = "celery -A backend worker --loglevel=info -Q celery,celery_periodic_logs"
+consumer.cmd = "celery -A backend worker --loglevel=info -Q celery,celery_periodic_logs,celery_log_task_queue --autoscale 8,1"
 consumer.env_file = ".env"
 consumer.help = "Runs the Unstract consumer"
 # Celery Flower

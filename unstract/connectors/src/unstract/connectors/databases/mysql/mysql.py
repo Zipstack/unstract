@@ -5,10 +5,11 @@ from typing import Any
 import pymysql
 from pymysql.connections import Connection
 
+from unstract.connectors.databases.mysql_handler import MysqlHandler
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 
-class MySQL(UnstractDB):
+class MySQL(UnstractDB, MysqlHandler):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("MySQL")
 
@@ -78,3 +79,13 @@ class MySQL(UnstractDB):
             datetime.datetime: "TIMESTAMP",
         }
         return mapping.get(python_type, "LONGTEXT")
+
+    def execute_query(
+        self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
+    ) -> None:
+        MysqlHandler.execute_query(
+            engine=engine,
+            sql_query=sql_query,
+            sql_values=sql_values,
+            database=self.database,
+        )
