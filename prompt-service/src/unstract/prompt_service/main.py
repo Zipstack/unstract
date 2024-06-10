@@ -378,19 +378,21 @@ def prompt_processor() -> Any:
                 "Retrieving context from adapter",
             )
 
-        retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
+            retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
 
-        if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
-            answer, context = run_retrieval(
-                tool_settings=tool_settings,
-                output=output,
-                doc_id=doc_id,
-                llm=llm,
-                vector_index=vector_index,
-                retrieval_type=retrieval_strategy,
-            )
-        else:
-            app.logger.info("Invalid retrieval strategy passed: %s", retrieval_strategy)
+            if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
+                answer, context = run_retrieval(
+                    tool_settings=tool_settings,
+                    output=output,
+                    doc_id=doc_id,
+                    llm=llm,
+                    vector_index=vector_index,
+                    retrieval_type=retrieval_strategy,
+                )
+            else:
+                app.logger.info(
+                    "Invalid retrieval strategy passed: %s", retrieval_strategy
+                )
 
             _publish_log(
                 log_events_id,

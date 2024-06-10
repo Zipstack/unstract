@@ -84,6 +84,7 @@ class ToolStudioPromptKeys:
     SINGLE_PASS_EXTRACTION = "single_pass_extraction"
     NOTES = "NOTES"
     OUTPUT = "output"
+    SEQUENCE_NUMBER = "sequence_number"
 
 
 class FileViewTypes:
