@@ -2,6 +2,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Optional
+
 from kombu import Connection
 
 from unstract.core.constants import LogEventArgument, LogProcessingTask
@@ -10,7 +11,7 @@ from unstract.core.constants import LogEventArgument, LogProcessingTask
 class LogPublisher:
 
     kombu_conn = Connection(os.environ.get("CELERY_BROKER_URL"))
-    
+
     @staticmethod
     def log_usage(
         level: str = "INFO",
@@ -115,7 +116,6 @@ class LogPublisher:
 
     @classmethod
     def publish(cls, channel_id: str, payload: dict[str, Any]) -> bool:
-      
         """Publish a message to the queue."""
         try:
             with cls.kombu_conn.Producer(serializer="json") as producer:
