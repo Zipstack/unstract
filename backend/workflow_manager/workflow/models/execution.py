@@ -52,6 +52,7 @@ class WorkflowExecution(BaseModel):
     execution_log_id = models.CharField(
         default="", editable=False, db_comment="Execution log events Id"
     )
+    # TODO: Restrict with an enum
     status = models.CharField(default="", db_comment="Current status of execution")
     error_message = models.CharField(
         max_length=EXECUTION_ERROR_LENGTH,

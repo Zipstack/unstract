@@ -32,7 +32,7 @@ def run_container() -> Optional[Any]:
     envs = data["envs"]
     messaging_channel = data["messaging_channel"]
 
-    worker = UnstractWorker(image_name, image_tag, app=app)
+    worker = UnstractWorker(image_name, image_tag, app)
     result = worker.run_container(
         organization_id=organization_id,
         workflow_id=workflow_id,
@@ -59,7 +59,7 @@ def run_command(command: str) -> Optional[Any]:
         abort(404)
     image_name = request.args.get("image_name")
     image_tag = request.args.get("image_tag")
-    worker = UnstractWorker(image_name, image_tag)
+    worker = UnstractWorker(image_name, image_tag, app)
 
     return worker.run_command(command)
 
