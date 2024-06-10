@@ -42,7 +42,7 @@ jobs:
       - name: Build and push images
         working-directory: ./docker
         run: |
-          DOCKER_VERSION_TAG = ${{ github.event.release.tag_name  || github.event.inputs.tag}}
+          DOCKER_VERSION_TAG=${{ github.event.release.tag_name  || github.event.inputs.tag}}
           VERSION=$DOCKER_VERSION_TAG docker-compose -f docker-compose.build.yaml build --no-cache ${{ matrix.service_name }}
           docker push unstract/${{ matrix.service_name }}:$DOCKER_VERSION_TAG
           if [ "${{ github.event_name }}" = "release" ]; then
