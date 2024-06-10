@@ -30,7 +30,16 @@ function SocketMessages() {
 
   const onMessage = (data) => {
     try {
-      const msg = JSON.parse(new TextDecoder().decode(data.data));
+      let msg = data.data;
+      // Attempt to decode data as JSON if it's in encoded state
+      if (typeof msg === "string" || msg instanceof Uint8Array) {
+        if (typeof msg === "string") {
+          msg = JSON.parse(msg);
+        } else {
+          msg = JSON.parse(new TextDecoder().decode(msg));
+        }
+      }
+
       if (
         (msg?.type === "LOG" || msg?.type === "COST") &&
         msg?.service !== "prompt"

@@ -33,7 +33,7 @@ class Utils:
             LogLevel
         """
         try:
-            log_level_str = os.environ.get(Env.LOG_LEVEL, "").upper()
+            log_level_str = os.getenv(Env.LOG_LEVEL, "").upper()
             return LogLevel[log_level_str.upper()]
         except KeyError:
             return LogLevel.INFO
@@ -45,4 +45,4 @@ class Utils:
         Returns:
             bool
         """
-        return Utils.str_to_bool(os.environ.get(Env.REMOVE_CONTAINER_ON_EXIT, "true"))
+        return Utils.str_to_bool(os.getenv(Env.REMOVE_CONTAINER_ON_EXIT, "true"))

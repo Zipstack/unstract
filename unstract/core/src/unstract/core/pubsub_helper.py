@@ -1,15 +1,16 @@
-import json
 import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Optional
+from kombu import Connection
 
-from django_redis import get_redis_connection
+from unstract.core.constants import LogEventArgument, LogProcessingTask
 
 
 class LogPublisher:
-    r = get_redis_connection("default")
 
+    kombu_conn = Connection(os.environ.get("CELERY_BROKER_URL"))
+    
     @staticmethod
     def log_usage(
         level: str = "INFO",
@@ -89,24 +90,53 @@ class LogPublisher:
         }
 
     @classmethod
+    def _get_task_message(
+        cls, user_session_id: str, event: str, message: Any
+    ) -> dict[str, Any]:
+
+        task_kwargs = {
+            LogEventArgument.EVENT: event,
+            LogEventArgument.MESSAGE: message,
+            LogEventArgument.USER_SESSION_ID: user_session_id,
+        }
+        task_message = {
+            "args": [],
+            "kwargs": task_kwargs,
+            "retries": 0,
+            "utc": True,
+        }
+        return task_message
+
+    @classmethod
+    def _get_task_header(cls, task_name: str) -> dict[str, Any]:
+        return {
+            "task": task_name,
+        }
+
+    @classmethod
     def publish(cls, channel_id: str, payload: dict[str, Any]) -> bool:
-        channel = f"logs:{channel_id}"
-        logs_expiry = int(os.environ.get("LOGS_EXPIRATION_TIME_IN_SECOND", 3600))
+      
+        """Publish a message to the queue."""
         try:
-            log_data = json.dumps(payload)
-            cls.r.publish(channel, log_data)
-
-            # Check if the payload type is "LOG"
-            if payload["type"] == "LOG":
-                # Extract timestamp from payload
-                timestamp = payload["timestamp"]
-
-                # Construct Redis key using channel and timestamp
-                redis_key = f"{channel}:{timestamp}"
-
-                # Store logs in Redis with expiration of 1 hour
-                cls.r.setex(redis_key, logs_expiry, log_data)
+            with cls.kombu_conn.Producer(serializer="json") as producer:
+                event = f"logs:{channel_id}"
+                task_message = cls._get_task_message(
+                    user_session_id=channel_id,
+                    event=event,
+                    message=payload,
+                )
+                headers = cls._get_task_header(LogProcessingTask.TASK_NAME)
+                # Publish the message to the queue
+                producer.publish(
+                    body=task_message,
+                    exchange="",
+                    headers=headers,
+                    routing_key=LogProcessingTask.QUEUE_NAME,
+                    compression=None,
+                    retry=True,
+                )
+                logging.debug(f"Published '{channel_id}' <= {payload}")
         except Exception as e:
-            logging.error(f"Failed to publish '{redis_key}' <= {log_data}: {e}")
+            logging.error(f"Failed to publish '{channel_id}' <= {payload}: {e}")
             return False
         return True
