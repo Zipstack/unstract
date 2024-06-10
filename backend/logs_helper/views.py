@@ -1,15 +1,15 @@
 import json
 import logging
-import os
 from datetime import datetime, timezone
 
+from django.conf import settings
+from django.http import HttpRequest
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.http import HttpRequest
 from utils.cache_service import CacheService
-from django.conf import settings
 from utils.user_session import UserSessionUtils
+
 from .serializers import StoreLogMessagesSerializer
 
 logger = logging.getLogger(__name__)
