@@ -267,7 +267,7 @@ class WorkflowHelper:
         destination.validate()
         # Execution Process
         try:
-            updated_execution = WorkflowHelper.process_input_files(
+            workflow_execution = WorkflowHelper.process_input_files(
                 workflow,
                 source,
                 destination,
@@ -275,9 +275,30 @@ class WorkflowHelper:
                 single_step=single_step,
                 hash_values_of_files=hash_values_of_files,
             )
+            # TODO: Update through signals
+            WorkflowHelper._update_pipeline_status(
+                pipeline_id=pipeline_id, workflow_execution=workflow_execution
+            )
+            return ExecutionResponse(
+                str(workflow.id),
+                str(workflow_execution.id),
+                workflow_execution.status,
+                log_id=str(execution_service.execution_log_id),
+                error=workflow_execution.error_message,
+                mode=workflow_execution.execution_mode,
+                result=destination.api_results,
+            )
+        finally:
+            destination.delete_execution_directory()
+
+    @staticmethod
+    def _update_pipeline_status(
+        pipeline_id: Optional[str], workflow_execution: WorkflowExecution
+    ) -> None:
+        try:
             if pipeline_id:
                 # Update pipeline status
-                if updated_execution.status != ExecutionStatus.ERROR.value:
+                if workflow_execution.status != ExecutionStatus.ERROR.value:
                     PipelineProcessor.update_pipeline(
                         pipeline_id, Pipeline.PipelineStatus.SUCCESS
                     )
@@ -285,17 +306,11 @@ class WorkflowHelper:
                     PipelineProcessor.update_pipeline(
                         pipeline_id, Pipeline.PipelineStatus.FAILURE
                     )
-            return ExecutionResponse(
-                str(workflow.id),
-                str(updated_execution.id),
-                updated_execution.status,
-                log_id=str(execution_service.execution_log_id),
-                error=updated_execution.error_message,
-                mode=updated_execution.execution_mode,
-                result=destination.api_results,
+        except Exception as e:
+            logger.warning(
+                f"Error updating pipeline {pipeline_id} status: {e}",
+                f", workflow execution: {workflow_execution}",
             )
-        finally:
-            destination.delete_execution_directory()
 
     @staticmethod
     def get_status_of_async_task(
