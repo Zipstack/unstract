@@ -4,7 +4,7 @@ import {
   EditOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
-import { Button, Card, Col, Row, Space, Tag, Tooltip } from "antd";
+import { Button, Card, Col, Collapse, Row, Space, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 import "./NotesCard.css";
 import { useState } from "react";
@@ -12,6 +12,7 @@ import { useState } from "react";
 import { EditableText } from "../editable-text/EditableText";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";
+import { ExpandCardBtn } from "../prompt-card/ExpandCardBtn";
 
 function NotesCard({
   details,
@@ -24,6 +25,7 @@ function NotesCard({
   const [promptText, setPromptText] = useState("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
+  const [expandCard, setExpandCard] = useState(true);
 
   const enableEdit = (event) => {
     event.stopPropagation();
@@ -33,7 +35,11 @@ function NotesCard({
 
   return (
     <Card className="tool-ide-notes-card">
-      <Space direction="vertical" className="width-100">
+      <Space
+        direction="vertical"
+        className="width-100"
+        size={expandCard ? 10 : 0}
+      >
         <Row>
           <Col span={18}>
             <EditableText
@@ -71,6 +77,10 @@ function NotesCard({
                 )}
               </>
             )}
+            <ExpandCardBtn
+              expandCard={expandCard}
+              setExpandCard={setExpandCard}
+            />
             <Tooltip title="Edit">
               <Button
                 size="small"
@@ -93,17 +103,25 @@ function NotesCard({
             </ConfirmModal>
           </Col>
         </Row>
-        <EditableText
-          isEditing={isEditingNote}
-          setIsEditing={setIsEditingNote}
-          text={promptText}
-          setText={setPromptText}
-          promptId={details?.prompt_id}
-          defaultText={details?.prompt}
-          handleChange={handleChange}
-          isTextarea={true}
-          placeHolder={updatePlaceHolder}
-        />
+        <Collapse
+          className="prompt-card-collapse"
+          ghost
+          activeKey={expandCard && "1"}
+        >
+          <Collapse.Panel key={"1"}>
+            <EditableText
+              isEditing={isEditingNote}
+              setIsEditing={setIsEditingNote}
+              text={promptText}
+              setText={setPromptText}
+              promptId={details?.prompt_id}
+              defaultText={details?.prompt}
+              handleChange={handleChange}
+              isTextarea={true}
+              placeHolder={updatePlaceHolder}
+            />
+          </Collapse.Panel>
+        </Collapse>
       </Space>
     </Card>
   );
