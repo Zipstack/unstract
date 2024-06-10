@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 
 from django.utils import timezone
-from pipeline.exceptions import InactivePipelineError, PipelineSaveError
+from pipeline.exceptions import InactivePipelineError
 from pipeline.models import Pipeline
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ class PipelineProcessor:
         """
         pipeline: Pipeline = PipelineProcessor.fetch_pipeline(pipeline_id)
         pipeline.run_count = pipeline.run_count + 1
-        return PipelineProcessor.update_pipeline_status(
+        return PipelineProcessor._update_pipeline_status(
             pipeline=pipeline,
             status=Pipeline.PipelineStatus.RESTARTING,
             is_end=False,
@@ -38,7 +38,7 @@ class PipelineProcessor:
         return pipeline
 
     @staticmethod
-    def update_pipeline_status(
+    def _update_pipeline_status(
         pipeline: Pipeline,
         status: tuple[str, str],
         is_end: bool,
@@ -59,9 +59,23 @@ class PipelineProcessor:
         if is_active is not None:
             pipeline.active = is_active
 
-        try:
-            pipeline.save()
-        except Exception as exc:
-            logger.error(f"Error occured while saving pipeline : {exc}")
-            raise PipelineSaveError()
+        pipeline.save()
         return pipeline
+
+    @staticmethod
+    def update_pipeline(
+        pipeline_guid: Optional[str],
+        status: tuple[str, str],
+        is_active: Optional[bool] = None,
+    ) -> None:
+        if not pipeline_guid:
+            return
+        # Skip check if we are enabling an inactive pipeline
+        check_active = not is_active
+        pipeline: Pipeline = PipelineProcessor.fetch_pipeline(
+            pipeline_id=pipeline_guid, check_active=check_active
+        )
+        PipelineProcessor._update_pipeline_status(
+            pipeline=pipeline, is_end=True, status=status, is_active=is_active
+        )
+        logger.info(f"Updated pipeline {pipeline_guid} status: {status}")
