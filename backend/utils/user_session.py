@@ -15,3 +15,9 @@ class UserSessionUtils:
     @staticmethod
     def get_user_id(request: HttpRequest) -> Optional[str]:
         return request.session.get("user_id")
+
+    @staticmethod
+    def get_session_id(request: HttpRequest) -> Optional[str]:
+        return request.session.session_key
+
+

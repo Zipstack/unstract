@@ -160,6 +160,7 @@ LOG_HISTORY_CONSUMER_INTERVAL = int(
     get_required_setting("LOG_HISTORY_CONSUMER_INTERVAL", "60")
 )
 LOGS_BATCH_LIMIT = int(get_required_setting("LOGS_BATCH_LIMIT", "30"))
+LOGS_EXPIRATION_TIME_IN_SECOND=int(os.environ.get("LOGS_EXPIRATION_TIME_IN_SECOND", 3600))
 
 # Flag to Enable django admin
 ADMIN_ENABLED = False

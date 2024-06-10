@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, List
 
 from django.conf import settings
 from django.core.cache import cache
@@ -29,6 +29,12 @@ class CacheService:
         )
 
     @staticmethod
+    def get_all_keys(key_pattern: str) -> List[str]:
+        keys = redis_cache.keys(key_pattern)
+        # Ensure all keys are strings
+        return [key.decode("utf-8") if isinstance(key, bytes) else key for key in keys]
+
+    @staticmethod
     def clear_cache(key_pattern: str) -> Any:
         """Delete keys in bulk based on the key pattern."""
         cache.delete_pattern(key_pattern)
@@ -41,7 +47,7 @@ class CacheService:
     @staticmethod
     def delete_a_key(key: str, version: Any = None) -> None:
         cache.delete(key, version)
-
+    
     @staticmethod
     def set_user_organizations(user_id: str, organizations: list[str]) -> None:
         key: str = f"{user_id}|organizations"
