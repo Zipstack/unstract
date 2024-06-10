@@ -41,7 +41,7 @@ class UnstractWorker:
         channel: Optional[str] = None,
     ) -> None:
         for line in container.logs(follow=True):
-            log_message = line.decode().strip()
+            log_message = line
             self.logger.debug(f"[{container.name}] - {log_message}")
             self.process_log_message(
                 log_message=log_message,
@@ -141,7 +141,9 @@ class UnstractWorker:
                 if f'"type": "{command}"' in text:
                     return json.loads(text)
         except Exception as e:
-            self.logger.error(f"Failed to run docker container: {e}")
+            self.logger.error(
+                f"Failed to run docker container: {e}", stack_info=True, exc_info=True
+            )
         if container:
             container.cleanup()
         return None
@@ -209,7 +211,9 @@ class UnstractWorker:
                 organization_id=organization_id,
             )
         except Exception as e:
-            self.logger.error(f"Failed to run docker container: {e}")
+            self.logger.error(
+                f"Failed to run docker container: {e}", stack_info=True, exc_info=True
+            )
             result = {"type": "RESULT", "result": None, "error": str(e)}
         if container:
             container.cleanup()
