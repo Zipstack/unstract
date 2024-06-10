@@ -88,6 +88,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 f"{ToolStudioErrors.TOOL_NAME_EXISTS}, \
                     {ToolStudioErrors.DUPLICATE_API}"
             )
+        PromptStudioHelper.create_default_profile_manager(
+            request.user, serializer.data["tool_id"]
+        )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def perform_destroy(self, instance: CustomTool) -> None:
