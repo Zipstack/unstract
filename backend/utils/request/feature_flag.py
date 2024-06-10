@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from unstract.flags.client import EvaluationClient
+from unstract.flags.clients.evaluation_client import EvaluationClient
 
 
 def check_feature_flag_status(
