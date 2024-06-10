@@ -34,6 +34,8 @@ RUN set -e; \
     \
     pdm sync --prod --no-editable; \
     \
+    [ -f cloud_requirements.txt ] && pip install -r cloud_requirements.txt || { echo "cloud_requirements.txt does not exist";}; \
+    \
     # REF: https://docs.gunicorn.org/en/stable/deploy.html#using-virtualenv
     pip install --no-cache-dir gunicorn gevent;
 

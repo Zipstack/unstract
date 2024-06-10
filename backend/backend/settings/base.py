@@ -161,6 +161,9 @@ LOG_HISTORY_CONSUMER_INTERVAL = int(
 )
 LOGS_BATCH_LIMIT = int(get_required_setting("LOGS_BATCH_LIMIT", "30"))
 LOGS_EXPIRATION_TIME_IN_SECOND=int(os.environ.get("LOGS_EXPIRATION_TIME_IN_SECOND", 3600))
+CELERY_BROKER_URL = get_required_setting(
+    "CELERY_BROKER_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}"
+)
 
 # Flag to Enable django admin
 ADMIN_ENABLED = False
@@ -310,6 +313,9 @@ DATABASES = {
     }
 }
 
+# SocketIO connection manager
+SOCKET_IO_MANAGER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
+
 DATABASE_ROUTERS = ("django_tenants.routers.TenantSyncRouter",)
 
 CACHES = {
@@ -333,9 +339,6 @@ RQ_QUEUES = {
     "default": {"USE_REDIS_CACHE": "default"},
 }
 
-# Used for asynchronous/Queued execution
-# Celery based scheduler
-CELERY_BROKER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
 
 # CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/1"
 # Postgres as result backend

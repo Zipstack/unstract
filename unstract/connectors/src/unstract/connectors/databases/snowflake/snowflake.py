@@ -1,10 +1,15 @@
+import logging
 import os
 from typing import Any
 
 import snowflake.connector
+import snowflake.connector.errors as SnowflakeError
 from snowflake.connector.connection import SnowflakeConnection
 
+from unstract.connectors.databases.exceptions import SnowflakeProgrammingException
 from unstract.connectors.databases.unstract_db import UnstractDB
+
+logger = logging.getLogger(__name__)
 
 
 class SnowflakeDB(UnstractDB):
@@ -70,3 +75,22 @@ class SnowflakeDB(UnstractDB):
             f"created_by TEXT, created_at TIMESTAMP, "
         )
         return sql_query
+
+    def execute_query(
+        self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
+    ) -> None:
+        try:
+            with engine.cursor() as cursor:
+                if sql_values:
+                    cursor.execute(sql_query, sql_values)
+                else:
+                    cursor.execute(sql_query)
+            engine.commit()
+        except SnowflakeError.ProgrammingError as e:
+            logger.error(
+                f"snowflake programming error in crearing/inserting table: "
+                f"{e.msg} {e.errno}"
+            )
+            raise SnowflakeProgrammingException(
+                detail=e.msg, database=self.database
+            ) from e

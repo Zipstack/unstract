@@ -12,12 +12,19 @@ prompt_studio_prompt_detail = ToolStudioPromptView.as_view(
     }
 )
 
+reorder_prompts = ToolStudioPromptView.as_view({"post": "reorder_prompts"})
+
 urlpatterns = format_suffix_patterns(
     [
         path(
             "prompt/<uuid:pk>/",
             prompt_studio_prompt_detail,
             name="tool-studio-prompt-detail",
+        ),
+        path(
+            "prompt/reorder",
+            reorder_prompts,
+            name="reorder_prompts",
         ),
     ]
 )
