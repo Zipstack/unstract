@@ -10,7 +10,6 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
