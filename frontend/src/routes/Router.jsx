@@ -33,6 +33,7 @@ let TrialRoutes;
 let RequirePlatformAdmin;
 let PlatformAdminPage;
 let AppDeployments;
+let ChatApp;
 try {
   TrialRoutes =
     require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
@@ -42,6 +43,7 @@ try {
     require("../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx").PlatformAdminPage;
   AppDeployments =
     require("../plugins/app-deployment/AppDeployments.jsx").AppDeployments;
+  ChatApp = require("../plugins/app-deployment/ChatApp.jsx").ChatApp;
 } catch (err) {
   TrialRoutes = NotFound;
 }
@@ -78,6 +80,7 @@ function Router() {
             {AppDeployments && (
               <Route path="app" element={<AppDeployments type="app" />} />
             )}
+            {ChatApp && <Route path="app/:id" element={<ChatApp />} />}
             <Route path="workflows" element={<WorkflowsPage />} />
             <Route path="workflows/:id" element={<ProjectHelper />}>
               <Route path="" element={<AgencyPage />} />
