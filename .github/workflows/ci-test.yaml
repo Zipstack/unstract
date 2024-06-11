@@ -34,12 +34,6 @@ jobs:
       run: |
         tox
 
-    # - name: Create comment for worker test report
-    #   uses: peter-evans/create-or-update-comment@v4
-    #   with:
-    #     issue-number: ${{ github.event.pull_request.number }}
-    #     body-path: worker-report.md
-
     - name: Render the report to the PR
       uses: marocchino/sticky-pull-request-comment@v2
       with:
