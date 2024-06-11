@@ -32,12 +32,12 @@ jobs:
     - name: Run tox
       run: tox
 
-    - name: Upload coverage report
-      if: always()
-      uses: actions/upload-artifact@v3
-      with:
-        name: coverage-report
-        path: .tox
+    # - name: Upload coverage report
+    #   if: always()
+    #   uses: actions/upload-artifact@v3
+    #   with:
+    #     name: coverage-report
+    #     path: <REPORT_PATH>
 
     - name: Post test results as PR comment
       if: always()
