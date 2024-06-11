@@ -1,7 +1,11 @@
 name: Run tox tests
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
 
 jobs:
