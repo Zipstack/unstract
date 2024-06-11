@@ -14,7 +14,6 @@ from utils.request.feature_flag import check_feature_flag_status, list_all_flags
 
 logger = logging.getLogger(__name__)
 
-
 @api_view(["POST"])
 def evaluate_feature_flag(request: Request) -> Response:
     """Function to evaluate the feature flag.
@@ -45,8 +44,7 @@ def evaluate_feature_flag(request: Request) -> Response:
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-
-@api_view(["POST"])
+@api_view(["GET"])
 def list_feature_flags(request: Request) -> Response:
     """Function to list the feature flags.
 
@@ -57,7 +55,7 @@ def list_feature_flags(request: Request) -> Response:
         list of feature flags
     """
     try:
-        namespace_key = request.data.get("namespace") or "default"
+        namespace_key = request.query_params.get("namespace", "default")
         feature_flags = list_all_flags(namespace_key)
         return Response({"feature_flags": feature_flags}, status=status.HTTP_200_OK)
     except Exception as e:
