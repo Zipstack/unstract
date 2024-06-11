@@ -118,13 +118,11 @@ def perform_vector_db_cleanup(sender, instance, **kwargs):
         index_ids_history = json.loads(instance.index_ids_history)
         vector_db_instance_id = str(instance.profile_manager.vector_store.id)
         delete_from_vector_db(index_ids_history, vector_db_instance_id)
-    except SdkError as e:
-        logger.error(f"Error while performing vector db cleanup: {e}")
-    except ObjectDoesNotExist:
-        logger.error(
-            f"No ProfileManager found for tool_id {instance.document_manager.tool_id}"
-        )
-    except AttributeError:
-        logger.error("ProfileManager or vector_store is None")
     except Exception as e:
-        logger.error(f"An unexpected error occurred: {e}")
+        logger.warning(
+            "Error during vector DB cleanup for deleted document "
+            "in prompt studio tool %s: %s",
+            instance.document_manager.tool_id,
+            e,
+            exc_info=True # For additional stack trace
+        )
