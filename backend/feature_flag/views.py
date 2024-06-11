@@ -14,6 +14,7 @@ from utils.request.feature_flag import check_feature_flag_status, list_all_flags
 
 logger = logging.getLogger(__name__)
 
+
 @api_view(["POST"])
 def evaluate_feature_flag(request: Request) -> Response:
     """Function to evaluate the feature flag.
