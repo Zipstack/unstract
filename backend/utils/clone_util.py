@@ -23,6 +23,16 @@ class CloneUtil:
         return list(unique_fields)
 
     @staticmethod
+    def customize_field_value(original_value: str) -> str:
+        """
+        Customize the field value for unique fields. Special handling for filenames with extensions.
+        """
+        if "." in original_value:
+            name, ext = original_value.rsplit(".", 1)
+            return f"{name}_copy.{ext}"
+        return f"{original_value}_copy"
+    
+    @staticmethod
     def clone_model_instance(
         instance: models.Model,
         parent: Optional[models.Model] = None,
@@ -57,13 +67,14 @@ class CloneUtil:
         # Customize unique fields
         for field_name in unique_fields:
             field = ModelClass._meta.get_field(field_name)
+            # To handle fields that are not unique but are added in the constraint
             default_value = field.get_default() if callable(field.get_default) else None
             setattr(
                 cloned_instance,
                 field_name,
                 (
                     default_value
-                    if default_value is not None
+                    if default_value
                     else f"{getattr(instance, field_name)}_copy"
                 ),
             )
