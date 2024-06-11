@@ -45,7 +45,8 @@ def evaluate_feature_flag(request: Request) -> Response:
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-@api_view(http_method_names=['GET'])
+
+@api_view(http_method_names=["GET"])
 def list_feature_flags(request: Request) -> Response:
     """Function to list the feature flags.
 
