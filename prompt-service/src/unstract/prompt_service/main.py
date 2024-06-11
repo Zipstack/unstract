@@ -837,7 +837,7 @@ def log_exceptions(e: HTTPException):
     """
     code = 500
     if hasattr(e, "code"):
-        code = e.code
+        code = e.code or code
 
     if code >= 500:
         message = "{method} {url} {status}\n\n{error}\n\n````{tb}````".format(
