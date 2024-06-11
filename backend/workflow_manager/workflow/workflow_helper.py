@@ -308,7 +308,7 @@ class WorkflowHelper:
                     )
         except Exception as e:
             # Expected exception since API deployments are not tracked in Pipeline
-            if "Pipeline matching query does not exist" not in str(e):
+            if not isinstance(e, Pipeline.DoesNotExist):
                 logger.warning(
                     f"Error updating pipeline {pipeline_id} status: {e} ",
                     f"with workflow execution: {workflow_execution}",
