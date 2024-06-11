@@ -38,3 +38,16 @@ def check_feature_flag_status(
     except Exception as e:
         print(f"Error: {str(e)}")
         return False
+
+def list_feature_flags(
+    namespace_key: str,
+) -> dict:
+    try:
+        evaluation_client = EvaluationClient()
+        response = evaluation_client.list_feature_flags(
+            namespace_key=namespace_key,
+        )
+        return response
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return {}

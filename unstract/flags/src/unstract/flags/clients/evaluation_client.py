@@ -8,7 +8,7 @@ class EvaluationClient(BaseClient):
     def __init__(self) -> None:
         super().__init__(evaluation_pb2_grpc.EvaluationServiceStub)
 
-    def list_flags(
+    def boolean_evaluate_feature_flag(
         self,
         namespace_key: str,
         flag_key: str,

@@ -44,3 +44,24 @@ def evaluate_feature_flag(request: Request) -> Response:
             {"message": "No response from server"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+@api_view(["POST"])
+def list_feature_flags(request: Request) -> Response:
+    """Function to list the feature flags.
+
+    Args:
+        request: request object
+
+    Returns:
+        list of feature flags
+    """
+    try:
+        namespace_key = request.data.get("namespace_key") or "default"
+        feature_flags = list_feature_flags(namespace_key)
+        return Response({"feature_flags": feature_flags}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error("No response from server: %s", e)
+        return Response(
+            {"message": "No response from server"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

@@ -108,7 +108,7 @@ function useSessionValid() {
       }
 
       if (getFlagStatus) {
-        const appDeploymentFlag = await getFlagStatus.fetchFeatureFlagStatus(
+        const appDeploymentFlag = await getFlagStatus.fetchFeatureFlags(
           orgId,
           csrfToken,
           "app_deployment"
