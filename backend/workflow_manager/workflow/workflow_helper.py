@@ -306,13 +306,14 @@ class WorkflowHelper:
                     PipelineProcessor.update_pipeline(
                         pipeline_id, Pipeline.PipelineStatus.FAILURE
                     )
+        # Expected exception since API deployments are not tracked in Pipeline
+        except Pipeline.DoesNotExist:
+            pass
         except Exception as e:
-            # Expected exception since API deployments are not tracked in Pipeline
-            if not isinstance(e, Pipeline.DoesNotExist):
-                logger.warning(
-                    f"Error updating pipeline {pipeline_id} status: {e} ",
-                    f"with workflow execution: {workflow_execution}",
-                )
+            logger.warning(
+                f"Error updating pipeline {pipeline_id} status: {e} "
+                f"with workflow execution: {workflow_execution}"
+            )
 
     @staticmethod
     def get_status_of_async_task(
