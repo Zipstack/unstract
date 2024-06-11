@@ -39,7 +39,7 @@ jobs:
     #   with:
     #     issue-number: ${{ github.event.pull_request.number }}
     #     body-path: worker-report.md
-    
+
     - name: Output reports to the job summary when tests fail
       shell: bash
       run: |
