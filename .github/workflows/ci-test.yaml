@@ -24,22 +24,18 @@ jobs:
     - name: Cache tox environments
       uses: actions/cache@v3
       with:
-        path: .tox
-        key: ${{ runner.os }}-tox-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
-        restore-keys: |
-          ${{ runner.os }}-tox-
+        path: .tox/
 
     - name: Run tox
-      run: tox
+      id: tox
+      run: tox | tee tox_output.txt
 
-    # - name: Upload coverage report
-    #   if: always()
-    #   uses: actions/upload-artifact@v3
-    #   with:
-    #     name: coverage-report
-    #     path: <REPORT_PATH>
+    - name: Read tox output
+      id: read-output
+      run: echo "result=$(cat tox_output.txt)" >> $GITHUB_ENV
 
-    - name: Post test results as PR comment
-      uses: marocchino/sticky-pull-request-comment@v2
+    - name: Create comment
+      uses: peter-evans/create-or-update-comment@v4
       with:
-        path: .tox/worker/log/4-commands[0].log
+        issue-number: ${{ github.event.pull_request.number }}
+        body: ${{ env.result }}
