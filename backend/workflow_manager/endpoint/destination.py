@@ -214,14 +214,16 @@ class DestinationConnector(BaseConnector):
             table_name=table_name,
             database_entry=values,
         )
-        sql_columns_and_values = DatabaseUtils.get_sql_columns_and_values_for_query(
-            engine=engine,
+        cls_name = db_class.__class__.__name__
+        sql_columns_and_values = DatabaseUtils.get_sql_query_data(
+            cls_name=cls_name,
             connector_id=connector_instance.connector_id,
             connector_settings=connector_settings,
             table_name=table_name,
             values=values,
         )
         DatabaseUtils.execute_write_query(
+            db_class=db_class,
             engine=engine,
             table_name=table_name,
             sql_keys=list(sql_columns_and_values.keys()),
