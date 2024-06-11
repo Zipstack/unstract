@@ -37,9 +37,7 @@ def test_logs(docker_container, mocker):
 def test_cleanup(docker_container, mocker):
     """Test the cleanup method to ensure it removes the container."""
     mock_container = mocker.patch.object(docker_container, "container")
-    Utils_remove_container_on_exit = mocker.patch(
-        f"{DOCKER_MODULE}.Utils.remove_container_on_exit", return_value=True
-    )
+    mocker.patch(f"{DOCKER_MODULE}.Utils.remove_container_on_exit", return_value=True)
 
     docker_container.cleanup()
     mock_container.remove.assert_called_once_with(force=True)
@@ -48,9 +46,7 @@ def test_cleanup(docker_container, mocker):
 def test_cleanup_skip(docker_container, mocker):
     """Test the cleanup method to ensure it doesn't remove the container."""
     mock_container = mocker.patch.object(docker_container, "container")
-    Utils_remove_container_on_exit = mocker.patch(
-        f"{DOCKER_MODULE}.Utils.remove_container_on_exit", return_value=False
-    )
+    mocker.patch(f"{DOCKER_MODULE}.Utils.remove_container_on_exit", return_value=False)
 
     docker_container.cleanup()
     mock_container.remove.assert_not_called()
