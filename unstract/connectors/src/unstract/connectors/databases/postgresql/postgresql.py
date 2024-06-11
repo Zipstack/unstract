@@ -4,10 +4,11 @@ from typing import Any
 import psycopg2
 from psycopg2.extensions import connection
 
+from unstract.connectors.databases.psycopg_handler import PsycoPgHandler
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 
-class PostgreSQL(UnstractDB):
+class PostgreSQL(UnstractDB, PsycoPgHandler):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("PostgreSQL")
 
@@ -71,3 +72,13 @@ class PostgreSQL(UnstractDB):
                 options=f"-c search_path={self.schema}",
             )
         return con
+
+    def execute_query(
+        self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
+    ) -> None:
+        PsycoPgHandler.execute_query(
+            engine=engine,
+            sql_query=sql_query,
+            sql_values=sql_values,
+            database=self.database,
+        )

@@ -1,8 +1,10 @@
 from typing import Optional
+
 import grpc
 
-from .base_client import BaseClient
 from ..generated import evaluation_pb2, evaluation_pb2_grpc
+from .base_client import BaseClient
+
 
 class EvaluationClient(BaseClient):
     def __init__(self) -> None:

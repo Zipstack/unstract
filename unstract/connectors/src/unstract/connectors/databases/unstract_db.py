@@ -68,7 +68,7 @@ class UnstractDB(UnstractConnector, ABC):
         try:
             self.get_engine()
         except Exception as e:
-            raise ConnectorError(str(e))
+            raise ConnectorError(str(e)) from e
         return True
 
     def execute(self, query: str) -> Any:
@@ -77,7 +77,7 @@ class UnstractDB(UnstractConnector, ABC):
                 cursor.execute(query)
                 return cursor.fetchall()
         except Exception as e:
-            raise ConnectorError(str(e))
+            raise ConnectorError(str(e)) from e
 
     @staticmethod
     def sql_to_db_mapping(value: str) -> str:
@@ -107,3 +107,9 @@ class UnstractDB(UnstractConnector, ABC):
             f"created_by TEXT, created_at TIMESTAMP, "
         )
         return sql_query
+
+    @abstractmethod
+    def execute_query(
+        self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
+    ) -> None:
+        pass

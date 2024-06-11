@@ -13,6 +13,10 @@ class ToolStudioPromptKeys:
     PROMPT_KEY = "prompt_key"
     EVAL_METRIC_PREFIX = "eval_"
     EVAL_RESULT_DELIM = "__"
+    SEQUENCE_NUMBER = "sequence_number"
+    START_SEQUENCE_NUMBER = "start_sequence_number"
+    END_SEQUENCE_NUMBER = "end_sequence_number"
+    PROMPT_ID = "prompt_id"
 
 
 class ToolStudioPromptErrors:
