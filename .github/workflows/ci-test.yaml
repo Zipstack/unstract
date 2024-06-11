@@ -32,10 +32,10 @@ jobs:
 
     - name: Read tox output
       id: read-output
-      run: echo "result=$(cat tox_output.txt)" >> $GITHUB_ENV
+      run: echo "result=$(cat tox_output.txt)" >> $GITHUB_OUTPUT
 
     - name: Create comment
       uses: peter-evans/create-or-update-comment@v4
       with:
         issue-number: ${{ github.event.pull_request.number }}
-        body: ${{ env.result }}
+        body: ${{ steps.read-output.outputs.result }}
