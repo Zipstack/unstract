@@ -3,7 +3,6 @@ import logging
 import uuid
 
 from account.models import User
-from django.core.exceptions import ObjectDoesNotExist
 from django.db import connection, models
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
@@ -11,7 +10,6 @@ from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
 from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from unstract.sdk.constants import LogLevel
-from unstract.sdk.exceptions import SdkError
 from unstract.sdk.vector_db import VectorDB
 from utils.models.base_model import BaseModel
 
@@ -124,5 +122,5 @@ def perform_vector_db_cleanup(sender, instance, **kwargs):
             "in prompt studio tool %s: %s",
             instance.document_manager.tool_id,
             e,
-            exc_info=True # For additional stack trace
+            exc_info=True,  # For additional stack trace
         )
