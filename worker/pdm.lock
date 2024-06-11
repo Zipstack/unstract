@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev"]
 strategy = ["cross_platform"]
 lock_version = "4.4.1"
-content_hash = "sha256:50dff9d07b998060d4fbd10826801918df078ec69690c37eeb7d2eca48aa5ddd"
+content_hash = "sha256:a6b856a567630af562f13dbbc049566048b16abec6874cbaa3e7298e6028e062"
 
 [[package]]
 name = "aiohttp"
@@ -282,6 +282,16 @@ files = [
 ]
 
 [[package]]
+name = "chardet"
+version = "5.2.0"
+requires_python = ">=3.7"
+summary = "Universal encoding detector for Python 3"
+files = [
+    {file = "chardet-5.2.0-py3-none-any.whl", hash = "sha256:e1cf59446890a00105fe7b7912492ea04b6e6f06d4b742b2c788469e34c82970"},
+    {file = "chardet-5.2.0.tar.gz", hash = "sha256:1b3b6ff479a8c414bc3fa2c0852995695c4a026dcd6d0633b2dd092ca39c1cf7"},
+]
+
+[[package]]
 name = "charset-normalizer"
 version = "3.3.2"
 requires_python = ">=3.7.0"
@@ -499,6 +509,20 @@ dependencies = [
 files = [
     {file = "dataclasses_json-0.6.7-py3-none-any.whl", hash = "sha256:0dbf33f26c8d5305befd61b39d2b3414e8a407bedc2834dea9b8d642666fb40a"},
     {file = "dataclasses_json-0.6.7.tar.gz", hash = "sha256:b6b3e528266ea45b9535223bc53ca645f5208833c29229e847b3f26a1cc55fc0"},
+]
+
+[[package]]
+name = "dataproperty"
+version = "1.0.1"
+requires_python = ">=3.7"
+summary = "Python library for extract property from data."
+dependencies = [
+    "mbstrdecoder<2,>=1.0.0",
+    "typepy[datetime]<2,>=1.2.0",
+]
+files = [
+    {file = "DataProperty-1.0.1-py3-none-any.whl", hash = "sha256:0b8b07d4fb6453fcf975b53d35dea41f3cfd69c9d79b5010c3cf224ff0407a7a"},
+    {file = "DataProperty-1.0.1.tar.gz", hash = "sha256:723e5729fa6e885e127a771a983ee1e0e34bb141aca4ffe1f0bfa7cde34650a4"},
 ]
 
 [[package]]
@@ -1154,6 +1178,19 @@ files = [
 ]
 
 [[package]]
+name = "mbstrdecoder"
+version = "1.1.3"
+requires_python = ">=3.7"
+summary = "mbstrdecoder is a Python library for multi-byte character string decoder"
+dependencies = [
+    "chardet<6,>=3.0.4",
+]
+files = [
+    {file = "mbstrdecoder-1.1.3-py3-none-any.whl", hash = "sha256:d66c1ed3f2dc4e7c5d87cd44a75be10bc5af4250f95b38bbaedd7851308ce938"},
+    {file = "mbstrdecoder-1.1.3.tar.gz", hash = "sha256:dcfd2c759322eb44fe193a9e0b1b86c5b87f3ec5ea8e1bb43b3e9ae423f1e8fe"},
+]
+
+[[package]]
 name = "msal"
 version = "1.28.1"
 requires_python = ">=3.7"
@@ -1388,6 +1425,16 @@ files = [
 ]
 
 [[package]]
+name = "pathvalidate"
+version = "3.2.0"
+requires_python = ">=3.7"
+summary = "pathvalidate is a Python library to sanitize/validate a string such as filenames/file-paths/etc."
+files = [
+    {file = "pathvalidate-3.2.0-py3-none-any.whl", hash = "sha256:cc593caa6299b22b37f228148257997e2fa850eea2daf7e4cc9205cef6908dee"},
+    {file = "pathvalidate-3.2.0.tar.gz", hash = "sha256:5e8378cf6712bff67fbe7a8307d99fa8c1a0cb28aa477056f8fc374f0dff24ad"},
+]
+
+[[package]]
 name = "pillow"
 version = "10.3.0"
 requires_python = ">=3.8"
@@ -1595,6 +1642,25 @@ files = [
 ]
 
 [[package]]
+name = "pytablewriter"
+version = "1.2.0"
+requires_python = ">=3.7"
+summary = "pytablewriter is a Python library to write a table in various formats: AsciiDoc / CSV / Elasticsearch / HTML / JavaScript / JSON / LaTeX / LDJSON / LTSV / Markdown / MediaWiki / NumPy / Excel / Pandas / Python / reStructuredText / SQLite / TOML / TSV / YAML."
+dependencies = [
+    "DataProperty<2,>=1.0.1",
+    "mbstrdecoder<2,>=1.0.0",
+    "pathvalidate<4,>=2.3.0",
+    "setuptools>=38.3.0",
+    "tabledata<2,>=1.3.1",
+    "tcolorpy<1,>=0.0.5",
+    "typepy[datetime]<2,>=1.3.2",
+]
+files = [
+    {file = "pytablewriter-1.2.0-py3-none-any.whl", hash = "sha256:4a30e2bb4bf5bc1069b1d2b2bc41947577c4517ab0875b23a5b194d296f543d8"},
+    {file = "pytablewriter-1.2.0.tar.gz", hash = "sha256:0204a4bb684a22140d640f2599f09e137bcdc18b3dd49426f4a555016e246b46"},
+]
+
+[[package]]
 name = "pytest"
 version = "8.2.2"
 requires_python = ">=3.8"
@@ -1627,31 +1693,19 @@ files = [
 ]
 
 [[package]]
-name = "pytest-html"
-version = "4.1.1"
-requires_python = ">=3.8"
-summary = "pytest plugin for generating HTML reports"
+name = "pytest-md-report"
+version = "0.6.2"
+requires_python = ">=3.7"
+summary = "A pytest plugin to generate test outcomes reports with markdown table format."
 dependencies = [
-    "jinja2>=3.0.0",
-    "pytest-metadata>=2.0.0",
-    "pytest>=7.0.0",
+    "pytablewriter<2,>=1.2.0",
+    "pytest!=6.0.0,<9,>=3.3.2",
+    "tcolorpy<1,>=0.0.5",
+    "typepy<2,>=1.1.1",
 ]
 files = [
-    {file = "pytest_html-4.1.1-py3-none-any.whl", hash = "sha256:c8152cea03bd4e9bee6d525573b67bbc6622967b72b9628dda0ea3e2a0b5dd71"},
-    {file = "pytest_html-4.1.1.tar.gz", hash = "sha256:70a01e8ae5800f4a074b56a4cb1025c8f4f9b038bba5fe31e3c98eb996686f07"},
-]
-
-[[package]]
-name = "pytest-metadata"
-version = "3.1.1"
-requires_python = ">=3.8"
-summary = "pytest plugin for test session metadata"
-dependencies = [
-    "pytest>=7.0.0",
-]
-files = [
-    {file = "pytest_metadata-3.1.1-py3-none-any.whl", hash = "sha256:c8e0844db684ee1c798cfa38908d20d67d0463ecb6137c72e91f418558dd5f4b"},
-    {file = "pytest_metadata-3.1.1.tar.gz", hash = "sha256:d2a29b0355fbc03f168aa96d41ff88b1a3b44a3b02acbe491801c98a048017c8"},
+    {file = "pytest_md_report-0.6.2-py3-none-any.whl", hash = "sha256:66e27efa5c155c87eb4700d60876e61a85c13361448c4031fda964c43e63c9b9"},
+    {file = "pytest_md_report-0.6.2.tar.gz", hash = "sha256:5e96c655ebc9b5c3c7b78bf7c5382c1f68056e96904430252790f8737de5ce99"},
 ]
 
 [[package]]
@@ -1845,6 +1899,16 @@ files = [
 ]
 
 [[package]]
+name = "setuptools"
+version = "70.0.0"
+requires_python = ">=3.8"
+summary = "Easily download, build, install, upgrade, and uninstall Python packages"
+files = [
+    {file = "setuptools-70.0.0-py3-none-any.whl", hash = "sha256:54faa7f2e8d2d11bcd2c07bed282eef1046b5c080d1c32add737d7b5817b1ad4"},
+    {file = "setuptools-70.0.0.tar.gz", hash = "sha256:f211a66637b8fa059bb28183da127d4e86396c991a942b028c6650d4319c3fd0"},
+]
+
+[[package]]
 name = "six"
 version = "1.16.0"
 requires_python = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
@@ -1961,6 +2025,30 @@ files = [
 ]
 
 [[package]]
+name = "tabledata"
+version = "1.3.3"
+requires_python = ">=3.7"
+summary = "tabledata is a Python library to represent tabular data. Used for pytablewriter/pytablereader/SimpleSQLite/etc."
+dependencies = [
+    "DataProperty<2,>=1.0.1",
+    "typepy<2,>=1.2.0",
+]
+files = [
+    {file = "tabledata-1.3.3-py3-none-any.whl", hash = "sha256:4abad1c996d8607e23b045b44dc0c5f061668f3c37585302c5f6c84c93a89962"},
+    {file = "tabledata-1.3.3.tar.gz", hash = "sha256:c90daaba9a408e4397934b3ff2f6c06797d5289676420bf520c741ad43e6ff91"},
+]
+
+[[package]]
+name = "tcolorpy"
+version = "0.1.6"
+requires_python = ">=3.7"
+summary = "tcolopy is a Python library to apply true color for terminal text."
+files = [
+    {file = "tcolorpy-0.1.6-py3-none-any.whl", hash = "sha256:8c15cb3167f30b0a433d72297e9d68667c825bd9e2af41c8dd7dfbd3d7f7e207"},
+    {file = "tcolorpy-0.1.6.tar.gz", hash = "sha256:8cea0bf5f8cf03f77528a9acfbf312df935573892ba5ea3b2516e61fa54de9a5"},
+]
+
+[[package]]
 name = "tenacity"
 version = "8.3.0"
 requires_python = ">=3.8"
@@ -2025,6 +2113,36 @@ dependencies = [
 files = [
     {file = "tqdm-4.66.4-py3-none-any.whl", hash = "sha256:b75ca56b413b030bc3f00af51fd2c1a1a5eac6a0c1cca83cbb37a5c52abce644"},
     {file = "tqdm-4.66.4.tar.gz", hash = "sha256:e4d936c9de8727928f3be6079590e97d9abfe8d39a590be678eb5919ffc186bb"},
+]
+
+[[package]]
+name = "typepy"
+version = "1.3.2"
+requires_python = ">=3.7"
+summary = "typepy is a Python library for variable type checker/validator/converter at a run time."
+dependencies = [
+    "mbstrdecoder<2,>=1.0.0",
+]
+files = [
+    {file = "typepy-1.3.2-py3-none-any.whl", hash = "sha256:d5d1022a424132622993800f1d2cd16cfdb691ac4e3b9c325f0fcb37799db1ae"},
+    {file = "typepy-1.3.2.tar.gz", hash = "sha256:b69fd48b9f50cdb3809906eef36b855b3134ff66c8893a4f8580abddb0b39517"},
+]
+
+[[package]]
+name = "typepy"
+version = "1.3.2"
+extras = ["datetime"]
+requires_python = ">=3.7"
+summary = "typepy is a Python library for variable type checker/validator/converter at a run time."
+dependencies = [
+    "packaging",
+    "python-dateutil<3.0.0,>=2.8.0",
+    "pytz>=2018.9",
+    "typepy==1.3.2",
+]
+files = [
+    {file = "typepy-1.3.2-py3-none-any.whl", hash = "sha256:d5d1022a424132622993800f1d2cd16cfdb691ac4e3b9c325f0fcb37799db1ae"},
+    {file = "typepy-1.3.2.tar.gz", hash = "sha256:b69fd48b9f50cdb3809906eef36b855b3134ff66c8893a4f8580abddb0b39517"},
 ]
 
 [[package]]

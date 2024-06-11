@@ -31,10 +31,14 @@ jobs:
 
     - name: Run tox
       id: tox
-      run: tox
+      env:
+          REPORT_OUTPUT: worker-report.md
+      run: |
+        echo "REPORT_FILE=${REPORT_OUTPUT}" >> "$GITHUB_ENV"
+        tox
 
     - name: Create comment
       uses: peter-evans/create-or-update-comment@v4
       with:
         issue-number: ${{ github.event.pull_request.number }}
-        body-path: './.tox/worker/log/4-commands[0].log'
+        body-path: ${{ env.REPORT_FILE }}
