@@ -311,7 +311,7 @@ class WorkflowHelper:
             pass
         except Exception as e:
             logger.warning(
-                f"Error updating pipeline {pipeline_id} status: {e} "
+                f"Error updating pipeline {pipeline_id} status: {e}, "
                 f"with workflow execution: {workflow_execution}"
             )
 
