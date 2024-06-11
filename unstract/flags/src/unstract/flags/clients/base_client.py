@@ -1,4 +1,5 @@
 import os
+import grpc
 
 class BaseClient:
     def __init__(self, stub_class) -> None:

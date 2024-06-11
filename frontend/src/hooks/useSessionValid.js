@@ -6,13 +6,12 @@ import { getSessionData } from "../helpers/GetSessionData";
 import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
 import { useSessionStore } from "../store/session-store";
 import { useUserSession } from "./useUserSession.js";
+import { listFlags } from "../helpers/FeatureFlagsData.js";
 
 let getTrialDetails;
 let isPlatformAdmin;
-let getFlagStatus;
 try {
   getTrialDetails = require("../plugins/subscription/trial-helper/fetchTrialDetails.jsx");
-  getFlagStatus = require("../plugins/enterprise-utils/fetchFeatureFlagStatus.jsx");
   isPlatformAdmin =
     require("../plugins/hooks/usePlatformAdmin.js").usePlatformAdmin();
 } catch (err) {
@@ -107,14 +106,8 @@ function useSessionValid() {
           userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
       }
 
-      if (getFlagStatus) {
-        const appDeploymentFlag = await getFlagStatus.fetchFeatureFlags(
-          orgId,
-          csrfToken,
-          "app_deployment"
-        );
-        userAndOrgDetails["appDeployment"] = appDeploymentFlag;
-      }
+      const flags = await listFlags(orgId, csrfToken);
+      userAndOrgDetails["flags"] = flags;
 
       userAndOrgDetails["allOrganization"] = orgs;
       if (isPlatformAdmin) {

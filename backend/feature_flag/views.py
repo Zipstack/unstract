@@ -10,7 +10,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
-from utils.request.feature_flag import check_feature_flag_status
+from utils.request.feature_flag import check_feature_flag_status, list_all_flags
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +56,8 @@ def list_feature_flags(request: Request) -> Response:
         list of feature flags
     """
     try:
-        namespace_key = request.data.get("namespace_key") or "default"
-        feature_flags = list_feature_flags(namespace_key)
+        namespace_key = request.data.get("namespace") or "default"
+        feature_flags = list_all_flags(namespace_key)
         return Response({"feature_flags": feature_flags}, status=status.HTTP_200_OK)
     except Exception as e:
         logger.error("No response from server: %s", e)

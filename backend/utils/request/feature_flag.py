@@ -3,6 +3,7 @@
 from typing import Optional
 
 from unstract.flags.clients.evaluation_client import EvaluationClient
+from unstract.flags.clients.flipt_client import FliptClient
 
 
 def check_feature_flag_status(
@@ -39,12 +40,12 @@ def check_feature_flag_status(
         print(f"Error: {str(e)}")
         return False
 
-def list_feature_flags(
+def list_all_flags(
     namespace_key: str,
 ) -> dict:
     try:
-        evaluation_client = EvaluationClient()
-        response = evaluation_client.list_feature_flags(
+        flipt_client = FliptClient()
+        response = flipt_client.list_feature_flags(
             namespace_key=namespace_key,
         )
         return response

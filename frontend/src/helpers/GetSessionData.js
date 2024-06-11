@@ -25,7 +25,7 @@ function getSessionData(sessionData) {
     isPlatformAdmin: sessionData?.isPlatformAdmin,
     loginOnboardingMessage: sessionData?.loginOnboardingMessage,
     promptOnboardingMessage: sessionData?.promptOnboardingMessage,
-    appDeployment: sessionData?.appDeployment,
+    flags: sessionData?.flags,
   };
 }
 

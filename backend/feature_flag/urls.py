@@ -8,4 +8,5 @@ from django.urls import path
 
 urlpatterns = [
     path("evaluate/", views.evaluate_feature_flag, name="evaluate_feature_flag"),
+    path("flags/", views.list_feature_flags, name="list_feature_flags"),
 ]
