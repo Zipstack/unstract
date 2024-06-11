@@ -18,24 +18,23 @@ jobs:
       with:
         python-version: '3.9'
 
-    - name: Install tox
-      run: pip install tox
-
     - name: Cache tox environments
       uses: actions/cache@v3
       with:
         path: .tox/
+        key: ${{ runner.os }}-tox-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
+        restore-keys: |
+          ${{ runner.os }}-tox-
+
+    - name: Install tox
+      run: pip install tox
 
     - name: Run tox
       id: tox
-      run: tox | tee tox_output.txt
-
-    - name: Read tox output
-      id: read-output
-      run: echo "result=$(cat tox_output.txt)" >> $GITHUB_OUTPUT
+      run: tox
 
     - name: Create comment
       uses: peter-evans/create-or-update-comment@v4
       with:
         issue-number: ${{ github.event.pull_request.number }}
-        body: ${{ steps.read-output.outputs.result }}
+        body-path: './.tox/worker/log/4-commands[0].log'
