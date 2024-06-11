@@ -32,11 +32,21 @@ jobs:
     - name: Run tox
       id: tox
       run: |
-        echo "REPORT_FILE=${REPORT_OUTPUT}" >> "$GITHUB_ENV"
         tox
 
-    - name: Create comment for worker test report
-      uses: peter-evans/create-or-update-comment@v4
-      with:
-        issue-number: ${{ github.event.pull_request.number }}
-        body-path: worker-report.md
+    # - name: Create comment for worker test report
+    #   uses: peter-evans/create-or-update-comment@v4
+    #   with:
+    #     issue-number: ${{ github.event.pull_request.number }}
+    #     body-path: worker-report.md
+    
+    - name: Output reports to the job summary when tests fail
+      shell: bash
+      run: |
+        if [ -f "worker-report.md" ]; then
+          echo "<details><summary>Worker Test Report</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat "worker-report.md" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+        fi
