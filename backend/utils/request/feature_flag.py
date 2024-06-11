@@ -40,6 +40,7 @@ def check_feature_flag_status(
         print(f"Error: {str(e)}")
         return False
 
+
 def list_all_flags(
     namespace_key: str,
 ) -> dict:

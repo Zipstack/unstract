@@ -1,7 +1,10 @@
-import grpc
 import logging
-from .base_client import BaseClient
+
+import grpc
+
 from ..generated import flipt_pb2, flipt_pb2_grpc
+from .base_client import BaseClient
+
 
 class FliptClient(BaseClient):
     def __init__(self) -> None:
@@ -13,12 +16,9 @@ class FliptClient(BaseClient):
 
         parsed_flags = {}
         for flag in flags:
-            enabled_status = flag.enabled if hasattr(flag, 'enabled') else None
+            enabled_status = flag.enabled if hasattr(flag, "enabled") else None
             parsed_flags[flag.key] = enabled_status
-        return {
-            "flags": parsed_flags,
-            "total_count": total_count
-        }
+        return {"flags": parsed_flags, "total_count": total_count}
 
     def list_feature_flags(self, namespace_key: str) -> dict:
         try:
@@ -30,13 +30,15 @@ class FliptClient(BaseClient):
             logging.error(f"Error communicating with evaluation server: {e}")
             return {}
 
-    def evaluate_feature_flag(self, namespace_key: str, flag_key: str, entity_id: str, context: dict = None) -> bool:
+    def evaluate_feature_flag(
+        self, namespace_key: str, flag_key: str, entity_id: str, context: dict = None
+    ) -> bool:
         try:
             request = flipt_pb2.EvaluationRequest(
                 namespace_key=namespace_key,
                 flag_key=flag_key,
                 entity_id=entity_id,
-                context=context or {}
+                context=context or {},
             )
             response = self.stub.Evaluate(request)
             return response.match
