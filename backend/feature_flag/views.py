@@ -12,10 +12,9 @@ from utils.request.feature_flag import check_feature_flag_status, list_all_flags
 
 logger = logging.getLogger(__name__)
 
+
 class FeatureFlagViewSet(viewsets.ViewSet):
-    """
-    A simple ViewSet for evaluating feature flag.
-    """
+    """A simple ViewSet for evaluating feature flag."""
 
     def evaluate(self, request):
         try:
