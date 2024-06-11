@@ -40,7 +40,6 @@ jobs:
     #     path: <REPORT_PATH>
 
     - name: Post test results as PR comment
-      if: always()
       uses: marocchino/sticky-pull-request-comment@v2
       with:
         path: .tox/worker/log/4-commands[0].log
