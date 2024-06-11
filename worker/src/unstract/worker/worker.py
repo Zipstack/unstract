@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from dotenv import load_dotenv
 from flask import Flask
-from unstract.worker.clients.helper import get_container_client
+from unstract.worker.clients.helper import ContainerClientHelper
 from unstract.worker.clients.interface import (
     ContainerClientInterface,
     ContainerInterface,
@@ -18,7 +18,7 @@ from unstract.core.pubsub_helper import LogPublisher
 
 load_dotenv()
 # Loads the container clinet class.
-client_class = get_container_client()
+client_class = ContainerClientHelper.get_container_client()
 
 
 class UnstractWorker:

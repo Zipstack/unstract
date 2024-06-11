@@ -1,0 +1,47 @@
+name: Run tox tests
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install tox
+      run: pip install tox
+
+    - name: Cache tox environments
+      uses: actions/cache@v3
+      with:
+        path: .tox
+        key: ${{ runner.os }}-tox-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
+        restore-keys: |
+          ${{ runner.os }}-tox-
+
+    - name: Run tox
+      run: tox
+
+    - name: Upload coverage report
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report
+        path: .tox
+
+    - name: Post test results as PR comment
+      if: always()
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        path: .tox/latest/log/latest
+
