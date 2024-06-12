@@ -6,26 +6,49 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { useAlertStore } from "../../../store/alert-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useEffect, useState } from "react";
+import { useSessionStore } from "../../../store/session-store";
+import { useParams } from "react-router-dom";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 
 function PromptShareLink({
   open,
   setOpenShareLink,
   setOpenShareModal,
-  setOpenShareConfirmation,
 }) {
-  const { shareId } = useCustomToolStore();
+  const { shareId,updateCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const { sessionDetails } = useSessionStore();
+  const { id } = useParams();
+  const handleException = useExceptionHandler();
+
   const [shareURL, setShareURL] = useState(window.location.origin + "/share/"+shareId);
   useEffect(() => {
     setShareURL(window.location.origin + "/share/"+ shareId)
   }, [shareId]);
-
+  
   const handleStopSharing = () => {
-    setOpenShareLink(false);
-    setOpenShareModal(false);
-    setAlertDetails({type:"success", content:"Public sharing permissions revoked sucessfully for the project."});
+    const requestOptions = {
+      method: "DELETE",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/share-manager/${shareId}`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+    };
+
+    axiosPrivate(requestOptions)
+      .then((response) => {
+        const updatedCusTool={shareId:null}
+        updateCustomTool(updatedCusTool);
+        setOpenShareLink(false);
+        setOpenShareModal(false);
+        setAlertDetails({type:"success", content:"Public sharing permissions revoked sucessfully for the project."});
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to revoke share permissions"));
+      });
+   
   };
   const handlePublicLinkCopy = () => {
     navigator.clipboard.writeText(window.location.origin + "/share/"+ shareId);

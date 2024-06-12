@@ -8,7 +8,7 @@ import {
 import { Button, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation,useParams } from "react-router-dom";
 import "./Header.css";
 import { PromptShareModal } from "../prompt-public-share-modal/PromptShareModal";
 import { PromptShareLink } from "../prompt-public-link-modal/PromptShareLink";
@@ -42,6 +42,7 @@ function Header({ setOpenSettings, handleUpdateTool, setOpenShareModal }) {
   const { setPostHogCustomEvent } = usePostHogEvents();
   const location = useLocation()
   const [toolDetails, setToolDetails] = useState(null);
+  const { id } = useParams();
 
   const handleExport = (selectedUsers, toolDetail, isSharedWithEveryone) => {
     // const body = {
@@ -80,10 +81,10 @@ function Header({ setOpenSettings, handleUpdateTool, setOpenShareModal }) {
   const handleClone = (isClone) => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/clone/?id=${id}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/clone/${id}`,
     };
 
-    const userList = axiosPrivate(requestOptions)
+    axiosPrivate(requestOptions)
       .then((response) => {
         const cloned_tool = response?.data?.tool_id || undefined;
         navigate(`/${sessionDetails?.orgName}/tools/${cloned_tool}`);
@@ -91,9 +92,6 @@ function Header({ setOpenSettings, handleUpdateTool, setOpenShareModal }) {
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to clone project"));
       });
-
-    return userList;
-  };
   };
   const handleShare = (isEdit) => {
     try {
@@ -199,6 +197,11 @@ function Header({ setOpenSettings, handleUpdateTool, setOpenShareModal }) {
           </Tooltip>
         </div>
         <div>
+          <Tooltip title="Clone">
+            <Button icon={<CopyOutlined />} onClick={() => handleClone(true)} />
+          </Tooltip>
+        </div>
+        <div>
             <Tooltip title="Public Share">
               <Button
                 icon={<ShareAltOutlined />}
@@ -206,11 +209,6 @@ function Header({ setOpenSettings, handleUpdateTool, setOpenShareModal }) {
                 onClick={() => setOpenShareModal(true)}
               />
             </Tooltip>
-        </div>
-        <div>
-          <Tooltip title="Clone">
-            <Button icon={<CopyOutlined />} onClick={() => handleClone(true)} />
-          </Tooltip>
         </div>
         <div className="custom-tools-header-v-divider" />
         <div>

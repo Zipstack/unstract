@@ -706,7 +706,7 @@ function PromptCard({
             />
           </Space>
         </div>
-        <>
+        <div style={{ width: "100%" }}>
           <Divider className="prompt-card-divider" />
           <Space
             direction="vertical"
@@ -806,7 +806,8 @@ function PromptCard({
                         promptDetails?.prompt_id
                       ) ||
                       isSinglePassExtractLoading ||
-                      indexDocs.includes(selectedDoc?.document_id)
+                      indexDocs.includes(selectedDoc?.document_id) ||
+                      window.location.pathname.startsWith(`/share`)
                     }
                     onClick={handlePageLeft}
                   >
@@ -822,7 +823,8 @@ function PromptCard({
                         promptDetails?.prompt_id
                       ) ||
                       isSinglePassExtractLoading ||
-                      indexDocs.includes(selectedDoc?.document_id)
+                      indexDocs.includes(selectedDoc?.document_id) ||
+                      window.location.pathname.startsWith(`/share`)
                     }
                     onClick={handlePageRight}
                   >
@@ -833,7 +835,7 @@ function PromptCard({
             </div>
             {EvalMetrics && <EvalMetrics result={result} />}
           </Space>
-        </>
+        </div>
         {(isRunLoading || result?.output || result?.output === 0) && (
           <>
             <Divider className="prompt-card-divider" />

@@ -140,8 +140,9 @@ function ManageDocsModal({
     if (!open) {
       return;
     }
-
-    handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
+    if (!window.location.pathname.startsWith(`/share`)){
+      handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
+    }
   }, [indexDocs, rawLlmProfile, open]);
 
   useEffect(() => {
