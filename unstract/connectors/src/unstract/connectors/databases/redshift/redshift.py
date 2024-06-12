@@ -76,12 +76,12 @@ class Redshift(UnstractDB, PsycoPgHandler):
         """
         python_type = type(value)
         mapping = {
-            str: "SUPER",
+            str: "VARCHAR(65535)",
             int: "BIGINT",
             float: "DOUBLE PRECISION",
             datetime.datetime: "TIMESTAMP",
         }
-        return mapping.get(python_type, "SUPER")
+        return mapping.get(python_type, "VARCHAR(65535)")
 
     @staticmethod
     def get_create_table_query(table: str) -> str:
