@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:65995bec9035d980c5dbfa609f531964e573eb0bb13fa53c207a4ae006c253b0"
+content_hash = "sha256:5924a0dcf9f3a5a94264fa1ed7a3d8bd5a2c7db3b565a2ba887c93e06dbb0e09"
 
 [[package]]
 name = "adlfs"
@@ -3454,6 +3454,20 @@ files = [
 ]
 
 [[package]]
+name = "pytest-dotenv"
+version = "0.5.2"
+summary = "A py.test plugin that parses environment files before running tests"
+groups = ["test"]
+dependencies = [
+    "pytest>=5.0.0",
+    "python-dotenv>=0.9.1",
+]
+files = [
+    {file = "pytest-dotenv-0.5.2.tar.gz", hash = "sha256:2dc6c3ac6d8764c71c6d2804e902d0ff810fa19692e95fe138aefc9b1aa73732"},
+    {file = "pytest_dotenv-0.5.2-py3-none-any.whl", hash = "sha256:40a2cece120a213898afaa5407673f6bd924b1fa7eafce6bda0e8abffe2f710f"},
+]
+
+[[package]]
 name = "python-crontab"
 version = "3.1.0"
 summary = "Python Crontab API"
@@ -3484,7 +3498,7 @@ name = "python-dotenv"
 version = "1.0.0"
 requires_python = ">=3.8"
 summary = "Read key-value pairs from a .env file and set them as environment variables"
-groups = ["default"]
+groups = ["default", "test"]
 files = [
     {file = "python-dotenv-1.0.0.tar.gz", hash = "sha256:a8df96034aae6d2d50a4ebe8216326c61c3eb64836776504fcca410e5937a3ba"},
     {file = "python_dotenv-1.0.0-py3-none-any.whl", hash = "sha256:f5971a9226b701070a4bf2c38c89e5a3f0d64de8debda981d1db98583009122a"},

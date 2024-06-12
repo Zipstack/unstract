@@ -27,7 +27,7 @@ try {
 const SideNavBar = ({ collapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { orgName, appDeployment } = sessionDetails;
+  const { orgName, flags } = sessionDetails;
 
   const data = [
     {
@@ -144,7 +144,7 @@ const SideNavBar = ({ collapsed }) => {
     },
   ];
 
-  if (getMenuItem && appDeployment) {
+  if (getMenuItem && flags.app_deployment) {
     data[0].subMenu.splice(1, 0, getMenuItem.default(orgName));
   }
 
