@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:5924a0dcf9f3a5a94264fa1ed7a3d8bd5a2c7db3b565a2ba887c93e06dbb0e09"
+content_hash = "sha256:8de6066910412eb9ee6f9aed4f825a5568db8566af54ff2e76a1a72835543a5d"
 
 [[package]]
 name = "adlfs"
@@ -1299,7 +1299,7 @@ files = [
 
 [[package]]
 name = "google-api-python-client"
-version = "2.132.0"
+version = "2.133.0"
 requires_python = ">=3.7"
 summary = "Google API Client Library for Python"
 groups = ["default"]
@@ -1311,8 +1311,8 @@ dependencies = [
     "uritemplate<5,>=3.0.1",
 ]
 files = [
-    {file = "google-api-python-client-2.132.0.tar.gz", hash = "sha256:d6340dc83b72d72333cee5d50f7dcfecbff66a8783164090e945f985ec4c374d"},
-    {file = "google_api_python_client-2.132.0-py2.py3-none-any.whl", hash = "sha256:cde87700bd4d37f39f5e940292c1c6cd0910990b5b01f50b1332a8cea38e8595"},
+    {file = "google-api-python-client-2.133.0.tar.gz", hash = "sha256:293092905b66a046d3187a99ac454e12b00cc2c70444f26eb2f1f9c1a82720b4"},
+    {file = "google_api_python_client-2.133.0-py2.py3-none-any.whl", hash = "sha256:396fe676ea0dfed066654dcf9f8dea77a1342f9d9bb23bb88e45b7b81e773926"},
 ]
 
 [[package]]
@@ -2383,7 +2383,7 @@ files = [
 
 [[package]]
 name = "llama-index-readers-file"
-version = "0.1.23"
+version = "0.1.25"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index readers file integration"
 groups = ["default"]
@@ -2394,8 +2394,8 @@ dependencies = [
     "striprtf<0.0.27,>=0.0.26",
 ]
 files = [
-    {file = "llama_index_readers_file-0.1.23-py3-none-any.whl", hash = "sha256:32450d0a3edc6ef6af575f814beec39cd3a3351eaf0e3c97045bdd72a7a7b38d"},
-    {file = "llama_index_readers_file-0.1.23.tar.gz", hash = "sha256:fde8ecb588e703849e51dc0f075f56d1f5db3bc1479dd00c21b42e93b81b6267"},
+    {file = "llama_index_readers_file-0.1.25-py3-none-any.whl", hash = "sha256:bc659e432d441c445e110580340675aa60abae1d82add4f65e559dfe8add541b"},
+    {file = "llama_index_readers_file-0.1.25.tar.gz", hash = "sha256:238ddd98aa377d6a44322013eb848056037c80ad84571ea5bf451a640fff4d5c"},
 ]
 
 [[package]]
@@ -4704,7 +4704,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.31.0"
+version = "0.31.1"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -4719,8 +4719,8 @@ dependencies = [
     "unstract-adapters~=0.18.0",
 ]
 files = [
-    {file = "unstract_sdk-0.31.0-py3-none-any.whl", hash = "sha256:1a468e1f7272f45397d9d0592937049462096ee4c0f7f4486110f06bb3800b9e"},
-    {file = "unstract_sdk-0.31.0.tar.gz", hash = "sha256:9230e2540bf5d5130bfd171d17ae7cb7a016dd74047449b521d1cf3a4c8cc8ab"},
+    {file = "unstract_sdk-0.31.1-py3-none-any.whl", hash = "sha256:3806dc331fb7b0a2eebf617bc4d17496dc8fe1537c87c46f8add915dee7066c3"},
+    {file = "unstract_sdk-0.31.1.tar.gz", hash = "sha256:06bb69e3cee9edd814ccf043c1301039b190a4aebfa5a8f1581b1d502463d049"},
 ]
 
 [[package]]
