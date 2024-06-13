@@ -1,10 +1,16 @@
+import logging
 import os
 from typing import Any
 
 import pymssql
-from pymssql import Connection
+import pymssql._pymssql as PyMssql
+from pymssql import Connection  # type: ignore
 
+from unstract.connectors.databases.exceptions import InvalidSyntaxException
+from unstract.connectors.databases.exceptions_helper import ExceptionHelper
 from unstract.connectors.databases.unstract_db import UnstractDB
+
+logger = logging.getLogger(__name__)
 
 
 class MSSQL(UnstractDB):
@@ -49,16 +55,9 @@ class MSSQL(UnstractDB):
         return True
 
     def get_engine(self) -> Connection:
-        if self.port:
-            return pymssql.connect(
-                server=self.server,
-                port=self.port,
-                user=self.user,
-                password=self.password,
-                database=self.database,
-            )
-        return pymssql.connect(
+        return pymssql.connect(  # type: ignore
             server=self.server,
+            port=self.port,
             user=self.user,
             password=self.password,
             database=self.database,
@@ -74,3 +73,22 @@ class MSSQL(UnstractDB):
             f"created_by TEXT, created_at DATETIMEOFFSET, "
         )
         return sql_query
+
+    def execute_query(
+        self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
+    ) -> None:
+        try:
+            with engine.cursor() as cursor:
+                if sql_values:
+                    cursor.execute(sql_query, sql_values)
+                else:
+                    cursor.execute(sql_query)
+            engine.commit()
+        except (PyMssql.ProgrammingError, PyMssql.OperationalError) as e:
+            error_details = ExceptionHelper.extract_byte_exception(e=e)
+            logger.error(
+                f"Invalid syntax in creating/inserting mssql data: {error_details}"
+            )
+            raise InvalidSyntaxException(
+                detail=error_details, database=self.database
+            ) from e

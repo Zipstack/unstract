@@ -182,27 +182,49 @@ class FileManagerHelper:
             raise InvalidFileType
 
     @staticmethod
-    def delete_file(file_system: UnstractFileSystem, path: str, file_name: str) -> bool:
-        fs = file_system.get_fsspec_fs()
-
-        file_path = f"{path}"
+    def _delete_file(fs, file_path):
         try:
-            if file_system.path and (not path or path == "/"):
-                file_path = f"{file_system.path}/"
-        except AttributeError:
-            if fs.path and (not path or path == "/"):
-                file_path = f"{fs.path}/"
-
-        file_path = file_path + "/" if not file_path.endswith("/") else file_path
-
-        # adding filename with path
-        file_path += file_name
-        try:
-            with fs.open(file_path, mode="wb") as remote_file:
-                return remote_file.fs.delete(remote_file.path)  # type:ignore
+            fs.rm(file_path)
+        except FileNotFoundError:
+            FileManagerHelper.logger.info(f"File not found: {file_path}")
         except Exception as e:
             FileManagerHelper.logger.info(f"Unable to delete file {e}")
             raise FileDeletionFailed(f"Unable to delete file {e}")
+
+    @staticmethod
+    def _get_base_path(file_system: UnstractFileSystem, path: str):
+        fs = file_system.get_fsspec_fs()
+        base_path = getattr(
+            file_system if hasattr(file_system, "path") else fs, "path", path
+        )
+        base_path = base_path.rstrip("/") + "/"
+        return base_path
+
+    @staticmethod
+    def delete_file(file_system: UnstractFileSystem, path: str, file_name: str) -> bool:
+        fs = file_system.get_fsspec_fs()
+        base_path = FileManagerHelper._get_base_path(file_system, path)
+        file_path = str(Path(base_path) / file_name)
+        FileManagerHelper._delete_file(fs, file_path)
+        return True
+
+    @staticmethod
+    def delete_related_files(
+        file_system: UnstractFileSystem,
+        path: str,
+        file_name: str,
+        directories: list[str],
+    ) -> bool:
+        fs = file_system.get_fsspec_fs()
+        base_path = FileManagerHelper._get_base_path(file_system, path)
+
+        base_file_name, _ = os.path.splitext(file_name)
+        file_name_txt = base_file_name + ".txt"
+
+        for directory in directories:
+            file_path = str(Path(base_path) / directory / file_name_txt)
+            FileManagerHelper._delete_file(fs, file_path)
+        return True
 
     @staticmethod
     def handle_sub_directory_for_tenants(
