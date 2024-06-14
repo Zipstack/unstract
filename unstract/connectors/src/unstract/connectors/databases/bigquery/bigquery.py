@@ -103,10 +103,9 @@ class BigQuery(UnstractDB):
         try:
             if sql_values:
                 query_job = engine.query(sql_query, job_config=sql_values)
-                query_job.result()
             else:
                 query_job = engine.query(sql_query)
-                query_job.result()
+            query_job.result()
         except google.api_core.exceptions.Forbidden as e:
             logger.error(f"Forbidden exception in creating/inserting data: {str(e)}")
             raise BigQueryForbiddenException(
