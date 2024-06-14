@@ -1,0 +1,57 @@
+name: Run tox tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+
+jobs:
+  test:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Cache tox environments
+      uses: actions/cache@v3
+      with:
+        path: .tox/
+        key: ${{ runner.os }}-tox-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
+        restore-keys: |
+          ${{ runner.os }}-tox-
+
+    - name: Install tox
+      run: pip install tox
+
+    - name: Run tox
+      id: tox
+      run: |
+        tox
+
+    - name: Render the report to the PR
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: worker-test-report
+        recreate: true
+        path: worker-report.md
+
+    - name: Output reports to the job summary when tests fail
+      shell: bash
+      run: |
+        if [ -f "worker-report.md" ]; then
+          echo "<details><summary>Worker Test Report</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat "worker-report.md" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+        fi
