@@ -60,6 +60,7 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 
+# @method_decorator(transaction.non_atomic_requests(using='default'), name='dispatch')
 class PromptStudioCoreView(viewsets.ModelViewSet):
     """Viewset to handle all Custom tool related operations."""
 
@@ -189,7 +190,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             data={"default_profile": profile_manager.profile_id},
         )
 
-    @action(detail=True, methods=["get"])
+    @action(detail=True, methods=["post"])
     def index_document(self, request: HttpRequest, pk: Any = None) -> Response:
         """API Entry point method to index input file.
 

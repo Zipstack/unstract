@@ -302,7 +302,7 @@ class PromptStudioHelper:
         """
         tool: CustomTool = CustomTool.objects.get(pk=tool_id)
         if is_summary:
-            profile_manager = ProfileManager.objects.get(
+            profile_manager: ProfileManager = ProfileManager.objects.get(
                 prompt_studio_tool=tool, is_summarize_llm=True
             )
             default_profile = profile_manager
@@ -345,6 +345,12 @@ class PromptStudioHelper:
             reindex=True,
             run_id=run_id,
         )
+        # import time
+
+        # print("Start")
+        # time.sleep(30)  # Pauses the program for 2 seconds
+        # print("End")
+        # doc_id = "123"
 
         logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
         PromptStudioHelper._publish_log(
