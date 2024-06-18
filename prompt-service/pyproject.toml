@@ -16,7 +16,6 @@ dependencies = [
     "llama-index==0.10.38",
     "python-dotenv==1.0.0",
     "unstract-sdk~=0.32.0",
-    "unstract-adapters~=0.19.0",
     "redis>=5.0.3",
     "unstract-core @ file:///${PROJECT_ROOT}/../unstract/core",
 ]

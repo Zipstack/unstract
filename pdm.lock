@@ -1549,20 +1549,21 @@ files = [
 
 [[package]]
 name = "google-generativeai"
-version = "0.3.2"
+version = "0.4.1"
 requires_python = ">=3.9"
 summary = "Google Generative AI High level API client library and tools."
 groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-ai-generativelanguage==0.4.0",
     "google-api-core",
-    "google-auth",
+    "google-auth>=2.15.0",
     "protobuf",
+    "pydantic",
     "tqdm",
     "typing-extensions",
 ]
 files = [
-    {file = "google_generativeai-0.3.2-py3-none-any.whl", hash = "sha256:8761147e6e167141932dc14a7b7af08f2310dd56668a78d206c19bb8bd85bcd7"},
+    {file = "google_generativeai-0.4.1-py3-none-any.whl", hash = "sha256:89be3c00c2e688108fccefc50f47f45fc9d37ecd53c1ade9d86b5d982919c24a"},
 ]
 
 [[package]]
@@ -2126,17 +2127,17 @@ files = [
 
 [[package]]
 name = "llama-index-embeddings-google"
-version = "0.1.4"
+version = "0.1.5"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index embeddings google integration"
 groups = ["hook-check-django-migrations"]
 dependencies = [
-    "google-generativeai<0.4.0,>=0.3.2",
+    "google-generativeai<0.5.0,>=0.4.1",
     "llama-index-core<0.11.0,>=0.10.11.post1",
 ]
 files = [
-    {file = "llama_index_embeddings_google-0.1.4-py3-none-any.whl", hash = "sha256:0438b13ec884bbe0a39c1db6c87c501644a42b17cb3a7d56d97e3ea4e2146e01"},
-    {file = "llama_index_embeddings_google-0.1.4.tar.gz", hash = "sha256:8d060dff95cf0ab323bf05c10117510cb0bedc986a8198e57156a399c465549c"},
+    {file = "llama_index_embeddings_google-0.1.5-py3-none-any.whl", hash = "sha256:a5dda93a4452e06490e4e4da1eb3d0609b5a1c5e9d4779086fd996d661fd68a2"},
+    {file = "llama_index_embeddings_google-0.1.5.tar.gz", hash = "sha256:989f87e249661a5a531972c4ae52cd587e485291b25e76c084db204f97f0087b"},
 ]
 
 [[package]]
@@ -2291,17 +2292,17 @@ files = [
 
 [[package]]
 name = "llama-index-llms-palm"
-version = "0.1.4"
+version = "0.1.5"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index llms palm integration"
 groups = ["hook-check-django-migrations"]
 dependencies = [
-    "google-generativeai<0.4.0,>=0.3.2",
+    "google-generativeai<0.5.0,>=0.4.1",
     "llama-index-core<0.11.0,>=0.10.11.post1",
 ]
 files = [
-    {file = "llama_index_llms_palm-0.1.4-py3-none-any.whl", hash = "sha256:5955b15a26bed057c0037a438a8027f7a1062968cc809a4af301aad89e703a5c"},
-    {file = "llama_index_llms_palm-0.1.4.tar.gz", hash = "sha256:745a9dcc7be9862adc7a35a2a0fd0dd6c8ea5d6bfb4302734e6b46d7632f7b0f"},
+    {file = "llama_index_llms_palm-0.1.5-py3-none-any.whl", hash = "sha256:0fd45b0b4e7580a420d712c23556812c7348d0781a08aa4aa0060789d7a1e7ef"},
+    {file = "llama_index_llms_palm-0.1.5.tar.gz", hash = "sha256:43194174e4b4061a5b82a84408f2e7f5b9a38273595d5274f500a40b2e644869"},
 ]
 
 [[package]]
@@ -2320,17 +2321,18 @@ files = [
 
 [[package]]
 name = "llama-index-llms-vertex"
-version = "0.1.5"
-requires_python = ">=3.8.1,<4.0"
+version = "0.1.8"
+requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms vertex integration"
 groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-cloud-aiplatform<2.0.0,>=1.39.0",
     "llama-index-core<0.11.0,>=0.10.1",
+    "pyarrow<16.0.0,>=15.0.2",
 ]
 files = [
-    {file = "llama_index_llms_vertex-0.1.5-py3-none-any.whl", hash = "sha256:abe926feda54cc0d8cf9aabd41b9389bb94e3c891decf087a35334380e006011"},
-    {file = "llama_index_llms_vertex-0.1.5.tar.gz", hash = "sha256:8523b167a59000986ad8544054230e54b1d0fb68a3a4426c05e912455d93b985"},
+    {file = "llama_index_llms_vertex-0.1.8-py3-none-any.whl", hash = "sha256:6cab358970bb2767b649123a087c7bd6ab1eb5ead14745497644f4bc076b4baf"},
+    {file = "llama_index_llms_vertex-0.1.8.tar.gz", hash = "sha256:1c39bc9e1163e338679208da9908dd68de85c32feca9230c26435505ea5a6a8d"},
 ]
 
 [[package]]
@@ -2414,8 +2416,8 @@ files = [
 
 [[package]]
 name = "llama-index-vector-stores-milvus"
-version = "0.1.6"
-requires_python = ">=3.8.1,<4.0"
+version = "0.1.18"
+requires_python = "<4.0,>=3.8.1"
 summary = "llama-index vector_stores milvus integration"
 groups = ["hook-check-django-migrations"]
 dependencies = [
@@ -2423,8 +2425,8 @@ dependencies = [
     "pymilvus<3.0.0,>=2.3.6",
 ]
 files = [
-    {file = "llama_index_vector_stores_milvus-0.1.6-py3-none-any.whl", hash = "sha256:1ea463ded9580792e49328dcb55ee79e94bcc63b7d4af05ff66d8ce911ecf0f1"},
-    {file = "llama_index_vector_stores_milvus-0.1.6.tar.gz", hash = "sha256:8629ee8088cd448a760ea44ba358d7303967c5004daf4906b2e38486827b9168"},
+    {file = "llama_index_vector_stores_milvus-0.1.18-py3-none-any.whl", hash = "sha256:a4b1e4d1f31c4eeb5bd4583365f8a2175a4d0856cf1fd0acd202e6e428e0842a"},
+    {file = "llama_index_vector_stores_milvus-0.1.18.tar.gz", hash = "sha256:af2e3cf8e8270b90b3c4209a864f9805a2b367e33a4f9c0961fa2f8d3f9ea9dd"},
 ]
 
 [[package]]
@@ -3167,36 +3169,36 @@ files = [
 
 [[package]]
 name = "pyarrow"
-version = "16.1.0"
+version = "15.0.2"
 requires_python = ">=3.8"
 summary = "Python library for Apache Arrow"
 groups = ["hook-check-django-migrations"]
 dependencies = [
-    "numpy>=1.16.6",
+    "numpy<2,>=1.16.6",
 ]
 files = [
-    {file = "pyarrow-16.1.0-cp310-cp310-macosx_10_15_x86_64.whl", hash = "sha256:17e23b9a65a70cc733d8b738baa6ad3722298fa0c81d88f63ff94bf25eaa77b9"},
-    {file = "pyarrow-16.1.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:4740cc41e2ba5d641071d0ab5e9ef9b5e6e8c7611351a5cb7c1d175eaf43674a"},
-    {file = "pyarrow-16.1.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:98100e0268d04e0eec47b73f20b39c45b4006f3c4233719c3848aa27a03c1aef"},
-    {file = "pyarrow-16.1.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f68f409e7b283c085f2da014f9ef81e885d90dcd733bd648cfba3ef265961848"},
-    {file = "pyarrow-16.1.0-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:a8914cd176f448e09746037b0c6b3a9d7688cef451ec5735094055116857580c"},
-    {file = "pyarrow-16.1.0-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:48be160782c0556156d91adbdd5a4a7e719f8d407cb46ae3bb4eaee09b3111bd"},
-    {file = "pyarrow-16.1.0-cp310-cp310-win_amd64.whl", hash = "sha256:9cf389d444b0f41d9fe1444b70650fea31e9d52cfcb5f818b7888b91b586efff"},
-    {file = "pyarrow-16.1.0-cp311-cp311-macosx_10_15_x86_64.whl", hash = "sha256:d0ebea336b535b37eee9eee31761813086d33ed06de9ab6fc6aaa0bace7b250c"},
-    {file = "pyarrow-16.1.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:2e73cfc4a99e796727919c5541c65bb88b973377501e39b9842ea71401ca6c1c"},
-    {file = "pyarrow-16.1.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:bf9251264247ecfe93e5f5a0cd43b8ae834f1e61d1abca22da55b20c788417f6"},
-    {file = "pyarrow-16.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ddf5aace92d520d3d2a20031d8b0ec27b4395cab9f74e07cc95edf42a5cc0147"},
-    {file = "pyarrow-16.1.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:25233642583bf658f629eb230b9bb79d9af4d9f9229890b3c878699c82f7d11e"},
-    {file = "pyarrow-16.1.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:a33a64576fddfbec0a44112eaf844c20853647ca833e9a647bfae0582b2ff94b"},
-    {file = "pyarrow-16.1.0-cp311-cp311-win_amd64.whl", hash = "sha256:185d121b50836379fe012753cf15c4ba9638bda9645183ab36246923875f8d1b"},
-    {file = "pyarrow-16.1.0-cp39-cp39-macosx_10_15_x86_64.whl", hash = "sha256:18da9b76a36a954665ccca8aa6bd9f46c1145f79c0bb8f4f244f5f8e799bca55"},
-    {file = "pyarrow-16.1.0-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:99f7549779b6e434467d2aa43ab2b7224dd9e41bdde486020bae198978c9e05e"},
-    {file = "pyarrow-16.1.0-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:f07fdffe4fd5b15f5ec15c8b64584868d063bc22b86b46c9695624ca3505b7b4"},
-    {file = "pyarrow-16.1.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ddfe389a08ea374972bd4065d5f25d14e36b43ebc22fc75f7b951f24378bf0b5"},
-    {file = "pyarrow-16.1.0-cp39-cp39-manylinux_2_28_aarch64.whl", hash = "sha256:3b20bd67c94b3a2ea0a749d2a5712fc845a69cb5d52e78e6449bbd295611f3aa"},
-    {file = "pyarrow-16.1.0-cp39-cp39-manylinux_2_28_x86_64.whl", hash = "sha256:ba8ac20693c0bb0bf4b238751d4409e62852004a8cf031c73b0e0962b03e45e3"},
-    {file = "pyarrow-16.1.0-cp39-cp39-win_amd64.whl", hash = "sha256:31a1851751433d89a986616015841977e0a188662fcffd1a5677453f1df2de0a"},
-    {file = "pyarrow-16.1.0.tar.gz", hash = "sha256:15fbb22ea96d11f0b5768504a3f961edab25eaf4197c341720c4a387f6c60315"},
+    {file = "pyarrow-15.0.2-cp310-cp310-macosx_10_15_x86_64.whl", hash = "sha256:88b340f0a1d05b5ccc3d2d986279045655b1fe8e41aba6ca44ea28da0d1455d8"},
+    {file = "pyarrow-15.0.2-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:eaa8f96cecf32da508e6c7f69bb8401f03745c050c1dd42ec2596f2e98deecac"},
+    {file = "pyarrow-15.0.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:23c6753ed4f6adb8461e7c383e418391b8d8453c5d67e17f416c3a5d5709afbd"},
+    {file = "pyarrow-15.0.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f639c059035011db8c0497e541a8a45d98a58dbe34dc8fadd0ef128f2cee46e5"},
+    {file = "pyarrow-15.0.2-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:290e36a59a0993e9a5224ed2fb3e53375770f07379a0ea03ee2fce2e6d30b423"},
+    {file = "pyarrow-15.0.2-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:06c2bb2a98bc792f040bef31ad3e9be6a63d0cb39189227c08a7d955db96816e"},
+    {file = "pyarrow-15.0.2-cp310-cp310-win_amd64.whl", hash = "sha256:f7a197f3670606a960ddc12adbe8075cea5f707ad7bf0dffa09637fdbb89f76c"},
+    {file = "pyarrow-15.0.2-cp311-cp311-macosx_10_15_x86_64.whl", hash = "sha256:5f8bc839ea36b1f99984c78e06e7a06054693dc2af8920f6fb416b5bca9944e4"},
+    {file = "pyarrow-15.0.2-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:f5e81dfb4e519baa6b4c80410421528c214427e77ca0ea9461eb4097c328fa33"},
+    {file = "pyarrow-15.0.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3a4f240852b302a7af4646c8bfe9950c4691a419847001178662a98915fd7ee7"},
+    {file = "pyarrow-15.0.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:4e7d9cfb5a1e648e172428c7a42b744610956f3b70f524aa3a6c02a448ba853e"},
+    {file = "pyarrow-15.0.2-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:2d4f905209de70c0eb5b2de6763104d5a9a37430f137678edfb9a675bac9cd98"},
+    {file = "pyarrow-15.0.2-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:90adb99e8ce5f36fbecbbc422e7dcbcbed07d985eed6062e459e23f9e71fd197"},
+    {file = "pyarrow-15.0.2-cp311-cp311-win_amd64.whl", hash = "sha256:b116e7fd7889294cbd24eb90cd9bdd3850be3738d61297855a71ac3b8124ee38"},
+    {file = "pyarrow-15.0.2-cp39-cp39-macosx_10_15_x86_64.whl", hash = "sha256:89722cb64286ab3d4daf168386f6968c126057b8c7ec3ef96302e81d8cdb8ae4"},
+    {file = "pyarrow-15.0.2-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:cd0ba387705044b3ac77b1b317165c0498299b08261d8122c96051024f953cd5"},
+    {file = "pyarrow-15.0.2-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ad2459bf1f22b6a5cdcc27ebfd99307d5526b62d217b984b9f5c974651398832"},
+    {file = "pyarrow-15.0.2-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:58922e4bfece8b02abf7159f1f53a8f4d9f8e08f2d988109126c17c3bb261f22"},
+    {file = "pyarrow-15.0.2-cp39-cp39-manylinux_2_28_aarch64.whl", hash = "sha256:adccc81d3dc0478ea0b498807b39a8d41628fa9210729b2f718b78cb997c7c91"},
+    {file = "pyarrow-15.0.2-cp39-cp39-manylinux_2_28_x86_64.whl", hash = "sha256:8bd2baa5fe531571847983f36a30ddbf65261ef23e496862ece83bdceb70420d"},
+    {file = "pyarrow-15.0.2-cp39-cp39-win_amd64.whl", hash = "sha256:6669799a1d4ca9da9c7e06ef48368320f5856f36f9a4dd31a11839dda3f6cc8c"},
+    {file = "pyarrow-15.0.2.tar.gz", hash = "sha256:9c9bc803cb3b7bfacc1e96ffbfd923601065d9d3f911179d81e72d99fd74a3d9"},
 ]
 
 [[package]]
@@ -4308,13 +4310,13 @@ files = [
 
 [[package]]
 name = "tenacity"
-version = "8.4.0"
+version = "8.4.1"
 requires_python = ">=3.8"
 summary = "Retry code until it succeeds"
 groups = ["hook-check-django-migrations"]
 files = [
-    {file = "tenacity-8.4.0-py3-none-any.whl", hash = "sha256:6c72aeb4d300b9858be0d52f1894ee952f0b391ec583cdc19c2523030efcc4eb"},
-    {file = "tenacity-8.4.0.tar.gz", hash = "sha256:5ea66b27e881eec324b15adc7be9ec35001d231d4cfb5d10eee1bf9323d723a9"},
+    {file = "tenacity-8.4.1-py3-none-any.whl", hash = "sha256:28522e692eda3e1b8f5e99c51464efcc0b9fc86933da92415168bc1c4e2308fa"},
+    {file = "tenacity-8.4.1.tar.gz", hash = "sha256:54b1412b878ddf7e1f1577cd49527bad8cdef32421bd599beac0c6c3f10582fd"},
 ]
 
 [[package]]
@@ -4718,16 +4720,16 @@ dependencies = [
     "httpx>=0.25.2",
     "llama-index-embeddings-azure-openai==0.1.6",
     "llama-index-embeddings-azure-openai==0.1.6",
-    "llama-index-embeddings-google==0.1.4",
+    "llama-index-embeddings-google==0.1.5",
     "llama-index-llms-anthropic==0.1.11",
     "llama-index-llms-anyscale==0.1.3",
     "llama-index-llms-azure-openai==0.1.5",
     "llama-index-llms-mistralai==0.1.10",
     "llama-index-llms-ollama==0.1.3",
-    "llama-index-llms-palm==0.1.4",
+    "llama-index-llms-palm==0.1.5",
     "llama-index-llms-replicate==0.1.3",
-    "llama-index-llms-vertex==0.1.5",
-    "llama-index-vector-stores-milvus==0.1.6",
+    "llama-index-llms-vertex==0.1.8",
+    "llama-index-vector-stores-milvus==0.1.18",
     "llama-index-vector-stores-pinecone==0.1.4",
     "llama-index-vector-stores-postgres==0.1.3",
     "llama-index-vector-stores-qdrant==0.2.8",
@@ -4874,13 +4876,13 @@ files = [
 
 [[package]]
 name = "urllib3"
-version = "1.26.18"
-requires_python = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, !=3.5.*"
+version = "1.26.19"
+requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,>=2.7"
 summary = "HTTP library with thread-safe connection pooling, file post, and more."
 groups = ["hook-check-django-migrations"]
 files = [
-    {file = "urllib3-1.26.18-py2.py3-none-any.whl", hash = "sha256:34b97092d7e0a3a8cf7cd10e386f401b3737364026c45e622aa02903dffe0f07"},
-    {file = "urllib3-1.26.18.tar.gz", hash = "sha256:f8ecc1bba5667413457c529ab955bf8c67b45db799d159066261719e328580a0"},
+    {file = "urllib3-1.26.19-py2.py3-none-any.whl", hash = "sha256:37a0344459b199fce0e80b0d3569837ec6b6937435c5244e7fd73fa6006830f3"},
+    {file = "urllib3-1.26.19.tar.gz", hash = "sha256:3e3d753a8618b86d7de333b4223005f68720bcd6a7d2bcb9fbd2229ec7c1e429"},
 ]
 
 [[package]]
