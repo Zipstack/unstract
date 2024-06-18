@@ -1,10 +1,10 @@
 import json
 import logging
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Optional
-import time
 
 from account.constants import Common
 from account.models import User
@@ -28,6 +28,12 @@ from prompt_studio.prompt_studio_core.exceptions import (
 )
 from prompt_studio.prompt_studio_core.models import CustomTool
 from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
+from prompt_studio.prompt_studio_core.redis_utils import (
+    get_indexed_document_id,
+    is_document_indexing,
+    mark_document_indexed,
+    set_document_indexing,
+)
 from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import (  # noqa: E501
     PromptStudioIndexHelper,
@@ -35,7 +41,6 @@ from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import
 from prompt_studio.prompt_studio_output_manager.output_manager_helper import (
     OutputManagerHelper,
 )
-from prompt_studio.prompt_studio_core.redis_utils import set_document_indexing, is_document_indexing, mark_document_indexed, get_indexed_document_id
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import IndexingError, SdkError
 from unstract.sdk.index import Index
@@ -366,7 +371,7 @@ class PromptStudioHelper:
         document_id: str,
         id: Optional[str] = None,
         run_id: str = None,
-        profile_manager_id: Optional[str] = None
+        profile_manager_id: Optional[str] = None,
     ) -> Any:
         """Execute chain/single run of the prompts. Makes a call to prompt
         service and returns the dict of response.
@@ -446,7 +451,7 @@ class PromptStudioHelper:
                     org_id=org_id,
                     document_id=document_id,
                     run_id=run_id,
-                    profile_manager_id=profile_manager_id
+                    profile_manager_id=profile_manager_id,
                 )
 
                 OutputManagerHelper.handle_prompt_output_update(
@@ -456,7 +461,7 @@ class PromptStudioHelper:
                     document_id=document_id,
                     is_single_pass_extract=False,
                     profile_manager_id=profile_manager_id,
-                    tool=tool
+                    tool=tool,
                 )
             # TODO: Review if this catch-all is required
             except Exception as e:
@@ -569,7 +574,7 @@ class PromptStudioHelper:
         org_id: str,
         document_id: str,
         run_id: str,
-        profile_manager_id: Optional[str] = None
+        profile_manager_id: Optional[str] = None,
     ) -> Any:
         """Utility function to invoke prompt service. Used internally.
 
@@ -590,13 +595,17 @@ class PromptStudioHelper:
         Returns:
             Any: Output from LLM
         """
-        
+
         # Fetch the ProfileManager instance using the profile_manager_id if provided
         if profile_manager_id:
             try:
-                profile_manager = ProfileManager.objects.get(profile_id=profile_manager_id)
+                profile_manager = ProfileManager.objects.get(
+                    profile_id=profile_manager_id
+                )
             except ProfileManager.DoesNotExist:
-                raise DefaultProfileError(f"ProfileManager with ID {profile_manager_id} does not exist.")
+                raise DefaultProfileError(
+                    f"ProfileManager with ID {profile_manager_id} does not exist."
+                )
         else:
             profile_manager = prompt.profile_manager
 
@@ -767,14 +776,14 @@ class PromptStudioHelper:
             )
         else:
             profile_manager.chunk_size = 0
-        
+
         doc_id_key = f"{document_id}_{org_id}_{tool_id}"
 
         # Check if the document is already indexed
         indexed_doc_id = get_indexed_document_id(doc_id_key)
         if indexed_doc_id:
             return indexed_doc_id
-        
+
         # Polling if document is already being indexed
         if is_document_indexing(doc_id_key):
             max_wait_time = 1800  # 30 minutes
@@ -782,7 +791,9 @@ class PromptStudioHelper:
             polling_interval = 5  # Poll every 5 seconds
             while is_document_indexing(doc_id_key):
                 if wait_time >= max_wait_time:
-                    raise IndexingAPIError("Indexing timed out. Please try again later.")
+                    raise IndexingAPIError(
+                        "Indexing timed out. Please try again later."
+                    )
                 time.sleep(polling_interval)
                 wait_time += polling_interval
 
