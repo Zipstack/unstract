@@ -85,6 +85,7 @@ class ToolStudioPromptKeys:
     NOTES = "NOTES"
     OUTPUT = "output"
     SEQUENCE_NUMBER = "sequence_number"
+    PROFILE_MANAGER_ID = "profile_manager"
 
 
 class FileViewTypes:

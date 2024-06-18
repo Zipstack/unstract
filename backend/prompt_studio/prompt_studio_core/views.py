@@ -264,6 +264,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         id: str = request.data.get(ToolStudioPromptKeys.ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
+        profile_manager: str = request.data.get(ToolStudioPromptKeys.PROFILE_MANAGER_ID, None )
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()
@@ -275,6 +276,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             user_id=custom_tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
+            profile_manager_id=profile_manager
         )
         return Response(response, status=status.HTTP_200_OK)
 

@@ -31,16 +31,12 @@ function PromptCard({
   updatePlaceHolder,
 }) {
   const [enforceTypeList, setEnforceTypeList] = useState([]);
-  const [page, setPage] = useState(0);
-  const [isRunLoading, setIsRunLoading] = useState(false);
+  const [isRunLoading, setIsRunLoading] = useState({});
   const [promptKey, setPromptKey] = useState("");
   const [promptText, setPromptText] = useState("");
   const [selectedLlmProfileId, setSelectedLlmProfileId] = useState(null);
   const [openEval, setOpenEval] = useState(false);
-  const [result, setResult] = useState({
-    promptOutputId: null,
-    output: "",
-  });
+  const [result, setResult] = useState([]);
   const [coverage, setCoverage] = useState(0);
   const [coverageTotal, setCoverageTotal] = useState(0);
   const [isCoverageLoading, setIsCoverageLoading] = useState(false);
@@ -99,6 +95,7 @@ function PromptCard({
       level: msg?.level || "INFO",
     });
   }, [messages]);
+  console.log(isRunLoading);
 
   useEffect(() => {
     setSelectedLlmProfileId(promptDetails?.profile_manager || null);
@@ -106,12 +103,18 @@ function PromptCard({
 
   useEffect(() => {
     resetInfoMsgs();
+    handleGetOutput();
+    handleGetCoverage();
     if (isSinglePassExtractLoading) {
       return;
     }
-
-    handleGetOutput();
-    handleGetCoverage();
+    if (selectedLlmProfileId !== promptDetails?.profile_id) {
+      handleChange(
+        selectedLlmProfileId,
+        promptDetails?.prompt_id,
+        "profile_manager"
+      );
+    }
   }, [
     selectedLlmProfileId,
     selectedDoc,
@@ -143,20 +146,6 @@ function PromptCard({
   }, [isCoverageLoading]);
 
   useEffect(() => {
-    if (page < 1) {
-      return;
-    }
-    const llmProfile = llmProfiles[page - 1];
-    if (llmProfile?.profile_id !== promptDetails?.profile_id) {
-      handleChange(
-        llmProfile?.profile_id,
-        promptDetails?.prompt_id,
-        "profile_manager"
-      );
-    }
-  }, [page]);
-
-  useEffect(() => {
     if (isCoverageLoading && coverageTotal === listOfDocs?.length) {
       setIsCoverageLoading(false);
       setCoverageTotal(0);
@@ -176,34 +165,18 @@ function PromptCard({
     if (!isProfilePresent) {
       setSelectedLlmProfileId(null);
     }
-
-    const llmProfileId = promptDetails?.profile_manager;
-    if (!llmProfileId) {
-      setPage(0);
-      return;
-    }
-    const index = llmProfiles.findIndex(
-      (item) => item?.profile_id === llmProfileId
-    );
-    setPage(index + 1);
   }, [llmProfiles]);
 
-  const handlePageLeft = () => {
-    if (page <= 1) {
-      return;
-    }
-
-    const newPage = page - 1;
-    setPage(newPage);
+  // Function to update loading state for a specific document and profile
+  const handleIsRunLoading = (docId, profileId, isLoading) => {
+    setIsRunLoading((prevLoadingProfiles) => ({
+      ...prevLoadingProfiles,
+      [`${docId}_${profileId}`]: isLoading,
+    }));
   };
 
-  const handlePageRight = () => {
-    if (page >= llmProfiles?.length) {
-      return;
-    }
-
-    const newPage = page + 1;
-    setPage(newPage);
+  const handleSelectDefaultLLM = (llmProfileId) => {
+    setSelectedLlmProfileId(llmProfileId);
   };
 
   const handleTypeChange = (value) => {
@@ -222,8 +195,14 @@ function PromptCard({
     });
   };
 
+  console.log(llmProfiles, promptDetails);
+
   // Generate the result for the currently selected document
-  const handleRun = () => {
+  const handleRun = (
+    profileManagerId,
+    coverAllDoc = true,
+    selectedLlmProfiles
+  ) => {
     try {
       setPostHogCustomEvent("ps_prompt_run", {
         info: "Click on 'Run Prompt' button (Multi Pass)",
@@ -232,7 +211,11 @@ function PromptCard({
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
-    if (!promptDetails?.profile_manager?.length) {
+    if (
+      !profileManagerId &&
+      !promptDetails?.profile_manager?.length &&
+      !(!coverAllDoc && selectedLlmProfiles.length > 0)
+    ) {
       setAlertDetails({
         type: "error",
         content: "LLM Profile is not selected",
@@ -264,7 +247,11 @@ function PromptCard({
       return;
     }
 
-    setIsRunLoading(true);
+    handleIsRunLoading(
+      selectedDoc.document_id,
+      profileManagerId || selectedLlmProfileId,
+      true
+    );
     setIsCoverageLoading(true);
     setCoverage(0);
     setCoverageTotal(0);
@@ -282,8 +269,9 @@ function PromptCard({
       details?.summarize_llm_profile
     ) {
       // Summary needs to be indexed before running the prompt
-      setIsRunLoading(false);
-      handleStepsAfterRunCompletion();
+      handleIsRunLoading(selectedDoc.document_id, selectedLlmProfileId, false);
+      setCoverageTotal(1);
+      handleCoverage(selectedLlmProfileId);
       setAlertDetails({
         type: "error",
         content: `Summary needs to be indexed before running the prompt - ${selectedDoc?.document_name}.`,
@@ -292,35 +280,75 @@ function PromptCard({
     }
 
     handleDocOutputs(docId, true, null);
-    handleRunApiRequest(docId)
-      .then((res) => {
-        const data = res?.data?.output;
-        const value = data[promptDetails?.prompt_key];
-        if (value || value === 0) {
-          setCoverage((prev) => prev + 1);
-        }
-        handleDocOutputs(docId, false, value);
-        handleGetOutput();
-      })
-      .catch((err) => {
-        setIsRunLoading(false);
-        handleDocOutputs(docId, false, null);
-        setAlertDetails(
-          handleException(err, `Failed to generate output for ${docId}`)
+    if (!profileManagerId) {
+      let selectedProfiles = llmProfiles;
+      if (!coverAllDoc && selectedLlmProfiles.length > 0) {
+        selectedProfiles = llmProfiles.filter((profile) =>
+          selectedLlmProfiles.includes(profile.profile_id)
         );
-      })
-      .finally(() => {
-        handleStepsAfterRunCompletion();
-      });
-  };
-
-  const handleStepsAfterRunCompletion = () => {
-    setCoverageTotal(1);
-    handleCoverage();
+      }
+      for (const profile of selectedProfiles) {
+        handleIsRunLoading(selectedDoc.document_id, profile.profile_id, true);
+        handleRunApiRequest(docId, profile.profile_id)
+          .then((res) => {
+            const data = res?.data?.output;
+            const value = data[promptDetails?.prompt_key];
+            if (value || value === 0) {
+              setCoverage((prev) => prev + 1);
+            }
+            handleDocOutputs(docId, false, value);
+            handleGetOutput(profile.profile_id);
+          })
+          .catch((err) => {
+            handleIsRunLoading(
+              selectedDoc.document_id,
+              profile.profile_id,
+              false
+            );
+            handleDocOutputs(docId, false, null);
+            setAlertDetails(
+              handleException(err, `Failed to generate output for ${docId}`)
+            );
+          });
+        if (coverAllDoc) {
+          handleCoverage(profile.profile_id);
+        }
+      }
+    } else {
+      handleRunApiRequest(docId, profileManagerId)
+        .then((res) => {
+          const data = res?.data?.output;
+          const value = data[promptDetails?.prompt_key];
+          if (value || value === 0) {
+            setCoverage((prev) => prev + 1);
+          }
+          handleDocOutputs(docId, false, value);
+          handleGetOutput();
+          setCoverageTotal(1);
+        })
+        .catch((err) => {
+          handleIsRunLoading(
+            selectedDoc.document_id,
+            selectedLlmProfileId,
+            false
+          );
+          handleDocOutputs(docId, false, null);
+          setAlertDetails(
+            handleException(err, `Failed to generate output for ${docId}`)
+          );
+        })
+        .finally(() => {
+          handleIsRunLoading(selectedDoc.document_id, profileManagerId, false);
+          setIsCoverageLoading(false);
+        });
+      if (coverAllDoc) {
+        handleCoverage(profileManagerId);
+      }
+    }
   };
 
   // Get the coverage for all the documents except the one that's currently selected
-  const handleCoverage = () => {
+  const handleCoverage = (profileManagerId) => {
     const listOfDocsToProcess = [...listOfDocs].filter(
       (item) => item?.document_id !== selectedDoc?.document_id
     );
@@ -353,8 +381,9 @@ function PromptCard({
         return;
       }
 
+      setIsCoverageLoading(true);
       handleDocOutputs(docId, true, null);
-      handleRunApiRequest(docId)
+      handleRunApiRequest(docId, profileManagerId)
         .then((res) => {
           const data = res?.data?.output;
           const outputValue = data[promptDetails?.prompt_key];
@@ -371,17 +400,21 @@ function PromptCard({
         })
         .finally(() => {
           totalCoverageValue++;
+          if (listOfDocsToProcess?.length >= totalCoverageValue) {
+            setIsCoverageLoading(false);
+            return;
+          }
           setCoverageTotal(totalCoverageValue);
         });
     });
   };
 
-  const handleRunApiRequest = async (docId) => {
+  const handleRunApiRequest = async (docId, profileManagerId = null) => {
     const promptId = promptDetails?.prompt_id;
     const runId = generateUUID();
 
     // Update the token usage state with default token usage for a specific document ID
-    const tokenUsageId = promptId + "__" + docId;
+    const tokenUsageId = promptId + "__" + docId + "__" + profileManagerId;
     setTokenUsage(tokenUsageId, defaultTokenUsage);
 
     // Set up an interval to fetch token usage data at regular intervals
@@ -395,6 +428,10 @@ function PromptCard({
       id: promptId,
       run_id: runId,
     };
+
+    if (profileManagerId) {
+      body.profile_manager = profileManagerId;
+    }
 
     const requestOptions = {
       method: "POST",
@@ -417,42 +454,55 @@ function PromptCard({
       });
   };
 
-  const handleGetOutput = () => {
-    if (!selectedDoc || (!singlePassExtractMode && !selectedLlmProfileId)) {
-      setResult({
-        promptOutputId: null,
-        output: "",
-      });
+  const handleGetOutput = (profileManager = undefined) => {
+    if (!selectedDoc) {
+      setResult([]);
       return;
     }
 
-    setIsRunLoading(true);
+    if (singlePassExtractMode) {
+      setResult([]);
+      return;
+    }
+
+    handleIsRunLoading(
+      selectedDoc.document_id,
+      profileManager || selectedLlmProfileId,
+      true
+    );
     handleOutputApiRequest(true)
       .then((res) => {
         const data = res?.data;
+        console.log(data);
         if (!data || data?.length === 0) {
-          setResult({
-            promptOutputId: null,
-            output: "",
-          });
+          setResult([]);
           return;
         }
 
-        const outputResult = data[0];
-        setResult({
-          promptOutputId: outputResult?.prompt_output_id,
-          output: outputResult?.output,
-          evalMetrics: getEvalMetrics(
-            promptDetails?.evaluate,
-            outputResult?.eval_metrics || []
-          ),
+        const outputResults = data.map((outputResult) => {
+          return {
+            runId: outputResult?.run_id,
+            promptOutputId: outputResult?.prompt_output_id,
+            profileManager: outputResult?.profile_manager,
+            output: outputResult?.output,
+            evalMetrics: getEvalMetrics(
+              promptDetails?.evaluate,
+              outputResult?.eval_metrics || []
+            ),
+          };
         });
+        console.log(outputResults);
+        setResult(outputResults);
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to generate the result"));
       })
       .finally(() => {
-        setIsRunLoading(false);
+        handleIsRunLoading(
+          selectedDoc.document_id,
+          profileManager || selectedLlmProfileId,
+          false
+        );
       });
   };
 
@@ -480,10 +530,14 @@ function PromptCard({
     if (singlePassExtractMode) {
       profileManager = defaultLlmProfile;
     }
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${profileManager}&is_single_pass_extract=${singlePassExtractMode}`;
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&is_single_pass_extract=${singlePassExtractMode}`;
 
     if (isOutput) {
       url += `&document_manager=${selectedDoc?.document_id}`;
+    }
+
+    if (singlePassExtractMode) {
+      url += `&profile_manager=${profileManager}`;
     }
 
     const requestOptions = {
@@ -507,7 +561,7 @@ function PromptCard({
           }
         } else {
           data.forEach((item) => {
-            const tokenUsageId = `${item?.prompt_id}__${item?.document_manager}`;
+            const tokenUsageId = `${item?.prompt_id}__${item?.document_manager}__${item?.profile_manager}`;
 
             if (tokenUsage[tokenUsageId] === undefined) {
               setTokenUsage(tokenUsageId, item?.token_usage);
@@ -547,8 +601,6 @@ function PromptCard({
         progressMsg={progressMsg}
         handleRun={handleRun}
         handleChange={handleChange}
-        handlePageLeft={handlePageLeft}
-        handlePageRight={handlePageRight}
         handleTypeChange={handleTypeChange}
         handleDelete={handleDelete}
         updateStatus={updateStatus}
@@ -557,7 +609,7 @@ function PromptCard({
         setOpenEval={setOpenEval}
         setOpenOutputForDoc={setOpenOutputForDoc}
         selectedLlmProfileId={selectedLlmProfileId}
-        page={page}
+        handleSelectDefaultLLM={handleSelectDefaultLLM}
       />
       {EvalModal && !singlePassExtractMode && (
         <EvalModal

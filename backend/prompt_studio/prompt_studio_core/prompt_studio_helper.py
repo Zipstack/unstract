@@ -4,6 +4,7 @@ import os
 import uuid
 from pathlib import Path
 from typing import Any, Optional
+import time
 
 from account.constants import Common
 from account.models import User
@@ -34,6 +35,7 @@ from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import
 from prompt_studio.prompt_studio_output_manager.output_manager_helper import (
     OutputManagerHelper,
 )
+from prompt_studio.prompt_studio_core.redis_utils import set_document_indexing, is_document_indexing, mark_document_indexed, get_indexed_document_id
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import IndexingError, SdkError
 from unstract.sdk.index import Index
@@ -364,6 +366,7 @@ class PromptStudioHelper:
         document_id: str,
         id: Optional[str] = None,
         run_id: str = None,
+        profile_manager_id: Optional[str] = None
     ) -> Any:
         """Execute chain/single run of the prompts. Makes a call to prompt
         service and returns the dict of response.
@@ -374,6 +377,7 @@ class PromptStudioHelper:
             user_id (str): User's ID
             document_id (str): UUID of the document uploaded
             id (Optional[str]): ID of the prompt
+            profile_manager_id (Optional[str]): UUID of the profile manager
 
         Raises:
             AnswerFetchError: Error from prompt-service
@@ -442,6 +446,7 @@ class PromptStudioHelper:
                     org_id=org_id,
                     document_id=document_id,
                     run_id=run_id,
+                    profile_manager_id=profile_manager_id
                 )
 
                 OutputManagerHelper.handle_prompt_output_update(
@@ -450,6 +455,8 @@ class PromptStudioHelper:
                     outputs=response["output"],
                     document_id=document_id,
                     is_single_pass_extract=False,
+                    profile_manager_id=profile_manager_id,
+                    tool=tool
                 )
             # TODO: Review if this catch-all is required
             except Exception as e:
@@ -562,6 +569,7 @@ class PromptStudioHelper:
         org_id: str,
         document_id: str,
         run_id: str,
+        profile_manager_id: Optional[str] = None
     ) -> Any:
         """Utility function to invoke prompt service. Used internally.
 
@@ -572,6 +580,8 @@ class PromptStudioHelper:
             prompt (ToolStudioPrompt): ToolStudioPrompt instance to fetch response
             org_id (str): UUID of the organization
             document_id (str): UUID of the document
+            profile_manager_id (Optional[str]): UUID of the profile manager
+
 
         Raises:
             DefaultProfileError: If no default profile is selected
@@ -580,6 +590,16 @@ class PromptStudioHelper:
         Returns:
             Any: Output from LLM
         """
+        
+        # Fetch the ProfileManager instance using the profile_manager_id if provided
+        if profile_manager_id:
+            try:
+                profile_manager = ProfileManager.objects.get(profile_id=profile_manager_id)
+            except ProfileManager.DoesNotExist:
+                raise DefaultProfileError(f"ProfileManager with ID {profile_manager_id} does not exist.")
+        else:
+            profile_manager = prompt.profile_manager
+
         monitor_llm_instance: Optional[AdapterInstance] = tool.monitor_llm
         monitor_llm: Optional[str] = None
         challenge_llm_instance: Optional[AdapterInstance] = tool.challenge_llm
@@ -600,21 +620,20 @@ class PromptStudioHelper:
             challenge_llm = str(default_profile.llm.id)
 
         # Need to check the user who created profile manager
-        PromptStudioHelper.validate_adapter_status(prompt.profile_manager)
+        PromptStudioHelper.validate_adapter_status(profile_manager)
         # Need to check the user who created profile manager
         # has access to adapters
-        PromptStudioHelper.validate_profile_manager_owner_access(prompt.profile_manager)
+        PromptStudioHelper.validate_profile_manager_owner_access(profile_manager)
         # Not checking reindex here as there might be
         # change in Profile Manager
-        vector_db = str(prompt.profile_manager.vector_store.id)
-        embedding_model = str(prompt.profile_manager.embedding_model.id)
-        llm = str(prompt.profile_manager.llm.id)
-        x2text = str(prompt.profile_manager.x2text.id)
-        prompt_profile_manager: ProfileManager = prompt.profile_manager
-        if not prompt_profile_manager:
+        vector_db = str(profile_manager.vector_store.id)
+        embedding_model = str(profile_manager.embedding_model.id)
+        llm = str(profile_manager.llm.id)
+        x2text = str(profile_manager.x2text.id)
+        if not profile_manager:
             raise DefaultProfileError()
         PromptStudioHelper.dynamic_indexer(
-            profile_manager=prompt_profile_manager,
+            profile_manager=profile_manager,
             file_path=doc_path,
             tool_id=str(tool.tool_id),
             org_id=org_id,
@@ -639,16 +658,16 @@ class PromptStudioHelper:
 
         output[TSPKeys.PROMPT] = prompt.prompt
         output[TSPKeys.ACTIVE] = prompt.active
-        output[TSPKeys.CHUNK_SIZE] = prompt.profile_manager.chunk_size
+        output[TSPKeys.CHUNK_SIZE] = profile_manager.chunk_size
         output[TSPKeys.VECTOR_DB] = vector_db
         output[TSPKeys.EMBEDDING] = embedding_model
-        output[TSPKeys.CHUNK_OVERLAP] = prompt.profile_manager.chunk_overlap
+        output[TSPKeys.CHUNK_OVERLAP] = profile_manager.chunk_overlap
         output[TSPKeys.LLM] = llm
         output[TSPKeys.TYPE] = prompt.enforce_type
         output[TSPKeys.NAME] = prompt.prompt_key
-        output[TSPKeys.RETRIEVAL_STRATEGY] = prompt.profile_manager.retrieval_strategy
-        output[TSPKeys.SIMILARITY_TOP_K] = prompt.profile_manager.similarity_top_k
-        output[TSPKeys.SECTION] = prompt.profile_manager.section
+        output[TSPKeys.RETRIEVAL_STRATEGY] = profile_manager.retrieval_strategy
+        output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
+        output[TSPKeys.SECTION] = profile_manager.section
         output[TSPKeys.X2TEXT_ADAPTER] = x2text
         # Eval settings for the prompt
         output[TSPKeys.EVAL_SETTINGS] = {}
@@ -748,8 +767,33 @@ class PromptStudioHelper:
             )
         else:
             profile_manager.chunk_size = 0
+        
+        doc_id_key = f"{document_id}_{org_id}_{tool_id}"
+
+        # Check if the document is already indexed
+        indexed_doc_id = get_indexed_document_id(doc_id_key)
+        if indexed_doc_id:
+            return indexed_doc_id
+        
+        # Polling if document is already being indexed
+        if is_document_indexing(doc_id_key):
+            max_wait_time = 1800  # 30 minutes
+            wait_time = 0
+            polling_interval = 5  # Poll every 5 seconds
+            while is_document_indexing(doc_id_key):
+                if wait_time >= max_wait_time:
+                    raise IndexingAPIError("Indexing timed out. Please try again later.")
+                time.sleep(polling_interval)
+                wait_time += polling_interval
+
+            # After waiting, check if the document is indexed
+            indexed_doc_id = get_indexed_document_id(doc_id_key)
+            if indexed_doc_id:
+                return indexed_doc_id
 
         try:
+            # Set the document as being indexed
+            set_document_indexing(doc_id_key)
             usage_kwargs = {"run_id": run_id}
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = Index(tool=util)
@@ -772,6 +816,7 @@ class PromptStudioHelper:
                 profile_manager=profile_manager,
                 doc_id=doc_id,
             )
+            mark_document_indexed(doc_id_key, doc_id)
             return doc_id
         except (IndexingError, IndexingAPIError, SdkError) as e:
             doc_name = os.path.split(file_path)[1]

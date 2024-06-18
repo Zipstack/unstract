@@ -1,4 +1,3 @@
-import { Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
@@ -13,6 +12,7 @@ function TokenUsage({ tokenUsageId }) {
   const [tokens, setTokens] = useState({});
   const { tokenUsage } = useTokenUsageStore();
 
+  console.log(tokenUsage);
   useEffect(() => {
     // Check if the token usage for the given tokenUsageId is available
     if (tokenUsage[tokenUsageId] === undefined) {
@@ -28,11 +28,7 @@ function TokenUsage({ tokenUsageId }) {
     return <></>;
   }
 
-  return (
-    <Tooltip title="Total Token Count">
-      <Tag color="#2db7f5">{`Tokens: ${tokens?.total_tokens}`}</Tag>
-    </Tooltip>
-  );
+  return tokens?.total_tokens;
 }
 
 TokenUsage.propTypes = {

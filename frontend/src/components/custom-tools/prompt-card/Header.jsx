@@ -3,10 +3,11 @@ import {
   DeleteOutlined,
   EditOutlined,
   LoadingOutlined,
+  PlayCircleFilled,
   PlayCircleOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
-import { Button, Col, Row, Tag, Tooltip } from "antd";
+import { Button, Checkbox, Col, Row, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 
 import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";
@@ -31,6 +32,7 @@ function Header({
   enableEdit,
   expandCard,
   setExpandCard,
+  enabledProfiles,
 }) {
   const {
     selectedDoc,
@@ -40,11 +42,12 @@ function Header({
     indexDocs,
   } = useCustomToolStore();
 
-  const handleRunBtnClick = () => {
+  const handleRunBtnClick = (profileManager = null, coverAllDoc = true) => {
     setExpandCard(true);
-    handleRun();
+    handleRun(profileManager, coverAllDoc, enabledProfiles);
   };
 
+  console.log(promptDetails);
   return (
     <Row>
       <Col span={12}>
@@ -122,23 +125,44 @@ function Header({
           </Button>
         </Tooltip>
         {!singlePassExtractMode && (
-          <Tooltip title="Run">
-            <Button
-              size="small"
-              type="text"
-              className="prompt-card-action-button"
-              onClick={handleRunBtnClick}
-              disabled={
-                (updateStatus?.promptId === promptDetails?.prompt_id &&
-                  updateStatus?.status ===
-                    promptStudioUpdateStatus.isUpdating) ||
-                disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
-                indexDocs.includes(selectedDoc?.document_id)
-              }
-            >
-              <PlayCircleOutlined className="prompt-card-actions-head" />
-            </Button>
-          </Tooltip>
+          <>
+            <Tooltip title="Run">
+              <Button
+                size="small"
+                type="text"
+                className="prompt-card-action-button"
+                onClick={() =>
+                  handleRunBtnClick(promptDetails?.profile_manager, false)
+                }
+                disabled={
+                  (updateStatus?.promptId === promptDetails?.prompt_id &&
+                    updateStatus?.status ===
+                      promptStudioUpdateStatus.isUpdating) ||
+                  disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                  indexDocs.includes(selectedDoc?.document_id)
+                }
+              >
+                <PlayCircleOutlined className="prompt-card-actions-head" />
+              </Button>
+            </Tooltip>
+            <Tooltip title="Run All">
+              <Button
+                size="small"
+                type="text"
+                className="prompt-card-action-button"
+                onClick={() => handleRunBtnClick()}
+                disabled={
+                  (updateStatus?.promptId === promptDetails?.prompt_id &&
+                    updateStatus?.status ===
+                      promptStudioUpdateStatus.isUpdating) ||
+                  disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                  indexDocs.includes(selectedDoc?.document_id)
+                }
+              >
+                <PlayCircleFilled className="prompt-card-actions-head" />
+              </Button>
+            </Tooltip>
+          </>
         )}
         <ConfirmModal
           handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
@@ -159,6 +183,7 @@ function Header({
             </Button>
           </Tooltip>
         </ConfirmModal>
+        <Checkbox defaultChecked={true} className="prompt-card-action-button" />
       </Col>
     </Row>
   );
@@ -180,6 +205,7 @@ Header.propTypes = {
   enableEdit: PropTypes.func.isRequired,
   expandCard: PropTypes.bool.isRequired,
   setExpandCard: PropTypes.func.isRequired,
+  enabledProfiles: PropTypes.array.isRequired,
 };
 
 export { Header };

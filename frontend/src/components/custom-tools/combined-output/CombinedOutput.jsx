@@ -17,15 +17,19 @@ import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import TabPane from "antd/es/tabs/TabPane";
+import { Tabs } from "antd";
 
 function CombinedOutput({ docId, setFilledFields }) {
   const [combinedOutput, setCombinedOutput] = useState({});
   const [isOutputLoading, setIsOutputLoading] = useState(false);
+  const [adapterData, setAdapterData] = useState([]);
   const {
     details,
     defaultLlmProfile,
     singlePassExtractMode,
     isSinglePassExtractLoading,
+    llmProfiles,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -36,6 +40,9 @@ function CombinedOutput({ docId, setFilledFields }) {
     if (!docId || isSinglePassExtractLoading) {
       return;
     }
+    console.log(llmProfiles);
+    getAdapterInfo();
+    console.log(adapterData);
 
     let filledFields = 0;
     setIsOutputLoading(true);
@@ -111,6 +118,26 @@ function CombinedOutput({ docId, setFilledFields }) {
       });
   };
 
+  const getAdapterInfo = () => {
+    axiosPrivate
+      .get(`/api/v1/unstract/${sessionDetails.orgId}/adapter/?adapter_type=LLM`)
+      .then((res) => {
+        const adapterList = res.data;
+        setAdapterData(removeDuplicates(adapterList));
+      });
+  };
+
+  const removeDuplicates = (adapters) => {
+    const uniqueModels = new Set();
+    return adapters.filter((adapter) => {
+      if (!uniqueModels.has(adapter.model)) {
+        uniqueModels.add(adapter.model);
+        return true;
+      }
+      return false;
+    });
+  };
+
   if (isOutputLoading) {
     return <SpinnerLoader />;
   }
@@ -118,6 +145,15 @@ function CombinedOutput({ docId, setFilledFields }) {
   return (
     <div className="combined-op-layout">
       <div className="combined-op-header">
+        <Tabs defaultActiveKey="0">
+          <TabPane tab={<span>{"Default"}</span>} key={"0"}></TabPane>
+          {adapterData.map((adapter, index) => (
+            <TabPane
+              tab={<span>{adapter.model}</span>}
+              key={(index + 1).toString()}
+            ></TabPane>
+          ))}
+        </Tabs>
         <div className="combined-op-segment"></div>
       </div>
       <div className="combined-op-divider" />
