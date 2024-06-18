@@ -8,6 +8,7 @@ import PropTypes from "prop-types";
 
 import {
   displayPromptResult,
+  getLLMModelNamesForProfiles,
   promptType,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -24,6 +25,8 @@ function CombinedOutput({ docId, setFilledFields }) {
   const [combinedOutput, setCombinedOutput] = useState({});
   const [isOutputLoading, setIsOutputLoading] = useState(false);
   const [adapterData, setAdapterData] = useState([]);
+  const [selectedProfile, setSelectedProfile] = useState(null);
+  const [activeKey, setActiveKey] = useState("0");
   const {
     details,
     defaultLlmProfile,
@@ -37,12 +40,12 @@ function CombinedOutput({ docId, setFilledFields }) {
   const handleException = useExceptionHandler();
 
   useEffect(() => {
+    getAdapterInfo();
+  }, []);
+  useEffect(() => {
     if (!docId || isSinglePassExtractLoading) {
       return;
     }
-    console.log(llmProfiles);
-    getAdapterInfo();
-    console.log(adapterData);
 
     let filledFields = 0;
     setIsOutputLoading(true);
@@ -58,7 +61,7 @@ function CombinedOutput({ docId, setFilledFields }) {
           }
           output[item?.prompt_key] = "";
 
-          let profileManager = item?.profile_manager;
+          let profileManager = selectedProfile || item?.profile_manager;
           if (singlePassExtractMode) {
             profileManager = defaultLlmProfile;
           }
@@ -87,6 +90,7 @@ function CombinedOutput({ docId, setFilledFields }) {
         if (setFilledFields) {
           setFilledFields(filledFields);
         }
+        console.log(output);
       })
       .catch((err) => {
         setAlertDetails(
@@ -96,7 +100,12 @@ function CombinedOutput({ docId, setFilledFields }) {
       .finally(() => {
         setIsOutputLoading(false);
       });
-  }, [docId, singlePassExtractMode, isSinglePassExtractLoading]);
+  }, [
+    docId,
+    singlePassExtractMode,
+    isSinglePassExtractLoading,
+    selectedProfile,
+  ]);
 
   useEffect(() => {
     Prism.highlightAll();
@@ -105,7 +114,13 @@ function CombinedOutput({ docId, setFilledFields }) {
   const handleOutputApiRequest = async () => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}`,
+      url: `/api/v1/unstract/${
+        sessionDetails?.orgId
+      }/prompt-studio/prompt-output/?tool_id=${
+        details?.tool_id
+      }&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}&profile_manager=${
+        selectedProfile || defaultLlmProfile
+      }`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -123,33 +138,31 @@ function CombinedOutput({ docId, setFilledFields }) {
       .get(`/api/v1/unstract/${sessionDetails.orgId}/adapter/?adapter_type=LLM`)
       .then((res) => {
         const adapterList = res.data;
-        setAdapterData(removeDuplicates(adapterList));
+        setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
       });
-  };
-
-  const removeDuplicates = (adapters) => {
-    const uniqueModels = new Set();
-    return adapters.filter((adapter) => {
-      if (!uniqueModels.has(adapter.model)) {
-        uniqueModels.add(adapter.model);
-        return true;
-      }
-      return false;
-    });
   };
 
   if (isOutputLoading) {
     return <SpinnerLoader />;
   }
 
+  const handleTabChange = (key) => {
+    if (key === "0") {
+      setSelectedProfile(null);
+    } else {
+      setSelectedProfile(adapterData[key - 1].profile_id);
+    }
+    setActiveKey(key);
+  };
+
   return (
     <div className="combined-op-layout">
       <div className="combined-op-header">
-        <Tabs defaultActiveKey="0">
+        <Tabs activeKey={activeKey} onChange={handleTabChange} moreIcon={<></>}>
           <TabPane tab={<span>{"Default"}</span>} key={"0"}></TabPane>
           {adapterData.map((adapter, index) => (
             <TabPane
-              tab={<span>{adapter.model}</span>}
+              tab={<span>{adapter.llm_model}</span>}
               key={(index + 1).toString()}
             ></TabPane>
           ))}

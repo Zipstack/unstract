@@ -124,7 +124,6 @@ function PromptCardItems({
         const updatedProfiles = llmProfiles.map((profile) => {
           return { ...getModelOrAdapterId(profile, adapterData), ...profile };
         });
-        console.log(updatedProfiles);
         setLlmProfileDetails(
           updatedProfiles
             .map((profile) => ({
@@ -248,7 +247,11 @@ function PromptCardItems({
                         <SearchOutlined className="font-size-12" />
                       )}
                       <Typography.Link className="font-size-12">
-                        Coverage: {coverage} of {listOfDocs?.length || 0} docs
+                        Coverage:{" "}
+                        {coverage[
+                          `${promptDetails.prompt_id}_${selectedLlmProfileId}`
+                        ]?.count || 0}{" "}
+                        of {listOfDocs?.length || 0} docs
                       </Typography.Link>
                     </Space>
                   </Button>

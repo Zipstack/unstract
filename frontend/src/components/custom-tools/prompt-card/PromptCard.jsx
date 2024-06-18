@@ -37,7 +37,7 @@ function PromptCard({
   const [selectedLlmProfileId, setSelectedLlmProfileId] = useState(null);
   const [openEval, setOpenEval] = useState(false);
   const [result, setResult] = useState([]);
-  const [coverage, setCoverage] = useState(0);
+  const [coverage, setCoverage] = useState({});
   const [coverageTotal, setCoverageTotal] = useState(0);
   const [isCoverageLoading, setIsCoverageLoading] = useState(false);
   const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
@@ -95,10 +95,11 @@ function PromptCard({
       level: msg?.level || "INFO",
     });
   }, [messages]);
-  console.log(isRunLoading);
 
   useEffect(() => {
-    setSelectedLlmProfileId(promptDetails?.profile_manager || null);
+    setSelectedLlmProfileId(
+      promptDetails?.profile_manager || llmProfiles[0].profile_id
+    );
   }, [promptDetails]);
 
   useEffect(() => {
@@ -194,8 +195,6 @@ function PromptCard({
       return updatedDocOutputs;
     });
   };
-
-  console.log(llmProfiles, promptDetails);
 
   // Generate the result for the currently selected document
   const handleRun = (
@@ -473,7 +472,6 @@ function PromptCard({
     handleOutputApiRequest(true)
       .then((res) => {
         const data = res?.data;
-        console.log(data);
         if (!data || data?.length === 0) {
           setResult([]);
           return;
@@ -491,7 +489,6 @@ function PromptCard({
             ),
           };
         });
-        console.log(outputResults);
         setResult(outputResults);
       })
       .catch((err) => {
@@ -576,14 +573,26 @@ function PromptCard({
   };
 
   const handleGetCoverageData = (data) => {
-    const coverageValue = data.reduce((acc, item) => {
-      if (item?.output || item?.output === 0) {
-        return acc + 1;
+    const counts = {};
+
+    // Iterate through each object in the array
+    data.forEach((item) => {
+      // Create a unique key for each combination of prompt_id and profile_manager
+      const key = `${item.prompt_id}_${item.profile_manager}`;
+
+      // If the key exists in the counts object, increment the count
+      if (counts[key]) {
+        counts[key].count += 1;
       } else {
-        return acc;
+        // Otherwise, add the key to the counts object with an initial count of 1
+        counts[key] = {
+          prompt_id: item.prompt_id,
+          profile_manager: item.profile_manager,
+          count: 1,
+        };
       }
-    }, 0);
-    setCoverage(coverageValue);
+    });
+    setCoverage(counts);
   };
 
   return (

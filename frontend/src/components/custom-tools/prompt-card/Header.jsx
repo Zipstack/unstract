@@ -47,7 +47,6 @@ function Header({
     handleRun(profileManager, coverAllDoc, enabledProfiles);
   };
 
-  console.log(promptDetails);
   return (
     <Row>
       <Col span={12}>

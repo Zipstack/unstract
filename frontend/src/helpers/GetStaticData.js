@@ -409,6 +409,23 @@ const generateUUID = () => {
   return uuid;
 };
 
+function getLLMModelNamesForProfiles(profiles, adapters) {
+  // Create a mapping of adapter_ids to model names
+  const adapterMap = adapters.reduce((map, adapter) => {
+    map[adapter.adapter_name] = adapter.model;
+    return map;
+  }, {});
+
+  // Map through profiles and find corresponding model names using the adapterMap
+  return profiles.map((profile) => {
+    return {
+      profile_name: profile.profile_name,
+      llm_model: adapterMap[profile.llm],
+      profile_id: profile.profile_id,
+    };
+  });
+}
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -446,4 +463,5 @@ export {
   isNonNegativeNumber,
   defaultTokenUsage,
   generateUUID,
+  getLLMModelNamesForProfiles,
 };
