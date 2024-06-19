@@ -19,6 +19,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { ExportTool } from "../export-tool/ExportTool";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import logo from "../../assets/UnstractLogoBlack.svg";
 
 let SinglePassToggleSwitch;
 try {
@@ -140,24 +141,32 @@ function Header({ setOpenSettings, handleUpdateTool,setOpenShareModal }) {
 
   return (
     <div className="custom-tools-header-layout">
-      <div>
-        <Button
-          size="small"
-          type="text"
-          disabled={isPublicSource}
-          onClick={() => navigate(`/${sessionDetails?.orgName}/tools`)}
-        >
-          <ArrowLeftOutlined />
-        </Button>
-      </div>
-      <div className="custom-tools-name">
-        <Typography.Text strong>{details?.tool_name}</Typography.Text>
-      </div>
-      <div>
-        <Button size="small" type="text" disabled>
-          <EditOutlined />
-        </Button>
-      </div>
+      {!isPublicSource && (<div>
+        <div>
+          <Button
+            size="small"
+            type="text"
+            disabled={isPublicSource}
+            onClick={() => navigate(`/${sessionDetails?.orgName}/tools`)}
+          >
+            <ArrowLeftOutlined />
+          </Button>
+        </div>
+        <div className="custom-tools-name">
+          <Typography.Text strong>{details?.tool_name}</Typography.Text>
+        </div>
+        <div>
+          <Button size="small" type="text" disabled>
+            <EditOutlined />
+          </Button>
+        </div>
+      </div>)}
+      {isPublicSource && (<div>
+        <img src={logo} alt="Logo" className="public-logo" />
+        <div className="custom-tools-name">
+          <Typography.Text strong>{details?.tool_name}</Typography.Text>
+        </div>
+      </div>)}
       <div className="custom-tools-header-btns">
         {SinglePassToggleSwitch && (
           <SinglePassToggleSwitch handleUpdateTool={handleUpdateTool}
