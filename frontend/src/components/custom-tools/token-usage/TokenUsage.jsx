@@ -12,7 +12,6 @@ function TokenUsage({ tokenUsageId }) {
   const [tokens, setTokens] = useState({});
   const { tokenUsage } = useTokenUsageStore();
 
-  console.log(tokenUsage);
   useEffect(() => {
     // Check if the token usage for the given tokenUsageId is available
     if (tokenUsage[tokenUsageId] === undefined) {

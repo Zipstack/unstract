@@ -16,7 +16,6 @@ import {
   Collapse,
   Divider,
   Image,
-  Modal,
   Radio,
   Row,
   Select,
@@ -37,9 +36,31 @@ import CheckableTag from "antd/es/tag/CheckableTag";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
 import { motion, AnimatePresence } from "framer-motion";
+import { OutputForIndex } from "./OutputForIndex";
 
 const EvalBtn = null;
 const EvalMetrics = null;
+
+function useWindowDimensions() {
+  const [windowDimensions, setWindowDimensions] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+
+  useEffect(() => {
+    function handleResize() {
+      setWindowDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    }
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  return windowDimensions;
+}
 
 function PromptCardItems({
   promptDetails,
@@ -77,13 +98,16 @@ function PromptCardItems({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [expandCard, setExpandCard] = useState(true);
   const [llmProfileDetails, setLlmProfileDetails] = useState([]);
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [modalContent, setModalContent] = useState("");
+  const [openIndexProfile, setOpenIndexProfile] = useState(null);
   const [enabledProfiles, setEnabledProfiles] = useState(
     llmProfiles.map((profile) => profile.profile_id)
   );
+  const [expandedProfiles, setExpandedProfiles] = useState([]); // New state for expanded profiles
+  const [isIndexOpen, setIsIndexOpen] = useState(false);
   const privateAxios = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
+  const { width: windowWidth } = useWindowDimensions();
+  const componentWidth = windowWidth * 0.4;
 
   const divRef = useRef(null);
 
@@ -108,10 +132,6 @@ function PromptCardItems({
       }
     });
     return result;
-  };
-
-  const handleCancel = () => {
-    setIsModalVisible(false);
   };
 
   const getAdapterInfo = async () => {
@@ -139,6 +159,9 @@ function PromptCardItems({
               return 0;
             })
         );
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
       });
   };
 
@@ -153,10 +176,11 @@ function PromptCardItems({
   );
 
   const handleExpandClick = (profile) => {
-    const output =
-      result.find((r) => r.profileManager === profile.profile_id)?.output || "";
-    setModalContent(displayPromptResult(output, false));
-    setIsModalVisible(true);
+    setExpandedProfiles((prevState) =>
+      prevState.includes(profile.profile_id)
+        ? prevState.filter((id) => id !== profile.profile_id)
+        : [...prevState, profile.profile_id]
+    );
   };
 
   const handleTagChange = (checked, profileId) => {
@@ -166,6 +190,15 @@ function PromptCardItems({
         : prevState.filter((id) => id !== profileId)
     );
   };
+
+  const getColSpan = () => {
+    if (componentWidth < 1200) {
+      return 24;
+    } else {
+      return 6;
+    }
+  };
+
   useEffect(() => {
     setExpandCard(true);
   }, [isSinglePassExtractLoading]);
@@ -299,11 +332,7 @@ function PromptCardItems({
                     <Col
                       key={profile?.profile_id}
                       className="prompt-card-llm-container"
-                      xs={{ flex: "100%" }}
-                      sm={{ flex: "50%" }}
-                      md={{ flex: "40%" }}
-                      lg={{ flex: "20%" }}
-                      xl={{ flex: "10%" }}
+                      xs={{ span: getColSpan() }}
                     >
                       <Divider className="prompt-card-divider" />
                       <Space
@@ -389,7 +418,13 @@ function PromptCardItems({
                             <Tooltip title={tooltipContent(profile?.conf)}>
                               <InfoCircleOutlined />
                             </Tooltip>
-                            <DatabaseOutlined />
+                            <DatabaseOutlined
+                              onClick={() => {
+                                setIsIndexOpen(true);
+                                setOpenIndexProfile(profile?.profile_id);
+                              }}
+                              className="prompt-card-actions-head"
+                            />
                             <Radio
                               checked={
                                 profile?.profile_id === selectedLlmProfileId
@@ -405,31 +440,32 @@ function PromptCardItems({
                       </Space>
                       <>
                         <Divider className="prompt-card-divider" />
-                        <div className="prompt-card-result prompt-card-div">
+                        <div
+                          className={`prompt-card-result prompt-card-div ${
+                            expandedProfiles.includes(profile.profile_id) &&
+                            "prompt-profile-run-expanded"
+                          }`}
+                        >
                           {isRunLoading[
                             `${selectedDoc?.document_id}_${profile?.profile_id}`
                           ] ? (
                             <Spin indicator={<SpinnerLoader size="small" />} />
                           ) : (
                             <Typography.Paragraph className="prompt-card-res font-size-12">
-                              <div>
+                              <div
+                                className={
+                                  expandedProfiles.includes(profile.profile_id)
+                                    ? "expanded-output"
+                                    : "collapsed-output"
+                                }
+                              >
                                 {displayPromptResult(
                                   result.find(
                                     (r) =>
                                       r?.profileManager === profile?.profile_id
                                   )?.output,
                                   true
-                                ).substring(0, 20) +
-                                  (displayPromptResult(
-                                    result.find(
-                                      (r) =>
-                                        r?.profileManager ===
-                                        profile?.profile_id
-                                    )?.output,
-                                    true
-                                  ).length > 20
-                                    ? "..."
-                                    : "")}
+                                )}
                               </div>
                             </Typography.Paragraph>
                           )}
@@ -493,15 +529,11 @@ function PromptCardItems({
           </Row>
         </Collapse.Panel>
       </Collapse>
-      <Modal
-        title="Output"
-        open={isModalVisible}
-        onCancel={handleCancel}
-        footer={null}
-        centered
-      >
-        <p>{modalContent}</p>
-      </Modal>
+      <OutputForIndex
+        llmProfileId={openIndexProfile}
+        isIndexOpen={isIndexOpen}
+        setIsIndexOpen={setIsIndexOpen}
+      />
     </Card>
   );
 }

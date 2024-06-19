@@ -199,8 +199,8 @@ function PromptCard({
   // Generate the result for the currently selected document
   const handleRun = (
     profileManagerId,
-    selectedLlmProfiles,
-    coverAllDoc = true
+    coverAllDoc = true,
+    selectedLlmProfiles = []
   ) => {
     try {
       setPostHogCustomEvent("ps_prompt_run", {
