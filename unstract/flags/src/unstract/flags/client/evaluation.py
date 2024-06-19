@@ -4,6 +4,7 @@ import grpc
 
 from ..generated import evaluation_pb2, evaluation_pb2_grpc
 from .base import BaseClient
+
 """
     Method is used to Evaluate a speciifc feature-flag status as TRUE or FALSE.
 
@@ -12,6 +13,8 @@ from .base import BaseClient
     namespace key, flag key, entity ID, and optional context information
     as input parameters.
 """
+
+
 class EvaluationClient(BaseClient):
     def __init__(self) -> None:
         super().__init__(evaluation_pb2_grpc.EvaluationServiceStub)

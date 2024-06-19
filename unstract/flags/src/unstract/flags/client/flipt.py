@@ -10,6 +10,8 @@ from .base import BaseClient
     This contains all the methods to interact with the Flipt server like evaluate, list, segments and much more.
     This can be further extended to add more methods to interact with the Flipt server as per the requirement.
 """
+
+
 class FliptClient(BaseClient):
     def __init__(self) -> None:
         super().__init__(flipt_pb2_grpc.FliptStub)
