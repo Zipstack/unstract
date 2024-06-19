@@ -60,7 +60,6 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 
-# @method_decorator(transaction.non_atomic_requests(using='default'), name='dispatch')
 class PromptStudioCoreView(viewsets.ModelViewSet):
     """Viewset to handle all Custom tool related operations."""
 

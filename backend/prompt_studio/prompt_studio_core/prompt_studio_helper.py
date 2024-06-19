@@ -345,12 +345,6 @@ class PromptStudioHelper:
             reindex=True,
             run_id=run_id,
         )
-        # import time
-
-        # print("Start")
-        # time.sleep(30)  # Pauses the program for 2 seconds
-        # print("End")
-        # doc_id = "123"
 
         logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
         PromptStudioHelper._publish_log(
