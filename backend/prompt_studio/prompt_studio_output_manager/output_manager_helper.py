@@ -40,19 +40,26 @@ class OutputManagerHelper:
             is_single_pass_extract (bool): Flag indicating if single pass extract is active.
             tool (CustomTool, optional): Custom tool used for extracting.
         """
+
         def get_default_profile():
             if profile_manager_id:
                 try:
                     return ProfileManager.objects.get(profile_id=profile_manager_id)
                 except ProfileManager.DoesNotExist:
-                    raise DefaultProfileError(f"ProfileManager with ID {profile_manager_id} does not exist.")
+                    raise DefaultProfileError(
+                        f"ProfileManager with ID {profile_manager_id} does not exist."
+                    )
             else:
                 if tool:
                     return ProfileManager.get_default_llm_profile(tool=tool)
                 else:
-                    raise DefaultProfileError(f"ProfileManager with ID {profile_manager_id} does not exist.")
+                    raise DefaultProfileError(
+                        f"ProfileManager with ID {profile_manager_id} does not exist."
+                    )
 
-        def update_or_create_prompt_output(prompt, profile_manager, output, eval_metrics):
+        def update_or_create_prompt_output(
+            prompt, profile_manager, output, eval_metrics
+        ):
             try:
                 _, success = PromptStudioOutputManager.objects.get_or_create(
                     document_manager=document_manager,
@@ -67,9 +74,13 @@ class OutputManagerHelper:
                 )
 
                 if success:
-                    logger.info(f"Created record for prompt_id: {prompt.prompt_id} and profile {profile_manager.profile_id}")
+                    logger.info(
+                        f"Created record for prompt_id: {prompt.prompt_id} and profile {profile_manager.profile_id}"
+                    )
                 else:
-                    logger.info(f"Updated record for prompt_id: {prompt.prompt_id} and profile {profile_manager.profile_id}")
+                    logger.info(
+                        f"Updated record for prompt_id: {prompt.prompt_id} and profile {profile_manager.profile_id}"
+                    )
 
                 args: dict[str, str] = {
                     "run_id": run_id,
@@ -102,4 +113,6 @@ class OutputManagerHelper:
             output = json.dumps(outputs.get(prompt.prompt_key))
             eval_metrics = outputs.get(f"{prompt.prompt_key}__evaluation", [])
 
-            update_or_create_prompt_output(prompt, profile_manager, output, eval_metrics)
+            update_or_create_prompt_output(
+                prompt, profile_manager, output, eval_metrics
+            )
