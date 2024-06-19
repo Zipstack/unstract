@@ -10,7 +10,9 @@ prompt_studio_index_detail = IndexManagerView.as_view(
         "get": "retrieve",
     }
 )
-prompt_studio_index_data = IndexManagerView.as_view({"get": "get_indexed_data_for_profile"})
+prompt_studio_index_data = IndexManagerView.as_view(
+    {"get": "get_indexed_data_for_profile"}
+)
 
 urlpatterns = format_suffix_patterns(
     [

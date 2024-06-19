@@ -1,25 +1,22 @@
 from typing import Optional
 
 from django.db.models import QuerySet
+from llama_index.core.vector_stores import VectorStoreQuery, VectorStoreQueryResult
+from prompt_studio.prompt_profile_manager.models import ProfileManager
+from prompt_studio.prompt_studio_core.exceptions import DefaultProfileError
+from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
 from prompt_studio.prompt_studio_index_manager.constants import IndexManagerKeys
 from prompt_studio.prompt_studio_index_manager.serializers import IndexManagerSerializer
-from rest_framework.versioning import URLPathVersioning
-from utils.filtering import FilterHelper
-from rest_framework.response import Response
 from rest_framework import status, viewsets
-from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
-from unstract.sdk.index import Index
-from utils.user_session import UserSessionUtils
+from rest_framework.response import Response
+from rest_framework.versioning import URLPathVersioning
 from unstract.sdk.constants import LogLevel
-from prompt_studio.prompt_profile_manager.models import ProfileManager
-from .models import IndexManager
-from prompt_studio.prompt_studio_core.exceptions import DefaultProfileError
 from unstract.sdk.embedding import Embedding
 from unstract.sdk.vector_db import VectorDB
-from llama_index.core.vector_stores import (
-    VectorStoreQuery,
-    VectorStoreQueryResult,
-)
+from utils.filtering import FilterHelper
+from utils.user_session import UserSessionUtils
+
+from .models import IndexManager
 
 
 class IndexManagerView(viewsets.ModelViewSet):
@@ -40,7 +37,7 @@ class IndexManagerView(viewsets.ModelViewSet):
 
     def get_indexed_data_for_profile(self, request) -> Response:
         queryset = self.get_queryset()
-        org_id=UserSessionUtils.get_organization_id(request)
+        org_id = UserSessionUtils.get_organization_id(request)
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         result = {}
 
@@ -60,11 +57,11 @@ class IndexManagerView(viewsets.ModelViewSet):
                     )
                 vector_db_id = str(profile_manager.vector_store.id)
                 embedding_model = str(profile_manager.embedding_model.id)
-                
+
                 embedding = Embedding(
-                tool=util,
-                adapter_instance_id=embedding_model,
-                usage_kwargs={},
+                    tool=util,
+                    adapter_instance_id=embedding_model,
+                    usage_kwargs={},
                 )
 
                 vector_db = VectorDB(
@@ -75,7 +72,7 @@ class IndexManagerView(viewsets.ModelViewSet):
                 q = VectorStoreQuery(
                     query_embedding=embedding.get_query_embedding(" "),
                     doc_ids=[obj.raw_index_id],
-                    similarity_top_k=100
+                    similarity_top_k=100,
                 )
                 n: VectorStoreQueryResult = vector_db.query(query=q)
                 all_text = []
@@ -88,4 +85,3 @@ class IndexManagerView(viewsets.ModelViewSet):
         else:
             response = "No data found"
             return Response(response, status=status.HTTP_200_OK)
-    
