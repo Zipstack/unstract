@@ -36,6 +36,7 @@ class Migration(migrations.Migration):
         #         ("objects", django.contrib.auth.models.UserManager()),
         #     ],
         # ),
+        # # https://www.geeksforgeeks.org/what-is-access-exclusive-lock-mode-in-postgreysql/
         # # commenting drop table to ignore AccesExclusive Lock
         # migrations.DeleteModel(
         #     name="User",

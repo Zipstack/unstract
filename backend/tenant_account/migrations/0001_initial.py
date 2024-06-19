@@ -14,6 +14,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Updated the name here as the 002 first step is just name change
         migrations.CreateModel(
             name="OrganizationMember",
             fields=[
@@ -28,6 +29,7 @@ class Migration(migrations.Migration):
                         to=settings.AUTH_USER_MODEL,
                     ),
                 ),
+                # Added column which is used in 0002 here
                 ("role", models.CharField(default="admin")),
             ],
             options={
