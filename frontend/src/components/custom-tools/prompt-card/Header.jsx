@@ -38,6 +38,7 @@ function Header({
     singlePassExtractMode,
     isSinglePassExtractLoading,
     indexDocs,
+    isPublicSource,
   } = useCustomToolStore();
 
   const handleRunBtnClick = () => {
@@ -115,7 +116,8 @@ function Header({
             disabled={
               disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
               isSinglePassExtractLoading ||
-              indexDocs.includes(selectedDoc?.document_id)
+              indexDocs.includes(selectedDoc?.document_id) ||
+              isPublicSource
             }
           >
             <EditOutlined className="prompt-card-actions-head" />
@@ -133,7 +135,8 @@ function Header({
                   updateStatus?.status ===
                     promptStudioUpdateStatus.isUpdating) ||
                 disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
-                indexDocs.includes(selectedDoc?.document_id)
+                indexDocs.includes(selectedDoc?.document_id) ||
+                isPublicSource
               }
             >
               <PlayCircleOutlined className="prompt-card-actions-head" />
@@ -152,7 +155,8 @@ function Header({
               disabled={
                 disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
                 isSinglePassExtractLoading ||
-                indexDocs.includes(selectedDoc?.document_id)
+                indexDocs.includes(selectedDoc?.document_id) ||
+                isPublicSource
               }
             >
               <DeleteOutlined className="prompt-card-actions-head" />

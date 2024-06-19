@@ -29,7 +29,7 @@ import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
 import { UsersPage } from "../pages/UsersPage.jsx";
 import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
-
+import { PublicPromptStudioHelper } from "../components/helpers/custom-tools/PublicPromptStudioHelper.js";
 let TrialRoutes;
 let RequirePlatformAdmin;
 let PlatformAdminPage;
@@ -50,6 +50,13 @@ function Router() {
       <Route path="error" element={<GenericError />} />
       <Route path="" element={<PersistentLogin />}>
         {/* public routes */}
+        <Route path="/promptStudio/share/:id" element={<PublicPromptStudioHelper />}>
+          <Route path="" element={<ToolIdePage />} />
+          <Route
+            path="/promptStudio/share/:id/outputAnalyzer"
+            element={<OutputAnalyzerPage />}
+          />
+        </Route>
         <Route path="" element={<RequireGuest />}>
           <Route path="landing" element={<LandingPage />} />
         </Route>
