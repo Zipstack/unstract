@@ -278,225 +278,219 @@ function PromptCardItems({
               {EvalMetrics && <EvalMetrics result={result} />}
             </Space>
           </>
-          <>
-            <Row>
-              <AnimatePresence>
-                {llmProfileDetails.map((profile, index) => {
-                  const checked = enabledProfiles.includes(profile.profile_id);
-                  return (
-                    <motion.div
-                      key={profile.profile_id}
-                      initial={{ x: 0 }}
-                      animate={{
-                        x:
-                          profile?.profile_id === selectedLlmProfileId &&
-                          index !== 0
-                            ? -10
-                            : 0,
-                      }}
-                      transition={{ duration: 0.5, ease: "linear" }}
-                      className="prompt-card-llm"
+          <Row>
+            <AnimatePresence>
+              {llmProfileDetails.map((profile, index) => {
+                const checked = enabledProfiles.includes(profile.profile_id);
+                return (
+                  <motion.div
+                    key={profile.profile_id}
+                    initial={{ x: 0 }}
+                    animate={{
+                      x:
+                        profile?.profile_id === selectedLlmProfileId &&
+                        index !== 0
+                          ? -10
+                          : 0,
+                    }}
+                    transition={{ duration: 0.5, ease: "linear" }}
+                    className="prompt-card-llm"
+                  >
+                    <Col
+                      key={profile?.profile_id}
+                      className="prompt-card-llm-container"
+                      xs={{ flex: "100%" }}
+                      sm={{ flex: "50%" }}
+                      md={{ flex: "40%" }}
+                      lg={{ flex: "20%" }}
+                      xl={{ flex: "10%" }}
                     >
-                      <Col
-                        key={profile?.profile_id}
-                        className="prompt-card-llm-container"
-                        xs={{ flex: "100%" }}
-                        sm={{ flex: "50%" }}
-                        md={{ flex: "40%" }}
-                        lg={{ flex: "20%" }}
-                        xl={{ flex: "10%" }}
+                      <Divider className="prompt-card-divider" />
+                      <Space
+                        direction="vertical"
+                        className="prompt-card-llm-layout"
                       >
-                        <Divider className="prompt-card-divider" />
-                        <Space
-                          direction="vertical"
-                          className="prompt-card-llm-layout"
-                        >
-                          <div className="llm-info">
-                            <Image
-                              src={profile?.icon}
-                              width={15}
-                              height={15}
-                              preview={false}
-                              className="prompt-card-llm-icon"
-                            />
-                            <Typography.Title
-                              className="prompt-card-llm-title"
-                              level={5}
-                            >
-                              {profile?.conf.llm}
-                            </Typography.Title>
-                          </div>
-                          <div className="prompt-cost">
-                            <Typography.Text className="prompt-cost-item">
-                              Tokens:{" "}
-                              {!singlePassExtractMode && (
-                                <TokenUsage
-                                  tokenUsageId={
-                                    promptDetails?.prompt_id +
-                                    "__" +
-                                    selectedDoc?.document_id +
-                                    "__" +
-                                    profile.profile_id
-                                  }
-                                />
-                              )}
-                            </Typography.Text>
-                            <Typography.Text className="prompt-cost-item">
-                              Time: 2330s
-                            </Typography.Text>
-                            <Typography.Text className="prompt-cost-item">
-                              Cost: $0.0004
-                            </Typography.Text>
-                          </div>
-                          <div className="prompt-info">
-                            <CheckableTag
-                              checked={enabledProfiles.includes(
-                                profile.profile_id
-                              )}
-                              onChange={(checked) =>
-                                handleTagChange(checked, profile.profile_id)
-                              }
-                              style={{
-                                backgroundColor: checked
-                                  ? "#F6FFED"
-                                  : "#00000005",
-                                borderColor: checked ? "#B7EB8F" : "#00000026",
-                                color: checked ? "#52C41A" : "#000",
-                              }}
-                            >
-                              {enabledProfiles.includes(profile.profile_id) ? (
-                                <span>
-                                  Enabled
-                                  <CheckCircleOutlined
-                                    style={{
-                                      color: "#52c41a",
-                                      marginLeft: "5px",
-                                    }}
-                                  />
-                                </span>
-                              ) : (
-                                <span>
-                                  Disabled
-                                  <ExclamationCircleFilled
-                                    style={{
-                                      color: "#BABBBC",
-                                      marginLeft: "5px",
-                                    }}
-                                  />
-                                </span>
-                              )}
-                            </CheckableTag>
-                            <div className="llm-info-container">
-                              <Tooltip title={tooltipContent(profile?.conf)}>
-                                <InfoCircleOutlined />
-                              </Tooltip>
-                              <DatabaseOutlined />
-                              <Radio
-                                checked={
-                                  profile?.profile_id === selectedLlmProfileId
+                        <div className="llm-info">
+                          <Image
+                            src={profile?.icon}
+                            width={15}
+                            height={15}
+                            preview={false}
+                            className="prompt-card-llm-icon"
+                          />
+                          <Typography.Title
+                            className="prompt-card-llm-title"
+                            level={5}
+                          >
+                            {profile?.conf.llm}
+                          </Typography.Title>
+                        </div>
+                        <div className="prompt-cost">
+                          <Typography.Text className="prompt-cost-item">
+                            Tokens:{" "}
+                            {!singlePassExtractMode && (
+                              <TokenUsage
+                                tokenUsageId={
+                                  promptDetails?.prompt_id +
+                                  "__" +
+                                  selectedDoc?.document_id +
+                                  "__" +
+                                  profile.profile_id
                                 }
-                                onChange={() =>
-                                  handleSelectDefaultLLM(profile?.profile_id)
-                                }
-                              >
-                                Default
-                              </Radio>
-                            </div>
-                          </div>
-                        </Space>
-                        {/* TODO: Refactor Code */}
-                        <>
-                          <Divider className="prompt-card-divider" />
-                          <div className="prompt-card-result prompt-card-div">
-                            {isRunLoading[
-                              `${selectedDoc?.document_id}_${profile?.profile_id}`
-                            ] ? (
-                              <Spin
-                                indicator={<SpinnerLoader size="small" />}
                               />
+                            )}
+                          </Typography.Text>
+                          <Typography.Text className="prompt-cost-item">
+                            Time: 2330s
+                          </Typography.Text>
+                          <Typography.Text className="prompt-cost-item">
+                            Cost: $0.0004
+                          </Typography.Text>
+                        </div>
+                        <div className="prompt-info">
+                          <CheckableTag
+                            checked={enabledProfiles.includes(
+                              profile.profile_id
+                            )}
+                            onChange={(checked) =>
+                              handleTagChange(checked, profile.profile_id)
+                            }
+                            style={{
+                              backgroundColor: checked
+                                ? "#F6FFED"
+                                : "#00000005",
+                              borderColor: checked ? "#B7EB8F" : "#00000026",
+                              color: checked ? "#52C41A" : "#000",
+                            }}
+                          >
+                            {enabledProfiles.includes(profile.profile_id) ? (
+                              <span>
+                                Enabled
+                                <CheckCircleOutlined
+                                  style={{
+                                    color: "#52c41a",
+                                    marginLeft: "5px",
+                                  }}
+                                />
+                              </span>
                             ) : (
-                              <Typography.Paragraph className="prompt-card-res font-size-12">
-                                <div>
-                                  {displayPromptResult(
+                              <span>
+                                Disabled
+                                <ExclamationCircleFilled
+                                  style={{
+                                    color: "#BABBBC",
+                                    marginLeft: "5px",
+                                  }}
+                                />
+                              </span>
+                            )}
+                          </CheckableTag>
+                          <div className="llm-info-container">
+                            <Tooltip title={tooltipContent(profile?.conf)}>
+                              <InfoCircleOutlined />
+                            </Tooltip>
+                            <DatabaseOutlined />
+                            <Radio
+                              checked={
+                                profile?.profile_id === selectedLlmProfileId
+                              }
+                              onChange={() =>
+                                handleSelectDefaultLLM(profile?.profile_id)
+                              }
+                            >
+                              Default
+                            </Radio>
+                          </div>
+                        </div>
+                      </Space>
+                      <>
+                        <Divider className="prompt-card-divider" />
+                        <div className="prompt-card-result prompt-card-div">
+                          {isRunLoading[
+                            `${selectedDoc?.document_id}_${profile?.profile_id}`
+                          ] ? (
+                            <Spin indicator={<SpinnerLoader size="small" />} />
+                          ) : (
+                            <Typography.Paragraph className="prompt-card-res font-size-12">
+                              <div>
+                                {displayPromptResult(
+                                  result.find(
+                                    (r) =>
+                                      r?.profileManager === profile?.profile_id
+                                  )?.output,
+                                  true
+                                ).substring(0, 20) +
+                                  (displayPromptResult(
                                     result.find(
                                       (r) =>
                                         r?.profileManager ===
                                         profile?.profile_id
                                     )?.output,
                                     true
-                                  ).substring(0, 20) +
-                                    (displayPromptResult(
-                                      result.find(
-                                        (r) =>
-                                          r?.profileManager ===
-                                          profile?.profile_id
-                                      )?.output,
-                                      true
-                                    ).length > 20
-                                      ? "..."
-                                      : "")}
-                                </div>
-                              </Typography.Paragraph>
+                                  ).length > 20
+                                    ? "..."
+                                    : "")}
+                              </div>
+                            </Typography.Paragraph>
+                          )}
+                          <div className="prompt-profile-run">
+                            {!singlePassExtractMode && (
+                              <>
+                                <Tooltip title="Run">
+                                  <Button
+                                    size="small"
+                                    type="text"
+                                    className="prompt-card-action-button"
+                                    onClick={() =>
+                                      handleRun(profile?.profile_id, false)
+                                    }
+                                    disabled={
+                                      isRunLoading[
+                                        `${selectedDoc?.document_id}_${profile?.profile_id}`
+                                      ]
+                                    }
+                                  >
+                                    <PlayCircleOutlined className="prompt-card-actions-head" />
+                                  </Button>
+                                </Tooltip>
+                                <Tooltip title="Run All">
+                                  <Button
+                                    size="small"
+                                    type="text"
+                                    className="prompt-card-action-button"
+                                    onClick={() =>
+                                      handleRun(profile?.profile_id, true)
+                                    }
+                                    disabled={
+                                      isRunLoading[
+                                        `${selectedDoc?.document_id}_${profile?.profile_id}`
+                                      ]
+                                    }
+                                  >
+                                    <PlayCircleFilled className="prompt-card-actions-head" />
+                                  </Button>
+                                </Tooltip>
+                              </>
                             )}
-                            <div className="prompt-profile-run">
-                              {!singlePassExtractMode && (
-                                <>
-                                  <Tooltip title="Run">
-                                    <Button
-                                      size="small"
-                                      type="text"
-                                      className="prompt-card-action-button"
-                                      onClick={() =>
-                                        handleRun(profile?.profile_id, false)
-                                      }
-                                      disabled={
-                                        isRunLoading[
-                                          `${selectedDoc?.document_id}_${profile?.profile_id}`
-                                        ]
-                                      }
-                                    >
-                                      <PlayCircleOutlined className="prompt-card-actions-head" />
-                                    </Button>
-                                  </Tooltip>
-                                  <Tooltip title="Run All">
-                                    <Button
-                                      size="small"
-                                      type="text"
-                                      className="prompt-card-action-button"
-                                      onClick={() =>
-                                        handleRun(profile?.profile_id, true)
-                                      }
-                                      disabled={
-                                        isRunLoading[
-                                          `${selectedDoc?.document_id}_${profile?.profile_id}`
-                                        ]
-                                      }
-                                    >
-                                      <PlayCircleFilled className="prompt-card-actions-head" />
-                                    </Button>
-                                  </Tooltip>
-                                </>
-                              )}
-                              <Tooltip title="Expand">
-                                <Button
-                                  size="small"
-                                  type="text"
-                                  className="prompt-card-action-button"
-                                  onClick={() => handleExpandClick(profile)}
-                                >
-                                  <ArrowsAltOutlined className="prompt-card-actions-head" />
-                                </Button>
-                              </Tooltip>
-                            </div>
+                            <Tooltip title="Expand">
+                              <Button
+                                size="small"
+                                type="text"
+                                className="prompt-card-action-button"
+                                onClick={() => handleExpandClick(profile)}
+                              >
+                                <ArrowsAltOutlined className="prompt-card-actions-head" />
+                              </Button>
+                            </Tooltip>
                           </div>
-                        </>
-                      </Col>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-            </Row>
-          </>
+                        </div>
+                      </>
+                    </Col>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </Row>
         </Collapse.Panel>
       </Collapse>
       <Modal

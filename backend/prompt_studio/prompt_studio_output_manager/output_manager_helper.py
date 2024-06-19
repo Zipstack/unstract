@@ -33,47 +33,28 @@ class OutputManagerHelper:
         """Handles updating prompt outputs in the database.
 
         Args:
+            run_id (str): ID of the run.
             prompts (list[ToolStudioPrompt]): List of prompts to update.
             outputs (Any): Outputs corresponding to the prompts.
             document_id (str): ID of the document.
-            profile_manager_id (Optional[str]): UUID of the profile manager
-            is_single_pass_extract (bool):
-            Flag indicating if single pass extract is active.
+            profile_manager_id (Optional[str]): UUID of the profile manager.
+            is_single_pass_extract (bool): Flag indicating if single pass extract is active.
+            tool (CustomTool, optional): Custom tool used for extracting.
         """
-        if profile_manager_id:
-            try:
-                default_profile = ProfileManager.objects.get(profile_id=profile_manager_id)
-            except ProfileManager.DoesNotExist:
-                raise DefaultProfileError(f"ProfileManager with ID {profile_manager_id} does not exist.")
-        else:
-            if tool:
-                default_profile = ProfileManager.get_default_llm_profile(tool=tool)
+        def get_default_profile():
+            if profile_manager_id:
+                try:
+                    return ProfileManager.objects.get(profile_id=profile_manager_id)
+                except ProfileManager.DoesNotExist:
+                    raise DefaultProfileError(f"ProfileManager with ID {profile_manager_id} does not exist.")
             else:
-                raise DefaultProfileError(f"ProfileManager with ID {profile_manager_id} does not exist.")
+                if tool:
+                    return ProfileManager.get_default_llm_profile(tool=tool)
+                else:
+                    raise DefaultProfileError(f"ProfileManager with ID {profile_manager_id} does not exist.")
 
-        # Check if prompts list is empty
-        if not prompts:
-            return  # Return early if prompts list is empty
-
-        tool = prompts[0].tool_id
-        document_manager = DocumentManager.objects.get(pk=document_id)
-        # Iterate through each prompt in the list
-        for prompt in prompts:
-            if prompt.prompt_type == PSOMKeys.NOTES:
-                continue
-            if is_single_pass_extract:
-                profile_manager = default_profile
-            else:
-                profile_manager = default_profile
-            output = json.dumps(outputs.get(prompt.prompt_key))
-            eval_metrics = outputs.get(f"{prompt.prompt_key}__evaluation", [])
-
-            # Attempt to update an existing output manager,
-            # for the given criteria,
-            # or create a new one if it doesn't exist
+        def update_or_create_prompt_output(prompt, profile_manager, output, eval_metrics):
             try:
-                # Create or get the existing record for this document, prompt and
-                # profile combo
                 _, success = PromptStudioOutputManager.objects.get_or_create(
                     document_manager=document_manager,
                     tool_id=tool,
@@ -87,21 +68,15 @@ class OutputManagerHelper:
                 )
 
                 if success:
-                    logger.info(
-                        f"Created record for prompt_id: {prompt.prompt_id} and "
-                        f"profile {profile_manager.profile_id}"
-                    )
+                    logger.info(f"Created record for prompt_id: {prompt.prompt_id} and profile {profile_manager.profile_id}")
                 else:
-                    logger.info(
-                        f"Updated record for prompt_id: {prompt.prompt_id} and "
-                        f"profile {profile_manager.profile_id}"
-                    )
+                    logger.info(f"Updated record for prompt_id: {prompt.prompt_id} and profile {profile_manager.profile_id}")
 
-                args: dict[str, str] = dict()
-                args["run_id"] = run_id
-                args["output"] = output
-                args["eval_metrics"] = eval_metrics
-                # Update the record with the run id and other params
+                args: dict[str, str] = {
+                    "run_id": run_id,
+                    "output": output,
+                    "eval_metrics": eval_metrics,
+                }
                 PromptStudioOutputManager.objects.filter(
                     document_manager=document_manager,
                     tool_id=tool,
@@ -112,3 +87,20 @@ class OutputManagerHelper:
 
             except Exception as e:
                 raise AnswerFetchError(f"Error updating prompt output {e}") from e
+
+        if not prompts:
+            return  # Return early if prompts list is empty
+
+        default_profile = get_default_profile()
+        tool = prompts[0].tool_id
+        document_manager = DocumentManager.objects.get(pk=document_id)
+
+        for prompt in prompts:
+            if prompt.prompt_type == PSOMKeys.NOTES:
+                continue
+
+            profile_manager = default_profile
+            output = json.dumps(outputs.get(prompt.prompt_key))
+            eval_metrics = outputs.get(f"{prompt.prompt_key}__evaluation", [])
+
+            update_or_create_prompt_output(prompt, profile_manager, output, eval_metrics)

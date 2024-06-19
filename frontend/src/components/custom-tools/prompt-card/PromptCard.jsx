@@ -199,8 +199,8 @@ function PromptCard({
   // Generate the result for the currently selected document
   const handleRun = (
     profileManagerId,
-    coverAllDoc = true,
-    selectedLlmProfiles
+    selectedLlmProfiles,
+    coverAllDoc = true
   ) => {
     try {
       setPostHogCustomEvent("ps_prompt_run", {
@@ -210,39 +210,51 @@ function PromptCard({
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
-    if (
-      !profileManagerId &&
-      !promptDetails?.profile_manager?.length &&
-      !(!coverAllDoc && selectedLlmProfiles.length > 0)
-    ) {
-      setAlertDetails({
-        type: "error",
-        content: "LLM Profile is not selected",
-      });
-      return;
-    }
+    const validateInputs = (
+      profileManagerId,
+      selectedLlmProfiles,
+      coverAllDoc
+    ) => {
+      if (
+        !profileManagerId &&
+        !promptDetails?.profile_manager?.length &&
+        !(!coverAllDoc && selectedLlmProfiles.length > 0)
+      ) {
+        setAlertDetails({
+          type: "error",
+          content: "LLM Profile is not selected",
+        });
+        return true;
+      }
 
-    if (!selectedDoc) {
-      setAlertDetails({
-        type: "error",
-        content: "Document not selected",
-      });
-      return;
-    }
+      if (!selectedDoc) {
+        setAlertDetails({
+          type: "error",
+          content: "Document not selected",
+        });
+        return true;
+      }
 
-    if (!promptKey) {
-      setAlertDetails({
-        type: "error",
-        content: "Prompt key cannot be empty",
-      });
-      return;
-    }
+      if (!promptKey) {
+        setAlertDetails({
+          type: "error",
+          content: "Prompt key cannot be empty",
+        });
+        return true;
+      }
 
-    if (!promptText) {
-      setAlertDetails({
-        type: "error",
-        content: "Prompt cannot be empty",
-      });
+      if (!promptText) {
+        setAlertDetails({
+          type: "error",
+          content: "Prompt cannot be empty",
+        });
+        return true;
+      }
+
+      return false;
+    };
+
+    if (validateInputs(profileManagerId, selectedLlmProfiles, coverAllDoc)) {
       return;
     }
 
