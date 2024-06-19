@@ -4,17 +4,16 @@ from typing import Any, Optional
 
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
-from prompt_studio.prompt_studio_document_manager.models import DocumentManager
-from prompt_studio.prompt_studio_output_manager.constants import (
-    PromptStudioOutputManagerKeys as PSOMKeys,
-)
-from prompt_studio.prompt_studio_output_manager.models import PromptStudioOutputManager
 from prompt_studio.prompt_studio_core.exceptions import (
     AnswerFetchError,
     DefaultProfileError,
 )
 from prompt_studio.prompt_studio_core.models import CustomTool
-
+from prompt_studio.prompt_studio_document_manager.models import DocumentManager
+from prompt_studio.prompt_studio_output_manager.constants import (
+    PromptStudioOutputManagerKeys as PSOMKeys,
+)
+from prompt_studio.prompt_studio_output_manager.models import PromptStudioOutputManager
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +27,7 @@ class OutputManagerHelper:
         document_id: str,
         is_single_pass_extract: bool,
         profile_manager_id: Optional[str] = None,
-        tool: CustomTool = None
+        tool: CustomTool = None,
     ) -> None:
         """Handles updating prompt outputs in the database.
 
