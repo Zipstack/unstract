@@ -32,7 +32,6 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./ManageDocsModal.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
-
 let SummarizeStatusTitle = null;
 try {
   SummarizeStatusTitle =
@@ -75,6 +74,7 @@ function ManageDocsModal({
     rawIndexStatus,
     summarizeIndexStatus,
     isSinglePassExtractLoading,
+    isPublicSource,
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
@@ -141,7 +141,9 @@ function ManageDocsModal({
       return;
     }
 
-    handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
+    if (!isPublicSource){
+      handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
+    }
   }, [indexDocs, rawLlmProfile, open]);
 
   useEffect(() => {
@@ -384,7 +386,8 @@ function ManageDocsModal({
                       isSinglePassExtractLoading ||
                       indexDocs.includes(item?.document_id) ||
                       isUploading ||
-                      !defaultLlmProfile
+                      !defaultLlmProfile ||
+                      isPublicSource
                     }
                   />
                 </Tooltip>
@@ -408,7 +411,8 @@ function ManageDocsModal({
                   disableLlmOrDocChange?.length > 0 ||
                   isSinglePassExtractLoading ||
                   indexDocs.includes(item?.document_id) ||
-                  isUploading
+                  isUploading ||
+                  isPublicSource
                 }
               >
                 <DeleteOutlined className="manage-llm-pro-icon" />
@@ -423,7 +427,8 @@ function ManageDocsModal({
             disabled={
               disableLlmOrDocChange?.length > 0 ||
               isSinglePassExtractLoading ||
-              indexDocs.includes(item?.document_id)
+              indexDocs.includes(item?.document_id) ||
+              isPublicSource
             }
           />
         ),

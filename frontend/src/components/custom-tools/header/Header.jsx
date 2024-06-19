@@ -2,13 +2,14 @@ import {
   ArrowLeftOutlined,
   EditOutlined,
   SettingOutlined,
+  ShareAltOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
 import { Button, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import "./Header.css";
-
+import { useNavigate, useLocation,useParams } from "react-router-dom";
 import { ExportToolIcon } from "../../../assets";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -26,9 +27,9 @@ try {
 } catch {
   // The variable will remain undefined if the component is not available.
 }
-function Header({ setOpenSettings, handleUpdateTool }) {
+function Header({ setOpenSettings, handleUpdateTool,setOpenShareModal }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
-  const { details } = useCustomToolStore();
+  const { details,isPublicSource } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -37,7 +38,8 @@ function Header({ setOpenSettings, handleUpdateTool }) {
   const [userList, setUserList] = useState([]);
   const [openExportToolModal, setOpenExportToolModal] = useState(false);
   const { setPostHogCustomEvent } = usePostHogEvents();
-
+  const location = useLocation();
+  const { id } = useParams();
   const [toolDetails, setToolDetails] = useState(null);
 
   const handleExport = (selectedUsers, toolDetail, isSharedWithEveryone) => {
@@ -142,6 +144,7 @@ function Header({ setOpenSettings, handleUpdateTool }) {
         <Button
           size="small"
           type="text"
+          disabled={isPublicSource}
           onClick={() => navigate(`/${sessionDetails?.orgName}/tools`)}
         >
           <ArrowLeftOutlined />
@@ -157,7 +160,8 @@ function Header({ setOpenSettings, handleUpdateTool }) {
       </div>
       <div className="custom-tools-header-btns">
         {SinglePassToggleSwitch && (
-          <SinglePassToggleSwitch handleUpdateTool={handleUpdateTool} />
+          <SinglePassToggleSwitch handleUpdateTool={handleUpdateTool}
+          disabled={isPublicSource}/>
         )}
         <div>
           <Tooltip title="Settings">
@@ -167,6 +171,20 @@ function Header({ setOpenSettings, handleUpdateTool }) {
             />
           </Tooltip>
         </div>
+        <div>
+          <Tooltip title="Clone coming soon">
+            <Button icon={<CopyOutlined />} disbaled={true}/>
+          </Tooltip>
+        </div>
+        <div>
+            <Tooltip title="Public Share">
+              <Button
+                icon={<ShareAltOutlined />}
+                disabled={isPublicSource}
+                onClick={() => setOpenShareModal(true)}
+              />
+            </Tooltip>
+        </div>
         <div className="custom-tools-header-v-divider" />
         <div>
           <Tooltip title="Export as tool">
@@ -174,6 +192,7 @@ function Header({ setOpenSettings, handleUpdateTool }) {
               type="primary"
               onClick={() => handleShare(true)}
               loading={isExportLoading}
+              disabled={isPublicSource}
             >
               <ExportToolIcon />
             </CustomButton>

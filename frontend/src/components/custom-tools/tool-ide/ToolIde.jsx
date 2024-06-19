@@ -1,6 +1,6 @@
 import { FullscreenExitOutlined, FullscreenOutlined } from "@ant-design/icons";
 import { Col, Collapse, Modal, Row } from "antd";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -16,6 +16,8 @@ import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import { PromptShareModal } from "../public-share-modal/PromptShareModal";
+import { PromptShareLink } from "../public-link-modal/PromptShareLink";
 
 let OnboardMessagesModal;
 let slides;
@@ -42,6 +44,7 @@ function ToolIde() {
     indexDocs,
     pushIndexDoc,
     deleteIndexDoc,
+    shareId,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { promptOnboardingMessage } = sessionDetails;
@@ -50,6 +53,9 @@ function ToolIde() {
   const handleException = useExceptionHandler();
   const [loginModalOpen, setLoginModalOpen] = useState(true);
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const [openShareLink, setOpenShareLink] = useState(false);
+  const [openShareConfirmation, setOpenShareConfirmation] = useState(false);
+  const [openShareModal, setOpenShareModal] = useState(false);
 
   const openLogsModal = () => {
     setShowLogsModal(true);
@@ -67,6 +73,18 @@ function ToolIde() {
       }}
     />
   );
+
+  useEffect(() => {
+    if (shareId === null && openShareModal) {
+      setOpenShareConfirmation(true);
+      setOpenShareLink(false);
+    }
+    if (shareId !== null && openShareModal){
+      console.log(details)
+      setOpenShareConfirmation(false);
+      setOpenShareLink(true);
+    }
+  }, [shareId, openShareModal]);
 
   const getItems = () => [
     {
@@ -190,6 +208,7 @@ function ToolIde() {
         <Header
           handleUpdateTool={handleUpdateTool}
           setOpenSettings={setOpenSettings}
+          setOpenShareModal={setOpenShareModal}
         />
       </div>
       <div className="tool-ide-body">
@@ -244,6 +263,8 @@ function ToolIde() {
         setOpen={setOpenSettings}
         handleUpdateTool={handleUpdateTool}
       />
+      <PromptShareModal open={openShareConfirmation} setOpenShareModal={setOpenShareModal} setOpenShareConfirmation={setOpenShareConfirmation}/>
+      <PromptShareLink open={openShareLink} setOpenShareModal={setOpenShareModal} setOpenShareLink={setOpenShareLink}/>
       {!promptOnboardingMessage && OnboardMessagesModal && (
         <OnboardMessagesModal
           open={loginModalOpen}
