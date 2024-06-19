@@ -1,9 +1,17 @@
+"""Flipt Client class is used to interact with the Flipt server.
+
+This contains all the methods to interact with the Flipt server like
+evaluate,   list, segments and much more. This can be further extended
+to add more methods to interact with the Flipt server as per the
+requirement.
+"""
+
 import logging
 
 import grpc
 
 from ..generated import flipt_pb2, flipt_pb2_grpc
-from .base_client import BaseClient
+from .base import BaseClient
 
 
 class FliptClient(BaseClient):

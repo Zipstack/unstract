@@ -1,9 +1,17 @@
+"""Method is used to Evaluate a speciifc feature-flag status as TRUE or FALSE.
+
+This method sends a gRPC request to the evaluation server to determine
+the state of a feature flag for a specific entity. It takes the
+namespace key, flag key, entity ID, and optional context information as
+input parameters.
+"""
+
 from typing import Optional
 
 import grpc
 
 from ..generated import evaluation_pb2, evaluation_pb2_grpc
-from .base_client import BaseClient
+from .base import BaseClient
 
 
 class EvaluationClient(BaseClient):
@@ -18,7 +26,6 @@ class EvaluationClient(BaseClient):
         context: Optional[dict] = None,
     ) -> bool:
         """Evaluates the state of a feature flag for a given entity.
-
         Args:
             namespace_key (str): The namespace key of the feature flag.
             flag_key (str): The key of the feature flag.
