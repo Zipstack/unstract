@@ -32,7 +32,9 @@ import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
 let TrialRoutes;
 let RequirePlatformAdmin;
 let PlatformAdminPage;
-let PipelinesOrDeploymentsPage;
+let AppDeployments;
+let ChatAppPage;
+let ChatAppLayout;
 try {
   TrialRoutes =
     require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
@@ -40,8 +42,12 @@ try {
     require("../plugins/frictionless-onboard/RequirePlatformAdmin.jsx").RequirePlatformAdmin;
   PlatformAdminPage =
     require("../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx").PlatformAdminPage;
-  PipelinesOrDeploymentsPage =
-    require("../plugins/app-deployments/app-deployment-page/PipelinesOrDeploymentsPage.jsx").PipelinesOrDeploymentsPage;
+  AppDeployments =
+    require("../plugins/app-deployment/AppDeployments.jsx").AppDeployments;
+  ChatAppPage =
+    require("../plugins/app-deployment/chat-app/ChatAppPage.jsx").ChatAppPage;
+  ChatAppLayout =
+    require("../plugins/app-deployment/chat-app/ChatAppLayout.jsx").ChatAppLayout;
 } catch (err) {
   TrialRoutes = NotFound;
 }
@@ -61,6 +67,11 @@ function Router() {
           <Route path=":orgName" element={<FullPageLayout />}>
             <Route path="onboard" element={<OnBoardPage />} />
           </Route>
+          {ChatAppLayout && ChatAppPage && (
+            <Route path=":orgName" element={<ChatAppLayout />}>
+              <Route path="app/:id" element={<ChatAppPage />} />
+            </Route>
+          )}
           <Route path=":orgName" element={<PageLayout />}>
             <Route path="profile" element={<ProfilePage />} />
             <Route
@@ -75,11 +86,8 @@ function Router() {
               path="task"
               element={<DeploymentsPage type={deploymentTypes.task} />}
             />
-            {PipelinesOrDeploymentsPage && (
-              <Route
-                path="app"
-                element={<PipelinesOrDeploymentsPage type="app" />}
-              />
+            {AppDeployments && (
+              <Route path="app" element={<AppDeployments type="app" />} />
             )}
             <Route path="workflows" element={<WorkflowsPage />} />
             <Route path="workflows/:id" element={<ProjectHelper />}>
