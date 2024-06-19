@@ -2,8 +2,8 @@
 
 from typing import Optional
 
-from unstract.flags.clients.evaluation_client import EvaluationClient
-from unstract.flags.clients.flipt_client import FliptClient
+from unstract.flags.client.evaluation import EvaluationClient
+from unstract.flags.client.flipt import FliptClient
 
 
 def check_feature_flag_status(
