@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name="User",
+            name="OrganizationMember",
             fields=[
                 (
                     "user_ptr",
@@ -28,6 +28,7 @@ class Migration(migrations.Migration):
                         to=settings.AUTH_USER_MODEL,
                     ),
                 ),
+                ("role", models.CharField(default="admin")),
             ],
             options={
                 "verbose_name": "user",

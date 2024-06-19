@@ -60,10 +60,7 @@ class PromptStudioIndexHelper:
                 result: IndexManager = IndexManager.objects.filter(
                     index_manager_id=index_manager.index_manager_id
                 ).update(**args)
-
-                transaction.commit()
-                return result
+            return result
         except Exception as e:
             transaction.rollback()
-            transaction.set_autocommit(True)
             raise IndexingAPIError("Error updating indexing status") from e
