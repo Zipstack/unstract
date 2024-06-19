@@ -32,7 +32,7 @@ const useChatStore = create((setState, getState) => ({
   },
   updateChatTranscript: (record) => {
     const existingState = { ...getState() };
-    existingState.chatTranscript = [record, ...existingState.chatTranscript];
+    existingState.chatTranscript = [...existingState.chatTranscript, record];
     setState({ ...existingState });
   },
   setCurrentContext: (context) => {

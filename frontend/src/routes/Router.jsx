@@ -33,7 +33,8 @@ let TrialRoutes;
 let RequirePlatformAdmin;
 let PlatformAdminPage;
 let AppDeployments;
-let ChatApp;
+let ChatAppPage;
+let ChatAppLayout;
 try {
   TrialRoutes =
     require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
@@ -43,7 +44,10 @@ try {
     require("../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx").PlatformAdminPage;
   AppDeployments =
     require("../plugins/app-deployment/AppDeployments.jsx").AppDeployments;
-  ChatApp = require("../plugins/app-deployment/ChatApp.jsx").ChatApp;
+  ChatAppPage =
+    require("../plugins/app-deployment/chat-app/ChatAppPage.jsx").ChatAppPage;
+  ChatAppLayout =
+    require("../plugins/app-deployment/chat-app/ChatAppLayout.jsx").ChatAppLayout;
 } catch (err) {
   TrialRoutes = NotFound;
 }
@@ -63,6 +67,11 @@ function Router() {
           <Route path=":orgName" element={<FullPageLayout />}>
             <Route path="onboard" element={<OnBoardPage />} />
           </Route>
+          {ChatAppLayout && ChatAppPage && (
+            <Route path=":orgName" element={<ChatAppLayout />}>
+              <Route path="app/:id" element={<ChatAppPage />} />
+            </Route>
+          )}
           <Route path=":orgName" element={<PageLayout />}>
             <Route path="profile" element={<ProfilePage />} />
             <Route
@@ -80,7 +89,6 @@ function Router() {
             {AppDeployments && (
               <Route path="app" element={<AppDeployments type="app" />} />
             )}
-            {ChatApp && <Route path="app/:id" element={<ChatApp />} />}
             <Route path="workflows" element={<WorkflowsPage />} />
             <Route path="workflows/:id" element={<ProjectHelper />}>
               <Route path="" element={<AgencyPage />} />
