@@ -10,6 +10,10 @@ from file_management.exceptions import FileNotFound
 from file_management.file_management_helper import FileManagerHelper
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from prompt_studio.processor_loader import ProcessorConfig, load_plugins
+from prompt_studio.prompt_profile_manager.constants import (
+    ProfileManagerErrors,
+    ProfileManagerKeys,
+)
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_profile_manager.serializers import ProfileManagerSerializer
 from prompt_studio.prompt_studio.constants import ToolStudioPromptErrors
@@ -22,14 +26,16 @@ from prompt_studio.prompt_studio_core.constants import (
 )
 from prompt_studio.prompt_studio_core.exceptions import (
     IndexingAPIError,
+    MaxProfilesReachedError,
     ToolDeleteError,
-    MaxProfilesReachedError
 )
 from prompt_studio.prompt_studio_core.prompt_studio_helper import PromptStudioHelper
+from prompt_studio.prompt_studio_core.redis_utils import remove_document_indexing
 from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from prompt_studio.prompt_studio_document_manager.prompt_studio_document_helper import (  # noqa: E501
     PromptStudioDocumentHelper,
 )
+from prompt_studio.prompt_studio_index_manager.models import IndexManager
 from prompt_studio.prompt_studio_registry.prompt_studio_registry_helper import (
     PromptStudioRegistryHelper,
 )
@@ -37,12 +43,6 @@ from prompt_studio.prompt_studio_registry.serializers import (
     ExportToolRequestSerializer,
     PromptStudioRegistryInfoSerializer,
 )
-from prompt_studio.prompt_profile_manager.constants import (
-    ProfileManagerErrors,
-    ProfileManagerKeys,
-)
-from prompt_studio.prompt_studio_index_manager.models import IndexManager
-from prompt_studio.prompt_studio_core.redis_utils import remove_document_indexing
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -349,10 +349,14 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = ProfileManagerSerializer(data=request.data, context=context)
 
         serializer.is_valid(raise_exception=True)
-        
+
         # Check for the maximum number of profiles constraint
-        prompt_studio_tool = serializer.validated_data[ProfileManagerKeys.PROMPT_STUDIO_TOOL]
-        profile_count = ProfileManager.objects.filter(prompt_studio_tool=prompt_studio_tool).count()
+        prompt_studio_tool = serializer.validated_data[
+            ProfileManagerKeys.PROMPT_STUDIO_TOOL
+        ]
+        profile_count = ProfileManager.objects.filter(
+            prompt_studio_tool=prompt_studio_tool
+        ).count()
 
         if profile_count >= 4:
             raise MaxProfilesReachedError()
@@ -474,7 +478,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         path = file_path
         file_system = LocalStorageFS(settings={"path": path})
         try:
-            #Delete indexed flags in redis
+            # Delete indexed flags in redis
             index_managers = IndexManager.objects.filter(document_manager=document_id)
             for index_manager in index_managers:
                 raw_index_id = index_manager.raw_index_id
@@ -488,7 +492,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             FileManagerHelper.delete_related_files(
                 file_system, path, file_name, directories
             )
-            #Delete indexed flags in redis
+            # Delete indexed flags in redis
 
             return Response(
                 {"data": "File deleted succesfully."},

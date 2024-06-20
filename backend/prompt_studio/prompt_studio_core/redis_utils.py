@@ -19,5 +19,6 @@ def get_indexed_document_id(doc_id_key):
         return result
     return None
 
+
 def remove_document_indexing(doc_id_key):
     CacheService.delete_a_key(f"document_indexing:{doc_id_key}")

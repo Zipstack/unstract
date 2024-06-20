@@ -59,6 +59,9 @@ class EmptyPromptError(APIException):
     status_code = 422
     default_detail = "Prompt(s) cannot be empty"
 
+
 class MaxProfilesReachedError(APIException):
     status_code = 403
-    default_detail = "Maximum number of profiles (max 4) per prompt studio project has been reached."
+    default_detail = (
+        "Maximum number of profiles (max 4) per prompt studio project has been reached."
+    )
