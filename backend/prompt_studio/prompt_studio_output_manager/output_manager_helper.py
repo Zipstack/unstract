@@ -37,7 +37,7 @@ class OutputManagerHelper:
             outputs (Any): Outputs corresponding to the prompts.
             document_id (str): ID of the document.
             profile_manager_id (Optional[str]): UUID of the profile manager.
-            is_single_pass_extract (bool): 
+            is_single_pass_extract (bool):
             Flag indicating if single pass extract is active.
             tool (CustomTool, optional): Custom tool used for extracting.
         """
@@ -77,7 +77,7 @@ class OutputManagerHelper:
                 if success:
                     logger.info(
                         f"Created record for prompt_id: {prompt.prompt_id} and "
-                        f"profile {profile_manager.profile_id}"                    
+                        f"profile {profile_manager.profile_id}"
                     )
                 else:
                     logger.info(
