@@ -2,7 +2,8 @@
 
 from typing import Optional
 
-from unstract.flags.client import EvaluationClient
+from unstract.flags.client.evaluation import EvaluationClient
+from unstract.flags.client.flipt import FliptClient
 
 
 def check_feature_flag_status(
@@ -38,3 +39,17 @@ def check_feature_flag_status(
     except Exception as e:
         print(f"Error: {str(e)}")
         return False
+
+
+def list_all_flags(
+    namespace_key: str,
+) -> dict:
+    try:
+        flipt_client = FliptClient()
+        response = flipt_client.list_feature_flags(
+            namespace_key=namespace_key,
+        )
+        return response
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return {}
