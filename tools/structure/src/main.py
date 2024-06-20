@@ -27,6 +27,7 @@ class StructureTool(BaseTool):
         prompt_registry_id: str = settings[SettingsKeys.PROMPT_REGISTRY_ID]
         challenge_llm: str = settings[SettingsKeys.CHALLENGE_LLM_ADAPTER_ID]
         enable_challenge: bool = settings[SettingsKeys.ENABLE_CHALLENGE]
+        enable_highlight: bool = settings[SettingsKeys.ENABLE_HIGHLIGHT]
         summarize_as_source: bool = settings[SettingsKeys.SUMMARIZE_AS_SOURCE]
         single_pass_extraction_mode: bool = settings[
             SettingsKeys.SINGLE_PASS_EXTRACTION_MODE
@@ -96,6 +97,7 @@ class StructureTool(BaseTool):
                 output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
                 reindex=True,
                 usage_kwargs=usage_kwargs,
+                enable_highlight=enable_highlight,
             )
             if summarize_as_source:
                 summarize_file_hash = self._summarize_and_index(
@@ -106,6 +108,7 @@ class StructureTool(BaseTool):
                     outputs=outputs,
                     index=index,
                     usage_kwargs=usage_kwargs,
+                    enable_highlight=enable_highlight,
                 )
                 payload[SettingsKeys.FILE_HASH] = summarize_file_hash
             self.stream_log("Fetching response for single pass extraction")
@@ -128,6 +131,7 @@ class StructureTool(BaseTool):
                         output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
                         reindex=reindex,
                         usage_kwargs=usage_kwargs,
+                        enable_highlight=enable_highlight,
                     )
                     if summarize_as_source:
                         summarize_file_hash = self._summarize_and_index(
@@ -179,6 +183,7 @@ class StructureTool(BaseTool):
         except json.JSONDecodeError as e:
             self.stream_error_and_exit(f"Error encoding JSON: {e}")
         self.write_tool_result(data=json.loads(structured_output))
+        self._update_exec_metadata()
 
     def _summarize_and_index(
         self,
@@ -189,6 +194,7 @@ class StructureTool(BaseTool):
         outputs: dict[str, Any],
         index: Index,
         usage_kwargs: dict[Any, Any] = {},
+        enable_highlight: bool = False,
     ) -> str:
         """Summarizes the context of the file and indexes the summarized
         content.
@@ -244,6 +250,7 @@ class StructureTool(BaseTool):
             chunk_size=0,
             chunk_overlap=0,
             usage_kwargs=usage_kwargs,
+            enable_highlight=enable_highlight,
         )
         return summarize_file_hash
 
