@@ -14,7 +14,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Updated the name here as the 002 first step is just name change
+        # Updated the name here as the 002, 0002 step is just name change
         migrations.CreateModel(
             name="OrganizationMember",
             fields=[

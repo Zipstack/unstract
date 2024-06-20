@@ -10,6 +10,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # # Commenting out here as this is taken care in 0001
         # migrations.CreateModel(
         #     name="OrganizationMember",
         #     fields=[
