@@ -4,15 +4,18 @@ import { Col, Row, Typography } from "antd";
 import "../../agency/display-logs/DisplayLogs.css";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { uniqueId } from "lodash";
-import { convertTimestampToHHMMSS } from "../../../helpers/GetStaticData";
+import {
+  convertTimestampToHHMMSS,
+  isSubPage,
+} from "../../../helpers/GetStaticData";
 import { useLocation } from "react-router-dom";
 
 function DisplayLogs() {
   const bottomRef = useRef(null);
   const { logs } = useSocketLogsStore();
   const location = useLocation(); // Get the current route location
-  const isWorkflowSubPage = /^\/[^/]+\/workflows\/.+/.test(location.pathname);
-  const isPromptStudioPage = /^\/[^/]+\/tools\/.+/.test(location.pathname);
+  const isWorkflowSubPage = isSubPage("workflows", location.pathname);
+  const isPromptStudioPage = isSubPage("tools", location.pathname);
 
   useEffect(() => {
     if (logs?.length) {
