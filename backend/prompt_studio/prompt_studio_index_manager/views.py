@@ -53,7 +53,7 @@ class IndexManagerView(viewsets.ModelViewSet):
                     )
                 except ProfileManager.DoesNotExist:
                     raise DefaultProfileError(
-                        f"ProfileManager with ID {str(obj.profile_manager)} does not exist."
+                        f"ProfileManager with ID {profile_manager_id} does not exist."
                     )
                 vector_db_id = str(profile_manager.vector_store.id)
                 embedding_model = str(profile_manager.embedding_model.id)
