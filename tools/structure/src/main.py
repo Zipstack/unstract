@@ -83,7 +83,7 @@ class StructureTool(BaseTool):
         # to avoid unwanted indexing
         self.stream_log("Indexing document")
         usage_kwargs: dict[Any, Any] = dict()
-        usage_kwargs["run_id"] = run_id
+        usage_kwargs[SettingsKeys.RUN_ID] = run_id
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             index.index(
                 tool_id=tool_metadata[SettingsKeys.TOOL_ID],
