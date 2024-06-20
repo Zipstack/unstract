@@ -22,6 +22,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 import TabPane from "antd/es/tabs/TabPane";
+import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 
 const columns = [
   {
@@ -63,7 +64,6 @@ function OutputForDocModal({
   const [rows, setRows] = useState([]);
   const [adapterData, setAdapterData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedProfile, setSelectedProfile] = useState(null);
   const {
     details,
     listOfDocs,
@@ -80,6 +80,7 @@ function OutputForDocModal({
   const { setAlertDetails } = useAlertStore();
   const { handleException } = useExceptionHandler();
   const { tokenUsage } = useTokenUsageStore();
+  const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
 
   useEffect(() => {
     if (!open) {
@@ -166,7 +167,6 @@ function OutputForDocModal({
       .get(`/api/v1/unstract/${sessionDetails.orgId}/adapter/?adapter_type=LLM`)
       .then((res) => {
         const adapterList = res.data;
-        console.log(getLLMModelNamesForProfiles(llmProfiles, adapterList));
         setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
       });
   };
@@ -263,7 +263,6 @@ function OutputForDocModal({
       };
       rowsData.push(result);
     });
-    console.log(rowsData);
     setRows(rowsData);
   };
 
@@ -302,6 +301,7 @@ function OutputForDocModal({
               ></TabPane>
             ))}
           </Tabs>{" "}
+          <ProfileInfoBar profileId={selectedProfile} profiles={llmProfiles} />
         </div>
         <div className="display-flex-right">
           <Button

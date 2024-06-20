@@ -86,6 +86,7 @@ function PromptCardItems({
   setOpenOutputForDoc,
   selectedLlmProfileId,
   handleSelectDefaultLLM,
+  timers,
 }) {
   const {
     llmProfiles,
@@ -287,7 +288,7 @@ function PromptCardItems({
                         Coverage:{" "}
                         {coverage[
                           `${promptDetails.prompt_id}_${selectedLlmProfileId}`
-                        ]?.count || 0}{" "}
+                        ]?.docs_covered.length || 0}{" "}
                         of {listOfDocs?.length || 0} docs
                       </Typography.Link>
                     </Space>
@@ -319,6 +320,12 @@ function PromptCardItems({
             <AnimatePresence>
               {llmProfileDetails.map((profile, index) => {
                 const checked = enabledProfiles.includes(profile.profile_id);
+                const tokenUsageId =
+                  promptDetails?.prompt_id +
+                  "__" +
+                  selectedDoc?.document_id +
+                  "__" +
+                  profile.profile_id;
                 return (
                   <motion.div
                     key={profile.profile_id}
@@ -362,19 +369,11 @@ function PromptCardItems({
                           <Typography.Text className="prompt-cost-item">
                             Tokens:{" "}
                             {!singlePassExtractMode && (
-                              <TokenUsage
-                                tokenUsageId={
-                                  promptDetails?.prompt_id +
-                                  "__" +
-                                  selectedDoc?.document_id +
-                                  "__" +
-                                  profile.profile_id
-                                }
-                              />
+                              <TokenUsage tokenUsageId={tokenUsageId} />
                             )}
                           </Typography.Text>
                           <Typography.Text className="prompt-cost-item">
-                            Time: 2330s
+                            Time: {timers[tokenUsageId] || 0}s
                           </Typography.Text>
                           <Typography.Text className="prompt-cost-item">
                             Cost: $0.0004
@@ -564,6 +563,7 @@ PromptCardItems.propTypes = {
   setOpenEval: PropTypes.func.isRequired,
   setOpenOutputForDoc: PropTypes.func.isRequired,
   selectedLlmProfileId: PropTypes.string,
+  timers: PropTypes.object.isRequired,
 };
 
 export { PromptCardItems };

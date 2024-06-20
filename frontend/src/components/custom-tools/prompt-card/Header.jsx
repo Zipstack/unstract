@@ -44,7 +44,7 @@ function Header({
 
   const handleRunBtnClick = (profileManager = null, coverAllDoc = true) => {
     setExpandCard(true);
-    handleRun(profileManager, coverAllDoc, enabledProfiles);
+    handleRun(profileManager, coverAllDoc, enabledProfiles, true);
   };
 
   return (

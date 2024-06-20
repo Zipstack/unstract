@@ -20,12 +20,12 @@ import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import TabPane from "antd/es/tabs/TabPane";
 import { Tabs } from "antd";
+import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 
 function CombinedOutput({ docId, setFilledFields }) {
   const [combinedOutput, setCombinedOutput] = useState({});
   const [isOutputLoading, setIsOutputLoading] = useState(false);
   const [adapterData, setAdapterData] = useState([]);
-  const [selectedProfile, setSelectedProfile] = useState(null);
   const [activeKey, setActiveKey] = useState("0");
   const {
     details,
@@ -38,6 +38,7 @@ function CombinedOutput({ docId, setFilledFields }) {
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
 
   useEffect(() => {
     getAdapterInfo();
@@ -90,7 +91,6 @@ function CombinedOutput({ docId, setFilledFields }) {
         if (setFilledFields) {
           setFilledFields(filledFields);
         }
-        console.log(output);
       })
       .catch((err) => {
         setAlertDetails(
@@ -148,7 +148,7 @@ function CombinedOutput({ docId, setFilledFields }) {
 
   const handleTabChange = (key) => {
     if (key === "0") {
-      setSelectedProfile(null);
+      setSelectedProfile(defaultLlmProfile);
     } else {
       setSelectedProfile(adapterData[key - 1].profile_id);
     }
@@ -170,6 +170,7 @@ function CombinedOutput({ docId, setFilledFields }) {
         <div className="combined-op-segment"></div>
       </div>
       <div className="combined-op-divider" />
+      <ProfileInfoBar profileId={selectedProfile} profiles={llmProfiles} />
       <div className="combined-op-body code-snippet">
         {combinedOutput && (
           <pre className="line-numbers width-100">

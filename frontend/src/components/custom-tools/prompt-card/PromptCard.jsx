@@ -43,6 +43,7 @@ function PromptCard({
   const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
   const [progressMsg, setProgressMsg] = useState({});
   const [docOutputs, setDocOutputs] = useState({});
+  const [timers, setTimers] = useState({});
   const {
     getDropdownItems,
     llmProfiles,
@@ -200,7 +201,8 @@ function PromptCard({
   const handleRun = (
     profileManagerId,
     coverAllDoc = true,
-    selectedLlmProfiles = []
+    selectedLlmProfiles = [],
+    runAllLLM = false
   ) => {
     try {
       setPostHogCustomEvent("ps_prompt_run", {
@@ -291,7 +293,7 @@ function PromptCard({
     }
 
     handleDocOutputs(docId, true, null);
-    if (!profileManagerId) {
+    if (runAllLLM) {
       let selectedProfiles = llmProfiles;
       if (!coverAllDoc && selectedLlmProfiles.length > 0) {
         selectedProfiles = llmProfiles.filter((profile) =>
@@ -299,6 +301,8 @@ function PromptCard({
         );
       }
       for (const profile of selectedProfiles) {
+        setIsCoverageLoading(true);
+
         handleIsRunLoading(selectedDoc.document_id, profile.profile_id, true);
         handleRunApiRequest(docId, profile.profile_id)
           .then((res) => {
@@ -309,6 +313,12 @@ function PromptCard({
             }
             handleDocOutputs(docId, false, value);
             handleGetOutput(profile.profile_id);
+            updateDocCoverage(
+              coverage,
+              promptDetails?.prompt_id,
+              profile.profile_id,
+              docId
+            );
           })
           .catch((err) => {
             handleIsRunLoading(
@@ -320,6 +330,9 @@ function PromptCard({
             setAlertDetails(
               handleException(err, `Failed to generate output for ${docId}`)
             );
+          })
+          .finally(() => {
+            setIsCoverageLoading(false);
           });
         if (coverAllDoc) {
           handleCoverage(profile.profile_id);
@@ -331,7 +344,12 @@ function PromptCard({
           const data = res?.data?.output;
           const value = data[promptDetails?.prompt_key];
           if (value || value === 0) {
-            setCoverage((prev) => prev + 1);
+            updateDocCoverage(
+              coverage,
+              promptDetails?.prompt_id,
+              profileManagerId,
+              docId
+            );
           }
           handleDocOutputs(docId, false, value);
           handleGetOutput();
@@ -399,7 +417,12 @@ function PromptCard({
           const data = res?.data?.output;
           const outputValue = data[promptDetails?.prompt_key];
           if (outputValue || outputValue === 0) {
-            setCoverage((prev) => prev + 1);
+            updateDocCoverage(
+              coverage,
+              promptDetails?.prompt_id,
+              profileManagerId,
+              docId
+            );
           }
           handleDocOutputs(docId, false, outputValue);
         })
@@ -420,7 +443,26 @@ function PromptCard({
     });
   };
 
-  const handleRunApiRequest = async (docId, profileManagerId = null) => {
+  const updateDocCoverage = (coverage, promptId, profileManagerId, docId) => {
+    const key = `${promptId}_${profileManagerId}`;
+    const counts = { ...coverage };
+    // If the key exists in the counts object, increment the count
+    if (counts[key]) {
+      if (!counts[key].docs_covered.includes(docId)) {
+        counts[key].docs_covered.push(docId);
+      }
+    } else {
+      // Otherwise, add the key to the counts object with an initial count of 1
+      counts[key] = {
+        prompt_id: promptId,
+        profile_manager: profileManagerId,
+        docs_covered: [docId],
+      };
+    }
+    setCoverage((prev) => ({ ...prev, ...counts }));
+  };
+
+  const handleRunApiRequest = async (docId, profileManagerId) => {
     const promptId = promptDetails?.prompt_id;
     const runId = generateUUID();
 
@@ -433,6 +475,11 @@ function PromptCard({
       () => getTokenUsage(runId, tokenUsageId),
       5000 // Fetch token usage data every 5000 milliseconds (5 seconds)
     );
+    setTimers((prev) => ({
+      ...prev,
+      [tokenUsageId]: 0,
+    }));
+    const timerIntervalId = startTimer(tokenUsageId);
 
     const body = {
       document_id: docId,
@@ -462,6 +509,7 @@ function PromptCard({
       .finally(() => {
         clearInterval(intervalId);
         getTokenUsage(runId, tokenUsageId);
+        stopTimer(tokenUsageId, timerIntervalId);
       });
   };
 
@@ -520,7 +568,7 @@ function PromptCard({
       (singlePassExtractMode && !defaultLlmProfile) ||
       (!singlePassExtractMode && !selectedLlmProfileId)
     ) {
-      setCoverage(0);
+      setCoverage({});
       return;
     }
 
@@ -585,26 +633,35 @@ function PromptCard({
   };
 
   const handleGetCoverageData = (data) => {
-    const counts = {};
-
-    // Iterate through each object in the array
     data.forEach((item) => {
-      // Create a unique key for each combination of prompt_id and profile_manager
-      const key = `${item.prompt_id}_${item.profile_manager}`;
-
-      // If the key exists in the counts object, increment the count
-      if (counts[key]) {
-        counts[key].count += 1;
-      } else {
-        // Otherwise, add the key to the counts object with an initial count of 1
-        counts[key] = {
-          prompt_id: item.prompt_id,
-          profile_manager: item.profile_manager,
-          count: 1,
-        };
-      }
+      updateDocCoverage(
+        coverage,
+        item.prompt_id,
+        item.profile_manager,
+        item.document_manager
+      );
     });
-    setCoverage(counts);
+  };
+
+  const startTimer = (profileId) => {
+    setTimers((prev) => ({
+      ...prev,
+      [profileId]: (prev[profileId] || 0) + 1,
+    }));
+    return setInterval(() => {
+      setTimers((prev) => ({
+        ...prev,
+        [profileId]: (prev[profileId] || 0) + 1,
+      }));
+    }, 1000);
+  };
+
+  const stopTimer = (profileId, intervalId) => {
+    clearInterval(intervalId);
+    setTimers((prev) => ({
+      ...prev,
+      [profileId]: prev[profileId] || 0,
+    }));
   };
 
   return (
@@ -631,6 +688,7 @@ function PromptCard({
         setOpenOutputForDoc={setOpenOutputForDoc}
         selectedLlmProfileId={selectedLlmProfileId}
         handleSelectDefaultLLM={handleSelectDefaultLLM}
+        timers={timers}
       />
       {EvalModal && !singlePassExtractMode && (
         <EvalModal
