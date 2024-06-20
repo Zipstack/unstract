@@ -776,38 +776,45 @@ class PromptStudioHelper:
             )
         else:
             profile_manager.chunk_size = 0
-
-        doc_id_key = f"{document_id}_{org_id}_{tool_id}"
-
-        # Check if the document is already indexed
-        indexed_doc_id = get_indexed_document_id(doc_id_key)
-        if indexed_doc_id:
-            return indexed_doc_id
-
-        # Polling if document is already being indexed
-        if is_document_indexing(doc_id_key):
-            max_wait_time = 1800  # 30 minutes
-            wait_time = 0
-            polling_interval = 5  # Poll every 5 seconds
-            while is_document_indexing(doc_id_key):
-                if wait_time >= max_wait_time:
-                    raise IndexingAPIError(
-                        "Indexing timed out. Please try again later."
-                    )
-                time.sleep(polling_interval)
-                wait_time += polling_interval
-
-            # After waiting, check if the document is indexed
-            indexed_doc_id = get_indexed_document_id(doc_id_key)
-            if indexed_doc_id:
-                return indexed_doc_id
+            
 
         try:
-            # Set the document as being indexed
-            set_document_indexing(doc_id_key)
+
             usage_kwargs = {"run_id": run_id}
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = Index(tool=util)
+            doc_id_key = tool_index.generate_file_id(tool_id=tool_id,
+                vector_db=vector_db,
+                embedding=embedding_model,
+                x2text=x2text_adapter,
+                chunk_size=str(profile_manager.chunk_size),
+                chunk_overlap=str(profile_manager.chunk_overlap),
+                file_path=file_path,
+                file_hash=None
+            )
+            indexed_doc_id = get_indexed_document_id(doc_id_key)
+            if indexed_doc_id:
+                return indexed_doc_id
+            
+            # Polling if document is already being indexed
+            if is_document_indexing(doc_id_key):
+                max_wait_time = 1800  # 30 minutes
+                wait_time = 0
+                polling_interval = 5  # Poll every 5 seconds
+                while is_document_indexing(doc_id_key):
+                    if wait_time >= max_wait_time:
+                        raise IndexingAPIError(
+                            "Indexing timed out. Please try again later."
+                        )
+                    time.sleep(polling_interval)
+                    wait_time += polling_interval
+
+                # After waiting, check if the document is indexed
+                indexed_doc_id = get_indexed_document_id(doc_id_key)
+                if indexed_doc_id:
+                    return indexed_doc_id
+            # Set the document as being indexed
+            set_document_indexing(doc_id_key)
             doc_id: str = tool_index.index(
                 tool_id=tool_id,
                 embedding_instance_id=embedding_model,

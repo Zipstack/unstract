@@ -7,7 +7,7 @@ import {
   PlayCircleOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
-import { Button, Checkbox, Col, Row, Tag, Tooltip } from "antd";
+import { Button, Checkbox, Col, Divider, Row, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 
 import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";
@@ -163,6 +163,8 @@ function Header({
             </Tooltip>
           </>
         )}
+        <Checkbox defaultChecked={true} className="prompt-card-action-button" />
+        <Divider type="vertical" className="header-delete-divider" />
         <ConfirmModal
           handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
           content="The prompt will be permanently deleted."
@@ -182,7 +184,6 @@ function Header({
             </Button>
           </Tooltip>
         </ConfirmModal>
-        <Checkbox defaultChecked={true} className="prompt-card-action-button" />
       </Col>
     </Row>
   );

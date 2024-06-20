@@ -24,7 +24,7 @@ function TokenUsage({ tokenUsageId }) {
 
   // If no tokens data is available, render nothing
   if (!tokens || !Object.keys(tokens)?.length) {
-    return <></>;
+    return 0;
   }
 
   return tokens?.total_tokens;

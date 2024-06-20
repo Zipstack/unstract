@@ -63,13 +63,13 @@ function OutputForIndex({ llmProfileId, isIndexOpen, setIsIndexOpen }) {
   return (
     <>
       <Modal
-        title="Document Data"
+        title="Index Data"
         open={isIndexOpen}
         onCancel={handleClose}
-        width={"90%"}
         className="index-output-modal"
         centered
-        footer={<></>}
+        footer={null}
+        width={1000}
       >
         {loading ? (
           <div>

@@ -7,6 +7,7 @@ class ProfileManagerKeys:
     VECTOR_STORE = "vector_store"
     EMBEDDING_MODEL = "embedding_model"
     X2TEXT = "x2text"
+    PROMPT_STUDIO_TOOL= "prompt_studio_tool"
 
 
 class ProfileManagerErrors:

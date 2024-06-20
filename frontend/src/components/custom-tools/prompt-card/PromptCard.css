@@ -183,11 +183,13 @@
   margin-left: 10px;
 }
 
-.index-output-modal {
-  height: 80vh;
-}
-
 .index-output-tab {
   overflow: scroll;
   height: 60vh;
+}
+
+.header-delete-divider {
+  margin: auto 2px auto 10px;
+  border: 1px solid rgba(5, 5, 5, 0.1);
+  height: 20px;
 }

@@ -459,7 +459,7 @@ function PromptCard({
         docs_covered: [docId],
       };
     }
-    setCoverage((prev) => ({ ...prev, ...counts }));
+    setCoverage(counts);
   };
 
   const handleRunApiRequest = async (docId, profileManagerId) => {
@@ -470,11 +470,17 @@ function PromptCard({
     const tokenUsageId = promptId + "__" + docId + "__" + profileManagerId;
     setTokenUsage(tokenUsageId, defaultTokenUsage);
 
-    // Set up an interval to fetch token usage data at regular intervals
-    const intervalId = setInterval(
-      () => getTokenUsage(runId, tokenUsageId),
-      5000 // Fetch token usage data every 5000 milliseconds (5 seconds)
-    );
+    let intervalId = undefined;
+    if (
+      profileManagerId === selectedLlmProfileId &&
+      docId === selectedDoc.document_id
+    ) {
+      // Set up an interval to fetch token usage data at regular intervals
+      intervalId = setInterval(
+        () => getTokenUsage(runId, tokenUsageId),
+        5000 // Fetch token usage data every 5000 milliseconds (5 seconds)
+      );
+    }
     setTimers((prev) => ({
       ...prev,
       [tokenUsageId]: 0,

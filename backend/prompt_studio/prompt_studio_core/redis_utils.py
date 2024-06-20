@@ -18,3 +18,6 @@ def get_indexed_document_id(doc_id_key):
     if result and result != b"started":
         return result
     return None
+
+def remove_document_indexing(doc_id_key):
+    CacheService.delete_a_key(f"document_indexing:{doc_id_key}")
