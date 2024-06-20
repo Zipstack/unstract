@@ -517,7 +517,8 @@ def prompt_processor() -> Any:
                                 f"JSON format error : {answer}", LogLevel.ERROR
                             )
                             app.logger.info(
-                                f"Error parsing response (to json): {e}", LogLevel.ERROR
+                                f"Error parsing response (to json): {e}",
+                                LogLevel.ERROR,
                             )
                             structured_output[output[PSKeys.NAME]] = {}
 
@@ -749,10 +750,12 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
     nodes = retriever.retrieve(answer)
     text = ""
     for node in nodes:
-        if node.score > 0.6:
+        # ToDo: May have to fine-tune this value for node score or keep it
+        # configurable at the adapter level
+        if node.score > 0:
             text += node.get_content() + "\n"
         else:
-            app.logger.info("Node score is less than 0.6. " f"Ignored: {node.score}")
+            app.logger.info("Node score is less than 0. " f"Ignored: {node.score}")
     return text
 
 
