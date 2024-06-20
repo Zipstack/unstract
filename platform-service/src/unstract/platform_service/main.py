@@ -171,16 +171,18 @@ def usage() -> Any:
     adapter_instance_id = payload.get("adapter_instance_id", "")
     run_id = payload.get("run_id", "")
     usage_type = payload.get("usage_type", "")
+    llm_usage_reason = payload.get("llm_usage_reason", "")
     model_name = payload.get("model_name", "")
     embedding_tokens = payload.get("embedding_tokens", 0)
     prompt_tokens = payload.get("prompt_tokens", 0)
     completion_tokens = payload.get("completion_tokens", 0)
     total_tokens = payload.get("total_tokens", 0)
     query = f"""
-        INSERT INTO "{org_id}"."token_usage" (id, workflow_id, execution_id,
-        adapter_instance_id, run_id, usage_type, model_name, embedding_tokens,
-        prompt_tokens, completion_tokens, total_tokens, created_at, modified_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO "{org_id}"."token_usage" (id, workflow_id,
+        execution_id, adapter_instance_id, run_id, usage_type,
+        llm_usage_reason, model_name, embedding_tokens, prompt_tokens,
+        completion_tokens, total_tokens, created_at, modified_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
     usage_id = uuid.uuid4()
     current_time = datetime.now()
@@ -191,6 +193,7 @@ def usage() -> Any:
         adapter_instance_id,
         run_id,
         usage_type,
+        llm_usage_reason,
         model_name,
         embedding_tokens,
         prompt_tokens,

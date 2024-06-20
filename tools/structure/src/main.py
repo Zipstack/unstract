@@ -68,8 +68,10 @@ class StructureTool(BaseTool):
         if summarize_as_source:
             file_name = SettingsKeys.SUMMARIZE
         tool_data_dir = Path(self.get_env_or_die(SettingsKeys.TOOL_DATA_DIR))
+        run_id = CommonUtils.generate_uuid()
         # TODO : Resolve and pass log events ID
         payload = {
+            SettingsKeys.RUN_ID: run_id,
             SettingsKeys.TOOL_SETTINGS: tool_settings,
             SettingsKeys.OUTPUTS: outputs,
             SettingsKeys.TOOL_ID: tool_id,
@@ -81,7 +83,6 @@ class StructureTool(BaseTool):
         # to avoid unwanted indexing
         self.stream_log("Indexing document")
         usage_kwargs: dict[Any, Any] = dict()
-        run_id = CommonUtils.generate_uuid()
         usage_kwargs["run_id"] = run_id
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             index.index(
@@ -206,14 +207,16 @@ class StructureTool(BaseTool):
         """
         llm_adapter_instance_id: str = tool_settings[SettingsKeys.LLM]
         summarize_prompt: str = tool_settings[SettingsKeys.SUMMARIZE_PROMPT]
+        run_id = usage_kwargs.get(SettingsKeys.RUN_ID)
         context = ""
         extract_file_path = tool_data_dir / SettingsKeys.EXTRACT
         with open(extract_file_path, encoding="utf-8") as file:
             context = file.read()
-        prompt_keys = [output["name"] for output in outputs]
+        prompt_keys = [output[SettingsKeys.NAME] for output in outputs]
         self.stream_log("Summarizing context")
         # Handle run_id along with prompt run
         payload = {
+            SettingsKeys.RUN_ID: run_id,
             SettingsKeys.LLM_ADAPTER_INSTANCE_ID: llm_adapter_instance_id,
             SettingsKeys.SUMMARIZE_PROMPT: summarize_prompt,
             SettingsKeys.CONTEXT: context,
@@ -224,10 +227,10 @@ class StructureTool(BaseTool):
             self.stream_error_and_exit(
                 f"Error summarizing response: {response[SettingsKeys.ERROR]}"
             )
-        structure_output = json.loads(response["structure_output"])
+        structure_output = json.loads(response[SettingsKeys.STRUCTURE_OUTPUT])
         summarized_context = structure_output.get(SettingsKeys.DATA, "")
         self.stream_log("Writing summarized context to a file")
-        summarize_file_path = tool_data_dir / "SUMMARIZE"
+        summarize_file_path = tool_data_dir / SettingsKeys.SUMMARIZE
         with open(summarize_file_path, "w", encoding="utf-8") as f:
             f.write(summarized_context)
         self.stream_log("Indexing summarized context")

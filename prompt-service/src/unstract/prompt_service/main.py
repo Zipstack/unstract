@@ -17,7 +17,7 @@ from unstract.prompt_service.exceptions import (
     NoPayloadError,
     RateLimitError,
 )
-from unstract.prompt_service.helper import EnvLoader, plugin_loader
+from unstract.prompt_service.helper import EnvLoader, plugin_loader, query_usage_details
 from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import Embedding
@@ -263,7 +263,10 @@ def prompt_processor() -> Any:
             llm = LLM(
                 tool=util,
                 adapter_instance_id=adapter_instance_id,
-                usage_kwargs=usage_kwargs.copy(),
+                usage_kwargs={
+                    **usage_kwargs,
+                    PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
+                },
             )
 
             embedding = Embedding(
@@ -530,9 +533,10 @@ def prompt_processor() -> Any:
                     output[PSKeys.NAME]
                 ].rstrip("\n")
 
+            enable_challenge = tool_settings.get(PSKeys.ENABLE_CHALLENGE)
             # Challenge condition
-            if tool_settings.get("enable_challenge"):
-                challenge_plugin: dict[str, Any] = plugins.get("challenge", {})
+            if enable_challenge:
+                challenge_plugin: dict[str, Any] = plugins.get(PSKeys.CHALLENGE, {})
                 try:
                     if challenge_plugin:
                         _publish_log(
@@ -549,7 +553,10 @@ def prompt_processor() -> Any:
                         challenge_llm = LLM(
                             tool=util,
                             adapter_instance_id=tool_settings[PSKeys.CHALLENGE_LLM],
-                            usage_kwargs=usage_kwargs,
+                            usage_kwargs={
+                                **usage_kwargs,
+                                PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
+                            },
                         )
                         challenge = challenge_plugin["entrypoint_cls"](
                             llm=llm,
@@ -567,12 +574,12 @@ def prompt_processor() -> Any:
                     else:
                         app.logger.info(
                             "No challenge plugin found to evaluate prompt: %s",
-                            output["name"],
+                            output[PSKeys.NAME],
                         )
                 except challenge_plugin["exception_cls"] as e:
                     app.logger.error(
                         "Failed to challenge prompt %s: %s",
-                        output["name"],
+                        output[PSKeys.NAME],
                         str(e),
                     )
                     _publish_log(
@@ -622,7 +629,7 @@ def prompt_processor() -> Any:
                         evaluator.run()
                     except eval_plugin["exception_cls"] as e:
                         app.logger.error(
-                            f'Failed to evaluate prompt {output["name"]}: {str(e)}'
+                            f"Failed to evaluate prompt {output[PSKeys.NAME]}: {str(e)}"
                         )
                         _publish_log(
                             log_events_id,
@@ -649,7 +656,7 @@ def prompt_processor() -> Any:
                         )
                 else:
                     app.logger.info(
-                        f'No eval plugin found to evaluate prompt: {output["name"]}'  # noqa: E501
+                        f"No eval plugin found to evaluate prompt: {output[PSKeys.NAME]}"  # noqa: E501
                     )
         finally:
             vector_db.close()
@@ -683,7 +690,8 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         "Execution complete",
     )
-    response = {"run_id": run_id, "output": structured_output}
+    metadata = query_usage_details(db=be_db, run_id=run_id, token=platform_key)
+    response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
     return response
 
 
@@ -820,12 +828,12 @@ def extract_variable(
 def enable_plugins() -> None:
     """Enables plugins if available."""
     single_pass_extration_plugin: dict[str, Any] = plugins.get(
-        "single-pass-extraction", {}
+        PSKeys.SINGLE_PASS_EXTRACTION, {}
     )
-    summarize_plugin: dict[str, Any] = plugins.get("summarize", {})
+    summarize_plugin: dict[str, Any] = plugins.get(PSKeys.SUMMARIZE, {})
     if single_pass_extration_plugin:
         single_pass_extration_plugin["entrypoint_cls"](
-            app=app, challenge_plugin=plugins.get("challenge", {})
+            app=app, challenge_plugin=plugins.get(PSKeys.CHALLENGE, {})
         )
     if summarize_plugin:
         summarize_plugin["entrypoint_cls"](

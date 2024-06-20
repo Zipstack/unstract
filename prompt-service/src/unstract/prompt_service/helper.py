@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, current_app
+from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
 
 load_dotenv()
 
@@ -80,3 +81,55 @@ def plugin_loader(app: Flask) -> dict[str, dict[str, Any]]:
         app.logger.info("No plugins found.")
 
     return plugins
+
+
+def query_usage_details(db, run_id, token):
+    org_id = AuthenticationMiddleware.get_account_from_bearer_token(token)
+    metadata = {"run_id": run_id}
+    query = f"""
+        SELECT
+            usage_type,
+            llm_usage_reason,
+            model_name,
+            SUM(prompt_tokens) AS input_tokens,
+            SUM(completion_tokens) AS output_tokens,
+            SUM(total_tokens) AS total_tokens,
+            SUM(embedding_tokens) AS embedding_tokens
+        FROM "{org_id}"."token_usage"
+        WHERE run_id = %s
+        GROUP BY usage_type, llm_usage_reason, model_name;
+    """
+    logger = current_app.logger
+    try:
+        with db.atomic():
+            logger.info("Querying usage metadata")
+            cursor = db.execute_sql(query, (run_id,))
+            results = cursor.fetchall()
+            # Process results as needed
+            for row in results:
+                # Each column is accessed as row[0], row[1], and so forth.
+                usage_type = row[0]
+                llm_usage_reason = row[1]
+                model_name = row[2]
+                if llm_usage_reason:
+                    key = f"{llm_usage_reason}_{usage_type}"
+                    input_tokens = row[3]
+                    output_tokens = row[4]
+                    total_tokens = row[5]
+                    metadata[key] = {
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "total_tokens": total_tokens,
+                        "model_name": model_name,
+                    }
+                # For embedding 'llm_usage_reason' is empty
+                else:
+                    key = usage_type
+                    embedding_tokens = row[6]
+                    metadata[key] = {
+                        "embedding_tokens": embedding_tokens,
+                        "model_name": model_name,
+                    }
+    except Exception as e:
+        logger.error(f"Error executing querying usage metadata: {e}")
+    return metadata

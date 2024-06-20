@@ -34,6 +34,7 @@ from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import
 from prompt_studio.prompt_studio_output_manager.output_manager_helper import (
     OutputManagerHelper,
 )
+from prompt_studio.prompt_version_manager.models import PromptVersionManager
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import IndexingError, SdkError
 from unstract.sdk.index import Index
@@ -445,7 +446,7 @@ class PromptStudioHelper:
                 )
 
                 OutputManagerHelper.handle_prompt_output_update(
-                    run_id=response[TSPKeys.RUN_ID],
+                    run_id=run_id,
                     prompts=prompts,
                     outputs=response["output"],
                     document_id=document_id,
@@ -521,7 +522,7 @@ class PromptStudioHelper:
                 )
 
                 OutputManagerHelper.handle_prompt_output_update(
-                    run_id=response[TSPKeys.RUN_ID],
+                    run_id=run_id,
                     prompts=prompts,
                     outputs=response[TSPKeys.SINGLE_PASS_EXTRACTION],
                     document_id=document_id,
@@ -621,6 +622,15 @@ class PromptStudioHelper:
             document_id=document_id,
             is_summary=tool.summarize_as_source,
             run_id=run_id,
+        )
+
+        PromptVersionManager.objects.create(
+            tool_id=tool,
+            prompt_id=prompt,
+            prompt_key=prompt.prompt_key,
+            prompt=prompt.prompt,
+            enforce_type=prompt.enforce_type,
+            profile_manager=prompt.profile_manager,
         )
 
         output: dict[str, Any] = {}
