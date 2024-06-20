@@ -423,6 +423,11 @@ const convertTimestampToHHMMSS = (timestamp) => {
   return timeString;
 };
 
+const isSubPage = (type, path) => {
+  const regex = new RegExp(`^/[^/]+/${type}/.+`);
+  return regex.test(path);
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -461,4 +466,5 @@ export {
   defaultTokenUsage,
   generateUUID,
   convertTimestampToHHMMSS,
+  isSubPage,
 };

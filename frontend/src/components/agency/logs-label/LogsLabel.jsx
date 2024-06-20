@@ -2,11 +2,12 @@ import { Col, Row, Typography } from "antd";
 
 import "./LogsLabel.css";
 import { useLocation } from "react-router-dom";
+import { isSubPage } from "../../../helpers/GetStaticData";
 
 function LogsLabel() {
   const location = useLocation(); // Get the current route location
-  const isWorkflowSubPage = /^\/[^/]+\/workflows\/.+/.test(location.pathname);
-  const isPromptStudioPage = /^\/[^/]+\/tools\/.+/.test(location.pathname);
+  const isWorkflowSubPage = isSubPage("workflows", location.pathname);
+  const isPromptStudioPage = isSubPage("tools", location.pathname);
 
   return (
     <div className="pl-5">
