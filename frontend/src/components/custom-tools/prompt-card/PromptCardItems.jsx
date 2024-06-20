@@ -37,6 +37,8 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
 import { motion, AnimatePresence } from "framer-motion";
 import { OutputForIndex } from "./OutputForIndex";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useAlertStore } from "../../../store/alert-store";
 
 const EvalBtn = null;
 const EvalMetrics = null;
@@ -107,6 +109,8 @@ function PromptCardItems({
   const privateAxios = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
   const { width: windowWidth } = useWindowDimensions();
+  const handleException = useExceptionHandler();
+  const { setAlertDetails } = useAlertStore();
   const componentWidth = windowWidth * 0.4;
 
   const divRef = useRef(null);

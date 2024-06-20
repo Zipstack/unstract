@@ -7,12 +7,16 @@ import TabPane from "antd/es/tabs/TabPane";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 import "./PromptCard.css";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useAlertStore } from "../../../store/alert-store";
 
 function OutputForIndex({ llmProfileId, isIndexOpen, setIsIndexOpen }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
+  const { setAlertDetails } = useAlertStore();
 
   const fetchData = () => {
     setLoading(true);
