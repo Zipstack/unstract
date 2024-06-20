@@ -309,7 +309,7 @@ class PromptStudioHelper:
         """
         tool: CustomTool = CustomTool.objects.get(pk=tool_id)
         if is_summary:
-            profile_manager = ProfileManager.objects.get(
+            profile_manager: ProfileManager = ProfileManager.objects.get(
                 prompt_studio_tool=tool, is_summarize_llm=True
             )
             default_profile = profile_manager
