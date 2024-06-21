@@ -1,7 +1,8 @@
 from typing import Optional
 
-from backend.exceptions import UnstractBaseException
 from rest_framework.exceptions import APIException
+
+from backend.exceptions import UnstractBaseException
 
 
 class IdIsMandatory(APIException):

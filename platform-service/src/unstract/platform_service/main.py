@@ -420,4 +420,4 @@ def handle_custom_exception(error: Any) -> tuple[Response, Any]:
 
 if __name__ == "__main__":
     # Start the server
-    app.run(host='0.0.0.0', port='3001')
+    app.run(host="0.0.0.0", port="3001")
