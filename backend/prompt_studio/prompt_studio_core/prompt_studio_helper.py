@@ -797,7 +797,7 @@ class PromptStudioHelper:
 
             # Polling if document is already being indexed
             if is_document_indexing(doc_id_key):
-                PromptStudioHelper.wait_for_document_indexing(doc_id_key=doc_id)
+                PromptStudioHelper.wait_for_document_indexing(doc_id_key=doc_id_key)
             # Set the document as being indexed
             set_document_indexing(doc_id_key)
             doc_id: str = tool_index.index(
