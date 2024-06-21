@@ -22,9 +22,8 @@ class InValidAdapterId(APIException):
 class InvalidEncryptionKey(APIException):
     status_code = 403
     default_detail = (
-        "Internal encryption key for the adapter credentials has changed! "
-        "This can be caused by possible platform misconfiguration. "
-        "Please tell your organization admin to contact support immediately."
+        "Platform encryption key for storing adapter credentials has changed! "
+        "Please inform the organization admin to contact support."
     )
 
 

@@ -222,6 +222,7 @@ build_services() {
     }
   elif [ "$first_setup" = true ] || [ "$opt_upgrade" = true ]; then
     echo -e "$blue_text""Pulling""$default_text"" docker images tag ""$blue_text""$opt_version""$default_text""."
+    # Try again on a slow network.
     VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.yaml pull ||
     VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.yaml pull || {
       echo -e "$red_text""Failed to pull docker images.""$default_text"
