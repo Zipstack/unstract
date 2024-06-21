@@ -54,9 +54,8 @@ class TextExtractor(BaseTool):
         input_log = f"Processing file: \n\n`{source_name}`"
         self.stream_update(input_log, state=LogState.INPUT_UPDATE)
 
-        tool_extraction = X2Text(tool=self)
-        text_extraction_adapter = tool_extraction.get_x2text(
-            adapter_instance_id=text_extraction_adapter_id
+        text_extraction_adapter = X2Text(
+            tool=self, adapter_instance_id=text_extraction_adapter_id
         )
         self.stream_log("Text extraction adapter has been created successfully.")
         extracted_text = text_extraction_adapter.process(input_file_path=input_file)

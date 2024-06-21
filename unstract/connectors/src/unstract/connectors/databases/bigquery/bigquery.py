@@ -1,13 +1,21 @@
 import datetime
 import json
+import logging
 import os
 from typing import Any
 
+import google.api_core.exceptions
 from google.cloud import bigquery
 from google.cloud.bigquery import Client
 
+from unstract.connectors.databases.exceptions import (
+    BigQueryForbiddenException,
+    BigQueryNotFoundException,
+)
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
+
+logger = logging.getLogger(__name__)
 
 
 class BigQuery(UnstractDB):
@@ -87,3 +95,25 @@ class BigQuery(UnstractDB):
             f"created_by string, created_at TIMESTAMP, "
         )
         return sql_query
+
+    def execute_query(
+        self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
+    ) -> None:
+        table_name = str(kwargs.get("table_name"))
+        try:
+            if sql_values:
+                query_job = engine.query(sql_query, job_config=sql_values)
+            else:
+                query_job = engine.query(sql_query)
+            query_job.result()
+        except google.api_core.exceptions.Forbidden as e:
+            logger.error(f"Forbidden exception in creating/inserting data: {str(e)}")
+            raise BigQueryForbiddenException(
+                detail=e.message,
+                table_name=table_name,
+            ) from e
+        except google.api_core.exceptions.NotFound as e:
+            logger.error(f"Resource not found in creating/inserting table: {str(e)}")
+            raise BigQueryNotFoundException(
+                detail=e.message, table_name=table_name
+            ) from e

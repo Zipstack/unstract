@@ -1,10 +1,3 @@
-class ToolCommandKey:
-    PROPERTIES = "properties"
-    SPEC = "spec"
-    VARIABLES = "variables"
-    ICON = "icon"
-
-
 class LogType:
     LOG = "LOG"
     UPDATE = "UPDATE"

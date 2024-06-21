@@ -43,7 +43,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance.models import ToolInstance
-from utils.common_utils import CommonUtils
+from unstract.sdk.utils.common_utils import CommonUtils
 from utils.user_session import UserSessionUtils
 
 from unstract.connectors.filesystems.local_storage.local_storage import LocalStorageFS
@@ -88,7 +88,14 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 f"{ToolStudioErrors.TOOL_NAME_EXISTS}, \
                     {ToolStudioErrors.DUPLICATE_API}"
             )
+        PromptStudioHelper.create_default_profile_manager(
+            request.user, serializer.data["tool_id"]
+        )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def perform_destroy(self, instance: CustomTool) -> None:
+        organization_id = UserSessionUtils.get_organization_id(self.request)
+        instance.delete(organization_id)
 
     def destroy(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
@@ -182,7 +189,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             data={"default_profile": profile_manager.profile_id},
         )
 
-    @action(detail=True, methods=["get"])
+    @action(detail=True, methods=["post"])
     def index_document(self, request: HttpRequest, pk: Any = None) -> Response:
         """API Entry point method to index input file.
 
@@ -205,7 +212,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         # Generate a run_id
-        run_id = CommonUtils.get_uuid()
+        run_id = CommonUtils.generate_uuid()
         unique_id = PromptStudioHelper.index_document(
             tool_id=str(tool.tool_id),
             file_name=file_name,
@@ -215,6 +222,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             run_id=run_id,
         )
 
+        usage_kwargs: dict[Any, Any] = dict()
+        usage_kwargs[ToolStudioPromptKeys.RUN_ID] = run_id
         for processor_plugin in self.processor_plugins:
             cls = processor_plugin[ProcessorConfig.METADATA][
                 ProcessorConfig.METADATA_SERVICE_CLASS
@@ -225,6 +234,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 org_id=UserSessionUtils.get_organization_id(request),
                 user_id=tool.created_by.user_id,
                 document_id=document_id,
+                usage_kwargs=usage_kwargs.copy(),
             )
 
         if unique_id:
@@ -256,7 +266,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
         if not run_id:
             # Generate a run_id
-            run_id = CommonUtils.get_uuid()
+            run_id = CommonUtils.generate_uuid()
 
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,
@@ -287,7 +297,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
         if not run_id:
             # Generate a run_id
-            run_id = CommonUtils.get_uuid()
+            run_id = CommonUtils.generate_uuid()
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             tool_id=tool_id,
             org_id=UserSessionUtils.get_organization_id(request),
@@ -449,9 +459,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         try:
             # Delete the document record
             document.delete()
-
-            # Delete the file
+            # Delete the files
             FileManagerHelper.delete_file(file_system, path, file_name)
+            # Directories to delete the text files
+            directories = ["extract/", "summarize/"]
+            FileManagerHelper.delete_related_files(
+                file_system, path, file_name, directories
+            )
             return Response(
                 {"data": "File deleted succesfully."},
                 status=status.HTTP_200_OK,

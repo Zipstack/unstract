@@ -8,22 +8,27 @@ from utils.constants import Common
 from workflow_manager.endpoint.constants import (
     BigQuery,
     DBConnectionClass,
-    Snowflake,
     TableColumns,
 )
-from workflow_manager.endpoint.exceptions import BigQueryTableNotFound
+from workflow_manager.endpoint.db_connector_helper import DBConnectorQueryHelper
+from workflow_manager.endpoint.exceptions import (
+    BigQueryTableNotFound,
+    UnstractDBException,
+)
 from workflow_manager.workflow.enums import AgentName, ColumnModes
 
 from unstract.connectors.databases import connectors as db_connectors
+from unstract.connectors.databases.exceptions import UnstractDBConnectorException
 from unstract.connectors.databases.unstract_db import UnstractDB
+from unstract.connectors.exceptions import ConnectorError
 
 logger = logging.getLogger(__name__)
 
 
 class DatabaseUtils:
     @staticmethod
-    def make_sql_values_for_query(
-        values: dict[str, Any], column_types: dict[str, str], cls: Any = None
+    def get_sql_values_for_query(
+        values: dict[str, Any], column_types: dict[str, str], cls_name: str
     ) -> dict[str, str]:
         """Making Sql Columns and Values for Query.
 
@@ -51,32 +56,22 @@ class DatabaseUtils:
                     insert into the table accordingly
         """
         sql_values: dict[str, Any] = {}
-
         for column in values:
-            if cls == DBConnectionClass.SNOWFLAKE:
+            if cls_name == DBConnectionClass.SNOWFLAKE:
                 col = column.lower()
                 type_x = column_types[col]
-                if type_x in Snowflake.COLUMN_TYPES:
-                    sql_values[column] = f"'{values[column]}'"
-                elif type_x == "VARIANT":
+                if type_x == "VARIANT":
                     values[column] = values[column].replace("'", "\\'")
                     sql_values[column] = f"parse_json($${values[column]}$$)"
                 else:
                     sql_values[column] = f"{values[column]}"
-            elif cls == DBConnectionClass.BIGQUERY:
-                col = column.lower()
-                type_x = column_types[col]
-                if type_x in BigQuery.COLUMN_TYPES:
-                    sql_values[column] = f"{type_x}('{values[column]}')"
-                else:
-                    sql_values[column] = f"'{values[column]}'"
             else:
                 # Default to Other SQL DBs
                 # TODO: Handle numeric types with no quotes
-                sql_values[column] = f"'{values[column]}'"
+                sql_values[column] = f"{values[column]}"
         if column_types.get("id"):
             uuid_id = str(uuid.uuid4())
-            sql_values["id"] = f"'{uuid_id}'"
+            sql_values["id"] = f"{uuid_id}"
         return sql_values
 
     @staticmethod
@@ -96,7 +91,7 @@ class DatabaseUtils:
 
     @staticmethod
     def get_column_types(
-        cls: Any,
+        cls_name: Any,
         table_name: str,
         connector_id: str,
         connector_settings: dict[str, Any],
@@ -118,7 +113,7 @@ class DatabaseUtils:
         """
         column_types: dict[str, str] = {}
         try:
-            if cls == DBConnectionClass.SNOWFLAKE:
+            if cls_name == DBConnectionClass.SNOWFLAKE:
                 query = f"describe table {table_name}"
                 results = DatabaseUtils.execute_and_fetch_data(
                     connector_id=connector_id,
@@ -127,7 +122,7 @@ class DatabaseUtils:
                 )
                 for column in results:
                     column_types[column[0].lower()] = column[1].split("(")[0]
-            elif cls == DBConnectionClass.BIGQUERY:
+            elif cls_name == DBConnectionClass.BIGQUERY:
                 bigquery_table_name = str.lower(table_name).split(".")
                 if len(bigquery_table_name) != BigQuery.TABLE_NAME_SIZE:
                     raise BigQueryTableNotFound()
@@ -223,8 +218,8 @@ class DatabaseUtils:
         return values
 
     @staticmethod
-    def get_sql_columns_and_values_for_query(
-        engine: Any,
+    def get_sql_query_data(
+        cls_name: str,
         connector_id: str,
         connector_settings: dict[str, Any],
         table_name: str,
@@ -234,7 +229,6 @@ class DatabaseUtils:
         provided values and table schema.
 
         Args:
-            engine (Any): The database engine.
             connector_id: The connector id of the connector provided
             connector_settings: Connector settings provided by user
             table_name (str): The name of the target table for the insert query.
@@ -252,26 +246,26 @@ class DatabaseUtils:
             - For other SQL databases, it uses default SQL generation
                 based on column types.
         """
-        class_name = engine.__class__.__name__
         column_types: dict[str, str] = DatabaseUtils.get_column_types(
-            cls=class_name,
+            cls_name=cls_name,
             table_name=table_name,
             connector_id=connector_id,
             connector_settings=connector_settings,
         )
-        sql_columns_and_values = DatabaseUtils.make_sql_values_for_query(
+        sql_columns_and_values = DatabaseUtils.get_sql_values_for_query(
             values=values,
             column_types=column_types,
-            cls=class_name,
+            cls_name=cls_name,
         )
         return sql_columns_and_values
 
     @staticmethod
     def execute_write_query(
+        db_class: UnstractDB,
         engine: Any,
         table_name: str,
         sql_keys: list[str],
-        sql_values: list[str],
+        sql_values: Any,
     ) -> None:
         """Execute Insert Query.
 
@@ -284,22 +278,30 @@ class DatabaseUtils:
         - Snowflake does not support INSERT INTO ... VALUES ...
           syntax when VARIANT columns are present (JSON).
           So we need to use INSERT INTO ... SELECT ... syntax
+        - sql values can contain data with single quote. It needs to
         """
-        sql = (
-            f"INSERT INTO {table_name} ({','.join(sql_keys)}) "
-            f"SELECT {','.join(sql_values)}"
+        cls_name = db_class.__class__.__name__
+        sql = DBConnectorQueryHelper.build_sql_insert_query(
+            cls_name=cls_name, table_name=table_name, sql_keys=sql_keys
         )
-        logger.debug(f"insertng into table with: {sql} query")
+        logger.debug(f"inserting into table {table_name} with: {sql} query")
+
+        sql_values = DBConnectorQueryHelper.prepare_sql_values(
+            cls_name=cls_name, sql_values=sql_values, sql_keys=sql_keys
+        )
+        logger.debug(f"sql_values: {sql_values}")
+
         try:
-            if hasattr(engine, "cursor"):
-                with engine.cursor() as cursor:
-                    cursor.execute(sql)
-                engine.commit()
-            else:
-                engine.query(sql)
-        except Exception as e:
-            logger.error(f"Error while writing data: {str(e)}")
-            raise e
+            db_class.execute_query(
+                engine=engine,
+                sql_query=sql,
+                sql_values=sql_values,
+                table_name=table_name,
+                sql_keys=sql_keys,
+            )
+        except UnstractDBConnectorException as e:
+            raise UnstractDBException(detail=e.detail) from e
+        logger.debug(f"sucessfully inserted into table {table_name} with: {sql} query")
 
     @staticmethod
     def get_db_class(
@@ -315,7 +317,10 @@ class DatabaseUtils:
     ) -> Any:
         connector = db_connectors[connector_id][Common.METADATA][Common.CONNECTOR]
         connector_class: UnstractDB = connector(connector_settings)
-        return connector_class.execute(query=query)
+        try:
+            return connector_class.execute(query=query)
+        except ConnectorError as e:
+            raise UnstractDBException(detail=e.message) from e
 
     @staticmethod
     def create_table_if_not_exists(
@@ -328,7 +333,6 @@ class DatabaseUtils:
 
         Args:
             class_name (UnstractDB): Type of Unstract DB connector
-            engine (Any): _description_
             table_name (str): _description_
             database_entry (dict[str, Any]): _description_
 
@@ -338,62 +342,9 @@ class DatabaseUtils:
         sql = DBConnectorQueryHelper.create_table_query(
             conn_cls=db_class, table=table_name, database_entry=database_entry
         )
-        logger.debug(f"creating table with: {sql} query")
+        logger.debug(f"creating table {table_name} with: {sql} query")
         try:
-            if hasattr(engine, "cursor"):
-                with engine.cursor() as cursor:
-                    cursor.execute(sql)
-                engine.commit()
-            else:
-                engine.query(sql)
-        except Exception as e:
-            logger.error(f"Error while creating table: {str(e)}")
-            raise e
-
-
-class DBConnectorQueryHelper:
-    """A class that helps to generate query for connector table operations."""
-
-    @staticmethod
-    def create_table_query(
-        conn_cls: UnstractDB, table: str, database_entry: dict[str, Any]
-    ) -> Any:
-        sql_query = ""
-        """Generate a SQL query to create a table, based on the provided
-        database entry.
-
-        Args:
-            conn_cls (str): The database connector class.
-                Should be one of 'BIGQUERY', 'SNOWFLAKE', or other.
-            table (str): The name of the table to be created.
-            database_entry (dict[str, Any]):
-                A dictionary containing column names as keys
-                and their corresponding values.
-
-                These values are used to determine the data types,
-                for the columns in the table.
-
-        Returns:
-            str: A SQL query string to create a table with the specified name,
-            and column definitions.
-
-        Note:
-            - Each conn_cls have it's implementation for SQL create table query
-            Based on the implementation, a base SQL create table query will be
-            created containing Permanent columns
-            - Each conn_cls also has a mapping to convert python datatype to
-            corresponding column type (string, VARCHAR etc)
-            - keys in database_entry will be converted to column type, and
-            column values will be the valus in database_entry
-            - base SQL create table will be appended based column type and
-            values, and generates a complete SQL create table query
-        """
-        create_table_query = conn_cls.get_create_table_query(table=table)
-        sql_query += create_table_query
-
-        for key, val in database_entry.items():
-            if key not in TableColumns.PERMANENT_COLUMNS:
-                sql_type = conn_cls.sql_to_db_mapping(val)
-                sql_query += f"{key} {sql_type}, "
-
-        return sql_query.rstrip(", ") + ");"
+            db_class.execute_query(engine=engine, sql_query=sql, sql_values=None)
+        except UnstractDBConnectorException as e:
+            raise UnstractDBException(detail=e.detail) from e
+        logger.debug(f"successfully created table {table_name} with: {sql} query")

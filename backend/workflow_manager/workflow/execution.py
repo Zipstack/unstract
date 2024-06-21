@@ -98,6 +98,11 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.project_settings = project_settings
         self.pipeline_id = pipeline_id
         self.execution_id = str(workflow_execution.id)
+        logger.info(
+            f"Executing for Pipeline ID: {pipeline_id}, "
+            f"workflow ID: {self.workflow_id}, execution ID: {self.execution_id}, "
+            f"web socket messaging channel ID: {self.execution_log_id}"
+        )
 
         self.compilation_result = self.compile_workflow(execution_id=self.execution_id)
 
@@ -108,14 +113,13 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             raise InvalidAPIRequest("File shouldn't be empty")
         tool_instance.metadata[JsonSchemaKey.ROOT_FOLDER] = execution_path
 
-    # TODO: Review and remove log_guid if its unused
     @staticmethod
     def create_workflow_execution(
         workflow_id: str,
         pipeline_id: Optional[str] = None,
         single_step: bool = False,
         scheduled: bool = False,
-        log_guid: Optional[str] = None,
+        log_events_id: Optional[str] = None,
         execution_id: Optional[str] = None,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
     ) -> WorkflowExecution:
@@ -129,8 +133,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             if single_step
             else WorkflowExecution.Type.COMPLETE
         )
-        log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
         execution_log_id = log_events_id if log_events_id else pipeline_id
+        # TODO: Using objects.create() instead
         workflow_execution = WorkflowExecution(
             pipeline_id=pipeline_id,
             workflow_id=workflow_id,
@@ -165,14 +169,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
         execution.save()
 
-    def __execution_error(
-        self,
-        error_message: str,
-        detailed_message: str,
-        execution_time: Optional[float] = None,
-    ) -> WorkflowExecutionError:
-        return WorkflowExecutionError(detail=error_message)
-
     def has_successful_compilation(self) -> bool:
         return self.compilation_result["success"] is True
 
@@ -195,10 +191,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                 status=ExecutionStatus.ERROR,
                 error=self.compilation_result["problems"][0],
             )
-            raise self.__execution_error(
-                error_message=self.compilation_result["problems"][0],
-                detailed_message=self.compilation_result["problems"][0],
-            )
+            raise WorkflowExecutionError(self.compilation_result["problems"][0])
 
     def execute(self, single_step: bool = False) -> None:
         execution_type = ExecutionType.COMPLETE
@@ -224,23 +217,18 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                     end_time = time.time()
                     execution_time = end_time - start_time
                     message = str(exception)[:EXECUTION_ERROR_LENGTH]
-                    logger.info(f"Execution {self.execution_id} Error {exception}")
-                    raise self.__execution_error(
-                        error_message=message,
-                        detailed_message=message,
-                        execution_time=execution_time,
+                    logger.info(
+                        f"Execution {self.execution_id} in {execution_time}s, "
+                        f" Error {exception}"
                     )
+                    raise WorkflowExecutionError(message) from exception
             else:
                 error_message = f"Unknown Execution Method {self.execution_mode}"
-                raise self.__execution_error(
-                    error_message=error_message, detailed_message=error_message
-                )
+                raise WorkflowExecutionError(error_message)
 
         else:
             error_message = f"Errors while compiling workflow {self.compilation_result['problems'][0]}"  # noqa
-            raise self.__execution_error(
-                error_message=error_message, detailed_message=error_message
-            )
+            raise WorkflowExecutionError(error_message)
 
     def publish_initial_workflow_logs(self, total_files: int) -> None:
         """Publishes the initial logs for the workflow.
@@ -270,8 +258,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             LogState.SUCCESS, "Executed successfully", LogComponent.WORKFLOW
         )
         self.publish_log(
-            f"Execution completed successfully for the files {processed_files} "
-            f"out of {total_files}"
+            f"Execution completed for {processed_files} files out of {total_files}"
         )
 
     def publish_initial_tool_execution_logs(

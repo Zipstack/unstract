@@ -52,6 +52,7 @@ class WorkflowExecution(BaseModel):
     execution_log_id = models.CharField(
         default="", editable=False, db_comment="Execution log events Id"
     )
+    # TODO: Restrict with an enum
     status = models.CharField(default="", db_comment="Current status of execution")
     error_message = models.CharField(
         max_length=EXECUTION_ERROR_LENGTH,
@@ -63,3 +64,13 @@ class WorkflowExecution(BaseModel):
     execution_time = models.FloatField(
         default=0, db_comment="execution time in seconds"
     )
+
+    def __str__(self) -> str:
+        return (
+            f"Workflow execution: {self.id} ("
+            f"pipeline ID: {self.pipeline_id}, "
+            f"workflow iD: {self.workflow_id}, "
+            f"execution method: {self.execution_method}, "
+            f"status: {self.status}, "
+            f"error message: {self.error_message})"
+        )

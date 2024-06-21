@@ -47,7 +47,7 @@ repos:
   #     - id: actionlint-docker
   #       args: [-ignore, 'label ".+" is unknown']
   - repo: https://github.com/psf/black
-    rev: 24.4.0
+    rev: 24.4.2
     hooks:
       - id: black
         args: [--config=pyproject.toml, -l 88]
@@ -57,7 +57,7 @@ repos:
               unstract/flags/src/unstract/flags/evaluation_.*\.py|
           )$
   - repo: https://github.com/pycqa/flake8
-    rev: 7.0.0
+    rev: 7.1.0
     hooks:
       - id: flake8
         args: [--max-line-length=88]
@@ -89,14 +89,14 @@ repos:
     hooks:
       - id: docformatter
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.15.2
+    rev: v3.16.0
     hooks:
       - id: pyupgrade
         entry: pyupgrade --py39-plus --keep-runtime-typing
         types:
           - python
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.2
+    rev: v8.18.4
     hooks:
       - id: gitleaks
   # - repo: https://github.com/hadolint/hadolint
@@ -133,14 +133,14 @@ repos:
     hooks:
       - id: htmlhint
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.39.0
+    rev: v0.41.0
     hooks:
       - id: markdownlint
         args: [--disable, MD013]
       - id: markdownlint-fix
         args: [--disable, MD013]
   - repo: https://github.com/pdm-project/pdm
-    rev: 2.15.0
+    rev: 2.15.4
     hooks:
       - id: pdm-lock-check
   # - repo: local

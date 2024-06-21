@@ -1,3 +1,4 @@
+import time
 import traceback
 from enum import Enum
 from json import JSONDecodeError
@@ -32,6 +33,12 @@ from unstract.core.pubsub_helper import LogPublisher
 POS_TEXT_PATH = "/tmp/pos.txt"
 USE_UNSTRACT_PROMPT = True
 MAX_RETRIES = 3
+NO_CONTEXT_ERROR = (
+    "Couldn't fetch context from vector DB. "
+    "This happens usually due to a delay by the Vector DB "
+    "provider to confirm writes to db. "
+    "Please try again after some time"
+)
 
 PG_BE_HOST = EnvLoader.get_env_or_die("PG_BE_HOST")
 PG_BE_PORT = EnvLoader.get_env_or_die("PG_BE_PORT")
@@ -166,6 +173,7 @@ def prompt_processor() -> Any:
     payload: dict[Any, Any] = request.json
     if not payload:
         raise NoPayloadError
+    tool_settings = payload.get(PSKeys.TOOL_SETTINGS, {})
     outputs = payload.get(PSKeys.OUTPUTS)
     tool_id: str = payload.get(PSKeys.TOOL_ID, "")
     run_id: str = payload.get(PSKeys.RUN_ID, "")
@@ -191,8 +199,7 @@ def prompt_processor() -> Any:
         promptx = output[PSKeys.PROMPT]
         chunk_size = output[PSKeys.CHUNK_SIZE]
         util = PromptServiceBaseTool(log_level=LogLevel.INFO, platform_key=platform_key)
-        tool_index = Index(tool=util)
-        adapter_instance_id = output[PSKeys.LLM]
+        index = Index(tool=util)
 
         if is_active is False:
             app.logger.info(f"[{tool_id}] Skipping inactive prompt: {prompt_name}")
@@ -229,7 +236,7 @@ def prompt_processor() -> Any:
             structured_output, variable_names, output, promptx
         )
 
-        doc_id = tool_index.generate_file_id(
+        doc_id = index.generate_file_id(
             tool_id=tool_id,
             file_hash=file_hash,
             vector_db=output[PSKeys.VECTOR_DB],
@@ -256,13 +263,13 @@ def prompt_processor() -> Any:
             llm = LLM(
                 tool=util,
                 adapter_instance_id=adapter_instance_id,
-                usage_kwargs=usage_kwargs,
+                usage_kwargs=usage_kwargs.copy(),
             )
 
             embedding = Embedding(
                 tool=util,
                 adapter_instance_id=output[PSKeys.EMBEDDING],
-                usage_kwargs=usage_kwargs,
+                usage_kwargs=usage_kwargs.copy(),
             )
 
             vector_db = VectorDB(
@@ -285,267 +292,53 @@ def prompt_processor() -> Any:
                 "Unable to obtain LLM / embedding / vectorDB",
             )
             return APIError(message=msg)
+        try:
+            vector_index = vector_db.get_vector_store_index()
 
-        vector_index = vector_db.get_vector_store_index()
-
-        context = ""
-        if output[PSKeys.CHUNK_SIZE] == 0:
-            # We can do this only for chunkless indexes
-            context: Optional[str] = tool_index.get_text_from_index(
-                embedding_instance_id=output[PSKeys.EMBEDDING],
-                vector_db_instance_id=output[PSKeys.VECTOR_DB],
-                doc_id=doc_id,
-                usage_kwargs=usage_kwargs,
-            )
-            if context is None:
-                # TODO: Obtain user set name for vector DB
-                msg = "Couldn't fetch context from vector DB"
-                app.logger.error(
-                    f"{msg} {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
+            context = ""
+            if output[PSKeys.CHUNK_SIZE] == 0:
+                # We can do this only for chunkless indexes
+                context: Optional[str] = index.query_index(
+                    embedding_instance_id=output[PSKeys.EMBEDDING],
+                    vector_db_instance_id=output[PSKeys.VECTOR_DB],
+                    doc_id=doc_id,
+                    usage_kwargs=usage_kwargs,
                 )
-                _publish_log(
-                    log_events_id,
-                    {
-                        "tool_id": tool_id,
-                        "prompt_key": prompt_name,
-                        "doc_name": doc_name,
-                    },
-                    LogLevel.ERROR,
-                    RunLevel.RUN,
-                    msg,
-                )
-                raise APIError(message=msg)
-            # TODO: Use vectorDB name when available
-            _publish_log(
-                log_events_id,
-                {
-                    "tool_id": tool_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevel.DEBUG,
-                RunLevel.RUN,
-                "Fetched context from vector DB",
-            )
-
-        if chunk_size == 0:
-            _publish_log(
-                log_events_id,
-                {
-                    "tool_id": tool_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevel.INFO,
-                RunLevel.RUN,
-                "Retrieving answer from LLM",
-            )
-            answer = construct_and_run_prompt(
-                output,
-                llm,
-                context,
-                "promptx",
-            )
-        else:
-            answer = "NA"
-            _publish_log(
-                log_events_id,
-                {
-                    "tool_id": tool_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevel.INFO,
-                RunLevel.RUN,
-                "Retrieving context from adapter",
-            )
-
-            if output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SIMPLE:
-                answer, context = run_retrieval(
-                    output, doc_id, llm, vector_index, PSKeys.SIMPLE
-                )
-            elif output[PSKeys.RETRIEVAL_STRATEGY] == PSKeys.SUBQUESTION:
-                answer, context = run_retrieval(
-                    output, doc_id, llm, vector_index, PSKeys.SUBQUESTION
-                )
-            else:
-                app.logger.info(
-                    "Invalid retrieval strategy "
-                    f"passed {output[PSKeys.RETRIEVAL_STRATEGY]}"
-                )
-
-            _publish_log(
-                log_events_id,
-                {
-                    "tool_id": tool_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevel.DEBUG,
-                RunLevel.RUN,
-                "Retrieved context from adapter",
-            )
-
-        _publish_log(
-            log_events_id,
-            {
-                "tool_id": tool_id,
-                "prompt_key": prompt_name,
-                "doc_name": doc_name,
-            },
-            LogLevel.INFO,
-            RunLevel.RUN,
-            f"Processing prompt type: {output[PSKeys.TYPE]}",
-        )
-
-        if output[PSKeys.TYPE] == PSKeys.NUMBER:
-            if answer.lower() == "na":
-                structured_output[output[PSKeys.NAME]] = None
-            else:
-                # TODO: Extract these prompts as constants after pkging
-                prompt = f"Extract the number from the following \
-                    text:\n{answer}\n\nOutput just the number. \
-                    If the number is expressed in millions \
-                    or thousands, expand the number to its numeric value \
-                    The number should be directly assignable\
-                    to a numeric variable.\
-                    It should not have any commas, \
-                    percentages or other grouping \
-                    characters. No explanation is required.\
-                    If you cannot extract the number, output 0."
-                answer = run_completion(
-                    llm=llm,
-                    prompt=prompt,
-                )
-                try:
-                    structured_output[output[PSKeys.NAME]] = float(answer)
-                except Exception as e:
-                    app.logger.info(
-                        f"Error parsing response (to numeric, float): {e}",
-                        LogLevel.ERROR,
-                    )
-                    structured_output[output[PSKeys.NAME]] = None
-        elif output[PSKeys.TYPE] == PSKeys.EMAIL:
-            if answer.lower() == "na":
-                structured_output[output[PSKeys.NAME]] = None
-            else:
-                prompt = f'Extract the email from the following text:\n{answer}\n\nOutput just the email. \
-                    The email should be directly assignable to a string variable. \
-                        No explanation is required. If you cannot extract the email, output "NA".'  # noqa
-                answer = run_completion(
-                    llm=llm,
-                    prompt=prompt,
-                )
-                structured_output[output[PSKeys.NAME]] = answer
-        elif output[PSKeys.TYPE] == PSKeys.DATE:
-            if answer.lower() == "na":
-                structured_output[output[PSKeys.NAME]] = None
-            else:
-                prompt = f'Extract the date from the following text:\n{answer}\n\nOutput just the date.\
-                      The date should be in ISO date time format. No explanation is required. \
-                        The date should be directly assignable to a date variable. \
-                            If you cannot convert the string into a date, output "NA".'  # noqa
-                answer = run_completion(
-                    llm=llm,
-                    prompt=prompt,
-                )
-                structured_output[output[PSKeys.NAME]] = answer
-
-        elif output[PSKeys.TYPE] == PSKeys.BOOLEAN:
-            if answer.lower() == "na":
-                structured_output[output[PSKeys.NAME]] = None
-            else:
-                prompt = f'Extract yes/no from the following text:\n{answer}\n\n\
-                    Output in single word.\
-                    If the context is trying to convey that the answer is true, \
-                    then return "yes", else return "no".'
-                answer = run_completion(
-                    llm=llm,
-                    prompt=prompt,
-                )
-                if answer.lower() == "yes":
-                    structured_output[output[PSKeys.NAME]] = True
-                else:
-                    structured_output[output[PSKeys.NAME]] = False
-        elif output[PSKeys.TYPE] == PSKeys.JSON:
-            if answer.lower() == "[]" or answer.lower() == "na":
-                structured_output[output[PSKeys.NAME]] = None
-            else:
-                prompt = f"Convert the following text into valid JSON string: \
-                    \n{answer}\n\n The JSON string should be able to be parsed \
-                    into a Python dictionary. \
-                    Output just the JSON string. No explanation is required. \
-                    If you cannot extract the JSON string, output {{}}"
-                answer = run_completion(
-                    llm=llm,
-                    prompt=prompt,
-                )
-                try:
-                    structured_output[output[PSKeys.NAME]] = json.loads(answer)
-                except JSONDecodeError as e:
-                    app.logger.info(f"JSON format error : {answer}", LogLevel.ERROR)
-                    app.logger.info(
-                        f"Error parsing response (to json): {e}", LogLevel.ERROR
-                    )
-                    structured_output[output[PSKeys.NAME]] = {}
-        else:
-            structured_output[output[PSKeys.NAME]] = answer
-
-        # If there is a trailing '\n' remove it
-        if isinstance(structured_output[output[PSKeys.NAME]], str):
-            structured_output[output[PSKeys.NAME]] = structured_output[
-                output[PSKeys.NAME]
-            ].rstrip("\n")
-
-        # Challenge condition
-        if "enable_challenge" in output and output["enable_challenge"]:
-            challenge_plugin: dict[str, Any] = plugins.get("challenge", {})
-            try:
-                if challenge_plugin:
-                    _publish_log(
-                        log_events_id,
-                        {
-                            "tool_id": tool_id,
-                            "prompt_key": prompt_name,
-                            "doc_name": doc_name,
-                        },
-                        LogLevel.INFO,
-                        RunLevel.CHALLENGE,
-                        "Challenging response",
-                    )
-                    tool_settings: dict[str, Any] = {
-                        PSKeys.PREAMBLE: output[PSKeys.PREAMBLE],
-                        PSKeys.POSTAMBLE: output[PSKeys.POSTAMBLE],
-                        PSKeys.GRAMMAR: output[PSKeys.GRAMMAR],
-                        PSKeys.LLM: adapter_instance_id,
-                        PSKeys.CHALLENGE_LLM: output[PSKeys.CHALLENGE_LLM],
-                    }
-                    challenge_llm = LLM(
-                        tool=util,
-                        adapter_instance_id=output[PSKeys.CHALLENGE_LLM],
+                if not context:
+                    # UN-1288 For Pinecone, we are seeing an inconsistent case where
+                    # query with doc_id fails even though indexing just happened.
+                    # This causes the following retrieve to return no text.
+                    # To rule out any lag on the Pinecone vector DB write,
+                    # the following sleep is added.
+                    # Note: This will not fix the issue. Since this issue is
+                    # inconsistent, and not reproducible easily,
+                    # this is just a safety net.
+                    time.sleep(2)
+                    context: Optional[str] = index.query_index(
+                        embedding_instance_id=output[PSKeys.EMBEDDING],
+                        vector_db_instance_id=output[PSKeys.VECTOR_DB],
+                        doc_id=doc_id,
                         usage_kwargs=usage_kwargs,
                     )
-                    challenge = challenge_plugin["entrypoint_cls"](
-                        challenge_llm=challenge_llm,
-                        run_id=run_id,
-                        context=context,
-                        tool_settings=tool_settings,
-                        output=output,
-                        structured_output=structured_output,
-                        logger=app.logger,
-                        platform_key=platform_key,
-                    )
-                    # Will inline replace the structured output passed.
-                    challenge.run()
-                else:
-                    app.logger.info(
-                        "No challenge plugin found to evaluate prompt: %s",
-                        output["name"],
-                    )
-            except challenge_plugin["exception_cls"] as e:
-                app.logger.error(
-                    "Failed to challenge prompt %s: %s", output["name"], str(e)
-                )
+                    if context is None:
+                        # TODO: Obtain user set name for vector DB
+                        msg = NO_CONTEXT_ERROR
+                        app.logger.error(
+                            f"{msg} {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
+                        )
+                        _publish_log(
+                            log_events_id,
+                            {
+                                "tool_id": tool_id,
+                                "prompt_key": prompt_name,
+                                "doc_name": doc_name,
+                            },
+                            LogLevel.ERROR,
+                            RunLevel.RUN,
+                            msg,
+                        )
+                        raise APIError(message=msg)
+                # TODO: Use vectorDB name when available
                 _publish_log(
                     log_events_id,
                     {
@@ -553,20 +346,12 @@ def prompt_processor() -> Any:
                         "prompt_key": prompt_name,
                         "doc_name": doc_name,
                     },
-                    LogLevel.ERROR,
-                    RunLevel.CHALLENGE,
-                    "Error while challenging response",
+                    LogLevel.DEBUG,
+                    RunLevel.RUN,
+                    "Fetched context from vector DB",
                 )
 
-        #
-        # Evaluate the prompt.
-        #
-        if (
-            PSKeys.EVAL_SETTINGS in output
-            and output[PSKeys.EVAL_SETTINGS][PSKeys.EVAL_SETTINGS_EVALUATE]
-        ):
-            eval_plugin: dict[str, Any] = plugins.get("evaluation", {})
-            if eval_plugin:
+            if chunk_size == 0:
                 _publish_log(
                     log_events_id,
                     {
@@ -575,25 +360,221 @@ def prompt_processor() -> Any:
                         "doc_name": doc_name,
                     },
                     LogLevel.INFO,
-                    RunLevel.EVAL,
-                    "Evaluating response",
+                    RunLevel.RUN,
+                    "Retrieving answer from LLM",
                 )
-                try:
-                    evaluator = eval_plugin["entrypoint_cls"](
-                        "",
-                        context,
-                        "",
-                        "",
-                        output,
-                        structured_output,
-                        app.logger,
-                        platform_key,
+                answer = construct_and_run_prompt(
+                    tool_settings=tool_settings,
+                    output=output,
+                    llm=llm,
+                    context=context,
+                    prompt="promptx",
+                )
+            else:
+                answer = "NA"
+                _publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.INFO,
+                    RunLevel.RUN,
+                    "Retrieving context from adapter",
+                )
+
+                retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
+
+                if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
+                    answer, context = run_retrieval(
+                        tool_settings=tool_settings,
+                        output=output,
+                        doc_id=doc_id,
+                        llm=llm,
+                        vector_index=vector_index,
+                        retrieval_type=retrieval_strategy,
                     )
-                    # Will inline replace the structured output passed.
-                    evaluator.run()
-                except eval_plugin["exception_cls"] as e:
+                else:
+                    app.logger.info(
+                        "Invalid retrieval strategy passed: %s",
+                        retrieval_strategy,
+                    )
+
+                _publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.DEBUG,
+                    RunLevel.RUN,
+                    "Retrieved context from adapter",
+                )
+
+            _publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.INFO,
+                RunLevel.RUN,
+                f"Processing prompt type: {output[PSKeys.TYPE]}",
+            )
+
+            if output[PSKeys.TYPE] == PSKeys.NUMBER:
+                if answer.lower() == "na":
+                    structured_output[output[PSKeys.NAME]] = None
+                else:
+                    # TODO: Extract these prompts as constants after pkging
+                    prompt = f"Extract the number from the following \
+                        text:\n{answer}\n\nOutput just the number. \
+                        If the number is expressed in millions \
+                        or thousands, expand the number to its numeric value \
+                        The number should be directly assignable\
+                        to a numeric variable.\
+                        It should not have any commas, \
+                        percentages or other grouping \
+                        characters. No explanation is required.\
+                        If you cannot extract the number, output 0."
+                    answer = run_completion(
+                        llm=llm,
+                        prompt=prompt,
+                    )
+                    try:
+                        structured_output[output[PSKeys.NAME]] = float(answer)
+                    except Exception as e:
+                        app.logger.info(
+                            f"Error parsing response (to numeric, float): {e}",
+                            LogLevel.ERROR,
+                        )
+                        structured_output[output[PSKeys.NAME]] = None
+            elif output[PSKeys.TYPE] == PSKeys.EMAIL:
+                if answer.lower() == "na":
+                    structured_output[output[PSKeys.NAME]] = None
+                else:
+                    prompt = f'Extract the email from the following text:\n{answer}\n\nOutput just the email. \
+                        The email should be directly assignable to a string variable. \
+                            No explanation is required. If you cannot extract the email, output "NA".'  # noqa
+                    answer = run_completion(
+                        llm=llm,
+                        prompt=prompt,
+                    )
+                    structured_output[output[PSKeys.NAME]] = answer
+            elif output[PSKeys.TYPE] == PSKeys.DATE:
+                if answer.lower() == "na":
+                    structured_output[output[PSKeys.NAME]] = None
+                else:
+                    prompt = f'Extract the date from the following text:\n{answer}\n\nOutput just the date.\
+                          The date should be in ISO date time format. No explanation is required. \
+                            The date should be directly assignable to a date variable. \
+                                If you cannot convert the string into a date, output "NA".'  # noqa
+                    answer = run_completion(
+                        llm=llm,
+                        prompt=prompt,
+                    )
+                    structured_output[output[PSKeys.NAME]] = answer
+
+            elif output[PSKeys.TYPE] == PSKeys.BOOLEAN:
+                if answer.lower() == "na":
+                    structured_output[output[PSKeys.NAME]] = None
+                else:
+                    prompt = f'Extract yes/no from the following text:\n{answer}\n\n\
+                        Output in single word.\
+                        If the context is trying to convey that the answer is true, \
+                        then return "yes", else return "no".'
+                    answer = run_completion(
+                        llm=llm,
+                        prompt=prompt,
+                    )
+                    if answer.lower() == "yes":
+                        structured_output[output[PSKeys.NAME]] = True
+                    else:
+                        structured_output[output[PSKeys.NAME]] = False
+            elif output[PSKeys.TYPE] == PSKeys.JSON:
+                if answer.lower() == "[]" or answer.lower() == "na":
+                    structured_output[output[PSKeys.NAME]] = None
+                else:
+                    try:
+                        structured_output[output[PSKeys.NAME]] = json.loads(answer)
+                    except JSONDecodeError:
+                        prompt = f"Convert the following text into valid JSON string: \
+                            \n{answer}\n\n The JSON string should be able to be parsed \
+                            into a Python dictionary. \
+                            Output just the JSON string. No explanation is required. \
+                            If you cannot extract the JSON string, output {{}}"
+                        try:
+                            answer = run_completion(
+                                llm=llm,
+                                prompt=prompt,
+                            )
+                            structured_output[output[PSKeys.NAME]] = json.loads(answer)
+                        except JSONDecodeError as e:
+                            app.logger.info(
+                                f"JSON format error : {answer}", LogLevel.ERROR
+                            )
+                            app.logger.info(
+                                f"Error parsing response (to json): {e}",
+                                LogLevel.ERROR,
+                            )
+                            structured_output[output[PSKeys.NAME]] = {}
+
+            else:
+                structured_output[output[PSKeys.NAME]] = answer
+
+            # If there is a trailing '\n' remove it
+            if isinstance(structured_output[output[PSKeys.NAME]], str):
+                structured_output[output[PSKeys.NAME]] = structured_output[
+                    output[PSKeys.NAME]
+                ].rstrip("\n")
+
+            # Challenge condition
+            if tool_settings.get("enable_challenge"):
+                challenge_plugin: dict[str, Any] = plugins.get("challenge", {})
+                try:
+                    if challenge_plugin:
+                        _publish_log(
+                            log_events_id,
+                            {
+                                "tool_id": tool_id,
+                                "prompt_key": prompt_name,
+                                "doc_name": doc_name,
+                            },
+                            LogLevel.INFO,
+                            RunLevel.CHALLENGE,
+                            "Challenging response",
+                        )
+                        challenge_llm = LLM(
+                            tool=util,
+                            adapter_instance_id=tool_settings[PSKeys.CHALLENGE_LLM],
+                            usage_kwargs=usage_kwargs,
+                        )
+                        challenge = challenge_plugin["entrypoint_cls"](
+                            llm=llm,
+                            challenge_llm=challenge_llm,
+                            run_id=run_id,
+                            context=context,
+                            tool_settings=tool_settings,
+                            output=output,
+                            structured_output=structured_output,
+                            logger=app.logger,
+                            platform_key=platform_key,
+                        )
+                        # Will inline replace the structured output passed.
+                        challenge.run()
+                    else:
+                        app.logger.info(
+                            "No challenge plugin found to evaluate prompt: %s",
+                            output["name"],
+                        )
+                except challenge_plugin["exception_cls"] as e:
                     app.logger.error(
-                        f'Failed to evaluate prompt {output["name"]}: {str(e)}'
+                        "Failed to challenge prompt %s: %s",
+                        output["name"],
+                        str(e),
                     )
                     _publish_log(
                         log_events_id,
@@ -603,10 +584,19 @@ def prompt_processor() -> Any:
                             "doc_name": doc_name,
                         },
                         LogLevel.ERROR,
-                        RunLevel.EVAL,
-                        "Error while evaluation",
+                        RunLevel.CHALLENGE,
+                        "Error while challenging response",
                     )
-                else:
+
+            #
+            # Evaluate the prompt.
+            #
+            if (
+                PSKeys.EVAL_SETTINGS in output
+                and output[PSKeys.EVAL_SETTINGS][PSKeys.EVAL_SETTINGS_EVALUATE]
+            ):
+                eval_plugin: dict[str, Any] = plugins.get("evaluation", {})
+                if eval_plugin:
                     _publish_log(
                         log_events_id,
                         {
@@ -614,15 +604,56 @@ def prompt_processor() -> Any:
                             "prompt_key": prompt_name,
                             "doc_name": doc_name,
                         },
-                        LogLevel.DEBUG,
+                        LogLevel.INFO,
                         RunLevel.EVAL,
-                        "Evaluation completed",
+                        "Evaluating response",
                     )
-            else:
-                app.logger.info(
-                    f'No eval plugin found to evaluate prompt: {output["name"]}'  # noqa: E501
-                )
-
+                    try:
+                        evaluator = eval_plugin["entrypoint_cls"](
+                            "",
+                            context,
+                            "",
+                            "",
+                            output,
+                            structured_output,
+                            app.logger,
+                            platform_key,
+                        )
+                        # Will inline replace the structured output passed.
+                        evaluator.run()
+                    except eval_plugin["exception_cls"] as e:
+                        app.logger.error(
+                            f'Failed to evaluate prompt {output["name"]}: {str(e)}'
+                        )
+                        _publish_log(
+                            log_events_id,
+                            {
+                                "tool_id": tool_id,
+                                "prompt_key": prompt_name,
+                                "doc_name": doc_name,
+                            },
+                            LogLevel.ERROR,
+                            RunLevel.EVAL,
+                            "Error while evaluation",
+                        )
+                    else:
+                        _publish_log(
+                            log_events_id,
+                            {
+                                "tool_id": tool_id,
+                                "prompt_key": prompt_name,
+                                "doc_name": doc_name,
+                            },
+                            LogLevel.DEBUG,
+                            RunLevel.EVAL,
+                            "Evaluation completed",
+                        )
+                else:
+                    app.logger.info(
+                        f'No eval plugin found to evaluate prompt: {output["name"]}'  # noqa: E501
+                    )
+        finally:
+            vector_db.close()
     _publish_log(
         log_events_id,
         {"tool_id": tool_id, "doc_name": doc_name},
@@ -658,6 +689,7 @@ def prompt_processor() -> Any:
 
 
 def run_retrieval(  # type:ignore
+    tool_settings: dict[str, Any],
     output: dict[str, Any],
     doc_id: str,
     llm: LLM,
@@ -665,10 +697,10 @@ def run_retrieval(  # type:ignore
     retrieval_type: str,
 ) -> tuple[str, str]:
     prompt = construct_prompt_for_engine(
-        preamble=output["preamble"],
-        prompt=output["promptx"],
-        postamble=output["postamble"],
-        grammar_list=output["grammar"],
+        preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
+        prompt=output[PSKeys.PROMPTX],
+        postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
+        grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
     )
     if retrieval_type is PSKeys.SUBQUESTION:
         subq_prompt = (
@@ -681,11 +713,23 @@ def run_retrieval(  # type:ignore
         )
     context = _retrieve_context(output, doc_id, vector_index, prompt)
 
+    if not context:
+        # UN-1288 For Pinecone, we are seeing an inconsistent case where
+        # query with doc_id fails even though indexing just happened.
+        # This causes the following retrieve to return no text.
+        # To rule out any lag on the Pinecone vector DB write,
+        # the following sleep is added
+        # Note: This will not fix the issue. Since this issue is inconsistent
+        # and not reproducible easily, this is just a safety net.
+        time.sleep(2)
+        context = _retrieve_context(output, doc_id, vector_index, prompt)
+
     answer = construct_and_run_prompt(  # type:ignore
-        output,
-        llm,
-        context,
-        "promptx",
+        tool_settings=tool_settings,
+        output=output,
+        llm=llm,
+        context=context,
+        prompt="promptx",
     )
 
     return (answer, context)
@@ -706,24 +750,27 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
     nodes = retriever.retrieve(answer)
     text = ""
     for node in nodes:
-        if node.score > 0.6:
+        # ToDo: May have to fine-tune this value for node score or keep it
+        # configurable at the adapter level
+        if node.score > 0:
             text += node.get_content() + "\n"
         else:
-            app.logger.info("Node score is less than 0.6. " f"Ignored: {node.score}")
+            app.logger.info("Node score is less than 0. " f"Ignored: {node.score}")
     return text
 
 
 def construct_and_run_prompt(
+    tool_settings: dict[str, Any],
     output: dict[str, Any],
     llm: LLM,
     context: str,
     prompt: str,
 ) -> tuple[str, dict[str, Any]]:
     prompt = construct_prompt(
-        preamble=output[PSKeys.PREAMBLE],
+        preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
         prompt=output[prompt],
-        postamble=output[PSKeys.POSTAMBLE],
-        grammar_list=output[PSKeys.GRAMMAR],
+        postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
+        grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
         context=context,
     )
     return run_completion(
@@ -737,7 +784,7 @@ def run_completion(
     prompt: str,
 ) -> tuple[str, dict[str, Any]]:
     try:
-        completion = llm.run_completion(prompt)
+        completion = llm.complete(prompt)
 
         answer: str = completion[PSKeys.RESPONSE].text
         return answer
@@ -773,18 +820,23 @@ def extract_variable(
     return promptx
 
 
-def enable_single_pass_extraction() -> None:
-    """Enables single-pass-extraction plugin if available."""
+def enable_plugins() -> None:
+    """Enables plugins if available."""
     single_pass_extration_plugin: dict[str, Any] = plugins.get(
         "single-pass-extraction", {}
     )
+    summarize_plugin: dict[str, Any] = plugins.get("summarize", {})
     if single_pass_extration_plugin:
         single_pass_extration_plugin["entrypoint_cls"](
             app=app, challenge_plugin=plugins.get("challenge", {})
         )
+    if summarize_plugin:
+        summarize_plugin["entrypoint_cls"](
+            app=app,
+        )
 
 
-enable_single_pass_extraction()
+enable_plugins()
 
 
 def log_exceptions(e: HTTPException):
@@ -795,7 +847,7 @@ def log_exceptions(e: HTTPException):
     """
     code = 500
     if hasattr(e, "code"):
-        code = e.code
+        code = e.code or code
 
     if code >= 500:
         message = "{method} {url} {status}\n\n{error}\n\n````{tb}````".format(

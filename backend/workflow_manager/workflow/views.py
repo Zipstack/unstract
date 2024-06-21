@@ -22,10 +22,7 @@ from workflow_manager.workflow.constants import WorkflowKey
 from workflow_manager.workflow.dto import ExecutionResponse
 from workflow_manager.workflow.enums import SchemaEntity, SchemaType
 from workflow_manager.workflow.exceptions import (
-    InvalidRequest,
-    MissingEnvException,
     WorkflowDoesNotExistError,
-    WorkflowExecutionError,
     WorkflowGenerationError,
     WorkflowRegenerationError,
 )
@@ -44,14 +41,6 @@ from workflow_manager.workflow.workflow_helper import (
 from backend.constants import RequestKey
 
 logger = logging.getLogger(__name__)
-
-
-def update_pipeline(pipeline_guid: Optional[str], status: tuple[str, str]) -> Any:
-    if pipeline_guid:
-        pipeline: Pipeline = PipelineProcessor.fetch_pipeline(pipeline_id=pipeline_guid)
-        PipelineProcessor.update_pipeline_status(
-            pipeline=pipeline, is_end=True, status=status
-        )
 
 
 def make_execution_response(response: ExecutionResponse) -> Any:
@@ -207,20 +196,8 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 make_execution_response(execution_response),
                 status=status.HTTP_200_OK,
             )
-        except (InvalidRequest, WorkflowExecutionError) as exception:
-            logger.error(f"Error while executing workflow: {exception}")
-            update_pipeline(pipeline_guid, Pipeline.PipelineStatus.FAILURE)
-            raise exception
-        except MissingEnvException as exception:
-            logger.error(f"Error while executing workflow: {exception}")
-            update_pipeline(pipeline_guid, Pipeline.PipelineStatus.FAILURE)
-            return Response(
-                {"error": "Please check the logs for more details: " + str(exception)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         except Exception as exception:
             logger.error(f"Error while executing workflow: {exception}")
-            update_pipeline(pipeline_guid, Pipeline.PipelineStatus.FAILURE)
             if file_objs and execution_id and workflow_id:
                 DestinationConnector.delete_api_storage_dir(
                     workflow_id=workflow_id, execution_id=execution_id
@@ -245,14 +222,15 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             )
         elif pipeline_guid:
             # pipeline execution
-            update_pipeline(pipeline_guid, Pipeline.PipelineStatus.INPROGRESS)
+            PipelineProcessor.update_pipeline(
+                pipeline_guid, Pipeline.PipelineStatus.INPROGRESS
+            )
             execution_response = WorkflowHelper.complete_execution(
                 workflow=workflow,
                 execution_id=execution_id,
                 pipeline_id=pipeline_guid,
                 hash_values_of_files=hash_values_of_files,
             )
-            update_pipeline(pipeline_guid, Pipeline.PipelineStatus.SUCCESS)
         else:
             execution_response = WorkflowHelper.complete_execution(
                 workflow=workflow,

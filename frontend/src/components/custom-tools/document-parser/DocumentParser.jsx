@@ -1,7 +1,9 @@
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
-import "./DocumentParser.css";
+import { DndProvider } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
 
+import "./DocumentParser.css";
 import {
   promptStudioUpdateStatus,
   promptType,
@@ -11,9 +13,8 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
-import { NotesCard } from "../notes-card/NotesCard";
-import { PromptCard } from "../prompt-card/PromptCard";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { PromptDnd } from "../prompt-card/PrompDnd";
 
 function DocumentParser({
   addPromptInstance,
@@ -200,6 +201,74 @@ function DocumentParser({
       });
   };
 
+  const moveItem = (startIndex, endIndex) => {
+    if (startIndex === endIndex) {
+      return;
+    }
+
+    // Clone details and prompts
+    const updatedPrompts = [...(details?.prompts || [])];
+
+    // Move the item within the updated prompts array
+    const [movedStep] = updatedPrompts.splice(startIndex, 1);
+    updatedPrompts.splice(endIndex, 0, movedStep);
+
+    // Modify the prompts order and update
+    const modifiedDetails = { ...details, prompts: updatedPrompts };
+    updateCustomTool({ details: modifiedDetails });
+
+    // Prepare the body for the POST request
+    const body = {
+      start_sequence_number: details.prompts[startIndex]?.sequence_number,
+      end_sequence_number: details.prompts[endIndex]?.sequence_number,
+      prompt_id: details.prompts[startIndex]?.prompt_id,
+    };
+
+    const requestOptions = {
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/reorder`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: body,
+    };
+
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const data = res?.data || [];
+
+        // Update sequence numbers based on the response
+        handleMoveItemSuccess(updatedPrompts, data);
+      })
+      .catch((err) => {
+        // Revert to the original prompts on error
+        updateCustomTool({
+          details: { ...details, prompts: details?.prompts },
+        });
+        setAlertDetails(handleException(err, "Failed to re-order the prompts"));
+      });
+  };
+
+  const handleMoveItemSuccess = (updatedPrompts, updatedSequenceNums) => {
+    const updatedPromptSequenceNum = updatedPrompts.map((promptItem) => {
+      const newPromptSeqNum = updatedSequenceNums.find(
+        (item) => item?.id === promptItem?.prompt_id
+      );
+      if (newPromptSeqNum) {
+        return {
+          ...promptItem,
+          sequence_number: newPromptSeqNum.sequence_number,
+        };
+      }
+      return promptItem;
+    });
+
+    updateCustomTool({
+      details: { ...details, prompts: updatedPromptSequenceNum },
+    });
+  };
+
   if (!details?.prompts?.length) {
     return (
       <EmptyState
@@ -212,32 +281,24 @@ function DocumentParser({
 
   return (
     <div className="doc-parser-layout">
-      {details?.prompts.map((item) => {
-        return (
-          <div key={item.prompt_id}>
-            <div className="doc-parser-pad-top" />
-            {item.prompt_type === promptType.prompt && (
-              <PromptCard
-                promptDetails={item}
+      <DndProvider backend={HTML5Backend}>
+        {details?.prompts.map((item, index) => {
+          return (
+            <div key={item.prompt_id}>
+              <div className="doc-parser-pad-top" />
+              <PromptDnd
+                item={item}
+                index={index}
                 handleChange={handleChange}
                 handleDelete={handleDelete}
                 updateStatus={updateStatus}
-                updatePlaceHolder="Enter Prompt"
+                moveItem={moveItem}
               />
-            )}
-            {item.prompt_type === promptType.notes && (
-              <NotesCard
-                details={item}
-                handleChange={handleChange}
-                handleDelete={handleDelete}
-                updateStatus={updateStatus}
-                updatePlaceHolder="Enter Notes"
-              />
-            )}
-            <div ref={bottomRef} className="doc-parser-pad-bottom" />
-          </div>
-        );
-      })}
+              <div ref={bottomRef} className="doc-parser-pad-bottom" />
+            </div>
+          );
+        })}
+      </DndProvider>
     </div>
   );
 }

@@ -1,12 +1,16 @@
 import json
 import logging
 import os
+import uuid
 from pathlib import Path
 from typing import Any, Optional
 
 from account.constants import Common
+from account.models import User
+from adapter_processor.constants import AdapterKeys
 from adapter_processor.models import AdapterInstance
 from django.conf import settings
+from django.db.models.manager import BaseManager
 from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
@@ -47,6 +51,62 @@ logger = logging.getLogger(__name__)
 
 class PromptStudioHelper:
     """Helper class for Custom tool operations."""
+
+    @staticmethod
+    def create_default_profile_manager(user: User, tool_id: uuid) -> None:
+        """Create a default profile manager for a given user and tool.
+
+        Args:
+            user (User): The user for whom the default profile manager is
+            created.
+            tool_id (uuid): The ID of the tool for which the default profile
+            manager is created.
+
+        Raises:
+            AdapterInstance.DoesNotExist: If no suitable adapter instance is
+            found for creating the default profile manager.
+
+        Returns:
+            None
+        """
+        try:
+            AdapterInstance.objects.get(
+                is_friction_less=True,
+                is_usable=True,
+                adapter_type=AdapterKeys.LLM,
+            )
+
+            default_adapters: BaseManager[AdapterInstance] = (
+                AdapterInstance.objects.filter(is_friction_less=True)
+            )
+
+            profile_manager = ProfileManager(
+                prompt_studio_tool=CustomTool.objects.get(pk=tool_id),
+                is_default=True,
+                created_by=user,
+                modified_by=user,
+                chunk_size=0,
+                profile_name="sample profile",
+                chunk_overlap=0,
+                section="Default",
+                retrieval_strategy="simple",
+                similarity_top_k=3,
+            )
+
+            for adapter in default_adapters:
+                if adapter.adapter_type == AdapterKeys.LLM:
+                    profile_manager.llm = adapter
+                elif adapter.adapter_type == AdapterKeys.VECTOR_DB:
+                    profile_manager.vector_store = adapter
+                elif adapter.adapter_type == AdapterKeys.X2TEXT:
+                    profile_manager.x2text = adapter
+                elif adapter.adapter_type == AdapterKeys.EMBEDDING:
+                    profile_manager.embedding_model = adapter
+
+            profile_manager.save()
+
+        except AdapterInstance.DoesNotExist:
+            logger.info("skipping default profile creation")
 
     @staticmethod
     def validate_adapter_status(
@@ -92,25 +152,29 @@ class PromptStudioHelper:
         profile_manager_owner = profile_manager.created_by
 
         is_llm_owned = (
-            profile_manager.llm.created_by == profile_manager_owner
+            profile_manager.llm.shared_to_org
+            or profile_manager.llm.created_by == profile_manager_owner
             or profile_manager.llm.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
         )
         is_vector_store_owned = (
-            profile_manager.vector_store.created_by == profile_manager_owner
+            profile_manager.llm.shared_to_org
+            or profile_manager.vector_store.created_by == profile_manager_owner
             or profile_manager.vector_store.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
         )
         is_embedding_model_owned = (
-            profile_manager.embedding_model.created_by == profile_manager_owner
+            profile_manager.llm.shared_to_org
+            or profile_manager.embedding_model.created_by == profile_manager_owner
             or profile_manager.embedding_model.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
         )
         is_x2text_owned = (
-            profile_manager.x2text.created_by == profile_manager_owner
+            profile_manager.llm.shared_to_org
+            or profile_manager.x2text.created_by == profile_manager_owner
             or profile_manager.x2text.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
@@ -209,7 +273,7 @@ class PromptStudioHelper:
         """
         prompt_instances: list[ToolStudioPrompt] = ToolStudioPrompt.objects.filter(
             tool_id=tool_id
-        )
+        ).order_by(TSPKeys.SEQUENCE_NUMBER)
         return prompt_instances
 
     @staticmethod
@@ -238,7 +302,7 @@ class PromptStudioHelper:
         """
         tool: CustomTool = CustomTool.objects.get(pk=tool_id)
         if is_summary:
-            profile_manager = ProfileManager.objects.get(
+            profile_manager: ProfileManager = ProfileManager.objects.get(
                 prompt_studio_tool=tool, is_summarize_llm=True
             )
             default_profile = profile_manager
@@ -573,10 +637,6 @@ class PromptStudioHelper:
                 grammar_list.append(grammer_dict)
                 grammer_dict = {}
 
-        # TODO: Deprecate and remove assertion related elements
-        output[TSPKeys.ASSERTION_FAILURE_PROMPT] = prompt.assertion_failure_prompt
-        output[TSPKeys.ASSERT_PROMPT] = prompt.assert_prompt
-        output[TSPKeys.IS_ASSERT] = prompt.is_assert
         output[TSPKeys.PROMPT] = prompt.prompt
         output[TSPKeys.ACTIVE] = prompt.active
         output[TSPKeys.CHUNK_SIZE] = prompt.profile_manager.chunk_size
@@ -584,9 +644,6 @@ class PromptStudioHelper:
         output[TSPKeys.EMBEDDING] = embedding_model
         output[TSPKeys.CHUNK_OVERLAP] = prompt.profile_manager.chunk_overlap
         output[TSPKeys.LLM] = llm
-        output[TSPKeys.PREAMBLE] = tool.preamble
-        output[TSPKeys.POSTAMBLE] = tool.postamble
-        output[TSPKeys.GRAMMAR] = grammar_list
         output[TSPKeys.TYPE] = prompt.enforce_type
         output[TSPKeys.NAME] = prompt.prompt_key
         output[TSPKeys.RETRIEVAL_STRATEGY] = prompt.profile_manager.retrieval_strategy
@@ -600,9 +657,6 @@ class PromptStudioHelper:
         output[TSPKeys.EVAL_SETTINGS][
             TSPKeys.EVAL_SETTINGS_EXCLUDE_FAILED
         ] = tool.exclude_failed
-        output[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
-        output[TSPKeys.CHALLENGE_LLM] = challenge_llm
-        output[TSPKeys.SINGLE_PASS_EXTRACTION_MODE] = tool.single_pass_extraction_mode
         for attr in dir(prompt):
             if attr.startswith(TSPKeys.EVAL_METRIC_PREFIX):
                 attr_val = getattr(prompt, attr)
@@ -610,11 +664,22 @@ class PromptStudioHelper:
 
         outputs.append(output)
 
+        tool_settings = {}
+        tool_settings[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
+        tool_settings[TSPKeys.CHALLENGE_LLM] = challenge_llm
+        tool_settings[TSPKeys.SINGLE_PASS_EXTRACTION_MODE] = (
+            tool.single_pass_extraction_mode
+        )
+        tool_settings[TSPKeys.PREAMBLE] = tool.preamble
+        tool_settings[TSPKeys.POSTAMBLE] = tool.postamble
+        tool_settings[TSPKeys.GRAMMAR] = grammar_list
+
         tool_id = str(tool.tool_id)
 
         file_hash = ToolUtils.get_hash_from_file(file_path=doc_path)
 
         payload = {
+            TSPKeys.TOOL_SETTINGS: tool_settings,
             TSPKeys.OUTPUTS: outputs,
             TSPKeys.TOOL_ID: tool_id,
             TSPKeys.RUN_ID: run_id,
@@ -688,7 +753,7 @@ class PromptStudioHelper:
             usage_kwargs = {"run_id": run_id}
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = Index(tool=util)
-            doc_id: str = tool_index.index_file(
+            doc_id: str = tool_index.index(
                 tool_id=tool_id,
                 embedding_instance_id=embedding_model,
                 vector_db_instance_id=vector_db,
@@ -698,7 +763,7 @@ class PromptStudioHelper:
                 chunk_overlap=profile_manager.chunk_overlap,
                 reindex=reindex,
                 output_file_path=extract_file_path,
-                usage_kwargs=usage_kwargs,
+                usage_kwargs=usage_kwargs.copy(),
             )
 
             PromptStudioIndexHelper.handle_index_manager(

@@ -5,8 +5,9 @@ class TableColumns:
 
 
 class DBConnectionClass:
-    SNOWFLAKE = "SnowflakeConnection"
-    BIGQUERY = "Client"
+    SNOWFLAKE = "SnowflakeDB"
+    BIGQUERY = "BigQuery"
+    MSSQL = "MSSQL"
 
 
 class Snowflake:
@@ -91,9 +92,3 @@ class BigQuery:
     """
 
     TABLE_NAME_SIZE = 3
-    COLUMN_TYPES = [
-        "DATE",
-        "DATETIME",
-        "TIME",
-        "TIMESTAMP",
-    ]

@@ -16,6 +16,8 @@ import { displayPromptResult } from "../../../helpers/GetStaticData";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { TokenUsage } from "../token-usage/TokenUsage";
+import { useTokenUsageStore } from "../../../store/token-usage-store";
 
 const columns = [
   {
@@ -24,10 +26,16 @@ const columns = [
     key: "document",
   },
   {
+    title: "Token Count",
+    dataIndex: "token_count",
+    key: "token_count",
+    width: 200,
+  },
+  {
     title: "Value",
     dataIndex: "value",
     key: "value",
-    width: 700,
+    width: 600,
   },
 ];
 
@@ -64,6 +72,7 @@ function OutputForDocModal({
   const navigate = useNavigate();
   const { setAlertDetails } = useAlertStore();
   const { handleException } = useExceptionHandler();
+  const { tokenUsage } = useTokenUsageStore();
 
   useEffect(() => {
     if (!open) {
@@ -78,7 +87,7 @@ function OutputForDocModal({
 
   useEffect(() => {
     handleRowsGeneration(promptOutputs);
-  }, [promptOutputs]);
+  }, [promptOutputs, tokenUsage]);
 
   const moveSelectedDocToTop = () => {
     // Create a copy of the list of documents
@@ -199,6 +208,9 @@ function OutputForDocModal({
       const result = {
         key: item,
         document: item?.document_name,
+        token_count: (
+          <TokenUsage tokenUsageId={promptId + "__" + item?.document_id} />
+        ),
         value: (
           <>
             {output?.isLoading ? (

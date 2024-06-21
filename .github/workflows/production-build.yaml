@@ -1,11 +1,17 @@
 name: Unstract Docker Image Build and Push (Production)
 
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Docker image tag"
+        required: true
+
   release:
     types:
       - created
 
-run-name: "[${{ github.event.release.tag_name }}] Docker Image Build and Push (Production)"
+run-name: "[${{ github.event.release.tag_name || github.event.inputs.tag }}] Docker Image Build and Push (Production)"
 
 jobs:
   build-and-push:
@@ -15,10 +21,17 @@ jobs:
         service_name: [backend, frontend, document-service, platform-service, prompt-service, worker, x2text-service]
 
     steps:
-      - name: Checkout code
+      - name: Checkout code for release
+        if: github.event_name == 'release'
         uses: actions/checkout@v2
         with:
           ref: ${{ github.event.release.tag_name }}
+
+
+      - name: Checkout code for branch
+        if: github.event_name != 'release'
+        uses: actions/checkout@v2
+
 
       - name: Login to Docker Hub
         uses: docker/login-action@v1
@@ -29,7 +42,11 @@ jobs:
       - name: Build and push images
         working-directory: ./docker
         run: |
-          VERSION=${{ github.event.release.tag_name }} docker-compose -f docker-compose.build.yaml build --no-cache ${{ matrix.service_name }}
-          docker tag unstract/${{ matrix.service_name }}:${{ github.event.release.tag_name }} unstract/${{ matrix.service_name }}:latest
-          docker push unstract/${{ matrix.service_name }}:${{ github.event.release.tag_name }}
-          docker push unstract/${{ matrix.service_name }}:latest
+          DOCKER_VERSION_TAG=${{ github.event.release.tag_name  || github.event.inputs.tag}}
+          VERSION=$DOCKER_VERSION_TAG docker-compose -f docker-compose.build.yaml build --no-cache ${{ matrix.service_name }}
+          docker push unstract/${{ matrix.service_name }}:$DOCKER_VERSION_TAG
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "This workflow was triggered by a release event."
+            docker tag unstract/${{ matrix.service_name }}:$DOCKER_VERSION_TAG unstract/${{ matrix.service_name }}:latest
+            docker push unstract/${{ matrix.service_name }}:latest
+          fi

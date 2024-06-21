@@ -5,10 +5,11 @@ from typing import Any
 import psycopg2
 from psycopg2.extensions import connection
 
+from unstract.connectors.databases.psycopg_handler import PsycoPgHandler
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 
-class Redshift(UnstractDB):
+class Redshift(UnstractDB, PsycoPgHandler):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("Redshift")
 
@@ -74,7 +75,6 @@ class Redshift(UnstractDB):
             str: _description_
         """
         python_type = type(value)
-
         mapping = {
             str: "VARCHAR(65535)",
             int: "BIGINT",
@@ -91,3 +91,13 @@ class Redshift(UnstractDB):
             f"created_by VARCHAR(65535), created_at TIMESTAMP, "
         )
         return sql_query
+
+    def execute_query(
+        self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
+    ) -> None:
+        PsycoPgHandler.execute_query(
+            engine=engine,
+            sql_query=sql_query,
+            sql_values=sql_values,
+            database=self.database,
+        )

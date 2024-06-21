@@ -53,6 +53,7 @@ pip-delete-this-directory.txt
 
 # Unit test / coverage reports
 htmlcov/
+**/report.html
 .tox/
 .nox/
 .coverage
@@ -132,6 +133,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
+test*.env
 .env
 .env.export
 .venv*
