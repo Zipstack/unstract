@@ -2,8 +2,9 @@ from typing import Optional
 
 from django.db.models import QuerySet
 from llama_index.core.vector_stores import VectorStoreQuery, VectorStoreQueryResult
-from prompt_studio.prompt_profile_manager.models import ProfileManager
-from prompt_studio.prompt_profile_manager.profile_manager_helper import ProfileManagerHelper
+from prompt_studio.prompt_profile_manager.profile_manager_helper import (
+    ProfileManagerHelper,
+)
 from prompt_studio.prompt_studio_core.exceptions import DefaultProfileError
 from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
 from prompt_studio.prompt_studio_index_manager.constants import IndexManagerKeys

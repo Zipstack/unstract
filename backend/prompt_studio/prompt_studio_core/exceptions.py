@@ -1,6 +1,6 @@
+from prompt_studio.prompt_profile_manager.constants import ProfileManagerKeys
 from prompt_studio.prompt_studio_core.constants import ToolStudioErrors
 from rest_framework.exceptions import APIException
-from prompt_studio.prompt_profile_manager.constants import ProfileManagerKeys
 
 
 class PlatformServiceError(APIException):
