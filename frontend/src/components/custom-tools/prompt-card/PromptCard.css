@@ -78,6 +78,7 @@
   background-color: #fff8e6;
   display: flex;
   justify-content: space-between;
+  align-items: center;
 }
 
 .prompt-card-result .ant-typography {
@@ -172,10 +173,6 @@
 .expanded-output {
   max-height: 250px; /* Adjust height as necessary */
   overflow-y: auto;
-}
-
-.prompt-card-result {
-  align-items: center;
 }
 
 .prompt-profile-run {

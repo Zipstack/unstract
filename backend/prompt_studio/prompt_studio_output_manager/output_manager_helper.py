@@ -42,22 +42,6 @@ class OutputManagerHelper:
             tool (CustomTool, optional): Custom tool used for extracting.
         """
 
-        def get_default_profile():
-            if profile_manager_id:
-                try:
-                    return ProfileManager.objects.get(profile_id=profile_manager_id)
-                except ProfileManager.DoesNotExist:
-                    raise DefaultProfileError(
-                        f"ProfileManager with ID {profile_manager_id} does not exist."
-                    )
-            else:
-                if tool:
-                    return ProfileManager.get_default_llm_profile(tool=tool)
-                else:
-                    raise DefaultProfileError(
-                        f"ProfileManager with ID {profile_manager_id} does not exist."
-                    )
-
         def update_or_create_prompt_output(
             prompt, profile_manager, output, eval_metrics
         ):
@@ -104,7 +88,7 @@ class OutputManagerHelper:
         if not prompts:
             return  # Return early if prompts list is empty
 
-        default_profile = get_default_profile()
+        default_profile = OutputManagerHelper.get_default_profile(profile_manager_id, tool)
         tool = prompts[0].tool_id
         document_manager = DocumentManager.objects.get(pk=document_id)
 
@@ -119,3 +103,27 @@ class OutputManagerHelper:
             update_or_create_prompt_output(
                 prompt, profile_manager, output, eval_metrics
             )
+
+
+    @staticmethod
+    def get_default_profile(profile_manager_id: Optional[str], tool: CustomTool) -> ProfileManager:
+        if profile_manager_id:
+            return OutputManagerHelper.fetch_profile_manager(profile_manager_id)
+        else:
+            return OutputManagerHelper.fetch_default_llm_profile(tool)
+
+    @staticmethod
+    def fetch_profile_manager(profile_manager_id: str) -> ProfileManager:
+        try:
+            return ProfileManager.objects.get(profile_id=profile_manager_id)
+        except ProfileManager.DoesNotExist:
+            raise DefaultProfileError(
+                f"ProfileManager with ID {profile_manager_id} does not exist."
+            )
+
+    @staticmethod
+    def fetch_default_llm_profile(tool: CustomTool) -> ProfileManager:
+        try:
+            return ProfileManager.get_default_llm_profile(tool=tool)
+        except DefaultProfileError:
+            raise DefaultProfileError("Default ProfileManager does not exist.")

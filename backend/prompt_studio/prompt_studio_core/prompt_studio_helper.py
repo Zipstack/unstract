@@ -14,6 +14,7 @@ from django.conf import settings
 from django.db.models.manager import BaseManager
 from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.prompt_profile_manager.models import ProfileManager
+from prompt_studio.prompt_profile_manager.profile_manager_helper import ProfileManagerHelper
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.constants import LogLevels
 from prompt_studio.prompt_studio_core.constants import ToolStudioPromptKeys as TSPKeys
@@ -597,17 +598,15 @@ class PromptStudioHelper:
         """
 
         # Fetch the ProfileManager instance using the profile_manager_id if provided
+        profile_manager = prompt.profile_manager
         if profile_manager_id:
             try:
-                profile_manager = ProfileManager.objects.get(
-                    profile_id=profile_manager_id
+                profile_manager = ProfileManagerHelper.get_profile_manager(
+                    profile_manager_id=profile_manager_id
                 )
-            except ProfileManager.DoesNotExist:
-                raise DefaultProfileError(
-                    f"ProfileManager with ID {profile_manager_id} does not exist."
-                )
-        else:
-            profile_manager = prompt.profile_manager
+            except ValueError as e:
+                raise DefaultProfileError(str(e))
+
 
         monitor_llm_instance: Optional[AdapterInstance] = tool.monitor_llm
         monitor_llm: Optional[str] = None
@@ -798,21 +797,7 @@ class PromptStudioHelper:
 
             # Polling if document is already being indexed
             if is_document_indexing(doc_id_key):
-                max_wait_time = 1800  # 30 minutes
-                wait_time = 0
-                polling_interval = 5  # Poll every 5 seconds
-                while is_document_indexing(doc_id_key):
-                    if wait_time >= max_wait_time:
-                        raise IndexingAPIError(
-                            "Indexing timed out. Please try again later."
-                        )
-                    time.sleep(polling_interval)
-                    wait_time += polling_interval
-
-                # After waiting, check if the document is indexed
-                indexed_doc_id = get_indexed_document_id(doc_id_key)
-                if indexed_doc_id:
-                    return indexed_doc_id
+                PromptStudioHelper.wait_for_document_indexing(doc_id_key=doc_id)
             # Set the document as being indexed
             set_document_indexing(doc_id_key)
             doc_id: str = tool_index.index(
@@ -847,6 +832,27 @@ class PromptStudioHelper:
             raise IndexingAPIError(
                 f"Error while indexing '{doc_name}'. {str(e)}"
             ) from e
+    
+    @staticmethod        
+    def wait_for_document_indexing(doc_id_key):
+        max_wait_time = 1800  # 30 minutes
+        wait_time = 0
+        polling_interval = 5  # Poll every 5 seconds
+        
+        while is_document_indexing(doc_id_key):
+            if wait_time >= max_wait_time:
+                raise IndexingAPIError(
+                    "Indexing timed out. Please try again later."
+                )
+            time.sleep(polling_interval)
+            wait_time += polling_interval
+        
+        # After waiting, check if the document is indexed
+        indexed_doc_id = get_indexed_document_id(doc_id_key)
+        if indexed_doc_id:
+            return indexed_doc_id
+        else:
+            raise IndexingAPIError("Document indexing failed or document not found.")
 
     @staticmethod
     def _fetch_single_pass_response(

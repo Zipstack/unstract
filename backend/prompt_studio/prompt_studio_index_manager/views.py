@@ -3,6 +3,7 @@ from typing import Optional
 from django.db.models import QuerySet
 from llama_index.core.vector_stores import VectorStoreQuery, VectorStoreQueryResult
 from prompt_studio.prompt_profile_manager.models import ProfileManager
+from prompt_studio.prompt_profile_manager.profile_manager_helper import ProfileManagerHelper
 from prompt_studio.prompt_studio_core.exceptions import DefaultProfileError
 from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
 from prompt_studio.prompt_studio_index_manager.constants import IndexManagerKeys
@@ -48,19 +49,17 @@ class IndexManagerView(viewsets.ModelViewSet):
                 profile_manager_id = obj.profile_manager_id
                 document_name = str(obj.document_manager.document_name)
                 try:
-                    profile_manager = ProfileManager.objects.get(
-                        profile_id=profile_manager_id
+                    profile_manager = ProfileManagerHelper.get_profile_manager(
+                        profile_manager_id=profile_manager_id
                     )
-                except ProfileManager.DoesNotExist:
-                    raise DefaultProfileError(
-                        f"ProfileManager with ID {profile_manager_id} does not exist."
-                    )
+                except ValueError as e:
+                    raise DefaultProfileError(str(e))
                 vector_db_id = str(profile_manager.vector_store.id)
-                embedding_model = str(profile_manager.embedding_model.id)
+                embedding_model_id = str(profile_manager.embedding_model.id)
 
                 embedding = Embedding(
                     tool=util,
-                    adapter_instance_id=embedding_model,
+                    adapter_instance_id=embedding_model_id,
                     usage_kwargs={},
                 )
 

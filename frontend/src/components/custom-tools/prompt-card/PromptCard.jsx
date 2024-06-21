@@ -334,9 +334,7 @@ function PromptCard({
           .finally(() => {
             setIsCoverageLoading(false);
           });
-        if (coverAllDoc) {
-          handleCoverage(profile.profile_id);
-        }
+        runCoverageForAllDoc(coverAllDoc, profile.profile_id);
       }
     } else {
       handleRunApiRequest(docId, profileManagerId)
@@ -370,9 +368,13 @@ function PromptCard({
           handleIsRunLoading(selectedDoc.document_id, profileManagerId, false);
           setIsCoverageLoading(false);
         });
-      if (coverAllDoc) {
-        handleCoverage(profileManagerId);
-      }
+      runCoverageForAllDoc(coverAllDoc, profileManagerId);
+    }
+  };
+
+  const runCoverageForAllDoc = (coverAllDoc, profileManagerId) => {
+    if (coverAllDoc) {
+      handleCoverage(profileManagerId);
     }
   };
 
@@ -470,7 +472,7 @@ function PromptCard({
     const tokenUsageId = promptId + "__" + docId + "__" + profileManagerId;
     setTokenUsage(tokenUsageId, defaultTokenUsage);
 
-    let intervalId = undefined;
+    let intervalId;
     if (
       profileManagerId === selectedLlmProfileId &&
       docId === selectedDoc.document_id

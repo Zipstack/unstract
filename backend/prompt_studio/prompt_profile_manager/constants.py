@@ -8,6 +8,7 @@ class ProfileManagerKeys:
     EMBEDDING_MODEL = "embedding_model"
     X2TEXT = "x2text"
     PROMPT_STUDIO_TOOL = "prompt_studio_tool"
+    MAX_PROFILE_COUNT = 4
 
 
 class ProfileManagerErrors:

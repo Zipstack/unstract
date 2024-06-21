@@ -271,7 +271,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         id: str = request.data.get(ToolStudioPromptKeys.ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
         profile_manager: str = request.data.get(
-            ToolStudioPromptKeys.PROFILE_MANAGER_ID, None
+            ToolStudioPromptKeys.PROFILE_MANAGER_ID
         )
         if not run_id:
             # Generate a run_id
@@ -358,7 +358,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             prompt_studio_tool=prompt_studio_tool
         ).count()
 
-        if profile_count >= 4:
+        if profile_count >= ProfileManagerKeys.MAX_PROFILE_COUNT:
             raise MaxProfilesReachedError()
         try:
             self.perform_create(serializer)

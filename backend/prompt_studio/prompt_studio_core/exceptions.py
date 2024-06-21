@@ -1,5 +1,6 @@
 from prompt_studio.prompt_studio_core.constants import ToolStudioErrors
 from rest_framework.exceptions import APIException
+from prompt_studio.prompt_profile_manager.constants import ProfileManagerKeys
 
 
 class PlatformServiceError(APIException):
@@ -63,5 +64,6 @@ class EmptyPromptError(APIException):
 class MaxProfilesReachedError(APIException):
     status_code = 403
     default_detail = (
-        "Maximum number of profiles (max 4) per prompt studio project has been reached."
+        f"Maximum number of profiles (max {ProfileManagerKeys.MAX_PROFILE_COUNT})"
+        " per prompt studio project has been reached."
     )

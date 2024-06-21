@@ -52,7 +52,7 @@ function OutputForIndex({ llmProfileId, isIndexOpen, setIsIndexOpen }) {
       ) : (
         <>
           {content.map((text, index) => (
-            <TextViewerPre text={text} key={index} />
+            <TextViewerPre text={text} key={`${index}_indexed`} />
           ))}
         </>
       );
@@ -61,32 +61,30 @@ function OutputForIndex({ llmProfileId, isIndexOpen, setIsIndexOpen }) {
   };
 
   return (
-    <>
-      <Modal
-        title="Index Data"
-        open={isIndexOpen}
-        onCancel={handleClose}
-        className="index-output-modal"
-        centered
-        footer={null}
-        width={1000}
-      >
-        {loading ? (
-          <div>
-            <SpinnerLoader />
-          </div>
-        ) : (
-          <Tabs>
-            {data &&
-              Object.keys(data).map((key) => (
-                <TabPane className="index-output-tab" tab={key} key={key}>
-                  {renderContent(data[key])}
-                </TabPane>
-              ))}
-          </Tabs>
-        )}
-      </Modal>
-    </>
+    <Modal
+      title="Index Data"
+      open={isIndexOpen}
+      onCancel={handleClose}
+      className="index-output-modal"
+      centered
+      footer={null}
+      width={1000}
+    >
+      {loading ? (
+        <div>
+          <SpinnerLoader />
+        </div>
+      ) : (
+        <Tabs>
+          {data &&
+            Object.keys(data).map((key) => (
+              <TabPane className="index-output-tab" tab={key} key={key}>
+                {renderContent(data[key])}
+              </TabPane>
+            ))}
+        </Tabs>
+      )}
+    </Modal>
   );
 }
 

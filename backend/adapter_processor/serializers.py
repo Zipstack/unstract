@@ -123,7 +123,7 @@ class AdapterListSerializer(BaseAdapterSerializer):
         adapter_metadata = instance.get_adapter_meta_data()
         model = adapter_metadata.get("model")
         if model:
-            rep["model"] = adapter_metadata["model"]
+            rep["model"] = model
 
         if instance.is_friction_less:
             rep["created_by_email"] = "Unstract"
