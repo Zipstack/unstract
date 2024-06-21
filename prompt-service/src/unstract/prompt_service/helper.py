@@ -109,15 +109,17 @@ def query_usage_details(db, run_id, token):
             results = cursor.fetchall()
             # Process results as needed
             for row in results:
-                # Each column is accessed as row[0], row[1], and so forth.
-                usage_type = row[0]
-                llm_usage_reason = row[1]
-                model_name = row[2]
+                (
+                    usage_type,
+                    llm_usage_reason,
+                    model_name,
+                    input_tokens,
+                    output_tokens,
+                    total_tokens,
+                    embedding_tokens,
+                ) = row
                 if llm_usage_reason:
                     key = f"{llm_usage_reason}_{usage_type}"
-                    input_tokens = row[3]
-                    output_tokens = row[4]
-                    total_tokens = row[5]
                     metadata[key] = {
                         "input_tokens": input_tokens,
                         "output_tokens": output_tokens,
@@ -127,7 +129,6 @@ def query_usage_details(db, run_id, token):
                 # For embedding 'llm_usage_reason' is empty
                 else:
                     key = usage_type
-                    embedding_tokens = row[6]
                     metadata[key] = {
                         "embedding_tokens": embedding_tokens,
                         "model_name": model_name,
