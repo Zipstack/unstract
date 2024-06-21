@@ -278,9 +278,9 @@ services=($(VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docke
 display_banner
 parse_args $*
 
-# do_git_pull
-# setup_env
-# build_services
+do_git_pull
+setup_env
+build_services
 run_services
 #
 # Run Unstract platform - END
