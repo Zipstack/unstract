@@ -88,7 +88,9 @@ class OutputManagerHelper:
         if not prompts:
             return  # Return early if prompts list is empty
 
-        default_profile = OutputManagerHelper.get_default_profile(profile_manager_id, tool)
+        default_profile = OutputManagerHelper.get_default_profile(
+            profile_manager_id, tool
+        )
         tool = prompts[0].tool_id
         document_manager = DocumentManager.objects.get(pk=document_id)
 
@@ -104,9 +106,10 @@ class OutputManagerHelper:
                 prompt, profile_manager, output, eval_metrics
             )
 
-
     @staticmethod
-    def get_default_profile(profile_manager_id: Optional[str], tool: CustomTool) -> ProfileManager:
+    def get_default_profile(
+        profile_manager_id: Optional[str], tool: CustomTool
+    ) -> ProfileManager:
         if profile_manager_id:
             return OutputManagerHelper.fetch_profile_manager(profile_manager_id)
         else:

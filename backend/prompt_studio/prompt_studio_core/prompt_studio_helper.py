@@ -14,7 +14,9 @@ from django.conf import settings
 from django.db.models.manager import BaseManager
 from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.prompt_profile_manager.models import ProfileManager
-from prompt_studio.prompt_profile_manager.profile_manager_helper import ProfileManagerHelper
+from prompt_studio.prompt_profile_manager.profile_manager_helper import (
+    ProfileManagerHelper,
+)
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.constants import LogLevels
 from prompt_studio.prompt_studio_core.constants import ToolStudioPromptKeys as TSPKeys
@@ -607,7 +609,6 @@ class PromptStudioHelper:
             except ValueError as e:
                 raise DefaultProfileError(str(e))
 
-
         monitor_llm_instance: Optional[AdapterInstance] = tool.monitor_llm
         monitor_llm: Optional[str] = None
         challenge_llm_instance: Optional[AdapterInstance] = tool.challenge_llm
@@ -832,21 +833,19 @@ class PromptStudioHelper:
             raise IndexingAPIError(
                 f"Error while indexing '{doc_name}'. {str(e)}"
             ) from e
-    
-    @staticmethod        
+
+    @staticmethod
     def wait_for_document_indexing(doc_id_key):
         max_wait_time = 1800  # 30 minutes
         wait_time = 0
         polling_interval = 5  # Poll every 5 seconds
-        
+
         while is_document_indexing(doc_id_key):
             if wait_time >= max_wait_time:
-                raise IndexingAPIError(
-                    "Indexing timed out. Please try again later."
-                )
+                raise IndexingAPIError("Indexing timed out. Please try again later.")
             time.sleep(polling_interval)
             wait_time += polling_interval
-        
+
         # After waiting, check if the document is indexed
         indexed_doc_id = get_indexed_document_id(doc_id_key)
         if indexed_doc_id:
