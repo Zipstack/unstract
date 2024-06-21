@@ -102,7 +102,9 @@ def query_usage_details(db, run_id, token):
     logger = current_app.logger
     try:
         with db.atomic():
-            logger.info("Querying usage metadata")
+            logger.info(
+                "Querying usage metadata for org_id: %s, run_id: %s", org_id, run_id
+            )
             cursor = db.execute_sql(query, (run_id,))
             results = cursor.fetchall()
             # Process results as needed
