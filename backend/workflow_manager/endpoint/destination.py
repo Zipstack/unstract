@@ -102,6 +102,7 @@ class DestinationConnector(BaseConnector):
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
         result: Optional[str] = None
+        meta_data: Optional[str] = None
         if error:
             if connection_type == WorkflowEndpoint.ConnectionType.API:
                 self._handle_api_result(file_name=file_name, error=error, result=result)
@@ -112,17 +113,20 @@ class DestinationConnector(BaseConnector):
             self.insert_into_db(file_history)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
-            meta_data = self.get_metadata()
+            meta_data = self.get_metadata(file_history)
 
             self._handle_api_result(
                 file_name=file_name, error=error, result=result, meta_data=meta_data
             )
+
+        #  check and add meta data here
         if not file_history:
             FileHistoryHelper.create_file_history(
                 cache_key=file_hash,
                 workflow=workflow,
                 status=ExecutionStatus.COMPLETED,
                 result=result,
+                metadata=meta_data,
                 file_name=file_name,
             )
 
@@ -343,12 +347,14 @@ class DestinationConnector(BaseConnector):
             logger.error(f"Error while getting result {err}")
         return result
 
-    def get_metadata(self) -> Optional[Any]:
+    def get_metadata(self, file_history: Optional[FileHistory]) -> Optional[Any]:
         """Get result data from the output file.
 
         Returns:
             Union[dict[str, Any], str]: Result data.
         """
+        if file_history and file_history.meta_data:
+            return self.parse_string(file_history.meta_data)
         metadata: dict[str, Any] = self.get_workflow_metadata()
 
         return metadata
