@@ -27,7 +27,7 @@ class StructureTool(BaseTool):
         prompt_registry_id: str = settings[SettingsKeys.PROMPT_REGISTRY_ID]
         challenge_llm: str = settings[SettingsKeys.CHALLENGE_LLM_ADAPTER_ID]
         enable_challenge: bool = settings[SettingsKeys.ENABLE_CHALLENGE]
-        enable_highlight: bool = settings[SettingsKeys.ENABLE_HIGHLIGHT]
+
         summarize_as_source: bool = settings[SettingsKeys.SUMMARIZE_AS_SOURCE]
         single_pass_extraction_mode: bool = settings[
             SettingsKeys.SINGLE_PASS_EXTRACTION_MODE
@@ -58,6 +58,7 @@ class StructureTool(BaseTool):
         tool_id = tool_metadata[SettingsKeys.TOOL_ID]
         tool_settings = tool_metadata[SettingsKeys.TOOL_SETTINGS]
         outputs = tool_metadata[SettingsKeys.OUTPUTS]
+        enable_highlight: bool = tool_settings[SettingsKeys.ENABLE_HIGHLIGHT]
         tool_settings[SettingsKeys.CHALLENGE_LLM] = challenge_llm
         tool_settings[SettingsKeys.ENABLE_CHALLENGE] = enable_challenge
         tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION] = (
@@ -183,7 +184,6 @@ class StructureTool(BaseTool):
         except json.JSONDecodeError as e:
             self.stream_error_and_exit(f"Error encoding JSON: {e}")
         self.write_tool_result(data=json.loads(structured_output))
-        self._update_exec_metadata()
 
     def _summarize_and_index(
         self,

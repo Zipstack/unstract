@@ -112,7 +112,11 @@ class DestinationConnector(BaseConnector):
             self.insert_into_db(file_history)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
-            self._handle_api_result(file_name=file_name, error=error, result=result)
+            meta_data = self.get_metadata()
+
+            self._handle_api_result(
+                file_name=file_name, error=error, result=result, meta_data=meta_data
+            )
         if not file_history:
             FileHistoryHelper.create_file_history(
                 cache_key=file_hash,
@@ -235,6 +239,7 @@ class DestinationConnector(BaseConnector):
         file_name: str,
         error: Optional[str] = None,
         result: Optional[str] = None,
+        meta_data: Optional[dict[str, Any]] = None,
     ) -> None:
         """Handle the API result.
 
@@ -249,7 +254,7 @@ class DestinationConnector(BaseConnector):
         Returns:
             None
         """
-        api_result = {"file": file_name}
+        api_result: dict[str, Any] = {"file": file_name}
         if error:
             api_result.update(
                 {"status": ApiDeploymentResultStatus.FAILED, "error": error}
@@ -260,6 +265,7 @@ class DestinationConnector(BaseConnector):
                     {
                         "status": ApiDeploymentResultStatus.SUCCESS,
                         "result": result,
+                        "metadata": meta_data,
                     }
                 )
             else:
@@ -311,7 +317,7 @@ class DestinationConnector(BaseConnector):
         if file_history and file_history.result:
             return self.parse_string(file_history.result)
         output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
-        metadata = self.get_workflow_metadata()
+        metadata: dict[str, Any] = self.get_workflow_metadata()
         output_type = self.get_output_type(metadata)
         result: Optional[Any] = None
         try:
@@ -337,15 +343,25 @@ class DestinationConnector(BaseConnector):
             logger.error(f"Error while getting result {err}")
         return result
 
+    def get_metadata(self) -> Optional[Any]:
+        """Get result data from the output file.
+
+        Returns:
+            Union[dict[str, Any], str]: Result data.
+        """
+        metadata: dict[str, Any] = self.get_workflow_metadata()
+
+        return metadata
+
     def delete_execution_directory(self) -> None:
         """Delete the execution directory.
 
         Returns:
             None
         """
-        fs: LocalFileSystem = fsspec.filesystem("file")
-        fs.rm(self.execution_dir, recursive=True)
-        self.delete_api_storage_dir(self.workflow_id, self.execution_id)
+        # fs: LocalFileSystem = fsspec.filesystem("file")
+        # fs.rm(self.execution_dir, recursive=True)
+        # self.delete_api_storage_dir(self.workflow_id, self.execution_id)
 
     @classmethod
     def delete_api_storage_dir(cls, workflow_id: str, execution_id: str) -> None:
