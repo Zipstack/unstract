@@ -17,7 +17,11 @@ from unstract.prompt_service.exceptions import (
     NoPayloadError,
     RateLimitError,
 )
-from unstract.prompt_service.helper import EnvLoader, plugin_loader, query_usage_details
+from unstract.prompt_service.helper import (
+    EnvLoader,
+    plugin_loader,
+    query_usage_metadata,
+)
 from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import Embedding
@@ -691,7 +695,7 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         "Execution complete",
     )
-    metadata = query_usage_details(db=be_db, run_id=run_id, token=platform_key)
+    metadata = query_usage_metadata(db=be_db, run_id=run_id, token=platform_key)
     response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
     return response
 

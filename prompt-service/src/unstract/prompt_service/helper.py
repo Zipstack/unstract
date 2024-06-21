@@ -83,7 +83,7 @@ def plugin_loader(app: Flask) -> dict[str, dict[str, Any]]:
     return plugins
 
 
-def query_usage_details(db, run_id, token):
+def query_usage_metadata(db, run_id, token):
     org_id = AuthenticationMiddleware.get_account_from_bearer_token(token)
     metadata = {"run_id": run_id}
     query = f"""
