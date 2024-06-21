@@ -15,7 +15,7 @@ Use LLMs to eliminate manual processes involving unstructured data.
 
 Just run the `run-platform.sh` launch script to get started in few minutes.
 
-The launch script does env setup with default values, pulls public docker images or builds them locally and finally runs them in containers.
+The launch script configures the env with sane defaults, pulls public docker images or builds them locally and finally runs them in containers.
 
 ```bash
 # Pull and run entire Unstract platform with default env config.
@@ -44,6 +44,8 @@ The launch script does env setup with default values, pulls public docker images
 ```
 
 Now visit [http://frontend.unstract.localhost](http://frontend.unstract.localhost) in your browser.
+
+Modify the `.env` files present in each service to update its runtime behaviour. Make sure to restart the containers after modifying the `.env`.
 
 That's all. Enjoy!
 
