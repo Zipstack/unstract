@@ -1,8 +1,7 @@
 from typing import Optional
 
-from rest_framework.exceptions import APIException
-
 from backend.exceptions import UnstractBaseException
+from rest_framework.exceptions import APIException
 
 
 class IdIsMandatory(APIException):
@@ -18,6 +17,15 @@ class InValidType(APIException):
 class InValidAdapterId(APIException):
     status_code = 400
     default_detail = "Adapter ID is not Valid."
+
+
+class InvalidEncryptionKey(APIException):
+    status_code = 403
+    default_detail = (
+        "Internal encryption key for the adapter credentials has changed! "
+        "This can be caused by possible platform misconfiguration. "
+        "Please tell your organization admin to contact support immediately."
+    )
 
 
 class InternalServiceError(APIException):

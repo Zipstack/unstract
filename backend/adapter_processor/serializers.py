@@ -4,14 +4,15 @@ from typing import Any
 from account.serializer import UserSerializer
 from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.constants import AdapterKeys
-from cryptography.fernet import Fernet
+from adapter_processor.exceptions import InvalidEncryptionKey
+from backend.constants import FieldLengthConstants as FLC
+from backend.serializers import AuditSerializer
+from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
-from unstract.adapters.constants import Common as common
 
-from backend.constants import FieldLengthConstants as FLC
-from backend.serializers import AuditSerializer
+from unstract.adapters.constants import Common as common
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -61,7 +62,10 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
 
         rep.pop(AdapterKeys.ADAPTER_METADATA_B)
 
-        adapter_metadata = instance.get_adapter_meta_data()
+        try:
+            adapter_metadata = instance.get_adapter_meta_data()
+        except InvalidToken:
+            raise InvalidEncryptionKey
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
         adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
             instance.get_context_window_size()
