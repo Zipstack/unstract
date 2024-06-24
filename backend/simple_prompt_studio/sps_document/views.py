@@ -1,13 +1,21 @@
+from typing import Any
+
+from file_management.file_management_helper import FileManagerHelper
 from rest_framework import viewsets
-from .serializers import SPSDocumentSerializer, SPSFileUploadSerializer, SPSFileInfoSerializer
-from .models import SPSDocument
-from simple_prompt_studio.sps_project.models import SPSProject
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
-from file_management.file_management_helper import FileManagerHelper
-from typing import Any
+from simple_prompt_studio.sps_project.models import SPSProject
+
 from unstract.connectors.filesystems.local_storage.local_storage import LocalStorageFS
+
+from .models import SPSDocument
+from .serializers import (
+    SPSDocumentSerializer,
+    SPSFileInfoSerializer,
+    SPSFileUploadSerializer,
+)
+
 
 class SPSDocumentView(viewsets.ModelViewSet):
     queryset = SPSDocument.objects.all()
@@ -31,8 +39,7 @@ class SPSDocumentView(viewsets.ModelViewSet):
             # Create a record in the db for the file
             sps_project: SPSProject = SPSProject.objects.get(pk=sps_project_id)
             document: SPSDocument = SPSDocument.objects.create(
-                tool=sps_project,
-                document_name=file_name
+                tool=sps_project, document_name=file_name
             )
             # Create a dictionary to store document data
             doc = {
@@ -47,7 +54,7 @@ class SPSDocumentView(viewsets.ModelViewSet):
             )
             documents.append(doc)
         return Response({"data": documents})
-    
+
     @action(detail=True, methods=["get"])
     def fetch_contents_ide(self, request: Request, pk: Any = None) -> Response:
         serializer = SPSFileInfoSerializer(data=request.GET)
@@ -60,9 +67,7 @@ class SPSDocumentView(viewsets.ModelViewSet):
 
         filename_without_extension = file_name.rsplit(".", 1)[0]
         if view_type == "extract":
-            file_name = (
-                f"{'extract'}/" f"{filename_without_extension}.txt"
-            )
+            file_name = f"{'extract'}/" f"{filename_without_extension}.txt"
 
         file_path = FileManagerHelper.handle_sub_directory_for_sps(
             sps_project_id=sps_project_id

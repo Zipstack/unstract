@@ -256,7 +256,7 @@ class FileManagerHelper:
                 FileManagerHelper.logger.error(f"Error while creating {file_path}: {e}")
                 raise TenantDirCreationError
         return str(file_path)
-    
+
     @staticmethod
     def handle_sub_directory_for_sps(sps_project_id: str) -> str:
         base_path = Path(settings.SIMPLE_PROMPT_STUDIO_FILE_PATH)

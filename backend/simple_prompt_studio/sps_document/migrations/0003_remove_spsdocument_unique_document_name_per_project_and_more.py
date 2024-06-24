@@ -6,26 +6,29 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('sps_document', '0002_spsdocument_unique_document_name_per_project'),
+        ("sps_document", "0002_spsdocument_unique_document_name_per_project"),
     ]
 
     operations = [
         migrations.RemoveConstraint(
-            model_name='spsdocument',
-            name='unique_document_name_per_project',
+            model_name="spsdocument",
+            name="unique_document_name_per_project",
         ),
         migrations.RenameField(
-            model_name='spsdocument',
-            old_name='id',
-            new_name='document_id',
+            model_name="spsdocument",
+            old_name="id",
+            new_name="document_id",
         ),
         migrations.RenameField(
-            model_name='spsdocument',
-            old_name='sps_project_id',
-            new_name='tool',
+            model_name="spsdocument",
+            old_name="sps_project_id",
+            new_name="tool",
         ),
         migrations.AddConstraint(
-            model_name='spsdocument',
-            constraint=models.UniqueConstraint(fields=('tool', 'document_name'), name='unique_document_name_per_project'),
+            model_name="spsdocument",
+            constraint=models.UniqueConstraint(
+                fields=("tool", "document_name"),
+                name="unique_document_name_per_project",
+            ),
         ),
     ]

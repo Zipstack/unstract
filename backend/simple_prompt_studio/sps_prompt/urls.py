@@ -1,5 +1,6 @@
 from django.urls import path
 from rest_framework.urlpatterns import format_suffix_patterns
+
 from .views import SPSPromptView
 
 sps_prompt_detail = SPSPromptView.as_view(

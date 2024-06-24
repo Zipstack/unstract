@@ -1,5 +1,6 @@
 from django.urls import path
 from rest_framework.urlpatterns import format_suffix_patterns
+
 from .views import SPSDocumentView
 
 sps_document_detail = SPSDocumentView.as_view(
@@ -36,10 +37,6 @@ urlpatterns = format_suffix_patterns(
             sps_document_list,
             name="spsdocument-list",
         ),
-        path(
-            "documents/file",
-            sps_document_upload,
-            name="spsdocument-upload"
-        )
+        path("documents/file", sps_document_upload, name="spsdocument-upload"),
     ]
 )

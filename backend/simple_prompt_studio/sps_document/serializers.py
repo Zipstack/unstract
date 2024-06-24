@@ -1,12 +1,15 @@
-from .models import SPSDocument
-from rest_framework import serializers
 from file_management.constants import FileInformationKey
+from rest_framework import serializers
 from utils.FileValidator import FileValidator
+
+from .models import SPSDocument
+
 
 class SPSDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = SPSDocument
         fields = "__all__"
+
 
 class SPSFileUploadSerializer(serializers.Serializer):
     sps_project_id = serializers.CharField()
@@ -22,6 +25,7 @@ class SPSFileUploadSerializer(serializers.Serializer):
             )
         ],
     )
+
 
 class SPSFileInfoSerializer(serializers.Serializer):
     sps_project_id = serializers.CharField()

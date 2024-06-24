@@ -1,6 +1,8 @@
 from rest_framework import viewsets
-from .serializers import SPSProjectSerializer
+
 from .models import SPSProject
+from .serializers import SPSProjectSerializer
+
 
 class SPSProjectView(viewsets.ModelViewSet):
     queryset = SPSProject.objects.all()

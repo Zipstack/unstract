@@ -1,7 +1,9 @@
-from .models import SPSProject
 from rest_framework import serializers
 from simple_prompt_studio.sps_document.serializers import SPSDocumentSerializer
 from simple_prompt_studio.sps_prompt.serializers import SPSPromptSerializer
+
+from .models import SPSProject
+
 
 class SPSProjectSerializer(serializers.ModelSerializer):
     class Meta:
@@ -10,6 +12,10 @@ class SPSProjectSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        representation['prompts'] = SPSPromptSerializer(instance.prompts.all(), many=True).data
-        representation['documents'] = SPSDocumentSerializer(instance.documents.all(), many=True).data
+        representation["prompts"] = SPSPromptSerializer(
+            instance.prompts.all(), many=True
+        ).data
+        representation["documents"] = SPSDocumentSerializer(
+            instance.documents.all(), many=True
+        ).data
         return representation

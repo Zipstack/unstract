@@ -1,6 +1,8 @@
 from rest_framework import viewsets
-from .serializers import SPSPromptSerializer
+
 from .models import SPSPrompt
+from .serializers import SPSPromptSerializer
+
 
 class SPSPromptView(viewsets.ModelViewSet):
     queryset = SPSPrompt.objects.all()

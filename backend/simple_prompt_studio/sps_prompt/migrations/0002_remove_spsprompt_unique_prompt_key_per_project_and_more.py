@@ -6,31 +6,33 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('sps_prompt', '0001_initial'),
+        ("sps_prompt", "0001_initial"),
     ]
 
     operations = [
         migrations.RemoveConstraint(
-            model_name='spsprompt',
-            name='unique_prompt_key_per_project',
+            model_name="spsprompt",
+            name="unique_prompt_key_per_project",
         ),
         migrations.RenameField(
-            model_name='spsprompt',
-            old_name='id',
-            new_name='prompt_id',
+            model_name="spsprompt",
+            old_name="id",
+            new_name="prompt_id",
         ),
         migrations.RenameField(
-            model_name='spsprompt',
-            old_name='sps_project_id',
-            new_name='tool_id',
+            model_name="spsprompt",
+            old_name="sps_project_id",
+            new_name="tool_id",
         ),
         migrations.AddField(
-            model_name='spsprompt',
-            name='sequence_number',
+            model_name="spsprompt",
+            name="sequence_number",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AddConstraint(
-            model_name='spsprompt',
-            constraint=models.UniqueConstraint(fields=('tool_id', 'prompt_key'), name='unique_prompt_key_per_project'),
+            model_name="spsprompt",
+            constraint=models.UniqueConstraint(
+                fields=("tool_id", "prompt_key"), name="unique_prompt_key_per_project"
+            ),
         ),
     ]

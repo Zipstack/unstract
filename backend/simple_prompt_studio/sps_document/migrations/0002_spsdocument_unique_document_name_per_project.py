@@ -6,12 +6,15 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('sps_document', '0001_initial'),
+        ("sps_document", "0001_initial"),
     ]
 
     operations = [
         migrations.AddConstraint(
-            model_name='spsdocument',
-            constraint=models.UniqueConstraint(fields=('sps_project_id', 'document_name'), name='unique_document_name_per_project'),
+            model_name="spsdocument",
+            constraint=models.UniqueConstraint(
+                fields=("sps_project_id", "document_name"),
+                name="unique_document_name_per_project",
+            ),
         ),
     ]
