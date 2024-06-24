@@ -205,7 +205,10 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             )
             raise WorkflowExecutionError(error_message)
 
-        if self.execution_mode not in (WorkflowExecution.Mode.INSTANT, WorkflowExecution.Mode.QUEUE):
+        if self.execution_mode not in (
+            WorkflowExecution.Mode.INSTANT,
+            WorkflowExecution.Mode.QUEUE,
+        ):
             error_message = f"Unknown Execution Method {self.execution_mode}"
             raise WorkflowExecutionError(error_message)
 
