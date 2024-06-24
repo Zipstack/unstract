@@ -8,9 +8,8 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
-import { useTokenUsageStore } from "../../../store/token-usage-store";
 
-function CustomToolsHelper() {
+function PublicPromptStudioHelper() {
   const [isLoading, setIsLoading] = useState(true);
   const { id } = useParams();
   const { sessionDetails } = useSessionStore();
@@ -20,7 +19,6 @@ function CustomToolsHelper() {
   const navigate = useNavigate();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
-  const { resetTokenUsage } = useTokenUsageStore();
 
   useEffect(() => {
     const updatedCusTool = {
@@ -30,27 +28,24 @@ function CustomToolsHelper() {
       llmProfiles: [],
       selectedDoc: null,
     };
-
-    const reqOpsPromptStudio = {
+    const reqOpsPublicPromptStudio = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${id}`,
+      url: `/public/share/prompt-metadata/?id=${id}`,
     };
 
     let selectedDocId = null;
     setIsLoading(true);
-    handleApiRequest(reqOpsPromptStudio)
+    handleApiRequest(reqOpsPublicPromptStudio)
       .then((res) => {
         const data = res?.data;
         updatedCusTool["defaultLlmProfile"] = data?.default_profile;
         updatedCusTool["details"] = data;
         updatedCusTool["singlePassExtractMode"] =
           data?.single_pass_extraction_mode;
-        updatedCusTool["shareId"] = data?.share_id;
         selectedDocId = data?.output;
-
         const reqOpsDocs = {
           method: "GET",
-          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-document?tool_id=${data?.tool_id}`,
+          url: `/public/share/document-metadata/?id=${id}`,
         };
         return handleApiRequest(reqOpsDocs);
       })
@@ -60,22 +55,19 @@ function CustomToolsHelper() {
 
         const doc = data.find((item) => item?.document_id === selectedDocId);
         updatedCusTool["selectedDoc"] = doc || null;
-
         const reqOpsDropdownItems = {
           method: "GET",
-          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/select_choices`,
+          url: `/public/share/select-choices`,
         };
         return handleApiRequest(reqOpsDropdownItems);
       })
       .then((res) => {
         const data = res?.data;
         updatedCusTool["dropdownItems"] = data;
-
         const reqOpsLlmProfiles = {
           method: "GET",
-          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-studio-profile/${id}`,
+          url: `/public/share/profiles-metadata/?id=${id}`,
         };
-
         return handleApiRequest(reqOpsLlmProfiles);
       })
       .then((res) => {
@@ -96,7 +88,6 @@ function CustomToolsHelper() {
     return () => {
       setDefaultCustomTool();
       emptyCusToolMessages();
-      resetTokenUsage();
     };
   }, []);
 
@@ -114,4 +105,4 @@ function CustomToolsHelper() {
   return <Outlet />;
 }
 
-export { CustomToolsHelper };
+export { PublicPromptStudioHelper };

@@ -124,7 +124,7 @@ PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
 API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
     "API_DEPLOYMENT_PATH_PREFIX", "deployment"
 ).strip("/")
-
+PUBLIC_PATH_PREFIX = os.environ.get("PUBLIC_PATH_PREFIX", "public").strip("/")
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")
 DB_HOST = os.environ.get("DB_HOST", "backend-db-1")
@@ -209,6 +209,8 @@ SHARED_APPS = (
     "plugins",
     "feature_flag",
     "django_celery_beat",
+    "public_shares.share_manager",
+    "public_shares.share_controller",
 )
 
 TENANT_APPS = (
@@ -416,7 +418,7 @@ WHITELISTED_PATHS_LIST = [
 WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
 # White lists workflow-api-deployment path
 WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
-
+WHITELISTED_PATHS.append(f"/{PUBLIC_PATH_PREFIX}")
 
 # API Doc Generator Settings
 # https://drf-yasg.readthedocs.io/en/stable/settings.html

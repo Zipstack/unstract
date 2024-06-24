@@ -60,6 +60,7 @@ function PromptCardItems({
     singlePassExtractMode,
     isSinglePassExtractLoading,
     indexDocs,
+    isPublicSource,
   } = useCustomToolStore();
 
   useEffect(() => {
@@ -138,6 +139,7 @@ function PromptCardItems({
                     type="link"
                     className="display-flex-align-center prompt-card-action-button"
                     onClick={() => setOpenOutputForDoc(true)}
+                    disabled={isPublicSource}
                   >
                     <Space>
                       {isCoverageLoading ? (
@@ -173,7 +175,8 @@ function PromptCardItems({
                         promptDetails?.prompt_id
                       ) ||
                       isSinglePassExtractLoading ||
-                      indexDocs.includes(selectedDoc?.document_id)
+                      indexDocs.includes(selectedDoc?.document_id) ||
+                      isPublicSource
                     }
                     onChange={(value) => handleTypeChange(value)}
                   />
@@ -222,7 +225,8 @@ function PromptCardItems({
                           promptDetails?.prompt_id
                         ) ||
                         isSinglePassExtractLoading ||
-                        indexDocs.includes(selectedDoc?.document_id)
+                        indexDocs.includes(selectedDoc?.document_id) ||
+                        isPublicSource
                       }
                       onClick={handlePageLeft}
                     >

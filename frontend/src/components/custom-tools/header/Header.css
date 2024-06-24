@@ -6,7 +6,12 @@
     display: flex;
     align-items: center;
 }
-
+.custom-tools-header-layout-public {
+    padding: 8px;
+    background-color: #092c4c;
+    display: flex;
+    align-items: center;
+}
 .custom-tools-header-btns {
     display: flex;
     justify-content: space-between;
@@ -17,13 +22,6 @@
     padding: 0px 5px;
 }
 
-.custom-tools-name {
-    padding: 0px 8px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 .custom-tools-header-v-divider {
     border-right: 1px #D9D9D9 solid;
     padding: 0;
@@ -32,4 +30,7 @@
 
 .select-llm-pro-header {
     padding-top: 12px;
+}
+.custom-tools-name{
+    justify-content: center;
 }

@@ -15,6 +15,8 @@ const defaultState = {
   summarizeIndexStatus: [],
   singlePassExtractMode: false,
   isSinglePassExtractLoading: false,
+  shareId: null,
+  isPublicSource: window.location.pathname.startsWith(`/promptStudio/share`),
 };
 
 const defaultPromptInstance = {

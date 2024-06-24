@@ -887,3 +887,21 @@ class PromptStudioHelper:
             )
         output_response = json.loads(answer["structure_output"])
         return output_response
+
+    @staticmethod
+    def fetch_prompt_studio_project_instance(tool_id: str) -> CustomTool:
+        try:
+            tool: CustomTool = CustomTool.objects.get(tool_id=tool_id)
+        except Exception as e:
+            # TO DO : Add better exception handling
+            logger.error(f"Error occured : {e}")
+        return tool
+
+    @staticmethod
+    def fetch_shared_project_instance(share_id: str) -> CustomTool:
+        try:
+            tool: CustomTool = CustomTool.objects.get(share_id=share_id)
+        except Exception as e:
+            # TO DO : Add better exception handling
+            logger.error(f"Error occured : {e}")
+        return tool
