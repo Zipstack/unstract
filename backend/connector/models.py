@@ -63,7 +63,7 @@ class ConnectorInstance(BaseModel):
     connector_mode = models.CharField(
         choices=ConnectorMode.choices,
         default=ConnectorMode.UNKNOWN,
-        db_comment="0: UNKNOWN, 1: FILE_SYSTEM, 2: DATABASE",
+        db_comment="Choices of connectors",
     )
 
     created_by = models.ForeignKey(
