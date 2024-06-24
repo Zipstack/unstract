@@ -231,9 +231,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                 f" Error {exception}"
             )
             raise WorkflowExecutionError(message) from exception
-        else:
-            error_message = f"Unknown Execution Method {self.execution_mode}"
-            raise WorkflowExecutionError(error_message)
 
     def publish_initial_workflow_logs(self, total_files: int) -> None:
         """Publishes the initial logs for the workflow.
