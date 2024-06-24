@@ -131,7 +131,9 @@ def validate_bearer_token(token: Optional[str]) -> bool:
             return False
 
     except Exception as e:
-        app.logger.error(f"Error while validating bearer token: {e}")
+        app.logger.error(
+            f"Error while validating bearer token: {e}", stack_info=True, exc_info=True
+        )
         return False
     return True
 
