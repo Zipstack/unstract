@@ -43,45 +43,45 @@ class IndexManagerView(viewsets.ModelViewSet):
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         result = {}
 
-        if queryset is not None:
-            # Perform operations on the queryset
-            # Example: iterate through queryset and print each object's id
-            for obj in queryset:
-                profile_manager_id = obj.profile_manager_id
-                document_name = str(obj.document_manager.document_name)
-                try:
-                    profile_manager = ProfileManagerHelper.get_profile_manager(
-                        profile_manager_id=profile_manager_id
-                    )
-                except ValueError as e:
-                    raise DefaultProfileError(str(e))
-                vector_db_id = str(profile_manager.vector_store.id)
-                embedding_model_id = str(profile_manager.embedding_model.id)
-
-                embedding = Embedding(
-                    tool=util,
-                    adapter_instance_id=embedding_model_id,
-                    usage_kwargs={},
-                )
-
-                vector_db = VectorDB(
-                    tool=util,
-                    adapter_instance_id=vector_db_id,
-                    embedding=embedding,
-                )
-                q = VectorStoreQuery(
-                    query_embedding=embedding.get_query_embedding(" "),
-                    doc_ids=[obj.raw_index_id],
-                    similarity_top_k=100,
-                )
-                n: VectorStoreQueryResult = vector_db.query(query=q)
-                all_text = []
-                for node in n.nodes:
-                    all_text.append(node.get_content())
-                result[document_name] = all_text
-
-            response = result
-            return Response(response, status=status.HTTP_200_OK)
-        else:
+        if queryset is None:
             response = "No data found"
             return Response(response, status=status.HTTP_200_OK)
+
+        # Perform operations on the queryset
+        # Example: iterate through queryset and print each object's id
+        for obj in queryset:
+            profile_manager_id = obj.profile_manager_id
+            document_name = str(obj.document_manager.document_name)
+            try:
+                profile_manager = ProfileManagerHelper.get_profile_manager(
+                    profile_manager_id=profile_manager_id
+                )
+            except ValueError as e:
+                raise DefaultProfileError(str(e))
+            vector_db_id = str(profile_manager.vector_store.id)
+            embedding_model_id = str(profile_manager.embedding_model.id)
+
+            embedding = Embedding(
+                tool=util,
+                adapter_instance_id=embedding_model_id,
+                usage_kwargs={},
+            )
+
+            vector_db = VectorDB(
+                tool=util,
+                adapter_instance_id=vector_db_id,
+                embedding=embedding,
+            )
+            q = VectorStoreQuery(
+                query_embedding=embedding.get_query_embedding(" "),
+                doc_ids=[obj.raw_index_id],
+                similarity_top_k=100,
+            )
+            n: VectorStoreQueryResult = vector_db.query(query=q)
+            all_text = []
+            for node in n.nodes:
+                all_text.append(node.get_content())
+            result[document_name] = all_text
+
+        response = result
+        return Response(response, status=status.HTTP_200_OK)

@@ -9,7 +9,7 @@ class ProfileManagerHelper:
             return ProfileManager.objects.get(profile_id=profile_manager_id)
         except ProfileManager.DoesNotExist:
             raise ValueError(
-                f"ProfileManager with ID {profile_manager_id} does not exist."
+                f"ProfileManager does not exist."
             )
         except Exception as e:
             raise RuntimeError(

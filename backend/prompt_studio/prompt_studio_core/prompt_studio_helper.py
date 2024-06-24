@@ -836,9 +836,9 @@ class PromptStudioHelper:
 
     @staticmethod
     def wait_for_document_indexing(doc_id_key):
-        max_wait_time = 1800  # 30 minutes
+        max_wait_time = settings.MAX_WAIT_TIME  # 30 minutes
         wait_time = 0
-        polling_interval = 5  # Poll every 5 seconds
+        polling_interval = settings.POLLING_INTERVAL  # Poll every 5 seconds
 
         while is_document_indexing(doc_id_key):
             if wait_time >= max_wait_time:
