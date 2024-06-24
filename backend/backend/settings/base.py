@@ -164,8 +164,8 @@ CELERY_BROKER_URL = get_required_setting(
     "CELERY_BROKER_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}"
 )
 
-MAX_WAIT_TIME= os.environ.get("MAX_WAIT_TIME", 1800)
-POLLING_INTERVAL= os.environ.get("POLLING_INTERVAL", 5)
+MAX_WAIT_TIME = os.environ.get("MAX_WAIT_TIME", 1800)
+POLLING_INTERVAL = os.environ.get("POLLING_INTERVAL", 5)
 
 # Flag to Enable django admin
 ADMIN_ENABLED = False
