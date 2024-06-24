@@ -11,6 +11,7 @@ from utils.cache_service import CacheService
 from utils.user_session import UserSessionUtils
 
 from .serializers import StoreLogMessagesSerializer
+from .log_service import LogService
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class LogsHelperViewSet(viewsets.ModelViewSet):
 
         # Construct the Redis key pattern to match keys
         # associated with the session ID
-        redis_key = f"logs:{session_id}*"
+        redis_key = LogService.generate_redis_key(session_id=session_id)
 
         # Retrieve keys matching the pattern
         keys = CacheService.get_all_keys(redis_key)
@@ -58,7 +59,9 @@ class LogsHelperViewSet(viewsets.ModelViewSet):
 
         timestamp = datetime.now(timezone.utc).timestamp()
 
-        redis_key = f"logs:{session_id}:{timestamp}"
+        redis_key = f"{
+            LogService.generate_redis_key(session_id=session_id)
+            }:{timestamp}"
 
         CacheService.set_key(redis_key, log, logs_expiry)
 
