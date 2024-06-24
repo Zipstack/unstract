@@ -1,47 +1,47 @@
-import { LeftOutlined, RightOutlined } from "@ant-design/icons";
-import "@react-pdf-viewer/core/lib/styles/index.css";
-import "@react-pdf-viewer/default-layout/lib/styles/index.css";
-import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
-import { Button, Space, Tabs, Tooltip, Typography } from "antd";
-import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
-import "./DocumentManager.css";
-
-import { base64toBlob, docIndexStatus } from "../../../helpers/GetStaticData";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { useSessionStore } from "../../../store/session-store";
-import { DocumentViewer } from "../document-viewer/DocumentViewer";
-import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
-import { PdfViewer } from "../pdf-viewer/PdfViewer";
-import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
-import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { LeftOutlined, RightOutlined } from '@ant-design/icons';
+import '@react-pdf-viewer/core/lib/styles/index.css';
+import '@react-pdf-viewer/default-layout/lib/styles/index.css';
+import '@react-pdf-viewer/page-navigation/lib/styles/index.css';
+import { Button, Space, Tabs, Tooltip, Typography } from 'antd';
+import PropTypes from 'prop-types';
+import { useEffect, useState } from 'react';
+import './DocumentManager.css';
+import { useParams } from 'react-router-dom';
+import { base64toBlob, docIndexStatus } from '../../../helpers/GetStaticData';
+import { useAxiosPrivate } from '../../../hooks/useAxiosPrivate';
+import { useCustomToolStore } from '../../../store/custom-tool-store';
+import { useSessionStore } from '../../../store/session-store';
+import { DocumentViewer } from '../document-viewer/DocumentViewer';
+import { ManageDocsModal } from '../manage-docs-modal/ManageDocsModal';
+import { PdfViewer } from '../pdf-viewer/PdfViewer';
+import { TextViewerPre } from '../text-viewer-pre/TextViewerPre';
+import usePostHogEvents from '../../../hooks/usePostHogEvents';
 
 const items = [
   {
-    key: "1",
-    label: "Doc View",
+    key: '1',
+    label: 'Doc View',
   },
   {
-    key: "2",
-    label: "Raw View",
+    key: '2',
+    label: 'Raw View',
   },
 ];
 
 const viewTypes = {
-  original: "ORIGINAL",
-  extract: "EXTRACT",
+  original: 'ORIGINAL',
+  extract: 'EXTRACT',
 };
 
 let SummarizeView = null;
 try {
   SummarizeView =
-    require("../../../plugins/summarize-view/SummarizeView").SummarizeView;
+    require('../../../plugins/summarize-view/SummarizeView').SummarizeView;
   const tabLabel =
-    require("../../../plugins/summarize-tab/SummarizeTab").tabLabel;
+    require('../../../plugins/summarize-tab/SummarizeTab').tabLabel;
   if (tabLabel) {
     items.push({
-      key: "3",
+      key: '3',
       label: tabLabel,
     });
   }
@@ -52,15 +52,16 @@ try {
 function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [openManageDocsModal, setOpenManageDocsModal] = useState(false);
   const [page, setPage] = useState(1);
-  const [activeKey, setActiveKey] = useState("1");
-  const [fileUrl, setFileUrl] = useState("");
-  const [fileErrMsg, setFileErrMsg] = useState("");
-  const [extractTxt, setExtractTxt] = useState("");
-  const [extractErrMsg, setExtractErrMsg] = useState("");
+  const [activeKey, setActiveKey] = useState('1');
+  const [fileUrl, setFileUrl] = useState('');
+  const [fileErrMsg, setFileErrMsg] = useState('');
+  const [extractTxt, setExtractTxt] = useState('');
+  const [extractErrMsg, setExtractErrMsg] = useState('');
   const [isDocLoading, setIsDocLoading] = useState(false);
   const [isExtractLoading, setIsExtractLoading] = useState(false);
+  const { id } = useParams();
   const [currDocIndexStatus, setCurrDocIndexStatus] = useState(
-    docIndexStatus.yet_to_start
+    docIndexStatus.yet_to_start,
   );
   const {
     selectedDoc,
@@ -69,14 +70,15 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     details,
     indexDocs,
     isSinglePassExtractLoading,
+    isPublicShare,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const { setPostHogCustomEvent } = usePostHogEvents();
 
   useEffect(() => {
-    setFileUrl("");
-    setExtractTxt("");
+    setFileUrl('');
+    setExtractTxt('');
     Object.keys(viewTypes).forEach((item) => {
       handleFetchContent(viewTypes[item]);
     });
@@ -92,7 +94,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   useEffect(() => {
     if (docIndexStatus.yet_to_start === currDocIndexStatus) {
       const isIndexing = indexDocs.find(
-        (item) => item === selectedDoc?.document_id
+        (item) => item === selectedDoc?.document_id,
       );
 
       if (isIndexing) {
@@ -103,7 +105,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
     if (docIndexStatus.indexing === currDocIndexStatus) {
       const isIndexing = indexDocs.find(
-        (item) => item === selectedDoc?.document_id
+        (item) => item === selectedDoc?.document_id,
       );
 
       if (!isIndexing) {
@@ -114,30 +116,37 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
   const handleFetchContent = (viewType) => {
     if (viewType === viewTypes.original) {
-      setFileUrl("");
-      setFileErrMsg("");
+      setFileUrl('');
+      setFileErrMsg('');
     }
 
     if (viewType === viewTypes.extract) {
-      setExtractTxt("");
-      setExtractErrMsg("");
+      setExtractTxt('');
+      setExtractErrMsg('');
     }
 
     if (!selectedDoc?.document_id) {
       return;
     }
 
-    const requestOptions = {
-      method: "GET",
+    const requestPrivateOptions = {
+      method: 'GET',
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}?document_id=${selectedDoc?.document_id}&view_type=${viewType}`,
     };
-
+    const requestPublicOptions = {
+      method: 'GET',
+      url: `/public/share/document-contents/?id=${id}&document_id=${selectedDoc?.document_id}&view_type=${viewType}`,
+    };
     handleLoadingStateUpdate(viewType, true);
+    const requestOptions = isPublicShare
+      ? requestPublicOptions
+      : requestPrivateOptions;
+    console.log(requestOptions);
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data?.data;
         if (viewType === viewTypes.original) {
-          const base64String = data || "";
+          const base64String = data || '';
           const blob = base64toBlob(base64String);
           setFileUrl(URL.createObjectURL(blob));
           return;
@@ -171,14 +180,14 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     setActiveKey(key);
 
     try {
-      if (key === "2") {
-        setPostHogCustomEvent("ps_raw_view_clicked", {
+      if (key === '2') {
+        setPostHogCustomEvent('ps_raw_view_clicked', {
           info: "Clicked on the 'Raw View' tab",
         });
       }
 
-      if (key === "3") {
-        setPostHogCustomEvent("ps_summary_view_clicked", {
+      if (key === '3') {
+        setPostHogCustomEvent('ps_summary_view_clicked', {
           info: "Clicked on the 'Summary View' tab",
         });
       }
@@ -189,19 +198,19 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
   const setErrorMessage = (viewType) => {
     if (viewType === viewTypes.original) {
-      setFileErrMsg("Document not found.");
+      setFileErrMsg('Document not found.');
     }
 
     if (viewType === viewTypes.extract) {
       setExtractErrMsg(
-        "Raw content is not available. Please index or re-index to generate it."
+        'Raw content is not available. Please index or re-index to generate it.',
       );
     }
   };
 
   useEffect(() => {
     const index = [...listOfDocs].findIndex(
-      (item) => item?.document_id === selectedDoc?.document_id
+      (item) => item?.document_id === selectedDoc?.document_id,
     );
     setPage(index + 1);
   }, [selectedDoc, listOfDocs]);
@@ -258,7 +267,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
                 className="doc-manager-btn"
                 onClick={() => setOpenManageDocsModal(true)}
               >
-                <Typography.Text ellipsis>{"Manage Documents"}</Typography.Text>
+                <Typography.Text ellipsis>{'Manage Documents'}</Typography.Text>
               </Button>
             </Tooltip>
           </div>
@@ -292,7 +301,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           </div>
         </Space>
       </div>
-      {activeKey === "1" && (
+      {activeKey === '1' && (
         <DocumentViewer
           doc={selectedDoc?.document_name}
           isLoading={isDocLoading}
@@ -303,7 +312,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           <PdfViewer fileUrl={fileUrl} />
         </DocumentViewer>
       )}
-      {activeKey === "2" && (
+      {activeKey === '2' && (
         <DocumentViewer
           doc={selectedDoc?.document_name}
           isLoading={isExtractLoading}
@@ -314,7 +323,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           <TextViewerPre text={extractTxt} />
         </DocumentViewer>
       )}
-      {SummarizeView && activeKey === "3" && (
+      {SummarizeView && activeKey === '3' && (
         <SummarizeView
           setOpenManageDocsModal={setOpenManageDocsModal}
           currDocIndexStatus={currDocIndexStatus}

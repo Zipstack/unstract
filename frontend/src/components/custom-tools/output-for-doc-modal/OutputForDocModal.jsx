@@ -1,51 +1,50 @@
-import { Button, Modal, Table, Typography } from "antd";
-import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { Button, Modal, Table, Typography } from 'antd';
+import PropTypes from 'prop-types';
+import { useEffect, useState } from 'react';
 import {
   CheckCircleFilled,
   CloseCircleFilled,
   InfoCircleFilled,
-} from "@ant-design/icons";
-import { useNavigate } from "react-router-dom";
-
-import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { useSessionStore } from "../../../store/session-store";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import "./OutputForDocModal.css";
-import { displayPromptResult } from "../../../helpers/GetStaticData";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
-import { useAlertStore } from "../../../store/alert-store";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { TokenUsage } from "../token-usage/TokenUsage";
-import { useTokenUsageStore } from "../../../store/token-usage-store";
+} from '@ant-design/icons';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useCustomToolStore } from '../../../store/custom-tool-store';
+import { useSessionStore } from '../../../store/session-store';
+import { useAxiosPrivate } from '../../../hooks/useAxiosPrivate';
+import './OutputForDocModal.css';
+import { displayPromptResult } from '../../../helpers/GetStaticData';
+import { SpinnerLoader } from '../../widgets/spinner-loader/SpinnerLoader';
+import { useAlertStore } from '../../../store/alert-store';
+import { useExceptionHandler } from '../../../hooks/useExceptionHandler';
+import { TokenUsage } from '../token-usage/TokenUsage';
+import { useTokenUsageStore } from '../../../store/token-usage-store';
 
 const columns = [
   {
-    title: "Document",
-    dataIndex: "document",
-    key: "document",
+    title: 'Document',
+    dataIndex: 'document',
+    key: 'document',
   },
   {
-    title: "Token Count",
-    dataIndex: "token_count",
-    key: "token_count",
+    title: 'Token Count',
+    dataIndex: 'token_count',
+    key: 'token_count',
     width: 200,
   },
   {
-    title: "Value",
-    dataIndex: "value",
-    key: "value",
+    title: 'Value',
+    dataIndex: 'value',
+    key: 'value',
     width: 600,
   },
 ];
 
 const outputStatus = {
-  yet_to_process: "YET_TO_PROCESS",
-  success: "SUCCESS",
-  fail: "FAIL",
+  yet_to_process: 'YET_TO_PROCESS',
+  success: 'SUCCESS',
+  fail: 'FAIL',
 };
 
-const errorTypes = ["null", "undefined", "false"];
+const errorTypes = ['null', 'undefined', 'false'];
 
 function OutputForDocModal({
   open,
@@ -66,7 +65,9 @@ function OutputForDocModal({
     disableLlmOrDocChange,
     singlePassExtractMode,
     isSinglePassExtractLoading,
+    IsPublicShare,
   } = useCustomToolStore();
+  const { id } = useParams();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
@@ -95,7 +96,7 @@ function OutputForDocModal({
 
     // Find the index of the selected document within the list
     const index = docs.findIndex(
-      (item) => item?.document_id === selectedDoc?.document_id
+      (item) => item?.document_id === selectedDoc?.document_id,
     );
 
     // If the selected document exists in the list and is not already at the top (index 0)
@@ -121,19 +122,19 @@ function OutputForDocModal({
       keys.forEach((key) => {
         // Find the index of the prompt output corresponding to the document manager key
         const index = updatedPromptOutput.findIndex(
-          (promptOutput) => promptOutput?.document_manager === key
+          (promptOutput) => promptOutput?.document_manager === key,
         );
 
         let promptOutputInstance = {};
         // If the prompt output for the current key doesn't exist, skip it
         if (index > -1) {
           promptOutputInstance = updatedPromptOutput[index];
-          promptOutputInstance["output"] = docOutputs[key]?.output;
+          promptOutputInstance['output'] = docOutputs[key]?.output;
         }
 
         // Update output and isLoading properties based on docOutputs
-        promptOutputInstance["document_manager"] = key;
-        promptOutputInstance["isLoading"] = docOutputs[key]?.isLoading || false;
+        promptOutputInstance['document_manager'] = key;
+        promptOutputInstance['isLoading'] = docOutputs[key]?.isLoading || false;
 
         // Update the prompt output instance in the array
         if (index > -1) {
@@ -157,23 +158,34 @@ function OutputForDocModal({
       setRows([]);
       return;
     }
-    const requestOptions = {
-      method: "GET",
+    const requestPrivateOptions = {
+      method: 'GET',
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
+        'X-CSRFToken': sessionDetails?.csrfToken,
+      },
+    };
+    const requestPublicOptions = {
+      method: 'GET',
+      url: `/public/share/outputs-metadata/?id=${id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`,
+      headers: {
+        'X-CSRFToken': sessionDetails?.csrfToken,
       },
     };
 
     setIsLoading(true);
-    axiosPrivate(requestOptions)
+    const requestOptions = IsPublicShare
+      ? requestPublicOptions
+      : requestPrivateOptions;
+    console.log(requestOptions);
+    axiosPrivate(requestPublicOptions)
       .then((res) => {
         const data = res?.data || [];
         updatePromptOutput(data);
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to loaded the prompt results")
+          handleException(err, 'Failed to loaded the prompt results'),
         );
       })
       .finally(() => {
@@ -186,7 +198,7 @@ function OutputForDocModal({
     const docs = moveSelectedDocToTop();
     docs.forEach((item) => {
       const output = data.find(
-        (outputValue) => outputValue?.document_manager === item?.document_id
+        (outputValue) => outputValue?.document_manager === item?.document_id,
       );
 
       let status = outputStatus.fail;
@@ -202,14 +214,14 @@ function OutputForDocModal({
 
       if (output?.output === undefined) {
         status = outputStatus.yet_to_process;
-        message = "Yet to process";
+        message = 'Yet to process';
       }
 
       const result = {
         key: item,
         document: item?.document_name,
         token_count: (
-          <TokenUsage tokenUsageId={promptId + "__" + item?.document_id} />
+          <TokenUsage tokenUsageId={promptId + '__' + item?.document_id} />
         ),
         value: (
           <>
@@ -217,17 +229,17 @@ function OutputForDocModal({
               <SpinnerLoader align="default" />
             ) : (
               <Typography.Text>
-                <span style={{ marginRight: "8px" }}>
+                <span style={{ marginRight: '8px' }}>
                   {status === outputStatus.yet_to_process && (
-                    <InfoCircleFilled style={{ color: "#F0AD4E" }} />
+                    <InfoCircleFilled style={{ color: '#F0AD4E' }} />
                   )}
                   {status === outputStatus.fail && (
-                    <CloseCircleFilled style={{ color: "#FF4D4F" }} />
+                    <CloseCircleFilled style={{ color: '#FF4D4F' }} />
                   )}
                   {status === outputStatus.success && (
-                    <CheckCircleFilled style={{ color: "#52C41A" }} />
+                    <CheckCircleFilled style={{ color: '#52C41A' }} />
                   )}
-                </span>{" "}
+                </span>{' '}
                 {message}
               </Typography.Text>
             )}
@@ -259,7 +271,7 @@ function OutputForDocModal({
         <div className="display-flex-right">
           <Button
             size="small"
-            onClick={() => navigate("outputAnalyzer")}
+            onClick={() => navigate('outputAnalyzer')}
             disabled={
               disableLlmOrDocChange?.length > 0 || isSinglePassExtractLoading
             }

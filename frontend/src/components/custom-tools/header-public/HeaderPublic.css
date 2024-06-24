@@ -1,0 +1,11 @@
+
+.public-logo {
+    height: 20px;
+}
+
+.custom-tools-header-layout-public {
+    padding: 15px;
+    background-color: #092c4c;
+    display: flex;
+    align-items: center;
+}

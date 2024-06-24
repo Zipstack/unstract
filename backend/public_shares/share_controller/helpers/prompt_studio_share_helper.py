@@ -26,9 +26,8 @@ class PromptShareHelper:
         return share_manager
 
     @staticmethod
-    def get_tool_from_share_id(share_id: str, org_id: Organization) -> str:
+    def get_tool_from_share_id(share_id: str, org_id: Organization) -> CustomTool:
         with tenant_context(org_id):
             # TO DO : Handle exceptions
             tool: CustomTool = CustomTool.objects.get(share_id=share_id)
-            tool_id: str = tool.tool_id
-            return tool_id
+            return tool

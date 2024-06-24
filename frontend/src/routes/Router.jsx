@@ -50,7 +50,10 @@ function Router() {
       <Route path="error" element={<GenericError />} />
       <Route path="" element={<PersistentLogin />}>
         {/* public routes */}
-        <Route path="/promptStudio/share/:id" element={<PublicPromptStudioHelper />}>
+        <Route
+          path="/promptStudio/share/:id"
+          element={<PublicPromptStudioHelper />}
+        >
           <Route path="" element={<ToolIdePage />} />
           <Route
             path="/promptStudio/share/:id/outputAnalyzer"

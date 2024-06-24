@@ -51,7 +51,7 @@ function PromptShareLink({
 
   };
   const handlePublicLinkCopy = () => {
-    navigator.clipboard.writeText(window.location.origin + "/share/"+ shareId);
+    navigator.clipboard.writeText(window.location.origin + "/promptStudio/share/"+ shareId);
     setAlertDetails({type:"success", content:"Public Project link copied to clipboard."});
   }
   const handleClose =() => {
