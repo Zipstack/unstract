@@ -5,13 +5,15 @@ from typing import Any, Optional
 
 from docker.errors import APIError, ImageNotFound
 from docker.models.containers import Container
+from unstract.worker.clients.helper import ContainerClientHelper
+from unstract.worker.clients.interface import (
+    ContainerClientInterface,
+    ContainerInterface,
+)
 from unstract.worker.constants import Env
 from unstract.worker.utils import Utils
 
-from docker import DockerClient, from_env
-
-from .helper import normalize_container_name
-from .interface import ContainerClientInterface, ContainerInterface
+from docker import DockerClient
 
 
 class DockerContainer(ContainerInterface):
@@ -44,7 +46,7 @@ class Client(ContainerClientInterface):
 
         # Create a Docker client that communicates with
         #   the Docker daemon in the host environment
-        self.client: DockerClient = from_env()
+        self.client: DockerClient = DockerClient.from_env()
         self.__private_login()
 
     def __private_login(self):
@@ -179,7 +181,7 @@ class Client(ContainerClientInterface):
                 }
             )
         return {
-            "name": normalize_container_name(self.image_name),
+            "name": ContainerClientHelper.normalize_container_name(self.image_name),
             "image": self.get_image(),
             "command": command,
             "detach": True,

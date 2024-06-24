@@ -7,7 +7,6 @@ const { Sider } = Layout;
 
 import Workflows from "../../../assets/Workflows.svg";
 import apiDeploy from "../../../assets/api-deployments.svg";
-import appdev from "../../../assets/appdev.svg";
 import CustomTools from "../../../assets/custom-tools-icon.svg";
 import EmbeddingIcon from "../../../assets/embedding.svg";
 import etl from "../../../assets/etl.svg";
@@ -18,10 +17,17 @@ import VectorDbIcon from "../../../assets/vector-db.svg";
 import TextExtractorIcon from "../../../assets/text-extractor.svg";
 import { useSessionStore } from "../../../store/session-store";
 
+let getMenuItem;
+try {
+  getMenuItem = require("../../../plugins/app-deployments/app-deployment-components/helpers/getMenuItem");
+} catch (err) {
+  // Plugin unavailable.
+}
+
 const SideNavBar = ({ collapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { orgName } = sessionDetails;
+  const { orgName, flags } = sessionDetails;
 
   const data = [
     {
@@ -35,15 +41,6 @@ const SideNavBar = ({ collapsed }) => {
           image: apiDeploy,
           path: `/${orgName}/api`,
           active: window.location.pathname.startsWith(`/${orgName}/api`),
-        },
-        {
-          id: 1.2,
-          title: "App Deployments",
-          description: "Standalone unstructured data apps",
-          icon: BranchesOutlined,
-          image: appdev,
-          path: `/${orgName}/app`,
-          active: window.location.pathname.startsWith(`/${orgName}/app`),
         },
         {
           id: 1.3,
@@ -146,6 +143,10 @@ const SideNavBar = ({ collapsed }) => {
       ],
     },
   ];
+
+  if (getMenuItem && flags.app_deployment) {
+    data[0].subMenu.splice(1, 0, getMenuItem.default(orgName));
+  }
 
   return (
     <Sider

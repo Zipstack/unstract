@@ -189,7 +189,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             data={"default_profile": profile_manager.profile_id},
         )
 
-    @action(detail=True, methods=["get"])
+    @action(detail=True, methods=["post"])
     def index_document(self, request: HttpRequest, pk: Any = None) -> Response:
         """API Entry point method to index input file.
 

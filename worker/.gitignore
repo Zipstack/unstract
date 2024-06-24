@@ -166,3 +166,4 @@ src/unstract/worker/clients/
 !src/unstract/worker/clients/interface.py
 !src/unstract/worker/clients/helper.py
 !src/unstract/worker/clients/docker.py
+!src/unstract/worker/clients/test_docker.py

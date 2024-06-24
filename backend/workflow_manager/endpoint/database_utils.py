@@ -65,13 +65,6 @@ class DatabaseUtils:
                     sql_values[column] = f"parse_json($${values[column]}$$)"
                 else:
                     sql_values[column] = f"{values[column]}"
-            elif cls_name == DBConnectionClass.BIGQUERY:
-                col = column.lower()
-                type_x = column_types[col]
-                if type_x in BigQuery.COLUMN_TYPES:
-                    sql_values[column] = f"{type_x}({values[column]})"
-                else:
-                    sql_values[column] = f"{values[column]}"
             else:
                 # Default to Other SQL DBs
                 # TODO: Handle numeric types with no quotes

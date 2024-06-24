@@ -38,4 +38,9 @@ class ToolInstantiationError(ToolInstanceBaseException):
 
 class BadRequestException(ToolInstanceBaseException):
     status_code = 400
-    default_detail = "Invalid input"
+    default_detail = "Invalid input."
+
+
+class ToolSettingValidationError(APIException):
+    status_code = 400
+    default_detail = "Error while validating tool's setting."

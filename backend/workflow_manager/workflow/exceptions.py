@@ -54,8 +54,3 @@ class InternalException(APIException):
 class WorkflowExecutionNotExist(APIException):
     status_code = 404
     default_detail = "Workflow execution does not exist"
-
-
-class ToolValidationError(APIException):
-    status_code = 400
-    default_detail = "Tool validation error"

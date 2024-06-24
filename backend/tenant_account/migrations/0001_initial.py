@@ -14,8 +14,9 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Updated the name here as the 002, 0002 step is just name change
         migrations.CreateModel(
-            name="User",
+            name="OrganizationMember",
             fields=[
                 (
                     "user_ptr",
@@ -28,6 +29,8 @@ class Migration(migrations.Migration):
                         to=settings.AUTH_USER_MODEL,
                     ),
                 ),
+                # Added column which is used in 0002 here
+                ("role", models.CharField(default="admin")),
             ],
             options={
                 "verbose_name": "user",

@@ -29,6 +29,13 @@ deploy = [
     "gunicorn>=21.2.0",
 ]
 
+dev = [
+    "pytest>=8.2.2",
+    "pytest-mock>=3.14.0",
+    "pytest-cov>=5.0.0",
+    "pytest-md-report>=0.6.2",
+]
+
 [tool.pdm.scripts]
 worker.cmd = "flask --app src/unstract/worker/main.py run --port 5002"
 worker.env_file = ".env"

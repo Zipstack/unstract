@@ -9,6 +9,7 @@ from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
 from unstract.adapters.constants import Common as common
+from unstract.adapters.enums import AdapterTypes
 
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
@@ -63,9 +64,12 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
 
         adapter_metadata = instance.get_adapter_meta_data()
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
-        adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
-            instance.get_context_window_size()
-        )
+        # Retrieve context window if adapter is a LLM
+        # For other adapter types, context_window is not relevant.
+        if instance.adapter_type == AdapterTypes.LLM.value:
+            adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
+                instance.get_context_window_size()
+            )
 
         rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
             instance.adapter_id, common.ICON

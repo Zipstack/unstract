@@ -64,3 +64,13 @@ class WorkflowExecution(BaseModel):
     execution_time = models.FloatField(
         default=0, db_comment="execution time in seconds"
     )
+
+    def __str__(self) -> str:
+        return (
+            f"Workflow execution: {self.id} ("
+            f"pipeline ID: {self.pipeline_id}, "
+            f"workflow iD: {self.workflow_id}, "
+            f"execution method: {self.execution_method}, "
+            f"status: {self.status}, "
+            f"error message: {self.error_message})"
+        )

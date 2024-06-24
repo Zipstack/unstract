@@ -49,7 +49,11 @@ class AuthenticationMiddleware:
                 return False
 
         except Exception as e:
-            current_app.logger.error(f"Error while validating bearer token: {e}")
+            current_app.logger.error(
+                f"Error while validating bearer token: {e}",
+                stack_info=True,
+                exc_info=True,
+            )
             return False
         return True
 
