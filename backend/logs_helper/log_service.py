@@ -10,12 +10,11 @@ class LogService:
 
             # Delete keys matching the pattern
             CacheService.clear_cache(key_pattern=key_pattern)
-    
-    @staticmethod    
+
+    @staticmethod
     def generate_redis_key(session_id):
-        """
-        Generate a Redis key for logs based on the provided session_id.
-        
+        """Generate a Redis key for logs based on the provided session_id.
+
         Parameters:
         session_id (str): The session identifier to include in the Redis key.
 

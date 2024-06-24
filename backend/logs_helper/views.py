@@ -10,8 +10,8 @@ from rest_framework.response import Response
 from utils.cache_service import CacheService
 from utils.user_session import UserSessionUtils
 
-from .serializers import StoreLogMessagesSerializer
 from .log_service import LogService
+from .serializers import StoreLogMessagesSerializer
 
 logger = logging.getLogger(__name__)
 
