@@ -70,7 +70,7 @@ function PromptCard({
   const { getTokenUsage } = useTokenUsage();
 
   useEffect(() => {
-    const outputTypeData = getDropdownItems("output_type");
+    const outputTypeData = getDropdownItems("output_type") || {};
     const dropdownList1 = Object.keys(outputTypeData).map((item) => {
       return { value: outputTypeData[item] };
     });

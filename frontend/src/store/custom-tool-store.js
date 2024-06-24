@@ -15,6 +15,7 @@ const defaultState = {
   summarizeIndexStatus: [],
   singlePassExtractMode: false,
   isSinglePassExtractLoading: false,
+  isSimplePromptStudio: false,
 };
 
 const defaultPromptInstance = {

@@ -124,7 +124,6 @@ PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
 API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
     "API_DEPLOYMENT_PATH_PREFIX", "deployment"
 ).strip("/")
-
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")
 DB_HOST = os.environ.get("DB_HOST", "backend-db-1")
@@ -139,6 +138,9 @@ PROMPT_HOST = os.environ.get("PROMPT_HOST", "http://localhost")
 PROMPT_PORT = os.environ.get("PROMPT_PORT", 3003)
 PROMPT_STUDIO_FILE_PATH = os.environ.get(
     "PROMPT_STUDIO_FILE_PATH", "/app/prompt-studio-data"
+)
+SIMPLE_PROMPT_STUDIO_FILE_PATH = os.environ.get(
+    "SIMPLE_PROMPT_STUDIO_FILE_PATH", "/app/prompt-studio-data"
 )
 X2TEXT_HOST = os.environ.get("X2TEXT_HOST", "http://localhost")
 X2TEXT_PORT = os.environ.get("X2TEXT_PORT", 3004)
@@ -209,6 +211,9 @@ SHARED_APPS = (
     "plugins",
     "feature_flag",
     "django_celery_beat",
+    "simple_prompt_studio.sps_project",
+    "simple_prompt_studio.sps_prompt",
+    "simple_prompt_studio.sps_document",
 )
 
 TENANT_APPS = (
@@ -416,6 +421,7 @@ WHITELISTED_PATHS_LIST = [
 WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
 # White lists workflow-api-deployment path
 WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
+WHITELISTED_PATHS.append(f"/simple-prompt-studio")
 
 
 # API Doc Generator Settings

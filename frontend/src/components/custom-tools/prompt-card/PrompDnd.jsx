@@ -5,6 +5,7 @@ import { useRef } from "react";
 import { NotesCard } from "../notes-card/NotesCard";
 import { PromptCard } from "./PromptCard";
 import { promptType } from "../../../helpers/GetStaticData";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
 
 function PromptDnd({
   item,
@@ -15,6 +16,7 @@ function PromptDnd({
   moveItem,
 }) {
   const ref = useRef(null);
+  const { isSimplePromptStudio } = useCustomToolStore();
 
   const [, drop] = useDrop({
     accept: "PROMPT_CARD",
@@ -34,7 +36,7 @@ function PromptDnd({
 
   return (
     <div ref={ref}>
-      {item.prompt_type === promptType.prompt && (
+      {(item.prompt_type === promptType.prompt || isSimplePromptStudio) && (
         <PromptCard
           promptDetails={item}
           handleChange={handleChange}

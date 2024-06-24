@@ -31,6 +31,7 @@ import { ReactComponent as OrgSelection } from "./org-selection.svg";
 import { ReactComponent as RedGradCircle } from "./red-grad-circle.svg";
 import { ReactComponent as YellowGradCircle } from "./yellow-grad-circle.svg";
 import { ReactComponent as ExportToolIcon } from "./export-tool.svg";
+import { ReactComponent as UploadIcon } from "./upload.svg";
 
 export {
   SunIcon,
@@ -66,4 +67,5 @@ export {
   RedGradCircle,
   YellowGradCircle,
   ExportToolIcon,
+  UploadIcon,
 };

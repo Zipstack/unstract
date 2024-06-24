@@ -2,10 +2,15 @@ import { Viewer, Worker } from "@react-pdf-viewer/core";
 import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
 import { pageNavigationPlugin } from "@react-pdf-viewer/page-navigation";
 import PropTypes from "prop-types";
+import { useEffect } from "react";
 
 function PdfViewer({ fileUrl }) {
   const newPlugin = defaultLayoutPlugin();
   const pageNavigationPluginInstance = pageNavigationPlugin();
+
+  useEffect(() => {
+    console.log(fileUrl);
+  }, [fileUrl]);
 
   return (
     <div className="doc-manager-body">

@@ -60,6 +60,7 @@ function PromptCardItems({
     singlePassExtractMode,
     isSinglePassExtractLoading,
     indexDocs,
+    isSimplePromptStudio,
   } = useCustomToolStore();
 
   useEffect(() => {
@@ -116,139 +117,145 @@ function PromptCardItems({
             />
           </div>
           <>
-            <Divider className="prompt-card-divider" />
-            <Space
-              direction="vertical"
-              className={`prompt-card-comp-layout ${
-                !(isRunLoading || result?.output || result?.output === 0) &&
-                "prompt-card-comp-layout-border"
-              }`}
-            >
-              <div className="prompt-card-llm-profiles">
-                <Space direction="horizontal">
-                  {EvalBtn && !singlePassExtractMode && (
-                    <EvalBtn
-                      btnText={promptDetails?.evaluate ? "On" : "Off"}
-                      promptId={promptDetails.prompt_id}
-                      setOpenEval={setOpenEval}
-                    />
-                  )}
-                  <Button
-                    size="small"
-                    type="link"
-                    className="display-flex-align-center prompt-card-action-button"
-                    onClick={() => setOpenOutputForDoc(true)}
-                  >
-                    <Space>
-                      {isCoverageLoading ? (
-                        <SpinnerLoader size="small" />
-                      ) : (
-                        <SearchOutlined className="font-size-12" />
+            {!isSimplePromptStudio && (
+              <>
+                <Divider className="prompt-card-divider" />
+
+                <Space
+                  direction="vertical"
+                  className={`prompt-card-comp-layout ${
+                    !(isRunLoading || result?.output || result?.output === 0) &&
+                    "prompt-card-comp-layout-border"
+                  }`}
+                >
+                  <div className="prompt-card-llm-profiles">
+                    <Space direction="horizontal">
+                      {EvalBtn && !singlePassExtractMode && (
+                        <EvalBtn
+                          btnText={promptDetails?.evaluate ? "On" : "Off"}
+                          promptId={promptDetails.prompt_id}
+                          setOpenEval={setOpenEval}
+                        />
                       )}
-                      <Typography.Link className="font-size-12">
-                        Coverage: {coverage} of {listOfDocs?.length || 0} docs
-                      </Typography.Link>
+                      <Button
+                        size="small"
+                        type="link"
+                        className="display-flex-align-center prompt-card-action-button"
+                        onClick={() => setOpenOutputForDoc(true)}
+                      >
+                        <Space>
+                          {isCoverageLoading ? (
+                            <SpinnerLoader size="small" />
+                          ) : (
+                            <SearchOutlined className="font-size-12" />
+                          )}
+                          <Typography.Link className="font-size-12">
+                            Coverage: {coverage} of {listOfDocs?.length || 0}{" "}
+                            docs
+                          </Typography.Link>
+                        </Space>
+                      </Button>
                     </Space>
-                  </Button>
-                </Space>
-                <Space>
-                  {!singlePassExtractMode && (
-                    <TokenUsage
-                      tokenUsageId={
-                        promptDetails?.prompt_id +
-                        "__" +
-                        selectedDoc?.document_id
-                      }
-                    />
-                  )}
-                  <Select
-                    className="prompt-card-select-type"
-                    size="small"
-                    placeholder="Enforce Type"
-                    optionFilterProp="children"
-                    options={enforceTypeList}
-                    value={promptDetails?.enforce_type || null}
-                    disabled={
-                      disableLlmOrDocChange.includes(
-                        promptDetails?.prompt_id
-                      ) ||
-                      isSinglePassExtractLoading ||
-                      indexDocs.includes(selectedDoc?.document_id)
-                    }
-                    onChange={(value) => handleTypeChange(value)}
-                  />
-                </Space>
-              </div>
-              <div className="prompt-card-llm-profiles">
-                {!singlePassExtractMode && (
-                  <>
-                    {llmProfiles?.length > 0 &&
-                    promptDetails?.profile_manager?.length > 0 &&
-                    selectedLlmProfileId ? (
-                      <div>
-                        {llmProfiles
-                          .filter(
-                            (profile) =>
-                              profile.profile_id === selectedLlmProfileId
-                          )
-                          .map((profile, index) => (
-                            <div key={profile?.profile_id}>
-                              <Tag>{profile.llm}</Tag>
-                              <Tag>{profile.vector_store}</Tag>
-                              <Tag>{profile.embedding_model}</Tag>
-                              <Tag>{profile.x2text}</Tag>
-                              <Tag>{`${profile.chunk_size}/${profile.chunk_overlap}/${profile.retrieval_strategy}/${profile.similarity_top_k}/${profile.section}`}</Tag>
-                            </div>
-                          ))}
-                      </div>
-                    ) : (
-                      <div>
-                        <Typography.Text className="font-size-12">
-                          No LLM Profile Selected
-                        </Typography.Text>
+                    <Space>
+                      {!singlePassExtractMode && (
+                        <TokenUsage
+                          tokenUsageId={
+                            promptDetails?.prompt_id +
+                            "__" +
+                            selectedDoc?.document_id
+                          }
+                        />
+                      )}
+                      <Select
+                        className="prompt-card-select-type"
+                        size="small"
+                        placeholder="Enforce Type"
+                        optionFilterProp="children"
+                        options={enforceTypeList}
+                        value={promptDetails?.enforce_type || null}
+                        disabled={
+                          disableLlmOrDocChange.includes(
+                            promptDetails?.prompt_id
+                          ) ||
+                          isSinglePassExtractLoading ||
+                          indexDocs.includes(selectedDoc?.document_id)
+                        }
+                        onChange={(value) => handleTypeChange(value)}
+                      />
+                    </Space>
+                  </div>
+                  <div className="prompt-card-llm-profiles">
+                    {!singlePassExtractMode && (
+                      <>
+                        {llmProfiles?.length > 0 &&
+                        promptDetails?.profile_manager?.length > 0 &&
+                        selectedLlmProfileId ? (
+                          <div>
+                            {llmProfiles
+                              .filter(
+                                (profile) =>
+                                  profile.profile_id === selectedLlmProfileId
+                              )
+                              .map((profile, index) => (
+                                <div key={profile?.profile_id}>
+                                  <Tag>{profile.llm}</Tag>
+                                  <Tag>{profile.vector_store}</Tag>
+                                  <Tag>{profile.embedding_model}</Tag>
+                                  <Tag>{profile.x2text}</Tag>
+                                  <Tag>{`${profile.chunk_size}/${profile.chunk_overlap}/${profile.retrieval_strategy}/${profile.similarity_top_k}/${profile.section}`}</Tag>
+                                </div>
+                              ))}
+                          </div>
+                        ) : (
+                          <div>
+                            <Typography.Text className="font-size-12">
+                              No LLM Profile Selected
+                            </Typography.Text>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {!singlePassExtractMode && (
+                      <div className="display-flex-right prompt-card-paginate-div">
+                        <Button
+                          type="text"
+                          size="small"
+                          className="prompt-card-action-button"
+                          disabled={
+                            page <= 1 ||
+                            disableLlmOrDocChange.includes(
+                              promptDetails?.prompt_id
+                            ) ||
+                            isSinglePassExtractLoading ||
+                            indexDocs.includes(selectedDoc?.document_id)
+                          }
+                          onClick={handlePageLeft}
+                        >
+                          <LeftOutlined className="prompt-card-paginate" />
+                        </Button>
+                        <Button
+                          type="text"
+                          size="small"
+                          className="prompt-card-action-button"
+                          disabled={
+                            page >= llmProfiles?.length ||
+                            disableLlmOrDocChange.includes(
+                              promptDetails?.prompt_id
+                            ) ||
+                            isSinglePassExtractLoading ||
+                            indexDocs.includes(selectedDoc?.document_id)
+                          }
+                          onClick={handlePageRight}
+                        >
+                          <RightOutlined className="prompt-card-paginate" />
+                        </Button>
                       </div>
                     )}
-                  </>
-                )}
-                {!singlePassExtractMode && (
-                  <div className="display-flex-right prompt-card-paginate-div">
-                    <Button
-                      type="text"
-                      size="small"
-                      className="prompt-card-action-button"
-                      disabled={
-                        page <= 1 ||
-                        disableLlmOrDocChange.includes(
-                          promptDetails?.prompt_id
-                        ) ||
-                        isSinglePassExtractLoading ||
-                        indexDocs.includes(selectedDoc?.document_id)
-                      }
-                      onClick={handlePageLeft}
-                    >
-                      <LeftOutlined className="prompt-card-paginate" />
-                    </Button>
-                    <Button
-                      type="text"
-                      size="small"
-                      className="prompt-card-action-button"
-                      disabled={
-                        page >= llmProfiles?.length ||
-                        disableLlmOrDocChange.includes(
-                          promptDetails?.prompt_id
-                        ) ||
-                        isSinglePassExtractLoading ||
-                        indexDocs.includes(selectedDoc?.document_id)
-                      }
-                      onClick={handlePageRight}
-                    >
-                      <RightOutlined className="prompt-card-paginate" />
-                    </Button>
                   </div>
-                )}
-              </div>
-              {EvalMetrics && <EvalMetrics result={result} />}
-            </Space>
+                  {EvalMetrics && <EvalMetrics result={result} />}
+                </Space>
+              </>
+            )}
           </>
           {(isRunLoading || result?.output || result?.output === 0) && (
             <>

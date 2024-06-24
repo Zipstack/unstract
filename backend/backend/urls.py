@@ -59,6 +59,9 @@ urlpatterns = [
         UrlPathConstants.PROMPT_STUDIO,
         include("prompt_studio.prompt_studio_index_manager.urls"),
     ),
+    path("simple-prompt-studio/", include("simple_prompt_studio.sps_project.urls")),
+    path("simple-prompt-studio/", include("simple_prompt_studio.sps_prompt.urls")),
+    path("simple-prompt-studio/", include("simple_prompt_studio.sps_document.urls")),
 ]
 
 try:

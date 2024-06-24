@@ -22,6 +22,7 @@ from django.urls import include, path
 
 path_prefix = settings.PATH_PREFIX
 api_path_prefix = settings.API_DEPLOYMENT_PATH_PREFIX
+sps_path = "simple-prompt-studio"
 
 urlpatterns = [
     path(f"{path_prefix}/", include("account.urls")),
@@ -33,6 +34,10 @@ urlpatterns = [
     path(f"{api_path_prefix}/", include("api.urls")),
     # Feature flags
     path(f"{path_prefix}/flags/", include("feature_flag.urls")),
+    # Simple Prompt Studio
+    path(f"{sps_path}/", include("simple_prompt_studio.sps_project.urls")),
+    path(f"{sps_path}/", include("simple_prompt_studio.sps_prompt.urls")),
+    path(f"{sps_path}/", include("simple_prompt_studio.sps_document.urls")),
 ]
 if settings.ADMIN_ENABLED:
     # Admin URLs

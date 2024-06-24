@@ -8,4 +8,11 @@ module.exports = (app) => {
       changeOrigin: true,
     })
   );
+  app.use(
+    "/simple-prompt-studio",
+    createProxyMiddleware({
+      target: process.env.REACT_APP_BACKEND_URL,
+      changeOrigin: true,
+    })
+  );
 };

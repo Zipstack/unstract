@@ -1,4 +1,9 @@
-import { LeftOutlined, RightOutlined } from "@ant-design/icons";
+import {
+  FilePdfOutlined,
+  FileTextOutlined,
+  LeftOutlined,
+  RightOutlined,
+} from "@ant-design/icons";
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
@@ -16,15 +21,24 @@ import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { getDocument } from "../../../plugins/simple-prompt-studio/simple-prompt-studio-api-service";
 
 const items = [
   {
     key: "1",
-    label: "Doc View",
+    label: (
+      <Tooltip title="PDF View">
+        <FilePdfOutlined />
+      </Tooltip>
+    ),
   },
   {
     key: "2",
-    label: "Raw View",
+    label: (
+      <Tooltip title="Raw View">
+        <FileTextOutlined />
+      </Tooltip>
+    ),
   },
 ];
 
@@ -38,7 +52,7 @@ try {
   SummarizeView =
     require("../../../plugins/summarize-view/SummarizeView").SummarizeView;
   const tabLabel =
-    require("../../../plugins/summarize-tab/SummarizeTab").tabLabel;
+    require("../../../plugins/summarize-tab/SummarizeTab123").tabLabel;
   if (tabLabel) {
     items.push({
       key: "3",
@@ -69,6 +83,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     details,
     indexDocs,
     isSinglePassExtractLoading,
+    isSimplePromptStudio,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
@@ -124,6 +139,34 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     }
 
     if (!selectedDoc?.document_id) {
+      return;
+    }
+
+    // TODO: Optimize Code
+    if (isSimplePromptStudio) {
+      handleLoadingStateUpdate(viewType, true);
+      getDocument(details?.tool_id, selectedDoc?.document_id, viewType)
+        .then((res) => {
+          const data = res?.data?.data;
+          if (viewType === viewTypes.original) {
+            const base64String = data || "";
+            const blob = base64toBlob(base64String);
+            setFileUrl(URL.createObjectURL(blob));
+            return;
+          }
+
+          if (viewType === viewTypes?.extract) {
+            setExtractTxt(data);
+          }
+        })
+        .catch((err) => {
+          if (err?.response?.status === 404) {
+            setErrorMessage(viewType);
+          }
+        })
+        .finally(() => {
+          handleLoadingStateUpdate(viewType, false);
+        });
       return;
     }
 
@@ -242,55 +285,59 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
             onChange={handleActiveKeyChange}
           />
         </div>
-        <Space>
-          <div className="doc-main-title-div">
-            {selectedDoc ? (
-              <Tooltip title={selectedDoc?.document_name}>
-                <Typography.Text className="doc-main-title" ellipsis>
-                  {selectedDoc?.document_name}
-                </Typography.Text>
+        {!isSimplePromptStudio && (
+          <Space>
+            <div className="doc-main-title-div">
+              {selectedDoc ? (
+                <Tooltip title={selectedDoc?.document_name}>
+                  <Typography.Text className="doc-main-title" ellipsis>
+                    {selectedDoc?.document_name}
+                  </Typography.Text>
+                </Tooltip>
+              ) : null}
+            </div>
+            <div>
+              <Tooltip title="Manage Documents">
+                <Button
+                  className="doc-manager-btn"
+                  onClick={() => setOpenManageDocsModal(true)}
+                >
+                  <Typography.Text ellipsis>
+                    {"Manage Documents"}
+                  </Typography.Text>
+                </Button>
               </Tooltip>
-            ) : null}
-          </div>
-          <div>
-            <Tooltip title="Manage Documents">
+            </div>
+            <div>
               <Button
-                className="doc-manager-btn"
-                onClick={() => setOpenManageDocsModal(true)}
+                type="text"
+                size="small"
+                disabled={
+                  !selectedDoc ||
+                  disableLlmOrDocChange?.length > 0 ||
+                  isSinglePassExtractLoading ||
+                  page <= 1
+                }
+                onClick={handlePageLeft}
               >
-                <Typography.Text ellipsis>{"Manage Documents"}</Typography.Text>
+                <LeftOutlined className="doc-manager-paginate-icon" />
               </Button>
-            </Tooltip>
-          </div>
-          <div>
-            <Button
-              type="text"
-              size="small"
-              disabled={
-                !selectedDoc ||
-                disableLlmOrDocChange?.length > 0 ||
-                isSinglePassExtractLoading ||
-                page <= 1
-              }
-              onClick={handlePageLeft}
-            >
-              <LeftOutlined className="doc-manager-paginate-icon" />
-            </Button>
-            <Button
-              type="text"
-              size="small"
-              disabled={
-                !selectedDoc ||
-                disableLlmOrDocChange?.length > 0 ||
-                isSinglePassExtractLoading ||
-                page >= listOfDocs?.length
-              }
-              onClick={handlePageRight}
-            >
-              <RightOutlined className="doc-manager-paginate-icon" />
-            </Button>
-          </div>
-        </Space>
+              <Button
+                type="text"
+                size="small"
+                disabled={
+                  !selectedDoc ||
+                  disableLlmOrDocChange?.length > 0 ||
+                  isSinglePassExtractLoading ||
+                  page >= listOfDocs?.length
+                }
+                onClick={handlePageRight}
+              >
+                <RightOutlined className="doc-manager-paginate-icon" />
+              </Button>
+            </div>
+          </Space>
+        )}
       </div>
       {activeKey === "1" && (
         <DocumentViewer
@@ -314,7 +361,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           <TextViewerPre text={extractTxt} />
         </DocumentViewer>
       )}
-      {SummarizeView && activeKey === "3" && (
+      {SummarizeView && !isSimplePromptStudio && activeKey === "3" && (
         <SummarizeView
           setOpenManageDocsModal={setOpenManageDocsModal}
           currDocIndexStatus={currDocIndexStatus}

@@ -187,6 +187,17 @@ const sourceTypes = {
   adapters: ["llm", "vector_db", "embedding"],
 };
 
+const getSequenceNumber = (listOfPrompts) => {
+  let maxSequenceNumber = 0;
+  listOfPrompts.forEach((item) => {
+    if (item?.sequence_number > maxSequenceNumber) {
+      maxSequenceNumber = item?.sequence_number;
+    }
+  });
+
+  return maxSequenceNumber + 1;
+};
+
 const deploymentTypes = {
   etl: "etl",
   task: "task",
@@ -432,6 +443,7 @@ export {
   replaceFirstRoute,
   setInitialWorkflowInstance,
   sourceTypes,
+  getSequenceNumber,
   toolIdeOutput,
   wfExecutionTypes,
   workflowStatus,

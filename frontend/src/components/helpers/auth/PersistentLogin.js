@@ -30,6 +30,7 @@ function PersistentLogin() {
   if (isLoading) {
     return <GenericLoader />;
   }
+
   return (
     <>
       <Outlet />

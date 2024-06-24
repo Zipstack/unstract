@@ -29,6 +29,10 @@ import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
 import { UsersPage } from "../pages/UsersPage.jsx";
 import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
+import { SimplePromptStudio } from "../plugins/simple-prompt-studio/SimplePromptStudio.jsx";
+import { SpsLanding } from "../plugins/simple-prompt-studio/SpsLanding.jsx";
+import { SpsUpload } from "../plugins/simple-prompt-studio/SpsUpload.jsx";
+import { SimplePromptStudioHelper } from "../plugins/simple-prompt-studio/SimplePromptStudioHelper.jsx";
 
 let TrialRoutes;
 let RequirePlatformAdmin;
@@ -52,6 +56,15 @@ function Router() {
         {/* public routes */}
         <Route path="" element={<RequireGuest />}>
           <Route path="landing" element={<LandingPage />} />
+        </Route>
+
+        <Route
+          path="public/simple-prompt-studio"
+          element={<SimplePromptStudioHelper />}
+        >
+          <Route path="" element={<SimplePromptStudio />} />
+          <Route path="landing" element={<SpsLanding />} />
+          <Route path="upload" element={<SpsUpload />} />
         </Route>
         {/* protected routes */}
         <Route path="setOrg" element={<SetOrgPage />} />
