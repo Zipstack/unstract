@@ -118,8 +118,6 @@ class DestinationConnector(BaseConnector):
             self._handle_api_result(
                 file_name=file_name, error=error, result=result, meta_data=meta_data
             )
-
-        #  check and add meta data here
         if not file_history:
             FileHistoryHelper.create_file_history(
                 cache_key=file_hash,
@@ -347,11 +345,13 @@ class DestinationConnector(BaseConnector):
             logger.error(f"Error while getting result {err}")
         return result
 
-    def get_metadata(self, file_history: Optional[FileHistory]) -> Optional[Any]:
-        """Get result data from the output file.
+    def get_metadata(
+        self, file_history: Optional[FileHistory]
+    ) -> Optional[dict[str, Any]]:
+        """Get meta_data from the output file.
 
         Returns:
-            Union[dict[str, Any], str]: Result data.
+            Union[dict[str, Any], str]: Meta data.
         """
         if file_history and file_history.meta_data:
             return self.parse_string(file_history.meta_data)
@@ -365,9 +365,9 @@ class DestinationConnector(BaseConnector):
         Returns:
             None
         """
-        # fs: LocalFileSystem = fsspec.filesystem("file")
-        # fs.rm(self.execution_dir, recursive=True)
-        # self.delete_api_storage_dir(self.workflow_id, self.execution_id)
+        fs: LocalFileSystem = fsspec.filesystem("file")
+        fs.rm(self.execution_dir, recursive=True)
+        self.delete_api_storage_dir(self.workflow_id, self.execution_id)
 
     @classmethod
     def delete_api_storage_dir(cls, workflow_id: str, execution_id: str) -> None:
