@@ -70,5 +70,37 @@ def profile_manager(request: Request) -> Response:
 )
 def prompt_manager(request: Request) -> Response:
     share_id = request.GET.get("id")
-    prompt_metadata = PromptShareController.get_prompt_manager_metadata(share_id)
+    prompt_metadata = PromptShareController.get_prompt_metadata(share_id)
     return Response(data=prompt_metadata)
+
+@api_view(
+    [
+        "GET",
+    ]
+)
+def output_manager(request: Request) -> Response:
+    share_id = request.GET.get("id")
+    prompt_id = request.GET.get("prompt_id")
+    profile_manager=request.GET.get("profile_manager")
+    document_manager=request.GET.get("document_manager")
+    is_single_pass_extraction=request.GET.get("is_single_pass_extraction")
+    prompt_metadata = PromptShareController.get_prompt_output_metadata(share_id=share_id,
+                                                                       profile_manager=profile_manager,
+                                                                       prompt_id=prompt_id,
+                                                                       document_manager=document_manager, 
+                                                                       is_single_pass=is_single_pass_extraction)
+    return Response(data=prompt_metadata)
+
+@api_view(
+    [
+        "GET",
+    ]
+)
+def document_content_manager(request: Request) -> Response:
+    share_id = request.GET.get("id")
+    document_id = request.GET.get("document_id")
+    view_type = request.GET.get("view_type")
+    contents = PromptShareController.get_prompt_studio_file_contents(share_id=share_id,
+                                                                            document_id=document_id,
+                                                                            view_type=view_type)
+    return Response({"data": contents}, status=status.HTTP_200_OK)

@@ -7,6 +7,8 @@ from .views import (
     profile_manager,
     prompt_manager,
     prompt_metadata,
+    output_manager,
+    document_content_manager,
 )
 
 urlpatterns = format_suffix_patterns(
@@ -34,6 +36,16 @@ urlpatterns = format_suffix_patterns(
         path(
             "share/prompts-metadata/",
             prompt_manager,
+            name="share-manager-prompt",
+        ),
+        path(
+            "share/outputs-metadata/",
+            output_manager,
+            name="share-manager-prompt",
+        ),
+        path(
+            "share/document-contents/",
+            document_content_manager,
             name="share-manager-prompt",
         ),
     ]
