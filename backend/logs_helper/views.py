@@ -10,8 +10,8 @@ from rest_framework.response import Response
 from utils.cache_service import CacheService
 from utils.user_session import UserSessionUtils
 
-from .serializers import StoreLogMessagesSerializer
 from .log_service import LogService
+from .serializers import StoreLogMessagesSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +59,9 @@ class LogsHelperViewSet(viewsets.ModelViewSet):
 
         timestamp = datetime.now(timezone.utc).timestamp()
 
-        redis_key = f"{
-            LogService.generate_redis_key(session_id=session_id)
-            }:{timestamp}"
+        redis_key = (
+            f"{LogService.generate_redis_key(session_id=session_id)}:{timestamp}"
+        )
 
         CacheService.set_key(redis_key, log, logs_expiry)
 
