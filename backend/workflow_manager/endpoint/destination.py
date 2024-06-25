@@ -485,15 +485,13 @@ class DestinationConnector(BaseConnector):
             # Convert file content to a base64 encoded string
             file_content_base64 = base64.b64encode(file_content).decode("utf-8")
             q_name = f"review_queue_{self.organization_id}_{workflow.workflow_name}"
-            queue_result = {"file": file_name}
-            queue_result.update(
-                {
+            queue_result = {
+                    "file": file_name,
                     "status": QueueResultStatus.SUCCESS,
                     "result": result,
                     "workflow_id": str(self.workflow_id),
                     "file_content": file_content_base64,
                 }
-            )
             # Convert the result dictionary to a JSON string
             queue_result_json = json.dumps(queue_result)
 
