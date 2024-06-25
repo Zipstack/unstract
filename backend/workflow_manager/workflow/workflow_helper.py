@@ -203,7 +203,7 @@ class WorkflowHelper:
             workflow=workflow,
             file_history=file_history,
             error=error,
-            input_file_path=input_file
+            input_file_path=input_file,
         )
         execution_service.publish_update_log(
             LogState.SUCCESS,

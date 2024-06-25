@@ -3,6 +3,7 @@ from typing import Optional
 from django.http import HttpRequest
 from tenant_account.models import OrganizationMember as OrganizationMember
 
+
 class UserSessionUtils:
     @staticmethod
     def get_organization_id(request: HttpRequest) -> Optional[str]:
@@ -17,7 +18,9 @@ class UserSessionUtils:
         return request.session.get("user_id")
 
     @staticmethod
-    def set_organization_member_role(request: HttpRequest, member: OrganizationMember) -> None:
+    def set_organization_member_role(
+        request: HttpRequest, member: OrganizationMember
+    ) -> None:
         request.session["role"] = member.role
 
     @staticmethod

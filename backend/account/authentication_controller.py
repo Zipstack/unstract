@@ -184,7 +184,9 @@ class AuthenticationController:
                         f"{ErrorMessage.ORGANIZATION_EXIST}, \
                             {ErrorMessage.DUPLICATE_API}"
                     )
-            organization_member = self.create_tenant_user(organization=organization, user=user)
+            organization_member = self.create_tenant_user(
+                organization=organization, user=user
+            )
 
             if new_organization:
                 try:
@@ -420,7 +422,9 @@ class AuthenticationController:
             organization_user.role = role
             organization_user.save()
 
-    def create_tenant_user(self, organization: Organization, user: User) -> OrganizationMember:
+    def create_tenant_user(
+        self, organization: Organization, user: User
+    ) -> OrganizationMember:
         with tenant_context(organization):
             existing_tenant_user = OrganizationMemberService.get_user_by_id(id=user.id)
             if existing_tenant_user:
