@@ -184,7 +184,7 @@ class AuthenticationController:
                         f"{ErrorMessage.ORGANIZATION_EXIST}, \
                             {ErrorMessage.DUPLICATE_API}"
                     )
-            self.create_tenant_user(organization=organization, user=user)
+            organization_member = self.create_tenant_user(organization=organization, user=user)
 
             if new_organization:
                 try:
@@ -221,6 +221,7 @@ class AuthenticationController:
                     organization_id=current_organization_id,
                 )
             UserSessionUtils.set_organization_id(request, organization_id)
+            UserSessionUtils.set_organization_member_role(request, organization_member)
             OrganizationMemberService.set_user_membership_in_organization_cache(
                 user_id=user.user_id, organization_id=organization_id
             )
@@ -419,12 +420,12 @@ class AuthenticationController:
             organization_user.role = role
             organization_user.save()
 
-    def create_tenant_user(self, organization: Organization, user: User) -> None:
+    def create_tenant_user(self, organization: Organization, user: User) -> OrganizationMember:
         with tenant_context(organization):
             existing_tenant_user = OrganizationMemberService.get_user_by_id(id=user.id)
             if existing_tenant_user:
                 Logger.info(f"{existing_tenant_user.user.email} Already exist")
-
+                return existing_tenant_user
             else:
                 account_user = self.get_or_create_user(user=user)
                 if account_user:
@@ -441,7 +442,7 @@ class AuthenticationController:
                         is_prompt_studio_onboarding_msg=False,
                     )
                     tenant_user.save()
-
+                    return tenant_user
                 else:
                     raise UserNotExistError()
 

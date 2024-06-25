@@ -185,7 +185,7 @@ function InviteEditUser() {
                           label: formatOptionLabel(role.name),
                         };
                       })}
-                      disabled={isInvite}
+                      // disabled={isInvite}
                     />
                   </Form.Item>
                 </div>
