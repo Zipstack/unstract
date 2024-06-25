@@ -42,9 +42,7 @@ MODEL_PRICES_URL = EnvManager.get_required_setting("MODEL_PRICES_URL")
 MODEL_PRICES_TTL_IN_DAYS = int(
     EnvManager.get_required_setting("MODEL_PRICES_TTL_IN_DAYS")
 )
-MODEL_PRICES_FILE_PATH = EnvManager.get_required_setting(
-    "MODEL_PRICES_FILE_PATH", "/tmp/model_prices.json"
-)
+MODEL_PRICES_FILE_PATH = EnvManager.get_required_setting("MODEL_PRICES_FILE_PATH")
 
 EnvManager.raise_for_missing_envs()
 
