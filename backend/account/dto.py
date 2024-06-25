@@ -68,7 +68,7 @@ class UserSessionInfo:
             user_id=data["user_id"],
             email=data["email"],
             organization_id=data["organization_id"],
-            role=data["role"]
+            role=data["role"],
         )
 
     def to_dict(self) -> Any:

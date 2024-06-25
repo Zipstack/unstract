@@ -1,8 +1,8 @@
 import ast
+import base64
 import json
 import logging
 import os
-import base64
 from typing import Any, Optional
 
 import fsspec
@@ -10,6 +10,7 @@ import magic
 from connector.models import ConnectorInstance
 from django.db import connection
 from fsspec.implementations.local import LocalFileSystem
+from plugins.manual_review.queue_utils import QueueUtils
 from unstract.sdk.constants import ToolExecKey
 from unstract.workflow_execution.constants import ToolOutputType
 from workflow_manager.endpoint.base_connector import BaseConnector
@@ -28,7 +29,6 @@ from workflow_manager.endpoint.exceptions import (
     ToolOutputTypeMismatch,
 )
 from workflow_manager.endpoint.models import WorkflowEndpoint
-from plugins.manual_review.queue_utils import QueueUtils
 from workflow_manager.workflow.enums import ExecutionStatus
 from workflow_manager.workflow.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow.models.file_history import FileHistory
@@ -85,7 +85,7 @@ class DestinationConnector(BaseConnector):
                 endpoint.connector_instance.metadata
             )
         return endpoint
-    
+
     def _get_source_endpoint_for_workflow(
         self,
         workflow: Workflow,
@@ -108,7 +108,7 @@ class DestinationConnector(BaseConnector):
                 endpoint.connector_instance.metadata
             )
         return endpoint
-    
+
     def validate(self) -> None:
         connection_type = self.endpoint.connection_type
         connector: ConnectorInstance = self.endpoint.connector_instance
@@ -148,7 +148,12 @@ class DestinationConnector(BaseConnector):
             self._handle_api_result(file_name=file_name, error=error, result=result)
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
             result = self.get_result(file_history)
-            self._push_to_queue(file_name=file_name, workflow=workflow, result=result, input_file_path=input_file_path)
+            self._push_to_queue(
+                file_name=file_name,
+                workflow=workflow,
+                result=result,
+                input_file_path=input_file_path,
+            )
         if not file_history:
             FileHistoryHelper.create_file_history(
                 cache_key=file_hash,
@@ -475,13 +480,11 @@ class DestinationConnector(BaseConnector):
         source_fs = self.get_fsspec(
             settings=connector_settings, connector_id=connector.connector_id
         )
-        with (
-            source_fs.open(input_file_path, "rb") as remote_file
-        ):
+        with source_fs.open(input_file_path, "rb") as remote_file:
             file_content = remote_file.read()
             # Convert file content to a base64 encoded string
-            file_content_base64 = base64.b64encode(file_content).decode('utf-8')
-            q_name = f'review_queue_{self.organization_id}_{workflow.workflow_name}'
+            file_content_base64 = base64.b64encode(file_content).decode("utf-8")
+            q_name = f"review_queue_{self.organization_id}_{workflow.workflow_name}"
             queue_result = {"file": file_name}
             queue_result.update(
                 {
@@ -493,6 +496,6 @@ class DestinationConnector(BaseConnector):
             )
             # Convert the result dictionary to a JSON string
             queue_result_json = json.dumps(queue_result)
-            
+
             # Enqueue the JSON string
             QueueUtils.enqueue(queue_name=q_name, message=queue_result_json)
