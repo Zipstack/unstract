@@ -55,6 +55,7 @@ class PromptServiceContants:
     LLM_USAGE_REASON = "llm_usage_reason"
     METADATA = "metadata"
     OUTPUT = "output"
+    CONTEXT = "context"
 
 
 class LogLevel(Enum):

@@ -186,6 +186,10 @@ def prompt_processor() -> Any:
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
 
     structured_output: dict[str, Any] = {}
+    metadata: dict[str, Any] = {
+        PSKeys.RUN_ID: run_id,
+        PSKeys.CONTEXT: {},
+    }
     variable_names: list[str] = []
     _publish_log(
         log_events_id,
@@ -377,6 +381,7 @@ def prompt_processor() -> Any:
                     context=context,
                     prompt="promptx",
                 )
+                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
             else:
                 answer = "NA"
                 _publish_log(
@@ -402,6 +407,7 @@ def prompt_processor() -> Any:
                         vector_index=vector_index,
                         retrieval_type=retrieval_strategy,
                     )
+                    metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
                 else:
                     app.logger.info(
                         "Invalid retrieval strategy passed: %s",
@@ -695,7 +701,7 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         "Execution complete",
     )
-    metadata = query_usage_metadata(db=be_db, run_id=run_id, token=platform_key)
+    metadata = query_usage_metadata(db=be_db, token=platform_key, metadata=metadata)
     response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
     return response
 

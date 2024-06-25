@@ -49,6 +49,7 @@ class Usage(BaseModel):
         db_comment="Number of tokens used for the completion"
     )
     total_tokens = models.IntegerField(db_comment="Total number of tokens used")
+    cost_in_dollars = models.FloatField(db_comment="Total number of tokens used")
 
     def __str__(self):
         return str(self.id)

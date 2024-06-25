@@ -12,6 +12,7 @@ from flask import Flask, Request, Response, json, jsonify, make_response, reques
 from unstract.platform_service.exceptions import CustomException
 from unstract.platform_service.helper import (
     AdapterInstanceRequestHelper,
+    CostCalculationHelper,
     PromptStudioRequestHelper,
 )
 from unstract.platform_service.utils import EnvManager
@@ -37,6 +38,13 @@ PG_BE_USERNAME = os.environ.get("PG_BE_USERNAME")
 PG_BE_PASSWORD = os.environ.get("PG_BE_PASSWORD")
 PG_BE_DATABASE = os.environ.get("PG_BE_DATABASE")
 ENCRYPTION_KEY = EnvManager.get_required_setting("ENCRYPTION_KEY")
+MODEL_PRICES_URL = EnvManager.get_required_setting("MODEL_PRICES_URL")
+MODEL_PRICES_TTL_IN_DAYS = int(
+    EnvManager.get_required_setting("MODEL_PRICES_TTL_IN_DAYS")
+)
+MODEL_PRICES_FILE_PATH = EnvManager.get_required_setting(
+    "MODEL_PRICES_FILE_PATH", "/tmp/model_prices.json"
+)
 
 EnvManager.raise_for_missing_envs()
 
@@ -52,6 +60,12 @@ be_db = peewee.PostgresqlDatabase(
 )
 be_db.init(PG_BE_DATABASE)
 be_db.connect()
+
+cost_calculation_helper = CostCalculationHelper(
+    url=MODEL_PRICES_URL,
+    ttl_days=MODEL_PRICES_TTL_IN_DAYS,
+    file_path=MODEL_PRICES_FILE_PATH,
+)
 
 
 def drop_unstract_usage_table() -> None:
@@ -177,12 +191,21 @@ def usage() -> Any:
     prompt_tokens = payload.get("prompt_tokens", 0)
     completion_tokens = payload.get("completion_tokens", 0)
     total_tokens = payload.get("total_tokens", 0)
+    input_tokens = prompt_tokens
+    if usage_type == "embedding":
+        input_tokens = embedding_tokens
+    cost_in_dollars = cost_calculation_helper.calculate_cost(
+        model_name=model_name,
+        input_tokens=input_tokens,
+        output_tokens=completion_tokens,
+    )
+
     query = f"""
         INSERT INTO "{org_id}"."token_usage" (id, workflow_id,
         execution_id, adapter_instance_id, run_id, usage_type,
         llm_usage_reason, model_name, embedding_tokens, prompt_tokens,
-        completion_tokens, total_tokens, created_at, modified_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        completion_tokens, total_tokens, cost_in_dollars, created_at, modified_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
     usage_id = uuid.uuid4()
     current_time = datetime.now()
@@ -199,6 +222,7 @@ def usage() -> Any:
         prompt_tokens,
         completion_tokens,
         total_tokens,
+        cost_in_dollars,
         current_time,
         current_time,
     )

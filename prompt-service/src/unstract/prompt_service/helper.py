@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+import numpy
 from dotenv import load_dotenv
 from flask import Flask, current_app
 from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
@@ -83,9 +84,9 @@ def plugin_loader(app: Flask) -> dict[str, dict[str, Any]]:
     return plugins
 
 
-def query_usage_metadata(db, run_id, token):
+def query_usage_metadata(db, token, metadata):
     org_id = AuthenticationMiddleware.get_account_from_bearer_token(token)
-    metadata = {"run_id": run_id}
+    run_id = metadata["run_id"]
     query = f"""
         SELECT
             usage_type,
@@ -94,7 +95,8 @@ def query_usage_metadata(db, run_id, token):
             SUM(prompt_tokens) AS input_tokens,
             SUM(completion_tokens) AS output_tokens,
             SUM(total_tokens) AS total_tokens,
-            SUM(embedding_tokens) AS embedding_tokens
+            SUM(embedding_tokens) AS embedding_tokens,
+            SUM(cost_in_dollars) AS cost_in_dollars
         FROM "{org_id}"."token_usage"
         WHERE run_id = %s
         GROUP BY usage_type, llm_usage_reason, model_name;
@@ -117,22 +119,33 @@ def query_usage_metadata(db, run_id, token):
                     output_tokens,
                     total_tokens,
                     embedding_tokens,
+                    cost_in_dollars,
                 ) = row
                 if llm_usage_reason:
                     key = f"{llm_usage_reason}_{usage_type}"
-                    metadata[key] = {
+                    item = {
+                        "model_name": model_name,
                         "input_tokens": input_tokens,
                         "output_tokens": output_tokens,
                         "total_tokens": total_tokens,
-                        "model_name": model_name,
+                        "cost_in_dollars": numpy.format_float_positional(
+                            cost_in_dollars, trim="-"
+                        ),
                     }
-                # For embedding 'llm_usage_reason' is empty
                 else:
                     key = usage_type
-                    metadata[key] = {
-                        "embedding_tokens": embedding_tokens,
+                    item = {
                         "model_name": model_name,
+                        "embedding_tokens": embedding_tokens,
+                        "cost_in_dollars": numpy.format_float_positional(
+                            cost_in_dollars, trim="-"
+                        ),
                     }
+                # Initialize the key as an empty list if it doesn't exist
+                if key not in metadata:
+                    metadata[key] = []
+                # Append the item to the list associated with the key
+                metadata[key].append(item)
     except Exception as e:
         logger.error(f"Error executing querying usage metadata: {e}")
     return metadata
