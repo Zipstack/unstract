@@ -1,3 +1,4 @@
+from django.conf import settings
 from utils.cache_service import CacheService
 
 
@@ -10,7 +11,9 @@ def is_document_indexing(doc_id_key):
 
 
 def mark_document_indexed(doc_id_key, doc_id):
-    CacheService.set_key(f"document_indexing:{doc_id_key}", doc_id, expire=3600)
+    CacheService.set_key(
+        f"document_indexing:{doc_id_key}", doc_id, expire=settings.INDEXING_FLAG_TTL
+    )
 
 
 def get_indexed_document_id(doc_id_key):
