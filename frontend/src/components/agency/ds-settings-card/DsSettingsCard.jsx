@@ -48,7 +48,6 @@ const inputOptions = [
   },
 ];
 try {
-  console.log(inputOptions);
   const inputOption =
     require("../../../plugins/dscard-input-options/AppDeploymentCardInputOptions").appDeploymentInputOption;
   if (inputOption) {
@@ -122,7 +121,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
           option.value !== "DATABASE" && option.value !== "APPDEPLOYMENT"
       );
       setOptions(filteredOptions);
-      console.log(filteredOptions);
     }
   }, [source, destination]);
 
