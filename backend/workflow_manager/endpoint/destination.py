@@ -10,7 +10,7 @@ import magic
 from connector.models import ConnectorInstance
 from django.db import connection
 from fsspec.implementations.local import LocalFileSystem
-from plugins.manual_review.queue_utils import QueueUtils
+from unstract.connectors.queues.unstract_queue import UnstractQueue
 from unstract.sdk.constants import ToolExecKey
 from unstract.workflow_execution.constants import ToolOutputType
 from workflow_manager.endpoint.base_connector import BaseConnector
@@ -33,6 +33,7 @@ from workflow_manager.workflow.enums import ExecutionStatus
 from workflow_manager.workflow.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow.models.file_history import FileHistory
 from workflow_manager.workflow.models.workflow import Workflow
+from workflow_manager.endpoint.queue_utils import QueueUtils
 
 logger = logging.getLogger(__name__)
 
@@ -494,6 +495,6 @@ class DestinationConnector(BaseConnector):
                 }
             # Convert the result dictionary to a JSON string
             queue_result_json = json.dumps(queue_result)
-
+            conn = QueueUtils.get_queue_inst()
             # Enqueue the JSON string
-            QueueUtils.enqueue(queue_name=q_name, message=queue_result_json)
+            conn.enqueue(self, queue_name=q_name, message=queue_result_json)

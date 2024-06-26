@@ -1,12 +1,13 @@
 import logging
 from abc import ABC, abstractmethod
+from typing import Any, List
 
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.enums import ConnectorMode
 
 
 class UnstractQueue(UnstractConnector, ABC):
-    """Abstract class for file systems."""
+    """Abstract class for queue connector."""
 
     logging.basicConfig(
         level=logging.INFO,
@@ -57,7 +58,38 @@ class UnstractQueue(UnstractConnector, ABC):
     def get_connector_mode() -> ConnectorMode:
         return ConnectorMode.MANUAL_REVIEW
 
-    @abstractmethod
     def test_credentials(self) -> bool:
         """Override to test credentials for a connector."""
+        return True
+
+    @abstractmethod
+    def get_engine(self) -> Any:
+        pass
+
+    @abstractmethod
+    def enqueue(self, queue_name: str, message: str) -> Any:
+        pass
+
+    @abstractmethod
+    def dequeue(self, queue_name: str, timeout: int = 5) -> Any:
+        pass
+
+    @abstractmethod
+    def peek(self, queue_name: str) -> Any:
+        pass
+
+    @abstractmethod
+    def lset(self, queue_name: str, index: int, value: str) -> None:
+        pass
+
+    @abstractmethod
+    def llen(self, queue_name: str) -> int:
+        pass
+
+    @abstractmethod
+    def lindex(self, queue_name: str, index: int) -> Any:
+        pass
+
+    @abstractmethod
+    def keys(self, pattern: str = "*") -> List[str]:
         pass
