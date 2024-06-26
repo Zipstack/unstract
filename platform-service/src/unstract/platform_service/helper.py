@@ -1,12 +1,12 @@
 import json
 import os
 from datetime import datetime, timedelta
+from logging import Logger
 from typing import Any
 
 import numpy
 import peewee
 import requests
-from flask import current_app
 from unstract.platform_service.exceptions import CustomException
 
 
@@ -83,11 +83,12 @@ class CostCalculationHelper:
         url: str,
         ttl_days: int,
         file_path: str,
+        logger: Logger,
     ):
         self.ttl_days = ttl_days
         self.url = url
         self.file_path = file_path
-        self.logger = current_app.logger
+        self.logger = logger
 
     def calculate_cost(self, model_name, input_tokens, output_tokens):
         cost = 0.0

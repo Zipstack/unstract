@@ -27,16 +27,23 @@ class Usage(BaseModel):
         max_length=255, null=True, blank=True, db_comment="Identifier for the run"
     )
     usage_type = models.CharField(
-        max_length=255, db_comment="Type of usage, either 'llm' or 'embedding'"
+        max_length=255,
+        choices=[
+            ("llm", "llm"),
+            ("embedding", "embedding"),
+        ],
+        db_comment="Type of usage, either 'llm' or 'embedding'",
     )
     llm_usage_reason = models.CharField(
         max_length=255,
+        choices=[
+            ("extraction", "extraction"),
+            ("challenge", "challenge"),
+            ("summarize", "summarize"),
+        ],
         null=True,
         blank=True,
-        db_comment=(
-            "Reason for LLM usage, e.g., 'extraction', 'challenge' or 'summarize'. "
-            "Empty if usage_type is 'embedding'."
-        ),
+        db_comment="Reason for LLM usage. Empty if usage_type is 'embedding'. ",
     )
     model_name = models.CharField(max_length=255, db_comment="Name of the model used")
     embedding_tokens = models.IntegerField(
@@ -56,3 +63,6 @@ class Usage(BaseModel):
 
     class Meta:
         db_table = "token_usage"
+        indexes = [
+            models.Index(fields=["run_id"]),
+        ]

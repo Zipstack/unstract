@@ -5,7 +5,7 @@
 groups = ["default", "hook-check-django-migrations", "lint"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:c9f505b3e6765e13940868bd785fe836a6e03b94e4d176de08f4c4a139a4482e"
+content_hash = "sha256:26fab43128719f6101b11b4c72aac0368ccce6bb841f698f05144876c351d53c"
 
 [[package]]
 name = "adlfs"
@@ -4727,7 +4727,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.19.1"
+version = "0.19.2"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract interface for LLMs, Embeddings and VectorDBs"
 groups = ["hook-check-django-migrations"]
@@ -4755,8 +4755,8 @@ dependencies = [
     "singleton-decorator~=1.0.0",
 ]
 files = [
-    {file = "unstract_adapters-0.19.1-py3-none-any.whl", hash = "sha256:700a138369230f385ed9331579770fb1e44cc8679e86c7792d7d83fc5e59dbc7"},
-    {file = "unstract_adapters-0.19.1.tar.gz", hash = "sha256:0334f3afb873ac56ee546e1fec5a2f3faa0950b3766475d188ef471fe94d6c66"},
+    {file = "unstract_adapters-0.19.2-py3-none-any.whl", hash = "sha256:0c8d534964c62c4cc49fb2e4346438a2d6aac3abef517ece591a2a39cffb931b"},
+    {file = "unstract_adapters-0.19.2.tar.gz", hash = "sha256:1f1961c43adee9d8b0f617098482671cf4830324e304e6b08b5c7eb9a2f40ed5"},
 ]
 
 [[package]]
@@ -4818,7 +4818,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.33.0"
+version = "0.33.1"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["hook-check-django-migrations"]
@@ -4830,11 +4830,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.19.1",
+    "unstract-adapters~=0.19.2",
 ]
 files = [
-    {file = "unstract_sdk-0.33.0-py3-none-any.whl", hash = "sha256:fe72b9be754e264cfeee307da447eeb9dbfd02612e431fc74f2b3897529adee3"},
-    {file = "unstract_sdk-0.33.0.tar.gz", hash = "sha256:4eebfd0bcad11632f40ec98409195023569f3770d426dd0d0461115356234357"},
+    {file = "unstract_sdk-0.33.1-py3-none-any.whl", hash = "sha256:61de941cc6dcf3837c40831f25e85af388cb6d88d55612cd1c375adf6f124688"},
+    {file = "unstract_sdk-0.33.1.tar.gz", hash = "sha256:fb4ff2ca395d6513cca4a3b697dd97dbdd4174727ebe0b9e69ad1637b7586ae0"},
 ]
 
 [[package]]

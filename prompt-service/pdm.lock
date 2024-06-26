@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:b9189d12290ec9b2c97a6fec020a9defb6fde0bd474796288c6540889a83a5d9"
+content_hash = "sha256:7942973388ce27f022bff61d82eb716c8fcdcb0559b3e85660073ca86055fbe6"
 
 [[package]]
 name = "aiohttp"
@@ -2791,7 +2791,7 @@ files = [
 
 [[package]]
 name = "redis"
-version = "5.0.6"
+version = "5.0.7"
 requires_python = ">=3.7"
 summary = "Python client for Redis database and key-value store"
 groups = ["default"]
@@ -2799,8 +2799,8 @@ dependencies = [
     "async-timeout>=4.0.3; python_full_version < \"3.11.3\"",
 ]
 files = [
-    {file = "redis-5.0.6-py3-none-any.whl", hash = "sha256:c0d6d990850c627bbf7be01c5c4cbaadf67b48593e913bb71c9819c30df37eee"},
-    {file = "redis-5.0.6.tar.gz", hash = "sha256:38473cd7c6389ad3e44a91f4c3eaf6bcb8a9f746007f29bf4fb20824ff0b2197"},
+    {file = "redis-5.0.7-py3-none-any.whl", hash = "sha256:0e479e24da960c690be5d9b96d21f7b918a98c0cf49af3b6fafaa0753f93a0db"},
+    {file = "redis-5.0.7.tar.gz", hash = "sha256:8f611490b93c8109b50adc317b31bfd84fff31def3475b92e7e80bf39f48175b"},
 ]
 
 [[package]]
@@ -3505,7 +3505,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.19.1"
+version = "0.19.2"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract interface for LLMs, Embeddings and VectorDBs"
 groups = ["default"]
@@ -3533,8 +3533,8 @@ dependencies = [
     "singleton-decorator~=1.0.0",
 ]
 files = [
-    {file = "unstract_adapters-0.19.1-py3-none-any.whl", hash = "sha256:700a138369230f385ed9331579770fb1e44cc8679e86c7792d7d83fc5e59dbc7"},
-    {file = "unstract_adapters-0.19.1.tar.gz", hash = "sha256:0334f3afb873ac56ee546e1fec5a2f3faa0950b3766475d188ef471fe94d6c66"},
+    {file = "unstract_adapters-0.19.2-py3-none-any.whl", hash = "sha256:0c8d534964c62c4cc49fb2e4346438a2d6aac3abef517ece591a2a39cffb931b"},
+    {file = "unstract_adapters-0.19.2.tar.gz", hash = "sha256:1f1961c43adee9d8b0f617098482671cf4830324e304e6b08b5c7eb9a2f40ed5"},
 ]
 
 [[package]]
@@ -3556,7 +3556,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.33.0"
+version = "0.33.1"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3568,11 +3568,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.19.1",
+    "unstract-adapters~=0.19.2",
 ]
 files = [
-    {file = "unstract_sdk-0.33.0-py3-none-any.whl", hash = "sha256:fe72b9be754e264cfeee307da447eeb9dbfd02612e431fc74f2b3897529adee3"},
-    {file = "unstract_sdk-0.33.0.tar.gz", hash = "sha256:4eebfd0bcad11632f40ec98409195023569f3770d426dd0d0461115356234357"},
+    {file = "unstract_sdk-0.33.1-py3-none-any.whl", hash = "sha256:61de941cc6dcf3837c40831f25e85af388cb6d88d55612cd1c375adf6f124688"},
+    {file = "unstract_sdk-0.33.1.tar.gz", hash = "sha256:fb4ff2ca395d6513cca4a3b697dd97dbdd4174727ebe0b9e69ad1637b7586ae0"},
 ]
 
 [[package]]

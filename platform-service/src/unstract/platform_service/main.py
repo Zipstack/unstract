@@ -63,6 +63,7 @@ cost_calculation_helper = CostCalculationHelper(
     url=MODEL_PRICES_URL,
     ttl_days=MODEL_PRICES_TTL_IN_DAYS,
     file_path=MODEL_PRICES_FILE_PATH,
+    logger=app.logger,
 )
 
 
