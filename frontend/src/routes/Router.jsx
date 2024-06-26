@@ -49,7 +49,7 @@ try {
   ChatAppLayout =
     require("../plugins/app-deployment/chat-app/ChatAppLayout.jsx").ChatAppLayout;
 } catch (err) {
-  TrialRoutes = NotFound;
+  AppDeployments = NotFound;
 }
 
 function Router() {
