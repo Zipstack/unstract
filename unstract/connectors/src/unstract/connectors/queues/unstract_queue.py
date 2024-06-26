@@ -91,5 +91,5 @@ class UnstractQueue(UnstractConnector, ABC):
         pass
 
     @abstractmethod
-    def keys(self, pattern: str = "*") -> List[str]:
+    def keys(self, pattern: str = "*") -> list[str]:
         pass
