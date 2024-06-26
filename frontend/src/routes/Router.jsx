@@ -35,6 +35,7 @@ let PlatformAdminPage;
 let AppDeployments;
 let ChatAppPage;
 let ChatAppLayout;
+
 try {
   TrialRoutes =
     require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
@@ -42,6 +43,11 @@ try {
     require("../plugins/frictionless-onboard/RequirePlatformAdmin.jsx").RequirePlatformAdmin;
   PlatformAdminPage =
     require("../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx").PlatformAdminPage;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+
+try {
   AppDeployments =
     require("../plugins/app-deployment/AppDeployments.jsx").AppDeployments;
   ChatAppPage =
@@ -49,7 +55,7 @@ try {
   ChatAppLayout =
     require("../plugins/app-deployment/chat-app/ChatAppLayout.jsx").ChatAppLayout;
 } catch (err) {
-  AppDeployments = NotFound;
+  // Do nothing, Not-found Page will be triggered.
 }
 
 function Router() {
