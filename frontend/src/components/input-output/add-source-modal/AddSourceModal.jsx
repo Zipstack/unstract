@@ -33,7 +33,7 @@ function AddSourceModal({
   const disabledIdsByType = {
     EMBEDDING: ["huggingface|90ec9ec2-1768-4d69-8fb1-c88b95de5e5a"],
     LLM: ["replicate|2715ce84-05af-4ab4-b8e9-67ac3211b81e"],
-    VECTOR_DB: ["milvus|3f42f6f9-4b8e-4546-95f3-22ecc9aca442"],
+    VECTOR_DB: [],
   };
 
   useEffect(() => {
