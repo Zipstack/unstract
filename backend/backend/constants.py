@@ -28,3 +28,9 @@ class RequestHeader:
 
 class UrlPathConstants:
     PROMPT_STUDIO = "prompt-studio/"
+
+
+class FeatureFlag:
+    """Temporary feature flags."""
+
+    MULTI_TENANCY_V2 = "multi_tenancy_v2"

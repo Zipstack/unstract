@@ -9,7 +9,9 @@ import redis
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 from flask import Flask, Request, Response, json, jsonify, make_response, request
+from unstract.platform_service.constants import DBTableV2, FeatureFlag
 from unstract.platform_service.exceptions import CustomException
+from unstract.platform_service.feature_flag import check_feature_flag_status
 from unstract.platform_service.helper import (
     AdapterInstanceRequestHelper,
     PromptStudioRequestHelper,
@@ -97,6 +99,26 @@ def get_account_from_bearer_token(token: Optional[str]) -> str:
     return schema_name
 
 
+def get_organization_from_bearer_token(token: str) -> tuple[Optional[int], str]:
+    """Fetch organization by platform key.
+
+    Args:
+        token (str): platform key
+
+    Returns:
+        tuple[int, str]: organization uid and organization identifier
+    """
+    if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+        query = f"SELECT organization_id FROM {DBTableV2.PLATFORM_KEY} WHERE key=%s"
+        organization_uid: int = execute_query(query, (token,))
+        query_org = f"SELECT organization_id FROM {DBTableV2.ORGANIZATION} WHERE id=%s"
+        organization_identifier: str = execute_query(query_org, (organization_uid,))
+        return organization_uid, organization_identifier
+    else:
+        organization_identifier = get_account_from_bearer_token(token=token)
+        return None, organization_identifier
+
+
 def execute_query(query: str, params: tuple = ()) -> Any:
     cursor = be_db.execute_sql(query, params)
     result_row = cursor.fetchone()
@@ -112,7 +134,12 @@ def validate_bearer_token(token: Optional[str]) -> bool:
             app.logger.error("Authentication failed. Empty bearer token")
             return False
 
-        query = f"SELECT * FROM account_platformkey WHERE key = '{token}'"
+        if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+            platform_key_table = DBTableV2.PLATFORM_KEY
+        else:
+            platform_key_table = "account_platformkey"
+
+        query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
         cursor = be_db.execute_sql(query)
         result_row = cursor.fetchone()
         cursor.close()
@@ -167,7 +194,7 @@ def usage() -> Any:
         result["error"] = INVALID_PAYLOAD
         return make_response(result, 400)
     bearer_token = get_token_from_auth_header(request)
-    org_id = get_account_from_bearer_token(bearer_token)
+    organization_uid, org_id = get_organization_from_bearer_token(bearer_token)
     workflow_id = payload.get("workflow_id")
     execution_id = payload.get("execution_id", "")
     adapter_instance_id = payload.get("adapter_instance_id", "")
@@ -178,29 +205,56 @@ def usage() -> Any:
     prompt_tokens = payload.get("prompt_tokens", 0)
     completion_tokens = payload.get("completion_tokens", 0)
     total_tokens = payload.get("total_tokens", 0)
-    query = f"""
-        INSERT INTO "{org_id}"."token_usage" (id, workflow_id, execution_id,
-        adapter_instance_id, run_id, usage_type, model_name, embedding_tokens,
-        prompt_tokens, completion_tokens, total_tokens, created_at, modified_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """
     usage_id = uuid.uuid4()
     current_time = datetime.now()
-    params = (
-        usage_id,
-        workflow_id,
-        execution_id,
-        adapter_instance_id,
-        run_id,
-        usage_type,
-        model_name,
-        embedding_tokens,
-        prompt_tokens,
-        completion_tokens,
-        total_tokens,
-        current_time,
-        current_time,
-    )
+    if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+        query = f"""
+            INSERT INTO {DBTableV2.TOKEN_USAGE}
+            (id, organization_id, workflow_id, execution_id,
+            adapter_instance_id, run_id, usage_type, model_name, embedding_tokens,
+            prompt_tokens, completion_tokens, total_tokens, created_at, modified_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        params = (
+            usage_id,
+            organization_uid,
+            workflow_id,
+            execution_id,
+            adapter_instance_id,
+            run_id,
+            usage_type,
+            model_name,
+            embedding_tokens,
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+            current_time,
+            current_time,
+        )
+        print(f"QUERY: ==> {query}")
+        print(f"PARAMS: ==> {params}")
+    else:
+        query = f"""
+            INSERT INTO "{org_id}"."token_usage" (id, workflow_id, execution_id,
+            adapter_instance_id, run_id, usage_type, model_name, embedding_tokens,
+            prompt_tokens, completion_tokens, total_tokens, created_at, modified_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        params = (
+            usage_id,
+            workflow_id,
+            execution_id,
+            adapter_instance_id,
+            run_id,
+            usage_type,
+            model_name,
+            embedding_tokens,
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+            current_time,
+            current_time,
+        )
     try:
         with be_db.atomic() as transaction:
             be_db.execute_sql(query, params)
@@ -232,7 +286,7 @@ def platform_details() -> Any:
     """
     result: dict[str, Any] = {"status": "ERROR", "error": ""}
     bearer_token = get_token_from_auth_header(request)
-    organization_id = get_account_from_bearer_token(bearer_token)
+    _, organization_id = get_organization_from_bearer_token(bearer_token)
     if not organization_id:
         result["error"] = INVALID_ORGANIZATOIN
         return result, 403
@@ -262,7 +316,7 @@ def cache() -> Any:
     http://localhost:3001/cache?key=key1
     """
     bearer_token = get_token_from_auth_header(request)
-    account_id = get_account_from_bearer_token(bearer_token)
+    _, account_id = get_organization_from_bearer_token(bearer_token)
     if not REDIS_HOST:
         app.logger.error("REDIS_HOST not set")
         return "Internal Server Error", 500
@@ -343,7 +397,7 @@ def adapter_instance() -> Any:
     http://localhost:3001/db/adapter_instance/adapter_instance_id=id1
     """
     bearer_token = get_token_from_auth_header(request)
-    organization_id = get_account_from_bearer_token(bearer_token)
+    organization_uid, organization_id = get_organization_from_bearer_token(bearer_token)
     if not organization_id:
         return INVALID_ORGANIZATOIN, 403
 
@@ -355,6 +409,7 @@ def adapter_instance() -> Any:
                 db_instance=be_db,
                 organization_id=organization_id,
                 adapter_instance_id=adapter_instance_id,
+                organization_uid=organization_uid,
             )
 
             f: Fernet = Fernet(ENCRYPTION_KEY.encode("utf-8"))
@@ -389,7 +444,7 @@ def custom_tool_instance() -> Any:
     http://localhost:3001/db/custom_tool_instance/prompt_registry_id=id1
     """
     bearer_token = get_token_from_auth_header(request)
-    organization_id = get_account_from_bearer_token(bearer_token)
+    organization_uid, organization_id = get_organization_from_bearer_token(bearer_token)
     if not organization_id:
         return INVALID_ORGANIZATOIN, 403
 
@@ -401,6 +456,7 @@ def custom_tool_instance() -> Any:
                 db_instance=be_db,
                 organization_id=organization_id,
                 prompt_registry_id=prompt_registry_id,
+                organization_uid=organization_uid,
             )
             return jsonify(data_dict)
         except Exception as e:
