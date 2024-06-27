@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from logging import Logger
 from typing import Any
 
-import numpy
 import peewee
 import requests
 from unstract.platform_service.exceptions import CustomException
@@ -101,11 +100,7 @@ class CostCalculationHelper:
             output_cost_per_token = item.get("output_cost_per_token", 0)
             cost += input_cost_per_token * input_tokens
             cost += output_cost_per_token * output_tokens
-        return numpy.format_float_positional(
-            cost,
-            trim="-",
-            precision=10,
-        )
+        return _format_float_positional(cost)
 
     def _get_model_prices(self):
         try:
@@ -156,3 +151,8 @@ class CostCalculationHelper:
         except Exception as e:
             self.logger.error("Error fetching data from API: %s", e)
             return None
+
+
+def _format_float_positional(value: float, precision: int = 10) -> str:
+    formatted: str = f"{value:.{precision}f}"
+    return formatted.rstrip("0").rstrip(".") if "." in formatted else formatted

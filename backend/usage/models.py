@@ -4,6 +4,17 @@ from django.db import models
 from utils.models.base_model import BaseModel
 
 
+class UsageType(models.TextChoices):
+    LLM = "llm", "LLM Usage"
+    EMBEDDING = "embedding", "Embedding Usage"
+
+
+class LLMUsageReason(models.TextChoices):
+    EXTRACTION = "extraction", "Extraction"
+    CHALLENGE = "challenge", "Challenge"
+    SUMMARIZE = "summarize", "Summarize"
+
+
 class Usage(BaseModel):
     id = models.UUIDField(
         primary_key=True,
@@ -28,19 +39,12 @@ class Usage(BaseModel):
     )
     usage_type = models.CharField(
         max_length=255,
-        choices=[
-            ("llm", "llm"),
-            ("embedding", "embedding"),
-        ],
+        choices=UsageType.choices,
         db_comment="Type of usage, either 'llm' or 'embedding'",
     )
     llm_usage_reason = models.CharField(
         max_length=255,
-        choices=[
-            ("extraction", "extraction"),
-            ("challenge", "challenge"),
-            ("summarize", "summarize"),
-        ],
+        choices=LLMUsageReason.choices,
         null=True,
         blank=True,
         db_comment="Reason for LLM usage. Empty if usage_type is 'embedding'. ",

@@ -1,9 +1,9 @@
 import importlib
 import os
+from logging import Logger
 from pathlib import Path
 from typing import Any
 
-import numpy
 from dotenv import load_dotenv
 from flask import Flask, current_app
 from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
@@ -84,10 +84,10 @@ def plugin_loader(app: Flask) -> dict[str, dict[str, Any]]:
     return plugins
 
 
-def query_usage_metadata(db, token, metadata):
-    org_id = AuthenticationMiddleware.get_account_from_bearer_token(token)
-    run_id = metadata["run_id"]
-    query = f"""
+def query_usage_metadata(db, token: str, metadata: dict[str, Any]) -> dict[str, Any]:
+    org_id: str = AuthenticationMiddleware.get_account_from_bearer_token(token)
+    run_id: str = metadata["run_id"]
+    query: str = f"""
         SELECT
             usage_type,
             llm_usage_reason,
@@ -101,46 +101,17 @@ def query_usage_metadata(db, token, metadata):
         WHERE run_id = %s
         GROUP BY usage_type, llm_usage_reason, model_name;
     """
-    logger = current_app.logger
+    logger: Logger = current_app.logger
     try:
         with db.atomic():
             logger.info(
                 "Querying usage metadata for org_id: %s, run_id: %s", org_id, run_id
             )
             cursor = db.execute_sql(query, (run_id,))
-            results = cursor.fetchall()
+            results: list[tuple] = cursor.fetchall()
             # Process results as needed
             for row in results:
-                (
-                    usage_type,
-                    llm_usage_reason,
-                    model_name,
-                    input_tokens,
-                    output_tokens,
-                    total_tokens,
-                    embedding_tokens,
-                    cost_in_dollars,
-                ) = row
-                if llm_usage_reason:
-                    key = f"{llm_usage_reason}_{usage_type}"
-                    item = {
-                        "model_name": model_name,
-                        "input_tokens": input_tokens,
-                        "output_tokens": output_tokens,
-                        "total_tokens": total_tokens,
-                        "cost_in_dollars": numpy.format_float_positional(
-                            cost_in_dollars, trim="-"
-                        ),
-                    }
-                else:
-                    key = usage_type
-                    item = {
-                        "model_name": model_name,
-                        "embedding_tokens": embedding_tokens,
-                        "cost_in_dollars": numpy.format_float_positional(
-                            cost_in_dollars, trim="-"
-                        ),
-                    }
+                key, item = _get_key_and_item(row)
                 # Initialize the key as an empty list if it doesn't exist
                 if key not in metadata:
                     metadata[key] = []
@@ -149,3 +120,35 @@ def query_usage_metadata(db, token, metadata):
     except Exception as e:
         logger.error(f"Error executing querying usage metadata: {e}")
     return metadata
+
+
+def _get_key_and_item(row: tuple) -> tuple[str, dict[str, Any]]:
+    (
+        usage_type,
+        llm_usage_reason,
+        model_name,
+        input_tokens,
+        output_tokens,
+        total_tokens,
+        embedding_tokens,
+        cost_in_dollars,
+    ) = row
+    cost_in_dollars: str = _format_float_positional(cost_in_dollars)
+    key: str = usage_type
+    item: dict[str, Any] = {
+        "model_name": model_name,
+        "cost_in_dollars": cost_in_dollars,
+    }
+    if llm_usage_reason:
+        key = f"{llm_usage_reason}_{key}"
+        item["input_tokens"] = input_tokens
+        item["output_tokens"] = output_tokens
+        item["total_tokens"] = total_tokens
+    else:
+        item["embedding_tokens"] = embedding_tokens
+    return key, item
+
+
+def _format_float_positional(value: float, precision: int = 10) -> str:
+    formatted: str = f"{value:.{precision}f}"
+    return formatted.rstrip("0").rstrip(".") if "." in formatted else formatted
