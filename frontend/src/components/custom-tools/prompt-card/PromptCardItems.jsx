@@ -135,8 +135,8 @@ function PromptCardItems({
         (adapter) => adapter?.adapter_name === adapterName
       );
       if (adapter) {
-        result?.conf[key] = adapter?.model || adapter?.adapter_id?.split("|")[0];
-        if (adapter?.adapter_type === "LLM") result?.icon = adapter?.icon;
+        result.conf[key] = adapter?.model || adapter?.adapter_id?.split("|")[0];
+        if (adapter?.adapter_type === "LLM") result.icon = adapter?.icon;
       }
     });
     return result;
@@ -184,7 +184,7 @@ function PromptCardItems({
   );
 
   const handleExpandClick = (profile) => {
-    const profileId = profile?.profile_id
+    const profileId = profile?.profile_id;
     setExpandedProfiles((prevState) =>
       prevState.includes(profileId)
         ? prevState.filter((id) => id !== profileId)
@@ -330,7 +330,7 @@ function PromptCardItems({
             <AnimatePresence>
               {!singlePassExtractMode &&
                 llmProfileDetails.map((profile, index) => {
-                    const profileId = profile?.profile_id
+                  const profileId = profile?.profile_id;
                   const checked = enabledProfiles.includes(profileId);
                   const tokenUsageId =
                     promptDetails?.prompt_id +
@@ -344,8 +344,7 @@ function PromptCardItems({
                       initial={{ x: 0 }}
                       animate={{
                         x:
-                        profileId === selectedLlmProfileId &&
-                          index !== 0
+                          profileId === selectedLlmProfileId && index !== 0
                             ? -10
                             : 0,
                       }}
@@ -393,9 +392,7 @@ function PromptCardItems({
                           </div>
                           <div className="prompt-info">
                             <CheckableTag
-                              checked={enabledProfiles.includes(
-                                profileId
-                              )}
+                              checked={enabledProfiles.includes(profileId)}
                               onChange={(checked) =>
                                 handleTagChange(checked, profileId)
                               }
@@ -438,18 +435,14 @@ function PromptCardItems({
                                   setIsIndexOpen(true);
                                   setOpenIndexProfile(
                                     result.find(
-                                      (r) =>
-                                        r?.profileManager ===
-                                        profileId
+                                      (r) => r?.profileManager === profileId
                                     )?.context
                                   );
                                 }}
                                 className="prompt-card-actions-head"
                               />
                               <Radio
-                                checked={
-                                  profileId === selectedLlmProfileId
-                                }
+                                checked={profileId === selectedLlmProfileId}
                                 onChange={() =>
                                   handleSelectDefaultLLM(profileId)
                                 }
@@ -477,18 +470,14 @@ function PromptCardItems({
                               <Typography.Paragraph className="prompt-card-res font-size-12">
                                 <div
                                   className={
-                                    expandedProfiles.includes(
-                                      profileId
-                                    )
+                                    expandedProfiles.includes(profileId)
                                       ? "expanded-output"
                                       : "collapsed-output"
                                   }
                                 >
                                   {displayPromptResult(
                                     result.find(
-                                      (r) =>
-                                        r?.profileManager ===
-                                        profileId
+                                      (r) => r?.profileManager === profileId
                                     )?.output,
                                     true
                                   )}
@@ -501,9 +490,7 @@ function PromptCardItems({
                                   size="small"
                                   type="text"
                                   className="prompt-card-action-button"
-                                  onClick={() =>
-                                    handleRun(profileId, false)
-                                  }
+                                  onClick={() => handleRun(profileId, false)}
                                   disabled={
                                     isRunLoading[
                                       `${selectedDoc?.document_id}_${profileId}`
@@ -518,9 +505,7 @@ function PromptCardItems({
                                   size="small"
                                   type="text"
                                   className="prompt-card-action-button"
-                                  onClick={() =>
-                                    handleRun(profileId, true)
-                                  }
+                                  onClick={() => handleRun(profileId, true)}
                                   disabled={
                                     isRunLoading[
                                       `${selectedDoc?.document_id}_${profileId}`
