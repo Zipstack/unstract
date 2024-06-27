@@ -11,13 +11,14 @@ from dotenv import load_dotenv
 from flask import Flask, Request, Response, json, jsonify, make_response, request
 from unstract.platform_service.constants import DBTableV2, FeatureFlag
 from unstract.platform_service.exceptions import CustomException
-from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.platform_service.helper import (
     AdapterInstanceRequestHelper,
     CostCalculationHelper,
     PromptStudioRequestHelper,
 )
 from unstract.platform_service.utils import EnvManager
+
+from unstract.flags.feature_flag import check_feature_flag_status
 
 load_dotenv()
 
