@@ -270,7 +270,7 @@ function OutputForDocModal({
     if (key === "0") {
       setSelectedProfile(profileManagerId);
     } else {
-      setSelectedProfile(adapterData[key - 1].profile_id);
+      setSelectedProfile(adapterData[key - 1]?.profile_id);
     }
   };
 
@@ -294,10 +294,10 @@ function OutputForDocModal({
         <div className="lmm-profile-outputs">
           <Tabs defaultActiveKey="0" onChange={handleTabChange}>
             <TabPane tab={<span>{"Default"}</span>} key={"0"}></TabPane>
-            {adapterData.map((adapter, index) => (
+            {adapterData?.map((adapter, index) => (
               <TabPane
-                tab={<span>{adapter.llm_model}</span>}
-                key={(index + 1).toString()}
+                tab={<span>{adapter?.llm_model}</span>}
+                key={(index + 1)?.toString()}
               ></TabPane>
             ))}
           </Tabs>{" "}

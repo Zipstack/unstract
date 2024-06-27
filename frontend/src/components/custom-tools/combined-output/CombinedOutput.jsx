@@ -150,7 +150,7 @@ function CombinedOutput({ docId, setFilledFields }) {
     if (key === "0") {
       setSelectedProfile(defaultLlmProfile);
     } else {
-      setSelectedProfile(adapterData[key - 1].profile_id);
+      setSelectedProfile(adapterData[key - 1]?.profile_id);
     }
     setActiveKey(key);
   };
@@ -163,7 +163,7 @@ function CombinedOutput({ docId, setFilledFields }) {
           {adapterData.map((adapter, index) => (
             <TabPane
               tab={<span>{adapter.llm_model}</span>}
-              key={(index + 1).toString()}
+              key={(index + 1)?.toString()}
             ></TabPane>
           ))}
         </Tabs>

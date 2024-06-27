@@ -149,9 +149,9 @@ function Header({
                 disabled={
                   (updateStatus?.promptId === promptDetails?.prompt_id &&
                     updateStatus?.status ===
-                      promptStudioUpdateStatus.isUpdating) ||
-                  disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
-                  indexDocs.includes(selectedDoc?.document_id)
+                      promptStudioUpdateStatus?.isUpdating) ||
+                  disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
+                  indexDocs?.includes(selectedDoc?.document_id)
                 }
               >
                 <PlayCircleOutlined className="prompt-card-actions-head" />
@@ -166,9 +166,9 @@ function Header({
                 disabled={
                   (updateStatus?.promptId === promptDetails?.prompt_id &&
                     updateStatus?.status ===
-                      promptStudioUpdateStatus.isUpdating) ||
-                  disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
-                  indexDocs.includes(selectedDoc?.document_id)
+                      promptStudioUpdateStatus?.isUpdating) ||
+                  disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
+                  indexDocs?.includes(selectedDoc?.document_id)
                 }
               >
                 <PlayCircleFilled className="prompt-card-actions-head" />
@@ -192,9 +192,9 @@ function Header({
               type="text"
               className="prompt-card-action-button"
               disabled={
-                disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
                 isSinglePassExtractLoading ||
-                indexDocs.includes(selectedDoc?.document_id)
+                indexDocs?.includes(selectedDoc?.document_id)
               }
             >
               <DeleteOutlined className="prompt-card-actions-head" />

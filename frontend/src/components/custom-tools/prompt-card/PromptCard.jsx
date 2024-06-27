@@ -68,7 +68,7 @@ function PromptCard({
 
   useEffect(() => {
     const outputTypeData = getDropdownItems("output_type");
-    const dropdownList1 = Object.keys(outputTypeData).map((item) => {
+    const dropdownList1 = Object.keys(outputTypeData)?.map((item) => {
       return { value: outputTypeData[item] };
     });
     setEnforceTypeList(dropdownList1);
@@ -99,7 +99,7 @@ function PromptCard({
 
   useEffect(() => {
     setSelectedLlmProfileId(
-      promptDetails?.profile_manager || llmProfiles[0].profile_id
+      promptDetails?.profile_manager || llmProfiles[0]?.profile_id
     );
   }, [promptDetails]);
 
@@ -159,8 +159,8 @@ function PromptCard({
   };
 
   useEffect(() => {
-    const isProfilePresent = llmProfiles.some(
-      (profile) => profile.profile_id === selectedLlmProfileId
+    const isProfilePresent = llmProfiles?.some(
+      (profile) => profile?.profile_id === selectedLlmProfileId
     );
 
     // If selectedLlmProfileId is not present, set it to null
@@ -220,7 +220,7 @@ function PromptCard({
       if (
         !profileManagerId &&
         !promptDetails?.profile_manager?.length &&
-        !(!coverAllDoc && selectedLlmProfiles.length > 0)
+        !(!coverAllDoc && selectedLlmProfiles?.length > 0)
       ) {
         setAlertDetails({
           type: "error",
@@ -261,7 +261,7 @@ function PromptCard({
     }
 
     handleIsRunLoading(
-      selectedDoc.document_id,
+      selectedDoc?.document_id,
       profileManagerId || selectedLlmProfileId,
       true
     );
@@ -282,7 +282,7 @@ function PromptCard({
       details?.summarize_llm_profile
     ) {
       // Summary needs to be indexed before running the prompt
-      handleIsRunLoading(selectedDoc.document_id, selectedLlmProfileId, false);
+      handleIsRunLoading(selectedDoc?.document_id, selectedLlmProfileId, false);
       setCoverageTotal(1);
       handleCoverage(selectedLlmProfileId);
       setAlertDetails({
@@ -295,16 +295,16 @@ function PromptCard({
     handleDocOutputs(docId, true, null);
     if (runAllLLM) {
       let selectedProfiles = llmProfiles;
-      if (!coverAllDoc && selectedLlmProfiles.length > 0) {
+      if (!coverAllDoc && selectedLlmProfiles?.length > 0) {
         selectedProfiles = llmProfiles.filter((profile) =>
-          selectedLlmProfiles.includes(profile.profile_id)
+          selectedLlmProfiles.includes(profile?.profile_id)
         );
       }
       for (const profile of selectedProfiles) {
         setIsCoverageLoading(true);
 
-        handleIsRunLoading(selectedDoc.document_id, profile.profile_id, true);
-        handleRunApiRequest(docId, profile.profile_id)
+        handleIsRunLoading(selectedDoc?.document_id, profile?.profile_id, true);
+        handleRunApiRequest(docId, profile?.profile_id)
           .then((res) => {
             const data = res?.data?.output;
             const value = data[promptDetails?.prompt_key];
@@ -312,18 +312,18 @@ function PromptCard({
               setCoverage((prev) => prev + 1);
             }
             handleDocOutputs(docId, false, value);
-            handleGetOutput(profile.profile_id);
+            handleGetOutput(profile?.profile_id);
             updateDocCoverage(
               coverage,
               promptDetails?.prompt_id,
-              profile.profile_id,
+              profile?.profile_id,
               docId
             );
           })
           .catch((err) => {
             handleIsRunLoading(
-              selectedDoc.document_id,
-              profile.profile_id,
+              selectedDoc?.document_id,
+              profile?.profile_id,
               false
             );
             handleDocOutputs(docId, false, null);
@@ -355,7 +355,7 @@ function PromptCard({
         })
         .catch((err) => {
           handleIsRunLoading(
-            selectedDoc.document_id,
+            selectedDoc?.document_id,
             selectedLlmProfileId,
             false
           );
@@ -365,7 +365,7 @@ function PromptCard({
           );
         })
         .finally(() => {
-          handleIsRunLoading(selectedDoc.document_id, profileManagerId, false);
+          handleIsRunLoading(selectedDoc?.document_id, profileManagerId, false);
           setIsCoverageLoading(false);
         });
       runCoverageForAllDoc(coverAllDoc, profileManagerId);
@@ -450,8 +450,8 @@ function PromptCard({
     const counts = { ...coverage };
     // If the key exists in the counts object, increment the count
     if (counts[key]) {
-      if (!counts[key].docs_covered.includes(docId)) {
-        counts[key].docs_covered.push(docId);
+      if (!counts[key]?.docs_covered?.includes(docId)) {
+        counts[key]?.docs_covered?.push(docId);
       }
     } else {
       // Otherwise, add the key to the counts object with an initial count of 1
@@ -475,7 +475,7 @@ function PromptCard({
     let intervalId;
     if (
       profileManagerId === selectedLlmProfileId &&
-      docId === selectedDoc.document_id
+      docId === selectedDoc?.document_id
     ) {
       // Set up an interval to fetch token usage data at regular intervals
       intervalId = setInterval(
@@ -496,7 +496,7 @@ function PromptCard({
     };
 
     if (profileManagerId) {
-      body.profile_manager = profileManagerId;
+      body?.profile_manager = profileManagerId;
     }
 
     const requestOptions = {
@@ -533,7 +533,7 @@ function PromptCard({
     }
 
     handleIsRunLoading(
-      selectedDoc.document_id,
+      selectedDoc?.document_id,
       profileManager || selectedLlmProfileId,
       true
     );
@@ -566,7 +566,7 @@ function PromptCard({
       })
       .finally(() => {
         handleIsRunLoading(
-          selectedDoc.document_id,
+          selectedDoc?.document_id,
           profileManager || selectedLlmProfileId,
           false
         );
@@ -621,13 +621,13 @@ function PromptCard({
 
         if (singlePassExtractMode) {
           const tokenUsageId = `single_pass__${selectedDoc?.document_id}`;
-          const usage = data.find((item) => item?.run_id !== undefined);
+          const usage = data?.find((item) => item?.run_id !== undefined);
 
           if (!tokenUsage[tokenUsageId] && usage) {
             setTokenUsage(tokenUsageId, usage?.token_usage);
           }
         } else {
-          data.forEach((item) => {
+          data?.forEach((item) => {
             const tokenUsageId = `${item?.prompt_id}__${item?.document_manager}__${item?.profile_manager}`;
 
             if (tokenUsage[tokenUsageId] === undefined) {
@@ -643,12 +643,12 @@ function PromptCard({
   };
 
   const handleGetCoverageData = (data) => {
-    data.forEach((item) => {
+    data?.forEach((item) => {
       updateDocCoverage(
         coverage,
-        item.prompt_id,
-        item.profile_manager,
-        item.document_manager
+        item?.prompt_id,
+        item?.profile_manager,
+        item?.document_manager
       );
     });
   };
