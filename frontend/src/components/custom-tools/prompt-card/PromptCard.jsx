@@ -496,7 +496,7 @@ function PromptCard({
     };
 
     if (profileManagerId) {
-      body?.profile_manager = profileManagerId;
+      body.profile_manager = profileManagerId;
     }
 
     const requestOptions = {
