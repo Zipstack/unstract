@@ -10,9 +10,6 @@ prompt_studio_index_detail = IndexManagerView.as_view(
         "get": "retrieve",
     }
 )
-prompt_studio_index_data = IndexManagerView.as_view(
-    {"get": "get_indexed_data_for_profile"}
-)
 
 urlpatterns = format_suffix_patterns(
     [
@@ -20,11 +17,6 @@ urlpatterns = format_suffix_patterns(
             "document-index/",
             prompt_studio_index_list,
             name="prompt-studio-documents-list",
-        ),
-        path(
-            "indexed-result/",
-            prompt_studio_index_data,
-            name="prompt-studio-indexed-list",
         ),
     ]
 )

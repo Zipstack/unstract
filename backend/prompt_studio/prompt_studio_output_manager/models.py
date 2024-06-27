@@ -21,6 +21,9 @@ class PromptStudioOutputManager(BaseModel):
     output = models.CharField(
         db_comment="Field to store output", editable=True, null=True, blank=True
     )
+    context = models.CharField(
+        db_comment="Field to store chucks used", editable=True, null=True, blank=True
+    )
     eval_metrics = models.JSONField(
         db_column="eval_metrics",
         null=False,

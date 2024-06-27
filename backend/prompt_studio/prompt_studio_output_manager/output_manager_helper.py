@@ -24,6 +24,7 @@ class OutputManagerHelper:
         run_id: str,
         prompts: list[ToolStudioPrompt],
         outputs: Any,
+        context: Any,
         document_id: str,
         is_single_pass_extract: bool,
         profile_manager_id: Optional[str] = None,
@@ -46,6 +47,7 @@ class OutputManagerHelper:
             output: str,
             eval_metrics: list[Any],
             tool: CustomTool,
+            context: str,
         ):
             try:
                 _, success = PromptStudioOutputManager.objects.get_or_create(
@@ -57,6 +59,7 @@ class OutputManagerHelper:
                     defaults={
                         "output": output,
                         "eval_metrics": eval_metrics,
+                        "context": context,
                     },
                 )
 
@@ -75,6 +78,7 @@ class OutputManagerHelper:
                     "run_id": run_id,
                     "output": output,
                     "eval_metrics": eval_metrics,
+                    "context": context,
                 }
                 PromptStudioOutputManager.objects.filter(
                     document_manager=document_manager,
@@ -97,11 +101,14 @@ class OutputManagerHelper:
         document_manager = DocumentManager.objects.get(pk=document_id)
 
         for prompt in prompts:
-            if prompt.prompt_type == PSOMKeys.NOTES:
+            if prompt.prompt_type == PSOMKeys.NOTES or not prompt.active:
                 continue
 
-            profile_manager = default_profile
+            if not is_single_pass_extract:
+                context = json.dumps(context.get(prompt.prompt_key))
+
             output = json.dumps(outputs.get(prompt.prompt_key))
+            profile_manager = default_profile
             eval_metrics = outputs.get(f"{prompt.prompt_key}__evaluation", [])
 
             update_or_create_prompt_output(
@@ -110,6 +117,7 @@ class OutputManagerHelper:
                 output=output,
                 eval_metrics=eval_metrics,
                 tool=tool,
+                context=context,
             )
 
     @staticmethod

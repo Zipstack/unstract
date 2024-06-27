@@ -26,7 +26,10 @@ import {
 } from "antd";
 import { useEffect, useRef, useState } from "react";
 
-import { displayPromptResult } from "../../../helpers/GetStaticData";
+import {
+  displayPromptResult,
+  getFormattedTotalCost,
+} from "../../../helpers/GetStaticData";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
 import { TokenUsage } from "../token-usage/TokenUsage";
@@ -383,7 +386,7 @@ function PromptCardItems({
                               Time: {timers[tokenUsageId] || 0}s
                             </Typography.Text>
                             <Typography.Text className="prompt-cost-item">
-                              Cost: $0.0004
+                              Cost: ${getFormattedTotalCost(result, profile)}
                             </Typography.Text>
                           </div>
                           <div className="prompt-info">
@@ -431,7 +434,13 @@ function PromptCardItems({
                               <DatabaseOutlined
                                 onClick={() => {
                                   setIsIndexOpen(true);
-                                  setOpenIndexProfile(profile?.profile_id);
+                                  setOpenIndexProfile(
+                                    result.find(
+                                      (r) =>
+                                        r?.profileManager ===
+                                        profile?.profile_id
+                                    )?.context
+                                  );
                                 }}
                                 className="prompt-card-actions-head"
                               />
@@ -542,7 +551,10 @@ function PromptCardItems({
             {singlePassExtractMode &&
               (() => {
                 const [firstResult] = result || [];
-                if (firstResult?.output || firstResult?.output === 0) {
+                if (
+                  promptDetails.active &&
+                  (firstResult?.output || firstResult?.output === 0)
+                ) {
                   return (
                     <>
                       <Divider className="prompt-card-divider" />
@@ -596,7 +608,7 @@ function PromptCardItems({
         </Collapse.Panel>
       </Collapse>
       <OutputForIndex
-        llmProfileId={openIndexProfile}
+        chuckData={openIndexProfile}
         isIndexOpen={isIndexOpen}
         setIsIndexOpen={setIsIndexOpen}
       />

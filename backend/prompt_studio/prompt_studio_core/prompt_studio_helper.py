@@ -464,6 +464,7 @@ class PromptStudioHelper:
                     document_id=document_id,
                     is_single_pass_extract=False,
                     profile_manager_id=profile_manager_id,
+                    context=response["metadata"]["context"],
                 )
             # TODO: Review if this catch-all is required
             except Exception as e:
@@ -540,6 +541,7 @@ class PromptStudioHelper:
                     outputs=response[TSPKeys.OUTPUT],
                     document_id=document_id,
                     is_single_pass_extract=True,
+                    context=response[TSPKeys.METADATA][TSPKeys.CONTEXT],
                 )
             except Exception as e:
                 logger.error(

@@ -7,6 +7,7 @@ import {
   PlayCircleOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
+import { useState } from "react";
 import { Button, Checkbox, Col, Divider, Row, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 
@@ -42,9 +43,21 @@ function Header({
     indexDocs,
   } = useCustomToolStore();
 
+  const [isDisablePrompt, setIsDisablePrompt] = useState(promptDetails?.active);
+
   const handleRunBtnClick = (profileManager = null, coverAllDoc = true) => {
     setExpandCard(true);
     handleRun(profileManager, coverAllDoc, enabledProfiles, true);
+  };
+
+  const handleDisablePrompt = (event) => {
+    const check = event?.target?.checked;
+    setIsDisablePrompt(check);
+    handleChange(check, promptDetails?.prompt_id, "active", true, true).catch(
+      () => {
+        setIsDisablePrompt(!check);
+      }
+    );
   };
 
   return (
@@ -163,7 +176,11 @@ function Header({
             </Tooltip>
           </>
         )}
-        <Checkbox defaultChecked={true} className="prompt-card-action-button" />
+        <Checkbox
+          checked={isDisablePrompt}
+          className="prompt-card-action-button"
+          onChange={handleDisablePrompt}
+        />
         <Divider type="vertical" className="header-delete-divider" />
         <ConfirmModal
           handleConfirm={() => handleDelete(promptDetails?.prompt_id)}

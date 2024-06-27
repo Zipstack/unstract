@@ -95,7 +95,7 @@ WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
 WEB_APP_ORIGIN_URL = os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
 
 LOGIN_NEXT_URL = os.environ.get("LOGIN_NEXT_URL", "http://localhost:3000/org")
-LANDING_URL = os.environ.get("LANDING_U`RL", "http://localhost:3000/landing")
+LANDING_URL = os.environ.get("LANDING_URL", "http://localhost:3000/landing")
 ERROR_URL = os.environ.get("ERROR_URL", "http://localhost:3000/error")
 
 DJANGO_APP_BACKEND_URL = os.environ.get(
@@ -164,9 +164,9 @@ CELERY_BROKER_URL = get_required_setting(
     "CELERY_BROKER_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}"
 )
 
-MAX_WAIT_TIME = os.environ.get("MAX_WAIT_TIME", 1800)
-POLLING_INTERVAL = os.environ.get("POLLING_INTERVAL", 5)
-INDEXING_FLAG_TTL = os.environ.get("INDEXING_FLAG_TTL", 3600)
+MAX_WAIT_TIME = int(get_required_setting("MAX_WAIT_TIME", "1800"))
+POLLING_INTERVAL = int(get_required_setting("POLLING_INTERVAL", "5"))
+INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL", "3600"))
 
 # Flag to Enable django admin
 ADMIN_ENABLED = False
