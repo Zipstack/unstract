@@ -70,7 +70,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     details,
     indexDocs,
     isSinglePassExtractLoading,
-    isPublicShare,
+    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
@@ -90,7 +90,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       setCurrDocIndexStatus(docIndexStatus.yet_to_start);
     }
   }, [currDocIndexStatus]);
-
   useEffect(() => {
     if (docIndexStatus.yet_to_start === currDocIndexStatus) {
       const isIndexing = indexDocs.find(
@@ -138,7 +137,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       url: `/public/share/document-contents/?id=${id}&document_id=${selectedDoc?.document_id}&view_type=${viewType}`,
     };
     handleLoadingStateUpdate(viewType, true);
-    const requestOptions = isPublicShare
+    const requestOptions = isPublicSource
       ? requestPublicOptions
       : requestPrivateOptions;
     console.log(requestOptions);

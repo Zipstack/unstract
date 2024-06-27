@@ -2,14 +2,11 @@ import {
   SettingOutlined,
   ShareAltOutlined,
   CopyOutlined,
-  ArrowLeftOutlined,
-  EditOutlined,
 } from '@ant-design/icons';
 import { Button, Tooltip, Typography } from 'antd';
 import PropTypes from 'prop-types';
 import { useState } from 'react';
 import './Header.css';
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { ExportToolIcon } from '../../../assets';
 import { useAxiosPrivate } from '../../../hooks/useAxiosPrivate';
 import { useExceptionHandler } from '../../../hooks/useExceptionHandler';
@@ -19,7 +16,6 @@ import { useSessionStore } from '../../../store/session-store';
 import { CustomButton } from '../../widgets/custom-button/CustomButton';
 import { ExportTool } from '../export-tool/ExportTool';
 import usePostHogEvents from '../../../hooks/usePostHogEvents';
-import logo from '../../../assets/Unstract.svg';
 import { HeaderTitle } from '../header-title/HeaderTitle.jsx';
 let SinglePassToggleSwitch;
 try {
@@ -28,19 +24,21 @@ try {
 } catch {
   // The variable will remain undefined if the component is not available.
 }
-function Header({ setOpenSettings, handleUpdateTool, setOpenShareModal }) {
+function Header({
+  setOpenSettings,
+  handleUpdateTool,
+  setOpenShareModal,
+  setOpenCloneModal,
+}) {
   const [isExportLoading, setIsExportLoading] = useState(false);
   const { details, isPublicSource } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
-  const navigate = useNavigate();
   const handleException = useExceptionHandler();
   const [userList, setUserList] = useState([]);
   const [openExportToolModal, setOpenExportToolModal] = useState(false);
   const { setPostHogCustomEvent } = usePostHogEvents();
-  const location = useLocation();
-  const { id } = useParams();
   const [toolDetails, setToolDetails] = useState(null);
 
   const handleExport = (selectedUsers, toolDetail, isSharedWithEveryone) => {
@@ -145,8 +143,10 @@ function Header({ setOpenSettings, handleUpdateTool, setOpenShareModal }) {
   return (
     <div className="custom-tools-header-layout">
       {isPublicSource ? (
-        <div className="custom-tools-name">
-          <Typography.Text strong>{details?.tool_name}</Typography.Text>
+        <div>
+          <Typography.Text className="custom-tools-name" strong>
+            {details?.tool_name}
+          </Typography.Text>
         </div>
       ) : (
         <HeaderTitle />
@@ -168,7 +168,11 @@ function Header({ setOpenSettings, handleUpdateTool, setOpenShareModal }) {
         </div>
         <div>
           <Tooltip title="Clone">
-            <Button icon={<CopyOutlined />} disbaled={true} />
+            <Button
+              icon={<CopyOutlined />}
+              onClick={() => setOpenCloneModal(true)}
+              disbaled={true}
+            />
           </Tooltip>
         </div>
         <div>
@@ -209,6 +213,8 @@ function Header({ setOpenSettings, handleUpdateTool, setOpenShareModal }) {
 Header.propTypes = {
   setOpenSettings: PropTypes.func.isRequired,
   handleUpdateTool: PropTypes.func.isRequired,
+  setOpenCloneModal: PropTypes.func.isRequired,
+  setOpenShareModal: PropTypes.func.isRequired,
 };
 
 export { Header };

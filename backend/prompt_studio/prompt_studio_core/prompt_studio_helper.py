@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import pathlib
+import shutil
 import uuid
 from pathlib import Path
 from typing import Any, Optional
@@ -27,6 +29,7 @@ from prompt_studio.prompt_studio_core.exceptions import (
 )
 from prompt_studio.prompt_studio_core.models import CustomTool
 from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
+from prompt_studio.prompt_studio_core.serializers import CustomToolSerializer
 from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import (  # noqa: E501
     PromptStudioIndexHelper,
@@ -34,12 +37,15 @@ from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import
 from prompt_studio.prompt_studio_output_manager.output_manager_helper import (
     OutputManagerHelper,
 )
+from rest_framework.request import Request
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import IndexingError, SdkError
 from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
+from utils.clone_util import CloneUtil
 from utils.local_context import StateStore
+from utils.user_session import UserSessionUtils
 
 from unstract.core.pubsub_helper import LogPublisher
 
@@ -905,3 +911,56 @@ class PromptStudioHelper:
             # TO DO : Add better exception handling
             logger.error(f"Error occured : {e}")
         return tool
+
+    @staticmethod
+    def clone_project(tool_id: str, request: Request) -> Any:
+        # TODO:Handle Exceptions
+        tool_instance = CustomTool.objects.get(tool_id=tool_id)
+        tool_name = request.GET.get("tool_name")
+        # TODO : Migrate data after moving to object storage
+
+        # cloned_instances = CloneUtil.clone_model_instance(
+        #     instance=tool_instance, new_user=request.user,
+        #     null_fields=["share_id", "parent_id"], tool_name=tool_name
+        # )
+        cloned_instances = CloneUtil.clone_hierachy(
+            tool_id=tool_instance.tool_id, tool_name=tool_name, new_user=request.user
+        )
+        # TODO : Revist this logic
+        PromptStudioHelper.copy_project_files_for_clone(
+            request=request,
+            cloned_instance=cloned_instances,
+            tool_instance=tool_instance,
+        )
+        serialized_tool = CustomToolSerializer(cloned_instances).data
+        return serialized_tool
+
+    @staticmethod
+    def copy_project_files_for_clone(
+        request: Request, cloned_instance: CustomTool, tool_instance: CustomTool
+    ) -> None:
+        parent_file_str = FileManagerHelper.handle_sub_directory_for_tenants(
+            UserSessionUtils.get_organization_id(request),
+            is_create=False,
+            user_id=tool_instance.created_by.user_id,
+            tool_id=str(tool_instance.tool_id),
+        )
+        parent_file_path = Path(parent_file_str)
+        if parent_file_path.exists():
+            child_file_str = FileManagerHelper.handle_sub_directory_for_tenants(
+                UserSessionUtils.get_organization_id(request),
+                is_create=False,
+                user_id=request.user.user_id,
+                tool_id=str(cloned_instance.tool_id),
+            )
+            child_file_path = Path(child_file_str)
+            pathlib.Path(child_file_path).mkdir(parents=True, exist_ok=True)
+            for item in parent_file_path.iterdir():
+                target_item_name = f"{item.name}"
+                target_item = child_file_path.joinpath(target_item_name)
+                if item.is_dir():
+                    # Recursively copy directories
+                    shutil.copytree(item, target_item, dirs_exist_ok=True)
+                else:
+                    # Copy files
+                    shutil.copy(item, target_item)

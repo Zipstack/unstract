@@ -65,7 +65,7 @@ function OutputForDocModal({
     disableLlmOrDocChange,
     singlePassExtractMode,
     isSinglePassExtractLoading,
-    IsPublicShare,
+    isPublicSource,
   } = useCustomToolStore();
   const { id } = useParams();
   const { sessionDetails } = useSessionStore();
@@ -168,17 +168,13 @@ function OutputForDocModal({
     const requestPublicOptions = {
       method: 'GET',
       url: `/public/share/outputs-metadata/?id=${id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`,
-      headers: {
-        'X-CSRFToken': sessionDetails?.csrfToken,
-      },
     };
 
     setIsLoading(true);
-    const requestOptions = IsPublicShare
+    const requestOptions = isPublicSource
       ? requestPublicOptions
       : requestPrivateOptions;
-    console.log(requestOptions);
-    axiosPrivate(requestPublicOptions)
+    axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data || [];
         updatePromptOutput(data);

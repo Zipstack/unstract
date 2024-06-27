@@ -1,0 +1,30 @@
+.clone-typography-title{
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.clone-typography{
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 22px;
+}
+
+.clone-info{
+    padding-left:32px;
+    padding-right: 25px;
+    padding-bottom: 10px;
+    text-wrap: wrap;
+}
+
+.clone-title{
+    padding-top:15px;
+    padding-left: 10px;
+}
+
+.clone-icons{
+    padding-right: 5px;
+}
+
+.clone-button{
+    padding-right: 20px;
+}

@@ -48,7 +48,9 @@ prompt_studio_export = PromptStudioCoreView.as_view(
     {"post": "export_tool", "get": "export_tool_info"}
 )
 
-
+prompt_studio_clone = PromptStudioCoreView.as_view(
+    {"post": "clone_project", "get": "clone_project"}
+)
 urlpatterns = format_suffix_patterns(
     [
         path("prompt-studio/", prompt_studio_list, name="prompt-studio-list"),
@@ -113,6 +115,11 @@ urlpatterns = format_suffix_patterns(
             "prompt-studio/export/<uuid:pk>",
             prompt_studio_export,
             name="prompt_studio_export",
+        ),
+        path(
+            "prompt-studio/clone/<uuid:pk>",
+            prompt_studio_clone,
+            name="prompt_studio_clone",
         ),
     ]
 )

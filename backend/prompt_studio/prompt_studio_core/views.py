@@ -508,3 +508,18 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             return Response(serialized_instances)
         else:
             return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get"])
+    def clone_project(self, request: HttpRequest, pk: Any = None) -> Response:
+        try:
+            custom_tool = self.get_object()
+            cloned_tool = PromptStudioHelper.clone_project(
+                tool_id=custom_tool.tool_id, request=request
+            )
+            return Response(cloned_tool, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error occured while cloing project {e}")
+            return Response(
+                {"message": "Error while cloning."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

@@ -16,7 +16,7 @@ const defaultState = {
   singlePassExtractMode: false,
   isSinglePassExtractLoading: false,
   shareId: null,
-  isPublicSource: window.location.pathname.startsWith(`/promptStudio/share`),
+  isPublicSource: false,
 };
 
 const defaultPromptInstance = {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
+import { Layout } from "antd";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -8,7 +9,7 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
-
+import "../../../layouts/page-layout/PageLayout.css"
 function PublicPromptStudioHelper() {
   const [isLoading, setIsLoading] = useState(true);
   const { id } = useParams();
@@ -27,6 +28,7 @@ function PublicPromptStudioHelper() {
       defaultLlmProfile: "",
       llmProfiles: [],
       selectedDoc: null,
+      isPublicSource: window.location.pathname.startsWith(`/promptStudio/share`),
     };
     const reqOpsPublicPromptStudio = {
       method: "GET",
@@ -102,7 +104,7 @@ function PublicPromptStudioHelper() {
   if (isLoading) {
     return <SpinnerLoader />;
   }
-  return <Outlet />;
+  return <div className="landingPage"><Layout><Outlet /></Layout></div>
 }
 
 export { PublicPromptStudioHelper };

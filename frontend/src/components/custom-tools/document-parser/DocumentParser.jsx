@@ -1,20 +1,20 @@
-import PropTypes from "prop-types";
-import { useEffect, useRef, useState } from "react";
-import { DndProvider } from "react-dnd";
-import { HTML5Backend } from "react-dnd-html5-backend";
+import PropTypes from 'prop-types';
+import { useEffect, useRef, useState } from 'react';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 
-import "./DocumentParser.css";
+import './DocumentParser.css';
 import {
   promptStudioUpdateStatus,
   promptType,
-} from "../../../helpers/GetStaticData";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useAlertStore } from "../../../store/alert-store";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { useSessionStore } from "../../../store/session-store";
-import { EmptyState } from "../../widgets/empty-state/EmptyState";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { PromptDnd } from "../prompt-card/PrompDnd";
+} from '../../../helpers/GetStaticData';
+import { useAxiosPrivate } from '../../../hooks/useAxiosPrivate';
+import { useAlertStore } from '../../../store/alert-store';
+import { useCustomToolStore } from '../../../store/custom-tool-store';
+import { useSessionStore } from '../../../store/session-store';
+import { EmptyState } from '../../widgets/empty-state/EmptyState';
+import { useExceptionHandler } from '../../../hooks/useExceptionHandler';
+import { PromptDnd } from '../prompt-card/PrompDnd';
 
 function DocumentParser({
   addPromptInstance,
@@ -35,7 +35,7 @@ function DocumentParser({
   useEffect(() => {
     if (scrollToBottom) {
       // Scroll down to the lastest chat.
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
       setScrollToBottom(false);
     }
   }, [scrollToBottom]);
@@ -45,11 +45,11 @@ function DocumentParser({
     promptId,
     dropdownItem,
     isUpdateStatus = false,
-    isPromptUpdate = false
+    isPromptUpdate = false,
   ) => {
     const promptsAndNotes = details?.prompts || [];
-    let name = "";
-    let value = "";
+    let name = '';
+    let value = '';
     if (dropdownItem?.length) {
       name = dropdownItem;
       value = event;
@@ -58,7 +58,7 @@ function DocumentParser({
       value = event.target.value;
     }
 
-    if (name === "prompt_key") {
+    if (name === 'prompt_key') {
       // Return if the prompt or the prompt key is empty
       if (!value) {
         return;
@@ -67,7 +67,7 @@ function DocumentParser({
         handleUpdateStatus(
           isUpdateStatus,
           promptId,
-          promptStudioUpdateStatus.validationError
+          promptStudioUpdateStatus.validationError,
         );
         return;
       }
@@ -82,13 +82,13 @@ function DocumentParser({
     }
 
     const index = promptsAndNotes.findIndex(
-      (item) => item?.prompt_id === promptId
+      (item) => item?.prompt_id === promptId,
     );
 
     if (index === -1) {
       setAlertDetails({
-        type: "error",
-        content: "Prompt not found",
+        type: 'error',
+        content: 'Prompt not found',
       });
       return;
     }
@@ -99,11 +99,11 @@ function DocumentParser({
       [`${name}`]: value,
     };
     const requestOptions = {
-      method: "PATCH",
+      method: 'PATCH',
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/${promptDetails?.prompt_id}/`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json",
+        'X-CSRFToken': sessionDetails?.csrfToken,
+        'Content-Type': 'application/json',
       },
       data: body,
     };
@@ -118,15 +118,15 @@ function DocumentParser({
           };
         }
         return item;
-      }
+      },
     );
-    modifiedDetails["prompts"] = modifiedPrompts;
+    modifiedDetails['prompts'] = modifiedPrompts;
     updateCustomTool({ details: modifiedDetails });
 
     handleUpdateStatus(
       isUpdateStatus,
       promptId,
-      promptStudioUpdateStatus.isUpdating
+      promptStudioUpdateStatus.isUpdating,
     );
 
     return axiosPrivate(requestOptions)
@@ -138,20 +138,20 @@ function DocumentParser({
               return data;
             }
             return item;
-          }
+          },
         );
-        modifiedDetails["prompts"] = modifiedPrompts;
+        modifiedDetails['prompts'] = modifiedPrompts;
         if (!isPromptUpdate) {
           updateCustomTool({ details: modifiedDetails });
         }
         handleUpdateStatus(
           isUpdateStatus,
           promptId,
-          promptStudioUpdateStatus.done
+          promptStudioUpdateStatus.done,
         );
       })
       .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to update"));
+        // setAlertDetails(handleException(err, "Failed to update"));
         updateCustomTool({ details });
         handleUpdateStatus(isUpdateStatus, promptId, null);
       })
@@ -176,10 +176,10 @@ function DocumentParser({
 
   const handleDelete = (promptId) => {
     const requestOptions = {
-      method: "DELETE",
+      method: 'DELETE',
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/${promptId}/`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
+        'X-CSRFToken': sessionDetails?.csrfToken,
       },
     };
 
@@ -187,17 +187,17 @@ function DocumentParser({
       .then(() => {
         const modifiedDetails = { ...details };
         const modifiedPrompts = [...(modifiedDetails?.prompts || [])].filter(
-          (item) => item?.prompt_id !== promptId
+          (item) => item?.prompt_id !== promptId,
         );
-        modifiedDetails["prompts"] = modifiedPrompts;
+        modifiedDetails['prompts'] = modifiedPrompts;
         updateCustomTool({ details: modifiedDetails });
         setAlertDetails({
-          type: "success",
-          content: "Deleted successfully",
+          type: 'success',
+          content: 'Deleted successfully',
         });
       })
       .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to delete"));
+        setAlertDetails(handleException(err, 'Failed to delete'));
       });
   };
 
@@ -225,11 +225,11 @@ function DocumentParser({
     };
 
     const requestOptions = {
-      method: "POST",
+      method: 'POST',
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/reorder`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json",
+        'X-CSRFToken': sessionDetails?.csrfToken,
+        'Content-Type': 'application/json',
       },
       data: body,
     };
@@ -246,14 +246,14 @@ function DocumentParser({
         updateCustomTool({
           details: { ...details, prompts: details?.prompts },
         });
-        setAlertDetails(handleException(err, "Failed to re-order the prompts"));
+        setAlertDetails(handleException(err, 'Failed to re-order the prompts'));
       });
   };
 
   const handleMoveItemSuccess = (updatedPrompts, updatedSequenceNums) => {
     const updatedPromptSequenceNum = updatedPrompts.map((promptItem) => {
       const newPromptSeqNum = updatedSequenceNums.find(
-        (item) => item?.id === promptItem?.prompt_id
+        (item) => item?.id === promptItem?.prompt_id,
       );
       if (newPromptSeqNum) {
         return {

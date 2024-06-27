@@ -82,7 +82,10 @@ class ProfileManager(BaseModel):
     )
 
     prompt_studio_tool = models.ForeignKey(
-        CustomTool, on_delete=models.CASCADE, null=True
+        CustomTool,
+        on_delete=models.CASCADE,
+        null=True,
+        related_name="linked_profilemanager",
     )
     is_default = models.BooleanField(
         default=False,
