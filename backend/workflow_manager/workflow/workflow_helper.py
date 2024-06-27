@@ -37,7 +37,6 @@ from workflow_manager.workflow.enums import ExecutionStatus, SchemaEntity, Schem
 from workflow_manager.workflow.exceptions import (
     InvalidRequest,
     TaskDoesNotExistError,
-    ToolValidationError,
     WorkflowDoesNotExistError,
     WorkflowExecutionNotExist,
 )
@@ -217,13 +216,11 @@ class WorkflowHelper:
         tool_instances: list[ToolInstance],
     ) -> None:
         for tool in tool_instances:
-            valid, message = ToolInstanceHelper.validate_tool_settings(
+            ToolInstanceHelper.validate_tool_settings(
                 user=tool.workflow.created_by,
                 tool_uid=tool.tool_id,
                 tool_meta=tool.metadata,
             )
-            if not valid:
-                raise ToolValidationError(message)
 
     @staticmethod
     def run_workflow(

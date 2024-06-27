@@ -458,7 +458,7 @@ class PromptStudioHelper:
                 )
 
                 OutputManagerHelper.handle_prompt_output_update(
-                    run_id=response[TSPKeys.RUN_ID],
+                    run_id=run_id,
                     prompts=prompts,
                     outputs=response["output"],
                     document_id=document_id,
@@ -535,9 +535,9 @@ class PromptStudioHelper:
                 )
 
                 OutputManagerHelper.handle_prompt_output_update(
-                    run_id=response[TSPKeys.RUN_ID],
+                    run_id=run_id,
                     prompts=prompts,
-                    outputs=response[TSPKeys.SINGLE_PASS_EXTRACTION],
+                    outputs=response[TSPKeys.OUTPUT],
                     document_id=document_id,
                     is_single_pass_extract=True,
                 )

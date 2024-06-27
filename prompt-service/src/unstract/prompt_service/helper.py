@@ -1,10 +1,12 @@
 import importlib
 import os
+from logging import Logger
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, current_app
+from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
 
 load_dotenv()
 
@@ -80,3 +82,73 @@ def plugin_loader(app: Flask) -> dict[str, dict[str, Any]]:
         app.logger.info("No plugins found.")
 
     return plugins
+
+
+def query_usage_metadata(db, token: str, metadata: dict[str, Any]) -> dict[str, Any]:
+    org_id: str = AuthenticationMiddleware.get_account_from_bearer_token(token)
+    run_id: str = metadata["run_id"]
+    query: str = f"""
+        SELECT
+            usage_type,
+            llm_usage_reason,
+            model_name,
+            SUM(prompt_tokens) AS input_tokens,
+            SUM(completion_tokens) AS output_tokens,
+            SUM(total_tokens) AS total_tokens,
+            SUM(embedding_tokens) AS embedding_tokens,
+            SUM(cost_in_dollars) AS cost_in_dollars
+        FROM "{org_id}"."token_usage"
+        WHERE run_id = %s
+        GROUP BY usage_type, llm_usage_reason, model_name;
+    """
+    logger: Logger = current_app.logger
+    try:
+        with db.atomic():
+            logger.info(
+                "Querying usage metadata for org_id: %s, run_id: %s", org_id, run_id
+            )
+            cursor = db.execute_sql(query, (run_id,))
+            results: list[tuple] = cursor.fetchall()
+            # Process results as needed
+            for row in results:
+                key, item = _get_key_and_item(row)
+                # Initialize the key as an empty list if it doesn't exist
+                if key not in metadata:
+                    metadata[key] = []
+                # Append the item to the list associated with the key
+                metadata[key].append(item)
+    except Exception as e:
+        logger.error(f"Error executing querying usage metadata: {e}")
+    return metadata
+
+
+def _get_key_and_item(row: tuple) -> tuple[str, dict[str, Any]]:
+    (
+        usage_type,
+        llm_usage_reason,
+        model_name,
+        input_tokens,
+        output_tokens,
+        total_tokens,
+        embedding_tokens,
+        cost_in_dollars,
+    ) = row
+    cost_in_dollars: str = _format_float_positional(cost_in_dollars)
+    key: str = usage_type
+    item: dict[str, Any] = {
+        "model_name": model_name,
+        "cost_in_dollars": cost_in_dollars,
+    }
+    if llm_usage_reason:
+        key = f"{llm_usage_reason}_{key}"
+        item["input_tokens"] = input_tokens
+        item["output_tokens"] = output_tokens
+        item["total_tokens"] = total_tokens
+    else:
+        item["embedding_tokens"] = embedding_tokens
+    return key, item
+
+
+def _format_float_positional(value: float, precision: int = 10) -> str:
+    formatted: str = f"{value:.{precision}f}"
+    return formatted.rstrip("0").rstrip(".") if "." in formatted else formatted
