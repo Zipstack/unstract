@@ -3,7 +3,7 @@ from typing import Any, Optional
 from flask import Request, current_app
 from peewee import PostgresqlDatabase
 from unstract.prompt_service.constants import DBTableV2, FeatureFlag
-from unstract.prompt_service.feature_flag import check_feature_flag_status
+from unstract.flags.feature_flag import check_feature_flag_status
 
 
 class AuthenticationMiddleware:
