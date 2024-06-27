@@ -20,6 +20,9 @@ from prompt_studio.prompt_profile_manager.profile_manager_helper import (
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.constants import LogLevels
 from prompt_studio.prompt_studio_core.constants import ToolStudioPromptKeys as TSPKeys
+from prompt_studio.prompt_studio_core.document_indexing_service import (
+    DocumentIndexingService,
+)
 from prompt_studio.prompt_studio_core.exceptions import (
     AnswerFetchError,
     DefaultProfileError,
@@ -31,12 +34,6 @@ from prompt_studio.prompt_studio_core.exceptions import (
 )
 from prompt_studio.prompt_studio_core.models import CustomTool
 from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
-from prompt_studio.prompt_studio_core.redis_utils import (
-    get_indexed_document_id,
-    is_document_indexing,
-    mark_document_indexed,
-    set_document_indexing,
-)
 from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import (  # noqa: E501
     PromptStudioIndexHelper,
@@ -793,15 +790,15 @@ class PromptStudioHelper:
                 file_path=file_path,
                 file_hash=None,
             )
-            indexed_doc_id = get_indexed_document_id(doc_id_key)
+            indexed_doc_id = DocumentIndexingService.get_indexed_document_id(doc_id_key)
             if indexed_doc_id:
                 return indexed_doc_id
 
             # Polling if document is already being indexed
-            if is_document_indexing(doc_id_key):
+            if DocumentIndexingService.is_document_indexing(doc_id_key):
                 PromptStudioHelper.wait_for_document_indexing(doc_id_key=doc_id_key)
             # Set the document as being indexed
-            set_document_indexing(doc_id_key)
+            DocumentIndexingService.set_document_indexing(doc_id_key)
             doc_id: str = tool_index.index(
                 tool_id=tool_id,
                 embedding_instance_id=embedding_model,
@@ -821,7 +818,7 @@ class PromptStudioHelper:
                 profile_manager=profile_manager,
                 doc_id=doc_id,
             )
-            mark_document_indexed(doc_id_key, doc_id)
+            DocumentIndexingService.mark_document_indexed(doc_id_key, doc_id)
             return doc_id
         except (IndexingError, IndexingAPIError, SdkError) as e:
             doc_name = os.path.split(file_path)[1]
@@ -841,14 +838,14 @@ class PromptStudioHelper:
         wait_time = 0
         polling_interval = settings.POLLING_INTERVAL  # Poll every 5 seconds
 
-        while is_document_indexing(doc_id_key):
+        while DocumentIndexingService.is_document_indexing(doc_id_key):
             if wait_time >= max_wait_time:
                 raise IndexingAPIError("Indexing timed out. Please try again later.")
             time.sleep(polling_interval)
             wait_time += polling_interval
 
         # After waiting, check if the document is indexed
-        indexed_doc_id = get_indexed_document_id(doc_id_key)
+        indexed_doc_id = DocumentIndexingService.get_indexed_document_id(doc_id_key)
         if indexed_doc_id:
             return indexed_doc_id
         else:

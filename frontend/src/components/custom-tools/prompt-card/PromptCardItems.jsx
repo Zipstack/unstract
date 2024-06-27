@@ -494,42 +494,40 @@ function PromptCardItems({
                               </Typography.Paragraph>
                             )}
                             <div className="prompt-profile-run">
-                              <>
-                                <Tooltip title="Run">
-                                  <Button
-                                    size="small"
-                                    type="text"
-                                    className="prompt-card-action-button"
-                                    onClick={() =>
-                                      handleRun(profile?.profile_id, false)
-                                    }
-                                    disabled={
-                                      isRunLoading[
-                                        `${selectedDoc?.document_id}_${profile?.profile_id}`
-                                      ]
-                                    }
-                                  >
-                                    <PlayCircleOutlined className="prompt-card-actions-head" />
-                                  </Button>
-                                </Tooltip>
-                                <Tooltip title="Run All">
-                                  <Button
-                                    size="small"
-                                    type="text"
-                                    className="prompt-card-action-button"
-                                    onClick={() =>
-                                      handleRun(profile?.profile_id, true)
-                                    }
-                                    disabled={
-                                      isRunLoading[
-                                        `${selectedDoc?.document_id}_${profile?.profile_id}`
-                                      ]
-                                    }
-                                  >
-                                    <PlayCircleFilled className="prompt-card-actions-head" />
-                                  </Button>
-                                </Tooltip>
-                              </>
+                              <Tooltip title="Run">
+                                <Button
+                                  size="small"
+                                  type="text"
+                                  className="prompt-card-action-button"
+                                  onClick={() =>
+                                    handleRun(profile?.profile_id, false)
+                                  }
+                                  disabled={
+                                    isRunLoading[
+                                      `${selectedDoc?.document_id}_${profile?.profile_id}`
+                                    ]
+                                  }
+                                >
+                                  <PlayCircleOutlined className="prompt-card-actions-head" />
+                                </Button>
+                              </Tooltip>
+                              <Tooltip title="Run All">
+                                <Button
+                                  size="small"
+                                  type="text"
+                                  className="prompt-card-action-button"
+                                  onClick={() =>
+                                    handleRun(profile?.profile_id, true)
+                                  }
+                                  disabled={
+                                    isRunLoading[
+                                      `${selectedDoc?.document_id}_${profile?.profile_id}`
+                                    ]
+                                  }
+                                >
+                                  <PlayCircleFilled className="prompt-card-actions-head" />
+                                </Button>
+                              </Tooltip>
                               <Tooltip title="Expand">
                                 <Button
                                   size="small"
