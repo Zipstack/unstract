@@ -1,3 +1,5 @@
+from typing import Optional
+
 from django.conf import settings
 from utils.cache_service import CacheService
 
@@ -16,7 +18,7 @@ def mark_document_indexed(doc_id_key: str, doc_id: str) -> None:
     )
 
 
-def get_indexed_document_id(doc_id_key: str) -> str | None:
+def get_indexed_document_id(doc_id_key: str) -> Optional[str]:
     result = CacheService.get_key(f"document_indexing:{doc_id_key}")
     if result and result != b"started":
         return result

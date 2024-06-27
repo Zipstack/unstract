@@ -464,7 +464,6 @@ class PromptStudioHelper:
                     document_id=document_id,
                     is_single_pass_extract=False,
                     profile_manager_id=profile_manager_id,
-                    tool=tool,
                 )
             # TODO: Review if this catch-all is required
             except Exception as e:

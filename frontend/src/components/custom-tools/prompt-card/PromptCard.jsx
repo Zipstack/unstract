@@ -527,7 +527,7 @@ function PromptCard({
       return;
     }
 
-    if (singlePassExtractMode) {
+    if (!singlePassExtractMode && !selectedLlmProfileId) {
       setResult([]);
       return;
     }

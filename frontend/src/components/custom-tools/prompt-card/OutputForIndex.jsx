@@ -9,6 +9,7 @@ import "./PromptCard.css";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
+import { uniqueId } from "lodash";
 
 function OutputForIndex({ llmProfileId, isIndexOpen, setIsIndexOpen }) {
   const [data, setData] = useState(null);
@@ -52,7 +53,7 @@ function OutputForIndex({ llmProfileId, isIndexOpen, setIsIndexOpen }) {
       ) : (
         <>
           {content.map((text, index) => (
-            <TextViewerPre text={text} key={`${index}_indexed`} />
+            <TextViewerPre text={text} key={`${uniqueId()}_indexed`} />
           ))}
         </>
       );

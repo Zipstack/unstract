@@ -27,7 +27,6 @@ class OutputManagerHelper:
         document_id: str,
         is_single_pass_extract: bool,
         profile_manager_id: Optional[str] = None,
-        tool: CustomTool = None,
     ) -> None:
         """Handles updating prompt outputs in the database.
 
@@ -39,11 +38,14 @@ class OutputManagerHelper:
             profile_manager_id (Optional[str]): UUID of the profile manager.
             is_single_pass_extract (bool):
             Flag indicating if single pass extract is active.
-            tool (CustomTool, optional): Custom tool used for extracting.
         """
 
         def update_or_create_prompt_output(
-            prompt, profile_manager, output, eval_metrics
+            prompt: ToolStudioPrompt,
+            profile_manager: ProfileManager,
+            output: str,
+            eval_metrics: list[Any],
+            tool: CustomTool,
         ):
             try:
                 _, success = PromptStudioOutputManager.objects.get_or_create(
@@ -88,10 +90,10 @@ class OutputManagerHelper:
         if not prompts:
             return  # Return early if prompts list is empty
 
+        tool = prompts[0].tool_id
         default_profile = OutputManagerHelper.get_default_profile(
             profile_manager_id, tool
         )
-        tool = prompts[0].tool_id
         document_manager = DocumentManager.objects.get(pk=document_id)
 
         for prompt in prompts:
@@ -103,7 +105,11 @@ class OutputManagerHelper:
             eval_metrics = outputs.get(f"{prompt.prompt_key}__evaluation", [])
 
             update_or_create_prompt_output(
-                prompt, profile_manager, output, eval_metrics
+                prompt=prompt,
+                profile_manager=profile_manager,
+                output=output,
+                eval_metrics=eval_metrics,
+                tool=tool,
             )
 
     @staticmethod
