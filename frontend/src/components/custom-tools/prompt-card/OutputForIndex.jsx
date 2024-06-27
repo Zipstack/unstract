@@ -8,7 +8,7 @@ function OutputForIndex({ chuckData, setIsIndexOpen, isIndexOpen }) {
     setIsIndexOpen(false);
   };
 
-  const lines = chuckData?.replace(/^(?:"|")$/g, "")?.split("\\n"); // Split text into lines and remove any empty lines
+  const lines = chuckData?.split("\\n"); // Split text into lines and remove any empty lines
 
   const renderContent = (chuck) => {
     return !chuck ? (
