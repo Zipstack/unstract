@@ -237,6 +237,8 @@ def usage() -> Any:
             completion_tokens, total_tokens, cost_in_dollars, created_at, modified_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
+        usage_id = uuid.uuid4()
+        current_time = datetime.now()
         params = (
             usage_id,
             organization_uid,
