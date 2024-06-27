@@ -47,6 +47,15 @@ class PromptServiceContants:
     TOOL_SETTINGS = "tool_settings"
     LOG_EVENTS_ID = "log_events_id"
     CHALLENGE_LLM = "challenge_llm"
+    CHALLENGE = "challenge"
+    ENABLE_CHALLENGE = "enable_challenge"
+    EXTRACTION = "extraction"
+    SUMMARIZE = "summarize"
+    SINGLE_PASS_EXTRACTION = "single-pass-extraction"
+    LLM_USAGE_REASON = "llm_usage_reason"
+    METADATA = "metadata"
+    OUTPUT = "output"
+    CONTEXT = "context"
 
 
 class LogLevel(Enum):

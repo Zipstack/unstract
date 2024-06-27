@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:8c339245fd32601f1ff07d4700a6c09200bded33c600d0ac4458d0fe1e639bd9"
+content_hash = "sha256:37948115ba5df959b31f9cf90442c33f10f7a01e396e32a6b416cbb114e32011"
 
 [[package]]
 name = "aiohttp"
@@ -3568,7 +3568,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.32.0"
+version = "0.33.1"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3580,11 +3580,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.19.0",
+    "unstract-adapters~=0.19.2",
 ]
 files = [
-    {file = "unstract_sdk-0.32.0-py3-none-any.whl", hash = "sha256:bd95aea8a061806e2d056df48ba52f6ed055566e61971539624dd78bbd348e04"},
-    {file = "unstract_sdk-0.32.0.tar.gz", hash = "sha256:6bb422692c17f60f799ac4220410a9502a40ec01e1cec7bc3d4b54af8394f74f"},
+    {file = "unstract_sdk-0.33.1-py3-none-any.whl", hash = "sha256:61de941cc6dcf3837c40831f25e85af388cb6d88d55612cd1c375adf6f124688"},
+    {file = "unstract_sdk-0.33.1.tar.gz", hash = "sha256:fb4ff2ca395d6513cca4a3b697dd97dbdd4174727ebe0b9e69ad1637b7586ae0"},
 ]
 
 [[package]]
