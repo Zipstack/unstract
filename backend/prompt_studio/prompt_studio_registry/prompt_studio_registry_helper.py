@@ -280,6 +280,7 @@ class PromptStudioRegistryHelper:
         tool_settings[JsonSchemaKey.ENABLE_SINGLE_PASS_EXTRACTION] = (
             tool.single_pass_extraction_mode
         )
+        tool_settings[JsonSchemaKey.ENABLE_HIGHLIGHT] = tool.enable_highlight
 
         for prompt in prompts:
 
