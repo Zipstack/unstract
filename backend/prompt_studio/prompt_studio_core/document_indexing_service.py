@@ -27,7 +27,7 @@ class DocumentIndexingService:
     def get_indexed_document_id(cls, doc_id_key: str) -> Optional[str]:
         result = CacheService.get_key(cls._cache_key(doc_id_key))
         if result and result != b"started":
-            return result.decode()  # Assuming doc_id is stored as a string
+            return result  # Assuming doc_id is stored as a string
         return None
 
     @classmethod
