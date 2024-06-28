@@ -10,14 +10,14 @@ on:
       service_name:
         description: "Tool to build"
         required: true
-        default: "tool-classifier" # Provide a default value
+        default: "tool-structure" # Provide a default value
         type: choice
         options: # Define available options
           - tool-classifier
           - tool-structure
           - tool-text-extractor
 
-run-name: "[${{ inputs.service_name }}] Docker Image Build and Push (Development)"
+run-name: "[${{ inputs.service_name }}:${{ inputs.tag }}] Docker Image Build and Push (Development)"
 
 jobs:
     build-and-push:
