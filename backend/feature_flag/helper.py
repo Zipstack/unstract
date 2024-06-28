@@ -29,7 +29,7 @@ class FeatureFlagHelper:
             return response
         except Exception as e:
             logger.error(
-                f"Error while listing flags for namespace {namespace_key}:" f" {str(e)}"
+                f"Error while listing flags for namespace {namespace_key}: {str(e)}"
             )
             return {}
 
