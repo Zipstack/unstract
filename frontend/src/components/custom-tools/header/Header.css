@@ -33,3 +33,10 @@
 .select-llm-pro-header {
     padding-top: 12px;
 }
+
+.custom-tools-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-right:auto;
+}

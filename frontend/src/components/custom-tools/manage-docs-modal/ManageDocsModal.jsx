@@ -75,6 +75,7 @@ function ManageDocsModal({
     rawIndexStatus,
     summarizeIndexStatus,
     isSinglePassExtractLoading,
+    isPublicSource,
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
@@ -140,8 +141,9 @@ function ManageDocsModal({
     if (!open) {
       return;
     }
-
-    handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
+    if (!isPublicSource) {
+      handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
+    }
   }, [indexDocs, rawLlmProfile, open]);
 
   useEffect(() => {
@@ -163,7 +165,7 @@ function ManageDocsModal({
 
     // Get the index of the last message received before the last update
     const lastIndex = [...newMessages].findIndex(
-      (item) => item?.timestamp === lastMessagesUpdate
+      (item) => item?.timestamp === lastMessagesUpdate,
     );
 
     // If the last update's message is found, keep only the new messages
@@ -173,7 +175,7 @@ function ManageDocsModal({
 
     // Filter only INFO and ERROR logs
     newMessages = newMessages.filter(
-      (item) => item?.level === "INFO" || item?.level === "ERROR"
+      (item) => item?.level === "INFO" || item?.level === "ERROR",
     );
 
     // If there are no new INFO or ERROR messages, return early
@@ -272,7 +274,7 @@ function ManageDocsModal({
 
   const getLlmProfileName = (llmProfile) => {
     const llmProfileName = llmProfiles.find(
-      (item) => item?.profile_id === llmProfile
+      (item) => item?.profile_id === llmProfile,
     );
 
     return llmProfileName?.profile_name || "No LLM Profile Selected";
@@ -384,7 +386,8 @@ function ManageDocsModal({
                       isSinglePassExtractLoading ||
                       indexDocs.includes(item?.document_id) ||
                       isUploading ||
-                      !defaultLlmProfile
+                      !defaultLlmProfile ||
+                      isPublicSource
                     }
                   />
                 </Tooltip>
@@ -408,7 +411,8 @@ function ManageDocsModal({
                   disableLlmOrDocChange?.length > 0 ||
                   isSinglePassExtractLoading ||
                   indexDocs.includes(item?.document_id) ||
-                  isUploading
+                  isUploading ||
+                  isPublicSource
                 }
               >
                 <DeleteOutlined className="manage-llm-pro-icon" />
@@ -423,7 +427,8 @@ function ManageDocsModal({
             disabled={
               disableLlmOrDocChange?.length > 0 ||
               isSinglePassExtractLoading ||
-              indexDocs.includes(item?.document_id)
+              indexDocs.includes(item?.document_id) ||
+              isPublicSource
             }
           />
         ),
@@ -456,7 +461,7 @@ function ManageDocsModal({
       reader.onload = () => {
         const fileName = file.name;
         const fileAlreadyExists = [...listOfDocs].find(
-          (item) => item?.document_name === fileName
+          (item) => item?.document_name === fileName,
         );
         if (!fileAlreadyExists) {
           resolve(file);
@@ -525,7 +530,7 @@ function ManageDocsModal({
     axiosPrivate(requestOptions)
       .then(() => {
         const newListOfDocs = [...listOfDocs].filter(
-          (item) => item?.document_id !== docId
+          (item) => item?.document_id !== docId,
         );
         updateCustomTool({ listOfDocs: newListOfDocs });
 

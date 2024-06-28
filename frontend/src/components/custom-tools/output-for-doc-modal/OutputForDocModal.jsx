@@ -6,7 +6,7 @@ import {
   CloseCircleFilled,
   InfoCircleFilled,
 } from "@ant-design/icons";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -66,10 +66,12 @@ function OutputForDocModal({
     disableLlmOrDocChange,
     singlePassExtractMode,
     isSinglePassExtractLoading,
+    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
+  const { id } = useParams();
   const { setAlertDetails } = useAlertStore();
   const { handleException } = useExceptionHandler();
   const { tokenUsage } = useTokenUsageStore();
@@ -95,7 +97,7 @@ function OutputForDocModal({
 
     // Find the index of the selected document within the list
     const index = docs.findIndex(
-      (item) => item?.document_id === selectedDoc?.document_id
+      (item) => item?.document_id === selectedDoc?.document_id,
     );
 
     // If the selected document exists in the list and is not already at the top (index 0)
@@ -121,7 +123,7 @@ function OutputForDocModal({
       keys.forEach((key) => {
         // Find the index of the prompt output corresponding to the document manager key
         const index = updatedPromptOutput.findIndex(
-          (promptOutput) => promptOutput?.document_manager === key
+          (promptOutput) => promptOutput?.document_manager === key,
         );
 
         let promptOutputInstance = {};
@@ -157,14 +159,20 @@ function OutputForDocModal({
       setRows([]);
       return;
     }
-    const requestOptions = {
+    const requestPrivateOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
-
+    const requestPublicOptions = {
+      method: "GET",
+      url: `/public/share/outputs-metadata/?id=${id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`,
+    };
+    const requestOptions = isPublicSource
+      ? requestPublicOptions
+      : requestPrivateOptions;
     setIsLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
@@ -173,7 +181,7 @@ function OutputForDocModal({
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to loaded the prompt results")
+          handleException(err, "Failed to loaded the prompt results"),
         );
       })
       .finally(() => {
@@ -186,7 +194,7 @@ function OutputForDocModal({
     const docs = moveSelectedDocToTop();
     docs.forEach((item) => {
       const output = data.find(
-        (outputValue) => outputValue?.document_manager === item?.document_id
+        (outputValue) => outputValue?.document_manager === item?.document_id,
       );
 
       let status = outputStatus.fail;
