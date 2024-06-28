@@ -1,5 +1,11 @@
+import logging
+
 from unstract.flags.client.flipt import FliptClient
 from unstract.flags.feature_flag import check_feature_flag_status
+
+logger = logging.getLogger(
+    __name__,
+)
 
 
 class FeatureFlagHelper:
@@ -22,7 +28,9 @@ class FeatureFlagHelper:
             )
             return response
         except Exception as e:
-            print(f"Error: {str(e)}")
+            logger.error(
+                f"Error while listing flags for namespace {namespace_key}:" f" {str(e)}"
+            )
             return {}
 
     @staticmethod

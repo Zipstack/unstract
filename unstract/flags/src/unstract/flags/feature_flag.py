@@ -1,8 +1,11 @@
 """Feature flag utils file."""
 
+import logging
 from typing import Optional
 
 from .client.evaluation import EvaluationClient
+
+logger = logging.getLogger(__name__)
 
 
 def check_feature_flag_status(
@@ -36,5 +39,5 @@ def check_feature_flag_status(
         )
         return bool(response)  # Wrap the response in a boolean check
     except Exception as e:
-        print(f"Error: {str(e)}")
+        logger.warning(f"Error evaluating feature flag '{flag_key}': {str(e)}")
         return False
