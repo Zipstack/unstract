@@ -65,7 +65,7 @@ function CloneTitle({ open, setOpenCloneModal }) {
               style={{ fontSize: '16px', color: '#FAAD14' }}
             />
             <Typography.Text className="clone-typography-title">
-              Are you sure to clone this project?
+              Enter name for your new clone
             </Typography.Text>
           </div>
         }

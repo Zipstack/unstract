@@ -18,7 +18,6 @@ import './ToolIde.css';
 import usePostHogEvents from '../../../hooks/usePostHogEvents.js';
 import { PromptShareModal } from '../public-share-modal/PromptShareModal';
 import { PromptShareLink } from '../public-link-modal/PromptShareLink';
-import { HeaderPublic } from '../header-public/HeaderPublic.jsx';
 import { CloneTitle } from '../clone-title-modal/CloneTitle.jsx';
 let OnboardMessagesModal;
 let slides;
@@ -208,7 +207,6 @@ function ToolIde() {
   return (
     <div className="tool-ide-layout">
       <div>
-        {isPublicSource && <HeaderPublic />}
         <Header
           handleUpdateTool={handleUpdateTool}
           setOpenSettings={setOpenSettings}
