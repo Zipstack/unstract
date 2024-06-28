@@ -63,10 +63,12 @@ urlpatterns = [
 ]
 
 try:
+    import pluggable_apps.public_shares_share_manager.urls
     import pluggable_apps.subscription.urls  # noqa: F401
 
     urlpatterns += [
         path("", include("pluggable_apps.subscription.urls")),
+        path("", include("pluggable_apps.public_shares.share_manager.urls")),
     ]
 except ImportError:
     pass

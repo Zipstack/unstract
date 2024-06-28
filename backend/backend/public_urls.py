@@ -22,6 +22,7 @@ from django.urls import include, path
 
 path_prefix = settings.PATH_PREFIX
 api_path_prefix = settings.API_DEPLOYMENT_PATH_PREFIX
+share_path_prefix = settings.PUBLIC_PATH_PREFIX
 
 urlpatterns = [
     path(f"{path_prefix}/", include("account.urls")),
@@ -47,10 +48,16 @@ urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
 
 try:
-    import pluggable_apps.platform_admin.urls  # noqa: F401
+    import pluggable_apps.platform_admin.urls
+    import pluggable_apps.public_shares_share_controller.urls  # noqa: F401
 
     urlpatterns += [
         path(f"{path_prefix}/", include("pluggable_apps.platform_admin.urls")),
+        # Public Sharing
+        path(
+            f"{share_path_prefix}/",
+            include("pluggable_apps.public_shares.share_controller.urls"),
+        ),
     ]
 except ImportError:
     pass
