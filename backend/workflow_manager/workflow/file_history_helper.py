@@ -40,6 +40,7 @@ class FileHistoryHelper:
         workflow: Workflow,
         status: ExecutionStatus,
         result: Any,
+        metadata: Any,
         error: Optional[str] = None,
         file_name: Optional[str] = None,
     ) -> FileHistory:
@@ -60,6 +61,7 @@ class FileHistoryHelper:
                 cache_key=cache_key,
                 status=status.value,
                 result=str(result),
+                meta_data=str(metadata),
                 error=str(error) if error else "",
             )
         except IntegrityError:
