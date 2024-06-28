@@ -232,7 +232,7 @@ function PromptCardItems({
         </>
       );
     }
-    return null;
+    return <></>;
   };
 
   useEffect(() => {
