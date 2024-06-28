@@ -58,7 +58,7 @@ class StructureTool(BaseTool):
         tool_id = tool_metadata[SettingsKeys.TOOL_ID]
         tool_settings = tool_metadata[SettingsKeys.TOOL_SETTINGS]
         outputs = tool_metadata[SettingsKeys.OUTPUTS]
-        enable_highlight: bool = tool_settings[SettingsKeys.ENABLE_HIGHLIGHT]
+        enable_highlight: bool = tool_settings.get(SettingsKeys.ENABLE_HIGHLIGHT, False)
         tool_settings[SettingsKeys.CHALLENGE_LLM] = challenge_llm
         tool_settings[SettingsKeys.ENABLE_CHALLENGE] = enable_challenge
         tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION] = (
