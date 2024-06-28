@@ -3,19 +3,20 @@ import { Modal } from "antd";
 import "./PromptCard.css";
 import { uniqueId } from "lodash";
 
-function OutputForIndex({ chuckData, setIsIndexOpen, isIndexOpen }) {
+function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
   const handleClose = () => {
     setIsIndexOpen(false);
   };
 
-  const lines = chuckData?.split("\\n"); // Split text into lines and remove any empty lines
+  const lines = chunkData?.split("\\n"); // Split text into lines and remove any empty lines
 
-  const renderContent = (chuck) => {
-    return !chuck ? (
-      <p>No chucks founds</p>
-    ) : (
+  const renderContent = (chunk) => {
+    if (!chunk) {
+      return <p>No chunks founds</p>;
+    }
+    return (
       <>
-        {chuck?.map((line) => (
+        {chunk?.map((line) => (
           <div key={uniqueId()}>
             {line}
             <br />
@@ -41,7 +42,7 @@ function OutputForIndex({ chuckData, setIsIndexOpen, isIndexOpen }) {
 }
 
 OutputForIndex.propTypes = {
-  chuckData: PropTypes.string,
+  chunkData: PropTypes.string,
   isIndexOpen: PropTypes.bool.isRequired,
   setIsIndexOpen: PropTypes.func.isRequired,
 };

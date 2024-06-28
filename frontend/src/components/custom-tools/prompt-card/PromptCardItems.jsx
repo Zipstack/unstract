@@ -42,30 +42,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { OutputForIndex } from "./OutputForIndex";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
+import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
 
 const EvalBtn = null;
 const EvalMetrics = null;
-
-function useWindowDimensions() {
-  const [windowDimensions, setWindowDimensions] = useState({
-    width: window.innerWidth,
-    height: window.innerHeight,
-  });
-
-  useEffect(() => {
-    function handleResize() {
-      setWindowDimensions({
-        width: window.innerWidth,
-        height: window.innerHeight,
-      });
-    }
-
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  return windowDimensions;
-}
 
 function PromptCardItems({
   promptDetails,
@@ -200,12 +180,59 @@ function PromptCardItems({
     );
   };
 
-  const getColSpan = () => {
-    if (componentWidth < 1200) {
-      return 24;
-    } else {
-      return 6;
+  const getColSpan = () => (componentWidth < 1200 ? 24 : 6);
+
+  const renderSinglePassResult = () => {
+    const [firstResult] = result || [];
+    if (
+      promptDetails.active &&
+      (firstResult?.output || firstResult?.output === 0)
+    ) {
+      return (
+        <>
+          <Divider className="prompt-card-divider" />
+          <div
+            className={`prompt-card-result prompt-card-div ${
+              expandedProfiles.includes(firstResult.profileManager) &&
+              "prompt-profile-run-expanded"
+            }`}
+          >
+            {isSinglePassExtractLoading ? (
+              <Spin indicator={<SpinnerLoader size="small" />} />
+            ) : (
+              <Typography.Paragraph className="prompt-card-res font-size-12">
+                <div
+                  className={
+                    expandedProfiles.includes(firstResult.profileManager)
+                      ? "expanded-output"
+                      : "collapsed-output"
+                  }
+                >
+                  {displayPromptResult(firstResult.output, true)}
+                </div>
+              </Typography.Paragraph>
+            )}
+            <div className="prompt-profile-run">
+              <Tooltip title="Expand">
+                <Button
+                  size="small"
+                  type="text"
+                  className="prompt-card-action-button"
+                  onClick={() =>
+                    handleExpandClick({
+                      profile_id: firstResult.profileManager,
+                    })
+                  }
+                >
+                  <ArrowsAltOutlined className="prompt-card-actions-head" />
+                </Button>
+              </Tooltip>
+            </div>
+          </div>
+        </>
+      );
     }
+    return null;
   };
 
   useEffect(() => {
@@ -533,67 +560,12 @@ function PromptCardItems({
                   );
                 })}
             </AnimatePresence>
-            {singlePassExtractMode &&
-              (() => {
-                const [firstResult] = result || [];
-                if (
-                  promptDetails.active &&
-                  (firstResult?.output || firstResult?.output === 0)
-                ) {
-                  return (
-                    <>
-                      <Divider className="prompt-card-divider" />
-                      <div
-                        className={`prompt-card-result prompt-card-div ${
-                          expandedProfiles.includes(
-                            firstResult.profileManager
-                          ) && "prompt-profile-run-expanded"
-                        }`}
-                      >
-                        {isSinglePassExtractLoading ? (
-                          <Spin indicator={<SpinnerLoader size="small" />} />
-                        ) : (
-                          <Typography.Paragraph className="prompt-card-res font-size-12">
-                            <div
-                              className={
-                                expandedProfiles.includes(
-                                  firstResult.profileManager
-                                )
-                                  ? "expanded-output"
-                                  : "collapsed-output"
-                              }
-                            >
-                              {displayPromptResult(firstResult.output, true)}
-                            </div>
-                          </Typography.Paragraph>
-                        )}
-                        <div className="prompt-profile-run">
-                          <Tooltip title="Expand">
-                            <Button
-                              size="small"
-                              type="text"
-                              className="prompt-card-action-button"
-                              onClick={() =>
-                                handleExpandClick({
-                                  profile_id: firstResult.profileManager,
-                                })
-                              }
-                            >
-                              <ArrowsAltOutlined className="prompt-card-actions-head" />
-                            </Button>
-                          </Tooltip>
-                        </div>
-                      </div>
-                    </>
-                  );
-                }
-                return null;
-              })()}
+            {singlePassExtractMode && renderSinglePassResult()}
           </Row>
         </Collapse.Panel>
       </Collapse>
       <OutputForIndex
-        chuckData={openIndexProfile}
+        chunkData={openIndexProfile}
         isIndexOpen={isIndexOpen}
         setIsIndexOpen={setIsIndexOpen}
       />

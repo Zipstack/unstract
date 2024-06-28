@@ -164,7 +164,7 @@ function CombinedOutput({ docId, setFilledFields }) {
             <TabPane
               tab={<span>{adapter.llm_model}</span>}
               key={(index + 1)?.toString()}
-            ></TabPane>
+            />
           ))}
         </Tabs>
         <div className="combined-op-segment"></div>
