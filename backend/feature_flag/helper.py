@@ -1,6 +1,5 @@
-from utils.request.feature_flag import check_feature_flag_status
-
 from unstract.flags.client.flipt import FliptClient
+from unstract.flags.feature_flag import check_feature_flag_status
 
 
 class FeatureFlagHelper:

@@ -15,9 +15,9 @@ from typing import Optional
 from urllib.parse import quote_plus
 
 from dotenv import find_dotenv, load_dotenv
-from utils.request.feature_flag import check_feature_flag_status
 
 from backend.constants import FeatureFlag
+from unstract.flags.feature_flag import check_feature_flag_status
 
 missing_settings = []
 
