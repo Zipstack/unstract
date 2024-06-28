@@ -46,7 +46,7 @@ function CustomToolsHelper() {
         updatedCusTool["singlePassExtractMode"] =
           data?.single_pass_extraction_mode;
         selectedDocId = data?.output;
-
+        updatedCusTool["shareId"] = data?.share_id;
         const reqOpsDocs = {
           method: "GET",
           url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-document?tool_id=${data?.tool_id}`,
