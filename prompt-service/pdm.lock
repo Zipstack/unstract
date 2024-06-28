@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:7942973388ce27f022bff61d82eb716c8fcdcb0559b3e85660073ca86055fbe6"
+content_hash = "sha256:ae728f45c0b04eacc0f8de9a60d6447f21612514c9751bafa85b781a3cc998f2"
 
 [[package]]
 name = "aiohttp"
@@ -693,13 +693,13 @@ files = [
 
 [[package]]
 name = "fsspec"
-version = "2024.6.0"
+version = "2024.6.1"
 requires_python = ">=3.8"
 summary = "File-system specification"
 groups = ["default"]
 files = [
-    {file = "fsspec-2024.6.0-py3-none-any.whl", hash = "sha256:58d7122eb8a1a46f7f13453187bfea4972d66bf01618d37366521b1998034cee"},
-    {file = "fsspec-2024.6.0.tar.gz", hash = "sha256:f579960a56e6d8038a9efc8f9c77279ec12e6299aa86b0769a7e9c46b94527c2"},
+    {file = "fsspec-2024.6.1-py3-none-any.whl", hash = "sha256:3cb443f8bcd2efb31295a5b9fdb02aee81d8452c80d28f97a6d0959e6cee101e"},
+    {file = "fsspec-2024.6.1.tar.gz", hash = "sha256:fad7d7e209dd4c1208e3bbfda706620e0da5142bebbd9c384afb95b07e798e49"},
 ]
 
 [[package]]
@@ -1523,6 +1523,20 @@ dependencies = [
 files = [
     {file = "llama_index_embeddings_google-0.1.5-py3-none-any.whl", hash = "sha256:a5dda93a4452e06490e4e4da1eb3d0609b5a1c5e9d4779086fd996d661fd68a2"},
     {file = "llama_index_embeddings_google-0.1.5.tar.gz", hash = "sha256:989f87e249661a5a531972c4ae52cd587e485291b25e76c084db204f97f0087b"},
+]
+
+[[package]]
+name = "llama-index-embeddings-ollama"
+version = "0.1.2"
+requires_python = ">=3.8.1,<4.0"
+summary = "llama-index embeddings ollama integration"
+groups = ["default"]
+dependencies = [
+    "llama-index-core<0.11.0,>=0.10.1",
+]
+files = [
+    {file = "llama_index_embeddings_ollama-0.1.2-py3-none-any.whl", hash = "sha256:ac7afabfa1134059af351b021e05e256bf86dd15e5176ffa5ab0305bcf03b33f"},
+    {file = "llama_index_embeddings_ollama-0.1.2.tar.gz", hash = "sha256:a9e0809bddd2e4ad888f249519edc7e3d339c74e4e03fc5a40c3060dc41d47a9"},
 ]
 
 [[package]]
@@ -3505,7 +3519,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.19.2"
+version = "0.20.1"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract interface for LLMs, Embeddings and VectorDBs"
 groups = ["default"]
@@ -3515,6 +3529,7 @@ dependencies = [
     "llama-index-embeddings-azure-openai==0.1.6",
     "llama-index-embeddings-azure-openai==0.1.6",
     "llama-index-embeddings-google==0.1.5",
+    "llama-index-embeddings-ollama==0.1.2",
     "llama-index-llms-anthropic==0.1.11",
     "llama-index-llms-anyscale==0.1.3",
     "llama-index-llms-azure-openai==0.1.5",
@@ -3533,8 +3548,8 @@ dependencies = [
     "singleton-decorator~=1.0.0",
 ]
 files = [
-    {file = "unstract_adapters-0.19.2-py3-none-any.whl", hash = "sha256:0c8d534964c62c4cc49fb2e4346438a2d6aac3abef517ece591a2a39cffb931b"},
-    {file = "unstract_adapters-0.19.2.tar.gz", hash = "sha256:1f1961c43adee9d8b0f617098482671cf4830324e304e6b08b5c7eb9a2f40ed5"},
+    {file = "unstract_adapters-0.20.1-py3-none-any.whl", hash = "sha256:e1f291016ab81f2fa46bc5ac0629905a9977198a8e5ad3077b8b188383fbd0c3"},
+    {file = "unstract_adapters-0.20.1.tar.gz", hash = "sha256:4c9b10bc5ae6f0d395088ba4f3d2b27bcfade1b2f1666ccf2611723336d33571"},
 ]
 
 [[package]]
@@ -3556,7 +3571,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.33.1"
+version = "0.35.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3568,11 +3583,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.19.2",
+    "unstract-adapters~=0.20.1",
 ]
 files = [
-    {file = "unstract_sdk-0.33.1-py3-none-any.whl", hash = "sha256:61de941cc6dcf3837c40831f25e85af388cb6d88d55612cd1c375adf6f124688"},
-    {file = "unstract_sdk-0.33.1.tar.gz", hash = "sha256:fb4ff2ca395d6513cca4a3b697dd97dbdd4174727ebe0b9e69ad1637b7586ae0"},
+    {file = "unstract_sdk-0.35.0-py3-none-any.whl", hash = "sha256:d91338a8f48c421f58ad6ae7337480eae39fd468b44a6a8f6bdc4784d1dac478"},
+    {file = "unstract_sdk-0.35.0.tar.gz", hash = "sha256:863622d5c785aba2bb549e61959bd1d85cd21376310a340031a41fb78eab47ed"},
 ]
 
 [[package]]
