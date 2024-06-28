@@ -12,7 +12,7 @@ function OutputForIndex({ chuckData, setIsIndexOpen, isIndexOpen }) {
 
   const renderContent = (chuck) => {
     return !chuck ? (
-      <p>File not indexed</p>
+      <p>No chucks founds</p>
     ) : (
       <>
         {chuck?.map((line) => (
