@@ -164,9 +164,9 @@ CELERY_BROKER_URL = get_required_setting(
     "CELERY_BROKER_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}"
 )
 
-MAX_WAIT_TIME = int(get_required_setting("MAX_WAIT_TIME", "1800"))
-POLLING_INTERVAL = int(get_required_setting("POLLING_INTERVAL", "5"))
-INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL", "3600"))
+MAX_WAIT_TIME = int(get_required_setting("MAX_WAIT_TIME"))
+POLLING_INTERVAL = int(get_required_setting("POLLING_INTERVAL"))
+INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
 
 # Flag to Enable django admin
 ADMIN_ENABLED = False
