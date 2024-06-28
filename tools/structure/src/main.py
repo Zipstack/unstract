@@ -27,6 +27,7 @@ class StructureTool(BaseTool):
         prompt_registry_id: str = settings[SettingsKeys.PROMPT_REGISTRY_ID]
         challenge_llm: str = settings[SettingsKeys.CHALLENGE_LLM_ADAPTER_ID]
         enable_challenge: bool = settings[SettingsKeys.ENABLE_CHALLENGE]
+
         summarize_as_source: bool = settings[SettingsKeys.SUMMARIZE_AS_SOURCE]
         single_pass_extraction_mode: bool = settings[
             SettingsKeys.SINGLE_PASS_EXTRACTION_MODE
@@ -57,6 +58,7 @@ class StructureTool(BaseTool):
         tool_id = tool_metadata[SettingsKeys.TOOL_ID]
         tool_settings = tool_metadata[SettingsKeys.TOOL_SETTINGS]
         outputs = tool_metadata[SettingsKeys.OUTPUTS]
+        enable_highlight: bool = tool_settings.get(SettingsKeys.ENABLE_HIGHLIGHT, False)
         tool_settings[SettingsKeys.CHALLENGE_LLM] = challenge_llm
         tool_settings[SettingsKeys.ENABLE_CHALLENGE] = enable_challenge
         tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION] = (
@@ -97,6 +99,7 @@ class StructureTool(BaseTool):
                 output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
                 reindex=True,
                 usage_kwargs=usage_kwargs,
+                enable_highlight=enable_highlight,
             )
             if summarize_as_source:
                 summarize_file_hash = self._summarize_and_index(
@@ -107,6 +110,7 @@ class StructureTool(BaseTool):
                     outputs=outputs,
                     index=index,
                     usage_kwargs=usage_kwargs,
+                    enable_highlight=enable_highlight,
                 )
                 payload[SettingsKeys.FILE_HASH] = summarize_file_hash
             self.stream_log("Fetching response for single pass extraction")
@@ -130,7 +134,9 @@ class StructureTool(BaseTool):
                             output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
                             reindex=reindex,
                             usage_kwargs=usage_kwargs,
+                            enable_highlight=enable_highlight,
                         )
+
                     if summarize_as_source:
                         summarize_file_hash = self._summarize_and_index(
                             tool_id=tool_id,
@@ -190,6 +196,7 @@ class StructureTool(BaseTool):
         outputs: dict[str, Any],
         index: Index,
         usage_kwargs: dict[Any, Any] = {},
+        enable_highlight: bool = False,
     ) -> str:
         """Summarizes the context of the file and indexes the summarized
         content.
@@ -263,6 +270,7 @@ class StructureTool(BaseTool):
             chunk_size=0,
             chunk_overlap=0,
             usage_kwargs=usage_kwargs,
+            enable_highlight=enable_highlight,
         )
         return summarize_file_hash
 
