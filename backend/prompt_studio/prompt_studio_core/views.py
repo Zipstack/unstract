@@ -481,8 +481,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             FileManagerHelper.delete_related_files(
                 file_system, path, file_name, directories
             )
-            # Delete indexed flags in redis
-
             return Response(
                 {"data": "File deleted succesfully."},
                 status=status.HTTP_200_OK,
