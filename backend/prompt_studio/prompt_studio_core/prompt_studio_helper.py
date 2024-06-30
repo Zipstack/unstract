@@ -351,6 +351,7 @@ class PromptStudioHelper:
             is_summary=is_summary,
             reindex=True,
             run_id=run_id,
+            user_id=user_id,
         )
 
         logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
@@ -452,6 +453,7 @@ class PromptStudioHelper:
                     document_id=document_id,
                     run_id=run_id,
                     profile_manager_id=profile_manager_id,
+                    user_id=user_id,
                 )
 
                 OutputManagerHelper.handle_prompt_output_update(
@@ -461,7 +463,7 @@ class PromptStudioHelper:
                     document_id=document_id,
                     is_single_pass_extract=False,
                     profile_manager_id=profile_manager_id,
-                    context=response["metadata"]["context"],
+                    context=response["metadata"].get("context"),
                 )
             # TODO: Review if this catch-all is required
             except Exception as e:
@@ -530,6 +532,7 @@ class PromptStudioHelper:
                     org_id=org_id,
                     document_id=document_id,
                     run_id=run_id,
+                    user_id=user_id,
                 )
 
                 OutputManagerHelper.handle_prompt_output_update(
@@ -538,7 +541,7 @@ class PromptStudioHelper:
                     outputs=response[TSPKeys.OUTPUT],
                     document_id=document_id,
                     is_single_pass_extract=True,
-                    context=response[TSPKeys.METADATA][TSPKeys.CONTEXT],
+                    context=response[TSPKeys.METADATA].get(TSPKeys.CONTEXT),
                 )
             except Exception as e:
                 logger.error(
@@ -575,6 +578,7 @@ class PromptStudioHelper:
         org_id: str,
         document_id: str,
         run_id: str,
+        user_id: str,
         profile_manager_id: Optional[str] = None,
     ) -> Any:
         """Utility function to invoke prompt service. Used internally.
@@ -587,6 +591,7 @@ class PromptStudioHelper:
             org_id (str): UUID of the organization
             document_id (str): UUID of the document
             profile_manager_id (Optional[str]): UUID of the profile manager
+            user_id (str): The ID of the user who uploaded the document
 
 
         Raises:
@@ -647,6 +652,7 @@ class PromptStudioHelper:
             document_id=document_id,
             is_summary=tool.summarize_as_source,
             run_id=run_id,
+            user_id=user_id,
         )
 
         output: dict[str, Any] = {}
@@ -741,6 +747,7 @@ class PromptStudioHelper:
         file_path: str,
         org_id: str,
         document_id: str,
+        user_id: str,
         is_summary: bool = False,
         reindex: bool = False,
         run_id: str = None,
@@ -758,6 +765,7 @@ class PromptStudioHelper:
             org_id (str): ID of the organization
             is_summary (bool, optional): Flag to ensure if extracted contents
                 need to be persisted.  Defaults to False.
+            user_id (str): The ID of the user who uploaded the document
 
         Returns:
             str: Index key for the combination of arguments
@@ -790,15 +798,23 @@ class PromptStudioHelper:
                 file_path=file_path,
                 file_hash=None,
             )
-            indexed_doc_id = DocumentIndexingService.get_indexed_document_id(doc_id_key)
+            indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
+                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+            )
             if indexed_doc_id:
                 return indexed_doc_id
 
             # Polling if document is already being indexed
-            if DocumentIndexingService.is_document_indexing(doc_id_key):
-                PromptStudioHelper.wait_for_document_indexing(doc_id_key=doc_id_key)
+            if DocumentIndexingService.is_document_indexing(
+                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+            ):
+                PromptStudioHelper.wait_for_document_indexing(
+                    org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+                )
             # Set the document as being indexed
-            DocumentIndexingService.set_document_indexing(doc_id_key)
+            DocumentIndexingService.set_document_indexing(
+                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+            )
             doc_id: str = tool_index.index(
                 tool_id=tool_id,
                 embedding_instance_id=embedding_model,
@@ -818,7 +834,9 @@ class PromptStudioHelper:
                 profile_manager=profile_manager,
                 doc_id=doc_id,
             )
-            DocumentIndexingService.mark_document_indexed(doc_id_key, doc_id)
+            DocumentIndexingService.mark_document_indexed(
+                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key, doc_id=doc_id
+            )
             return doc_id
         except (IndexingError, IndexingAPIError, SdkError) as e:
             doc_name = os.path.split(file_path)[1]
@@ -833,19 +851,23 @@ class PromptStudioHelper:
             ) from e
 
     @staticmethod
-    def wait_for_document_indexing(doc_id_key: str) -> str:
+    def wait_for_document_indexing(org_id: str, user_id: str, doc_id_key: str) -> str:
         max_wait_time = settings.MAX_WAIT_TIME  # 30 minutes
         wait_time = 0
         polling_interval = settings.POLLING_INTERVAL  # Poll every 5 seconds
 
-        while DocumentIndexingService.is_document_indexing(doc_id_key):
+        while DocumentIndexingService.is_document_indexing(
+            org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+        ):
             if wait_time >= max_wait_time:
                 raise IndexingAPIError("Indexing timed out. Please try again later.")
             time.sleep(polling_interval)
             wait_time += polling_interval
 
         # After waiting, check if the document is indexed
-        indexed_doc_id = DocumentIndexingService.get_indexed_document_id(doc_id_key)
+        indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
+            org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+        )
         if indexed_doc_id:
             return indexed_doc_id
         else:
@@ -857,6 +879,7 @@ class PromptStudioHelper:
         file_path: str,
         prompts: list[ToolStudioPrompt],
         org_id: str,
+        user_id: str,
         document_id: str,
         run_id: str = None,
     ) -> Any:
@@ -893,6 +916,7 @@ class PromptStudioHelper:
             is_summary=tool.summarize_as_source,
             document_id=document_id,
             run_id=run_id,
+            user_id=user_id,
         )
 
         vector_db = str(default_profile.vector_store.id)

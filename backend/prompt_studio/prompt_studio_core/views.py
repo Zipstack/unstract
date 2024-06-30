@@ -452,12 +452,14 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document_id: str = serializer.validated_data.get(
             ToolStudioPromptKeys.DOCUMENT_ID
         )
+        org_id = UserSessionUtils.get_organization_id(request)
+        user_id = custom_tool.created_by.user_id
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            UserSessionUtils.get_organization_id(request),
+            org_id=org_id,
             is_create=False,
-            user_id=custom_tool.created_by.user_id,
+            user_id=user_id,
             tool_id=str(custom_tool.tool_id),
         )
         path = file_path
@@ -467,7 +469,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             index_managers = IndexManager.objects.filter(document_manager=document_id)
             for index_manager in index_managers:
                 raw_index_id = index_manager.raw_index_id
-                DocumentIndexingService.remove_document_indexing(raw_index_id)
+                DocumentIndexingService.remove_document_indexing(
+                    org_id=org_id, user_id=user_id, doc_id_key=raw_index_id
+                )
             # Delete the document record
             document.delete()
             # Delete the files
