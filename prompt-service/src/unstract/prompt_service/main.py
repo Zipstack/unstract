@@ -687,6 +687,144 @@ def prompt_processor() -> Any:
     response = {"run_id": run_id, "output": structured_output}
     return response
 
+@app.route(
+    "/answer-prompt-sps",
+    endpoint="answer_prompt-sps",
+    methods=["POST"],
+)
+def prompt_processor_sps() -> Any:
+    payload: dict[Any, Any] = request.json
+    if not payload:
+        raise NoPayloadError
+    tool_settings = payload.get(PSKeys.TOOL_SETTINGS, {})
+    output = payload.get("output")
+    tool_id: str = payload.get(PSKeys.TOOL_ID, "")
+    file_hash = payload.get(PSKeys.FILE_HASH)
+
+    structured_output: dict[str, Any] = {}
+    variable_names: list[str] = []
+
+    variable_names.append(output[PSKeys.NAME])
+    prompt_name = output[PSKeys.NAME]
+    promptx = output[PSKeys.PROMPT]
+    util = PromptServiceBaseTool(log_level=LogLevel.INFO, platform_key="")
+    index = Index(tool=util)
+
+    app.logger.info(f"[{tool_id}] Executing prompt: {prompt_name}")
+
+    # Finding and replacing the variables in the prompt
+    # The variables are in the form %variable_name%
+
+    output[PSKeys.PROMPTX] = extract_variable(
+        structured_output, variable_names, output, promptx
+    )
+
+    doc_id = index.generate_file_id(
+        tool_id=tool_id,
+        file_hash=file_hash,
+        vector_db=output[PSKeys.VECTOR_DB],
+        embedding=output[PSKeys.EMBEDDING],
+        x2text=output[PSKeys.X2TEXT_ADAPTER],
+        chunk_size=str(output[PSKeys.CHUNK_SIZE]),
+        chunk_overlap=str(output[PSKeys.CHUNK_OVERLAP]),
+    )
+
+    try:
+        adapter_instance_id = output[PSKeys.LLM]
+        llm = LLM(
+            tool=util,
+            adapter_instance_id=adapter_instance_id,
+            usage_kwargs={},
+        )
+
+        embedding = Embedding(
+            tool=util,
+            adapter_instance_id=output[PSKeys.EMBEDDING],
+            usage_kwargs={},
+        )
+
+        vector_db = VectorDB(
+            tool=util,
+            adapter_instance_id=output[PSKeys.VECTOR_DB],
+            embedding=embedding,
+        )
+    except SdkError as e:
+        msg = f"Couldn't fetch adapter. {e}"
+        app.logger.error(msg)
+        return APIError(message=msg)
+    try:
+        vector_index = vector_db.get_vector_store_index()
+
+        context = ""
+        if output[PSKeys.CHUNK_SIZE] == 0:
+            # We can do this only for chunkless indexes
+            context: Optional[str] = index.query_index(
+                embedding_instance_id=output[PSKeys.EMBEDDING],
+                vector_db_instance_id=output[PSKeys.VECTOR_DB],
+                doc_id=doc_id,
+                usage_kwargs={},
+            )
+            if not context:
+                # UN-1288 For Pinecone, we are seeing an inconsistent case where
+                # query with doc_id fails even though indexing just happened.
+                # This causes the following retrieve to return no text.
+                # To rule out any lag on the Pinecone vector DB write,
+                # the following sleep is added.
+                # Note: This will not fix the issue. Since this issue is
+                # inconsistent, and not reproducible easily,
+                # this is just a safety net.
+                time.sleep(2)
+                context: Optional[str] = index.query_index(
+                    embedding_instance_id=output[PSKeys.EMBEDDING],
+                    vector_db_instance_id=output[PSKeys.VECTOR_DB],
+                    doc_id=doc_id,
+                    usage_kwargs={},
+                )
+                if context is None:
+                    # TODO: Obtain user set name for vector DB
+                    msg = NO_CONTEXT_ERROR
+                    app.logger.error(
+                        f"{msg} {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
+                    )
+                    raise APIError(message=msg)
+        
+        answer = construct_and_run_prompt(
+            tool_settings=tool_settings,
+            output=output,
+            llm=llm,
+            context=context,
+            prompt="promptx",
+        )
+
+        structured_output[output[PSKeys.NAME]] = answer
+
+        # If there is a trailing '\n' remove it
+        if isinstance(structured_output[output[PSKeys.NAME]], str):
+            structured_output[output[PSKeys.NAME]] = structured_output[
+                output[PSKeys.NAME]
+            ].rstrip("\n")
+    finally:
+        vector_db.close()
+
+    for k, v in structured_output.items():
+        if isinstance(v, str) and v.lower() == "na":
+            structured_output[k] = None
+        elif isinstance(v, list):
+            for i in range(len(v)):
+                if isinstance(v[i], str) and v[i].lower() == "na":
+                    v[i] = None
+                elif isinstance(v[i], dict):
+                    for k1, v1 in v[i].items():
+                        if isinstance(v1, str) and v1.lower() == "na":
+                            v[i][k1] = None
+        elif isinstance(v, dict):
+            for k1, v1 in v.items():
+                if isinstance(v1, str) and v1.lower() == "na":
+                    v[k1] = None
+
+    response = {"output": structured_output}
+    return response
+
 
 def run_retrieval(  # type:ignore
     tool_settings: dict[str, Any],

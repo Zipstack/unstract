@@ -17,6 +17,8 @@ import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { JsonView } from "./JsonView";
+import { TableView } from "./TableView";
 
 function CombinedOutput({ docId, setFilledFields }) {
   const [combinedOutput, setCombinedOutput] = useState({});
@@ -26,6 +28,7 @@ function CombinedOutput({ docId, setFilledFields }) {
     defaultLlmProfile,
     singlePassExtractMode,
     isSinglePassExtractLoading,
+    isSimplePromptStudio,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -96,9 +99,13 @@ function CombinedOutput({ docId, setFilledFields }) {
   }, [combinedOutput]);
 
   const handleOutputApiRequest = async () => {
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}`;
+    if (isSimplePromptStudio) {
+      url = `http://localhost:8000/simple-prompt-studio/prompt-output?tool_id=${details?.tool_id}&document_manager=${docId}`;
+    }
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}`,
+      url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -115,24 +122,11 @@ function CombinedOutput({ docId, setFilledFields }) {
     return <SpinnerLoader />;
   }
 
-  return (
-    <div className="combined-op-layout">
-      <div className="combined-op-header">
-        <div className="combined-op-segment"></div>
-      </div>
-      <div className="combined-op-divider" />
-      <div className="combined-op-body code-snippet">
-        {combinedOutput && (
-          <pre className="line-numbers width-100">
-            <code className="language-javascript width-100">
-              {JSON.stringify(combinedOutput, null, 2)}
-            </code>
-          </pre>
-        )}
-      </div>
-      <div className="gap" />
-    </div>
-  );
+  if (isSimplePromptStudio) {
+    return <TableView combinedOutput={combinedOutput} />;
+  }
+
+  return <JsonView combinedOutput={combinedOutput} />;
 }
 
 CombinedOutput.propTypes = {

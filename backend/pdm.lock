@@ -2,10 +2,10 @@
 # It is not intended for manual editing.
 
 [metadata]
-groups = ["default", "deploy", "test"]
+groups = ["default", "deploy", "test", "dev"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:01194daf2b5dea15320449813a83082c0220dbd3e5b273a6e3c5f61586e54cd2"
+content_hash = "sha256:fe9b6d663e65695f31305efd9e9e969dbbefcfe47de2054f4259b7f6a4e73141"
 
 [[package]]
 name = "adlfs"
@@ -64,7 +64,7 @@ name = "aiohttp"
 version = "3.9.5"
 requires_python = ">=3.8"
 summary = "Async http client/server framework (asyncio)"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "aiosignal>=1.1.2",
     "async-timeout<5.0,>=4.0; python_version < \"3.11\"",
@@ -141,7 +141,7 @@ name = "aiosignal"
 version = "1.3.1"
 requires_python = ">=3.7"
 summary = "aiosignal: a list of registered asynchronous callbacks"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "frozenlist>=1.1.0",
 ]
@@ -169,7 +169,7 @@ name = "annotated-types"
 version = "0.7.0"
 requires_python = ">=3.8"
 summary = "Reusable constraint types to use with typing.Annotated"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "annotated_types-0.7.0-py3-none-any.whl", hash = "sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53"},
     {file = "annotated_types-0.7.0.tar.gz", hash = "sha256:aff07c09a53a08bc8cfccb9c85b05f1aa9a2a6f23728d790723543408344ce89"},
@@ -180,7 +180,7 @@ name = "anthropic"
 version = "0.23.1"
 requires_python = ">=3.7"
 summary = "The official Python library for the anthropic API"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "anyio<5,>=3.5.0",
     "distro<2,>=1.7.0",
@@ -200,7 +200,7 @@ name = "anyio"
 version = "4.4.0"
 requires_python = ">=3.8"
 summary = "High level compatibility layer for multiple asynchronous event loop implementations"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "exceptiongroup>=1.0.2; python_version < \"3.11\"",
     "idna>=2.8",
@@ -251,7 +251,7 @@ name = "async-timeout"
 version = "4.0.3"
 requires_python = ">=3.7"
 summary = "Timeout context manager for asyncio programs"
-groups = ["default"]
+groups = ["default", "dev"]
 marker = "python_version < \"3.12.0\""
 files = [
     {file = "async-timeout-4.0.3.tar.gz", hash = "sha256:4640d96be84d82d02ed59ea2b7105a0f7b33abe8703703cd0ab0bf87c427522f"},
@@ -263,7 +263,7 @@ name = "asyncpg"
 version = "0.29.0"
 requires_python = ">=3.8.0"
 summary = "An asyncio PostgreSQL driver"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "async-timeout>=4.0.3; python_version < \"3.12.0\"",
 ]
@@ -300,7 +300,7 @@ name = "attrs"
 version = "23.2.0"
 requires_python = ">=3.7"
 summary = "Classes Without Boilerplate"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "attrs-23.2.0-py3-none-any.whl", hash = "sha256:99b87a485a5820b23b879f04c2305b44b951b502fd64be915879d77a7e8fc6f1"},
     {file = "attrs-23.2.0.tar.gz", hash = "sha256:935dc3b529c262f6cf76e50877d35a4bd3c1de194fd41f47a2b7ae8f19971f30"},
@@ -310,7 +310,7 @@ files = [
 name = "authlib"
 version = "1.2.1"
 summary = "The ultimate Python library in building OAuth and OpenID Connect servers and clients."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "cryptography>=3.2",
 ]
@@ -334,7 +334,7 @@ name = "azure-core"
 version = "1.30.2"
 requires_python = ">=3.8"
 summary = "Microsoft Azure Core Library for Python"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "requests>=2.21.0",
     "six>=1.11.0",
@@ -365,7 +365,7 @@ name = "azure-identity"
 version = "1.16.0"
 requires_python = ">=3.8"
 summary = "Microsoft Azure Identity Library for Python"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "azure-core>=1.23.0",
     "cryptography>=2.5",
@@ -429,7 +429,7 @@ name = "beautifulsoup4"
 version = "4.12.3"
 requires_python = ">=3.6.0"
 summary = "Screen-scraping library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "soupsieve>1.2",
 ]
@@ -545,7 +545,7 @@ name = "cachetools"
 version = "5.3.3"
 requires_python = ">=3.7"
 summary = "Extensible memoizing collections and decorators"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "cachetools-5.3.3-py3-none-any.whl", hash = "sha256:0abad1021d3f8325b2fc1d2e9c8b9c9d57b04c3932657a72465447332c24d945"},
     {file = "cachetools-5.3.3.tar.gz", hash = "sha256:ba29e2dfa0b8b556606f097407ed1aa62080ee108ab0dc5ec9d6a723a007d105"},
@@ -578,7 +578,7 @@ name = "certifi"
 version = "2024.6.2"
 requires_python = ">=3.6"
 summary = "Python package for providing Mozilla's CA Bundle."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "certifi-2024.6.2-py3-none-any.whl", hash = "sha256:ddc6c8ce995e6987e7faf5e3f1b02b302836a0e5d98ece18392cb1a36c72ad56"},
     {file = "certifi-2024.6.2.tar.gz", hash = "sha256:3cd43f1c6fa7dedc5899d69d3ad0398fd018ad1a17fba83ddaf78aa46c747516"},
@@ -589,7 +589,7 @@ name = "cffi"
 version = "1.16.0"
 requires_python = ">=3.8"
 summary = "Foreign Function Interface for Python calling C code."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "pycparser",
 ]
@@ -635,7 +635,7 @@ name = "charset-normalizer"
 version = "3.3.2"
 requires_python = ">=3.7.0"
 summary = "The Real First Universal Charset Detector. Open, modern and actively maintained alternative to Chardet."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "charset-normalizer-3.3.2.tar.gz", hash = "sha256:f30c3cb33b24454a82faecaf01b19c18562b1e89558fb6c56de4d9118a032fd5"},
     {file = "charset_normalizer-3.3.2-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:25baf083bf6f6b341f4121c2f3c548875ee6f5339300e08be3f2b2ba1721cdd3"},
@@ -691,7 +691,7 @@ name = "click"
 version = "8.1.7"
 requires_python = ">=3.7"
 summary = "Composable command line interface toolkit"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "colorama; platform_system == \"Windows\"",
 ]
@@ -747,7 +747,7 @@ name = "colorama"
 version = "0.4.6"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*,>=2.7"
 summary = "Cross-platform colored terminal text."
-groups = ["default", "test"]
+groups = ["default", "dev", "test"]
 marker = "sys_platform == \"win32\" or platform_system == \"Windows\""
 files = [
     {file = "colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"},
@@ -768,7 +768,7 @@ name = "cryptography"
 version = "41.0.7"
 requires_python = ">=3.7"
 summary = "cryptography is a package which provides cryptographic recipes and primitives to Python developers."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "cffi>=1.12",
 ]
@@ -803,7 +803,7 @@ name = "dataclasses-json"
 version = "0.6.7"
 requires_python = "<4.0,>=3.7"
 summary = "Easily serialize dataclasses to and from JSON."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "marshmallow<4.0.0,>=3.18.0",
     "typing-inspect<1,>=0.4.0",
@@ -840,7 +840,7 @@ name = "deprecated"
 version = "1.2.14"
 requires_python = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 summary = "Python @deprecated decorator to deprecate old python classes, functions or methods."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "wrapt<2,>=1.10",
 ]
@@ -853,7 +853,7 @@ files = [
 name = "dirtyjson"
 version = "1.0.8"
 summary = "JSON decoder for Python that can extract data from the muck"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "dirtyjson-1.0.8-py3-none-any.whl", hash = "sha256:125e27248435a58acace26d5c2c4c11a1c0de0a9c5124c5a94ba78e517d74f53"},
     {file = "dirtyjson-1.0.8.tar.gz", hash = "sha256:90ca4a18f3ff30ce849d100dcf4a003953c79d3a2348ef056f1d9c22231a25fd"},
@@ -864,7 +864,7 @@ name = "distro"
 version = "1.9.0"
 requires_python = ">=3.6"
 summary = "Distro - an OS platform information API"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "distro-1.9.0-py3-none-any.whl", hash = "sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2"},
     {file = "distro-1.9.0.tar.gz", hash = "sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed"},
@@ -1010,7 +1010,7 @@ name = "docstring-parser"
 version = "0.16"
 requires_python = ">=3.6,<4.0"
 summary = "Parse Python docstrings in reST, Google and Numpydoc format"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "docstring_parser-0.16-py3-none-any.whl", hash = "sha256:bf0a1387354d3691d102edef7ec124f219ef639982d096e26e3b60aeffa90637"},
     {file = "docstring_parser-0.16.tar.gz", hash = "sha256:538beabd0af1e2db0146b6bd3caa526c35a34d61af9fd2887f3a8a27a739aa6e"},
@@ -1086,7 +1086,7 @@ name = "environs"
 version = "9.5.0"
 requires_python = ">=3.6"
 summary = "simplified environment variable parsing"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "marshmallow>=3.0.0",
     "python-dotenv",
@@ -1101,7 +1101,7 @@ name = "exceptiongroup"
 version = "1.2.1"
 requires_python = ">=3.7"
 summary = "Backport of PEP 654 (exception groups)"
-groups = ["default", "test"]
+groups = ["default", "dev", "test"]
 marker = "python_version < \"3.11\""
 files = [
     {file = "exceptiongroup-1.2.1-py3-none-any.whl", hash = "sha256:5258b9ed329c5bbdd31a309f53cbfb0b155341807f6ff7606a1e801a891b29ad"},
@@ -1113,7 +1113,7 @@ name = "filelock"
 version = "3.15.1"
 requires_python = ">=3.8"
 summary = "A platform independent file lock."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "filelock-3.15.1-py3-none-any.whl", hash = "sha256:71b3102950e91dfc1bb4209b64be4dc8854f40e5f534428d8684f953ac847fac"},
     {file = "filelock-3.15.1.tar.gz", hash = "sha256:58a2549afdf9e02e10720eaa4d4470f56386d7a6f72edd7d0596337af8ed7ad8"},
@@ -1123,7 +1123,7 @@ files = [
 name = "filetype"
 version = "1.2.0"
 summary = "Infer file type and MIME type of any file/buffer. No external dependencies."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "filetype-1.2.0-py2.py3-none-any.whl", hash = "sha256:7ce71b6880181241cf7ac8697a2f1eb6a8bd9b429f7ad6d27b8db9ba5f1c2d25"},
     {file = "filetype-1.2.0.tar.gz", hash = "sha256:66b56cd6474bf41d8c54660347d37afcc3f7d1970648de365c102ef77548aadb"},
@@ -1152,7 +1152,7 @@ name = "frozenlist"
 version = "1.4.1"
 requires_python = ">=3.8"
 summary = "A list-like structure which implements collections.abc.MutableSequence"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "frozenlist-1.4.1-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:f9aa1878d1083b276b0196f2dfbe00c9b7e752475ed3b682025ff20c1c1f51ac"},
     {file = "frozenlist-1.4.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:29acab3f66f0f24674b7dc4736477bcd4bc3ad4b896f5f45379a67bce8b96868"},
@@ -1208,7 +1208,7 @@ name = "fsspec"
 version = "2023.6.0"
 requires_python = ">=3.8"
 summary = "File-system specification"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "fsspec-2023.6.0-py3-none-any.whl", hash = "sha256:1cbad1faef3e391fba6dc005ae9b5bdcbf43005c9167ce78c915549c352c869a"},
     {file = "fsspec-2023.6.0.tar.gz", hash = "sha256:d0b2f935446169753e7a5c5c55681c54ea91996cc67be93c39a154fb3a2742af"},
@@ -1249,7 +1249,7 @@ name = "google-ai-generativelanguage"
 version = "0.4.0"
 requires_python = ">=3.7"
 summary = "Google Ai Generativelanguage API client library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.10.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3.0.0dev,>=1.34.0",
     "proto-plus<2.0.0dev,>=1.22.3",
@@ -1265,7 +1265,7 @@ name = "google-api-core"
 version = "2.19.0"
 requires_python = ">=3.7"
 summary = "Google API client core library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-auth<3.0.dev0,>=2.14.1",
     "googleapis-common-protos<2.0.dev0,>=1.56.2",
@@ -1284,7 +1284,7 @@ version = "2.19.0"
 extras = ["grpc"]
 requires_python = ">=3.7"
 summary = "Google API client core library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-api-core==2.19.0",
     "grpcio-status<2.0.dev0,>=1.33.2",
@@ -1320,7 +1320,7 @@ name = "google-auth"
 version = "2.20.0"
 requires_python = ">=3.6"
 summary = "Google Authentication Library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "cachetools<6.0,>=2.0.0",
     "pyasn1-modules>=0.2.1",
@@ -1367,7 +1367,7 @@ name = "google-cloud-aiplatform"
 version = "1.55.0"
 requires_python = ">=3.8"
 summary = "Vertex AI API client library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "docstring-parser<1",
     "google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,<3.0.0dev,>=1.34.1",
@@ -1391,7 +1391,7 @@ name = "google-cloud-bigquery"
 version = "3.11.4"
 requires_python = ">=3.7"
 summary = "Google BigQuery API client library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.0,<3.0.0dev,>=1.31.5",
     "google-cloud-core<3.0.0dev,>=1.6.0",
@@ -1414,7 +1414,7 @@ name = "google-cloud-core"
 version = "2.4.1"
 requires_python = ">=3.7"
 summary = "Google Cloud API client core library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-api-core!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.0,<3.0.0dev,>=1.31.6",
     "google-auth<3.0dev,>=1.25.0",
@@ -1429,7 +1429,7 @@ name = "google-cloud-resource-manager"
 version = "1.12.3"
 requires_python = ">=3.7"
 summary = "Google Cloud Resource Manager API client library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.10.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3.0.0dev,>=1.34.1",
     "google-auth!=2.24.0,!=2.25.0,<3.0.0dev,>=2.14.1",
@@ -1465,7 +1465,7 @@ name = "google-cloud-storage"
 version = "2.9.0"
 requires_python = ">=3.7"
 summary = "Google Cloud Storage API client library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-api-core!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.0,<3.0.0dev,>=1.31.5",
     "google-auth<3.0dev,>=1.25.0",
@@ -1483,7 +1483,7 @@ name = "google-crc32c"
 version = "1.5.0"
 requires_python = ">=3.7"
 summary = "A python wrapper of the C library 'Google CRC32C'"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "google-crc32c-1.5.0.tar.gz", hash = "sha256:89284716bc6a5a415d4eaa11b1726d2d60a0cd12aadf5439828353662ede9dd7"},
     {file = "google_crc32c-1.5.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:596d1f98fc70232fcb6590c439f43b350cb762fb5d61ce7b0e9db4539654cc13"},
@@ -1539,7 +1539,7 @@ name = "google-generativeai"
 version = "0.4.1"
 requires_python = ">=3.9"
 summary = "Google Generative AI High level API client library and tools."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-ai-generativelanguage==0.4.0",
     "google-api-core",
@@ -1558,7 +1558,7 @@ name = "google-resumable-media"
 version = "2.7.1"
 requires_python = ">=3.7"
 summary = "Utilities for Google Media Downloads and Resumable Uploads"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-crc32c<2.0dev,>=1.0",
 ]
@@ -1572,7 +1572,7 @@ name = "googleapis-common-protos"
 version = "1.63.1"
 requires_python = ">=3.7"
 summary = "Common protobufs used in Google APIs"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "protobuf!=3.20.0,!=3.20.1,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<6.0.0.dev0,>=3.19.5",
 ]
@@ -1587,7 +1587,7 @@ version = "1.63.1"
 extras = ["grpc"]
 requires_python = ">=3.7"
 summary = "Common protobufs used in Google APIs"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "googleapis-common-protos==1.63.1",
     "grpcio<2.0.0.dev0,>=1.44.0",
@@ -1602,7 +1602,7 @@ name = "greenlet"
 version = "3.0.3"
 requires_python = ">=3.7"
 summary = "Lightweight in-process concurrent programming"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "greenlet-3.0.3-cp310-cp310-macosx_11_0_universal2.whl", hash = "sha256:9da2bd29ed9e4f15955dd1595ad7bc9320308a3b766ef7f837e23ad4b4aac31a"},
     {file = "greenlet-3.0.3-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:d353cadd6083fdb056bb46ed07e4340b0869c305c8ca54ef9da3421acbdf6881"},
@@ -1640,7 +1640,7 @@ name = "grpc-google-iam-v1"
 version = "0.13.0"
 requires_python = ">=3.7"
 summary = "IAM API client library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "googleapis-common-protos[grpc]<2.0.0dev,>=1.56.0",
     "grpcio<2.0.0dev,>=1.44.0",
@@ -1656,7 +1656,7 @@ name = "grpcio"
 version = "1.60.0"
 requires_python = ">=3.7"
 summary = "HTTP/2-based RPC framework"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "grpcio-1.60.0-cp310-cp310-linux_armv7l.whl", hash = "sha256:d020cfa595d1f8f5c6b343530cd3ca16ae5aefdd1e832b777f9f0eb105f5b139"},
     {file = "grpcio-1.60.0-cp310-cp310-macosx_12_0_universal2.whl", hash = "sha256:b98f43fcdb16172dec5f4b49f2fece4b16a99fd284d81c6bbac1b3b69fcbe0ff"},
@@ -1693,7 +1693,7 @@ name = "grpcio-status"
 version = "1.60.0"
 requires_python = ">=3.6"
 summary = "Status proto mapping for gRPC"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "googleapis-common-protos>=1.5.5",
     "grpcio>=1.60.0",
@@ -1709,7 +1709,7 @@ name = "grpcio-tools"
 version = "1.60.0"
 requires_python = ">=3.7"
 summary = "Protobuf code generator for gRPC"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "grpcio>=1.60.0",
     "protobuf<5.0dev,>=4.21.6",
@@ -1765,7 +1765,7 @@ name = "h11"
 version = "0.14.0"
 requires_python = ">=3.7"
 summary = "A pure-Python, bring-your-own-I/O implementation of HTTP/1.1"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "h11-0.14.0-py3-none-any.whl", hash = "sha256:e3fe4ac4b851c468cc8363d500db52c2ead036020723024a109d37346efaa761"},
     {file = "h11-0.14.0.tar.gz", hash = "sha256:8f19fbbe99e72420ff35c00b27a34cb9937e902a8b810e2c88300c6f0a3b699d"},
@@ -1776,7 +1776,7 @@ name = "h2"
 version = "4.1.0"
 requires_python = ">=3.6.1"
 summary = "HTTP/2 State-Machine based protocol implementation"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "hpack<5,>=4.0",
     "hyperframe<7,>=6.0",
@@ -1791,7 +1791,7 @@ name = "hpack"
 version = "4.0.0"
 requires_python = ">=3.6.1"
 summary = "Pure-Python HPACK header compression"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "hpack-4.0.0-py3-none-any.whl", hash = "sha256:84a076fad3dc9a9f8063ccb8041ef100867b1878b25ef0ee63847a5d53818a6c"},
     {file = "hpack-4.0.0.tar.gz", hash = "sha256:fc41de0c63e687ebffde81187a948221294896f6bdc0ae2312708df339430095"},
@@ -1802,7 +1802,7 @@ name = "httpcore"
 version = "1.0.5"
 requires_python = ">=3.8"
 summary = "A minimal low-level HTTP client."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "certifi",
     "h11<0.15,>=0.13",
@@ -1831,7 +1831,7 @@ name = "httpx"
 version = "0.25.2"
 requires_python = ">=3.8"
 summary = "The next generation HTTP client."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "anyio",
     "certifi",
@@ -1850,7 +1850,7 @@ version = "0.25.2"
 extras = ["http2"]
 requires_python = ">=3.8"
 summary = "The next generation HTTP client."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "h2<5,>=3",
     "httpx==0.25.2",
@@ -1865,7 +1865,7 @@ name = "huggingface-hub"
 version = "0.23.4"
 requires_python = ">=3.8.0"
 summary = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "filelock",
     "fsspec>=2023.5.0",
@@ -1896,7 +1896,7 @@ name = "hyperframe"
 version = "6.0.1"
 requires_python = ">=3.6.1"
 summary = "HTTP/2 framing layer for Python"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "hyperframe-6.0.1-py3-none-any.whl", hash = "sha256:0ec6bafd80d8ad2195c4f03aacba3a8265e57bc4cff261e802bf39970ed02a15"},
     {file = "hyperframe-6.0.1.tar.gz", hash = "sha256:ae510046231dc8e9ecb1a6586f63d2347bf4c8905914aa84ba585ae85f28a914"},
@@ -1907,7 +1907,7 @@ name = "idna"
 version = "3.7"
 requires_python = ">=3.5"
 summary = "Internationalized Domain Names in Applications (IDNA)"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "idna-3.7-py3-none-any.whl", hash = "sha256:82fee1fc78add43492d3a1898bfa6d8a904cc97d8427f683ed8e798d07761aa0"},
     {file = "idna-3.7.tar.gz", hash = "sha256:028ff3aadf0609c1fd278d8ea3089299412a7a8b9bd005dd08b9f8285bcb5cfc"},
@@ -1964,7 +1964,7 @@ name = "joblib"
 version = "1.4.2"
 requires_python = ">=3.8"
 summary = "Lightweight pipelining with Python functions"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "joblib-1.4.2-py3-none-any.whl", hash = "sha256:06d478d5674cbc267e7496a410ee875abd68e4340feff4490bcb7afb88060ae6"},
     {file = "joblib-1.4.2.tar.gz", hash = "sha256:2382c5816b2636fbd20a09e0f4e9dad4736765fdfb7dca582943b9c1366b3f0e"},
@@ -1975,7 +1975,7 @@ name = "jsonschema"
 version = "4.18.6"
 requires_python = ">=3.8"
 summary = "An implementation of JSON Schema validation for Python"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "attrs>=22.2.0",
     "jsonschema-specifications>=2023.03.6",
@@ -1992,7 +1992,7 @@ name = "jsonschema-specifications"
 version = "2023.12.1"
 requires_python = ">=3.8"
 summary = "The JSON Schema meta-schemas and vocabularies, exposed as a Registry"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "referencing>=0.31.0",
 ]
@@ -2022,7 +2022,7 @@ name = "llama-index"
 version = "0.10.38"
 requires_python = "<4.0,>=3.8.1"
 summary = "Interface between LLMs and your data"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-agent-openai<0.3.0,>=0.1.4",
     "llama-index-cli<0.2.0,>=0.1.2",
@@ -2047,7 +2047,7 @@ name = "llama-index-agent-openai"
 version = "0.2.7"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index agent openai integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.41",
     "llama-index-llms-openai<0.2.0,>=0.1.5",
@@ -2063,7 +2063,7 @@ name = "llama-index-cli"
 version = "0.1.12"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index cli"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.11.post1",
     "llama-index-embeddings-openai<0.2.0,>=0.1.1",
@@ -2079,7 +2079,7 @@ name = "llama-index-core"
 version = "0.10.45"
 requires_python = "<4.0,>=3.8.1"
 summary = "Interface between LLMs and your data"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "PyYAML>=6.0.1",
     "SQLAlchemy[asyncio]>=1.4.49",
@@ -2115,7 +2115,7 @@ name = "llama-index-embeddings-azure-openai"
 version = "0.1.6"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index embeddings azure openai integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.11.post1",
     "llama-index-embeddings-openai<0.2.0,>=0.1.3",
@@ -2131,7 +2131,7 @@ name = "llama-index-embeddings-google"
 version = "0.1.5"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index embeddings google integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-generativeai<0.5.0,>=0.4.1",
     "llama-index-core<0.11.0,>=0.10.11.post1",
@@ -2146,7 +2146,7 @@ name = "llama-index-embeddings-openai"
 version = "0.1.10"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index embeddings openai integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
 ]
@@ -2160,7 +2160,7 @@ name = "llama-index-indices-managed-llama-cloud"
 version = "0.1.6"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index indices llama-cloud integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.0",
     "llamaindex-py-client<0.2.0,>=0.1.19",
@@ -2175,7 +2175,7 @@ name = "llama-index-legacy"
 version = "0.9.48"
 requires_python = ">=3.8.1,<4.0"
 summary = "Interface between LLMs and your data"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "SQLAlchemy[asyncio]>=1.4.49",
     "aiohttp<4.0.0,>=3.8.6",
@@ -2206,7 +2206,7 @@ name = "llama-index-llms-anthropic"
 version = "0.1.11"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms anthropic integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "anthropic<0.24.0,>=0.23.1",
     "llama-index-core<0.11.0,>=0.10.1",
@@ -2221,7 +2221,7 @@ name = "llama-index-llms-anyscale"
 version = "0.1.3"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index llms anyscale integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
     "llama-index-llms-openai<0.2.0,>=0.1.1",
@@ -2236,7 +2236,7 @@ name = "llama-index-llms-azure-openai"
 version = "0.1.5"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index llms azure openai integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "azure-identity<2.0.0,>=1.15.0",
     "httpx",
@@ -2253,7 +2253,7 @@ name = "llama-index-llms-mistralai"
 version = "0.1.10"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index llms mistral ai integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.24",
     "mistralai>=0.1.3",
@@ -2268,7 +2268,7 @@ name = "llama-index-llms-ollama"
 version = "0.1.3"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms ollama integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
 ]
@@ -2282,7 +2282,7 @@ name = "llama-index-llms-openai"
 version = "0.1.22"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms openai integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.24",
 ]
@@ -2296,7 +2296,7 @@ name = "llama-index-llms-palm"
 version = "0.1.5"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index llms palm integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-generativeai<0.5.0,>=0.4.1",
     "llama-index-core<0.11.0,>=0.10.11.post1",
@@ -2311,7 +2311,7 @@ name = "llama-index-llms-replicate"
 version = "0.1.3"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index llms replicate integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
 ]
@@ -2325,7 +2325,7 @@ name = "llama-index-llms-vertex"
 version = "0.1.8"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms vertex integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-cloud-aiplatform<2.0.0,>=1.39.0",
     "llama-index-core<0.11.0,>=0.10.1",
@@ -2341,7 +2341,7 @@ name = "llama-index-multi-modal-llms-openai"
 version = "0.1.6"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index multi-modal-llms openai integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
     "llama-index-llms-openai<0.2.0,>=0.1.1",
@@ -2356,7 +2356,7 @@ name = "llama-index-program-openai"
 version = "0.1.6"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index program openai integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-agent-openai<0.3.0,>=0.1.1",
     "llama-index-core<0.11.0,>=0.10.1",
@@ -2372,7 +2372,7 @@ name = "llama-index-question-gen-openai"
 version = "0.1.3"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index question_gen openai integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
     "llama-index-llms-openai<0.2.0,>=0.1.1",
@@ -2388,7 +2388,7 @@ name = "llama-index-readers-file"
 version = "0.1.25"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index readers file integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "beautifulsoup4<5.0.0,>=4.12.3",
     "llama-index-core<0.11.0,>=0.10.37.post1",
@@ -2405,7 +2405,7 @@ name = "llama-index-readers-llama-parse"
 version = "0.1.4"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index readers llama-parse integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.7",
     "llama-parse<0.5.0,>=0.4.0",
@@ -2420,7 +2420,7 @@ name = "llama-index-vector-stores-milvus"
 version = "0.1.18"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index vector_stores milvus integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
     "pymilvus<3.0.0,>=2.3.6",
@@ -2435,7 +2435,7 @@ name = "llama-index-vector-stores-pinecone"
 version = "0.1.4"
 requires_python = ">=3.8.1,<3.13"
 summary = "llama-index vector_stores pinecone integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.11.post1",
     "pinecone-client<4.0.0,>=3.0.2",
@@ -2450,7 +2450,7 @@ name = "llama-index-vector-stores-postgres"
 version = "0.1.3"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index vector_stores postgres integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "asyncpg<0.30.0,>=0.29.0",
     "llama-index-core<0.11.0,>=0.10.1",
@@ -2468,7 +2468,7 @@ name = "llama-index-vector-stores-qdrant"
 version = "0.2.8"
 requires_python = "<3.13,>=3.9"
 summary = "llama-index vector_stores qdrant integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "grpcio<2.0.0,>=1.60.0",
     "llama-index-core<0.11.0,>=0.10.1",
@@ -2484,7 +2484,7 @@ name = "llama-index-vector-stores-weaviate"
 version = "0.1.4"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index vector_stores weaviate integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
     "weaviate-client<4.0.0,>=3.26.2",
@@ -2499,7 +2499,7 @@ name = "llama-parse"
 version = "0.4.1"
 requires_python = "<4.0,>=3.8.1"
 summary = "Parse files into RAG-Optimized formats."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core>=0.10.29",
 ]
@@ -2513,7 +2513,7 @@ name = "llamaindex-py-client"
 version = "0.1.19"
 requires_python = "<4,>=3.8"
 summary = ""
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "httpx>=0.20.0",
     "pydantic>=1.10",
@@ -2528,7 +2528,7 @@ name = "marshmallow"
 version = "3.21.3"
 requires_python = ">=3.8"
 summary = "A lightweight library for converting complex datatypes to and from native Python datatypes."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "packaging>=17.0",
 ]
@@ -2542,7 +2542,7 @@ name = "milvus-lite"
 version = "2.4.7"
 requires_python = ">=3.7"
 summary = "A lightweight version of Milvus wrapped with Python."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "milvus_lite-2.4.7-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:c828190118b104b05b8c8e0b5a4147811c86b54b8fb67bc2e726ad10fc0b544e"},
     {file = "milvus_lite-2.4.7-py3-none-macosx_11_0_arm64.whl", hash = "sha256:e1537633c39879714fb15082be56a4b97f74c905a6e98e302ec01320561081af"},
@@ -2554,7 +2554,7 @@ name = "mistralai"
 version = "0.4.0"
 requires_python = "<4.0,>=3.9"
 summary = ""
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "httpx<0.26,>=0.25",
     "orjson<3.11,>=3.9.10",
@@ -2570,7 +2570,7 @@ name = "msal"
 version = "1.28.1"
 requires_python = ">=3.7"
 summary = "The Microsoft Authentication Library (MSAL) for Python library enables your app to access the Microsoft Cloud by supporting authentication of users with Microsoft Azure Active Directory accounts (AAD) and Microsoft Accounts (MSA) using industry standard OAuth2 and OpenID Connect."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "PyJWT[crypto]<3,>=1.0.0",
     "cryptography<45,>=2.5",
@@ -2586,7 +2586,7 @@ name = "msal-extensions"
 version = "1.1.0"
 requires_python = ">=3.7"
 summary = "Microsoft Authentication Library extensions (MSAL EX) provides a persistence API that can save your data on disk, encrypted on Windows, macOS and Linux. Concurrent data access will be coordinated by a file lock mechanism."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "msal<2.0.0,>=0.4.1",
     "packaging",
@@ -2621,7 +2621,7 @@ name = "multidict"
 version = "6.0.5"
 requires_python = ">=3.7"
 summary = "multidict implementation"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "multidict-6.0.5-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:228b644ae063c10e7f324ab1ab6b548bdf6f8b47f3ec234fef1093bc2735e5f9"},
     {file = "multidict-6.0.5-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:896ebdcf62683551312c30e20614305f53125750803b614e9e6ce74a96232604"},
@@ -2677,7 +2677,7 @@ name = "mypy-extensions"
 version = "1.0.0"
 requires_python = ">=3.5"
 summary = "Type system extensions for programs checked with the mypy type checker."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "mypy_extensions-1.0.0-py3-none-any.whl", hash = "sha256:4392f6c0eb8a5668a69e23d168ffa70f0be9ccfd32b5cc2d26a34ae5b844552d"},
     {file = "mypy_extensions-1.0.0.tar.gz", hash = "sha256:75dbf8955dc00442a438fc4d0666508a9a97b6bd41aa2f0ffe9d2f2725af0782"},
@@ -2688,7 +2688,7 @@ name = "nest-asyncio"
 version = "1.6.0"
 requires_python = ">=3.5"
 summary = "Patch asyncio to allow nested event loops"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "nest_asyncio-1.6.0-py3-none-any.whl", hash = "sha256:87af6efd6b5e897c81050477ef65c62e2b2f35d51703cae01aff2905b1852e1c"},
     {file = "nest_asyncio-1.6.0.tar.gz", hash = "sha256:6f172d5449aca15afd6c646851f4e31e02c598d553a667e38cafa997cfec55fe"},
@@ -2699,7 +2699,7 @@ name = "networkx"
 version = "3.2.1"
 requires_python = ">=3.9"
 summary = "Python package for creating and manipulating graphs and networks"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "networkx-3.2.1-py3-none-any.whl", hash = "sha256:f18c69adc97877c42332c170849c96cefa91881c99a7cb3e95b7c659ebdc1ec2"},
     {file = "networkx-3.2.1.tar.gz", hash = "sha256:9f1bb5cf3409bf324e0a722c20bdb4c20ee39bf1c30ce8ae499c8502b0b5e0c6"},
@@ -2710,7 +2710,7 @@ name = "nltk"
 version = "3.8.1"
 requires_python = ">=3.7"
 summary = "Natural Language Toolkit"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "click",
     "joblib",
@@ -2727,7 +2727,7 @@ name = "numpy"
 version = "1.26.4"
 requires_python = ">=3.9"
 summary = "Fundamental package for array computing in Python"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "numpy-1.26.4-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:9ff0f4f29c51e2803569d7a51c2304de5554655a60c5d776e35b4a41413830d0"},
     {file = "numpy-1.26.4-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:2e4ee3380d6de9c9ec04745830fd9e2eccb3e6cf790d39d7b98ffd19b0dd754a"},
@@ -2792,7 +2792,7 @@ name = "openai"
 version = "1.21.2"
 requires_python = ">=3.7.1"
 summary = "The official Python library for the openai API"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "anyio<5,>=3.5.0",
     "distro<2,>=1.7.0",
@@ -2812,7 +2812,7 @@ name = "orjson"
 version = "3.10.5"
 requires_python = ">=3.8"
 summary = "Fast, correct Python JSON library supporting dataclasses, datetimes, and numpy"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "orjson-3.10.5-cp310-cp310-macosx_10_15_x86_64.macosx_11_0_arm64.macosx_10_15_universal2.whl", hash = "sha256:545d493c1f560d5ccfc134803ceb8955a14c3fcb47bbb4b2fee0232646d0b932"},
     {file = "orjson-3.10.5-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:f4324929c2dd917598212bfd554757feca3e5e0fa60da08be11b4aa8b90013c1"},
@@ -2849,7 +2849,7 @@ name = "packaging"
 version = "24.1"
 requires_python = ">=3.8"
 summary = "Core utilities for Python packages"
-groups = ["default", "deploy", "test"]
+groups = ["default", "deploy", "dev", "test"]
 files = [
     {file = "packaging-24.1-py3-none-any.whl", hash = "sha256:5b8f2217dbdbd2f7f384c41c628544e6d52f2d0f53c6d0c3ea61aa5d1d7ff124"},
     {file = "packaging-24.1.tar.gz", hash = "sha256:026ed72c8ed3fcce5bf8950572258698927fd1dbda10a5e981cdf0ac37f4f002"},
@@ -2860,7 +2860,7 @@ name = "pandas"
 version = "2.1.4"
 requires_python = ">=3.9"
 summary = "Powerful data structures for data analysis, time series, and statistics"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "numpy<2,>=1.22.4; python_version < \"3.11\"",
     "numpy<2,>=1.23.2; python_version == \"3.11\"",
@@ -2895,7 +2895,7 @@ name = "pgvector"
 version = "0.2.5"
 requires_python = ">=3.8"
 summary = "pgvector support for Python"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "numpy",
 ]
@@ -2908,7 +2908,7 @@ name = "pillow"
 version = "10.3.0"
 requires_python = ">=3.8"
 summary = "Python Imaging Library (Fork)"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "pillow-10.3.0-cp310-cp310-macosx_10_10_x86_64.whl", hash = "sha256:90b9e29824800e90c84e4022dd5cc16eb2d9605ee13f05d47641eb183cd73d45"},
     {file = "pillow-10.3.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:a2c405445c79c3f5a124573a051062300936b0281fee57637e706453e452746c"},
@@ -2965,7 +2965,7 @@ name = "pinecone-client"
 version = "3.2.2"
 requires_python = "<4.0,>=3.8"
 summary = "Pinecone client and SDK"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "certifi>=2019.11.17",
     "tqdm>=4.64.1",
@@ -3014,7 +3014,7 @@ name = "portalocker"
 version = "2.8.2"
 requires_python = ">=3.8"
 summary = "Wraps the portalocker recipe for easy usage"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "pywin32>=226; platform_system == \"Windows\"",
 ]
@@ -3053,7 +3053,7 @@ name = "proto-plus"
 version = "1.23.0"
 requires_python = ">=3.6"
 summary = "Beautiful, Pythonic protocol buffers."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "protobuf<5.0.0dev,>=3.19.0",
 ]
@@ -3067,7 +3067,7 @@ name = "protobuf"
 version = "4.25.3"
 requires_python = ">=3.8"
 summary = ""
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "protobuf-4.25.3-cp310-abi3-win32.whl", hash = "sha256:d4198877797a83cbfe9bffa3803602bbe1625dc30d8a097365dbc762e5790faa"},
     {file = "protobuf-4.25.3-cp310-abi3-win_amd64.whl", hash = "sha256:209ba4cc916bab46f64e56b85b090607a676f66b473e6b762e6f1d9d591eb2e8"},
@@ -3085,7 +3085,7 @@ name = "psycopg2-binary"
 version = "2.9.9"
 requires_python = ">=3.7"
 summary = "psycopg2 - Python-PostgreSQL Database Adapter"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "psycopg2-binary-2.9.9.tar.gz", hash = "sha256:7f01846810177d829c7692f1f5ada8096762d9172af1b1a28d4ab5b77c923c1c"},
     {file = "psycopg2_binary-2.9.9-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:c2470da5418b76232f02a2fcd2229537bb2d5a7096674ce61859c3229f2eb202"},
@@ -3131,7 +3131,7 @@ name = "pyarrow"
 version = "15.0.2"
 requires_python = ">=3.8"
 summary = "Python library for Apache Arrow"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "numpy<2,>=1.16.6",
 ]
@@ -3165,7 +3165,7 @@ name = "pyasn1"
 version = "0.6.0"
 requires_python = ">=3.8"
 summary = "Pure-Python implementation of ASN.1 types and DER/BER/CER codecs (X.208)"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "pyasn1-0.6.0-py2.py3-none-any.whl", hash = "sha256:cca4bb0f2df5504f02f6f8a775b6e416ff9b0b3b16f7ee80b5a3153d9b804473"},
     {file = "pyasn1-0.6.0.tar.gz", hash = "sha256:3a35ab2c4b5ef98e17dfdec8ab074046fbda76e281c5a706ccd82328cfc8f64c"},
@@ -3176,7 +3176,7 @@ name = "pyasn1-modules"
 version = "0.4.0"
 requires_python = ">=3.8"
 summary = "A collection of ASN.1-based protocols modules"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "pyasn1<0.7.0,>=0.4.6",
 ]
@@ -3190,7 +3190,7 @@ name = "pycparser"
 version = "2.22"
 requires_python = ">=3.8"
 summary = "C parser in Python"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "pycparser-2.22-py3-none-any.whl", hash = "sha256:c3702b6d3dd8c7abc1afa565d7e63d53a1d0bd86cdc24edd75470f4de499cfcc"},
     {file = "pycparser-2.22.tar.gz", hash = "sha256:491c8be9c040f5390f5bf44a5b07752bd07f56edf992381b05c701439eec10f6"},
@@ -3201,7 +3201,7 @@ name = "pydantic"
 version = "2.7.4"
 requires_python = ">=3.8"
 summary = "Data validation using Python type hints"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "annotated-types>=0.4.0",
     "pydantic-core==2.18.4",
@@ -3217,7 +3217,7 @@ name = "pydantic-core"
 version = "2.18.4"
 requires_python = ">=3.8"
 summary = "Core functionality for Pydantic validation and serialization"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "typing-extensions!=4.7.0,>=4.6.0",
 ]
@@ -3319,7 +3319,7 @@ name = "pyjwt"
 version = "2.8.0"
 requires_python = ">=3.7"
 summary = "JSON Web Token implementation in Python"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "PyJWT-2.8.0-py3-none-any.whl", hash = "sha256:59127c392cc44c2da5bb3192169a91f429924e17aff6534d70fdc02ab3e04320"},
     {file = "PyJWT-2.8.0.tar.gz", hash = "sha256:57e28d156e3d5c10088e0c68abb90bfac3df82b40a71bd0daa20c65ccd5c23de"},
@@ -3331,7 +3331,7 @@ version = "2.8.0"
 extras = ["crypto"]
 requires_python = ">=3.7"
 summary = "JSON Web Token implementation in Python"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "PyJWT==2.8.0",
     "cryptography>=3.4.0",
@@ -3346,7 +3346,7 @@ name = "pymilvus"
 version = "2.4.3"
 requires_python = ">=3.8"
 summary = "Python Sdk for Milvus"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "environs<=9.5.0",
     "grpcio<=1.63.0,>=1.49.1",
@@ -3427,7 +3427,7 @@ name = "pypdf"
 version = "4.2.0"
 requires_python = ">=3.6"
 summary = "A pure-python PDF library capable of splitting, merging, cropping, and transforming PDF files"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "typing-extensions>=4.0; python_version < \"3.11\"",
 ]
@@ -3486,7 +3486,7 @@ name = "python-dateutil"
 version = "2.9.0.post0"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
 summary = "Extensions to the standard Python datetime module"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "six>=1.5",
 ]
@@ -3500,7 +3500,7 @@ name = "python-dotenv"
 version = "1.0.0"
 requires_python = ">=3.8"
 summary = "Read key-value pairs from a .env file and set them as environment variables"
-groups = ["default", "test"]
+groups = ["default", "dev", "test"]
 files = [
     {file = "python-dotenv-1.0.0.tar.gz", hash = "sha256:a8df96034aae6d2d50a4ebe8216326c61c3eb64836776504fcca410e5937a3ba"},
     {file = "python_dotenv-1.0.0-py3-none-any.whl", hash = "sha256:f5971a9226b701070a4bf2c38c89e5a3f0d64de8debda981d1db98583009122a"},
@@ -3525,7 +3525,7 @@ name = "python-magic"
 version = "0.4.27"
 requires_python = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 summary = "File type identification using libmagic"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "python-magic-0.4.27.tar.gz", hash = "sha256:c1ba14b08e4a5f5c31a302b7721239695b2f0f058d125bd5ce1ee36b9d9d3c3b"},
     {file = "python_magic-0.4.27-py2.py3-none-any.whl", hash = "sha256:c212960ad306f700aa0d01e5d7a325d20548ff97eb9920dcd29513174f0294d3"},
@@ -3563,7 +3563,7 @@ files = [
 name = "pytz"
 version = "2024.1"
 summary = "World timezone definitions, modern and historical"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "pytz-2024.1-py2.py3-none-any.whl", hash = "sha256:328171f4e3623139da4983451950b28e95ac706e13f3f2630a879749e7a8b319"},
     {file = "pytz-2024.1.tar.gz", hash = "sha256:2a29735ea9c18baf14b448846bde5a48030ed267578472d8955cd0e7443a9812"},
@@ -3573,7 +3573,7 @@ files = [
 name = "pywin32"
 version = "306"
 summary = "Python for Window Extensions"
-groups = ["default"]
+groups = ["default", "dev"]
 marker = "sys_platform == \"win32\" or platform_system == \"Windows\""
 files = [
     {file = "pywin32-306-cp310-cp310-win32.whl", hash = "sha256:06d3420a5155ba65f0b72f2699b5bacf3109f36acbe8923765c22938a69dfc8d"},
@@ -3590,7 +3590,7 @@ name = "pyyaml"
 version = "6.0.1"
 requires_python = ">=3.6"
 summary = "YAML parser and emitter for Python"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "PyYAML-6.0.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:d858aa552c999bc8a8d57426ed01e40bef403cd8ccdd0fc5f6f04a00414cac2a"},
     {file = "PyYAML-6.0.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:fd66fc5d0da6d9815ba2cebeb4205f95818ff4b79c3ebe268e75d961704af52f"},
@@ -3624,7 +3624,7 @@ name = "qdrant-client"
 version = "1.9.1"
 requires_python = ">=3.8"
 summary = "Client library for the Qdrant vector search engine"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "grpcio-tools>=1.41.0",
     "grpcio>=1.41.0",
@@ -3658,7 +3658,7 @@ name = "referencing"
 version = "0.35.1"
 requires_python = ">=3.8"
 summary = "JSON Referencing + Python"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "attrs>=22.2.0",
     "rpds-py>=0.7.0",
@@ -3673,7 +3673,7 @@ name = "regex"
 version = "2024.5.15"
 requires_python = ">=3.8"
 summary = "Alternative regular expression module, to replace re."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "regex-2024.5.15-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:a81e3cfbae20378d75185171587cbf756015ccb14840702944f014e0d93ea09f"},
     {file = "regex-2024.5.15-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:7b59138b219ffa8979013be7bc85bb60c6f7b7575df3d56dc1e403a438c7a3f6"},
@@ -3730,7 +3730,7 @@ name = "requests"
 version = "2.31.0"
 requires_python = ">=3.7"
 summary = "Python HTTP for Humans."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "certifi>=2017.4.17",
     "charset-normalizer<4,>=2",
@@ -3776,7 +3776,7 @@ name = "rpds-py"
 version = "0.18.1"
 requires_python = ">=3.8"
 summary = "Python bindings to Rust's persistent data structures (rpds)"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "rpds_py-0.18.1-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:d31dea506d718693b6b2cffc0648a8929bdc51c70a311b2770f09611caa10d53"},
     {file = "rpds_py-0.18.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:732672fbc449bab754e0b15356c077cc31566df874964d4801ab14f71951ea80"},
@@ -3858,7 +3858,7 @@ name = "rsa"
 version = "4.9"
 requires_python = ">=3.6,<4"
 summary = "Pure-Python RSA implementation"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "pyasn1>=0.1.3",
 ]
@@ -3914,11 +3914,84 @@ files = [
 ]
 
 [[package]]
+name = "safetensors"
+version = "0.4.3"
+requires_python = ">=3.7"
+summary = ""
+groups = ["default", "dev"]
+files = [
+    {file = "safetensors-0.4.3-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:dcf5705cab159ce0130cd56057f5f3425023c407e170bca60b4868048bae64fd"},
+    {file = "safetensors-0.4.3-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:bb4f8c5d0358a31e9a08daeebb68f5e161cdd4018855426d3f0c23bb51087055"},
+    {file = "safetensors-0.4.3-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:70a5319ef409e7f88686a46607cbc3c428271069d8b770076feaf913664a07ac"},
+    {file = "safetensors-0.4.3-cp310-cp310-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:fb9c65bd82f9ef3ce4970dc19ee86be5f6f93d032159acf35e663c6bea02b237"},
+    {file = "safetensors-0.4.3-cp310-cp310-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:edb5698a7bc282089f64c96c477846950358a46ede85a1c040e0230344fdde10"},
+    {file = "safetensors-0.4.3-cp310-cp310-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:efcc860be094b8d19ac61b452ec635c7acb9afa77beb218b1d7784c6d41fe8ad"},
+    {file = "safetensors-0.4.3-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d88b33980222085dd6001ae2cad87c6068e0991d4f5ccf44975d216db3b57376"},
+    {file = "safetensors-0.4.3-cp310-cp310-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:5fc6775529fb9f0ce2266edd3e5d3f10aab068e49f765e11f6f2a63b5367021d"},
+    {file = "safetensors-0.4.3-cp310-cp310-musllinux_1_1_aarch64.whl", hash = "sha256:9c6ad011c1b4e3acff058d6b090f1da8e55a332fbf84695cf3100c649cc452d1"},
+    {file = "safetensors-0.4.3-cp310-cp310-musllinux_1_1_x86_64.whl", hash = "sha256:8c496c5401c1b9c46d41a7688e8ff5b0310a3b9bae31ce0f0ae870e1ea2b8caf"},
+    {file = "safetensors-0.4.3-cp310-none-win32.whl", hash = "sha256:38e2a8666178224a51cca61d3cb4c88704f696eac8f72a49a598a93bbd8a4af9"},
+    {file = "safetensors-0.4.3-cp310-none-win_amd64.whl", hash = "sha256:393e6e391467d1b2b829c77e47d726f3b9b93630e6a045b1d1fca67dc78bf632"},
+    {file = "safetensors-0.4.3-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:22f3b5d65e440cec0de8edaa672efa888030802e11c09b3d6203bff60ebff05a"},
+    {file = "safetensors-0.4.3-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:7c4fa560ebd4522adddb71dcd25d09bf211b5634003f015a4b815b7647d62ebe"},
+    {file = "safetensors-0.4.3-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:e9afd5358719f1b2cf425fad638fc3c887997d6782da317096877e5b15b2ce93"},
+    {file = "safetensors-0.4.3-cp311-cp311-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:d8c5093206ef4b198600ae484230402af6713dab1bd5b8e231905d754022bec7"},
+    {file = "safetensors-0.4.3-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:e0b2104df1579d6ba9052c0ae0e3137c9698b2d85b0645507e6fd1813b70931a"},
+    {file = "safetensors-0.4.3-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:8cf18888606dad030455d18f6c381720e57fc6a4170ee1966adb7ebc98d4d6a3"},
+    {file = "safetensors-0.4.3-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0bf4f9d6323d9f86eef5567eabd88f070691cf031d4c0df27a40d3b4aaee755b"},
+    {file = "safetensors-0.4.3-cp311-cp311-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:585c9ae13a205807b63bef8a37994f30c917ff800ab8a1ca9c9b5d73024f97ee"},
+    {file = "safetensors-0.4.3-cp311-cp311-musllinux_1_1_aarch64.whl", hash = "sha256:faefeb3b81bdfb4e5a55b9bbdf3d8d8753f65506e1d67d03f5c851a6c87150e9"},
+    {file = "safetensors-0.4.3-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:befdf0167ad626f22f6aac6163477fcefa342224a22f11fdd05abb3995c1783c"},
+    {file = "safetensors-0.4.3-cp311-none-win32.whl", hash = "sha256:a7cef55929dcbef24af3eb40bedec35d82c3c2fa46338bb13ecf3c5720af8a61"},
+    {file = "safetensors-0.4.3-cp311-none-win_amd64.whl", hash = "sha256:840b7ac0eff5633e1d053cc9db12fdf56b566e9403b4950b2dc85393d9b88d67"},
+    {file = "safetensors-0.4.3-cp39-cp39-macosx_10_12_x86_64.whl", hash = "sha256:8651c7299cbd8b4161a36cd6a322fa07d39cd23535b144d02f1c1972d0c62f3c"},
+    {file = "safetensors-0.4.3-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:e375d975159ac534c7161269de24ddcd490df2157b55c1a6eeace6cbb56903f0"},
+    {file = "safetensors-0.4.3-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:084fc436e317f83f7071fc6a62ca1c513b2103db325cd09952914b50f51cf78f"},
+    {file = "safetensors-0.4.3-cp39-cp39-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:41a727a7f5e6ad9f1db6951adee21bbdadc632363d79dc434876369a17de6ad6"},
+    {file = "safetensors-0.4.3-cp39-cp39-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:e7dbbde64b6c534548696808a0e01276d28ea5773bc9a2dfb97a88cd3dffe3df"},
+    {file = "safetensors-0.4.3-cp39-cp39-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:bbae3b4b9d997971431c346edbfe6e41e98424a097860ee872721e176040a893"},
+    {file = "safetensors-0.4.3-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:01e4b22e3284cd866edeabe4f4d896229495da457229408d2e1e4810c5187121"},
+    {file = "safetensors-0.4.3-cp39-cp39-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:0dd37306546b58d3043eb044c8103a02792cc024b51d1dd16bd3dd1f334cb3ed"},
+    {file = "safetensors-0.4.3-cp39-cp39-musllinux_1_1_aarch64.whl", hash = "sha256:d8815b5e1dac85fc534a97fd339e12404db557878c090f90442247e87c8aeaea"},
+    {file = "safetensors-0.4.3-cp39-cp39-musllinux_1_1_x86_64.whl", hash = "sha256:e011cc162503c19f4b1fd63dfcddf73739c7a243a17dac09b78e57a00983ab35"},
+    {file = "safetensors-0.4.3-cp39-none-win32.whl", hash = "sha256:01feb3089e5932d7e662eda77c3ecc389f97c0883c4a12b5cfdc32b589a811c3"},
+    {file = "safetensors-0.4.3-cp39-none-win_amd64.whl", hash = "sha256:3f9cdca09052f585e62328c1c2923c70f46814715c795be65f0b93f57ec98a02"},
+    {file = "safetensors-0.4.3-pp310-pypy310_pp73-macosx_10_12_x86_64.whl", hash = "sha256:1b89381517891a7bb7d1405d828b2bf5d75528299f8231e9346b8eba092227f9"},
+    {file = "safetensors-0.4.3-pp310-pypy310_pp73-macosx_11_0_arm64.whl", hash = "sha256:cd6fff9e56df398abc5866b19a32124815b656613c1c5ec0f9350906fd798aac"},
+    {file = "safetensors-0.4.3-pp310-pypy310_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:840caf38d86aa7014fe37ade5d0d84e23dcfbc798b8078015831996ecbc206a3"},
+    {file = "safetensors-0.4.3-pp310-pypy310_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f9650713b2cfa9537a2baf7dd9fee458b24a0aaaa6cafcea8bdd5fb2b8efdc34"},
+    {file = "safetensors-0.4.3-pp310-pypy310_pp73-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:e4119532cd10dba04b423e0f86aecb96cfa5a602238c0aa012f70c3a40c44b50"},
+    {file = "safetensors-0.4.3-pp310-pypy310_pp73-musllinux_1_1_aarch64.whl", hash = "sha256:e066e8861eef6387b7c772344d1fe1f9a72800e04ee9a54239d460c400c72aab"},
+    {file = "safetensors-0.4.3-pp310-pypy310_pp73-musllinux_1_1_x86_64.whl", hash = "sha256:90964917f5b0fa0fa07e9a051fbef100250c04d150b7026ccbf87a34a54012e0"},
+    {file = "safetensors-0.4.3-pp37-pypy37_pp73-macosx_10_12_x86_64.whl", hash = "sha256:c41e1893d1206aa7054029681778d9a58b3529d4c807002c156d58426c225173"},
+    {file = "safetensors-0.4.3-pp37-pypy37_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ae7613a119a71a497d012ccc83775c308b9c1dab454806291427f84397d852fd"},
+    {file = "safetensors-0.4.3-pp37-pypy37_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:4f9bac020faba7f5dc481e881b14b6425265feabb5bfc552551d21189c0eddc3"},
+    {file = "safetensors-0.4.3-pp37-pypy37_pp73-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:420a98f593ff9930f5822560d14c395ccbc57342ddff3b463bc0b3d6b1951550"},
+    {file = "safetensors-0.4.3-pp37-pypy37_pp73-musllinux_1_1_aarch64.whl", hash = "sha256:f5e6883af9a68c0028f70a4c19d5a6ab6238a379be36ad300a22318316c00cb0"},
+    {file = "safetensors-0.4.3-pp37-pypy37_pp73-musllinux_1_1_x86_64.whl", hash = "sha256:cdd0a3b5da66e7f377474599814dbf5cbf135ff059cc73694de129b58a5e8a2c"},
+    {file = "safetensors-0.4.3-pp38-pypy38_pp73-macosx_10_12_x86_64.whl", hash = "sha256:9bfb92f82574d9e58401d79c70c716985dc049b635fef6eecbb024c79b2c46ad"},
+    {file = "safetensors-0.4.3-pp38-pypy38_pp73-macosx_11_0_arm64.whl", hash = "sha256:3615a96dd2dcc30eb66d82bc76cda2565f4f7bfa89fcb0e31ba3cea8a1a9ecbb"},
+    {file = "safetensors-0.4.3-pp38-pypy38_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:868ad1b6fc41209ab6bd12f63923e8baeb1a086814cb2e81a65ed3d497e0cf8f"},
+    {file = "safetensors-0.4.3-pp38-pypy38_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b7ffba80aa49bd09195145a7fd233a7781173b422eeb995096f2b30591639517"},
+    {file = "safetensors-0.4.3-pp38-pypy38_pp73-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:c0acbe31340ab150423347e5b9cc595867d814244ac14218932a5cf1dd38eb39"},
+    {file = "safetensors-0.4.3-pp38-pypy38_pp73-musllinux_1_1_aarch64.whl", hash = "sha256:19bbdf95de2cf64f25cd614c5236c8b06eb2cfa47cbf64311f4b5d80224623a3"},
+    {file = "safetensors-0.4.3-pp38-pypy38_pp73-musllinux_1_1_x86_64.whl", hash = "sha256:b852e47eb08475c2c1bd8131207b405793bfc20d6f45aff893d3baaad449ed14"},
+    {file = "safetensors-0.4.3-pp39-pypy39_pp73-macosx_10_12_x86_64.whl", hash = "sha256:5d07cbca5b99babb692d76d8151bec46f461f8ad8daafbfd96b2fca40cadae65"},
+    {file = "safetensors-0.4.3-pp39-pypy39_pp73-macosx_11_0_arm64.whl", hash = "sha256:1ab6527a20586d94291c96e00a668fa03f86189b8a9defa2cdd34a1a01acc7d5"},
+    {file = "safetensors-0.4.3-pp39-pypy39_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:02318f01e332cc23ffb4f6716e05a492c5f18b1d13e343c49265149396284a44"},
+    {file = "safetensors-0.4.3-pp39-pypy39_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ec4b52ce9a396260eb9731eb6aea41a7320de22ed73a1042c2230af0212758ce"},
+    {file = "safetensors-0.4.3-pp39-pypy39_pp73-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:018b691383026a2436a22b648873ed11444a364324e7088b99cd2503dd828400"},
+    {file = "safetensors-0.4.3-pp39-pypy39_pp73-musllinux_1_1_aarch64.whl", hash = "sha256:309b10dbcab63269ecbf0e2ca10ce59223bb756ca5d431ce9c9eeabd446569da"},
+    {file = "safetensors-0.4.3-pp39-pypy39_pp73-musllinux_1_1_x86_64.whl", hash = "sha256:b277482120df46e27a58082df06a15aebda4481e30a1c21eefd0921ae7e03f65"},
+    {file = "safetensors-0.4.3.tar.gz", hash = "sha256:2f85fc50c4e07a21e95c24e07460fe6f7e2859d0ce88092838352b798ce711c2"},
+]
+
+[[package]]
 name = "setuptools"
 version = "70.0.0"
 requires_python = ">=3.8"
 summary = "Easily download, build, install, upgrade, and uninstall Python packages"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "setuptools-70.0.0-py3-none-any.whl", hash = "sha256:54faa7f2e8d2d11bcd2c07bed282eef1046b5c080d1c32add737d7b5817b1ad4"},
     {file = "setuptools-70.0.0.tar.gz", hash = "sha256:f211a66637b8fa059bb28183da127d4e86396c991a942b028c6650d4319c3fd0"},
@@ -3929,7 +4002,7 @@ name = "shapely"
 version = "2.0.4"
 requires_python = ">=3.7"
 summary = "Manipulation and analysis of geometric objects"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "numpy<3,>=1.14",
 ]
@@ -3976,7 +4049,7 @@ files = [
 name = "singleton-decorator"
 version = "1.0.0"
 summary = "A testable singleton decorator"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "singleton-decorator-1.0.0.tar.gz", hash = "sha256:1a90ad8a8a738be591c9c167fdd677c5d4a43d1bc6b1c128227be1c5e03bee07"},
 ]
@@ -3986,7 +4059,7 @@ name = "six"
 version = "1.16.0"
 requires_python = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
 summary = "Python 2 and 3 compatibility utilities"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "six-1.16.0-py2.py3-none-any.whl", hash = "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"},
     {file = "six-1.16.0.tar.gz", hash = "sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926"},
@@ -3997,7 +4070,7 @@ name = "sniffio"
 version = "1.3.1"
 requires_python = ">=3.7"
 summary = "Sniff out which async library your code is running under"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "sniffio-1.3.1-py3-none-any.whl", hash = "sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2"},
     {file = "sniffio-1.3.1.tar.gz", hash = "sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc"},
@@ -4128,7 +4201,7 @@ name = "soupsieve"
 version = "2.5"
 requires_python = ">=3.8"
 summary = "A modern CSS selector implementation for Beautiful Soup."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "soupsieve-2.5-py3-none-any.whl", hash = "sha256:eaa337ff55a1579b6549dc679565eac1e3d000563bcb1c8ab0d0fefbc0c2cdc7"},
     {file = "soupsieve-2.5.tar.gz", hash = "sha256:5663d5a7b3bfaeee0bc4372e7fc48f9cff4940b3eec54a6451cc5299f1097690"},
@@ -4139,7 +4212,7 @@ name = "sqlalchemy"
 version = "2.0.30"
 requires_python = ">=3.7"
 summary = "Database Abstraction Library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "greenlet!=0.4.17; platform_machine == \"win32\" or platform_machine == \"WIN32\" or platform_machine == \"AMD64\" or platform_machine == \"amd64\" or platform_machine == \"x86_64\" or platform_machine == \"ppc64le\" or platform_machine == \"aarch64\"",
     "typing-extensions>=4.6.0",
@@ -4179,7 +4252,7 @@ version = "2.0.30"
 extras = ["asyncio"]
 requires_python = ">=3.7"
 summary = "Database Abstraction Library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "greenlet!=0.4.17",
     "sqlalchemy==2.0.30",
@@ -4242,7 +4315,7 @@ files = [
 name = "striprtf"
 version = "0.0.26"
 summary = "A simple library to convert rtf to text"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "striprtf-0.0.26-py3-none-any.whl", hash = "sha256:8c8f9d32083cdc2e8bfb149455aa1cc5a4e0a035893bedc75db8b73becb3a1bb"},
     {file = "striprtf-0.0.26.tar.gz", hash = "sha256:fdb2bba7ac440072d1c41eab50d8d74ae88f60a8b6575c6e2c7805dc462093aa"},
@@ -4253,7 +4326,7 @@ name = "tenacity"
 version = "8.4.1"
 requires_python = ">=3.8"
 summary = "Retry code until it succeeds"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "tenacity-8.4.1-py3-none-any.whl", hash = "sha256:28522e692eda3e1b8f5e99c51464efcc0b9fc86933da92415168bc1c4e2308fa"},
     {file = "tenacity-8.4.1.tar.gz", hash = "sha256:54b1412b878ddf7e1f1577cd49527bad8cdef32421bd599beac0c6c3f10582fd"},
@@ -4264,7 +4337,7 @@ name = "tiktoken"
 version = "0.4.0"
 requires_python = ">=3.8"
 summary = "tiktoken is a fast BPE tokeniser for use with OpenAI's models"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "regex>=2022.1.18",
     "requests>=2.26.0",
@@ -4299,7 +4372,7 @@ name = "tokenizers"
 version = "0.15.2"
 requires_python = ">=3.7"
 summary = ""
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "huggingface-hub<1.0,>=0.16.4",
 ]
@@ -4418,7 +4491,7 @@ name = "tqdm"
 version = "4.66.4"
 requires_python = ">=3.7"
 summary = "Fast, Extensible Progress Meter"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "colorama; platform_system == \"Windows\"",
 ]
@@ -4428,11 +4501,34 @@ files = [
 ]
 
 [[package]]
+name = "transformers"
+version = "4.37.0"
+requires_python = ">=3.8.0"
+summary = "State-of-the-art Machine Learning for JAX, PyTorch and TensorFlow"
+groups = ["default", "dev"]
+dependencies = [
+    "filelock",
+    "huggingface-hub<1.0,>=0.19.3",
+    "numpy>=1.17",
+    "packaging>=20.0",
+    "pyyaml>=5.1",
+    "regex!=2019.12.17",
+    "requests",
+    "safetensors>=0.3.1",
+    "tokenizers<0.19,>=0.14",
+    "tqdm>=4.27",
+]
+files = [
+    {file = "transformers-4.37.0-py3-none-any.whl", hash = "sha256:669d4e2c12661e71c464eb18d6a9b9a2c74d4cba0f4648bb9323896bdd046826"},
+    {file = "transformers-4.37.0.tar.gz", hash = "sha256:5a0fdee36168f751770f7036ce7a8787be14f8b0d8f29806c493b6cb819c6c83"},
+]
+
+[[package]]
 name = "typing-extensions"
 version = "4.12.2"
 requires_python = ">=3.8"
 summary = "Backported and Experimental Type Hints for Python 3.8+"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "typing_extensions-4.12.2-py3-none-any.whl", hash = "sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d"},
     {file = "typing_extensions-4.12.2.tar.gz", hash = "sha256:1a7ead55c7e559dd4dee8856e3a88b41225abfe1ce8df57b7c13915fe121ffb8"},
@@ -4442,7 +4538,7 @@ files = [
 name = "typing-inspect"
 version = "0.9.0"
 summary = "Runtime inspection utilities for typing module."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "mypy-extensions>=0.3.0",
     "typing-extensions>=3.7.4",
@@ -4457,7 +4553,7 @@ name = "tzdata"
 version = "2024.1"
 requires_python = ">=2"
 summary = "Provider of IANA time zone data"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "tzdata-2024.1-py2.py3-none-any.whl", hash = "sha256:9068bc196136463f5245e51efda838afa15aaeca9903f49050dfa2679db4d252"},
     {file = "tzdata-2024.1.tar.gz", hash = "sha256:2674120f8d891909751c38abcdfd386ac0a5a1127954fbc332af6b5ceae07efd"},
@@ -4468,7 +4564,7 @@ name = "ujson"
 version = "5.10.0"
 requires_python = ">=3.8"
 summary = "Ultra fast JSON encoder and decoder for Python"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "ujson-5.10.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:2601aa9ecdbee1118a1c2065323bda35e2c5a2cf0797ef4522d485f9d3ef65bd"},
     {file = "ujson-5.10.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:348898dd702fc1c4f1051bc3aacbf894caa0927fe2c53e68679c073375f732cf"},
@@ -4525,7 +4621,7 @@ name = "unstract-adapters"
 version = "0.19.0"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract interface for LLMs, Embeddings and VectorDBs"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "filetype~=1.2.0",
     "httpx>=0.25.2",
@@ -4612,8 +4708,10 @@ dependencies = [
 name = "unstract-sdk"
 version = "0.32.0"
 requires_python = "<3.11.1,>=3.9"
+editable = true
+path = "/home/tahier/zipstack-repos/unstract-sdk"
 summary = "A framework for writing Unstract Tools/Apps"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "jsonschema~=4.18.2",
     "llama-index==0.10.38",
@@ -4623,10 +4721,6 @@ dependencies = [
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
     "unstract-adapters~=0.19.0",
-]
-files = [
-    {file = "unstract_sdk-0.32.0-py3-none-any.whl", hash = "sha256:bd95aea8a061806e2d056df48ba52f6ed055566e61971539624dd78bbd348e04"},
-    {file = "unstract_sdk-0.32.0.tar.gz", hash = "sha256:6bb422692c17f60f799ac4220410a9502a40ec01e1cec7bc3d4b54af8394f74f"},
 ]
 
 [[package]]
@@ -4684,7 +4778,7 @@ name = "urllib3"
 version = "1.26.19"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,>=2.7"
 summary = "HTTP library with thread-safe connection pooling, file post, and more."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "urllib3-1.26.19-py2.py3-none-any.whl", hash = "sha256:37a0344459b199fce0e80b0d3569837ec6b6937435c5244e7fd73fa6006830f3"},
     {file = "urllib3-1.26.19.tar.gz", hash = "sha256:3e3d753a8618b86d7de333b4223005f68720bcd6a7d2bcb9fbd2229ec7c1e429"},
@@ -4695,7 +4789,7 @@ name = "validators"
 version = "0.28.3"
 requires_python = ">=3.8"
 summary = "Python Data Validation for Humans™"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "validators-0.28.3-py3-none-any.whl", hash = "sha256:53cafa854f13850156259d9cc479b864ee901f6a96e6b109e6fc33f98f37d99f"},
     {file = "validators-0.28.3.tar.gz", hash = "sha256:c6c79840bcde9ba77b19f6218f7738188115e27830cbaff43264bc4ed24c429d"},
@@ -4727,7 +4821,7 @@ name = "weaviate-client"
 version = "3.26.2"
 requires_python = ">=3.8"
 summary = "A python native Weaviate client"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "authlib<2.0.0,>=1.2.1",
     "requests<3.0.0,>=2.30.0",
@@ -4754,7 +4848,7 @@ name = "wrapt"
 version = "1.16.0"
 requires_python = ">=3.6"
 summary = "Module for decorators, wrappers and monkey patching."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "wrapt-1.16.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:ffa565331890b90056c01db69c0fe634a776f8019c143a5ae265f9c6bc4bd6d4"},
     {file = "wrapt-1.16.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:e4fdb9275308292e880dcbeb12546df7f3e0f96c6b41197e0cf37d2826359020"},
@@ -4809,7 +4903,7 @@ name = "yarl"
 version = "1.9.4"
 requires_python = ">=3.7"
 summary = "Yet another URL library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "idna>=2.0",
     "multidict>=4.0",

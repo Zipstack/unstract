@@ -26,7 +26,8 @@ function DocumentParser({
     status: null,
   });
   const bottomRef = useRef(null);
-  const { details, updateCustomTool } = useCustomToolStore();
+  const { details, isSimplePromptStudio, updateCustomTool } =
+    useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -98,9 +99,14 @@ function DocumentParser({
     const body = {
       [`${name}`]: value,
     };
+
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/${promptDetails?.prompt_id}/`;
+    if (isSimplePromptStudio) {
+      url = `http://localhost:8000/simple-prompt-studio/prompts/${promptDetails?.prompt_id}`;
+    }
     const requestOptions = {
       method: "PATCH",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/${promptDetails?.prompt_id}/`,
+      url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",

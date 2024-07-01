@@ -42,6 +42,7 @@ from unstract.sdk.utils.tool_utils import ToolUtils
 from utils.local_context import StateStore
 
 from unstract.core.pubsub_helper import LogPublisher
+from simple_prompt_studio.sps_prompt.models import SPSPrompt
 
 CHOICES_JSON = "/static/select_choices.json"
 ERROR_MSG = "User %s doesn't have access to adapter %s"
@@ -355,6 +356,38 @@ class PromptStudioHelper:
         )
 
         return doc_id
+    
+    @staticmethod
+    def index_document_sps(
+        tool_id: str,
+        file_name: str,
+    ) -> Any:
+        file_path = FileManagerHelper.handle_sub_directory_for_sps(
+            sps_project_id=tool_id
+        )
+        file_path = str(Path(file_path) / file_name)
+
+        directory, filename = os.path.split(file_path)
+        extract_file_path = os.path.join(
+            directory, os.path.splitext(filename)[0] + ".txt"
+        )
+
+        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id="")
+        tool_index = Index(tool=util)
+        doc_id: str = tool_index.index(
+            tool_id=tool_id,
+            file_path=file_path,
+            embedding_instance_id="123",
+            vector_db_instance_id="123",
+            x2text_instance_id="123",
+            chunk_size=0,
+            chunk_overlap=128,
+            reindex=True,
+            output_file_path=extract_file_path,
+            usage_kwargs={},
+        )
+
+        return doc_id
 
     @staticmethod
     def prompt_responder(
@@ -552,6 +585,54 @@ class PromptStudioHelper:
             )
 
             return response
+        
+    @staticmethod
+    def prompt_responder_sps(
+        tool_id: str,
+        file_name: str,
+        prompt: SPSPrompt
+    ) -> Any:
+        file_path = FileManagerHelper.handle_sub_directory_for_sps(
+            sps_project_id=tool_id
+        )
+        file_path = str(Path(file_path) / file_name)
+        file_hash = ToolUtils.get_hash_from_file(file_path=file_path)
+
+        output: dict[str, Any] = {}
+        output[TSPKeys.PROMPT] = prompt.prompt
+        output[TSPKeys.ACTIVE] = True
+        output[TSPKeys.CHUNK_SIZE] = 0
+        output[TSPKeys.VECTOR_DB] = "123"
+        output[TSPKeys.EMBEDDING] = "123"
+        output[TSPKeys.CHUNK_OVERLAP] = 128
+        output[TSPKeys.LLM] = "123"
+        output[TSPKeys.TYPE] = "Text"
+        output[TSPKeys.NAME] = prompt.prompt_key
+        output[TSPKeys.RETRIEVAL_STRATEGY] = "simple"
+        output[TSPKeys.SIMILARITY_TOP_K] = 3
+        output[TSPKeys.SECTION] = "Default"
+        output[TSPKeys.X2TEXT_ADAPTER] = "123"
+
+        try:
+            payload = {
+                "output": output,
+                TSPKeys.TOOL_ID: tool_id,
+                TSPKeys.FILE_NAME: file_name,
+                TSPKeys.FILE_HASH: file_hash,
+            }
+
+            util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id="")
+            responder = PromptTool(
+                tool=util,
+                prompt_host=settings.PROMPT_HOST,
+                prompt_port=settings.PROMPT_PORT,
+            )
+
+            answer = responder.answer_prompt_sps(payload)
+            output_response = json.loads(answer["structure_output"])
+            return output_response
+        except Exception as e:
+            raise e
 
     @staticmethod
     def _fetch_response(

@@ -98,6 +98,12 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   }, [selectedDoc]);
 
   useEffect(() => {
+    if (activeKey === "2") {
+      handleFetchContent(viewTypes.extract);
+    }
+  }, [activeKey]);
+
+  useEffect(() => {
     if (currDocIndexStatus === docIndexStatus.done) {
       handleFetchContent(viewTypes.extract);
       setCurrDocIndexStatus(docIndexStatus.yet_to_start);

@@ -73,6 +73,15 @@ class CustomToolSerializer(AuditSerializer):
 class PromptStudioIndexSerializer(serializers.Serializer):
     document_id = serializers.CharField()
 
+class PromptStudioIndexSerializerSps(serializers.Serializer):
+    document_id = serializers.CharField()
+    sps_id = serializers.CharField()
+
+class PromptStudioRunSerializerSps(serializers.Serializer):
+    document_id = serializers.CharField()
+    sps_id = serializers.CharField()
+    id = serializers.CharField()
+
 
 class PromptStudioResponseSerializer(serializers.Serializer):
     file_name = serializers.CharField()

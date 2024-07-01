@@ -18,6 +18,18 @@ sps_project_list = SPSProjectView.as_view(
     }
 )
 
+sps_index_document = SPSProjectView.as_view(
+    {
+        "post": "index_document_sps",
+    }
+)
+
+sps_fetch_response = SPSProjectView.as_view(
+    {
+        "post": "fetch_response_sps",
+    }
+)
+
 urlpatterns = format_suffix_patterns(
     [
         path(
@@ -30,5 +42,7 @@ urlpatterns = format_suffix_patterns(
             sps_project_list,
             name="spsproject-list",
         ),
+        path("index", sps_index_document, name="spsdocument-index"),
+        path("fetch", sps_fetch_response, name="spsfetch-response"),
     ]
 )

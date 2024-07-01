@@ -38,6 +38,7 @@ urlpatterns = [
     path(f"{sps_path}/", include("simple_prompt_studio.sps_project.urls")),
     path(f"{sps_path}/", include("simple_prompt_studio.sps_prompt.urls")),
     path(f"{sps_path}/", include("simple_prompt_studio.sps_document.urls")),
+    path(f"{sps_path}/", include("simple_prompt_studio.sps_prompt_output.urls")),
 ]
 if settings.ADMIN_ENABLED:
     # Admin URLs

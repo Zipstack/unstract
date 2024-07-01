@@ -54,8 +54,10 @@ from .serializers import (
     FileInfoIdeSerializer,
     FileUploadIdeSerializer,
     PromptStudioIndexSerializer,
+    PromptStudioIndexSerializerSps,
     SharedUserListSerializer,
 )
+from simple_prompt_studio.sps_document.models import SPSDocument
 
 logger = logging.getLogger(__name__)
 
@@ -236,6 +238,30 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 document_id=document_id,
                 usage_kwargs=usage_kwargs.copy(),
             )
+
+        if unique_id:
+            return Response(
+                {"message": "Document indexed successfully."},
+                status=status.HTTP_200_OK,
+            )
+        else:
+            logger.error("Error occured while indexing. Unique ID is not valid.")
+            raise IndexingAPIError()
+        
+    @action(detail=True, methods=["post"])
+    def index_document_sps(self, request: HttpRequest) -> Response:
+        serializer = PromptStudioIndexSerializerSps(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        tool_id: str = serializer.validated_data.get("sps_id")
+        document_id: str = serializer.validated_data.get(
+            ToolStudioPromptKeys.DOCUMENT_ID
+        )
+        document: SPSDocument = SPSDocument.objects.get(pk=document_id)
+        file_name: str = document.document_name
+        unique_id = PromptStudioHelper.index_document_sps(
+            tool_id=str(tool_id),
+            file_name=file_name,
+        )
 
         if unique_id:
             return Response(

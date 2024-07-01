@@ -59,6 +59,7 @@ function PromptCard({
     summarizeIndexStatus,
     singlePassExtractMode,
     isSinglePassExtractLoading,
+    isSimplePromptStudio,
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const { sessionDetails } = useSessionStore();
@@ -211,6 +212,9 @@ function PromptCard({
   };
 
   const handleDocOutputs = (docId, isLoading, output) => {
+    if (isSimplePromptStudio) {
+      return;
+    }
     setDocOutputs((prev) => {
       const updatedDocOutputs = { ...prev };
       // Update the entry for the provided docId with isLoading and output
@@ -232,7 +236,7 @@ function PromptCard({
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
-    if (!promptDetails?.profile_manager?.length) {
+    if (!promptDetails?.profile_manager?.length && !isSimplePromptStudio) {
       setAlertDetails({
         type: "error",
         content: "LLM Profile is not selected",
@@ -306,11 +310,15 @@ function PromptCard({
         setIsRunLoading(false);
         handleDocOutputs(docId, false, null);
         setAlertDetails(
-          handleException(err, `Failed to generate output for ${docId}`)
+          handleException(`Failed to generate output for ${docId}`)
         );
       })
       .finally(() => {
-        handleStepsAfterRunCompletion();
+        if (isSimplePromptStudio) {
+          setIsCoverageLoading(false);
+        } else {
+          handleStepsAfterRunCompletion();
+        }
       });
   };
 
@@ -380,25 +388,33 @@ function PromptCard({
     const promptId = promptDetails?.prompt_id;
     const runId = generateUUID();
 
-    // Update the token usage state with default token usage for a specific document ID
-    const tokenUsageId = promptId + "__" + docId;
-    setTokenUsage(tokenUsageId, defaultTokenUsage);
-
-    // Set up an interval to fetch token usage data at regular intervals
-    const intervalId = setInterval(
-      () => getTokenUsage(runId, tokenUsageId),
-      5000 // Fetch token usage data every 5000 milliseconds (5 seconds)
-    );
-
     const body = {
       document_id: docId,
       id: promptId,
-      run_id: runId,
     };
+
+    let intervalId;
+    let tokenUsageId;
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/${details?.tool_id}`;
+    if (!isSimplePromptStudio) {
+      body["run_id"] = runId;
+      // Update the token usage state with default token usage for a specific document ID
+      tokenUsageId = promptId + "__" + docId;
+      setTokenUsage(tokenUsageId, defaultTokenUsage);
+
+      // Set up an interval to fetch token usage data at regular intervals
+      intervalId = setInterval(
+        () => getTokenUsage(runId, tokenUsageId),
+        5000 // Fetch token usage data every 5000 milliseconds (5 seconds)
+      );
+    } else {
+      body["sps_id"] = details?.tool_id;
+      url = "http://localhost:8000/simple-prompt-studio/fetch";
+    }
 
     const requestOptions = {
       method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/${details?.tool_id}`,
+      url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
@@ -412,17 +428,23 @@ function PromptCard({
         throw err;
       })
       .finally(() => {
-        clearInterval(intervalId);
-        getTokenUsage(runId, tokenUsageId);
+        if (!isSimplePromptStudio) {
+          clearInterval(intervalId);
+          getTokenUsage(runId, tokenUsageId);
+        }
       });
   };
 
   const handleGetOutput = () => {
-    if (!selectedDoc || (!singlePassExtractMode && !selectedLlmProfileId)) {
+    if (
+      !selectedDoc ||
+      (!singlePassExtractMode && !selectedLlmProfileId && !isSimplePromptStudio)
+    ) {
       setResult({
         promptOutputId: null,
         output: "",
       });
+      setIsRunLoading(false);
       return;
     }
 
@@ -476,11 +498,16 @@ function PromptCard({
   };
 
   const handleOutputApiRequest = async (isOutput) => {
-    let profileManager = selectedLlmProfileId;
-    if (singlePassExtractMode) {
-      profileManager = defaultLlmProfile;
+    let url;
+    if (isSimplePromptStudio) {
+      url = `http://localhost:8000/simple-prompt-studio/prompt-output?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}`;
+    } else {
+      let profileManager = selectedLlmProfileId;
+      if (singlePassExtractMode) {
+        profileManager = defaultLlmProfile;
+      }
+      url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${profileManager}&is_single_pass_extract=${singlePassExtractMode}`;
     }
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${profileManager}&is_single_pass_extract=${singlePassExtractMode}`;
 
     if (isOutput) {
       url += `&document_manager=${selectedDoc?.document_id}`;

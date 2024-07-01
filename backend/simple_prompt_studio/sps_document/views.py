@@ -45,6 +45,7 @@ class SPSDocumentView(viewsets.ModelViewSet):
             doc = {
                 "document_id": document.document_id,
                 "document_name": document.document_name,
+                "index_status": document.index_status,
             }
             FileManagerHelper.upload_file(
                 file_system,
@@ -66,8 +67,8 @@ class SPSDocumentView(viewsets.ModelViewSet):
         sps_project_id: str = serializer.validated_data.get("sps_project_id")
 
         filename_without_extension = file_name.rsplit(".", 1)[0]
-        if view_type == "extract":
-            file_name = f"{'extract'}/" f"{filename_without_extension}.txt"
+        if view_type == "EXTRACT":
+            file_name = f"{filename_without_extension}.txt"
 
         file_path = FileManagerHelper.handle_sub_directory_for_sps(
             sps_project_id=sps_project_id

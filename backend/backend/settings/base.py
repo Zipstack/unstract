@@ -214,6 +214,7 @@ SHARED_APPS = (
     "simple_prompt_studio.sps_project",
     "simple_prompt_studio.sps_prompt",
     "simple_prompt_studio.sps_document",
+    "simple_prompt_studio.sps_prompt_output",
 )
 
 TENANT_APPS = (
