@@ -34,7 +34,6 @@ from workflow_manager.workflow.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow.models.file_history import FileHistory
 from workflow_manager.workflow.models.workflow import Workflow
 
-
 logger = logging.getLogger(__name__)
 
 
