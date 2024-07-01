@@ -1,21 +1,21 @@
-import { FullscreenExitOutlined, FullscreenOutlined } from '@ant-design/icons';
-import { Col, Collapse, Modal, Row } from 'antd';
-import { useState } from 'react';
+import { FullscreenExitOutlined, FullscreenOutlined } from "@ant-design/icons";
+import { Col, Collapse, Modal, Row } from "antd";
+import { useState, useEffect } from "react";
 
-import { useAxiosPrivate } from '../../../hooks/useAxiosPrivate';
-import { useExceptionHandler } from '../../../hooks/useExceptionHandler';
-import { useAlertStore } from '../../../store/alert-store';
-import { useCustomToolStore } from '../../../store/custom-tool-store';
-import { useSessionStore } from '../../../store/session-store';
-import { CustomSynonymsModal } from '../custom-synonyms-modal/CustomSynonymsModal';
-import { DisplayLogs } from '../display-logs/DisplayLogs';
-import { DocumentManager } from '../document-manager/DocumentManager';
-import { Header } from '../header/Header';
-import { LogsLabel } from '../logs-label/LogsLabel';
-import { SettingsModal } from '../settings-modal/SettingsModal';
-import { ToolsMain } from '../tools-main/ToolsMain';
-import './ToolIde.css';
-import usePostHogEvents from '../../../hooks/usePostHogEvents.js';
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useAlertStore } from "../../../store/alert-store";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { useSessionStore } from "../../../store/session-store";
+import { CustomSynonymsModal } from "../custom-synonyms-modal/CustomSynonymsModal";
+import { DisplayLogs } from "../display-logs/DisplayLogs";
+import { DocumentManager } from "../document-manager/DocumentManager";
+import { Header } from "../header/Header";
+import { LogsLabel } from "../logs-label/LogsLabel";
+import { SettingsModal } from "../settings-modal/SettingsModal";
+import { ToolsMain } from "../tools-main/ToolsMain";
+import "./ToolIde.css";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 let OnboardMessagesModal;
 let PromptShareModal;
 let PromptShareLink;
@@ -23,19 +23,19 @@ let CloneTitle;
 let slides;
 try {
   OnboardMessagesModal =
-    require('../../../plugins/onboarding-messages/OnboardMessagesModal.jsx').OnboardMessagesModal;
+    require("../../../plugins/onboarding-messages/OnboardMessagesModal.jsx").OnboardMessagesModal;
   slides =
-    require('../../../plugins/onboarding-messages/prompt-slides.jsx').PromptSlides;
+    require("../../../plugins/onboarding-messages/prompt-slides.jsx").PromptSlides;
 } catch (err) {
   OnboardMessagesModal = null;
   slides = [];
 }
 try {
   PromptShareModal =
-    require('../../../plugins/public-share-modal/PromptShareModal.jsx').PromptShareModal;
+    require("../../../plugins/public-share-modal/PromptShareModal.jsx").PromptShareModal;
   PromptShareLink =
-    require('../../../plugins/public-link-modal/PromptShareLink.jsx').PromptShareLink;
-  CloneTitle = require('../../../clone-title-modal/CloneTitle.jsx').CloneTitle;
+    require("../../../plugins/public-link-modal/PromptShareLink.jsx").PromptShareLink;
+  CloneTitle = require("../../../clone-title-modal/CloneTitle.jsx").CloneTitle;
 } catch (err) {
   // Do nothing if plugins are not loaded.
 }
@@ -98,8 +98,8 @@ function ToolIde() {
 
   const getItems = () => [
     {
-      key: '1',
-      label: activeKey?.length > 0 ? <LogsLabel /> : 'Logs',
+      key: "1",
+      label: activeKey?.length > 0 ? <LogsLabel /> : "Logs",
       children: (
         <div className="tool-ide-logs">
           <DisplayLogs />
@@ -118,8 +118,8 @@ function ToolIde() {
 
     if (indexDocs.includes(docId)) {
       setAlertDetails({
-        type: 'error',
-        content: 'This document is already getting indexed',
+        type: "error",
+        content: "This document is already getting indexed",
       });
       return;
     }
@@ -129,11 +129,11 @@ function ToolIde() {
     };
 
     const requestOptions = {
-      method: 'POST',
+      method: "POST",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/index-document/${details?.tool_id}`,
       headers: {
-        'X-CSRFToken': sessionDetails?.csrfToken,
-        'Content-Type': 'application/json',
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
       },
       data: body,
     };
@@ -142,13 +142,13 @@ function ToolIde() {
     return axiosPrivate(requestOptions)
       .then(() => {
         setAlertDetails({
-          type: 'success',
+          type: "success",
           content: `${doc?.document_name} - Indexed successfully`,
         });
 
         try {
-          setPostHogCustomEvent('intent_success_ps_indexed_file', {
-            info: 'Indexing completed',
+          setPostHogCustomEvent("intent_success_ps_indexed_file", {
+            info: "Indexing completed",
           });
         } catch (err) {
           // If an error occurs while setting custom posthog event, ignore it and continue
@@ -166,11 +166,11 @@ function ToolIde() {
 
   const handleUpdateTool = async (body) => {
     const requestOptions = {
-      method: 'PATCH',
+      method: "PATCH",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/`,
       headers: {
-        'X-CSRFToken': sessionDetails?.csrfToken,
-        'Content-Type': 'application/json',
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
       },
       data: body,
     };
@@ -187,8 +187,8 @@ function ToolIde() {
   const handleDocChange = (doc) => {
     if (disableLlmOrDocChange?.length > 0) {
       setAlertDetails({
-        type: 'error',
-        content: 'Please wait for the run to complete',
+        type: "error",
+        content: "Please wait for the run to complete",
       });
       return;
     }
@@ -208,7 +208,7 @@ function ToolIde() {
         selectedDoc: prevSelectedDoc,
       };
       updateCustomTool(revertSelectedDoc);
-      setAlertDetails(handleException(err, 'Failed to select the document'));
+      setAlertDetails(handleException(err, "Failed to select the document"));
     });
   };
 
