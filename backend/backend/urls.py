@@ -29,7 +29,6 @@ urlpatterns = [
     path("", include("file_management.urls")),
     path("", include("tool_instance.urls")),
     path("", include("pipeline.urls")),
-    path("", include("apps.urls")),
     path("", include("feature_flag.urls")),
     path("workflow/", include("workflow_manager.urls")),
     path("platform/", include("platform_settings.urls")),
@@ -63,10 +62,18 @@ urlpatterns = [
 ]
 
 try:
-    import pluggable_apps.subscription.urls  # noqa: F401
+    import pluggable_apps.apps.app_deployment.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.apps.canned_question.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.apps.chat_history.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.apps.chat_transcript.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.subscription.urls  # noqa # pylint: disable=unused-import
 
     urlpatterns += [
         path("", include("pluggable_apps.subscription.urls")),
+        path("", include("pluggable_apps.apps.canned_question.urls")),
+        path("", include("pluggable_apps.apps.app_deployment.urls")),
+        path("", include("pluggable_apps.apps.chat_history.urls")),
+        path("", include("pluggable_apps.apps.chat_transcript.urls")),
     ]
 except ImportError:
     pass
