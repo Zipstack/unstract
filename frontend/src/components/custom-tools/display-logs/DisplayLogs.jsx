@@ -2,54 +2,90 @@ import { useEffect, useRef } from "react";
 import { Col, Row, Typography } from "antd";
 
 import "../../agency/display-logs/DisplayLogs.css";
-import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
-import { getDateTimeString } from "../../../helpers/GetStaticData";
+import { useSocketLogsStore } from "../../../store/socket-logs-store";
+import { uniqueId } from "lodash";
+import {
+  convertTimestampToHHMMSS,
+  isSubPage,
+} from "../../../helpers/GetStaticData";
+import { useLocation } from "react-router-dom";
 
 function DisplayLogs() {
   const bottomRef = useRef(null);
-  const { messages } = useSocketCustomToolStore();
+  const { logs } = useSocketLogsStore();
+  const location = useLocation(); // Get the current route location
+  const isWorkflowSubPage = isSubPage("workflows", location.pathname);
+  const isPromptStudioPage = isSubPage("tools", location.pathname);
 
   useEffect(() => {
-    if (messages?.length) {
+    if (logs?.length) {
       // Scroll down to the lastest chat.
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+  }, [logs]);
 
   return (
     <div className="tool-logs">
-      {messages.map((message) => {
+      {logs.map((log) => {
         return (
-          <div key={message?.timestamp}>
+          <div
+            key={`${log?.timestamp}-${uniqueId()}`}
+            className={`display-logs-container ${
+              log?.level === "ERROR" && "display-logs-error-bg"
+            }`}
+          >
             <Row>
-              <Col span={5}>
+              <Col span={2}>
                 <Typography className="display-logs-col-first">
-                  {getDateTimeString(message?.timestamp)}
+                  {convertTimestampToHHMMSS(log?.timestamp)}
                 </Typography>
               </Col>
               <Col span={2}>
                 <Typography className="display-logs-col">
-                  {message?.level}
+                  {log?.level}
+                </Typography>
+              </Col>
+              <Col span={3}>
+                <Typography className="display-logs-col">
+                  {log?.type}
                 </Typography>
               </Col>
               <Col span={2}>
                 <Typography className="display-logs-col">
-                  {message?.state}
+                  {log?.stage}
                 </Typography>
               </Col>
-              <Col span={3}>
+              {isWorkflowSubPage && (
+                <>
+                  <Col span={2}>
+                    <Typography className="display-logs-col">
+                      {log?.step}
+                    </Typography>
+                  </Col>
+                  <Col span={2}>
+                    <Typography className="display-logs-col">
+                      {log?.state}
+                    </Typography>
+                  </Col>
+                </>
+              )}
+              {isPromptStudioPage && (
+                <>
+                  <Col span={2}>
+                    <Typography className="display-logs-col">
+                      {log?.component?.prompt_key}
+                    </Typography>
+                  </Col>
+                  <Col span={2}>
+                    <Typography className="display-logs-col">
+                      {log?.component?.doc_name}
+                    </Typography>
+                  </Col>
+                </>
+              )}
+              <Col span={4}>
                 <Typography className="display-logs-col">
-                  {message?.component?.prompt_key}
-                </Typography>
-              </Col>
-              <Col span={3}>
-                <Typography className="display-logs-col">
-                  {message?.component?.doc_name}
-                </Typography>
-              </Col>
-              <Col span={8}>
-                <Typography className="display-logs-col">
-                  {message?.message}
+                  {log?.message}
                 </Typography>
               </Col>
             </Row>

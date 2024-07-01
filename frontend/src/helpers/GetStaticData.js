@@ -408,6 +408,25 @@ const generateUUID = () => {
   const uuid = uuidv4();
   return uuid;
 };
+const convertTimestampToHHMMSS = (timestamp) => {
+  // Convert the timestamp to milliseconds
+  const date = new Date(timestamp * 1000);
+
+  // Extract hours, minutes, and seconds
+  const hours = date.getUTCHours().toString().padStart(2, "0");
+  const minutes = date.getUTCMinutes().toString().padStart(2, "0");
+  const seconds = date.getUTCSeconds().toString().padStart(2, "0");
+
+  // Combine to form hh:mm:ss format
+  const timeString = `${hours}:${minutes}:${seconds}`;
+
+  return timeString;
+};
+
+const isSubPage = (type, path) => {
+  const regex = new RegExp(`^/[^/]+/${type}/.+`);
+  return regex.test(path);
+};
 
 export {
   CONNECTOR_TYPE_MAP,
@@ -446,4 +465,6 @@ export {
   isNonNegativeNumber,
   defaultTokenUsage,
   generateUUID,
+  convertTimestampToHHMMSS,
+  isSubPage,
 };

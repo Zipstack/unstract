@@ -5,7 +5,6 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
-import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { useSessionStore } from "../../../store/session-store";
 import { useUsageStore } from "../../../store/usage-store";
 
@@ -19,7 +18,6 @@ function SocketMessages() {
     setPointer,
   } = useSocketMessagesStore();
   const { pushLogMessages } = useSocketLogsStore();
-  const { updateCusToolMessages } = useSocketCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const socket = useContext(SocketContext);
   const { setAlertDetails } = useAlertStore();
@@ -53,7 +51,7 @@ function SocketMessages() {
         pushStagedMessage(msg);
       }
       if (msg?.type === "LOG" && msg?.service === "prompt") {
-        updateCusToolMessages(msg);
+        pushLogMessages(msg);
       }
       if (msg?.type === "LOG" && msg?.service === "usage") {
         const remainingTokens =

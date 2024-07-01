@@ -27,6 +27,7 @@ urlpatterns = [
     path("", include("connector_processor.urls")),
     path("", include("adapter_processor.urls")),
     path("", include("file_management.urls")),
+    path("", include("logs_helper.urls")),
     path("", include("tool_instance.urls")),
     path("", include("pipeline.urls")),
     path("", include("apps.urls")),
