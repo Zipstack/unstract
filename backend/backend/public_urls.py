@@ -48,7 +48,6 @@ urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
 
 try:
-    import pluggable_apps.platform_admin.urls
     import pluggable_apps.public_shares_share_controller.urls  # noqa: F401
 
     urlpatterns += [
