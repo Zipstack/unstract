@@ -140,7 +140,7 @@ repos:
       - id: markdownlint-fix
         args: [--disable, MD013]
   - repo: https://github.com/pdm-project/pdm
-    rev: 2.15.4
+    rev: 2.16.1
     hooks:
       - id: pdm-lock-check
   # - repo: local
