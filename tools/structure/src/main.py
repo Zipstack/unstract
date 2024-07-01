@@ -27,6 +27,7 @@ class StructureTool(BaseTool):
         prompt_registry_id: str = settings[SettingsKeys.PROMPT_REGISTRY_ID]
         challenge_llm: str = settings[SettingsKeys.CHALLENGE_LLM_ADAPTER_ID]
         enable_challenge: bool = settings[SettingsKeys.ENABLE_CHALLENGE]
+
         summarize_as_source: bool = settings[SettingsKeys.SUMMARIZE_AS_SOURCE]
         single_pass_extraction_mode: bool = settings[
             SettingsKeys.SINGLE_PASS_EXTRACTION_MODE
@@ -57,6 +58,7 @@ class StructureTool(BaseTool):
         tool_id = tool_metadata[SettingsKeys.TOOL_ID]
         tool_settings = tool_metadata[SettingsKeys.TOOL_SETTINGS]
         outputs = tool_metadata[SettingsKeys.OUTPUTS]
+        enable_highlight: bool = tool_settings.get(SettingsKeys.ENABLE_HIGHLIGHT, False)
         tool_settings[SettingsKeys.CHALLENGE_LLM] = challenge_llm
         tool_settings[SettingsKeys.ENABLE_CHALLENGE] = enable_challenge
         tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION] = (
@@ -68,8 +70,10 @@ class StructureTool(BaseTool):
         if summarize_as_source:
             file_name = SettingsKeys.SUMMARIZE
         tool_data_dir = Path(self.get_env_or_die(SettingsKeys.TOOL_DATA_DIR))
+        run_id = CommonUtils.generate_uuid()
         # TODO : Resolve and pass log events ID
         payload = {
+            SettingsKeys.RUN_ID: run_id,
             SettingsKeys.TOOL_SETTINGS: tool_settings,
             SettingsKeys.OUTPUTS: outputs,
             SettingsKeys.TOOL_ID: tool_id,
@@ -81,11 +85,10 @@ class StructureTool(BaseTool):
         # to avoid unwanted indexing
         self.stream_log("Indexing document")
         usage_kwargs: dict[Any, Any] = dict()
-        run_id = CommonUtils.generate_uuid()
-        usage_kwargs["run_id"] = run_id
+        usage_kwargs[SettingsKeys.RUN_ID] = run_id
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             index.index(
-                tool_id=tool_metadata[SettingsKeys.TOOL_ID],
+                tool_id=tool_id,
                 embedding_instance_id=tool_settings[SettingsKeys.EMBEDDING],
                 vector_db_instance_id=tool_settings[SettingsKeys.VECTOR_DB],
                 x2text_instance_id=tool_settings[SettingsKeys.X2TEXT_ADAPTER],
@@ -96,6 +99,7 @@ class StructureTool(BaseTool):
                 output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
                 reindex=True,
                 usage_kwargs=usage_kwargs,
+                enable_highlight=enable_highlight,
             )
             if summarize_as_source:
                 summarize_file_hash = self._summarize_and_index(
@@ -106,6 +110,7 @@ class StructureTool(BaseTool):
                     outputs=outputs,
                     index=index,
                     usage_kwargs=usage_kwargs,
+                    enable_highlight=enable_highlight,
                 )
                 payload[SettingsKeys.FILE_HASH] = summarize_file_hash
             self.stream_log("Fetching response for single pass extraction")
@@ -116,19 +121,22 @@ class StructureTool(BaseTool):
                 # indexed to get the output in required path
                 reindex = True
                 for output in outputs:
-                    index.index(
-                        tool_id=tool_metadata[SettingsKeys.TOOL_ID],
-                        embedding_instance_id=output[SettingsKeys.EMBEDDING],
-                        vector_db_instance_id=output[SettingsKeys.VECTOR_DB],
-                        x2text_instance_id=output[SettingsKeys.X2TEXT_ADAPTER],
-                        file_path=input_file,
-                        file_hash=file_hash,
-                        chunk_size=output[SettingsKeys.CHUNK_SIZE],
-                        chunk_overlap=output[SettingsKeys.CHUNK_OVERLAP],
-                        output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
-                        reindex=reindex,
-                        usage_kwargs=usage_kwargs,
-                    )
+                    if reindex or not summarize_as_source:
+                        index.index(
+                            tool_id=tool_metadata[SettingsKeys.TOOL_ID],
+                            embedding_instance_id=output[SettingsKeys.EMBEDDING],
+                            vector_db_instance_id=output[SettingsKeys.VECTOR_DB],
+                            x2text_instance_id=output[SettingsKeys.X2TEXT_ADAPTER],
+                            file_path=input_file,
+                            file_hash=file_hash,
+                            chunk_size=output[SettingsKeys.CHUNK_SIZE],
+                            chunk_overlap=output[SettingsKeys.CHUNK_OVERLAP],
+                            output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
+                            reindex=reindex,
+                            usage_kwargs=usage_kwargs,
+                            enable_highlight=enable_highlight,
+                        )
+
                     if summarize_as_source:
                         summarize_file_hash = self._summarize_and_index(
                             tool_id=tool_id,
@@ -139,9 +147,8 @@ class StructureTool(BaseTool):
                             index=index,
                             usage_kwargs=usage_kwargs,
                         )
+                        payload[SettingsKeys.OUTPUTS] = outputs
                         payload[SettingsKeys.FILE_HASH] = summarize_file_hash
-                        # For summary indexing should be done
-                        # only once. So breaking the loop
                         break
                     reindex = False
             except Exception as e:
@@ -189,6 +196,7 @@ class StructureTool(BaseTool):
         outputs: dict[str, Any],
         index: Index,
         usage_kwargs: dict[Any, Any] = {},
+        enable_highlight: bool = False,
     ) -> str:
         """Summarizes the context of the file and indexes the summarized
         content.
@@ -205,45 +213,64 @@ class StructureTool(BaseTool):
             str: The hash of the summarized file.
         """
         llm_adapter_instance_id: str = tool_settings[SettingsKeys.LLM]
+        embedding_instance_id: str = tool_settings[SettingsKeys.EMBEDDING]
+        vector_db_instance_id: str = tool_settings[SettingsKeys.VECTOR_DB]
+        x2text_instance_id: str = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
         summarize_prompt: str = tool_settings[SettingsKeys.SUMMARIZE_PROMPT]
-        context = ""
+        run_id: str = usage_kwargs.get(SettingsKeys.RUN_ID)
         extract_file_path = tool_data_dir / SettingsKeys.EXTRACT
-        with open(extract_file_path, encoding="utf-8") as file:
-            context = file.read()
-        prompt_keys = [output["name"] for output in outputs]
-        self.stream_log("Summarizing context")
-        # Handle run_id along with prompt run
-        payload = {
-            SettingsKeys.LLM_ADAPTER_INSTANCE_ID: llm_adapter_instance_id,
-            SettingsKeys.SUMMARIZE_PROMPT: summarize_prompt,
-            SettingsKeys.CONTEXT: context,
-            SettingsKeys.PROMPT_KEYS: prompt_keys,
-        }
-        response = responder.summarize(payload=payload)
-        if response[SettingsKeys.STATUS] != SettingsKeys.OK:
-            self.stream_error_and_exit(
-                f"Error summarizing response: {response[SettingsKeys.ERROR]}"
-            )
-        structure_output = json.loads(response["structure_output"])
-        summarized_context = structure_output.get(SettingsKeys.DATA, "")
-        self.stream_log("Writing summarized context to a file")
-        summarize_file_path = tool_data_dir / "SUMMARIZE"
-        with open(summarize_file_path, "w", encoding="utf-8") as f:
-            f.write(summarized_context)
+        summarize_file_path = tool_data_dir / SettingsKeys.SUMMARIZE
+
+        summarized_context = ""
+        if summarize_file_path.exists():
+            with open(summarize_file_path, encoding="utf-8") as f:
+                summarized_context = f.read()
+        if not summarized_context:
+            context = ""
+            with open(extract_file_path, encoding="utf-8") as file:
+                context = file.read()
+            prompt_keys = []
+            for output in outputs:
+                prompt_keys.append(output[SettingsKeys.NAME])
+                output[SettingsKeys.EMBEDDING] = embedding_instance_id
+                output[SettingsKeys.VECTOR_DB] = vector_db_instance_id
+                output[SettingsKeys.X2TEXT_ADAPTER] = x2text_instance_id
+                output[SettingsKeys.CHUNK_SIZE] = 0
+                output[SettingsKeys.CHUNK_OVERLAP] = 0
+            self.stream_log("Summarizing context")
+            payload = {
+                SettingsKeys.RUN_ID: run_id,
+                SettingsKeys.LLM_ADAPTER_INSTANCE_ID: llm_adapter_instance_id,
+                SettingsKeys.SUMMARIZE_PROMPT: summarize_prompt,
+                SettingsKeys.CONTEXT: context,
+                SettingsKeys.PROMPT_KEYS: prompt_keys,
+            }
+            response = responder.summarize(payload=payload)
+            if response[SettingsKeys.STATUS] != SettingsKeys.OK:
+                self.stream_error_and_exit(
+                    f"Error summarizing response: {response[SettingsKeys.ERROR]}"
+                )
+            structure_output = json.loads(response[SettingsKeys.STRUCTURE_OUTPUT])
+            summarized_context = structure_output.get(SettingsKeys.DATA, "")
+            self.stream_log("Writing summarized context to a file")
+            with open(summarize_file_path, "w", encoding="utf-8") as f:
+                f.write(summarized_context)
+
         self.stream_log("Indexing summarized context")
         summarize_file_hash: str = ToolUtils.get_hash_from_file(
             file_path=summarize_file_path
         )
         index.index(
             tool_id=tool_id,
-            embedding_instance_id=tool_settings[SettingsKeys.EMBEDDING],
-            vector_db_instance_id=tool_settings[SettingsKeys.VECTOR_DB],
-            x2text_instance_id=tool_settings[SettingsKeys.X2TEXT_ADAPTER],
+            embedding_instance_id=embedding_instance_id,
+            vector_db_instance_id=vector_db_instance_id,
+            x2text_instance_id=x2text_instance_id,
             file_path=summarize_file_path,
             file_hash=summarize_file_hash,
             chunk_size=0,
             chunk_overlap=0,
             usage_kwargs=usage_kwargs,
+            enable_highlight=enable_highlight,
         )
         return summarize_file_hash
 

@@ -65,3 +65,5 @@ class SettingsKeys:
     OK = "OK"
     FILE_NAME = "file_name"
     FILE_HASH = "file_hash"
+    ENABLE_HIGHLIGHT = "enable_highlight"
+    NAME = "name"

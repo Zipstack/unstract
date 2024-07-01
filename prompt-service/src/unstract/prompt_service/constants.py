@@ -47,6 +47,15 @@ class PromptServiceContants:
     TOOL_SETTINGS = "tool_settings"
     LOG_EVENTS_ID = "log_events_id"
     CHALLENGE_LLM = "challenge_llm"
+    CHALLENGE = "challenge"
+    ENABLE_CHALLENGE = "enable_challenge"
+    EXTRACTION = "extraction"
+    SUMMARIZE = "summarize"
+    SINGLE_PASS_EXTRACTION = "single-pass-extraction"
+    LLM_USAGE_REASON = "llm_usage_reason"
+    METADATA = "metadata"
+    OUTPUT = "output"
+    CONTEXT = "context"
 
 
 class LogLevel(Enum):
@@ -66,3 +75,19 @@ class RunLevel(Enum):
     RUN = "RUN"
     EVAL = "EVAL"
     CHALLENGE = "CHALLENGE"
+
+
+class FeatureFlag:
+    """Temporary feature flags."""
+
+    MULTI_TENANCY_V2 = "multi_tenancy_v2"
+
+
+class DBTableV2:
+    """Database tables."""
+
+    ORGANIZATION = "organization_v2"
+    ADAPTER_INSTANCE = "adapter_instance_v2"
+    PROMPT_STUDIO_REGISTRY = "prompt_studio_registry_v2"
+    PLATFORM_KEY = "platform_key_v2"
+    TOKEN_USAGE = "token_usage_v2"

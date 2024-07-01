@@ -12,6 +12,8 @@ dependencies = [
     "python-dotenv~=1.0",
     "redis~=5.0.1",
     "cryptography>=41.0.7",
+    "unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
+    "requests>=2.31.0",
 ]
 requires-python = ">=3.9,<3.11.1"
 readme = "README.md"
