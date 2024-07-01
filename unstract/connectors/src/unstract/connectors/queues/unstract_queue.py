@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, List
+from typing import Any
 
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.enums import ConnectorMode
