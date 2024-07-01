@@ -3,10 +3,12 @@ import {
   DeleteOutlined,
   EditOutlined,
   LoadingOutlined,
+  PlayCircleFilled,
   PlayCircleOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
-import { Button, Col, Row, Tag, Tooltip } from "antd";
+import { useState } from "react";
+import { Button, Checkbox, Col, Divider, Row, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 
 import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";
@@ -31,6 +33,7 @@ function Header({
   enableEdit,
   expandCard,
   setExpandCard,
+  enabledProfiles,
 }) {
   const {
     selectedDoc,
@@ -40,9 +43,21 @@ function Header({
     indexDocs,
   } = useCustomToolStore();
 
-  const handleRunBtnClick = () => {
+  const [isDisablePrompt, setIsDisablePrompt] = useState(promptDetails?.active);
+
+  const handleRunBtnClick = (profileManager = null, coverAllDoc = true) => {
     setExpandCard(true);
-    handleRun();
+    handleRun(profileManager, coverAllDoc, enabledProfiles, true);
+  };
+
+  const handleDisablePrompt = (event) => {
+    const check = event?.target?.checked;
+    setIsDisablePrompt(check);
+    handleChange(check, promptDetails?.prompt_id, "active", true, true).catch(
+      () => {
+        setIsDisablePrompt(!check);
+      }
+    );
   };
 
   return (
@@ -122,24 +137,51 @@ function Header({
           </Button>
         </Tooltip>
         {!singlePassExtractMode && (
-          <Tooltip title="Run">
-            <Button
-              size="small"
-              type="text"
-              className="prompt-card-action-button"
-              onClick={handleRunBtnClick}
-              disabled={
-                (updateStatus?.promptId === promptDetails?.prompt_id &&
-                  updateStatus?.status ===
-                    promptStudioUpdateStatus.isUpdating) ||
-                disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
-                indexDocs.includes(selectedDoc?.document_id)
-              }
-            >
-              <PlayCircleOutlined className="prompt-card-actions-head" />
-            </Button>
-          </Tooltip>
+          <>
+            <Tooltip title="Run">
+              <Button
+                size="small"
+                type="text"
+                className="prompt-card-action-button"
+                onClick={() =>
+                  handleRunBtnClick(promptDetails?.profile_manager, false)
+                }
+                disabled={
+                  (updateStatus?.promptId === promptDetails?.prompt_id &&
+                    updateStatus?.status ===
+                      promptStudioUpdateStatus?.isUpdating) ||
+                  disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
+                  indexDocs?.includes(selectedDoc?.document_id)
+                }
+              >
+                <PlayCircleOutlined className="prompt-card-actions-head" />
+              </Button>
+            </Tooltip>
+            <Tooltip title="Run All">
+              <Button
+                size="small"
+                type="text"
+                className="prompt-card-action-button"
+                onClick={() => handleRunBtnClick()}
+                disabled={
+                  (updateStatus?.promptId === promptDetails?.prompt_id &&
+                    updateStatus?.status ===
+                      promptStudioUpdateStatus?.isUpdating) ||
+                  disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
+                  indexDocs?.includes(selectedDoc?.document_id)
+                }
+              >
+                <PlayCircleFilled className="prompt-card-actions-head" />
+              </Button>
+            </Tooltip>
+          </>
         )}
+        <Checkbox
+          checked={isDisablePrompt}
+          className="prompt-card-action-button"
+          onChange={handleDisablePrompt}
+        />
+        <Divider type="vertical" className="header-delete-divider" />
         <ConfirmModal
           handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
           content="The prompt will be permanently deleted."
@@ -150,9 +192,9 @@ function Header({
               type="text"
               className="prompt-card-action-button"
               disabled={
-                disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
+                disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
                 isSinglePassExtractLoading ||
-                indexDocs.includes(selectedDoc?.document_id)
+                indexDocs?.includes(selectedDoc?.document_id)
               }
             >
               <DeleteOutlined className="prompt-card-actions-head" />
@@ -180,6 +222,7 @@ Header.propTypes = {
   enableEdit: PropTypes.func.isRequired,
   expandCard: PropTypes.bool.isRequired,
   setExpandCard: PropTypes.func.isRequired,
+  enabledProfiles: PropTypes.array.isRequired,
 };
 
 export { Header };

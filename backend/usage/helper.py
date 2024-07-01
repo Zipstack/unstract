@@ -36,6 +36,7 @@ class UsageHelper:
                 prompt_tokens=Sum(UsageKeys.PROMPT_TOKENS),
                 completion_tokens=Sum(UsageKeys.COMPLETION_TOKENS),
                 total_tokens=Sum(UsageKeys.TOTAL_TOKENS),
+                cost_in_dollars=Sum(UsageKeys.COST_IN_DOLLARS),
             )
 
             logger.info(f"Token counts aggregated successfully for run_id: {run_id}")
@@ -50,6 +51,7 @@ class UsageHelper:
                     UsageKeys.COMPLETION_TOKENS
                 ),
                 UsageKeys.TOTAL_TOKENS: usage_summary.get(UsageKeys.TOTAL_TOKENS),
+                UsageKeys.COST_IN_DOLLARS: usage_summary.get(UsageKeys.COST_IN_DOLLARS),
             }
             return result
         except Usage.DoesNotExist:
