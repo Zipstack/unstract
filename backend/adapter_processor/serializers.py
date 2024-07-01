@@ -4,7 +4,8 @@ from typing import Any
 from account.serializer import UserSerializer
 from adapter_processor.adapter_processor import AdapterProcessor
 from adapter_processor.constants import AdapterKeys
-from cryptography.fernet import Fernet
+from adapter_processor.exceptions import InvalidEncryptionKey
+from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
@@ -62,7 +63,10 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
 
         rep.pop(AdapterKeys.ADAPTER_METADATA_B)
 
-        adapter_metadata = instance.get_adapter_meta_data()
+        try:
+            adapter_metadata = instance.get_adapter_meta_data()
+        except InvalidToken:
+            raise InvalidEncryptionKey
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
         # Retrieve context window if adapter is a LLM
         # For other adapter types, context_window is not relevant.
