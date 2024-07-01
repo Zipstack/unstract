@@ -1,6 +1,6 @@
 import { FullscreenExitOutlined, FullscreenOutlined } from "@ant-design/icons";
 import { Col, Collapse, Modal, Row } from "antd";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -16,8 +16,10 @@ import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
-
 let OnboardMessagesModal;
+let PromptShareModal;
+let PromptShareLink;
+let CloneTitle;
 let slides;
 try {
   OnboardMessagesModal =
@@ -27,6 +29,15 @@ try {
 } catch (err) {
   OnboardMessagesModal = null;
   slides = [];
+}
+try {
+  PromptShareModal =
+    require("../../../plugins/public-share-modal/PromptShareModal.jsx").PromptShareModal;
+  PromptShareLink =
+    require("../../../plugins/public-link-modal/PromptShareLink.jsx").PromptShareLink;
+  CloneTitle = require("../../../clone-title-modal/CloneTitle.jsx").CloneTitle;
+} catch (err) {
+  // Do nothing if plugins are not loaded.
 }
 
 function ToolIde() {
@@ -42,6 +53,8 @@ function ToolIde() {
     indexDocs,
     pushIndexDoc,
     deleteIndexDoc,
+    shareId,
+    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { promptOnboardingMessage } = sessionDetails;
@@ -50,6 +63,10 @@ function ToolIde() {
   const handleException = useExceptionHandler();
   const [loginModalOpen, setLoginModalOpen] = useState(true);
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const [openShareLink, setOpenShareLink] = useState(false);
+  const [openShareConfirmation, setOpenShareConfirmation] = useState(false);
+  const [openShareModal, setOpenShareModal] = useState(false);
+  const [openCloneModal, setOpenCloneModal] = useState(false);
 
   const openLogsModal = () => {
     setShowLogsModal(true);
@@ -58,6 +75,17 @@ function ToolIde() {
   const closeLogsModal = () => {
     setShowLogsModal(false);
   };
+  useEffect(() => {
+    if (shareId === null && openShareModal) {
+      setOpenShareConfirmation(true);
+      setOpenShareLink(false);
+    }
+    if (shareId !== null && openShareModal) {
+      console.log(details);
+      setOpenShareConfirmation(false);
+      setOpenShareLink(true);
+    }
+  }, [shareId, openShareModal]);
 
   const genExtra = () => (
     <FullscreenOutlined
@@ -128,7 +156,7 @@ function ToolIde() {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, `${doc?.document_name} - Failed to index`)
+          handleException(err, `${doc?.document_name} - Failed to index`),
         );
       })
       .finally(() => {
@@ -190,6 +218,8 @@ function ToolIde() {
         <Header
           handleUpdateTool={handleUpdateTool}
           setOpenSettings={setOpenSettings}
+          setOpenShareModal={setOpenShareModal}
+          setOpenCloneModal={setOpenCloneModal}
         />
       </div>
       <div className="tool-ide-body">
@@ -244,6 +274,26 @@ function ToolIde() {
         setOpen={setOpenSettings}
         handleUpdateTool={handleUpdateTool}
       />
+      {PromptShareModal && (
+        <PromptShareModal
+          open={openShareConfirmation}
+          setOpenShareModal={setOpenShareModal}
+          setOpenShareConfirmation={setOpenShareConfirmation}
+        />
+      )}
+      {PromptShareLink && (
+        <PromptShareLink
+          open={openShareLink}
+          setOpenShareModal={setOpenShareModal}
+          setOpenShareLink={setOpenShareLink}
+        />
+      )}
+      {CloneTitle && (
+        <CloneTitle
+          open={openCloneModal}
+          setOpenCloneModal={setOpenCloneModal}
+        />
+      )}
       {!promptOnboardingMessage && OnboardMessagesModal && (
         <OnboardMessagesModal
           open={loginModalOpen}

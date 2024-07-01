@@ -16,7 +16,7 @@ import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
-
+import { useParams } from "react-router-dom";
 const items = [
   {
     key: "1",
@@ -60,7 +60,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [isDocLoading, setIsDocLoading] = useState(false);
   const [isExtractLoading, setIsExtractLoading] = useState(false);
   const [currDocIndexStatus, setCurrDocIndexStatus] = useState(
-    docIndexStatus.yet_to_start
+    docIndexStatus.yet_to_start,
   );
   const {
     selectedDoc,
@@ -69,10 +69,12 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     details,
     indexDocs,
     isSinglePassExtractLoading,
+    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const { id } = useParams();
 
   useEffect(() => {
     setFileUrl("");
@@ -92,7 +94,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   useEffect(() => {
     if (docIndexStatus.yet_to_start === currDocIndexStatus) {
       const isIndexing = indexDocs.find(
-        (item) => item === selectedDoc?.document_id
+        (item) => item === selectedDoc?.document_id,
       );
 
       if (isIndexing) {
@@ -103,7 +105,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
     if (docIndexStatus.indexing === currDocIndexStatus) {
       const isIndexing = indexDocs.find(
-        (item) => item === selectedDoc?.document_id
+        (item) => item === selectedDoc?.document_id,
       );
 
       if (!isIndexing) {
@@ -127,11 +129,18 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       return;
     }
 
-    const requestOptions = {
+    const requestPrivateOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}?document_id=${selectedDoc?.document_id}&view_type=${viewType}`,
     };
-
+    const requestPublicOptions = {
+      method: "GET",
+      url: `/public/share/document-contents/?id=${id}&document_id=${selectedDoc?.document_id}&view_type=${viewType}`,
+    };
+    const requestOptions = isPublicSource
+      ? requestPublicOptions
+      : requestPrivateOptions;
+    console.log(requestOptions);
     handleLoadingStateUpdate(viewType, true);
     axiosPrivate(requestOptions)
       .then((res) => {
@@ -194,14 +203,14 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
     if (viewType === viewTypes.extract) {
       setExtractErrMsg(
-        "Raw content is not available. Please index or re-index to generate it."
+        "Raw content is not available. Please index or re-index to generate it.",
       );
     }
   };
 
   useEffect(() => {
     const index = [...listOfDocs].findIndex(
-      (item) => item?.document_id === selectedDoc?.document_id
+      (item) => item?.document_id === selectedDoc?.document_id,
     );
     setPage(index + 1);
   }, [selectedDoc, listOfDocs]);

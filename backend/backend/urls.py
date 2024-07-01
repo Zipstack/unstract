@@ -67,6 +67,7 @@ try:
 
     urlpatterns += [
         path("", include("pluggable_apps.subscription.urls")),
+        path("", include("pluggable_apps.public_shares.share_manager.urls")),
     ]
 except ImportError:
     pass

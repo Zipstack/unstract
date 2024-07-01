@@ -15,6 +15,8 @@ const defaultState = {
   summarizeIndexStatus: [],
   singlePassExtractMode: false,
   isSinglePassExtractLoading: false,
+  shareId: null,
+  isPublicSource: false,
 };
 
 const defaultPromptInstance = {

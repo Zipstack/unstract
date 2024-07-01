@@ -17,6 +17,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useParams } from "react-router-dom";
 
 function CombinedOutput({ docId, setFilledFields }) {
   const [combinedOutput, setCombinedOutput] = useState({});
@@ -26,10 +27,12 @@ function CombinedOutput({ docId, setFilledFields }) {
     defaultLlmProfile,
     singlePassExtractMode,
     isSinglePassExtractLoading,
+    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const { id } = useParams();
   const handleException = useExceptionHandler();
 
   useEffect(() => {
@@ -58,7 +61,7 @@ function CombinedOutput({ docId, setFilledFields }) {
           const outputDetails = data.find(
             (outputValue) =>
               outputValue?.prompt_id === item?.prompt_id &&
-              outputValue?.profile_manager === profileManager
+              outputValue?.profile_manager === profileManager,
           );
 
           if (!outputDetails) {
@@ -67,7 +70,7 @@ function CombinedOutput({ docId, setFilledFields }) {
 
           output[item?.prompt_key] = displayPromptResult(
             outputDetails?.output,
-            false
+            false,
           );
 
           if (outputDetails?.output?.length > 0) {
@@ -83,7 +86,7 @@ function CombinedOutput({ docId, setFilledFields }) {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to generate combined output")
+          handleException(err, "Failed to generate combined output"),
         );
       })
       .finally(() => {
@@ -96,14 +99,23 @@ function CombinedOutput({ docId, setFilledFields }) {
   }, [combinedOutput]);
 
   const handleOutputApiRequest = async () => {
-    const requestOptions = {
+    const requestPrivateOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
-
+    const requestPublicOptions = {
+      method: "GET",
+      url: `/public/share/outputs-metadata/?id=${id}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+    };
+    const requestOptions = isPublicSource
+      ? requestPublicOptions
+      : requestPrivateOptions;
     return axiosPrivate(requestOptions)
       .then((res) => res)
       .catch((err) => {

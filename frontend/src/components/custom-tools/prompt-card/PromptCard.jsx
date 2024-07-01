@@ -17,6 +17,7 @@ import useTokenUsage from "../../../hooks/useTokenUsage";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
+import { useParams } from "react-router-dom";
 
 const EvalModal = null;
 const getEvalMetrics = (param1, param2) => {
@@ -59,6 +60,7 @@ function PromptCard({
     summarizeIndexStatus,
     singlePassExtractMode,
     isSinglePassExtractLoading,
+    isPublicSource,
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const { sessionDetails } = useSessionStore();
@@ -68,6 +70,7 @@ function PromptCard({
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { tokenUsage, setTokenUsage } = useTokenUsageStore();
   const { getTokenUsage } = useTokenUsage();
+  const { id } = useParams();
 
   useEffect(() => {
     const outputTypeData = getDropdownItems("output_type");
@@ -85,7 +88,7 @@ function PromptCard({
         (item) =>
           (item?.component?.prompt_id === promptDetails?.prompt_id ||
             item?.component?.prompt_key === promptKey) &&
-          (item?.level === "INFO" || item?.level === "ERROR")
+          (item?.level === "INFO" || item?.level === "ERROR"),
       );
 
     // If no matching message is found, return early
@@ -151,7 +154,7 @@ function PromptCard({
       handleChange(
         llmProfile?.profile_id,
         promptDetails?.prompt_id,
-        "profile_manager"
+        "profile_manager",
       );
     }
   }, [page]);
@@ -169,7 +172,7 @@ function PromptCard({
 
   useEffect(() => {
     const isProfilePresent = llmProfiles.some(
-      (profile) => profile.profile_id === selectedLlmProfileId
+      (profile) => profile.profile_id === selectedLlmProfileId,
     );
 
     // If selectedLlmProfileId is not present, set it to null
@@ -183,7 +186,7 @@ function PromptCard({
       return;
     }
     const index = llmProfiles.findIndex(
-      (item) => item?.profile_id === llmProfileId
+      (item) => item?.profile_id === llmProfileId,
     );
     setPage(index + 1);
   }, [llmProfiles]);
@@ -273,7 +276,7 @@ function PromptCard({
 
     const docId = selectedDoc?.document_id;
     const isSummaryIndexed = [...summarizeIndexStatus].find(
-      (item) => item?.docId === docId && item?.isIndexed === true
+      (item) => item?.docId === docId && item?.isIndexed === true,
     );
 
     if (
@@ -306,7 +309,7 @@ function PromptCard({
         setIsRunLoading(false);
         handleDocOutputs(docId, false, null);
         setAlertDetails(
-          handleException(err, `Failed to generate output for ${docId}`)
+          handleException(err, `Failed to generate output for ${docId}`),
         );
       })
       .finally(() => {
@@ -322,7 +325,7 @@ function PromptCard({
   // Get the coverage for all the documents except the one that's currently selected
   const handleCoverage = () => {
     const listOfDocsToProcess = [...listOfDocs].filter(
-      (item) => item?.document_id !== selectedDoc?.document_id
+      (item) => item?.document_id !== selectedDoc?.document_id,
     );
 
     if (listOfDocsToProcess?.length === 0) {
@@ -335,7 +338,7 @@ function PromptCard({
       const docId = item?.document_id;
       const isSummaryIndexed = [...summarizeIndexStatus].find(
         (indexStatus) =>
-          indexStatus?.docId === docId && indexStatus?.isIndexed === true
+          indexStatus?.docId === docId && indexStatus?.isIndexed === true,
       );
 
       if (
@@ -366,7 +369,7 @@ function PromptCard({
         .catch((err) => {
           handleDocOutputs(docId, false, null);
           setAlertDetails(
-            handleException(err, `Failed to generate output for ${docId}`)
+            handleException(err, `Failed to generate output for ${docId}`),
           );
         })
         .finally(() => {
@@ -387,7 +390,7 @@ function PromptCard({
     // Set up an interval to fetch token usage data at regular intervals
     const intervalId = setInterval(
       () => getTokenUsage(runId, tokenUsageId),
-      5000 // Fetch token usage data every 5000 milliseconds (5 seconds)
+      5000, // Fetch token usage data every 5000 milliseconds (5 seconds)
     );
 
     const body = {
@@ -444,7 +447,7 @@ function PromptCard({
           output: outputResult?.output,
           evalMetrics: getEvalMetrics(
             promptDetails?.evaluate,
-            outputResult?.eval_metrics || []
+            outputResult?.eval_metrics || [],
           ),
         });
       })
@@ -485,15 +488,20 @@ function PromptCard({
     if (isOutput) {
       url += `&document_manager=${selectedDoc?.document_id}`;
     }
-
-    const requestOptions = {
+    const requestPublicOptions = {
+      method: "GET",
+      url: `/public/share/outputs-metadata/?id=${id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${profileManager}&is_single_pass_extract=${singlePassExtractMode}`,
+    };
+    const requestPrivateOptions = {
       method: "GET",
       url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
-
+    const requestOptions = isPublicSource
+      ? requestPublicOptions
+      : requestPrivateOptions;
     return axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data || [];

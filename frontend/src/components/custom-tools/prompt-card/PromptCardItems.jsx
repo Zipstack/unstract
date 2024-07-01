@@ -1,5 +1,5 @@
-import PropTypes from "prop-types";
-import { LeftOutlined, RightOutlined, SearchOutlined } from "@ant-design/icons";
+import PropTypes from 'prop-types';
+import { LeftOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons';
 import {
   Button,
   Card,
@@ -10,15 +10,15 @@ import {
   Spin,
   Tag,
   Typography,
-} from "antd";
-import { useEffect, useRef, useState } from "react";
+} from 'antd';
+import { useEffect, useRef, useState } from 'react';
 
-import { displayPromptResult } from "../../../helpers/GetStaticData";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
-import { EditableText } from "../editable-text/EditableText";
-import { TokenUsage } from "../token-usage/TokenUsage";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { Header } from "./Header";
+import { displayPromptResult } from '../../../helpers/GetStaticData';
+import { SpinnerLoader } from '../../widgets/spinner-loader/SpinnerLoader';
+import { EditableText } from '../editable-text/EditableText';
+import { TokenUsage } from '../token-usage/TokenUsage';
+import { useCustomToolStore } from '../../../store/custom-tool-store';
+import { Header } from './Header';
 
 const EvalBtn = null;
 const EvalMetrics = null;
@@ -60,6 +60,7 @@ function PromptCardItems({
     singlePassExtractMode,
     isSinglePassExtractLoading,
     indexDocs,
+    isPublicSource,
   } = useCustomToolStore();
 
   useEffect(() => {
@@ -99,9 +100,9 @@ function PromptCardItems({
       <Collapse
         className="prompt-card-collapse prompt-card-bg-col1"
         ghost
-        activeKey={expandCard && "1"}
+        activeKey={expandCard && '1'}
       >
-        <Collapse.Panel key={"1"} showArrow={false}>
+        <Collapse.Panel key={'1'} showArrow={false}>
           <div className="prompt-card-div-body">
             <EditableText
               isEditing={isEditingPrompt}
@@ -121,14 +122,14 @@ function PromptCardItems({
               direction="vertical"
               className={`prompt-card-comp-layout ${
                 !(isRunLoading || result?.output || result?.output === 0) &&
-                "prompt-card-comp-layout-border"
+                'prompt-card-comp-layout-border'
               }`}
             >
               <div className="prompt-card-llm-profiles">
                 <Space direction="horizontal">
                   {EvalBtn && !singlePassExtractMode && (
                     <EvalBtn
-                      btnText={promptDetails?.evaluate ? "On" : "Off"}
+                      btnText={promptDetails?.evaluate ? 'On' : 'Off'}
                       promptId={promptDetails.prompt_id}
                       setOpenEval={setOpenEval}
                     />
@@ -138,6 +139,7 @@ function PromptCardItems({
                     type="link"
                     className="display-flex-align-center prompt-card-action-button"
                     onClick={() => setOpenOutputForDoc(true)}
+                    disabled={isPublicSource}
                   >
                     <Space>
                       {isCoverageLoading ? (
@@ -156,7 +158,7 @@ function PromptCardItems({
                     <TokenUsage
                       tokenUsageId={
                         promptDetails?.prompt_id +
-                        "__" +
+                        '__' +
                         selectedDoc?.document_id
                       }
                     />
@@ -170,10 +172,11 @@ function PromptCardItems({
                     value={promptDetails?.enforce_type || null}
                     disabled={
                       disableLlmOrDocChange.includes(
-                        promptDetails?.prompt_id
+                        promptDetails?.prompt_id,
                       ) ||
                       isSinglePassExtractLoading ||
-                      indexDocs.includes(selectedDoc?.document_id)
+                      indexDocs.includes(selectedDoc?.document_id) ||
+                      isPublicSource
                     }
                     onChange={(value) => handleTypeChange(value)}
                   />
@@ -189,7 +192,7 @@ function PromptCardItems({
                         {llmProfiles
                           .filter(
                             (profile) =>
-                              profile.profile_id === selectedLlmProfileId
+                              profile.profile_id === selectedLlmProfileId,
                           )
                           .map((profile, index) => (
                             <div key={profile?.profile_id}>
@@ -219,10 +222,11 @@ function PromptCardItems({
                       disabled={
                         page <= 1 ||
                         disableLlmOrDocChange.includes(
-                          promptDetails?.prompt_id
+                          promptDetails?.prompt_id,
                         ) ||
                         isSinglePassExtractLoading ||
-                        indexDocs.includes(selectedDoc?.document_id)
+                        indexDocs.includes(selectedDoc?.document_id) ||
+                        isPublicSource
                       }
                       onClick={handlePageLeft}
                     >
@@ -235,7 +239,7 @@ function PromptCardItems({
                       disabled={
                         page >= llmProfiles?.length ||
                         disableLlmOrDocChange.includes(
-                          promptDetails?.prompt_id
+                          promptDetails?.prompt_id,
                         ) ||
                         isSinglePassExtractLoading ||
                         indexDocs.includes(selectedDoc?.document_id)
