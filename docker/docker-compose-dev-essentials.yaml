@@ -2,7 +2,7 @@ version: '3.7'
 
 services:
   db:
-    image: 'postgres:15.6'
+    image: 'pgvector/pgvector:pg15'
     container_name: unstract-db
     restart: unless-stopped
     # set shared memory limit when using docker-compose
