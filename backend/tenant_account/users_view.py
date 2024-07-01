@@ -32,7 +32,6 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             raise BadRequestException
         org_id: str = UserSessionUtils.get_organization_id(request)
         auth_controller = AuthenticationController()
-
         auth_controller = AuthenticationController()
         update_status = auth_controller.add_user_role(
             request.user, org_id, user_email, role

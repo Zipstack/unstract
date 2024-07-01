@@ -116,3 +116,4 @@ class UserSessionResponseSerializer(serializers.Serializer):
     user_id = serializers.CharField()
     email = serializers.CharField()
     organization_id = serializers.CharField()
+    role = serializers.CharField()

@@ -26,7 +26,8 @@
 }
 
 .role-select{
-  width:250px
+  width:auto;
+  min-width:200px;
 }
 
 .form-select{

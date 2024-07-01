@@ -26,6 +26,7 @@ function getSessionData(sessionData) {
     loginOnboardingMessage: sessionData?.loginOnboardingMessage,
     promptOnboardingMessage: sessionData?.promptOnboardingMessage,
     flags: sessionData?.flags,
+    role: sessionData?.role,
   };
 }
 

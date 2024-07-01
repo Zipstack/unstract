@@ -41,7 +41,8 @@ function ConfigureConnectorModal({
       disabled:
         !connectorId ||
         connDetails?.connector_id !== selectedId ||
-        connType === "DATABASE",
+        connType === "DATABASE" ||
+        connType === "MANUALREVIEW",
     },
   ];
 
