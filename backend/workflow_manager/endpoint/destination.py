@@ -518,4 +518,4 @@ class DestinationConnector(BaseConnector):
             queue_result_json = json.dumps(queue_result)
             conn = QueueUtils.get_queue_inst()
             # Enqueue the JSON string
-            conn.enqueue(self, queue_name=q_name, message=queue_result_json)
+            conn.enqueue(queue_name=q_name, message=queue_result_json)

@@ -303,6 +303,12 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
     ) {
       return false;
     }
+    if (
+      source?.connection_type === "FILESYSTEM" &&
+      destination?.connection_type === "MANUALREVIEW"
+    ) {
+      return false;
+    }
     return !source?.connector_instance || !destination?.connector_instance;
   };
 

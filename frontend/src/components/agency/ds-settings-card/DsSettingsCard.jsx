@@ -33,29 +33,6 @@ const tooltip = {
   output: "Data Destination Settings",
 };
 
-const inputOptions = [
-  {
-    value: "API",
-    label: "API",
-  },
-  {
-    value: "FILESYSTEM",
-    label: "File System",
-  },
-  {
-    value: "DATABASE",
-    label: "Database",
-  },
-];
-try {
-  const inputOption =
-    require("../../../plugins/dscard-input-options/DsSettingsCardInputOptions").inputOption;
-  if (inputOption) {
-    inputOptions.push(inputOption);
-  }
-} catch {
-  // The component will remain null of it is not available
-}
 const disabledIdsByType = {
   FILE_SYSTEM: [
     "box|4d94d237-ce4b-45d8-8f34-ddeefc37c0bf",
@@ -86,18 +63,52 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const [formDataConfig, setFormDataConfig] = useState({});
   const [selectedId, setSelectedId] = useState("");
   const [selectedItemName, setSelectedItemName] = useState("");
+  const [inputOptions, setInputOptions] = useState([
+    {
+      value: "API",
+      label: "API",
+    },
+    {
+      value: "FILESYSTEM",
+      label: "File System",
+    },
+    {
+      value: "DATABASE",
+      label: "Database",
+    },
+  ]);
 
   const { sessionDetails } = useSessionStore();
   const { updateWorkflow } = useWorkflowStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const { flags } = sessionDetails;
 
   const icons = {
     input: <ImportOutlined className="ds-set-icon-size" />,
     output: <ExportOutlined className="ds-set-icon-size" />,
   };
-
+  useEffect(() => {
+    try {
+      const inputOption =
+        require("../../../plugins/dscard-input-options/DsSettingsCardInputOptions").inputOption;
+      if (flags.manual_review && inputOption) {
+        setInputOptions((prevInputOptions) => {
+          // Check if inputOption already exists in prevInputOptions
+          if (prevInputOptions.some((opt) => opt.value === inputOption.value)) {
+            return prevInputOptions; // Return previous state unchanged
+          } else {
+            // Create a new array with the existing options and the new option
+            const updatedInputOptions = [...prevInputOptions, inputOption];
+            return updatedInputOptions;
+          }
+        });
+      }
+    } catch {
+      // The component will remain null of it is not available
+    }
+  }, []);
   useEffect(() => {
     if (type === "output") {
       if (source?.connection_type === "") {
@@ -369,7 +380,9 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                   size="small"
                   onClick={() => setOpenModal(true)}
                   disabled={
-                    !endpointDetails?.connection_type || connType === "API"
+                    !endpointDetails?.connection_type ||
+                    connType === "API" ||
+                    connType === "MANUALREVIEW"
                   }
                 >
                   <SettingOutlined />
@@ -391,7 +404,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                 </Space>
               ) : (
                 <>
-                  {connType === "API" ? (
+                  {connType === "API" || connType === "MANUALREVIEW" ? (
                     <Typography.Text
                       className="font-size-12 display-flex-align-center"
                       ellipsis={{ rows: 1, expandable: false }}
@@ -399,7 +412,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                     >
                       <CheckCircleTwoTone twoToneColor="#52c41a" />
                       <span style={{ marginLeft: "5px" }}>
-                        {titleCase(type)} set to API successfully
+                        {titleCase(type)} set to {connType} successfully
                       </span>
                     </Typography.Text>
                   ) : (
@@ -456,7 +469,6 @@ DsSettingsCard.propTypes = {
   type: PropTypes.string.isRequired,
   endpointDetails: PropTypes.object.isRequired,
   message: PropTypes.string,
-  canUpdate: PropTypes.bool.isRequired,
 };
 
 export { DsSettingsCard };
