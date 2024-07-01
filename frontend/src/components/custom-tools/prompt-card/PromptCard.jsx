@@ -1,23 +1,23 @@
-import PropTypes from 'prop-types';
-import { useEffect, useState } from 'react';
+import PropTypes from "prop-types";
+import { useEffect, useState } from "react";
 
 import {
   defaultTokenUsage,
   generateUUID,
-} from '../../../helpers/GetStaticData';
-import { useAxiosPrivate } from '../../../hooks/useAxiosPrivate';
-import { useExceptionHandler } from '../../../hooks/useExceptionHandler';
-import { useAlertStore } from '../../../store/alert-store';
-import { useCustomToolStore } from '../../../store/custom-tool-store';
-import { useSessionStore } from '../../../store/session-store';
-import { useSocketCustomToolStore } from '../../../store/socket-custom-tool';
-import { OutputForDocModal } from '../output-for-doc-modal/OutputForDocModal';
-import usePostHogEvents from '../../../hooks/usePostHogEvents';
-import useTokenUsage from '../../../hooks/useTokenUsage';
-import { useTokenUsageStore } from '../../../store/token-usage-store';
-import { PromptCardItems } from './PromptCardItems';
-import './PromptCard.css';
-import { useParams } from 'react-router-dom';
+} from "../../../helpers/GetStaticData";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useAlertStore } from "../../../store/alert-store";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { useSessionStore } from "../../../store/session-store";
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
+import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import useTokenUsage from "../../../hooks/useTokenUsage";
+import { useTokenUsageStore } from "../../../store/token-usage-store";
+import { PromptCardItems } from "./PromptCardItems";
+import "./PromptCard.css";
+import { useParams } from "react-router-dom";
 
 const EvalModal = null;
 const getEvalMetrics = (param1, param2) => {
@@ -34,13 +34,13 @@ function PromptCard({
   const [enforceTypeList, setEnforceTypeList] = useState([]);
   const [page, setPage] = useState(0);
   const [isRunLoading, setIsRunLoading] = useState(false);
-  const [promptKey, setPromptKey] = useState('');
-  const [promptText, setPromptText] = useState('');
+  const [promptKey, setPromptKey] = useState("");
+  const [promptText, setPromptText] = useState("");
   const [selectedLlmProfileId, setSelectedLlmProfileId] = useState(null);
   const [openEval, setOpenEval] = useState(false);
   const [result, setResult] = useState({
     promptOutputId: null,
-    output: '',
+    output: "",
   });
   const [coverage, setCoverage] = useState(0);
   const [coverageTotal, setCoverageTotal] = useState(0);
@@ -73,7 +73,7 @@ function PromptCard({
   const { id } = useParams();
 
   useEffect(() => {
-    const outputTypeData = getDropdownItems('output_type');
+    const outputTypeData = getDropdownItems("output_type");
     const dropdownList1 = Object.keys(outputTypeData).map((item) => {
       return { value: outputTypeData[item] };
     });
@@ -88,7 +88,7 @@ function PromptCard({
         (item) =>
           (item?.component?.prompt_id === promptDetails?.prompt_id ||
             item?.component?.prompt_key === promptKey) &&
-          (item?.level === 'INFO' || item?.level === 'ERROR'),
+          (item?.level === "INFO" || item?.level === "ERROR"),
       );
 
     // If no matching message is found, return early
@@ -98,8 +98,8 @@ function PromptCard({
 
     // Set the progress message state with the found message
     setProgressMsg({
-      message: msg?.message || '',
-      level: msg?.level || 'INFO',
+      message: msg?.message || "",
+      level: msg?.level || "INFO",
     });
   }, [messages]);
 
@@ -154,7 +154,7 @@ function PromptCard({
       handleChange(
         llmProfile?.profile_id,
         promptDetails?.prompt_id,
-        'profile_manager',
+        "profile_manager",
       );
     }
   }, [page]);
@@ -210,7 +210,7 @@ function PromptCard({
   };
 
   const handleTypeChange = (value) => {
-    handleChange(value, promptDetails?.prompt_id, 'enforce_type', true);
+    handleChange(value, promptDetails?.prompt_id, "enforce_type", true);
   };
 
   const handleDocOutputs = (docId, isLoading, output) => {
@@ -228,7 +228,7 @@ function PromptCard({
   // Generate the result for the currently selected document
   const handleRun = () => {
     try {
-      setPostHogCustomEvent('ps_prompt_run', {
+      setPostHogCustomEvent("ps_prompt_run", {
         info: "Click on 'Run Prompt' button (Multi Pass)",
       });
     } catch (err) {
@@ -237,32 +237,32 @@ function PromptCard({
 
     if (!promptDetails?.profile_manager?.length) {
       setAlertDetails({
-        type: 'error',
-        content: 'LLM Profile is not selected',
+        type: "error",
+        content: "LLM Profile is not selected",
       });
       return;
     }
 
     if (!selectedDoc) {
       setAlertDetails({
-        type: 'error',
-        content: 'Document not selected',
+        type: "error",
+        content: "Document not selected",
       });
       return;
     }
 
     if (!promptKey) {
       setAlertDetails({
-        type: 'error',
-        content: 'Prompt key cannot be empty',
+        type: "error",
+        content: "Prompt key cannot be empty",
       });
       return;
     }
 
     if (!promptText) {
       setAlertDetails({
-        type: 'error',
-        content: 'Prompt cannot be empty',
+        type: "error",
+        content: "Prompt cannot be empty",
       });
       return;
     }
@@ -288,7 +288,7 @@ function PromptCard({
       setIsRunLoading(false);
       handleStepsAfterRunCompletion();
       setAlertDetails({
-        type: 'error',
+        type: "error",
         content: `Summary needs to be indexed before running the prompt - ${selectedDoc?.document_name}.`,
       });
       return;
@@ -350,7 +350,7 @@ function PromptCard({
         totalCoverageValue++;
         setCoverageTotal(totalCoverageValue);
         setAlertDetails({
-          type: 'error',
+          type: "error",
           content: `Summary needs to be indexed before running the prompt - ${item?.document_name}.`,
         });
         return;
@@ -384,7 +384,7 @@ function PromptCard({
     const runId = generateUUID();
 
     // Update the token usage state with default token usage for a specific document ID
-    const tokenUsageId = promptId + '__' + docId;
+    const tokenUsageId = promptId + "__" + docId;
     setTokenUsage(tokenUsageId, defaultTokenUsage);
 
     // Set up an interval to fetch token usage data at regular intervals
@@ -400,11 +400,11 @@ function PromptCard({
     };
 
     const requestOptions = {
-      method: 'POST',
+      method: "POST",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/${details?.tool_id}`,
       headers: {
-        'X-CSRFToken': sessionDetails?.csrfToken,
-        'Content-Type': 'application/json',
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
       },
       data: body,
     };
@@ -424,7 +424,7 @@ function PromptCard({
     if (!selectedDoc || (!singlePassExtractMode && !selectedLlmProfileId)) {
       setResult({
         promptOutputId: null,
-        output: '',
+        output: "",
       });
       return;
     }
@@ -436,7 +436,7 @@ function PromptCard({
         if (!data || data?.length === 0) {
           setResult({
             promptOutputId: null,
-            output: '',
+            output: "",
           });
           return;
         }
@@ -452,7 +452,7 @@ function PromptCard({
         });
       })
       .catch((err) => {
-        setAlertDetails(handleException(err, 'Failed to generate the result'));
+        setAlertDetails(handleException(err, "Failed to generate the result"));
       })
       .finally(() => {
         setIsRunLoading(false);
@@ -474,7 +474,7 @@ function PromptCard({
         handleGetCoverageData(data);
       })
       .catch((err) => {
-        setAlertDetails(handleException(err, 'Failed to generate the result'));
+        setAlertDetails(handleException(err, "Failed to generate the result"));
       });
   };
 
@@ -489,14 +489,14 @@ function PromptCard({
       url += `&document_manager=${selectedDoc?.document_id}`;
     }
     const requestPublicOptions = {
-      method: 'GET',
+      method: "GET",
       url: `/public/share/outputs-metadata/?id=${id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${profileManager}&is_single_pass_extract=${singlePassExtractMode}`,
     };
     const requestPrivateOptions = {
-      method: 'GET',
+      method: "GET",
       url,
       headers: {
-        'X-CSRFToken': sessionDetails?.csrfToken,
+        "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
     const requestOptions = isPublicSource
