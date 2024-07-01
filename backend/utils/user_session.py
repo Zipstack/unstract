@@ -7,7 +7,6 @@ from utils.constants import FeatureFlag
 from unstract.flags.feature_flag import check_feature_flag_status
 
 
-
 class UserSessionUtils:
     @staticmethod
     def get_organization_id(request: HttpRequest) -> Optional[str]:
