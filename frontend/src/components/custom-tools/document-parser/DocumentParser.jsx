@@ -49,6 +49,10 @@ function DocumentParser({
     }
   }, [scrollToBottom]);
 
+  const promptUrl = (urlPath) => {
+    return `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/${urlPath}`;
+  };
+
   const handleChange = async (
     event,
     promptId,
@@ -108,7 +112,7 @@ function DocumentParser({
       [`${name}`]: value,
     };
 
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/${promptDetails?.prompt_id}/`;
+    let url = promptUrl(promptDetails?.prompt_id + "/");
     if (isSimplePromptStudio) {
       url = promptPatchApiSps(promptDetails?.prompt_id);
     }
@@ -191,7 +195,7 @@ function DocumentParser({
   const handleDelete = (promptId) => {
     const requestOptions = {
       method: "DELETE",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/${promptId}/`,
+      url: promptUrl(promptId + "/"),
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -240,7 +244,7 @@ function DocumentParser({
 
     const requestOptions = {
       method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/reorder`,
+      url: promptUrl("reorder"),
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
