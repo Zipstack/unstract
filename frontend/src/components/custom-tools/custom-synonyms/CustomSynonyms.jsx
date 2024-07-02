@@ -17,19 +17,19 @@ const columns = [
     title: "Word",
     dataIndex: "word",
     key: "word",
-    width: 200,
+    width: 200
   },
   {
     title: "Synonyms",
     dataIndex: "synonyms",
-    key: "synonyms",
+    key: "synonyms"
   },
   {
     title: "",
     dataIndex: "delete",
     key: "delete",
-    width: 30,
-  },
+    width: 30
+  }
 ];
 
 function CustomSynonyms() {
@@ -54,7 +54,7 @@ function CustomSynonyms() {
       return {
         key: index,
         word,
-        synonyms: value,
+        synonyms: value
       };
     });
 
@@ -100,7 +100,7 @@ function CustomSynonyms() {
               <DeleteOutlined className="cus-syn-del" />
             </Button>
           </ConfirmModal>
-        ),
+        )
       };
     });
 
@@ -118,7 +118,7 @@ function CustomSynonyms() {
     const data = {
       key: length,
       word: "",
-      synonyms: [],
+      synonyms: []
     };
     const updatedSynonyms = [...synonyms];
     updatedSynonyms.push(data);
@@ -135,7 +135,7 @@ function CustomSynonyms() {
       return true;
     }
     return Object.values(obj).every(
-      (arr) => Array.isArray(arr) && arr.length === 0,
+      (arr) => Array.isArray(arr) && arr.length === 0
     );
   }
 
@@ -153,16 +153,16 @@ function CustomSynonyms() {
     });
     if (promptGrammar && !isEmpty(promptGrammar)) {
       const body = {
-        prompt_grammer: promptGrammar,
+        prompt_grammer: promptGrammar
       };
       const requestOptions = {
         method: "PATCH",
         url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/`,
         headers: {
           "X-CSRFToken": sessionDetails?.csrfToken,
-          "Content-Type": "application/json",
+          "Content-Type": "application/json"
         },
-        data: body,
+        data: body
       };
 
       setIsLoading(true);
@@ -174,7 +174,7 @@ function CustomSynonyms() {
           updateCustomTool({ details: updatedDetails });
           setAlertDetails({
             type: "success",
-            content: "Saved synonyms successfully",
+            content: "Saved synonyms successfully"
           });
         })
         .catch((err) => {
@@ -186,7 +186,7 @@ function CustomSynonyms() {
     } else {
       setAlertDetails({
         type: "warning",
-        content: "Please add synonyms to save",
+        content: "Please add synonyms to save"
       });
     }
   };

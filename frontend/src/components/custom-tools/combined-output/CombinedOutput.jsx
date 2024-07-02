@@ -8,7 +8,7 @@ import PropTypes from "prop-types";
 
 import {
   displayPromptResult,
-  promptType,
+  promptType
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
@@ -27,7 +27,7 @@ function CombinedOutput({ docId, setFilledFields }) {
     defaultLlmProfile,
     singlePassExtractMode,
     isSinglePassExtractLoading,
-    isPublicSource,
+    isPublicSource
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -61,7 +61,7 @@ function CombinedOutput({ docId, setFilledFields }) {
           const outputDetails = data.find(
             (outputValue) =>
               outputValue?.prompt_id === item?.prompt_id &&
-              outputValue?.profile_manager === profileManager,
+              outputValue?.profile_manager === profileManager
           );
 
           if (!outputDetails) {
@@ -70,7 +70,7 @@ function CombinedOutput({ docId, setFilledFields }) {
 
           output[item?.prompt_key] = displayPromptResult(
             outputDetails?.output,
-            false,
+            false
           );
 
           if (outputDetails?.output?.length > 0) {
@@ -86,7 +86,7 @@ function CombinedOutput({ docId, setFilledFields }) {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to generate combined output"),
+          handleException(err, "Failed to generate combined output")
         );
       })
       .finally(() => {
@@ -103,15 +103,15 @@ function CombinedOutput({ docId, setFilledFields }) {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
+        "X-CSRFToken": sessionDetails?.csrfToken
+      }
     };
     const requestPublicOptions = {
       method: "GET",
       url: `/public/share/outputs-metadata/?id=${id}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
+        "X-CSRFToken": sessionDetails?.csrfToken
+      }
     };
     const requestOptions = isPublicSource
       ? requestPublicOptions
@@ -149,7 +149,7 @@ function CombinedOutput({ docId, setFilledFields }) {
 
 CombinedOutput.propTypes = {
   docId: PropTypes.string,
-  setFilledFields: PropTypes.func,
+  setFilledFields: PropTypes.func
 };
 
 export { CombinedOutput };

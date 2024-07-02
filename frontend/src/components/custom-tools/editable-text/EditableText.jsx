@@ -14,7 +14,7 @@ function EditableText({
   defaultText,
   handleChange,
   isTextarea,
-  placeHolder,
+  placeHolder
 }) {
   const name = isTextarea ? "prompt" : "prompt_key";
   const [triggerHandleChange, setTriggerHandleChange] = useState(false);
@@ -25,7 +25,7 @@ function EditableText({
     indexDocs,
     selectedDoc,
     isSinglePassExtractLoading,
-    isPublicSource,
+    isPublicSource
   } = useCustomToolStore();
 
   useEffect(() => {
@@ -56,7 +56,7 @@ function EditableText({
     debounce((event) => {
       setTriggerHandleChange(true);
     }, 1000),
-    [],
+    []
   );
 
   useEffect(() => {
@@ -133,7 +133,7 @@ EditableText.propTypes = {
   defaultText: PropTypes.string.isRequired,
   handleChange: PropTypes.func.isRequired,
   isTextarea: PropTypes.bool,
-  placeHolder: PropTypes.string,
+  placeHolder: PropTypes.string
 };
 
 export { EditableText };

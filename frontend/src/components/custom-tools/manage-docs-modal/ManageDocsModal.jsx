@@ -3,7 +3,7 @@ import {
   CloseCircleFilled,
   DeleteOutlined,
   PlusOutlined,
-  ReloadOutlined,
+  ReloadOutlined
 } from "@ant-design/icons";
 import {
   Button,
@@ -15,7 +15,7 @@ import {
   Tag,
   Tooltip,
   Typography,
-  Upload,
+  Upload
 } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
@@ -43,7 +43,7 @@ try {
 
 const indexTypes = {
   raw: "RAW",
-  summarize: "Summarize",
+  summarize: "Summarize"
 };
 
 function ManageDocsModal({
@@ -51,7 +51,7 @@ function ManageDocsModal({
   setOpen,
   generateIndex,
   handleUpdateTool,
-  handleDocChange,
+  handleDocChange
 }) {
   const [isUploading, setIsUploading] = useState(false);
   const [rows, setRows] = useState([]);
@@ -75,7 +75,7 @@ function ManageDocsModal({
     rawIndexStatus,
     summarizeIndexStatus,
     isSinglePassExtractLoading,
-    isPublicSource,
+    isPublicSource
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
@@ -165,7 +165,7 @@ function ManageDocsModal({
 
     // Get the index of the last message received before the last update
     const lastIndex = [...newMessages].findIndex(
-      (item) => item?.timestamp === lastMessagesUpdate,
+      (item) => item?.timestamp === lastMessagesUpdate
     );
 
     // If the last update's message is found, keep only the new messages
@@ -175,7 +175,7 @@ function ManageDocsModal({
 
     // Filter only INFO and ERROR logs
     newMessages = newMessages.filter(
-      (item) => item?.level === "INFO" || item?.level === "ERROR",
+      (item) => item?.level === "INFO" || item?.level === "ERROR"
     );
 
     // If there are no new INFO or ERROR messages, return early
@@ -196,7 +196,7 @@ function ManageDocsModal({
       // Update the message for this document
       updatedMessages[docName] = {
         message: item?.message || "",
-        level: item?.level || "INFO",
+        level: item?.level || "INFO"
       };
     });
 
@@ -248,7 +248,7 @@ function ManageDocsModal({
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/document-index/?profile_manager=${llmProfileId}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/document-index/?profile_manager=${llmProfileId}`
     };
 
     handleLoading(indexType, true);
@@ -258,7 +258,7 @@ function ManageDocsModal({
         const indexStatus = data.map((item) => {
           return {
             docId: item?.document_manager,
-            isIndexed: handleIsIndexed(indexType, item),
+            isIndexed: handleIsIndexed(indexType, item)
           };
         });
 
@@ -274,7 +274,7 @@ function ManageDocsModal({
 
   const getLlmProfileName = (llmProfile) => {
     const llmProfileName = llmProfiles.find(
-      (item) => item?.profile_id === llmProfile,
+      (item) => item?.profile_id === llmProfile
     );
 
     return llmProfileName?.profile_name || "No LLM Profile Selected";
@@ -284,7 +284,7 @@ function ManageDocsModal({
     {
       title: "Document",
       dataIndex: "document",
-      key: "document",
+      key: "document"
     },
     {
       title: (
@@ -298,26 +298,26 @@ function ManageDocsModal({
       ),
       dataIndex: "index",
       key: "index",
-      width: 260,
+      width: 260
     },
     {
       title: "Index",
       dataIndex: "reindex",
       key: "reindex",
-      width: 260,
+      width: 260
     },
     {
       title: "",
       dataIndex: "delete",
       key: "delete",
-      width: 30,
+      width: 30
     },
     {
       title: "",
       dataIndex: "select",
       key: "select",
-      width: 30,
-    },
+      width: 30
+    }
   ];
 
   if (SummarizeStatusTitle) {
@@ -330,7 +330,7 @@ function ManageDocsModal({
       ),
       dataIndex: "summary",
       key: "summary",
-      width: 260,
+      width: 260
     });
   }
 
@@ -354,7 +354,7 @@ function ManageDocsModal({
     try {
       setPostHogCustomEvent("intent_ps_indexed_file", {
         info: "Clicked on index button",
-        document_name: item?.document_name,
+        document_name: item?.document_name
       });
     } catch (err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
@@ -431,7 +431,7 @@ function ManageDocsModal({
               isPublicSource
             }
           />
-        ),
+        )
       };
     });
     setRows(newRows);
@@ -443,13 +443,13 @@ function ManageDocsModal({
     summarizeIndexStatus,
     indexDocs,
     messages,
-    isSinglePassExtractLoading,
+    isSinglePassExtractLoading
   ]);
 
   const beforeUpload = (file) => {
     try {
       setPostHogCustomEvent("ps_uploaded_file", {
-        info: "Clicked on '+ Upload New File' button",
+        info: "Clicked on '+ Upload New File' button"
       });
     } catch (err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
@@ -461,14 +461,14 @@ function ManageDocsModal({
       reader.onload = () => {
         const fileName = file.name;
         const fileAlreadyExists = [...listOfDocs].find(
-          (item) => item?.document_name === fileName,
+          (item) => item?.document_name === fileName
         );
         if (!fileAlreadyExists) {
           resolve(file);
         } else {
           setAlertDetails({
             type: "error",
-            content: "File name already exists",
+            content: "File name already exists"
           });
           reject(new Error("File name already exists"));
         }
@@ -485,7 +485,7 @@ function ManageDocsModal({
       setIsUploading(false);
       setAlertDetails({
         type: "success",
-        content: "File uploaded successfully",
+        content: "File uploaded successfully"
       });
 
       const data = info.file.response?.data;
@@ -493,7 +493,7 @@ function ManageDocsModal({
       const newListOfDocs = [...listOfDocs];
       newListOfDocs.push(doc);
       const body = {
-        listOfDocs: newListOfDocs,
+        listOfDocs: newListOfDocs
       };
       updateCustomTool(body);
       handleUpdateTool({ output: doc?.document_id });
@@ -508,29 +508,29 @@ function ManageDocsModal({
       setIsUploading(false);
       setAlertDetails({
         type: "error",
-        content: "Failed to upload",
+        content: "Failed to upload"
       });
     }
   };
 
   const handleDelete = (docId) => {
     const body = {
-      document_id: docId,
+      document_id: docId
     };
     const requestOptions = {
       method: "DELETE",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       },
-      data: body,
+      data: body
     };
 
     axiosPrivate(requestOptions)
       .then(() => {
         const newListOfDocs = [...listOfDocs].filter(
-          (item) => item?.document_id !== docId,
+          (item) => item?.document_id !== docId
         );
         updateCustomTool({ listOfDocs: newListOfDocs });
 
@@ -571,7 +571,7 @@ function ManageDocsModal({
               name="file"
               action={`/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}`}
               headers={{
-                "X-CSRFToken": sessionDetails.csrfToken,
+                "X-CSRFToken": sessionDetails.csrfToken
               }}
               onChange={handleUploadChange}
               disabled={isUploading || !defaultLlmProfile}
@@ -632,6 +632,6 @@ ManageDocsModal.propTypes = {
   setOpen: PropTypes.func.isRequired,
   generateIndex: PropTypes.func.isRequired,
   handleUpdateTool: PropTypes.func.isRequired,
-  handleDocChange: PropTypes.func.isRequired,
+  handleDocChange: PropTypes.func.isRequired
 };
 export { ManageDocsModal };

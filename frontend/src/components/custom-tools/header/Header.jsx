@@ -1,7 +1,7 @@
 import {
   SettingOutlined,
   ShareAltOutlined,
-  CopyOutlined,
+  CopyOutlined
 } from "@ant-design/icons";
 import { Button, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
@@ -37,7 +37,7 @@ function Header({
   setOpenSettings,
   handleUpdateTool,
   setOpenShareModal,
-  setOpenCloneModal,
+  setOpenCloneModal
 }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
   const { details, isPublicSource } = useCustomToolStore();
@@ -54,23 +54,23 @@ function Header({
   const handleExport = (selectedUsers, toolDetail, isSharedWithEveryone) => {
     const body = {
       is_shared_with_org: isSharedWithEveryone,
-      user_id: isSharedWithEveryone ? [] : selectedUsers,
+      user_id: isSharedWithEveryone ? [] : selectedUsers
     };
     const requestOptions = {
       method: "POST",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/${details?.tool_id}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       },
-      data: body,
+      data: body
     };
     setIsExportLoading(true);
     axiosPrivate(requestOptions)
       .then(() => {
         setAlertDetails({
           type: "success",
-          content: "Custom tool exported successfully",
+          content: "Custom tool exported successfully"
         });
       })
       .catch((err) => {
@@ -86,7 +86,7 @@ function Header({
     try {
       setPostHogCustomEvent("ps_exported_tool", {
         info: `Clicked on the 'Export' button`,
-        tool_name: details?.tool_name,
+        tool_name: details?.tool_name
       });
     } catch (err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
@@ -96,8 +96,8 @@ function Header({
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/${details?.tool_id}`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
+        "X-CSRFToken": sessionDetails?.csrfToken
+      }
     };
     setIsExportLoading(true);
     getAllUsers().then((users) => {
@@ -123,7 +123,7 @@ function Header({
     setIsExportLoading(true);
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`
     };
 
     const userList = axiosPrivate(requestOptions)
@@ -132,8 +132,8 @@ function Header({
         setUserList(
           users.map((user) => ({
             id: user?.id,
-            email: user?.email,
-          })),
+            email: user?.email
+          }))
         );
         return users;
       })
@@ -222,7 +222,7 @@ Header.propTypes = {
   setOpenSettings: PropTypes.func.isRequired,
   handleUpdateTool: PropTypes.func.isRequired,
   setOpenCloneModal: PropTypes.func.isRequired,
-  setOpenShareModal: PropTypes.func.isRequired,
+  setOpenShareModal: PropTypes.func.isRequired
 };
 
 export { Header };

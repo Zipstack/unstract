@@ -20,17 +20,17 @@ import { useParams } from "react-router-dom";
 const items = [
   {
     key: "1",
-    label: "Doc View",
+    label: "Doc View"
   },
   {
     key: "2",
-    label: "Raw View",
-  },
+    label: "Raw View"
+  }
 ];
 
 const viewTypes = {
   original: "ORIGINAL",
-  extract: "EXTRACT",
+  extract: "EXTRACT"
 };
 
 let SummarizeView = null;
@@ -42,7 +42,7 @@ try {
   if (tabLabel) {
     items.push({
       key: "3",
-      label: tabLabel,
+      label: tabLabel
     });
   }
 } catch {
@@ -60,7 +60,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [isDocLoading, setIsDocLoading] = useState(false);
   const [isExtractLoading, setIsExtractLoading] = useState(false);
   const [currDocIndexStatus, setCurrDocIndexStatus] = useState(
-    docIndexStatus.yet_to_start,
+    docIndexStatus.yet_to_start
   );
   const {
     selectedDoc,
@@ -69,7 +69,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     details,
     indexDocs,
     isSinglePassExtractLoading,
-    isPublicSource,
+    isPublicSource
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
@@ -94,7 +94,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   useEffect(() => {
     if (docIndexStatus.yet_to_start === currDocIndexStatus) {
       const isIndexing = indexDocs.find(
-        (item) => item === selectedDoc?.document_id,
+        (item) => item === selectedDoc?.document_id
       );
 
       if (isIndexing) {
@@ -105,7 +105,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
     if (docIndexStatus.indexing === currDocIndexStatus) {
       const isIndexing = indexDocs.find(
-        (item) => item === selectedDoc?.document_id,
+        (item) => item === selectedDoc?.document_id
       );
 
       if (!isIndexing) {
@@ -131,11 +131,11 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
     const requestPrivateOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}?document_id=${selectedDoc?.document_id}&view_type=${viewType}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}?document_id=${selectedDoc?.document_id}&view_type=${viewType}`
     };
     const requestPublicOptions = {
       method: "GET",
-      url: `/public/share/document-contents/?id=${id}&document_id=${selectedDoc?.document_id}&view_type=${viewType}`,
+      url: `/public/share/document-contents/?id=${id}&document_id=${selectedDoc?.document_id}&view_type=${viewType}`
     };
     const requestOptions = isPublicSource
       ? requestPublicOptions
@@ -182,13 +182,13 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     try {
       if (key === "2") {
         setPostHogCustomEvent("ps_raw_view_clicked", {
-          info: "Clicked on the 'Raw View' tab",
+          info: "Clicked on the 'Raw View' tab"
         });
       }
 
       if (key === "3") {
         setPostHogCustomEvent("ps_summary_view_clicked", {
-          info: "Clicked on the 'Summary View' tab",
+          info: "Clicked on the 'Summary View' tab"
         });
       }
     } catch (err) {
@@ -203,14 +203,14 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
     if (viewType === viewTypes.extract) {
       setExtractErrMsg(
-        "Raw content is not available. Please index or re-index to generate it.",
+        "Raw content is not available. Please index or re-index to generate it."
       );
     }
   };
 
   useEffect(() => {
     const index = [...listOfDocs].findIndex(
-      (item) => item?.document_id === selectedDoc?.document_id,
+      (item) => item?.document_id === selectedDoc?.document_id
     );
     setPage(index + 1);
   }, [selectedDoc, listOfDocs]);
@@ -344,7 +344,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 DocumentManager.propTypes = {
   generateIndex: PropTypes.func.isRequired,
   handleUpdateTool: PropTypes.func.isRequired,
-  handleDocChange: PropTypes.func.isRequired,
+  handleDocChange: PropTypes.func.isRequired
 };
 
 export { DocumentManager };
