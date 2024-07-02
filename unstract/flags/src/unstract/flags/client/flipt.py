@@ -13,6 +13,8 @@ import grpc
 from ..generated import flipt_pb2, flipt_pb2_grpc
 from .base import BaseClient
 
+logger = logging.getLogger(__name__)
+
 
 class FliptClient(BaseClient):
     def __init__(self) -> None:
@@ -51,5 +53,8 @@ class FliptClient(BaseClient):
             response = self.stub.Evaluate(request)
             return response.match
         except grpc.RpcError as e:
-            logging.error(f"Error evaluating feature flag: {e}")
+            logger.warning(
+                f"Error evaluating feature flag '{flag_key}' for "
+                f"{namespace_key} : {e}"
+            )
             return False

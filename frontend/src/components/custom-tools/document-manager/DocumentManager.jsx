@@ -249,6 +249,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
             activeKey={activeKey}
             items={items}
             onChange={handleActiveKeyChange}
+            moreIcon={<></>}
           />
         </div>
         <Space>

@@ -16,6 +16,9 @@ from urllib.parse import quote_plus
 
 from dotenv import find_dotenv, load_dotenv
 
+from backend.constants import FeatureFlag
+from unstract.flags.feature_flag import check_feature_flag_status
+
 missing_settings = []
 
 
@@ -185,7 +188,6 @@ CORS_ALLOW_ALL_ORIGINS = False
 # Application definition
 SHARED_APPS = (
     # Multitenancy
-    "django_tenants",
     "corsheaders",
     # For the organization model
     "account",
@@ -210,6 +212,9 @@ SHARED_APPS = (
     "feature_flag",
     "django_celery_beat",
 )
+
+if not check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+    SHARED_APPS = ("django_tenants",) + SHARED_APPS
 
 TENANT_APPS = (
     # your tenant-specific apps
@@ -251,15 +256,71 @@ AUTHENTICATION_BACKENDS = (
     GOOGLE_MODEL_BACKEND,
 )
 
-TENANT_MODEL = "account.Organization"
-TENANT_DOMAIN_MODEL = "account.Domain"
-AUTH_USER_MODEL = "account.User"
 PUBLIC_ORG_ID = "public"
+
+if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+    # Middleware Configuration
+    TENANT_MIDDLEWARE = "middleware.organization_middleware.OrganizationMiddleware"
+    CUSTOM_AUTH_MIDDLEWARE = "account_v2.custom_auth_middleware.CustomAuthMiddleware"
+
+    # Pipeline Functions
+    SOCIAL_AUTH_PIPELINE_USER_AUTH = (
+        "connector_auth_v2.pipeline.common.check_user_exists"
+    )
+    SOCIAL_AUTH_PIPELINE_CACHE_CRED = (
+        "connector_auth_v2.pipeline.common.cache_oauth_creds"
+    )
+
+    # Routing Configuration
+    ROOT_URLCONF = "backend.base_urls"
+
+    # DB Configuration
+    DB_ENGINE = "django.db.backends.postgresql"
+
+    # Models
+    AUTH_USER_MODEL = "account_v2.User"
+
+    # Social Authentication
+    SOCIAL_AUTH_USER_MODEL = "account_v2.User"
+    SOCIAL_AUTH_STORAGE = "connector_auth_v2.models.ConnectorDjangoStorage"
+
+    # Namespaces
+    SOCIAL_AUTH_URL_NAMESPACE = "public:social"
+    LOGIN_CALLBACK_URL_NAMESPACE = "public:callback"
+else:
+    # Middleware Configuration
+    TENANT_MIDDLEWARE = "django_tenants.middleware.TenantSubfolderMiddleware"
+    CUSTOM_AUTH_MIDDLEWARE = "account.custom_auth_middleware.CustomAuthMiddleware"
+
+    # Pipeline Functions
+    SOCIAL_AUTH_PIPELINE_USER_AUTH = "connector_auth.pipeline.common.check_user_exists"
+    SOCIAL_AUTH_PIPELINE_CACHE_CRED = "connector_auth.pipeline.common.cache_oauth_creds"
+
+    # Routing Configuration
+    PUBLIC_SCHEMA_URLCONF = "backend.public_urls"
+    ROOT_URLCONF = "backend.urls"
+
+    # DB Configuration
+    DB_ENGINE = "django_tenants.postgresql_backend"
+    DATABASE_ROUTERS = ("django_tenants.routers.TenantSyncRouter",)
+
+    # Models
+    AUTH_USER_MODEL = "account.User"
+    TENANT_MODEL = "account.Organization"
+    TENANT_DOMAIN_MODEL = "account.Domain"
+
+    # Social Authentication
+    SOCIAL_AUTH_USER_MODEL = "account.User"
+    SOCIAL_AUTH_STORAGE = "connector_auth.models.ConnectorDjangoStorage"
+
+    # Namespaces
+    SOCIAL_AUTH_URL_NAMESPACE = "social"
+    LOGIN_CALLBACK_URL_NAMESPACE = "callback"
 
 MIDDLEWARE = [
     "log_request_id.middleware.RequestIDMiddleware",
     "corsheaders.middleware.CorsMiddleware",
-    "django_tenants.middleware.TenantSubfolderMiddleware",
+    TENANT_MIDDLEWARE,
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -267,14 +328,12 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "account.custom_auth_middleware.CustomAuthMiddleware",
+    CUSTOM_AUTH_MIDDLEWARE,
     "middleware.exception.ExceptionLoggingMiddleware",
     "social_django.middleware.SocialAuthExceptionMiddleware",
     "middleware.remove_allow_header.RemoveAllowHeaderMiddleware",
 ]
 
-PUBLIC_SCHEMA_URLCONF = "backend.public_urls"
-ROOT_URLCONF = "backend.urls"
 TENANT_SUBFOLDER_PREFIX = f"/{PATH_PREFIX}/unstract"
 SHOW_PUBLIC_IF_NO_TENANT_FOUND = True
 
@@ -302,7 +361,7 @@ WSGI_APPLICATION = "backend.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django_tenants.postgresql_backend",
+        "ENGINE": DB_ENGINE,
         "NAME": f"{DB_NAME}",
         "USER": f"{DB_USER}",
         "HOST": f"{DB_HOST}",
@@ -314,8 +373,6 @@ DATABASES = {
 
 # SocketIO connection manager
 SOCKET_IO_MANAGER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
-
-DATABASE_ROUTERS = ("django_tenants.routers.TenantSyncRouter",)
 
 CACHES = {
     "default": {
@@ -431,10 +488,7 @@ SOCIAL_AUTH_LOGIN_ERROR_URL = f"{WEB_APP_ORIGIN_URL}/oauth-status/?status=error"
 SOCIAL_AUTH_EXTRA_DATA_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "SOCIAL_AUTH_EXTRA_DATA_EXPIRATION_TIME_IN_SECOND", 3600
 )
-SOCIAL_AUTH_USER_MODEL = "account.User"
-SOCIAL_AUTH_STORAGE = "connector_auth.models.ConnectorDjangoStorage"
 SOCIAL_AUTH_JSONFIELD_ENABLED = True
-SOCIAL_AUTH_URL_NAMESPACE = "social"
 SOCIAL_AUTH_FIELDS_STORED_IN_SESSION = ["oauth-key", "connector-guid"]
 SOCIAL_AUTH_TRAILING_SLASH = False
 
@@ -446,12 +500,12 @@ for key in [
 
 SOCIAL_AUTH_PIPELINE = (
     # Checks if user is authenticated
-    "connector_auth.pipeline.common.check_user_exists",
+    SOCIAL_AUTH_PIPELINE_USER_AUTH,
     # Gets user details from provider
     "social_core.pipeline.social_auth.social_details",
     "social_core.pipeline.social_auth.social_uid",
     # Cache secrets and fields in redis
-    "connector_auth.pipeline.common.cache_oauth_creds",
+    SOCIAL_AUTH_PIPELINE_CACHE_CRED,
 )
 
 # Social Auth: Google OAuth2
