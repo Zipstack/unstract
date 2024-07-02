@@ -48,11 +48,19 @@ urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
 
 try:
-    import pluggable_apps.public_shares_share_controller.urls  # noqa: F401
+    import pluggable_apps.platform_admin.urls
 
     urlpatterns += [
         path(f"{path_prefix}/", include("pluggable_apps.platform_admin.urls")),
-        # Public Sharing
+    ]
+except ImportError:
+    pass
+
+try:
+    import pluggable_apps.public_shares_share_controller.urls  # noqa: F401
+
+    # Public Sharing
+    urlpatterns += [
         path(
             f"{share_path_prefix}/",
             include("pluggable_apps.public_shares.share_controller.urls"),

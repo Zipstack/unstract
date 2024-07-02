@@ -3,10 +3,12 @@ import { Button, Typography } from "antd";
 import "./HeaderTitle.css";
 import { useNavigate } from "react-router-dom";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { useSessionStore } from "../../../store/session-store";
 
 function HeaderTitle({}) {
   const navigate = useNavigate();
   const { details } = useCustomToolStore();
+  const { sessionDetails } = useSessionStore();
 
   return (
     <div className="custom-tools-header">

@@ -20,6 +20,7 @@ let OnboardMessagesModal;
 let PromptShareModal;
 let PromptShareLink;
 let CloneTitle;
+let HeaderPublic;
 let slides;
 try {
   OnboardMessagesModal =
@@ -37,6 +38,8 @@ try {
     require("../../../plugins/public-link-modal/PromptShareLink.jsx").PromptShareLink;
   CloneTitle =
     require("../../../plugins/clone-title-modal/CloneTitle.jsx").CloneTitle;
+  HeaderPublic =
+    require("../../../plugins/header-public/HeaderPublic.jsx").HeaderPublic;
 } catch (err) {
   // Do nothing if plugins are not loaded.
 }
@@ -55,6 +58,7 @@ function ToolIde() {
     pushIndexDoc,
     deleteIndexDoc,
     shareId,
+    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { promptOnboardingMessage } = sessionDetails;
@@ -214,6 +218,7 @@ function ToolIde() {
 
   return (
     <div className="tool-ide-layout">
+      {isPublicSource && HeaderPublic && <HeaderPublic />}
       <div>
         <Header
           handleUpdateTool={handleUpdateTool}
