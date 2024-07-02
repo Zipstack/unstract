@@ -70,9 +70,12 @@ try:
 
     urlpatterns += [
         path("", include("pluggable_apps.subscription.urls")),
-        path("", include("pluggable_apps.apps.canned_question.urls")),
-        path("", include("pluggable_apps.apps.app_deployment.urls")),
-        path("", include("pluggable_apps.apps.chat_history.urls")),
+        path(
+            "canned_question/",
+            include("pluggable_apps.apps.canned_question.urls"),
+        ),
+        path("app/", include("pluggable_apps.apps.app_deployment.urls")),
+        path("chat_history/", include("pluggable_apps.apps.chat_history.urls")),
         path("", include("pluggable_apps.apps.chat_transcript.urls")),
     ]
 except ImportError:
