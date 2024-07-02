@@ -89,7 +89,12 @@ function SidePanel() {
   return (
     <div className="sidepanel-layout">
       <div className="sidepanel-tabs">
-        <Tabs activeKey={activeTabKey} items={items} onChange={handleTabKey} />
+        <Tabs
+          activeKey={activeTabKey}
+          items={items}
+          onChange={handleTabKey}
+          moreIcon={<></>}
+        />
       </div>
       <div className="sidepanel-content">
         {activeTabKey === "1" && <Tools />}
