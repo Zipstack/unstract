@@ -2,11 +2,13 @@ import json
 import os
 from datetime import datetime, timedelta
 from logging import Logger
-from typing import Any
+from typing import Any, Optional
 
 import peewee
 import requests
-from unstract.platform_service.exceptions import CustomException
+from unstract.platform_service.exceptions import CustomException, DBTableV2, FeatureFlag
+
+from unstract.flags.feature_flag import check_feature_flag_status
 
 
 class AdapterInstanceRequestHelper:
@@ -15,6 +17,7 @@ class AdapterInstanceRequestHelper:
         db_instance: peewee.PostgresqlDatabase,
         organization_id: str,
         adapter_instance_id: str,
+        organization_uid: Optional[int] = None,
     ) -> dict[str, Any]:
         """Get adapter instance from Backend Database.
 
@@ -26,11 +29,19 @@ class AdapterInstanceRequestHelper:
         Returns:
             _type_: _description_
         """
-        query = (
-            f"SELECT id, adapter_id, adapter_metadata_b FROM "
-            f'"{organization_id}".adapter_adapterinstance x '
-            f"WHERE id='{adapter_instance_id}'"
-        )
+        if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+            query = (
+                "SELECT id, adapter_id, adapter_metadata_b FROM "
+                f"{DBTableV2.ADAPTER_INSTANCE} x "
+                f"WHERE id='{adapter_instance_id}' and "
+                f"organization_id='{organization_uid}'"
+            )
+        else:
+            query = (
+                f"SELECT id, adapter_id, adapter_metadata_b FROM "
+                f'"{organization_id}".adapter_adapterinstance x '
+                f"WHERE id='{adapter_instance_id}'"
+            )
         cursor = db_instance.execute_sql(query)
         result_row = cursor.fetchone()
         if not result_row:
@@ -59,12 +70,20 @@ class PromptStudioRequestHelper:
         Returns:
             _type_: _description_
         """
-        query = (
-            f"SELECT prompt_registry_id, tool_spec, "
-            f"tool_metadata, tool_property FROM "
-            f'"{organization_id}".prompt_studio_registry_promptstudioregistry x'
-            f" WHERE prompt_registry_id='{prompt_registry_id}'"
-        )
+        if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+            query = (
+                "SELECT prompt_registry_id, tool_spec, "
+                "tool_metadata, tool_property FROM "
+                f"{DBTableV2.PROMPT_STUDIO_REGISTRY} x "
+                f"WHERE prompt_registry_id='{prompt_registry_id}'"
+            )
+        else:
+            query = (
+                f"SELECT prompt_registry_id, tool_spec, "
+                f"tool_metadata, tool_property FROM "
+                f'"{organization_id}".prompt_studio_registry_promptstudioregistry x'
+                f" WHERE prompt_registry_id='{prompt_registry_id}'"
+            )
         cursor = db_instance.execute_sql(query)
         result_row = cursor.fetchone()
         if not result_row:
