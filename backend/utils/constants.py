@@ -12,6 +12,13 @@ os.environ.setdefault(
 class Account:
     CREATED_BY = "created_by"
     MODIFIED_BY = "modified_by"
+    ORGANIZATION_ID = "organization_id"
+
+
+class FeatureFlag:
+    """Temporary feature flags."""
+
+    MULTI_TENANCY_V2 = "multi_tenancy_v2"
 
 
 class Common:
@@ -57,4 +64,6 @@ class ExecutionLogConstants:
     LOG_QUEUE_NAME: str = "log_history_queue"
     CELERY_QUEUE_NAME = "celery_periodic_logs"
     PERIODIC_TASK_NAME = "workflow_log_history"
+    PERIODIC_TASK_NAME_V2 = "workflow_log_history_v2"
     TASK = "workflow_manager.workflow.execution_log_utils.consume_log_history"
+    TASK_V2 = "consume_log_history"
