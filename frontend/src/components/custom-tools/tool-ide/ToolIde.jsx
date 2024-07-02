@@ -58,7 +58,7 @@ function ToolIde() {
     pushIndexDoc,
     deleteIndexDoc,
     shareId,
-    isPublicSource
+    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { promptOnboardingMessage } = sessionDetails;
@@ -109,8 +109,8 @@ function ToolIde() {
           <DisplayLogs />
         </div>
       ),
-      extra: genExtra()
-    }
+      extra: genExtra(),
+    },
   ];
 
   const handleCollapse = (keys) => {
@@ -123,13 +123,13 @@ function ToolIde() {
     if (indexDocs.includes(docId)) {
       setAlertDetails({
         type: "error",
-        content: "This document is already getting indexed"
+        content: "This document is already getting indexed",
       });
       return;
     }
 
     const body = {
-      document_id: docId
+      document_id: docId,
     };
 
     const requestOptions = {
@@ -137,9 +137,9 @@ function ToolIde() {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/index-document/${details?.tool_id}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       },
-      data: body
+      data: body,
     };
 
     pushIndexDoc(docId);
@@ -147,12 +147,12 @@ function ToolIde() {
       .then(() => {
         setAlertDetails({
           type: "success",
-          content: `${doc?.document_name} - Indexed successfully`
+          content: `${doc?.document_name} - Indexed successfully`,
         });
 
         try {
           setPostHogCustomEvent("intent_success_ps_indexed_file", {
-            info: "Indexing completed"
+            info: "Indexing completed",
           });
         } catch (err) {
           // If an error occurs while setting custom posthog event, ignore it and continue
@@ -174,9 +174,9 @@ function ToolIde() {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       },
-      data: body
+      data: body,
     };
 
     return axiosPrivate(requestOptions)
@@ -192,24 +192,24 @@ function ToolIde() {
     if (disableLlmOrDocChange?.length > 0) {
       setAlertDetails({
         type: "error",
-        content: "Please wait for the run to complete"
+        content: "Please wait for the run to complete",
       });
       return;
     }
 
     const prevSelectedDoc = selectedDoc;
     const data = {
-      selectedDoc: doc
+      selectedDoc: doc,
     };
     updateCustomTool(data);
 
     const body = {
-      output: doc?.document_id
+      output: doc?.document_id,
     };
 
     handleUpdateTool(body).catch((err) => {
       const revertSelectedDoc = {
-        selectedDoc: prevSelectedDoc
+        selectedDoc: prevSelectedDoc,
       };
       updateCustomTool(revertSelectedDoc);
       setAlertDetails(handleException(err, "Failed to select the document"));

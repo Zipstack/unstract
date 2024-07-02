@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 
 import {
   defaultTokenUsage,
-  generateUUID
+  generateUUID,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -29,7 +29,7 @@ function PromptCard({
   handleChange,
   handleDelete,
   updateStatus,
-  updatePlaceHolder
+  updatePlaceHolder,
 }) {
   const [enforceTypeList, setEnforceTypeList] = useState([]);
   const [page, setPage] = useState(0);
@@ -40,7 +40,7 @@ function PromptCard({
   const [openEval, setOpenEval] = useState(false);
   const [result, setResult] = useState({
     promptOutputId: null,
-    output: ""
+    output: "",
   });
   const [coverage, setCoverage] = useState(0);
   const [coverageTotal, setCoverageTotal] = useState(0);
@@ -60,7 +60,7 @@ function PromptCard({
     summarizeIndexStatus,
     singlePassExtractMode,
     isSinglePassExtractLoading,
-    isPublicSource
+    isPublicSource,
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const { sessionDetails } = useSessionStore();
@@ -99,7 +99,7 @@ function PromptCard({
     // Set the progress message state with the found message
     setProgressMsg({
       message: msg?.message || "",
-      level: msg?.level || "INFO"
+      level: msg?.level || "INFO",
     });
   }, [messages]);
 
@@ -120,7 +120,7 @@ function PromptCard({
     selectedDoc,
     listOfDocs,
     singlePassExtractMode,
-    isSinglePassExtractLoading
+    isSinglePassExtractLoading,
   ]);
 
   useEffect(() => {
@@ -219,7 +219,7 @@ function PromptCard({
       // Update the entry for the provided docId with isLoading and output
       updatedDocOutputs[docId] = {
         isLoading,
-        output
+        output,
       };
       return updatedDocOutputs;
     });
@@ -229,7 +229,7 @@ function PromptCard({
   const handleRun = () => {
     try {
       setPostHogCustomEvent("ps_prompt_run", {
-        info: "Click on 'Run Prompt' button (Multi Pass)"
+        info: "Click on 'Run Prompt' button (Multi Pass)",
       });
     } catch (err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
@@ -238,7 +238,7 @@ function PromptCard({
     if (!promptDetails?.profile_manager?.length) {
       setAlertDetails({
         type: "error",
-        content: "LLM Profile is not selected"
+        content: "LLM Profile is not selected",
       });
       return;
     }
@@ -246,7 +246,7 @@ function PromptCard({
     if (!selectedDoc) {
       setAlertDetails({
         type: "error",
-        content: "Document not selected"
+        content: "Document not selected",
       });
       return;
     }
@@ -254,7 +254,7 @@ function PromptCard({
     if (!promptKey) {
       setAlertDetails({
         type: "error",
-        content: "Prompt key cannot be empty"
+        content: "Prompt key cannot be empty",
       });
       return;
     }
@@ -262,7 +262,7 @@ function PromptCard({
     if (!promptText) {
       setAlertDetails({
         type: "error",
-        content: "Prompt cannot be empty"
+        content: "Prompt cannot be empty",
       });
       return;
     }
@@ -289,7 +289,7 @@ function PromptCard({
       handleStepsAfterRunCompletion();
       setAlertDetails({
         type: "error",
-        content: `Summary needs to be indexed before running the prompt - ${selectedDoc?.document_name}.`
+        content: `Summary needs to be indexed before running the prompt - ${selectedDoc?.document_name}.`,
       });
       return;
     }
@@ -351,7 +351,7 @@ function PromptCard({
         setCoverageTotal(totalCoverageValue);
         setAlertDetails({
           type: "error",
-          content: `Summary needs to be indexed before running the prompt - ${item?.document_name}.`
+          content: `Summary needs to be indexed before running the prompt - ${item?.document_name}.`,
         });
         return;
       }
@@ -396,7 +396,7 @@ function PromptCard({
     const body = {
       document_id: docId,
       id: promptId,
-      run_id: runId
+      run_id: runId,
     };
 
     const requestOptions = {
@@ -404,9 +404,9 @@ function PromptCard({
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/${details?.tool_id}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       },
-      data: body
+      data: body,
     };
 
     return axiosPrivate(requestOptions)
@@ -424,7 +424,7 @@ function PromptCard({
     if (!selectedDoc || (!singlePassExtractMode && !selectedLlmProfileId)) {
       setResult({
         promptOutputId: null,
-        output: ""
+        output: "",
       });
       return;
     }
@@ -436,7 +436,7 @@ function PromptCard({
         if (!data || data?.length === 0) {
           setResult({
             promptOutputId: null,
-            output: ""
+            output: "",
           });
           return;
         }
@@ -448,7 +448,7 @@ function PromptCard({
           evalMetrics: getEvalMetrics(
             promptDetails?.evaluate,
             outputResult?.eval_metrics || []
-          )
+          ),
         });
       })
       .catch((err) => {
@@ -490,14 +490,14 @@ function PromptCard({
     }
     const requestPublicOptions = {
       method: "GET",
-      url: `/public/share/outputs-metadata/?id=${id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${profileManager}&is_single_pass_extract=${singlePassExtractMode}`
+      url: `/public/share/outputs-metadata/?id=${id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${profileManager}&is_single_pass_extract=${singlePassExtractMode}`,
     };
     const requestPrivateOptions = {
       method: "GET",
       url,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken
-      }
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
     };
     const requestOptions = isPublicSource
       ? requestPublicOptions
@@ -592,7 +592,7 @@ PromptCard.propTypes = {
   handleChange: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
   updateStatus: PropTypes.object.isRequired,
-  updatePlaceHolder: PropTypes.string
+  updatePlaceHolder: PropTypes.string,
 };
 
 export { PromptCard };

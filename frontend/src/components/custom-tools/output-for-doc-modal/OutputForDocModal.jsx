@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   CheckCircleFilled,
   CloseCircleFilled,
-  InfoCircleFilled
+  InfoCircleFilled,
 } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -23,26 +23,26 @@ const columns = [
   {
     title: "Document",
     dataIndex: "document",
-    key: "document"
+    key: "document",
   },
   {
     title: "Token Count",
     dataIndex: "token_count",
     key: "token_count",
-    width: 200
+    width: 200,
   },
   {
     title: "Value",
     dataIndex: "value",
     key: "value",
-    width: 600
-  }
+    width: 600,
+  },
 ];
 
 const outputStatus = {
   yet_to_process: "YET_TO_PROCESS",
   success: "SUCCESS",
-  fail: "FAIL"
+  fail: "FAIL",
 };
 
 const errorTypes = ["null", "undefined", "false"];
@@ -53,7 +53,7 @@ function OutputForDocModal({
   promptId,
   promptKey,
   profileManagerId,
-  docOutputs
+  docOutputs,
 }) {
   const [promptOutputs, setPromptOutputs] = useState([]);
   const [rows, setRows] = useState([]);
@@ -66,7 +66,7 @@ function OutputForDocModal({
     disableLlmOrDocChange,
     singlePassExtractMode,
     isSinglePassExtractLoading,
-    isPublicSource
+    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
@@ -163,12 +163,12 @@ function OutputForDocModal({
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken
-      }
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
     };
     const requestPublicOptions = {
       method: "GET",
-      url: `/public/share/outputs-metadata/?id=${id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`
+      url: `/public/share/outputs-metadata/?id=${id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`,
     };
     const requestOptions = isPublicSource
       ? requestPublicOptions
@@ -240,7 +240,7 @@ function OutputForDocModal({
               </Typography.Text>
             )}
           </>
-        )
+        ),
       };
       rowsData.push(result);
     });
@@ -295,7 +295,7 @@ OutputForDocModal.propTypes = {
   promptId: PropTypes.string.isRequired,
   promptKey: PropTypes.string.isRequired,
   profileManagerId: PropTypes.string,
-  docOutputs: PropTypes.object
+  docOutputs: PropTypes.object,
 };
 
 export { OutputForDocModal };

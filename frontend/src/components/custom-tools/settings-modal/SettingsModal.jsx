@@ -5,7 +5,7 @@ import {
   CodeOutlined,
   DiffOutlined,
   FileTextOutlined,
-  MessageOutlined
+  MessageOutlined,
 } from "@ant-design/icons";
 
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
@@ -42,7 +42,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       getMenuItem("Manage Grammar", 5, <MessageOutlined />),
       getMenuItem("Preamble", 6, <DiffOutlined />),
       getMenuItem("Postamble", 7, <DiffOutlined />),
-      getMenuItem("Manage Higlighting", 8, <CodeOutlined />)
+      getMenuItem("Manage Higlighting", 8, <CodeOutlined />),
     ];
 
     const listOfComponents = {
@@ -60,7 +60,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
           handleUpdateTool={handleUpdateTool}
         />
       ),
-      8: <HighLightMetaData handleUpdateTool={handleUpdateTool} />
+      8: <HighLightMetaData handleUpdateTool={handleUpdateTool} />,
     };
 
     let position = 1;
@@ -119,7 +119,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
     const items = [...llmProfiles].map((item) => {
       return {
         value: item?.profile_id,
-        label: item?.profile_name
+        label: item?.profile_name,
       };
     });
     setLlmItems(items);
@@ -167,7 +167,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
 SettingsModal.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
-  handleUpdateTool: PropTypes.func.isRequired
+  handleUpdateTool: PropTypes.func.isRequired,
 };
 
 export { SettingsModal };

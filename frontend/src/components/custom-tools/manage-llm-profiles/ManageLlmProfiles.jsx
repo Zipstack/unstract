@@ -18,46 +18,46 @@ const columns = [
   {
     title: "Name",
     dataIndex: "name",
-    key: "name"
+    key: "name",
   },
   {
     title: "LLM",
     dataIndex: "llm",
-    key: "llm"
+    key: "llm",
   },
   {
     title: "Embedding Model",
     dataIndex: "embedding_model",
-    key: "embedding_model"
+    key: "embedding_model",
   },
   {
     title: "Vector Database",
     dataIndex: "vector_db",
-    key: "vector_db"
+    key: "vector_db",
   },
   {
     title: "Text Extractor",
     dataIndex: "text_extractor",
-    key: "text_extractor"
+    key: "text_extractor",
   },
   {
     title: "",
     dataIndex: "delete",
     key: "delete",
-    width: 30
+    width: 30,
   },
   {
     title: "",
     dataIndex: "edit",
     key: "edit",
-    width: 30
+    width: 30,
   },
   {
     title: "Select Default",
     dataIndex: "select",
     key: "select",
-    align: "center"
-  }
+    align: "center",
+  },
 ];
 function ManageLlmProfiles() {
   const [rows, setRows] = useState([]);
@@ -70,7 +70,7 @@ function ManageLlmProfiles() {
     defaultLlmProfile,
     updateCustomTool,
     llmProfiles,
-    isPublicSource
+    isPublicSource,
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
@@ -79,14 +79,14 @@ function ManageLlmProfiles() {
   const handleDefaultLlm = (profileId) => {
     try {
       setPostHogCustomEvent("ps_profile_changed_per_prompt", {
-        info: "Selected default LLM profile"
+        info: "Selected default LLM profile",
       });
     } catch (err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
     const body = {
-      default_profile: profileId
+      default_profile: profileId,
     };
 
     const requestOptions = {
@@ -94,21 +94,21 @@ function ManageLlmProfiles() {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-studio-profile/${details?.tool_id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       },
-      data: body
+      data: body,
     };
 
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data;
         const updatedState = {
-          defaultLlmProfile: data?.default_profile
+          defaultLlmProfile: data?.default_profile,
         };
         updateCustomTool(updatedState);
         setAlertDetails({
           type: "success",
-          content: "Default LLM Profile updated successfully"
+          content: "Default LLM Profile updated successfully",
         });
       })
       .catch((err) => {
@@ -155,7 +155,7 @@ function ManageLlmProfiles() {
             onClick={() => handleDefaultLlm(item?.profile_id)}
             disabled={isPublicSource}
           />
-        )
+        ),
       };
     });
     setRows(modifiedRows);
@@ -166,7 +166,7 @@ function ManageLlmProfiles() {
 
     try {
       setPostHogCustomEvent("intent_ps_new_llm_profile", {
-        info: "Clicked on 'Add New LLM Profile' button"
+        info: "Clicked on 'Add New LLM Profile' button",
       });
     } catch (err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
@@ -183,8 +183,8 @@ function ManageLlmProfiles() {
       method: "DELETE",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/${id}/`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken
-      }
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
     };
 
     axiosPrivate(requestOptions)
@@ -193,7 +193,7 @@ function ManageLlmProfiles() {
           (item) => item?.profile_id !== id
         );
         const body = {
-          llmProfiles: modifiedLlmProfiles
+          llmProfiles: modifiedLlmProfiles,
         };
 
         // Reset the default LLM profile if it got deleted.

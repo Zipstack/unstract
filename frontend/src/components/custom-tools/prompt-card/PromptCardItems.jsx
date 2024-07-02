@@ -9,7 +9,7 @@ import {
   Space,
   Spin,
   Tag,
-  Typography
+  Typography,
 } from "antd";
 import { useEffect, useRef, useState } from "react";
 
@@ -46,7 +46,7 @@ function PromptCardItems({
   setOpenEval,
   setOpenOutputForDoc,
   selectedLlmProfileId,
-  page
+  page,
 }) {
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -60,7 +60,7 @@ function PromptCardItems({
     singlePassExtractMode,
     isSinglePassExtractLoading,
     indexDocs,
-    isPublicSource
+    isPublicSource,
   } = useCustomToolStore();
 
   useEffect(() => {
@@ -297,7 +297,7 @@ PromptCardItems.propTypes = {
   setOpenEval: PropTypes.func.isRequired,
   setOpenOutputForDoc: PropTypes.func.isRequired,
   selectedLlmProfileId: PropTypes.string,
-  page: PropTypes.number.isRequired
+  page: PropTypes.number.isRequired,
 };
 
 export { PromptCardItems };
