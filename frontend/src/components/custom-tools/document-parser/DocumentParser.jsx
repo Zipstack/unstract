@@ -16,6 +16,14 @@ import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { PromptDnd } from "../prompt-card/PrompDnd";
 
+let promptPatchApiSps;
+try {
+  promptPatchApiSps =
+    require("../../../plugins/simple-prompt-studio/helper").promptPatchApiSps;
+} catch {
+  // The component will remain null of it is not available
+}
+
 function DocumentParser({
   addPromptInstance,
   scrollToBottom,
@@ -26,7 +34,8 @@ function DocumentParser({
     status: null,
   });
   const bottomRef = useRef(null);
-  const { details, updateCustomTool } = useCustomToolStore();
+  const { details, isSimplePromptStudio, updateCustomTool } =
+    useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -98,9 +107,14 @@ function DocumentParser({
     const body = {
       [`${name}`]: value,
     };
+
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/${promptDetails?.prompt_id}/`;
+    if (isSimplePromptStudio) {
+      url = promptPatchApiSps(promptDetails?.prompt_id);
+    }
     const requestOptions = {
       method: "PATCH",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/${promptDetails?.prompt_id}/`,
+      url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
