@@ -141,7 +141,12 @@ function ToolsMain() {
     <div className="tools-main-layout">
       <div className="doc-manager-header">
         <div className="tools-main-tabs">
-          <Tabs activeKey={activeKey} items={items} onChange={onChange} />
+          <Tabs
+            activeKey={activeKey}
+            items={items}
+            onChange={onChange}
+            moreIcon={<></>}
+          />
         </div>
         <div className="display-flex-align-center">
           <ToolsMainActionBtns />

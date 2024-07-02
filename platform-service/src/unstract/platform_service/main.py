@@ -42,12 +42,10 @@ PG_BE_PASSWORD = os.environ.get("PG_BE_PASSWORD")
 PG_BE_DATABASE = os.environ.get("PG_BE_DATABASE")
 ENCRYPTION_KEY = EnvManager.get_required_setting("ENCRYPTION_KEY")
 MODEL_PRICES_URL = EnvManager.get_required_setting("MODEL_PRICES_URL")
-MODEL_PRICES_TTL_IN_DAYS = int(
-    EnvManager.get_required_setting("MODEL_PRICES_TTL_IN_DAYS")
-)
+MODEL_PRICES_TTL_IN_DAYS = EnvManager.get_required_setting("MODEL_PRICES_TTL_IN_DAYS")
 MODEL_PRICES_FILE_PATH = EnvManager.get_required_setting("MODEL_PRICES_FILE_PATH")
-
 EnvManager.raise_for_missing_envs()
+MODEL_PRICES_TTL_IN_DAYS = int(MODEL_PRICES_TTL_IN_DAYS)
 
 # TODO: Follow Flask best practices and refactor accordingly
 app = Flask("platform_service")
@@ -474,7 +472,7 @@ def custom_tool_instance() -> Any:
     http://localhost:3001/db/custom_tool_instance/prompt_registry_id=id1
     """
     bearer_token = get_token_from_auth_header(request)
-    organization_uid, organization_id = get_organization_from_bearer_token(bearer_token)
+    _, organization_id = get_organization_from_bearer_token(bearer_token)
     if not organization_id:
         return INVALID_ORGANIZATOIN, 403
 
@@ -486,7 +484,6 @@ def custom_tool_instance() -> Any:
                 db_instance=be_db,
                 organization_id=organization_id,
                 prompt_registry_id=prompt_registry_id,
-                organization_uid=organization_uid,
             )
             return jsonify(data_dict)
         except Exception as e:
@@ -508,4 +505,4 @@ def handle_custom_exception(error: Any) -> tuple[Response, Any]:
 
 if __name__ == "__main__":
     # Start the server
-    app.run()
+    app.run(host="0.0.0.0", port="3001")
