@@ -46,7 +46,6 @@ function CustomToolsHelper() {
         updatedCusTool["singlePassExtractMode"] =
           data?.single_pass_extraction_mode;
         selectedDocId = data?.output;
-        updatedCusTool["shareId"] = data?.share_id;
         const reqOpsDocs = {
           method: "GET",
           url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-document?tool_id=${data?.tool_id}`,
@@ -80,6 +79,17 @@ function CustomToolsHelper() {
       .then((res) => {
         const data = res?.data;
         updatedCusTool["llmProfiles"] = data;
+
+        const reqOpsShare = {
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/share-manager/tool-source/?tool_id=${id}`,
+        };
+        return handleApiRequest(reqOpsShare);
+      })
+      .then((res) => {
+        const data = res?.data;
+        console.log(data);
+        updatedCusTool["shareId"] = data?.share_id;
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to load the custom tool"));

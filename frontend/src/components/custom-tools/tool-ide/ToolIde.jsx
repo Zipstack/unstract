@@ -35,7 +35,8 @@ try {
     require("../../../plugins/public-share-modal/PromptShareModal.jsx").PromptShareModal;
   PromptShareLink =
     require("../../../plugins/public-link-modal/PromptShareLink.jsx").PromptShareLink;
-  CloneTitle = require("../../../clone-title-modal/CloneTitle.jsx").CloneTitle;
+  CloneTitle =
+    require("../../../plugins/clone-title-modal/CloneTitle.jsx").CloneTitle;
 } catch (err) {
   // Do nothing if plugins are not loaded.
 }
@@ -54,7 +55,6 @@ function ToolIde() {
     pushIndexDoc,
     deleteIndexDoc,
     shareId,
-    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { promptOnboardingMessage } = sessionDetails;
@@ -76,11 +76,11 @@ function ToolIde() {
     setShowLogsModal(false);
   };
   useEffect(() => {
-    if (shareId === null && openShareModal) {
+    if (!shareId && openShareModal) {
       setOpenShareConfirmation(true);
       setOpenShareLink(false);
     }
-    if (shareId !== null && openShareModal) {
+    if (shareId && openShareModal) {
       console.log(details);
       setOpenShareConfirmation(false);
       setOpenShareLink(true);

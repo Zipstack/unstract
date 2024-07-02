@@ -1,6 +1,4 @@
 import {
-  ArrowLeftOutlined,
-  EditOutlined,
   SettingOutlined,
   ShareAltOutlined,
   CopyOutlined,
@@ -8,7 +6,6 @@ import {
 import { Button, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import "./Header.css";
 import { HeaderTitle } from "../header-title/HeaderTitle.jsx";
 import { ExportToolIcon } from "../../../assets";
@@ -27,18 +24,14 @@ let CloneTitle;
 try {
   SinglePassToggleSwitch =
     require("../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch").SinglePassToggleSwitch;
+  PromptShareModal =
+    require("../../../plugins/public-share-modal/PromptShareModal.jsx").PromptShareModal;
+  CloneTitle =
+    require("../../../plugins/clone-title-modal/CloneTitle.jsx").CloneTitle;
 } catch {
   // The variable will remain undefined if the component is not available.
 }
-try {
-  PromptShareModal =
-    require("../../../plugins/public-share-modal/PromptShareModal.jsx").PromptShareModal;
-  PromptShareLink =
-    require("../../../plugins/public-link-modal/PromptShareLink.jsx").PromptShareLink;
-  CloneTitle = require("../../../clone-title-modal/CloneTitle.jsx").CloneTitle;
-} catch (err) {
-  // Do nothing if plugins are not loaded.
-}
+
 function Header({
   setOpenSettings,
   handleUpdateTool,
@@ -50,7 +43,6 @@ function Header({
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
-  const navigate = useNavigate();
   const handleException = useExceptionHandler();
   const [userList, setUserList] = useState([]);
   const [openExportToolModal, setOpenExportToolModal] = useState(false);

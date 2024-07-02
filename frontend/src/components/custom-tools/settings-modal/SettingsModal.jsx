@@ -68,7 +68,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       items.splice(
         position,
         0,
-        getMenuItem("Summary Manager", 2, <FileTextOutlined />)
+        getMenuItem("Summary Manager", 2, <FileTextOutlined />),
       );
       listOfComponents[2] = (
         <SummarizeManager
@@ -83,7 +83,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       items.splice(
         position,
         0,
-        getMenuItem("Evaluation Manager", 3, <FileTextOutlined />)
+        getMenuItem("Evaluation Manager", 3, <FileTextOutlined />),
       );
       listOfComponents[3] = (
         <EvaluationManager handleUpdateTool={handleUpdateTool} />
@@ -95,7 +95,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       items.splice(
         position,
         0,
-        getMenuItem("Challenge Manager", 4, <FileTextOutlined />)
+        getMenuItem("Challenge Manager", 4, <FileTextOutlined />),
       );
       listOfComponents[4] = (
         <ChallengeManager handleUpdateTool={handleUpdateTool} />
