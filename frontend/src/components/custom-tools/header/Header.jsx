@@ -6,7 +6,7 @@ import {
 import { Button, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useState } from "react";
-import "./Header.css";
+
 import { HeaderTitle } from "../header-title/HeaderTitle.jsx";
 import { ExportToolIcon } from "../../../assets";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -17,6 +17,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { ExportTool } from "../export-tool/ExportTool";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import "./Header.css";
 
 let SinglePassToggleSwitch;
 let PromptShareModal;
