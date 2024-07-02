@@ -98,6 +98,7 @@ function ConfigureConnectorModal({
               activeKey={activeKey}
               items={tabItems}
               onChange={onTabChange}
+              moreIcon={<></>}
             />
             {activeKey === "1" && (
               <ConfigureFormsLayout

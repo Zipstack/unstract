@@ -42,12 +42,10 @@ PG_BE_PASSWORD = os.environ.get("PG_BE_PASSWORD")
 PG_BE_DATABASE = os.environ.get("PG_BE_DATABASE")
 ENCRYPTION_KEY = EnvManager.get_required_setting("ENCRYPTION_KEY")
 MODEL_PRICES_URL = EnvManager.get_required_setting("MODEL_PRICES_URL")
-MODEL_PRICES_TTL_IN_DAYS = int(
-    EnvManager.get_required_setting("MODEL_PRICES_TTL_IN_DAYS")
-)
+MODEL_PRICES_TTL_IN_DAYS = EnvManager.get_required_setting("MODEL_PRICES_TTL_IN_DAYS")
 MODEL_PRICES_FILE_PATH = EnvManager.get_required_setting("MODEL_PRICES_FILE_PATH")
-
 EnvManager.raise_for_missing_envs()
+MODEL_PRICES_TTL_IN_DAYS = int(MODEL_PRICES_TTL_IN_DAYS)
 
 # TODO: Follow Flask best practices and refactor accordingly
 app = Flask("platform_service")
@@ -508,4 +506,4 @@ def handle_custom_exception(error: Any) -> tuple[Response, Any]:
 
 if __name__ == "__main__":
     # Start the server
-    app.run()
+    app.run(host="0.0.0.0", port="3001")
