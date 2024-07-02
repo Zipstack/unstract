@@ -6,9 +6,9 @@ Returns:
 
 import logging
 
+from feature_flag.helper import FeatureFlagHelper
 from rest_framework import status, viewsets
 from rest_framework.response import Response
-from utils.request.feature_flag import check_feature_flag_status, list_all_flags
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class FeatureFlagViewSet(viewsets.ViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            flag_enabled = check_feature_flag_status(flag_key)
+            flag_enabled = FeatureFlagHelper.check_flag_status(flag_key)
             return Response({"flag_status": flag_enabled}, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error("No response from server: %s", e)
@@ -38,7 +38,7 @@ class FeatureFlagViewSet(viewsets.ViewSet):
     def list(self, request):
         try:
             namespace_key = request.query_params.get("namespace", "default")
-            feature_flags = list_all_flags(namespace_key)
+            feature_flags = FeatureFlagHelper.list_all_flags(namespace_key)
             return Response({"feature_flags": feature_flags}, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error("No response from server: %s", e)
