@@ -570,30 +570,23 @@ function PromptCard({
       return Promise.reject(new Error("Polling timed out after 10 minutes"));
     }
 
-    return makeApiRequest(requestOptions)
-      .then((response) => {
-        if (response?.data?.status === "pending") {
-          return new Promise((resolve) =>
-            setTimeout(
-              () =>
-                resolve(
-                  pollForCompletion(
-                    startTime,
-                    requestOptions,
-                    maxWaitTime,
-                    pollingInterval
-                  )
-                ),
-              pollingInterval
-            )
-          );
-        } else {
-          return response;
-        }
-      })
-      .catch((err) => {
-        throw err;
-      });
+    const recursivePoll = () => {
+      return makeApiRequest(requestOptions)
+        .then((response) => {
+          if (response?.data?.status === "pending") {
+            return new Promise((resolve) =>
+              setTimeout(resolve, pollingInterval)
+            ).then(recursivePoll);
+          } else {
+            return response;
+          }
+        })
+        .catch((err) => {
+          throw err;
+        });
+    };
+
+    return recursivePoll();
   };
 
   const handleGetOutput = (profileManager = undefined) => {
