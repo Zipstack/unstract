@@ -16,48 +16,48 @@ class UnstractConnector(ABC):
     @staticmethod
     @abstractmethod
     def get_id() -> str:
-        pass
+        return ""
 
     @staticmethod
     @abstractmethod
     def get_name() -> str:
-        pass
+        return ""
 
     @staticmethod
     @abstractmethod
     def get_description() -> str:
-        pass
+        return ""
 
     @staticmethod
     @abstractmethod
     def get_icon() -> str:
-        pass
+        return ""
 
     @staticmethod
     @abstractmethod
     def get_json_schema() -> str:
-        pass
+        return ""
 
     @staticmethod
     @abstractmethod
     def can_write() -> bool:
-        pass
+        return False
 
     @staticmethod
     @abstractmethod
     def can_read() -> bool:
-        pass
+        return False
 
     @staticmethod
     @abstractmethod
     def requires_oauth() -> bool:
-        pass
+        return False
 
     # TODO: Move into UnstractFileSystem instead
     @staticmethod
     @abstractmethod
     def python_social_auth_backend() -> str:
-        pass
+        return ""
 
     @staticmethod
     @abstractmethod
