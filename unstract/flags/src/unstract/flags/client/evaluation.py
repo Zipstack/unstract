@@ -6,12 +6,15 @@ namespace key, flag key, entity ID, and optional context information as
 input parameters.
 """
 
+import logging
 from typing import Optional
 
 import grpc
 
 from ..generated import evaluation_pb2, evaluation_pb2_grpc
 from .base import BaseClient
+
+logger = logging.getLogger(__name__)
 
 
 class EvaluationClient(BaseClient):
@@ -48,5 +51,13 @@ class EvaluationClient(BaseClient):
             response = self.stub.Boolean(request)
             return bool(response.enabled)
         except grpc.RpcError as e:
-            print(f"Error communicating with evaluation server: {e}")
+            if e.code() == grpc.StatusCode.NOT_FOUND:
+                logger.warning(
+                    f"Flag key {flag_key} not found in namespace {namespace_key}."
+                )
+            else:
+                logger.warning(
+                    f"Error evaluating feature flag {flag_key} for {namespace_key}"
+                    f" : {str(e)}"
+                )
             return False
