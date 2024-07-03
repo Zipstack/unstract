@@ -76,7 +76,7 @@ try:
         ),
         path("app/", include("pluggable_apps.apps.app_deployment.urls")),
         path("chat_history/", include("pluggable_apps.apps.chat_history.urls")),
-        path("", include("pluggable_apps.apps.chat_transcript.urls")),
+        path("chat/", include("pluggable_apps.apps.chat_transcript.urls")),
     ]
 except ImportError:
     pass
