@@ -46,6 +46,7 @@ function CustomToolsHelper() {
         updatedCusTool["singlePassExtractMode"] =
           data?.single_pass_extraction_mode;
         selectedDocId = data?.output;
+        updatedCusTool["isSimplePromptStudio"] = false;
 
         const reqOpsDocs = {
           method: "GET",
