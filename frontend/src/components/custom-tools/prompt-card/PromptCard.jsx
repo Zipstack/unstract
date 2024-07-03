@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   defaultTokenUsage,
   generateUUID,
+  pollForCompletion,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -532,12 +533,16 @@ function PromptCard({
         data: body,
       };
 
+      const makeApiRequest = (requestOptions) => {
+        return axiosPrivate(requestOptions);
+      };
       const startTime = Date.now();
       return pollForCompletion(
         startTime,
         requestOptions,
         maxWaitTime,
-        pollingInterval
+        pollingInterval,
+        makeApiRequest
       )
         .then((response) => {
           return response;
@@ -553,40 +558,6 @@ function PromptCard({
           }
         });
     }
-  };
-
-  const makeApiRequest = (requestOptions) => {
-    return axiosPrivate(requestOptions);
-  };
-
-  const pollForCompletion = (
-    startTime,
-    requestOptions,
-    maxWaitTime,
-    pollingInterval
-  ) => {
-    const elapsedTime = Date.now() - startTime;
-    if (elapsedTime >= maxWaitTime) {
-      return Promise.reject(new Error("Polling timed out after 10 minutes"));
-    }
-
-    const recursivePoll = () => {
-      return makeApiRequest(requestOptions)
-        .then((response) => {
-          if (response?.data?.status === "pending") {
-            return new Promise((resolve) =>
-              setTimeout(resolve, pollingInterval)
-            ).then(recursivePoll);
-          } else {
-            return response;
-          }
-        })
-        .catch((err) => {
-          throw err;
-        });
-    };
-
-    return recursivePoll();
   };
 
   const handleGetOutput = (profileManager = undefined) => {

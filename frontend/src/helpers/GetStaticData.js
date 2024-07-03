@@ -447,6 +447,37 @@ function getFormattedTotalCost(result, profile) {
   return value === 0 ? 0 : value.toFixed(5);
 }
 
+const pollForCompletion = (
+  startTime,
+  requestOptions,
+  maxWaitTime,
+  pollingInterval,
+  makeApiRequest
+) => {
+  const elapsedTime = Date.now() - startTime;
+  if (elapsedTime >= maxWaitTime) {
+    return Promise.reject(new Error("Polling timed out after 10 minutes"));
+  }
+
+  const recursivePoll = () => {
+    return makeApiRequest(requestOptions)
+      .then((response) => {
+        if (response?.data?.status === "pending") {
+          return new Promise((resolve) =>
+            setTimeout(resolve, pollingInterval)
+          ).then(recursivePoll);
+        } else {
+          return response;
+        }
+      })
+      .catch((err) => {
+        throw err;
+      });
+  };
+
+  return recursivePoll();
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -487,4 +518,5 @@ export {
   generateUUID,
   getLLMModelNamesForProfiles,
   getFormattedTotalCost,
+  pollForCompletion,
 };
