@@ -55,10 +55,9 @@ class EvaluationClient(BaseClient):
                 logger.warning(
                     f"Flag key {flag_key} not found in namespace {namespace_key}."
                 )
-                return False
             else:
                 logger.warning(
                     f"Error evaluating feature flag {flag_key} for {namespace_key}"
                     f" : {str(e)}"
                 )
-                return False
+            return False
