@@ -57,7 +57,7 @@ class EvaluationClient(BaseClient):
                 )
             elif e.code() == grpc.StatusCode.UNAVAILABLE:
                 logger.warning(
-                    f"[WARNING] Evaluation server is unavailable: {e.details()}."
+                    f"Evaluation server is unavailable: {e.details()}."
                 )
             else:
                 logger.warning(
