@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 from typing import Any
@@ -10,6 +11,7 @@ from pipeline.models import Pipeline
 from pipeline.pipeline_processor import PipelineProcessor
 from workflow_manager.workflow.models.workflow import Workflow
 from workflow_manager.workflow.workflow_helper import WorkflowHelper
+from account.subscription_loader import etl_prerun_check
 
 logger = logging.getLogger(__name__)
 
@@ -57,13 +59,23 @@ def execute_pipeline_task(
     name: Any,
 ) -> None:
     logger.info(f"Executing pipeline name: {name}")
-
     try:
         logger.info(f"Executing workflow id: {workflow_id}")
         tenant: Organization = (
             get_tenant_model().objects.filter(schema_name=org_schema).first()
         )
         with tenant_context(tenant):
+            subscription_plugin_available = os.environ.get(
+                'SUBSCRIPTION_PLUGIN_AVAILABLE', 'False') == 'True'
+            logger.info(f"Is subscription available: {subscription_plugin_available}")
+
+            if subscription_plugin_available and not etl_prerun_check(org_schema):
+                try:
+                    logger.info(f"Disabling ETL task: {pipepline_id}")
+                    disable_task(pipepline_id)
+                except Exception as e:
+                    logger.error(f"Failed to disable task: {pipepline_id}. Error: {e}")
+
             workflow = Workflow.objects.get(id=workflow_id)
             logger.info(f"Executing workflow: {workflow}")
             PipelineProcessor.update_pipeline(
@@ -88,7 +100,6 @@ def delete_periodic_task(task_name: str) -> None:
         logger.error(f"Periodic task does not exist: {task_name}")
 
 
-@shared_task
 def disable_task(task_name: str) -> None:
     task = PeriodicTask.objects.get(name=task_name)
     task.enabled = False
@@ -96,7 +107,6 @@ def disable_task(task_name: str) -> None:
     PipelineProcessor.update_pipeline(task_name, Pipeline.PipelineStatus.PAUSED, False)
 
 
-@shared_task
 def enable_task(task_name: str) -> None:
     task = PeriodicTask.objects.get(name=task_name)
     task.enabled = True

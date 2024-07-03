@@ -4,6 +4,7 @@ from importlib import import_module
 from typing import Any
 
 from django.apps import apps
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,6 @@ class SubscriptionConfig:
     METADATA_NAME = "name"
     METADATA_SERVICE_CLASS = "service_class"
     METADATA_IS_ACTIVE = "is_active"
-
 
 def load_plugins() -> list[Any]:
     """Iterate through the subscription plugins and register them."""
@@ -60,6 +60,7 @@ def load_plugins() -> list[Any]:
                     module.metadata[SubscriptionConfig.METADATA_NAME],
                     module.metadata[SubscriptionConfig.METADATA_IS_ACTIVE],
                 )
+                os.environ['SUBSCRIPTION_PLUGIN_AVAILABLE'] = 'True'
             else:
                 logger.info(
                     "subscription plugin %s is not active.",
@@ -75,3 +76,27 @@ def load_plugins() -> list[Any]:
         logger.info("No subscription plugins found.")
 
     return subscription_plugins
+
+def etl_prerun_check(org_id):
+    subscription_plugin_available = os.environ.get('SUBSCRIPTION_PLUGIN_AVAILABLE', 'False') == 'True'
+    if not subscription_plugin_available:
+        return True
+
+    try:
+        from pluggable_apps.subscription.subscription_helper import SubscriptionHelper
+    except ModuleNotFoundError:
+        logger.error("Subscription plugin not found.")
+        return False
+
+    org_plans = SubscriptionHelper.get_subscription(org_id)
+    if not org_plans or not org_plans.is_active:
+        return False
+
+    if org_plans.is_paid:
+        return True
+
+    if timezone.now() >= org_plans.end_date:
+        logger.debug("Trial expired")
+        return False
+
+    return True
