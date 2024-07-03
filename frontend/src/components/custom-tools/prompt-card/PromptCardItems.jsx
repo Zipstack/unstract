@@ -79,6 +79,7 @@ function PromptCardItems({
     singlePassExtractMode,
     isSinglePassExtractLoading,
     indexDocs,
+    isSimplePromptStudio,
   } = useCustomToolStore();
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -292,66 +293,70 @@ function PromptCardItems({
             />
           </div>
           <>
-            <Divider className="prompt-card-divider" />
-            <Space
-              direction="vertical"
-              className={`prompt-card-comp-layout ${
-                !(isRunLoading || result?.output || result?.output === 0) &&
-                "prompt-card-comp-layout-border"
-              }`}
-            >
-              <div className="prompt-card-llm-profiles">
-                <Space direction="horizontal">
-                  {EvalBtn && !singlePassExtractMode && (
-                    <EvalBtn
-                      btnText={promptDetails?.evaluate ? "On" : "Off"}
-                      promptId={promptDetails?.prompt_id}
-                      setOpenEval={setOpenEval}
-                    />
-                  )}
-                  <Button
-                    size="small"
-                    type="link"
-                    className="display-flex-align-center prompt-card-action-button"
-                    onClick={() => setOpenOutputForDoc(true)}
-                  >
-                    <Space>
-                      {isCoverageLoading ? (
-                        <SpinnerLoader size="small" />
-                      ) : (
-                        <SearchOutlined className="font-size-12" />
+            {!isSimplePromptStudio && (
+              <>
+                <Divider className="prompt-card-divider" />
+                <Space
+                  direction="vertical"
+                  className={`prompt-card-comp-layout ${
+                    !(isRunLoading || result?.output || result?.output === 0) &&
+                    "prompt-card-comp-layout-border"
+                  }`}
+                >
+                  <div className="prompt-card-llm-profiles">
+                    <Space direction="horizontal">
+                      {EvalBtn && !singlePassExtractMode && (
+                        <EvalBtn
+                          btnText={promptDetails?.evaluate ? "On" : "Off"}
+                          promptId={promptDetails?.prompt_id}
+                          setOpenEval={setOpenEval}
+                        />
                       )}
-                      <Typography.Link className="font-size-12">
-                        Coverage:{" "}
-                        {coverage[
-                          `${promptDetails?.prompt_id}_${selectedLlmProfileId}`
-                        ]?.docs_covered?.length || 0}{" "}
-                        of {listOfDocs?.length || 0} docs
-                      </Typography.Link>
+                      <Button
+                        size="small"
+                        type="link"
+                        className="display-flex-align-center prompt-card-action-button"
+                        onClick={() => setOpenOutputForDoc(true)}
+                      >
+                        <Space>
+                          {isCoverageLoading ? (
+                            <SpinnerLoader size="small" />
+                          ) : (
+                            <SearchOutlined className="font-size-12" />
+                          )}
+                          <Typography.Link className="font-size-12">
+                            Coverage:{" "}
+                            {coverage[
+                              `${promptDetails?.prompt_id}_${selectedLlmProfileId}`
+                            ]?.docs_covered?.length || 0}{" "}
+                            of {listOfDocs?.length || 0} docs
+                          </Typography.Link>
+                        </Space>
+                      </Button>
                     </Space>
-                  </Button>
+                    <Space>
+                      <Select
+                        className="prompt-card-select-type"
+                        size="small"
+                        placeholder="Enforce Type"
+                        optionFilterProp="children"
+                        options={enforceTypeList}
+                        value={promptDetails?.enforce_type || null}
+                        disabled={
+                          disableLlmOrDocChange.includes(
+                            promptDetails?.prompt_id
+                          ) ||
+                          isSinglePassExtractLoading ||
+                          indexDocs.includes(selectedDoc?.document_id)
+                        }
+                        onChange={(value) => handleTypeChange(value)}
+                      />
+                    </Space>
+                  </div>
+                  {EvalMetrics && <EvalMetrics result={result} />}
                 </Space>
-                <Space>
-                  <Select
-                    className="prompt-card-select-type"
-                    size="small"
-                    placeholder="Enforce Type"
-                    optionFilterProp="children"
-                    options={enforceTypeList}
-                    value={promptDetails?.enforce_type || null}
-                    disabled={
-                      disableLlmOrDocChange.includes(
-                        promptDetails?.prompt_id
-                      ) ||
-                      isSinglePassExtractLoading ||
-                      indexDocs.includes(selectedDoc?.document_id)
-                    }
-                    onChange={(value) => handleTypeChange(value)}
-                  />
-                </Space>
-              </div>
-              {EvalMetrics && <EvalMetrics result={result} />}
-            </Space>
+              </>
+            )}
           </>
           <Row>
             <AnimatePresence>

@@ -1,4 +1,3 @@
-import Prism from "prismjs";
 import "prismjs/components/prism-json";
 import "prismjs/plugins/line-numbers/prism-line-numbers.css";
 import "prismjs/plugins/line-numbers/prism-line-numbers.js";
@@ -18,10 +17,18 @@ import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import TabPane from "antd/es/tabs/TabPane";
-import { Tabs } from "antd";
-import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
+import { JsonView } from "./JsonView";
 
+let TableView;
+let promptOutputApiSps;
+try {
+  TableView =
+    require("../../../plugins/simple-prompt-studio/TableView").TableView;
+  promptOutputApiSps =
+    require("../../../plugins/simple-prompt-studio/helper").promptOutputApiSps;
+} catch {
+  // The component will remain null of it is not available
+}
 function CombinedOutput({ docId, setFilledFields }) {
   const [combinedOutput, setCombinedOutput] = useState({});
   const [isOutputLoading, setIsOutputLoading] = useState(false);
@@ -33,6 +40,7 @@ function CombinedOutput({ docId, setFilledFields }) {
     singlePassExtractMode,
     isSinglePassExtractLoading,
     llmProfiles,
+    isSimplePromptStudio,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -107,20 +115,22 @@ function CombinedOutput({ docId, setFilledFields }) {
     selectedProfile,
   ]);
 
-  useEffect(() => {
-    Prism.highlightAll();
-  }, [combinedOutput]);
-
   const handleOutputApiRequest = async () => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}`;
+    if (isSimplePromptStudio) {
+      url = promptOutputApiSps(details?.tool_id, null, docId);
+    } else {
+      url = `/api/v1/unstract/${
         sessionDetails?.orgId
       }/prompt-studio/prompt-output/?tool_id=${
         details?.tool_id
       }&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}&profile_manager=${
         selectedProfile || defaultLlmProfile
-      }`,
+      }`;
+    }
+    const requestOptions = {
+      method: "GET",
+      url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -155,33 +165,18 @@ function CombinedOutput({ docId, setFilledFields }) {
     setActiveKey(key);
   };
 
+  if (isSimplePromptStudio && TableView) {
+    return <TableView combinedOutput={combinedOutput} />;
+  }
+
   return (
-    <div className="combined-op-layout">
-      <div className="combined-op-header">
-        <Tabs activeKey={activeKey} onChange={handleTabChange} moreIcon={<></>}>
-          <TabPane tab={<span>{"Default"}</span>} key={"0"}></TabPane>
-          {adapterData.map((adapter, index) => (
-            <TabPane
-              tab={<span>{adapter.llm_model}</span>}
-              key={(index + 1)?.toString()}
-            />
-          ))}
-        </Tabs>
-        <div className="combined-op-segment"></div>
-      </div>
-      <div className="combined-op-divider" />
-      <ProfileInfoBar profileId={selectedProfile} profiles={llmProfiles} />
-      <div className="combined-op-body code-snippet">
-        {combinedOutput && (
-          <pre className="line-numbers width-100">
-            <code className="language-javascript width-100">
-              {JSON.stringify(combinedOutput, null, 2)}
-            </code>
-          </pre>
-        )}
-      </div>
-      <div className="gap" />
-    </div>
+    <JsonView
+      combinedOutput={combinedOutput}
+      handleTabChange={handleTabChange}
+      selectedProfile={selectedProfile}
+      llmProfiles={llmProfiles}
+      activeKey={activeKey}
+    />
   );
 }
 

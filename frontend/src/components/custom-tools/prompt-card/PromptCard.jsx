@@ -23,6 +23,17 @@ const getEvalMetrics = (param1, param2) => {
   return [];
 };
 
+let promptRunApiSps;
+let promptOutputApiSps;
+try {
+  promptRunApiSps =
+    require("../../../plugins/simple-prompt-studio/helper").promptRunApiSps;
+  promptOutputApiSps =
+    require("../../../plugins/simple-prompt-studio/helper").promptOutputApiSps;
+} catch {
+  // The component will remain null of it is not available
+}
+
 function PromptCard({
   promptDetails,
   handleChange,
@@ -56,6 +67,7 @@ function PromptCard({
     summarizeIndexStatus,
     singlePassExtractMode,
     isSinglePassExtractLoading,
+    isSimplePromptStudio,
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const { sessionDetails } = useSessionStore();
@@ -67,8 +79,8 @@ function PromptCard({
   const { getTokenUsage } = useTokenUsage();
 
   useEffect(() => {
-    const outputTypeData = getDropdownItems("output_type");
-    const dropdownList1 = Object.keys(outputTypeData)?.map((item) => {
+    const outputTypeData = getDropdownItems("output_type") || {};
+    const dropdownList1 = Object.keys(outputTypeData).map((item) => {
       return { value: outputTypeData[item] };
     });
     setEnforceTypeList(dropdownList1);
@@ -186,6 +198,9 @@ function PromptCard({
   };
 
   const handleDocOutputs = (docId, isLoading, output) => {
+    if (isSimplePromptStudio) {
+      return;
+    }
     setDocOutputs((prev) => {
       const updatedDocOutputs = { ...prev };
       // Update the entry for the provided docId with isLoading and output
@@ -220,7 +235,8 @@ function PromptCard({
       if (
         !profileManagerId &&
         !promptDetails?.profile_manager?.length &&
-        !(!coverAllDoc && selectedLlmProfiles?.length > 0)
+        !(!coverAllDoc && selectedLlmProfiles?.length > 0) &&
+        !isSimplePromptStudio
       ) {
         setAlertDetails({
           type: "error",
@@ -365,11 +381,24 @@ function PromptCard({
           );
         })
         .finally(() => {
-          handleIsRunLoading(selectedDoc?.document_id, profileManagerId, false);
-          setIsCoverageLoading(false);
+          if (isSimplePromptStudio) {
+            handleIsRunLoading(
+              selectedDoc?.document_id,
+              profileManagerId,
+              false
+            );
+            setIsCoverageLoading(false);
+          } else {
+            handleStepsAfterRunCompletion();
+          }
         });
       runCoverageForAllDoc(coverAllDoc, profileManagerId);
     }
+  };
+
+  const handleStepsAfterRunCompletion = () => {
+    setCoverageTotal(1);
+    handleCoverage();
   };
 
   const runCoverageForAllDoc = (coverAllDoc, profileManagerId) => {
@@ -468,57 +497,66 @@ function PromptCard({
     const promptId = promptDetails?.prompt_id;
     const runId = generateUUID();
 
-    // Update the token usage state with default token usage for a specific document ID
-    const tokenUsageId = promptId + "__" + docId + "__" + profileManagerId;
-    setTokenUsage(tokenUsageId, defaultTokenUsage);
-
-    let intervalId;
-    if (
-      profileManagerId === selectedLlmProfileId &&
-      docId === selectedDoc?.document_id
-    ) {
-      // Set up an interval to fetch token usage data at regular intervals
-      intervalId = setInterval(
-        () => getTokenUsage(runId, tokenUsageId),
-        5000 // Fetch token usage data every 5000 milliseconds (5 seconds)
-      );
-    }
-    setTimers((prev) => ({
-      ...prev,
-      [tokenUsageId]: 0,
-    }));
-    const timerIntervalId = startTimer(tokenUsageId);
-
     const body = {
       document_id: docId,
       id: promptId,
-      run_id: runId,
     };
 
     if (profileManagerId) {
       body.profile_manager = profileManagerId;
+      let intervalId;
+      let tokenUsageId;
+      let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/${details?.tool_id}`;
+      if (!isSimplePromptStudio) {
+        body["run_id"] = runId;
+        // Update the token usage state with default token usage for a specific document ID
+        tokenUsageId = promptId + "__" + docId + "__" + profileManagerId;
+        setTokenUsage(tokenUsageId, defaultTokenUsage);
+
+        // Set up an interval to fetch token usage data at regular intervals
+        if (
+          profileManagerId === selectedLlmProfileId &&
+          docId === selectedDoc?.document_id
+        ) {
+          // Set up an interval to fetch token usage data at regular intervals
+          intervalId = setInterval(
+            () => getTokenUsage(runId, tokenUsageId),
+            5000 // Fetch token usage data every 5000 milliseconds (5 seconds)
+          );
+        }
+        setTimers((prev) => ({
+          ...prev,
+          [tokenUsageId]: 0,
+        }));
+      } else {
+        body["sps_id"] = details?.tool_id;
+        url = promptRunApiSps;
+      }
+      const timerIntervalId = startTimer(tokenUsageId);
+
+      const requestOptions = {
+        method: "POST",
+        url,
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: body,
+      };
+
+      return axiosPrivate(requestOptions)
+        .then((res) => res)
+        .catch((err) => {
+          throw err;
+        })
+        .finally(() => {
+          if (!isSimplePromptStudio) {
+            clearInterval(intervalId);
+            getTokenUsage(runId, tokenUsageId);
+            stopTimer(tokenUsageId, timerIntervalId);
+          }
+        });
     }
-
-    const requestOptions = {
-      method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/${details?.tool_id}`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json",
-      },
-      data: body,
-    };
-
-    return axiosPrivate(requestOptions)
-      .then((res) => res)
-      .catch((err) => {
-        throw err;
-      })
-      .finally(() => {
-        clearInterval(intervalId);
-        getTokenUsage(runId, tokenUsageId);
-        stopTimer(tokenUsageId, timerIntervalId);
-      });
   };
 
   const handleGetOutput = (profileManager = undefined) => {
@@ -537,6 +575,7 @@ function PromptCard({
       profileManager || selectedLlmProfileId,
       true
     );
+
     handleOutputApiRequest(true)
       .then((res) => {
         const data = res?.data;
@@ -593,12 +632,20 @@ function PromptCard({
   };
 
   const handleOutputApiRequest = async (isOutput) => {
+    let url;
     let profileManager = selectedLlmProfileId;
-    if (singlePassExtractMode) {
-      profileManager = defaultLlmProfile;
+    if (isSimplePromptStudio) {
+      url = promptOutputApiSps(
+        details?.tool_id,
+        promptDetails?.prompt_id,
+        null
+      );
+    } else {
+      if (singlePassExtractMode) {
+        profileManager = defaultLlmProfile;
+      }
+      url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${profileManager}&is_single_pass_extract=${singlePassExtractMode}`;
     }
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&is_single_pass_extract=${singlePassExtractMode}`;
-
     if (isOutput) {
       url += `&document_manager=${selectedDoc?.document_id}`;
     }
