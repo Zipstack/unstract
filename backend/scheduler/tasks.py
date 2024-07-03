@@ -1,9 +1,10 @@
-import os
 import json
 import logging
+import os
 from typing import Any
 
 from account.models import Organization
+from account.subscription_loader import etl_prerun_check
 from celery import shared_task
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from django_tenants.utils import get_tenant_model, tenant_context
@@ -11,7 +12,6 @@ from pipeline.models import Pipeline
 from pipeline.pipeline_processor import PipelineProcessor
 from workflow_manager.workflow.models.workflow import Workflow
 from workflow_manager.workflow.workflow_helper import WorkflowHelper
-from account.subscription_loader import etl_prerun_check
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +65,9 @@ def execute_pipeline_task(
             get_tenant_model().objects.filter(schema_name=org_schema).first()
         )
         with tenant_context(tenant):
-            subscription_plugin_available = os.environ.get(
-                'SUBSCRIPTION_PLUGIN_AVAILABLE', 'False') == 'True'
+            subscription_plugin_available = (
+                os.environ.get("SUBSCRIPTION_PLUGIN_AVAILABLE", "False") == "True"
+            )
             logger.info(f"Is subscription available: {subscription_plugin_available}")
 
             if subscription_plugin_available and not etl_prerun_check(org_schema):

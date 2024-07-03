@@ -20,6 +20,7 @@ class SubscriptionConfig:
     METADATA_SERVICE_CLASS = "service_class"
     METADATA_IS_ACTIVE = "is_active"
 
+
 def load_plugins() -> list[Any]:
     """Iterate through the subscription plugins and register them."""
     plugins_app = apps.get_app_config(SubscriptionConfig.PLUGINS_APP)
@@ -60,7 +61,7 @@ def load_plugins() -> list[Any]:
                     module.metadata[SubscriptionConfig.METADATA_NAME],
                     module.metadata[SubscriptionConfig.METADATA_IS_ACTIVE],
                 )
-                os.environ['SUBSCRIPTION_PLUGIN_AVAILABLE'] = 'True'
+                os.environ["SUBSCRIPTION_PLUGIN_AVAILABLE"] = "True"
             else:
                 logger.info(
                     "subscription plugin %s is not active.",
@@ -77,8 +78,11 @@ def load_plugins() -> list[Any]:
 
     return subscription_plugins
 
+
 def etl_prerun_check(org_id):
-    subscription_plugin_available = os.environ.get('SUBSCRIPTION_PLUGIN_AVAILABLE', 'False') == 'True'
+    subscription_plugin_available = (
+        os.environ.get("SUBSCRIPTION_PLUGIN_AVAILABLE", "False") == "True"
+    )
     if not subscription_plugin_available:
         return True
 
