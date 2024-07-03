@@ -65,15 +65,52 @@ try {
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
+// Import pages/components related to Simple Prompt Studio.
+let SimplePromptStudioHelper;
+let SimplePromptStudio;
+let SpsLanding;
+let SpsUpload;
+try {
+  SimplePromptStudioHelper =
+    require("../plugins/simple-prompt-studio/SimplePromptStudioHelper.jsx").SimplePromptStudioHelper;
+  SimplePromptStudio =
+    require("../plugins/simple-prompt-studio/SimplePromptStudio.jsx").SimplePromptStudio;
+  SpsLanding =
+    require("../plugins/simple-prompt-studio/SpsLanding.jsx").SpsLanding;
+  SpsUpload =
+    require("../plugins/simple-prompt-studio/SpsUpload.jsx").SpsUpload;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+
 function Router() {
   return (
     <Routes>
       <Route path="error" element={<GenericError />} />
       <Route path="" element={<PersistentLogin />}>
         {/* public routes */}
-        <Route path="" element={<RequireGuest />}>
-          <Route path="landing" element={<LandingPage />} />
+        <Route path="">
+          {/* public routes accessible only to unauthenticated users */}
+          <Route path="" element={<RequireGuest />}>
+            <Route path="landing" element={<LandingPage />} />
+          </Route>
+
+          {/* public routes accessible to both authenticated and unauthenticated users */}
+          {SimplePromptStudioHelper &&
+            SimplePromptStudio &&
+            SpsLanding &&
+            SpsUpload && (
+              <Route
+                path="simple-prompt-studio"
+                element={<SimplePromptStudioHelper />}
+              >
+                <Route path="" element={<SimplePromptStudio />} />
+                <Route path="landing" element={<SpsLanding />} />
+                <Route path="upload" element={<SpsUpload />} />
+              </Route>
+            )}
         </Route>
+
         {/* protected routes */}
         <Route path="setOrg" element={<SetOrgPage />} />
         <Route path="" element={<RequireAuth />}>
