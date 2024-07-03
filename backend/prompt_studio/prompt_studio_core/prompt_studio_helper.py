@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import time
 import uuid
 from pathlib import Path
 from typing import Any, Optional
@@ -18,7 +17,11 @@ from prompt_studio.prompt_profile_manager.profile_manager_helper import (
     ProfileManagerHelper,
 )
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
-from prompt_studio.prompt_studio_core.constants import LogLevels
+from prompt_studio.prompt_studio_core.constants import (
+    LogLevels,
+    ToolStudioErrors,
+    ToolStudioKeys,
+)
 from prompt_studio.prompt_studio_core.constants import ToolStudioPromptKeys as TSPKeys
 from prompt_studio.prompt_studio_core.document_indexing_service import (
     DocumentIndexingService,
@@ -362,7 +365,7 @@ class PromptStudioHelper:
             "Indexing successful",
         )
 
-        return doc_id
+        return doc_id.get("output")
 
     @staticmethod
     def prompt_responder(
@@ -455,6 +458,11 @@ class PromptStudioHelper:
                     profile_manager_id=profile_manager_id,
                     user_id=user_id,
                 )
+                if response.get("status") == ToolStudioKeys.PENDING_STATUS:
+                    return {
+                        "status": ToolStudioKeys.PENDING_STATUS,
+                        "message": ToolStudioErrors.DOCUMENT_BEING_INDEXED,
+                    }
 
                 OutputManagerHelper.handle_prompt_output_update(
                     run_id=run_id,
@@ -534,6 +542,11 @@ class PromptStudioHelper:
                     run_id=run_id,
                     user_id=user_id,
                 )
+                if response.get("status") == ToolStudioKeys.PENDING_STATUS:
+                    return {
+                        "status": ToolStudioKeys.PENDING_STATUS,
+                        "message": ToolStudioErrors.DOCUMENT_BEING_INDEXED,
+                    }
 
                 OutputManagerHelper.handle_prompt_output_update(
                     run_id=run_id,
@@ -644,7 +657,7 @@ class PromptStudioHelper:
         x2text = str(profile_manager.x2text.id)
         if not profile_manager:
             raise DefaultProfileError()
-        PromptStudioHelper.dynamic_indexer(
+        index_result = PromptStudioHelper.dynamic_indexer(
             profile_manager=profile_manager,
             file_path=doc_path,
             tool_id=str(tool.tool_id),
@@ -654,6 +667,11 @@ class PromptStudioHelper:
             run_id=run_id,
             user_id=user_id,
         )
+        if index_result.get("status") == ToolStudioKeys.PENDING_STATUS:
+            return {
+                "status": ToolStudioKeys.PENDING_STATUS,
+                "message": ToolStudioErrors.DOCUMENT_BEING_INDEXED,
+            }
 
         output: dict[str, Any] = {}
         outputs: list[dict[str, Any]] = []
@@ -798,19 +816,24 @@ class PromptStudioHelper:
                 file_path=file_path,
                 file_hash=None,
             )
-            indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
-                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
-            )
-            if indexed_doc_id:
-                return indexed_doc_id
-
-            # Polling if document is already being indexed
-            if DocumentIndexingService.is_document_indexing(
-                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
-            ):
-                PromptStudioHelper.wait_for_document_indexing(
+            if not reindex:
+                indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
                     org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
                 )
+                if indexed_doc_id:
+                    return {
+                        "status": ToolStudioKeys.COMPLETED_STATUS,
+                        "output": indexed_doc_id,
+                    }
+                # Polling if document is already being indexed
+                if DocumentIndexingService.is_document_indexing(
+                    org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+                ):
+                    return {
+                        "status": ToolStudioKeys.PENDING_STATUS,
+                        "output": ToolStudioErrors.DOCUMENT_BEING_INDEXED,
+                    }
+
             # Set the document as being indexed
             DocumentIndexingService.set_document_indexing(
                 org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
@@ -837,7 +860,7 @@ class PromptStudioHelper:
             DocumentIndexingService.mark_document_indexed(
                 org_id=org_id, user_id=user_id, doc_id_key=doc_id_key, doc_id=doc_id
             )
-            return doc_id
+            return {"status": ToolStudioKeys.COMPLETED_STATUS, "output": doc_id}
         except (IndexingError, IndexingAPIError, SdkError) as e:
             doc_name = os.path.split(file_path)[1]
             PromptStudioHelper._publish_log(
@@ -849,29 +872,6 @@ class PromptStudioHelper:
             raise IndexingAPIError(
                 f"Error while indexing '{doc_name}'. {str(e)}"
             ) from e
-
-    @staticmethod
-    def wait_for_document_indexing(org_id: str, user_id: str, doc_id_key: str) -> str:
-        max_wait_time = settings.MAX_WAIT_TIME  # 30 minutes
-        wait_time = 0
-        polling_interval = settings.POLLING_INTERVAL  # Poll every 5 seconds
-
-        while DocumentIndexingService.is_document_indexing(
-            org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
-        ):
-            if wait_time >= max_wait_time:
-                raise IndexingAPIError("Indexing timed out. Please try again later.")
-            time.sleep(polling_interval)
-            wait_time += polling_interval
-
-        # After waiting, check if the document is indexed
-        indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
-            org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
-        )
-        if indexed_doc_id:
-            return indexed_doc_id
-        else:
-            raise IndexingAPIError("Document indexing failed or document not found.")
 
     @staticmethod
     def _fetch_single_pass_response(
@@ -908,7 +908,7 @@ class PromptStudioHelper:
         if not default_profile:
             raise DefaultProfileError()
 
-        PromptStudioHelper.dynamic_indexer(
+        index_result = PromptStudioHelper.dynamic_indexer(
             profile_manager=default_profile,
             file_path=file_path,
             tool_id=tool_id,
@@ -918,6 +918,11 @@ class PromptStudioHelper:
             run_id=run_id,
             user_id=user_id,
         )
+        if index_result.get("status") == ToolStudioKeys.PENDING_STATUS:
+            return {
+                "status": ToolStudioKeys.PENDING_STATUS,
+                "message": ToolStudioErrors.DOCUMENT_BEING_INDEXED,
+            }
 
         vector_db = str(default_profile.vector_store.id)
         embedding_model = str(default_profile.embedding_model.id)

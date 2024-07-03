@@ -8,6 +8,8 @@ class ToolStudioKeys:
     PLATFORM_SERVICE_API_KEY = "PLATFORM_SERVICE_API_KEY"
     SUMMARIZE_LLM_PROFILE = "summarize_llm_profile"
     DEFAULT_PROFILE = "default_profile"
+    PENDING_STATUS = "pending"
+    COMPLETED_STATUS = "completed"
 
 
 class ToolStudioErrors:
@@ -16,6 +18,7 @@ class ToolStudioErrors:
     DUPLICATE_API = "It appears that a duplicate call may have been made."
     PLATFORM_ERROR = "Seems an error occured in Platform Service."
     PROMPT_NAME_EXISTS = "Prompt with the name already exists"
+    DOCUMENT_BEING_INDEXED = "Document is being indexed"
 
 
 class ToolStudioPromptKeys:

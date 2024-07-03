@@ -19,7 +19,7 @@ class DocumentIndexingService:
     def is_document_indexing(cls, org_id: str, user_id: str, doc_id_key: str) -> bool:
         return (
             CacheService.get_key(cls._cache_key(org_id, user_id, doc_id_key))
-            == b"started"
+            == "started"
         )
 
     @classmethod
@@ -37,7 +37,7 @@ class DocumentIndexingService:
         cls, org_id: str, user_id: str, doc_id_key: str
     ) -> Optional[str]:
         result = CacheService.get_key(cls._cache_key(org_id, user_id, doc_id_key))
-        if result and result != b"started":
+        if result and result != "started":
             return result
         return None
 

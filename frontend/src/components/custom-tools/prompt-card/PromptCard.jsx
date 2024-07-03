@@ -483,6 +483,8 @@ function PromptCard({
   const handleRunApiRequest = async (docId, profileManagerId) => {
     const promptId = promptDetails?.prompt_id;
     const runId = generateUUID();
+    const maxWaitTime = 10 * 60 * 1000; // 10 minutes
+    const pollingInterval = 5000; // 5 seconds
 
     const body = {
       document_id: docId,
@@ -530,9 +532,41 @@ function PromptCard({
         },
         data: body,
       };
+      const makeApiRequest = () => {
+        return axiosPrivate(requestOptions);
+      };
 
-      return axiosPrivate(requestOptions)
-        .then((res) => res)
+      const pollForCompletion = (startTime) => {
+        const elapsedTime = Date.now() - startTime;
+        if (elapsedTime >= maxWaitTime) {
+          return Promise.reject(
+            new Error("Polling timed out after 10 minutes")
+          );
+        }
+
+        return makeApiRequest()
+          .then((response) => {
+            if (response?.data?.status === "pending") {
+              return new Promise((resolve) =>
+                setTimeout(
+                  () => resolve(pollForCompletion(startTime)),
+                  pollingInterval
+                )
+              );
+            } else {
+              return response;
+            }
+          })
+          .catch((err) => {
+            throw err;
+          });
+      };
+
+      const startTime = Date.now();
+      return pollForCompletion(startTime)
+        .then((response) => {
+          return response;
+        })
         .catch((err) => {
           throw err;
         })
