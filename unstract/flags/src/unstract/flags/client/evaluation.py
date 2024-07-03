@@ -56,9 +56,7 @@ class EvaluationClient(BaseClient):
                     f"Flag key {flag_key} not found in namespace {namespace_key}."
                 )
             elif e.code() == grpc.StatusCode.UNAVAILABLE:
-                logger.warning(
-                    f"Evaluation server is unavailable: {e.details()}."
-                )
+                logger.warning(f"Evaluation server is unavailable: {e.details()}.")
             else:
                 logger.warning(
                     f"Error evaluating feature flag {flag_key} for {namespace_key}"
