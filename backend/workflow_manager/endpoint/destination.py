@@ -152,11 +152,13 @@ class DestinationConnector(BaseConnector):
             )
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
             result = self.get_result(file_history)
+            meta_data = self.get_metadata(file_history)
             self._push_to_queue(
                 file_name=file_name,
                 workflow=workflow,
                 result=result,
                 input_file_path=input_file_path,
+                meta_data=meta_data,
             )
         if not file_history:
             FileHistoryHelper.create_file_history(
@@ -480,6 +482,7 @@ class DestinationConnector(BaseConnector):
         workflow: Workflow,
         result: Optional[str] = None,
         input_file_path: Optional[str] = None,
+        meta_data: Optional[dict[str, Any]] = None,
     ) -> None:
         """Handle the Manual Review QUEUE result.
 
@@ -508,6 +511,7 @@ class DestinationConnector(BaseConnector):
             q_name = f"review_queue_{self.organization_id}_{workflow.workflow_name}"
             queue_result = {
                 "file": file_name,
+                "whisper_hash": meta_data["whisper-hash"],
                 "status": QueueResultStatus.SUCCESS,
                 "result": result,
                 "workflow_id": str(self.workflow_id),
