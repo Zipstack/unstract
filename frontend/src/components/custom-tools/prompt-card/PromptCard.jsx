@@ -381,24 +381,11 @@ function PromptCard({
           );
         })
         .finally(() => {
-          if (isSimplePromptStudio) {
-            handleIsRunLoading(
-              selectedDoc?.document_id,
-              profileManagerId,
-              false
-            );
-            setIsCoverageLoading(false);
-          } else {
-            handleStepsAfterRunCompletion();
-          }
+          setIsCoverageLoading(false);
+          handleIsRunLoading(selectedDoc?.document_id, profileManagerId, false);
         });
       runCoverageForAllDoc(coverAllDoc, profileManagerId);
     }
-  };
-
-  const handleStepsAfterRunCompletion = () => {
-    setCoverageTotal(1);
-    handleCoverage();
   };
 
   const runCoverageForAllDoc = (coverAllDoc, profileManagerId) => {
@@ -644,12 +631,11 @@ function PromptCard({
       if (singlePassExtractMode) {
         profileManager = defaultLlmProfile;
       }
-      url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${profileManager}&is_single_pass_extract=${singlePassExtractMode}`;
+      url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&is_single_pass_extract=${singlePassExtractMode}`;
     }
     if (isOutput) {
       url += `&document_manager=${selectedDoc?.document_id}`;
     }
-
     if (singlePassExtractMode) {
       url += `&profile_manager=${profileManager}`;
     }
