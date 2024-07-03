@@ -396,191 +396,184 @@ class PromptStudioHelper:
         """
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         doc_name: str = document.document_name
+        doc_path = PromptStudioHelper._get_document_path(
+            org_id, user_id, tool_id, doc_name
+        )
 
+        if id:
+            return PromptStudioHelper._execute_single_prompt(
+                id,
+                doc_path,
+                doc_name,
+                tool_id,
+                org_id,
+                user_id,
+                document_id,
+                run_id,
+                profile_manager_id,
+            )
+        else:
+            return PromptStudioHelper._execute_prompts_in_single_pass(
+                doc_path, tool_id, org_id, user_id, document_id, run_id
+            )
+
+    @staticmethod
+    def _execute_single_prompt(
+        id,
+        doc_path,
+        doc_name,
+        tool_id,
+        org_id,
+        user_id,
+        document_id,
+        run_id,
+        profile_manager_id,
+    ):
+        prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
+        prompt_name = prompt_instance.prompt_key
+        PromptStudioHelper._publish_log(
+            {
+                "tool_id": tool_id,
+                "run_id": run_id,
+                "prompt_key": prompt_name,
+                "doc_name": doc_name,
+            },
+            LogLevels.INFO,
+            LogLevels.RUN,
+            "Executing single prompt",
+        )
+        prompts = [prompt_instance]
+        tool = prompt_instance.tool_id
+
+        if tool.summarize_as_source:
+            directory, filename = os.path.split(doc_path)
+            doc_path = os.path.join(
+                directory, TSPKeys.SUMMARIZE, os.path.splitext(filename)[0] + ".txt"
+            )
+
+        PromptStudioHelper._publish_log(
+            {
+                "tool_id": tool_id,
+                "run_id": run_id,
+                "prompt_key": prompt_name,
+                "doc_name": doc_name,
+            },
+            LogLevels.DEBUG,
+            LogLevels.RUN,
+            "Invoking prompt service",
+        )
+
+        try:
+            response = PromptStudioHelper._fetch_response(
+                doc_path=doc_path,
+                doc_name=doc_name,
+                tool=tool,
+                prompt=prompt_instance,
+                org_id=org_id,
+                document_id=document_id,
+                run_id=run_id,
+                profile_manager_id=profile_manager_id,
+                user_id=user_id,
+            )
+            return PromptStudioHelper._handle_response(
+                response, run_id, prompts, document_id, False, profile_manager_id
+            )
+        except Exception as e:
+            logger.error(
+                f"[{tool.tool_id}] Error while fetching response for "
+                f"prompt {id} and doc {document_id}: {e}"
+            )
+            msg = str(e)
+            PromptStudioHelper._publish_log(
+                {
+                    "tool_id": tool_id,
+                    "run_id": run_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevels.ERROR,
+                LogLevels.RUN,
+                msg,
+            )
+            raise e
+
+    @staticmethod
+    def _execute_prompts_in_single_pass(
+        doc_path, tool_id, org_id, user_id, document_id, run_id
+    ):
+        prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
+        prompts = [prompt for prompt in prompts if prompt.prompt_type != TSPKeys.NOTES]
+        if not prompts:
+            logger.error(f"[{tool_id or 'NA'}] No prompts found for id: {id}")
+            raise NoPromptsFound()
+
+        PromptStudioHelper._publish_log(
+            {"tool_id": tool_id, "run_id": run_id, "prompt_id": str(id)},
+            LogLevels.INFO,
+            LogLevels.RUN,
+            "Executing prompts in single pass",
+        )
+
+        try:
+            tool = prompts[0].tool_id
+            response = PromptStudioHelper._fetch_single_pass_response(
+                file_path=doc_path,
+                tool=tool,
+                prompts=prompts,
+                org_id=org_id,
+                document_id=document_id,
+                run_id=run_id,
+                user_id=user_id,
+            )
+            return PromptStudioHelper._handle_response(
+                response, run_id, prompts, document_id, True
+            )
+        except Exception as e:
+            logger.error(
+                f"[{tool.tool_id}] Error while fetching single pass response: {e}"
+            )
+            PromptStudioHelper._publish_log(
+                {
+                    "tool_id": tool_id,
+                    "run_id": run_id,
+                    "prompt_id": str(id),
+                },
+                LogLevels.ERROR,
+                LogLevels.RUN,
+                f"Failed to fetch single pass response. {e}",
+            )
+            raise e
+
+    @staticmethod
+    def _get_document_path(org_id, user_id, tool_id, doc_name):
         doc_path = FileManagerHelper.handle_sub_directory_for_tenants(
             org_id=org_id,
             user_id=user_id,
             tool_id=tool_id,
             is_create=False,
         )
-        doc_path = str(Path(doc_path) / doc_name)
+        return str(Path(doc_path) / doc_name)
 
-        if id:
-            prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
-            prompt_name = prompt_instance.prompt_key
-            logger.info(f"[{tool_id}] Executing single prompt {id}")
-            PromptStudioHelper._publish_log(
-                {
-                    "tool_id": tool_id,
-                    "run_id": run_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevels.INFO,
-                LogLevels.RUN,
-                "Executing single prompt",
-            )
+    @staticmethod
+    def _handle_response(
+        response, run_id, prompts, document_id, is_single_pass, profile_manager_id=None
+    ):
+        if response.get("status") == ToolStudioKeys.PENDING_STATUS:
+            return {
+                "status": ToolStudioKeys.PENDING_STATUS,
+                "message": ToolStudioErrors.DOCUMENT_BEING_INDEXED,
+            }
 
-            prompts: list[ToolStudioPrompt] = []
-            prompts.append(prompt_instance)
-            tool: CustomTool = prompt_instance.tool_id
-
-            if tool.summarize_as_source:
-                directory, filename = os.path.split(doc_path)
-                doc_path = os.path.join(
-                    directory,
-                    TSPKeys.SUMMARIZE,
-                    os.path.splitext(filename)[0] + ".txt",
-                )
-
-            logger.info(f"[{tool.tool_id}] Invoking prompt service for prompt {id}")
-            PromptStudioHelper._publish_log(
-                {
-                    "tool_id": tool_id,
-                    "run_id": run_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevels.DEBUG,
-                LogLevels.RUN,
-                "Invoking prompt service",
-            )
-
-            try:
-                response = PromptStudioHelper._fetch_response(
-                    doc_path=doc_path,
-                    doc_name=doc_name,
-                    tool=tool,
-                    prompt=prompt_instance,
-                    org_id=org_id,
-                    document_id=document_id,
-                    run_id=run_id,
-                    profile_manager_id=profile_manager_id,
-                    user_id=user_id,
-                )
-                if response.get("status") == ToolStudioKeys.PENDING_STATUS:
-                    return {
-                        "status": ToolStudioKeys.PENDING_STATUS,
-                        "message": ToolStudioErrors.DOCUMENT_BEING_INDEXED,
-                    }
-
-                OutputManagerHelper.handle_prompt_output_update(
-                    run_id=run_id,
-                    prompts=prompts,
-                    outputs=response["output"],
-                    document_id=document_id,
-                    is_single_pass_extract=False,
-                    profile_manager_id=profile_manager_id,
-                    context=response["metadata"].get("context"),
-                )
-            # TODO: Review if this catch-all is required
-            except Exception as e:
-                logger.error(
-                    f"[{tool.tool_id}] Error while fetching response for "
-                    f"prompt {id} and doc {document_id}: {e}"
-                )
-                msg: str = (
-                    f"Error while fetching response for "
-                    f"'{prompt_name}' with '{doc_name}'. {e}"
-                )
-                if isinstance(e, AnswerFetchError):
-                    msg = str(e)
-                PromptStudioHelper._publish_log(
-                    {
-                        "tool_id": tool_id,
-                        "run_id": run_id,
-                        "prompt_key": prompt_name,
-                        "doc_name": doc_name,
-                    },
-                    LogLevels.ERROR,
-                    LogLevels.RUN,
-                    msg,
-                )
-                raise e
-
-            logger.info(
-                f"[{tool.tool_id}] Response fetched successfully for prompt {id}"
-            )
-            PromptStudioHelper._publish_log(
-                {
-                    "tool_id": tool_id,
-                    "run_id": run_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevels.INFO,
-                LogLevels.RUN,
-                "Single prompt execution completed",
-            )
-
-            return response
-        else:
-            prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
-            prompts = [
-                prompt for prompt in prompts if prompt.prompt_type != TSPKeys.NOTES
-            ]
-            if not prompts:
-                logger.error(f"[{tool_id or 'NA'}] No prompts found for id: {id}")
-                raise NoPromptsFound()
-
-            logger.info(f"[{tool_id}] Executing prompts in single pass")
-            PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "run_id": run_id, "prompt_id": str(id)},
-                LogLevels.INFO,
-                LogLevels.RUN,
-                "Executing prompts in single pass",
-            )
-
-            try:
-                tool = prompts[0].tool_id
-                response = PromptStudioHelper._fetch_single_pass_response(
-                    file_path=doc_path,
-                    tool=tool,
-                    prompts=prompts,
-                    org_id=org_id,
-                    document_id=document_id,
-                    run_id=run_id,
-                    user_id=user_id,
-                )
-                if response.get("status") == ToolStudioKeys.PENDING_STATUS:
-                    return {
-                        "status": ToolStudioKeys.PENDING_STATUS,
-                        "message": ToolStudioErrors.DOCUMENT_BEING_INDEXED,
-                    }
-
-                OutputManagerHelper.handle_prompt_output_update(
-                    run_id=run_id,
-                    prompts=prompts,
-                    outputs=response[TSPKeys.OUTPUT],
-                    document_id=document_id,
-                    is_single_pass_extract=True,
-                    context=response[TSPKeys.METADATA].get(TSPKeys.CONTEXT),
-                )
-            except Exception as e:
-                logger.error(
-                    f"[{tool.tool_id}] Error while fetching single pass response: {e}"  # noqa: E501
-                )
-                PromptStudioHelper._publish_log(
-                    {
-                        "tool_id": tool_id,
-                        "run_id": run_id,
-                        "prompt_id": str(id),
-                    },
-                    LogLevels.ERROR,
-                    LogLevels.RUN,
-                    f"Failed to fetch single pass response. {e}",
-                )
-                raise e
-
-            logger.info(f"[{tool.tool_id}] Single pass response fetched successfully")
-            PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "run_id": run_id, "prompt_id": str(id)},
-                LogLevels.INFO,
-                LogLevels.RUN,
-                "Single pass execution completed",
-            )
-
-            return response
+        OutputManagerHelper.handle_prompt_output_update(
+            run_id=run_id,
+            prompts=prompts,
+            outputs=response["output"],
+            document_id=document_id,
+            is_single_pass_extract=is_single_pass,
+            profile_manager_id=profile_manager_id,
+            context=response["metadata"].get("context"),
+        )
+        return response
 
     @staticmethod
     def _fetch_response(
@@ -618,12 +611,9 @@ class PromptStudioHelper:
         # Fetch the ProfileManager instance using the profile_manager_id if provided
         profile_manager = prompt.profile_manager
         if profile_manager_id:
-            try:
-                profile_manager = ProfileManagerHelper.get_profile_manager(
-                    profile_manager_id=profile_manager_id
-                )
-            except ValueError as e:
-                raise DefaultProfileError(str(e))
+            profile_manager = ProfileManagerHelper.get_profile_manager(
+                profile_manager_id=profile_manager_id
+            )
 
         monitor_llm_instance: Optional[AdapterInstance] = tool.monitor_llm
         monitor_llm: Optional[str] = None
@@ -769,7 +759,7 @@ class PromptStudioHelper:
         is_summary: bool = False,
         reindex: bool = False,
         run_id: str = None,
-    ) -> str:
+    ) -> Any:
         """Used to index a file based on the passed arguments.
 
         This is useful when a file needs to be indexed dynamically as the

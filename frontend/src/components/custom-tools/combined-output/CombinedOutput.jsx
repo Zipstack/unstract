@@ -116,7 +116,7 @@ function CombinedOutput({ docId, setFilledFields }) {
   ]);
 
   const handleOutputApiRequest = async () => {
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}`;
+    let url;
     if (isSimplePromptStudio) {
       url = promptOutputApiSps(details?.tool_id, null, docId);
     } else {

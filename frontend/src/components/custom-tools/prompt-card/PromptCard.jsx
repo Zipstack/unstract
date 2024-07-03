@@ -507,7 +507,6 @@ function PromptCard({
           profileManagerId === selectedLlmProfileId &&
           docId === selectedDoc?.document_id
         ) {
-          // Set up an interval to fetch token usage data at regular intervals
           intervalId = setInterval(
             () => getTokenUsage(runId, tokenUsageId),
             5000 // Fetch token usage data every 5000 milliseconds (5 seconds)
@@ -532,38 +531,14 @@ function PromptCard({
         },
         data: body,
       };
-      const makeApiRequest = () => {
-        return axiosPrivate(requestOptions);
-      };
-
-      const pollForCompletion = (startTime) => {
-        const elapsedTime = Date.now() - startTime;
-        if (elapsedTime >= maxWaitTime) {
-          return Promise.reject(
-            new Error("Polling timed out after 10 minutes")
-          );
-        }
-
-        return makeApiRequest()
-          .then((response) => {
-            if (response?.data?.status === "pending") {
-              return new Promise((resolve) =>
-                setTimeout(
-                  () => resolve(pollForCompletion(startTime)),
-                  pollingInterval
-                )
-              );
-            } else {
-              return response;
-            }
-          })
-          .catch((err) => {
-            throw err;
-          });
-      };
 
       const startTime = Date.now();
-      return pollForCompletion(startTime)
+      return pollForCompletion(
+        startTime,
+        requestOptions,
+        maxWaitTime,
+        pollingInterval
+      )
         .then((response) => {
           return response;
         })
@@ -578,6 +553,47 @@ function PromptCard({
           }
         });
     }
+  };
+
+  const makeApiRequest = (requestOptions) => {
+    return axiosPrivate(requestOptions);
+  };
+
+  const pollForCompletion = (
+    startTime,
+    requestOptions,
+    maxWaitTime,
+    pollingInterval
+  ) => {
+    const elapsedTime = Date.now() - startTime;
+    if (elapsedTime >= maxWaitTime) {
+      return Promise.reject(new Error("Polling timed out after 10 minutes"));
+    }
+
+    return makeApiRequest(requestOptions)
+      .then((response) => {
+        if (response?.data?.status === "pending") {
+          return new Promise((resolve) =>
+            setTimeout(
+              () =>
+                resolve(
+                  pollForCompletion(
+                    startTime,
+                    requestOptions,
+                    maxWaitTime,
+                    pollingInterval
+                  )
+                ),
+              pollingInterval
+            )
+          );
+        } else {
+          return response;
+        }
+      })
+      .catch((err) => {
+        throw err;
+      });
   };
 
   const handleGetOutput = (profileManager = undefined) => {
