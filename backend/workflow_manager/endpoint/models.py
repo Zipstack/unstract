@@ -15,6 +15,7 @@ class WorkflowEndpoint(BaseModel):
         FILESYSTEM = "FILESYSTEM", "FileSystem connector"
         DATABASE = "DATABASE", "Database Connector"
         API = "API", "API Connector"
+        APPDEPLOYMENT = "APPDEPLOYMENT", "App Deployment"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     workflow = models.ForeignKey(
