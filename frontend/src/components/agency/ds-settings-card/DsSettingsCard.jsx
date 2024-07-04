@@ -33,21 +33,6 @@ const tooltip = {
   output: "Data Destination Settings",
 };
 
-const inputOptions = [
-  {
-    value: "API",
-    label: "API",
-  },
-  {
-    value: "FILESYSTEM",
-    label: "File System",
-  },
-  {
-    value: "DATABASE",
-    label: "Database",
-  },
-];
-
 const disabledIdsByType = {
   FILE_SYSTEM: [
     "box|4d94d237-ce4b-45d8-8f34-ddeefc37c0bf",
@@ -77,16 +62,47 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const [selectedId, setSelectedId] = useState("");
   const [selectedItemName, setSelectedItemName] = useState("");
 
+  const [inputOptions, setInputOptions] = useState([
+    {
+      value: "API",
+      label: "API",
+    },
+    {
+      value: "FILESYSTEM",
+      label: "File System",
+    },
+    {
+      value: "DATABASE",
+      label: "Database",
+    },
+  ]);
+
   const { sessionDetails } = useSessionStore();
   const { updateWorkflow } = useWorkflowStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
 
+  const { flags } = sessionDetails;
+
   const icons = {
     input: <ImportOutlined className="ds-set-icon-size" />,
     output: <ExportOutlined className="ds-set-icon-size" />,
   };
+
+  useEffect(() => {
+    try {
+      const inputOption =
+        require("../../../plugins/dscard-input-options/AppDeploymentCardInputOptions").appDeploymentInputOption;
+      if (flags.app_deployment && inputOption) {
+        const updatedInputOptions = inputOptions;
+        updatedInputOptions.push(inputOption);
+        setInputOptions(updatedInputOptions);
+      }
+    } catch {
+      // The component will remain null of it is not available
+    }
+  }, []);
 
   useEffect(() => {
     if (type === "output") {
@@ -106,7 +122,8 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     if (type === "input") {
       // Remove Database from Source Dropdown
       const filteredOptions = inputOptions.filter(
-        (option) => option.value !== "DATABASE"
+        (option) =>
+          option.value !== "DATABASE" && option.value !== "APPDEPLOYMENT"
       );
       setOptions(filteredOptions);
     }
@@ -355,7 +372,9 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                   size="small"
                   onClick={() => setOpenModal(true)}
                   disabled={
-                    !endpointDetails?.connection_type || connType === "API"
+                    !endpointDetails?.connection_type ||
+                    connType === "API" ||
+                    connType === "APPDEPLOYMENT"
                   }
                 >
                   <SettingOutlined />
