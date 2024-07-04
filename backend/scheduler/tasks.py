@@ -3,7 +3,7 @@ import logging
 from typing import Any
 
 from account.models import Organization
-from account.subscription_loader import etl_prerun_check
+from account.subscription_loader import validate_etl_run
 from celery import shared_task
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from django_tenants.utils import get_tenant_model, tenant_context
@@ -66,7 +66,7 @@ def execute_pipeline_task(
         )
         with tenant_context(tenant):
             if (subscription_loader and subscription_loader[0] and
-                    not etl_prerun_check(org_schema)):
+                    not validate_etl_run(org_schema)):
                 try:
                     logger.info(f"Disabling ETL task: {pipepline_id}")
                     disable_task(pipepline_id)

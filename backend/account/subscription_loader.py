@@ -78,7 +78,7 @@ def load_plugins() -> list[Any]:
     return subscription_plugins
 
 
-def etl_prerun_check(org_id: str) -> bool:
+def validate_etl_run(org_id: str) -> bool:
     """Method to check subscription status before ETL runs.
 
     Args:
