@@ -33,13 +33,13 @@ try {
 }
 try {
   PromptShareModal =
-    require("../../../plugins/public-share-modal/PromptShareModal.jsx").PromptShareModal;
+    require("../../../plugins/prompt-studio-public-share/public-share-modal/PromptShareModal.jsx").PromptShareModal;
   PromptShareLink =
-    require("../../../plugins/public-link-modal/PromptShareLink.jsx").PromptShareLink;
+    require("../../../plugins/prompt-studio-public-share/public-link-modal/PromptShareLink.jsx").PromptShareLink;
   CloneTitle =
-    require("../../../plugins/clone-title-modal/CloneTitle.jsx").CloneTitle;
+    require("../../../plugins/prompt-studio-clone/clone-title-modal/CloneTitle.jsx").CloneTitle;
   HeaderPublic =
-    require("../../../plugins/header-public/HeaderPublic.jsx").HeaderPublic;
+    require("../../../plugins/prompt-studio-public-share/header-public/HeaderPublic.jsx").HeaderPublic;
 } catch (err) {
   // Do nothing if plugins are not loaded.
 }

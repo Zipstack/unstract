@@ -78,7 +78,7 @@ try {
 }
 try {
   PublicPromptStudioHelper =
-    require("../plugins/helpers/PublicPromptStudioHelper.js").PublicPromptStudioHelper;
+    require("../plugins/prompt-studio-public-share/helpers/PublicPromptStudioHelper.js").PublicPromptStudioHelper;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }

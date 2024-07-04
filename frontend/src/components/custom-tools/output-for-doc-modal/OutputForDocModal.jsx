@@ -19,6 +19,13 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 
+let publicOutputsApi;
+try {
+  publicOutputsApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
+} catch {
+  // The component will remain null of it is not available
+}
 const columns = [
   {
     title: "Document",
@@ -159,20 +166,17 @@ function OutputForDocModal({
       setRows([]);
       return;
     }
-    const requestPrivateOptions = {
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`;
+    if (isPublicSource) {
+      url = publicOutputsApi(id, promptId, profile, singlePassExtractMode);
+    }
+    const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`,
+      url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
-    const requestPublicOptions = {
-      method: "GET",
-      url: `/public/share/outputs-metadata/?id=${id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`,
-    };
-    const requestOptions = isPublicSource
-      ? requestPublicOptions
-      : requestPrivateOptions;
     setIsLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {

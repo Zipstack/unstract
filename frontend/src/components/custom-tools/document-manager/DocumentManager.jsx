@@ -21,6 +21,8 @@ import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { useParams } from "react-router-dom";
+
 const items = [
   {
     key: "1",
@@ -62,7 +64,13 @@ try {
 } catch {
   // The component will remain null of it is not available
 }
-
+let publicDocumentApi;
+try {
+  publicDocumentApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicDocumentApi;
+} catch {
+  // The component will remain null of it is not available
+}
 function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [openManageDocsModal, setOpenManageDocsModal] = useState(false);
   const [page, setPage] = useState(1);
@@ -89,6 +97,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const { id } = useParams();
 
   useEffect(() => {
     if (isSimplePromptStudio) {
@@ -186,18 +195,14 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   };
 
   const getDocuments = async (viewType) => {
-    const requestPublicOptions = {
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}?document_id=${selectedDoc?.document_id}&view_type=${viewType}`;
+    if (isPublicSource) {
+      url = publicDocumentApi(id, selectedDoc?.document_id, viewType);
+    }
+    const requestOptions = {
+      url,
       method: "GET",
-      url: `/public/share/document-contents/?id=${id}&document_id=${selectedDoc?.document_id}&view_type=${viewType}`,
     };
-    const requestPrivateOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}?document_id=${selectedDoc?.document_id}&view_type=${viewType}`,
-    };
-    const requestOptions = isPublicSource
-      ? requestPublicOptions
-      : requestPrivateOptions;
-
     handleLoadingStateUpdate(viewType, true);
     axiosPrivate(requestOptions)
       .then((res) => {

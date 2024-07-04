@@ -31,9 +31,9 @@ try {
 }
 try {
   PromptShareButton =
-    require("../../../plugins/public-share-btn/PromptShareButton.jsx").PromptShareButton;
+    require("../../../plugins/prompt-studio-public-share/public-share-btn/PromptShareButton.jsx").PromptShareButton;
   CloneButton =
-    require("../../../plugins/clone-btn/CloneButton.jsx").CloneButton;
+    require("../../../plugins/prompt-studio-clone/clone-btn/CloneButton.jsx").CloneButton;
 } catch {
   // The variable will remain undefined if the component is not available.
 }

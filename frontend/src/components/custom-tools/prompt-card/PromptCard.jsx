@@ -34,7 +34,13 @@ try {
 } catch {
   // The component will remain null of it is not available
 }
-
+let publicOutputsApi;
+try {
+  publicOutputsApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
+} catch {
+  // The component will remain null of it is not available
+}
 function PromptCard({
   promptDetails,
   handleChange,
@@ -526,24 +532,19 @@ function PromptCard({
       }
       url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${profileManager}&is_single_pass_extract=${singlePassExtractMode}`;
     }
-
+    if (isPublicSource) {
+      url = publicOutputsApi(id, promptId, profile, singlePassExtractMode);
+    }
     if (isOutput) {
       url += `&document_manager=${selectedDoc?.document_id}`;
     }
-    const requestPublicOptions = {
-      method: "GET",
-      url: `/public/share/outputs-metadata/?id=${id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${profileManager}&is_single_pass_extract=${singlePassExtractMode}`,
-    };
-    const requestPrivateOptions = {
+    const requestOptions = {
       method: "GET",
       url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
-    const requestOptions = isPublicSource
-      ? requestPublicOptions
-      : requestPrivateOptions;
     return axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data || [];
