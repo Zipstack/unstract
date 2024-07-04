@@ -50,7 +50,7 @@ class PlatformAuthenticationService:
             InternalServiceError: If an internal error occurs while
                 generating the platform key.
         """
-        organization: Organization = UserContext.get_organization()
+        organization: Organization = organization or UserContext.get_organization()
         if not organization:
             raise InternalServiceError("No valid organization provided")
         try:
@@ -236,7 +236,9 @@ class PlatformAuthenticationService:
             Any: platformKey.
         """
         try:
-            organization_id = UserContext.get_organization_identifier()
+            organization_id = (
+                organization_id or UserContext.get_organization_identifier()
+            )
             organization: Organization = OrganizationService.get_organization_by_org_id(
                 org_id=organization_id
             )
