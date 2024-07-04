@@ -192,6 +192,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
         }
         onChange={handleTabKey}
         items={TAB_ITEMS}
+        moreIcon={<></>}
       />
     </Modal>
   );

@@ -1,9 +1,11 @@
 """Feature flag utils file."""
 
+import logging
 from typing import Optional
 
-from unstract.flags.client.evaluation import EvaluationClient
-from unstract.flags.client.flipt import FliptClient
+from .client.evaluation import EvaluationClient
+
+logger = logging.getLogger(__name__)
 
 
 def check_feature_flag_status(
@@ -36,20 +38,5 @@ def check_feature_flag_status(
             context=context,
         )
         return bool(response)  # Wrap the response in a boolean check
-    except Exception as e:
-        print(f"Error: {str(e)}")
+    except Exception:
         return False
-
-
-def list_all_flags(
-    namespace_key: str,
-) -> dict:
-    try:
-        flipt_client = FliptClient()
-        response = flipt_client.list_feature_flags(
-            namespace_key=namespace_key,
-        )
-        return response
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        return {}
