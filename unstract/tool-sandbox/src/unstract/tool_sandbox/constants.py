@@ -12,3 +12,7 @@ class ToolCommandKey:
     SPEC = "spec"
     VARIABLES = "variables"
     ICON = "icon"
+
+
+class Common:
+    INCLUDE_METADATA = "include_metadata"

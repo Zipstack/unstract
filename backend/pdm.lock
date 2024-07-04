@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:62e6144be344e2e9499394e656f83fffa0c5a18ff001045d5fb5dc8c33d6d15a"
+content_hash = "sha256:03d0a714bfe69201a8cf35320b024636ff2eaad0fb7631eba4f9f0ab130f96e5"
 
 [[package]]
 name = "adlfs"
@@ -253,10 +253,6 @@ requires_python = ">=3.7"
 summary = "Timeout context manager for asyncio programs"
 groups = ["default"]
 marker = "python_version < \"3.12.0\""
-files = [
-    {file = "async-timeout-4.0.3.tar.gz", hash = "sha256:4640d96be84d82d02ed59ea2b7105a0f7b33abe8703703cd0ab0bf87c427522f"},
-    {file = "async_timeout-4.0.3-py3-none-any.whl", hash = "sha256:7405140ff1230c310e51dc27b3145b9092d659ce68ff733fb0cefe3ee42be028"},
-]
 
 [[package]]
 name = "asyncpg"
@@ -4736,7 +4732,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.35.0"
+version = "0.36.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -4751,8 +4747,8 @@ dependencies = [
     "unstract-adapters~=0.20.1",
 ]
 files = [
-    {file = "unstract_sdk-0.35.0-py3-none-any.whl", hash = "sha256:d91338a8f48c421f58ad6ae7337480eae39fd468b44a6a8f6bdc4784d1dac478"},
-    {file = "unstract_sdk-0.35.0.tar.gz", hash = "sha256:863622d5c785aba2bb549e61959bd1d85cd21376310a340031a41fb78eab47ed"},
+    {file = "unstract_sdk-0.36.0-py3-none-any.whl", hash = "sha256:6a8038a5c9b4b81888262829c02cbd3db5b020a2eb8b67ff8124e44c11d26ee1"},
+    {file = "unstract_sdk-0.36.0.tar.gz", hash = "sha256:7955b1839e84c9212ea0b8f43eec7882c3279b8eb24ec64596bb1c1f7ca2840b"},
 ]
 
 [[package]]

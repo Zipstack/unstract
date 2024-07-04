@@ -27,7 +27,7 @@ class StructureTool(BaseTool):
         prompt_registry_id: str = settings[SettingsKeys.PROMPT_REGISTRY_ID]
         challenge_llm: str = settings[SettingsKeys.CHALLENGE_LLM_ADAPTER_ID]
         enable_challenge: bool = settings[SettingsKeys.ENABLE_CHALLENGE]
-
+        include_metadata: bool = settings.get(SettingsKeys.INCLUDE_METADATA, False)
         summarize_as_source: bool = settings[SettingsKeys.SUMMARIZE_AS_SOURCE]
         single_pass_extraction_mode: bool = settings[
             SettingsKeys.SINGLE_PASS_EXTRACTION_MODE
@@ -80,7 +80,7 @@ class StructureTool(BaseTool):
             SettingsKeys.FILE_HASH: file_hash,
             SettingsKeys.FILE_NAME: file_name,
         }
-
+        params = {SettingsKeys.INCLUDE_METADATA: include_metadata}
         # TODO: Need to split extraction and indexing
         # to avoid unwanted indexing
         self.stream_log("Indexing document")
@@ -114,7 +114,10 @@ class StructureTool(BaseTool):
                 )
                 payload[SettingsKeys.FILE_HASH] = summarize_file_hash
             self.stream_log("Fetching response for single pass extraction")
-            prompt_service_resp = responder.single_pass_extraction(payload=payload)
+            prompt_service_resp = responder.single_pass_extraction(
+                payload=payload,
+                params=params,
+            )
         else:
             try:
                 # To reindex even if file is already
@@ -154,7 +157,10 @@ class StructureTool(BaseTool):
             except Exception as e:
                 self.stream_error_and_exit(f"Error fetching data and indexing: {e}")
             self.stream_log("Fetching responses for prompts...")
-            prompt_service_resp = responder.answer_prompt(payload=payload)
+            prompt_service_resp = responder.answer_prompt(
+                payload=payload,
+                params=params,
+            )
 
         # TODO: Make use of dataclasses
         if prompt_service_resp[SettingsKeys.STATUS] != SettingsKeys.OK:

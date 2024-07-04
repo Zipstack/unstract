@@ -184,9 +184,11 @@ def prompt_processor() -> Any:
     file_hash = payload.get(PSKeys.FILE_HASH)
     doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
-
+    include_metadata = (
+        request.args.get(PSKeys.INCLUDE_METADATA, "false").lower() == "true"
+    )
     structured_output: dict[str, Any] = {}
-    metadata: dict[str, Any] = {
+    metadata: Optional[dict[str, Any]] = {
         PSKeys.RUN_ID: run_id,
         PSKeys.CONTEXT: {},
     }
@@ -701,8 +703,11 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         "Execution complete",
     )
-    metadata = query_usage_metadata(db=be_db, token=platform_key, metadata=metadata)
-    response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
+    if include_metadata:
+        metadata = query_usage_metadata(db=be_db, token=platform_key, metadata=metadata)
+        response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
+    else:
+        response = {PSKeys.OUTPUT: structured_output}
     return response
 
 
