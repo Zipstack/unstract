@@ -66,7 +66,7 @@ try:
     import pluggable_apps.apps.canned_question.urls  # noqa # pylint: disable=unused-import
     import pluggable_apps.apps.chat_history.urls  # noqa # pylint: disable=unused-import
     import pluggable_apps.apps.chat_transcript.urls  # noqa # pylint: disable=unused-import
-    import pluggable_apps.clone.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.clone.urls  # pylint: disable=unused-import
     import pluggable_apps.public_shares.share_manager.urls  # noqa # pylint: disable=unused-import
     import pluggable_apps.subscription.urls  # noqa # pylint: disable=unused-import
 
