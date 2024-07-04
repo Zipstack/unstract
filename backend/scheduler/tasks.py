@@ -3,7 +3,7 @@ import logging
 from typing import Any
 
 from account.models import Organization
-from account.subscription_loader import validate_etl_run, load_plugins
+from account.subscription_loader import load_plugins, validate_etl_run
 from celery import shared_task
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from django_tenants.utils import get_tenant_model, tenant_context
