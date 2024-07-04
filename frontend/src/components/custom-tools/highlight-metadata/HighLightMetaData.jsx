@@ -19,7 +19,7 @@ function HighLightMetaData({ handleUpdateTool }) {
   const handleException = useExceptionHandler();
 
   useEffect(() => {
-    setEnableHighlighting(details?.enable_challenge || false);
+    setEnableHighlighting(details?.enable_highlight || false);
   }, []);
 
   const handleSubmit = () => {
