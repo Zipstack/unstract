@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:ae728f45c0b04eacc0f8de9a60d6447f21612514c9751bafa85b781a3cc998f2"
+content_hash = "sha256:e44a922825595cf7f256050a330acd33562042e47b5a7d43c95d9fbc9f37b5cf"
 
 [[package]]
 name = "aiohttp"
@@ -693,13 +693,13 @@ files = [
 
 [[package]]
 name = "fsspec"
-version = "2024.6.1"
+version = "2024.6.0"
 requires_python = ">=3.8"
 summary = "File-system specification"
 groups = ["default"]
 files = [
-    {file = "fsspec-2024.6.1-py3-none-any.whl", hash = "sha256:3cb443f8bcd2efb31295a5b9fdb02aee81d8452c80d28f97a6d0959e6cee101e"},
-    {file = "fsspec-2024.6.1.tar.gz", hash = "sha256:fad7d7e209dd4c1208e3bbfda706620e0da5142bebbd9c384afb95b07e798e49"},
+    {file = "fsspec-2024.6.0-py3-none-any.whl", hash = "sha256:58d7122eb8a1a46f7f13453187bfea4972d66bf01618d37366521b1998034cee"},
+    {file = "fsspec-2024.6.0.tar.gz", hash = "sha256:f579960a56e6d8038a9efc8f9c77279ec12e6299aa86b0769a7e9c46b94527c2"},
 ]
 
 [[package]]
@@ -3223,8 +3223,8 @@ requires_python = ">=3.7"
 summary = "Database Abstraction Library"
 groups = ["default"]
 dependencies = [
+    "SQLAlchemy==2.0.31",
     "greenlet!=0.4.17",
-    "sqlalchemy==2.0.31",
 ]
 files = [
     {file = "SQLAlchemy-2.0.31-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:f2a213c1b699d3f5768a7272de720387ae0122f1becf0901ed6eaa1abd1baf6c"},
@@ -3571,7 +3571,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.35.0"
+version = "0.36.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3586,8 +3586,8 @@ dependencies = [
     "unstract-adapters~=0.20.1",
 ]
 files = [
-    {file = "unstract_sdk-0.35.0-py3-none-any.whl", hash = "sha256:d91338a8f48c421f58ad6ae7337480eae39fd468b44a6a8f6bdc4784d1dac478"},
-    {file = "unstract_sdk-0.35.0.tar.gz", hash = "sha256:863622d5c785aba2bb549e61959bd1d85cd21376310a340031a41fb78eab47ed"},
+    {file = "unstract_sdk-0.36.0-py3-none-any.whl", hash = "sha256:6a8038a5c9b4b81888262829c02cbd3db5b020a2eb8b67ff8124e44c11d26ee1"},
+    {file = "unstract_sdk-0.36.0.tar.gz", hash = "sha256:7955b1839e84c9212ea0b8f43eec7882c3279b8eb24ec64596bb1c1f7ca2840b"},
 ]
 
 [[package]]
