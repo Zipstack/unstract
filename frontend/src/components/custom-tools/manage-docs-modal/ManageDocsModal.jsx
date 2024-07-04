@@ -138,12 +138,10 @@ function ManageDocsModal({
   }, [defaultLlmProfile, details]);
 
   useEffect(() => {
-    if (!open) {
+    if (!open || isPublicSource) {
       return;
     }
-    if (!isPublicSource) {
-      handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
-    }
+    handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
   }, [indexDocs, rawLlmProfile, open]);
 
   useEffect(() => {
