@@ -533,7 +533,12 @@ function PromptCard({
       url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&profile_manager=${profileManager}&is_single_pass_extract=${singlePassExtractMode}`;
     }
     if (isPublicSource) {
-      url = publicOutputsApi(id, promptId, profile, singlePassExtractMode);
+      url = publicOutputsApi(
+        id,
+        promptDetails?.promptId,
+        profileManager,
+        singlePassExtractMode
+      );
     }
     if (isOutput) {
       url += `&document_manager=${selectedDoc?.document_id}`;

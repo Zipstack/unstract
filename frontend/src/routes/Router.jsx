@@ -88,8 +88,38 @@ function Router() {
       <Route path="error" element={<GenericError />} />
       <Route path="" element={<PersistentLogin />}>
         {/* public routes */}
-        <Route path="" element={<RequireGuest />}>
-          <Route path="landing" element={<LandingPage />} />
+        <Route path="">
+          {/* public routes accessible only to unauthenticated users */}
+          <Route path="" element={<RequireGuest />}>
+            <Route path="landing" element={<LandingPage />} />
+          </Route>
+
+          {/* public routes accessible to both authenticated and unauthenticated users */}
+          {SimplePromptStudioHelper &&
+            SimplePromptStudio &&
+            SpsLanding &&
+            SpsUpload && (
+              <Route
+                path="simple-prompt-studio"
+                element={<SimplePromptStudioHelper />}
+              >
+                <Route path="" element={<SimplePromptStudio />} />
+                <Route path="landing" element={<SpsLanding />} />
+                <Route path="upload" element={<SpsUpload />} />
+              </Route>
+            )}
+          {PublicPromptStudioHelper && (
+            <Route
+              path="/promptStudio/share/:id"
+              element={<PublicPromptStudioHelper />}
+            >
+              <Route path="" element={<ToolIdePage />} />
+              <Route
+                path="/promptStudio/share/:id/outputAnalyzer"
+                element={<OutputAnalyzerPage />}
+              />
+            </Route>
+          )}
         </Route>
 
         {/* protected routes */}

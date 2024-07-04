@@ -1,7 +1,5 @@
 import {
   SettingOutlined,
-  ShareAltOutlined,
-  CopyOutlined,
 } from "@ant-design/icons";
 import { Button, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
@@ -20,7 +18,6 @@ import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import "./Header.css";
 
 let SinglePassToggleSwitch;
-let PromptShareModal;
 let CloneButton;
 let PromptShareButton;
 try {
