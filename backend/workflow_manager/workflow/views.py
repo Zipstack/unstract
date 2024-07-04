@@ -240,9 +240,9 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         else:
             execution_response = WorkflowHelper.complete_execution(
                 workflow=workflow,
-                include_metadata=include_metadata,
                 execution_id=execution_id,
                 hash_values_of_files=hash_values_of_files,
+                include_metadata=include_metadata,
             )
         return execution_response
 
