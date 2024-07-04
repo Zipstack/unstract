@@ -362,6 +362,7 @@ class WorkflowHelper:
             execution_id (str): Execution ID
             timeout (int):  Celery timeout (timeout -1 : async execution)
             pipeline_id (Optional[str], optional): Optional pipeline. Defaults to None.
+            include_metadata (bool): Whether to include metadata in the prompt output
 
         Returns:
             ExecutionResponse: Existing status of execution
@@ -445,6 +446,7 @@ class WorkflowHelper:
             execution_mode (Optional[WorkflowExecution.Mode]): WorkflowExecution Mode
                 Defaults to None
             pipeline_id (Optional[str], optional): Id of pipeline. Defaults to None
+            include_metadata (bool): Whether to include metadata in the prompt output
 
         Kwargs:
             log_events_id (str): Session ID of the user,
