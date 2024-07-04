@@ -6,13 +6,23 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('endpoint', '0002_alter_workflowendpoint_connection_type'),
+        ("endpoint", "0002_alter_workflowendpoint_connection_type"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='workflowendpoint',
-            name='connection_type',
-            field=models.CharField(blank=True, choices=[('FILESYSTEM', 'FileSystem connector'), ('DATABASE', 'Database Connector'), ('API', 'API Connector'), ('APPDEPLOYMENT', 'App Deployment'), ('MANUALREVIEW', 'Manual Review Queue Connector')], db_comment='Connection type (Filesystem, Database, API or Manualreview)'),
+            model_name="workflowendpoint",
+            name="connection_type",
+            field=models.CharField(
+                blank=True,
+                choices=[
+                    ("FILESYSTEM", "FileSystem connector"),
+                    ("DATABASE", "Database Connector"),
+                    ("API", "API Connector"),
+                    ("APPDEPLOYMENT", "App Deployment"),
+                    ("MANUALREVIEW", "Manual Review Queue Connector"),
+                ],
+                db_comment="Connection type (Filesystem, Database, API or Manualreview)",
+            ),
         ),
     ]

@@ -6,13 +6,23 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('connector', '0003_alter_connectorinstance_connector_mode'),
+        ("connector", "0003_alter_connectorinstance_connector_mode"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='connectorinstance',
-            name='connector_mode',
-            field=models.CharField(choices=[(0, 'UNKNOWN'), (1, 'FILE_SYSTEM'), (2, 'DATABASE'), (3, 'APPDEPLOYMENT'), (4, 'MANUAL_REVIEW')], db_comment='Choices of connectors', default=0),
+            model_name="connectorinstance",
+            name="connector_mode",
+            field=models.CharField(
+                choices=[
+                    (0, "UNKNOWN"),
+                    (1, "FILE_SYSTEM"),
+                    (2, "DATABASE"),
+                    (3, "APPDEPLOYMENT"),
+                    (4, "MANUAL_REVIEW"),
+                ],
+                db_comment="Choices of connectors",
+                default=0,
+            ),
         ),
     ]

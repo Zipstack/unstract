@@ -13,15 +13,18 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+
 class QueueResultStatus(Enum):
     SUCCESS = "success"
     FAILURE = "failure"
     # Add other statuses as needed
 
+
 class ConnectorError(Exception):
     """Custom exception for connection-related errors."""
 
     pass
+
 
 class QueueUtils:
     @staticmethod
@@ -35,6 +38,7 @@ class QueueUtils:
         connector_class: UnstractQueue = connector(connector_settings)
         return connector_class
 
+
 @dataclass
 class QueueResult:
     file: str
@@ -43,4 +47,3 @@ class QueueResult:
     result: Any
     workflow_id: str
     file_content: str
-    

@@ -28,7 +28,7 @@ from workflow_manager.endpoint.exceptions import (
     ToolOutputTypeMismatch,
 )
 from workflow_manager.endpoint.models import WorkflowEndpoint
-from workflow_manager.endpoint.queue_utils import QueueUtils, QueueResult
+from workflow_manager.endpoint.queue_utils import QueueResult, QueueUtils
 from workflow_manager.workflow.enums import ExecutionStatus
 from workflow_manager.workflow.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow.models.file_history import FileHistory
