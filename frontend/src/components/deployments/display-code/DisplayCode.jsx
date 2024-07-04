@@ -46,7 +46,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
         headers = {
           'Authorization': 'Bearer REPLACE_WITH_API_KEY'
         }
-        payload = {'timeout': 300, 'include_metadata': True}
+        payload = {'timeout': 300, 'include_metadata': False}
         filepath = '/path/to/file'
         files=[('files',('file',open(filepath,'rb'),'application/octet-stream'))]
         response = requests.request("POST", api_url, headers=headers, data=payload, files=files)
@@ -72,7 +72,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
     --header 'Authorization: Bearer REPLACE_WITH_API_KEY' \\
     --form 'files=@"{{pathToFile}}"' \\
     --form 'timeout=300' \\
-    --form 'include_metadata=true'
+    --form 'include_metadata=false'
     {{else}}
     curl --location '{{url}}?execution_id=REPLACE_WITH_EXECUTION_ID' \\
     --header 'Authorization: Bearer REPLACE_WITH_API_KEY'
