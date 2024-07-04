@@ -85,7 +85,6 @@ function ToolIde() {
       setOpenShareLink(false);
     }
     if (shareId && openShareModal) {
-      console.log(details);
       setOpenShareConfirmation(false);
       setOpenShareLink(true);
     }

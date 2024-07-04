@@ -90,7 +90,6 @@ function CustomToolsHelper() {
       })
       .then((res) => {
         const data = res?.data;
-        console.log(data);
         updatedCusTool["shareId"] = data?.share_id;
       })
       .catch((err) => {
