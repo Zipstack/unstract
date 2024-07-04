@@ -110,6 +110,20 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     }
   }, []);
   useEffect(() => {
+    try {
+      const inputOption =
+        require("../../../plugins/dscard-input-options/AppDeploymentCardInputOptions").appDeploymentInputOption;
+      if (flags.app_deployment && inputOption) {
+        const updatedInputOptions = inputOptions;
+        updatedInputOptions.push(inputOption);
+        setInputOptions(updatedInputOptions);
+      }
+    } catch {
+      // The component will remain null of it is not available
+    }
+  }, []);
+
+  useEffect(() => {
     if (type === "output") {
       if (source?.connection_type === "") {
         // Clear options when source is blank
@@ -131,7 +145,9 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       // Remove Database from Source Dropdown
       const filteredOptions = inputOptions.filter(
         (option) =>
-          option.value !== "DATABASE" && option.value !== "MANUALREVIEW"
+          option.value !== "DATABASE" &&
+          option.value !== "APPDEPLOYMENT" &&
+          option.value !== "MANUALREVIEW"
       );
       setOptions(filteredOptions);
     }
@@ -382,7 +398,8 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                   disabled={
                     !endpointDetails?.connection_type ||
                     connType === "API" ||
-                    connType === "MANUALREVIEW"
+                    connType === "MANUALREVIEW" ||
+                    connType === "APPDEPLOYMENT"
                   }
                 >
                   <SettingOutlined />
