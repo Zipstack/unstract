@@ -5,7 +5,7 @@
 groups = ["default", "hook-check-django-migrations", "lint"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:db33be7764a94d992a57e672b93cd2bb1c734aa11de14464a537637da659aaf8"
+content_hash = "sha256:24ccd1cb25354c5b0d9447759191790739f1b43d680a172428377d90191dfe51"
 
 [[package]]
 name = "adlfs"
@@ -4833,7 +4833,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.35.0"
+version = "0.36.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["hook-check-django-migrations"]
@@ -4848,8 +4848,8 @@ dependencies = [
     "unstract-adapters~=0.20.1",
 ]
 files = [
-    {file = "unstract_sdk-0.35.0-py3-none-any.whl", hash = "sha256:d91338a8f48c421f58ad6ae7337480eae39fd468b44a6a8f6bdc4784d1dac478"},
-    {file = "unstract_sdk-0.35.0.tar.gz", hash = "sha256:863622d5c785aba2bb549e61959bd1d85cd21376310a340031a41fb78eab47ed"},
+    {file = "unstract_sdk-0.36.0-py3-none-any.whl", hash = "sha256:6a8038a5c9b4b81888262829c02cbd3db5b020a2eb8b67ff8124e44c11d26ee1"},
+    {file = "unstract_sdk-0.36.0.tar.gz", hash = "sha256:7955b1839e84c9212ea0b8f43eec7882c3279b8eb24ec64596bb1c1f7ca2840b"},
 ]
 
 [[package]]
