@@ -37,6 +37,7 @@ from prompt_studio.prompt_studio_registry.serializers import (
     ExportToolRequestSerializer,
     PromptStudioRegistryInfoSerializer,
 )
+from prompt_studio.prompt_version_manager.models import PromptVersionManager
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -92,6 +93,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             request.user, serializer.data["tool_id"]
         )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def perform_create(self, serializer):
+        return serializer.save()
 
     def perform_destroy(self, instance: CustomTool) -> None:
         organization_id = UserSessionUtils.get_organization_id(self.request)
@@ -325,7 +329,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         try:
             # serializer.save()
-            self.perform_create(serializer)
+            tool_studio_prompt = self.perform_create(serializer)
+            PromptVersionManager.objects.create(
+                tool_id=tool_studio_prompt.tool_id,
+                prompt_id=tool_studio_prompt,
+                prompt_key=tool_studio_prompt.prompt_key,
+                prompt=tool_studio_prompt.prompt,
+                enforce_type=tool_studio_prompt.enforce_type,
+                profile_manager=tool_studio_prompt.profile_manager,
+            )
         except IntegrityError:
             raise DuplicateData(
                 f"{ToolStudioPromptErrors.PROMPT_NAME_EXISTS}, \
