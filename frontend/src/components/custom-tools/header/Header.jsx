@@ -21,18 +21,22 @@ import "./Header.css";
 
 let SinglePassToggleSwitch;
 let PromptShareModal;
-let CloneTitle;
+let CloneButton;
+let PromptShareButton;
 try {
   SinglePassToggleSwitch =
     require("../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch").SinglePassToggleSwitch;
-  PromptShareModal =
-    require("../../../plugins/public-share-modal/PromptShareModal.jsx").PromptShareModal;
-  CloneTitle =
-    require("../../../plugins/clone-title-modal/CloneTitle.jsx").CloneTitle;
 } catch {
   // The variable will remain undefined if the component is not available.
 }
-
+try {
+  PromptShareButton =
+    require("../../../plugins/public-share-btn/PromptShareButton.jsx").PromptShareButton;
+  CloneButton =
+    require("../../../plugins/clone-btn/CloneButton.jsx").CloneButton;
+} catch {
+  // The variable will remain undefined if the component is not available.
+}
 function Header({
   setOpenSettings,
   handleUpdateTool,
@@ -170,27 +174,9 @@ function Header({
             />
           </Tooltip>
         </div>
-        {CloneTitle && (
-          <div>
-            <Tooltip title="Clone">
-              <Button
-                icon={<CopyOutlined />}
-                onClick={() => setOpenCloneModal(true)}
-                disbaled={true}
-              />
-            </Tooltip>
-          </div>
-        )}
-        {PromptShareModal && (
-          <div>
-            <Tooltip title="Public Share">
-              <Button
-                icon={<ShareAltOutlined />}
-                disabled={isPublicSource}
-                onClick={() => setOpenShareModal(true)}
-              />
-            </Tooltip>
-          </div>
+        {CloneButton && <CloneButton setOpenCloneModal={setOpenCloneModal} />}
+        {PromptShareButton && (
+          <PromptShareButton setOpenShareModal={setOpenShareModal} />
         )}
         <div className="custom-tools-header-v-divider" />
         <div>
