@@ -536,7 +536,7 @@ function PromptCard({
       url = publicOutputsApi(
         id,
         promptDetails?.promptId,
-        profileManager,
+        selectedLlmProfileId,
         singlePassExtractMode
       );
     }

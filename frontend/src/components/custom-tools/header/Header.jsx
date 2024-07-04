@@ -1,6 +1,4 @@
-import {
-  SettingOutlined,
-} from "@ant-design/icons";
+import { SettingOutlined } from "@ant-design/icons";
 import { Button, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useState } from "react";
