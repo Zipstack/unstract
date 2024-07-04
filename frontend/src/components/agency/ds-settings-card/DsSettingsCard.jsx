@@ -51,8 +51,6 @@ const inputOptions = [
 const disabledIdsByType = {
   FILE_SYSTEM: [
     "box|4d94d237-ce4b-45d8-8f34-ddeefc37c0bf",
-    "google_cloud_storage|109bbe7b-8861-45eb-8841-7244e833d97b",
-    "azure_cloud_storage|1476a54a-ed17-4a01-9f8f-cb7e4cf91c8a",
     "http|6fdea346-86e4-4383-9a21-132db7c9a576",
   ],
 };

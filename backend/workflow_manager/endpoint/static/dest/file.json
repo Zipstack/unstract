@@ -14,12 +14,6 @@
             "minLength": 1,
             "maxLength": 100,
             "format": "file-path"
-        },
-        "overwriteOutput": {
-            "type": "boolean",
-            "title": "Overwrite existing output",
-            "default": true,
-            "description": "Used to overwrite output document"
         }
     }
 }

@@ -19,6 +19,7 @@ from workflow_manager.endpoint.constants import (
     FileType,
     SourceConstant,
     SourceKey,
+    UnstractFSConnector,
     WorkflowFileType,
 )
 from workflow_manager.endpoint.exceptions import (
@@ -152,21 +153,31 @@ class SourceConnector(BaseConnector):
             )
         )
         root_dir_path = connector_settings.get(ConnectorKeys.PATH, "")
+
         input_directory = str(source_configurations.get(SourceKey.ROOT_FOLDER, ""))
-        if root_dir_path:  # user needs to manually type the optional file path
+
+        source_fs = self.get_fs_connector(
+            settings=connector_settings, connector_id=connector.connector_id
+        )
+        source_fs_cls_name = source_fs.__class__.__name__
+
+        if source_fs_cls_name in UnstractFSConnector.ROOT_DIR_AS_ROOT:
             input_directory = str(Path(root_dir_path, input_directory.lstrip("/")))
+
+        if not input_directory.endswith("/"):
+            input_directory += "/"
+
         if not isinstance(required_patterns, list):
             required_patterns = [required_patterns]
 
-        source_fs = self.get_fsspec(
-            settings=connector_settings, connector_id=connector.connector_id
-        )
+        source_fs_fsspec = source_fs.get_fsspec_fs()
+
         patterns = self.valid_file_patterns(required_patterns=required_patterns)
-        is_directory = source_fs.isdir(input_directory)
+        is_directory = source_fs_fsspec.isdir(input_directory)
         if not is_directory:
             raise InvalidInputDirectory()
         matched_files = self._get_matched_files(
-            source_fs, input_directory, patterns, recursive, limit
+            source_fs_fsspec, input_directory, patterns, recursive, limit
         )
         self.publish_input_output_list_file_logs(input_directory, matched_files)
         return matched_files

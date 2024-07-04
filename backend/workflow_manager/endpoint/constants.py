@@ -92,3 +92,7 @@ class BigQuery:
     """
 
     TABLE_NAME_SIZE = 3
+
+
+class UnstractFSConnector:
+    ROOT_DIR_AS_ROOT = ["GoogleDriveFS"]
