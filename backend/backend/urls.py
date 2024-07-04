@@ -63,7 +63,6 @@ urlpatterns = [
 ]
 
 try:
-    import pluggable_apps.subscription.urls
 
     urlpatterns += [
         path("", include("pluggable_apps.subscription.urls")),
