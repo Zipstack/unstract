@@ -80,8 +80,7 @@ def load_plugins() -> list[Any]:
 
 
 def etl_prerun_check(org_id: str) -> bool:
-    """
-    Method to check subscription status before ETL runs.
+    """Method to check subscription status before ETL runs.
 
     Args:
         org_id: The ID of the organization.

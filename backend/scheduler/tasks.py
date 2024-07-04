@@ -75,7 +75,9 @@ def execute_pipeline_task(
                     logger.info(f"Disabling ETL task: {pipepline_id}")
                     disable_task(pipepline_id)
                 except Exception as e:
-                    logger.warning(f"Failed to disable task: {pipepline_id}. Error: {e}")
+                    logger.warning(
+                        f"Failed to disable task: {pipepline_id}. Error: {e}"
+                    )
                 return
 
             workflow = Workflow.objects.get(id=workflow_id)
