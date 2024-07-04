@@ -3,7 +3,7 @@ import logging
 from typing import Any
 
 from account.models import Organization
-from account.subscription_loader import etl_prerun_check
+from account.subscription_loader import etl_prerun_check, load_plugins
 from celery import shared_task
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from django_tenants.utils import get_tenant_model, tenant_context
@@ -11,10 +11,10 @@ from pipeline.models import Pipeline
 from pipeline.pipeline_processor import PipelineProcessor
 from workflow_manager.workflow.models.workflow import Workflow
 from workflow_manager.workflow.workflow_helper import WorkflowHelper
-from account.subscription_loader import load_plugins
 
 logger = logging.getLogger(__name__)
 subscription_loader = load_plugins()
+
 
 def create_periodic_task(
     cron_string: str,
@@ -65,8 +65,11 @@ def execute_pipeline_task(
             get_tenant_model().objects.filter(schema_name=org_schema).first()
         )
         with tenant_context(tenant):
-            if (subscription_loader and subscription_loader[0] and
-                    not etl_prerun_check(org_schema)):
+            if (
+                subscription_loader
+                and subscription_loader[0]
+                and not etl_prerun_check(org_schema)
+            ):
                 try:
                     logger.info(f"Disabling ETL task: {pipepline_id}")
                     disable_task(pipepline_id)
