@@ -21,7 +21,6 @@ import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
-import { useParams } from "react-router-dom";
 const items = [
   {
     key: "1",
@@ -90,6 +89,27 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const { setPostHogCustomEvent } = usePostHogEvents();
+
+  useEffect(() => {
+    if (isSimplePromptStudio) {
+      items[0] = {
+        key: "1",
+        label: (
+          <Tooltip title="PDF View">
+            <FilePdfOutlined />
+          </Tooltip>
+        ),
+      };
+      items[1] = {
+        key: "2",
+        label: (
+          <Tooltip title="Raw View">
+            <FileTextOutlined />
+          </Tooltip>
+        ),
+      };
+    }
+  }, []);
 
   useEffect(() => {
     setFileUrl("");
@@ -201,6 +221,22 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       .finally(() => {
         handleLoadingStateUpdate(viewType, false);
       });
+  };
+
+  const processGetDocsResponse = (data, viewType) => {
+    if (viewType === viewTypes.original) {
+      const base64String = data || "";
+      const blob = base64toBlob(base64String);
+      setFileUrl(URL.createObjectURL(blob));
+    } else if (viewType === viewTypes.extract) {
+      setExtractTxt(data);
+    }
+  };
+
+  const handleGetDocsError = (err, viewType) => {
+    if (err?.response?.status === 404) {
+      setErrorMessage(viewType);
+    }
   };
 
   const handleLoadingStateUpdate = (viewType, value) => {

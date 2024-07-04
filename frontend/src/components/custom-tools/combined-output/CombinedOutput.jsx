@@ -16,7 +16,6 @@ import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { useParams } from "react-router-dom";
 import { JsonView } from "./JsonView";
 
 let TableView;
@@ -38,12 +37,10 @@ function CombinedOutput({ docId, setFilledFields }) {
     singlePassExtractMode,
     isSinglePassExtractLoading,
     isSimplePromptStudio,
-    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
-  const { id } = useParams();
   const handleException = useExceptionHandler();
 
   useEffect(() => {
