@@ -74,39 +74,35 @@ class PlatformAuthenticationService:
             logger.info(f"platform_key is generated for {organization.id}")
             return result
         except IntegrityError as error:
-            logger.error(f"Integrity error - failed to generate platform key : {error}")
+            logger.error(
+                "Failed to generate platform key for "
+                f"organization {organization}, Integrity error: {error}"
+            )
             raise DuplicateData(
                 f"{ErrorMessage.KEY_EXIST}, \
                             {ErrorMessage.DUPLICATE_API}"
             )
-        except Exception as error:
-            logger.error(f"Failed to generate platform key : {error}")
-            raise InternalServiceError()
 
     @staticmethod
     def delete_platform_key(id: str) -> None:
-        """This is a delete operation. Use this function only if you know what
-        you are doing.
+        """Method to delete a platform key by id.
 
         Args:
-            id (str): _description_
+            id (str): platform key primary id
 
         Raises:
-            error: _description_
+            error: IntegrityError
         """
         try:
             platform_key: PlatformKey = PlatformKey.objects.get(pk=id)
             platform_key.delete()
-            logger.info(f"platform_key {id} is deleted")
+            logger.info(f"platform_key {id} is deleted for {platform_key.organization}")
         except IntegrityError as error:
             logger.error(f"Failed to delete platform key : {error}")
             raise DuplicateData(
                 f"{ErrorMessage.KEY_EXIST}, \
                             {ErrorMessage.DUPLICATE_API}"
             )
-        except Exception as error:
-            logger.error(f"Failed to delete platform key : {error}")
-            raise InternalServiceError()
 
     @staticmethod
     def refresh_platform_key(id: str, user: User) -> dict[str, Any]:
@@ -132,14 +128,14 @@ class PlatformAuthenticationService:
             logger.info(f"platform_key {id} is updated by user {user.id}")
             return result
         except IntegrityError as error:
-            logger.error(f"Integrity error - failed to refresh platform key : {error}")
+            logger.error(
+                f"Failed to refresh platform key {id} "
+                f"by user {user.id}, Integrity error: {error}"
+            )
             raise DuplicateData(
                 f"{ErrorMessage.KEY_EXIST}, \
                             {ErrorMessage.DUPLICATE_API}"
             )
-        except Exception as error:
-            logger.error(f"Failed to refresh platform key : {error}")
-            raise InternalServiceError()
 
     @staticmethod
     def toggle_platform_key_status(
@@ -185,9 +181,6 @@ class PlatformAuthenticationService:
                 f"{ErrorMessage.KEY_EXIST}, \
                             {ErrorMessage.DUPLICATE_API}"
             )
-        except Exception as error:
-            logger.error(f"Failed to activate/deactivate platform key : {error}")
-            raise InternalServiceError()
 
     @staticmethod
     def list_platform_key_ids() -> list[PlatformKey]:
@@ -196,20 +189,16 @@ class PlatformAuthenticationService:
         Returns:
             Any: List of platform keys.
         """
-        try:
-            organization_id = UserContext.get_organization_identifier()
-            organization: Organization = OrganizationService.get_organization_by_org_id(
-                org_id=organization_id
-            )
-            organization_pk = organization.id
+        organization_id = UserContext.get_organization_identifier()
+        organization: Organization = OrganizationService.get_organization_by_org_id(
+            org_id=organization_id
+        )
+        organization_pk = organization.id
 
-            platform_keys: list[PlatformKey] = PlatformKey.objects.filter(
-                organization=organization_pk
-            )
-            return platform_keys
-        except Exception as error:
-            logger.error(f"Failed to fetch platform key ids : {error}")
-            raise InternalServiceError()
+        platform_keys: list[PlatformKey] = PlatformKey.objects.filter(
+            organization=organization_pk
+        )
+        return platform_keys
 
     @staticmethod
     def fetch_platform_key_id() -> Any:
@@ -218,12 +207,8 @@ class PlatformAuthenticationService:
         Returns:
             Any: List of platform keys.
         """
-        try:
-            platform_key: list[PlatformKey] = PlatformKey.objects.all()
-            return platform_key
-        except Exception as error:
-            logger.error(f"Failed to fetch platform key ids : {error}")
-            raise InternalServiceError()
+        platform_key: list[PlatformKey] = PlatformKey.objects.all()
+        return platform_key
 
     @staticmethod
     def get_active_platform_key(
@@ -248,6 +233,3 @@ class PlatformAuthenticationService:
             return platform_key
         except PlatformKey.DoesNotExist:
             raise ActiveKeyNotFound()
-        except Exception as error:
-            logger.error(f"Failed to fetch platform key : {error}")
-            raise InternalServiceError()

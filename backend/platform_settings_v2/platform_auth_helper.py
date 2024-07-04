@@ -22,15 +22,9 @@ class PlatformAuthHelper:
             user (User): Logged in user from context
         """
         auth_controller = AuthenticationController()
-        try:
-            member: OrganizationMember = (
-                auth_controller.get_organization_members_by_user(user=user)
-            )
-        except Exception as error:
-            logger.error(
-                f"Error occurred while fetching organization for user : {error}"
-            )
-            raise error
+        member: OrganizationMember = auth_controller.get_organization_members_by_user(
+            user=user
+        )
         if not auth_controller.is_admin_by_role(member.role):
             logger.error("User is not having right access to perform this operation.")
             raise UserForbidden()
@@ -39,12 +33,18 @@ class PlatformAuthHelper:
 
     @staticmethod
     def validate_token_count(organization: Organization) -> None:
-        if (
-            PlatformKey.objects.filter(organization=organization).count()
-            >= PLATFORM_KEY_COUNT
-        ):
+        """This method validates if the organization has reached the maximum
+        platform key count.
+
+        Args:
+            organization (Organization):
+                Organization for which the key is being created.
+        """
+        key_count = PlatformKey.objects.filter(organization=organization).count()
+        if key_count >= PLATFORM_KEY_COUNT:
             logger.error(
-                f"Only {PLATFORM_KEY_COUNT} keys are support at a time. Count exceeded."
+                f"Key count exceeded: {key_count}/{PLATFORM_KEY_COUNT} keys for "
+                f"organization ID {organization.id}."
             )
             raise KeyCountExceeded()
         else:
