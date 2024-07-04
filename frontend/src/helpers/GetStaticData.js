@@ -456,7 +456,11 @@ const pollForCompletion = (
 ) => {
   const elapsedTime = Date.now() - startTime;
   if (elapsedTime >= maxWaitTime) {
-    return Promise.reject(new Error("Polling timed out after 10 minutes"));
+    return Promise.reject(
+      new Error(
+        "Unable to fetch results since there's an ongoing extraction, please try again later"
+      )
+    );
   }
 
   const recursivePoll = () => {

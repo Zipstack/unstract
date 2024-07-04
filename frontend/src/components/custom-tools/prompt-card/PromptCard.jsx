@@ -486,6 +486,7 @@ function PromptCard({
     const runId = generateUUID();
     const maxWaitTime = 10 * 60 * 1000; // 10 minutes
     const pollingInterval = 5000; // 5 seconds
+    const tokenUsagepollingInterval = 5000;
 
     const body = {
       document_id: docId,
@@ -510,7 +511,7 @@ function PromptCard({
         ) {
           intervalId = setInterval(
             () => getTokenUsage(runId, tokenUsageId),
-            5000 // Fetch token usage data every 5000 milliseconds (5 seconds)
+            tokenUsagepollingInterval // Fetch token usage data every 5000 milliseconds (5 seconds)
           );
         }
         setTimers((prev) => ({

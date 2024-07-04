@@ -1,6 +1,7 @@
 from typing import Optional
 
 from django.conf import settings
+from prompt_studio.prompt_studio_core.constants import IndexingStatus
 from utils.cache_service import CacheService
 
 
@@ -11,7 +12,7 @@ class DocumentIndexingService:
     def set_document_indexing(cls, org_id: str, user_id: str, doc_id_key: str) -> None:
         CacheService.set_key(
             cls._cache_key(org_id, user_id, doc_id_key),
-            "started",
+            IndexingStatus.STARTED_STATUS.value,
             expire=settings.INDEXING_FLAG_TTL,
         )
 
@@ -19,7 +20,7 @@ class DocumentIndexingService:
     def is_document_indexing(cls, org_id: str, user_id: str, doc_id_key: str) -> bool:
         return (
             CacheService.get_key(cls._cache_key(org_id, user_id, doc_id_key))
-            == "started"
+            == IndexingStatus.STARTED_STATUS.value
         )
 
     @classmethod
@@ -37,7 +38,7 @@ class DocumentIndexingService:
         cls, org_id: str, user_id: str, doc_id_key: str
     ) -> Optional[str]:
         result = CacheService.get_key(cls._cache_key(org_id, user_id, doc_id_key))
-        if result and result != "started":
+        if result and result != IndexingStatus.STARTED_STATUS.value:
             return result
         return None
 
