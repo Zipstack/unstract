@@ -63,7 +63,8 @@ urlpatterns = [
 ]
 
 try:
-
+    import pluggable_apps.subscription.urls  # noqa: F401
+    
     urlpatterns += [
         path("", include("pluggable_apps.subscription.urls")),
     ]
