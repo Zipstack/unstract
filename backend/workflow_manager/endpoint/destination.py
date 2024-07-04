@@ -28,7 +28,7 @@ from workflow_manager.endpoint.exceptions import (
     ToolOutputTypeMismatch,
 )
 from workflow_manager.endpoint.models import WorkflowEndpoint
-from workflow_manager.endpoint.queue_utils import QueueUtils
+from workflow_manager.endpoint.queue_utils import QueueUtils, QueueResult
 from workflow_manager.workflow.enums import ExecutionStatus
 from workflow_manager.workflow.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow.models.file_history import FileHistory
@@ -509,14 +509,14 @@ class DestinationConnector(BaseConnector):
             # Convert file content to a base64 encoded string
             file_content_base64 = base64.b64encode(file_content).decode("utf-8")
             q_name = f"review_queue_{self.organization_id}_{workflow.workflow_name}"
-            queue_result = {
-                "file": file_name,
-                "whisper_hash": meta_data["whisper-hash"],
-                "status": QueueResultStatus.SUCCESS,
-                "result": result,
-                "workflow_id": str(self.workflow_id),
-                "file_content": file_content_base64,
-            }
+            queue_result = QueueResult(
+                file=file_name,
+                whisper_hash=meta_data["whisper-hash"],
+                status=QueueResultStatus.SUCCESS,
+                result=result,
+                workflow_id=str(self.workflow_id),
+                file_content=file_content_base64,
+            )
             # Convert the result dictionary to a JSON string
             queue_result_json = json.dumps(queue_result)
             conn = QueueUtils.get_queue_inst()
