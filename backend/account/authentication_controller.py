@@ -209,6 +209,7 @@ class AuthenticationController:
             response: Response = Response(
                 status=status.HTTP_200_OK,
                 data={
+                    "is_new_org": new_organization,
                     "user": serialized_user_info,
                     "organization": organization_info,
                     f"{Common.LOG_EVENTS_ID}": StateStore.get(Common.LOG_EVENTS_ID),
