@@ -79,13 +79,16 @@ def load_plugins() -> list[Any]:
     return subscription_plugins
 
 
-def etl_prerun_check(org_id):
-    subscription_plugin_available = (
-        os.environ.get("SUBSCRIPTION_PLUGIN_AVAILABLE", "False") == "True"
-    )
-    if not subscription_plugin_available:
-        return True
+def etl_prerun_check(org_id: str) -> bool:
+    """
+    Method to check subscription status before ETL runs.
 
+    Args:
+        org_id: The ID of the organization.
+
+    Returns:
+        A boolean indicating whether the pre-run check passed or not.
+    """
     try:
         from pluggable_apps.subscription.subscription_helper import SubscriptionHelper
     except ModuleNotFoundError:
@@ -100,7 +103,7 @@ def etl_prerun_check(org_id):
         return True
 
     if timezone.now() >= org_plans.end_date:
-        logger.debug("Trial expired")
+        logger.debug(f"Trial expired for org {org_id}")
         return False
 
     return True
