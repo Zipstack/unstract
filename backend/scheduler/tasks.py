@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 from typing import Any
 
 from account.models import Organization
@@ -12,9 +11,10 @@ from pipeline.models import Pipeline
 from pipeline.pipeline_processor import PipelineProcessor
 from workflow_manager.workflow.models.workflow import Workflow
 from workflow_manager.workflow.workflow_helper import WorkflowHelper
+from account.subscription_loader import load_plugins
 
 logger = logging.getLogger(__name__)
-
+subscription_loader = load_plugins()
 
 def create_periodic_task(
     cron_string: str,
@@ -65,12 +65,8 @@ def execute_pipeline_task(
             get_tenant_model().objects.filter(schema_name=org_schema).first()
         )
         with tenant_context(tenant):
-            subscription_plugin_available = (
-                os.environ.get("SUBSCRIPTION_PLUGIN_AVAILABLE", "False") == "True"
-            )
-            logger.info(f"Is subscription available: {subscription_plugin_available}")
-
-            if subscription_plugin_available and not etl_prerun_check(org_schema):
+            if (subscription_loader and subscription_loader[0] and
+                    not etl_prerun_check(org_schema)):
                 try:
                     logger.info(f"Disabling ETL task: {pipepline_id}")
                     disable_task(pipepline_id)
@@ -79,7 +75,6 @@ def execute_pipeline_task(
                         f"Failed to disable task: {pipepline_id}. Error: {e}"
                     )
                 return
-
             workflow = Workflow.objects.get(id=workflow_id)
             logger.info(f"Executing workflow: {workflow}")
             PipelineProcessor.update_pipeline(

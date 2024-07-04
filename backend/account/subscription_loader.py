@@ -61,7 +61,6 @@ def load_plugins() -> list[Any]:
                     module.metadata[SubscriptionConfig.METADATA_NAME],
                     module.metadata[SubscriptionConfig.METADATA_IS_ACTIVE],
                 )
-                os.environ["SUBSCRIPTION_PLUGIN_AVAILABLE"] = "True"
             else:
                 logger.info(
                     "subscription plugin %s is not active.",
