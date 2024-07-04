@@ -1,4 +1,3 @@
-import Prism from "prismjs";
 import "prismjs/components/prism-json";
 import "prismjs/plugins/line-numbers/prism-line-numbers.css";
 import "prismjs/plugins/line-numbers/prism-line-numbers.js";
@@ -18,7 +17,18 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useParams } from "react-router-dom";
+import { JsonView } from "./JsonView";
 
+let TableView;
+let promptOutputApiSps;
+try {
+  TableView =
+    require("../../../plugins/simple-prompt-studio/TableView").TableView;
+  promptOutputApiSps =
+    require("../../../plugins/simple-prompt-studio/helper").promptOutputApiSps;
+} catch {
+  // The component will remain null of it is not available
+}
 function CombinedOutput({ docId, setFilledFields }) {
   const [combinedOutput, setCombinedOutput] = useState({});
   const [isOutputLoading, setIsOutputLoading] = useState(false);
@@ -27,6 +37,7 @@ function CombinedOutput({ docId, setFilledFields }) {
     defaultLlmProfile,
     singlePassExtractMode,
     isSinglePassExtractLoading,
+    isSimplePromptStudio,
     isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
@@ -94,28 +105,18 @@ function CombinedOutput({ docId, setFilledFields }) {
       });
   }, [docId, singlePassExtractMode, isSinglePassExtractLoading]);
 
-  useEffect(() => {
-    Prism.highlightAll();
-  }, [combinedOutput]);
-
   const handleOutputApiRequest = async () => {
-    const requestPrivateOptions = {
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}`;
+    if (isSimplePromptStudio) {
+      url = promptOutputApiSps(details?.tool_id, null, docId);
+    }
+    const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}`,
+      url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
-    const requestPublicOptions = {
-      method: "GET",
-      url: `/public/share/outputs-metadata/?id=${id}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-    };
-    const requestOptions = isPublicSource
-      ? requestPublicOptions
-      : requestPrivateOptions;
     return axiosPrivate(requestOptions)
       .then((res) => res)
       .catch((err) => {
@@ -127,24 +128,11 @@ function CombinedOutput({ docId, setFilledFields }) {
     return <SpinnerLoader />;
   }
 
-  return (
-    <div className="combined-op-layout">
-      <div className="combined-op-header">
-        <div className="combined-op-segment"></div>
-      </div>
-      <div className="combined-op-divider" />
-      <div className="combined-op-body code-snippet">
-        {combinedOutput && (
-          <pre className="line-numbers width-100">
-            <code className="language-javascript width-100">
-              {JSON.stringify(combinedOutput, null, 2)}
-            </code>
-          </pre>
-        )}
-      </div>
-      <div className="gap" />
-    </div>
-  );
+  if (isSimplePromptStudio && TableView) {
+    return <TableView combinedOutput={combinedOutput} />;
+  }
+
+  return <JsonView combinedOutput={combinedOutput} />;
 }
 
 CombinedOutput.propTypes = {

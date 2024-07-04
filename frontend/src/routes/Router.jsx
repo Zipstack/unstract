@@ -58,6 +58,24 @@ try {
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
+
+// Import pages/components related to Simple Prompt Studio.
+let SimplePromptStudioHelper;
+let SimplePromptStudio;
+let SpsLanding;
+let SpsUpload;
+try {
+  SimplePromptStudioHelper =
+    require("../plugins/simple-prompt-studio/SimplePromptStudioHelper.jsx").SimplePromptStudioHelper;
+  SimplePromptStudio =
+    require("../plugins/simple-prompt-studio/SimplePromptStudio.jsx").SimplePromptStudio;
+  SpsLanding =
+    require("../plugins/simple-prompt-studio/SpsLanding.jsx").SpsLanding;
+  SpsUpload =
+    require("../plugins/simple-prompt-studio/SpsUpload.jsx").SpsUpload;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
 try {
   PublicPromptStudioHelper =
     require("../plugins/helpers/PublicPromptStudioHelper.js").PublicPromptStudioHelper;
@@ -70,21 +88,10 @@ function Router() {
       <Route path="error" element={<GenericError />} />
       <Route path="" element={<PersistentLogin />}>
         {/* public routes */}
-        {PublicPromptStudioHelper && (
-          <Route
-            path="/promptStudio/share/:id"
-            element={<PublicPromptStudioHelper />}
-          >
-            <Route path="" element={<ToolIdePage />} />
-            <Route
-              path="/promptStudio/share/:id/outputAnalyzer"
-              element={<OutputAnalyzerPage />}
-            />
-          </Route>
-        )}
         <Route path="" element={<RequireGuest />}>
           <Route path="landing" element={<LandingPage />} />
         </Route>
+
         {/* protected routes */}
         <Route path="setOrg" element={<SetOrgPage />} />
         <Route path="" element={<RequireAuth />}>
