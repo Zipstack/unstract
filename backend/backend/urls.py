@@ -66,6 +66,8 @@ try:
     import pluggable_apps.apps.canned_question.urls  # noqa # pylint: disable=unused-import
     import pluggable_apps.apps.chat_history.urls  # noqa # pylint: disable=unused-import
     import pluggable_apps.apps.chat_transcript.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.clone.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.public_shares.share_manager.urls  # noqa # pylint: disable=unused-import
     import pluggable_apps.subscription.urls  # noqa # pylint: disable=unused-import
 
     urlpatterns += [
@@ -77,23 +79,8 @@ try:
         path("app/", include("pluggable_apps.apps.app_deployment.urls")),
         path("chat_history/", include("pluggable_apps.apps.chat_history.urls")),
         path("chat/", include("pluggable_apps.apps.chat_transcript.urls")),
-    ]
-except ImportError:
-    pass
-
-try:
-
-    urlpatterns += [
-        path("", include("pluggable_apps.public_shares.share_manager.urls")),
-    ]
-except ImportError:
-    pass
-
-try:
-    import pluggable_apps.clone.urls  # noqa: F401
-
-    urlpatterns += [
         path("", include("pluggable_apps.clone.urls")),
+        path("", include("pluggable_apps.public_shares.share_manager.urls")),
     ]
 except ImportError:
     pass
