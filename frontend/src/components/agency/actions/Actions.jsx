@@ -38,7 +38,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   const [openAddApiModal, setOpenAddApiModal] = useState(false);
   const [apiOpsPresent, setApiOpsPresent] = useState(false);
   const [canAddTaskPipeline, setCanAddTaskPipeline] = useState(false);
-  const [canAddETLPipeline, setCanAddETAPipeline] = useState(false);
+  const [canAddETLPipeline, setCanAddETLPipeline] = useState(false);
   const [openAddTaskModal, setOpenAddTaskModal] = useState(false);
   const [openAddETLModal, setOpenAddETLModal] = useState(false);
   const [deploymentName, setDeploymentName] = useState("");
@@ -76,8 +76,9 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
     );
     // Enable Deploy as ETL Pipeline only when
     // destination connection_type is DATABASE and Source & Destination are Configured
-    setCanAddETAPipeline(
-      destination?.connection_type === "DATABASE" &&
+    setCanAddETLPipeline(
+      (destination?.connection_type === "DATABASE" ||
+        destination.connection_type === "MANUALREVIEW") &&
         source?.connector_instance &&
         destination.connector_instance
     );
@@ -299,6 +300,12 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
     if (
       source?.connection_type === "API" &&
       destination?.connection_type === "API"
+    ) {
+      return false;
+    }
+    if (
+      source?.connection_type === "FILESYSTEM" &&
+      destination?.connection_type === "MANUALREVIEW"
     ) {
       return false;
     }
