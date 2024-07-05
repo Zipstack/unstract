@@ -484,7 +484,7 @@ function PromptCard({
   const handleRunApiRequest = async (docId, profileManagerId) => {
     const promptId = promptDetails?.prompt_id;
     const runId = generateUUID();
-    const maxWaitTime = 10 * 60 * 1000; // 10 minutes
+    const maxWaitTime = 30 * 1000; // 30 seconds
     const pollingInterval = 5000; // 5 seconds
     const tokenUsagepollingInterval = 5000;
 
