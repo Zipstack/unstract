@@ -9,6 +9,7 @@ from platform_settings_v2.exceptions import (
     ActiveKeyNotFound,
     DuplicateData,
     InternalServiceError,
+    InvalidRequest,
 )
 from tenant_account_v2.constants import ErrorMessage, PlatformServiceConstants
 from utils.user_context import UserContext
@@ -145,41 +146,46 @@ class PlatformAuthenticationService:
         allowed at a time. On change or setting, other keys are deactivated.
 
         Args:
-            id (str): Id of the key to be toggled.
+            platform_key (PlatformKey): The platform key to be toggled.
             action (str): activate/deactivate
+            user (User): The user performing the action.
 
         Raises:
-            error: IntegrityError
+            InvalidRequest: If no valid organization is found.
+            DuplicateData: If an IntegrityError occurs during the save operation.
         """
         try:
-            organization_id = UserContext.get_organization_identifier()
-            organization: Organization = OrganizationService.get_organization_by_org_id(
-                org_id=organization_id
-            )
+            organization: Organization = UserContext.get_organization()
+            if not organization:
+                logger.error(
+                    f"No valid organization provided to toggle status of platform key "
+                    f"{platform_key.id} for user {user.id}"
+                )
+                raise InvalidRequest("Invalid organization")
             platform_key.modified_by = user
             if action == PlatformServiceConstants.ACTIVATE:
-                active_keys: list[PlatformKey] = PlatformKey.objects.filter(
+                # Deactivate all active keys for the organization
+                PlatformKey.objects.filter(
                     is_active=True, organization=organization
-                ).all()
-                # Deactivates all keys
-                for key in active_keys:
-                    key.is_active = False
-                    key.modified_by = user
-                    key.save()
-                # Activates the chosen key.
+                ).update(is_active=False, modified_by=user)
+                # Activate the chosen key
                 platform_key.is_active = True
-                platform_key.save()
-            if action == PlatformServiceConstants.DEACTIVATE:
+            elif action == PlatformServiceConstants.DEACTIVATE:
                 platform_key.is_active = False
-                platform_key.save()
+            else:
+                logger.error(
+                    f"Invalid action: {action} for platform key {platform_key.id} "
+                    f"by user {user.id}"
+                )
+                raise InvalidRequest(f"Invalid action: {action}")
+            platform_key.save()
         except IntegrityError as error:
             logger.error(
-                "IntegrityError - Failed to activate/deactivate "
-                f"platform key : {error}"
+                f"IntegrityError - Failed to {action} platform key {platform_key.id}"
+                f": {error}"
             )
             raise DuplicateData(
-                f"{ErrorMessage.KEY_EXIST}, \
-                            {ErrorMessage.DUPLICATE_API}"
+                f"{ErrorMessage.KEY_EXIST}, {ErrorMessage.DUPLICATE_API}"
             )
 
     @staticmethod
