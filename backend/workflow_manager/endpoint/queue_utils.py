@@ -2,12 +2,10 @@ import logging
 from typing import Any
 
 from utils.constants import Common
+from workflow_manager.endpoint.exceptions import UnstractQueueException
 
 from unstract.connectors.queues import connectors as queue_connectors
 from unstract.connectors.queues.unstract_queue import UnstractQueue
-from workflow_manager.endpoint.exceptions import (
-    UnstractQueueException
-)
 
 logger = logging.getLogger(__name__)
 
