@@ -54,17 +54,14 @@ class BaseConnector(ExecutionFileHandler):
     def get_fs_connector(
         self, settings: dict[str, Any], connector_id: str
     ) -> UnstractFileSystem:
-        """Get an fsspec file system based on the specified connector.
+        """Get an fs connector based specified connector settings.
 
         Parameters:
         - settings (dict): Connector-specific settings.
         - connector_id (str): Identifier for the desired connector.
 
         Returns:
-        AbstractFileSystem: An fsspec file system instance.
-
-        Raises:
-        KeyError: If the connector_id is not found in the connectors dictionary.
+        UnstractFileSystem: An unstract fs connector instance.
         """
         if connector_id not in connectors:
             raise ValueError(f"Invalid connector_id: {connector_id}")
