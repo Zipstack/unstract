@@ -8,6 +8,7 @@ import fsspec
 import magic
 from connector.models import ConnectorInstance
 from django.db import connection
+from dropbox.exceptions import ApiError as DropBoxApiError
 from fsspec.implementations.local import LocalFileSystem
 from unstract.sdk.constants import ToolExecKey
 from unstract.workflow_execution.constants import ToolOutputType
@@ -151,10 +152,14 @@ class DestinationConnector(BaseConnector):
         destination_volume_path = os.path.join(
             self.execution_dir, ToolExecKey.OUTPUT_DIR
         )
-        print("*** output_directory *** ", output_directory)
         destination_fsspec = destination_fs.get_fsspec_fs()
 
-        if not destination_fsspec.isdir(output_directory):
+        try:
+            is_dir = destination_fsspec.isdir(output_directory)
+            if not is_dir:
+                destination_fsspec.mkdir(output_directory)
+        except DropBoxApiError as e:
+            logger.debug(f"Path not found in dropbox {e.error}")
             destination_fsspec.mkdir(output_directory)
 
         # Traverse local directory and create the same structure in the

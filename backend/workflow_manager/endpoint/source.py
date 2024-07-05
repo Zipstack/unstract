@@ -164,7 +164,6 @@ class SourceConnector(BaseConnector):
             root_path=root_dir_path,
             input_dir=input_directory,
         )
-        print("*** input_directory *** ", input_directory)
 
         if not isinstance(required_patterns, list):
             required_patterns = [required_patterns]
