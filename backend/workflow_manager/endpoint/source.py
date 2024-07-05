@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 from hashlib import md5, sha256
+from io import BytesIO
 from typing import Any, Optional
 
 import fsspec
@@ -392,6 +393,18 @@ class SourceConnector(BaseConnector):
         connection_type = self.endpoint.connection_type
         if connection_type == WorkflowEndpoint.ConnectionType.API:
             results.append({"file": file_name, "result": result})
+
+    def load_file(self, input_file_path: str) -> tuple[str, BytesIO]:
+        connector: ConnectorInstance = self.endpoint.connector_instance
+        connector_settings: dict[str, Any] = connector.connector_metadata
+        source_fs: fsspec.AbstractFileSystem = self.get_fsspec(
+            settings=connector_settings, connector_id=connector.connector_id
+        )
+        with source_fs.open(input_file_path, "rb") as remote_file:
+            file_content = remote_file.read()
+            file_stream = BytesIO(file_content)
+
+        return remote_file.key, file_stream
 
     @classmethod
     def add_input_file_to_api_storage(
