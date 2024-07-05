@@ -421,7 +421,9 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                 </Space>
               ) : (
                 <>
-                  {connType === "API" || connType === "MANUALREVIEW" ? (
+                  {connType === "API" ||
+                  connType === "MANUALREVIEW" ||
+                  connType === "APPDEPLOYMENT" ? (
                     <Typography.Text
                       className="font-size-12 display-flex-align-center"
                       ellipsis={{ rows: 1, expandable: false }}

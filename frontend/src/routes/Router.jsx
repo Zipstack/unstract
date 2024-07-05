@@ -53,6 +53,8 @@ try {
     require("../plugins/app-deployment/AppDeployments.jsx").AppDeployments;
   ChatAppPage =
     require("../plugins/app-deployment/chat-app/ChatAppPage.jsx").ChatAppPage;
+  ChatAppLayout =
+    require("../plugins/app-deployment/chat-app/ChatAppLayout.jsx").ChatAppLayout;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
