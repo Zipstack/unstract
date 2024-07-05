@@ -20,13 +20,6 @@ class QueueResultStatus(Enum):
     FAILURE = "failure"
     # Add other statuses as needed
 
-
-class ConnectorError(Exception):
-    """Custom exception for connection-related errors."""
-
-    pass
-
-
 class QueueUtils:
     @staticmethod
     def get_queue_inst(connector_settings: dict[str, Any] = {}) -> UnstractQueue:
