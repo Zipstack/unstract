@@ -15,7 +15,6 @@ from workflow_manager.endpoint.base_connector import BaseConnector
 from workflow_manager.endpoint.constants import (
     ApiDeploymentResultStatus,
     DestinationKey,
-    UnstractFSConnector,
     WorkflowFileType,
 )
 from workflow_manager.endpoint.database_utils import DatabaseUtils
@@ -26,6 +25,7 @@ from workflow_manager.endpoint.exceptions import (
     MissingDestinationConnectionType,
     ToolOutputTypeMismatch,
 )
+from workflow_manager.endpoint.fs_connector_helper import UnstractFsConnectorHelper
 from workflow_manager.endpoint.models import WorkflowEndpoint
 from workflow_manager.workflow.enums import ExecutionStatus
 from workflow_manager.workflow.file_history_helper import FileHistoryHelper
@@ -143,17 +143,15 @@ class DestinationConnector(BaseConnector):
             settings=connector_settings, connector_id=connector.connector_id
         )
         destination_fs_cls_name = destination_fs.__class__.__name__
-
-        if destination_fs_cls_name in UnstractFSConnector.ROOT_DIR_AS_ROOT:
-            output_directory = os.path.join(root_path, output_directory)
-
-        if not output_directory.endswith("/"):
-            output_directory += "/"
-
+        output_directory = UnstractFsConnectorHelper.get_fs_root_dir(
+            fs_cls_name=destination_fs_cls_name,
+            root_path=root_path,
+            input_dir=output_directory,
+        )
         destination_volume_path = os.path.join(
             self.execution_dir, ToolExecKey.OUTPUT_DIR
         )
-
+        print("*** output_directory *** ", output_directory)
         destination_fsspec = destination_fs.get_fsspec_fs()
 
         if not destination_fsspec.isdir(output_directory):

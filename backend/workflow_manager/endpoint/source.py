@@ -3,7 +3,6 @@ import logging
 import os
 import shutil
 from hashlib import md5, sha256
-from pathlib import Path
 from typing import Any, Optional
 
 import fsspec
@@ -19,7 +18,6 @@ from workflow_manager.endpoint.constants import (
     FileType,
     SourceConstant,
     SourceKey,
-    UnstractFSConnector,
     WorkflowFileType,
 )
 from workflow_manager.endpoint.exceptions import (
@@ -30,6 +28,7 @@ from workflow_manager.endpoint.exceptions import (
     OrganizationIdNotFound,
     SourceConnectorNotConfigured,
 )
+from workflow_manager.endpoint.fs_connector_helper import UnstractFsConnectorHelper
 from workflow_manager.endpoint.models import WorkflowEndpoint
 from workflow_manager.workflow.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow.models.workflow import Workflow
@@ -160,12 +159,12 @@ class SourceConnector(BaseConnector):
             settings=connector_settings, connector_id=connector.connector_id
         )
         source_fs_cls_name = source_fs.__class__.__name__
-
-        if source_fs_cls_name in UnstractFSConnector.ROOT_DIR_AS_ROOT:
-            input_directory = str(Path(root_dir_path, input_directory.lstrip("/")))
-
-        if not input_directory.endswith("/"):
-            input_directory += "/"
+        input_directory = UnstractFsConnectorHelper.get_fs_root_dir(
+            fs_cls_name=source_fs_cls_name,
+            root_path=root_dir_path,
+            input_dir=input_directory,
+        )
+        print("*** input_directory *** ", input_directory)
 
         if not isinstance(required_patterns, list):
             required_patterns = [required_patterns]

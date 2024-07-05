@@ -95,4 +95,5 @@ class BigQuery:
 
 
 class UnstractFSConnector:
-    ROOT_DIR_AS_ROOT = ["GoogleDriveFS"]
+    GOOGLE_DRIVE_FS = "GoogleDriveFS"
+    DROPBOX_FS = "DropboxFS"
