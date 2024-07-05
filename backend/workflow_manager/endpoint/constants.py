@@ -92,6 +92,17 @@ class BigQuery:
     """
 
     TABLE_NAME_SIZE = 3
+    COLUMN_TYPES = [
+        "DATE",
+        "DATETIME",
+        "TIME",
+        "TIMESTAMP",
+    ]
+
+
+class QueueResultStatus:
+    SUCCESS = "Success"
+    FAILED = "Failed"
 
 
 class UnstractFSConnector:

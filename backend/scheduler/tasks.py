@@ -3,6 +3,7 @@ import logging
 from typing import Any
 
 from account.models import Organization
+from account.subscription_loader import load_plugins, validate_etl_run
 from celery import shared_task
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from django_tenants.utils import get_tenant_model, tenant_context
@@ -12,6 +13,7 @@ from workflow_manager.workflow.models.workflow import Workflow
 from workflow_manager.workflow.workflow_helper import WorkflowHelper
 
 logger = logging.getLogger(__name__)
+subscription_loader = load_plugins()
 
 
 def create_periodic_task(
@@ -57,13 +59,25 @@ def execute_pipeline_task(
     name: Any,
 ) -> None:
     logger.info(f"Executing pipeline name: {name}")
-
     try:
         logger.info(f"Executing workflow id: {workflow_id}")
         tenant: Organization = (
             get_tenant_model().objects.filter(schema_name=org_schema).first()
         )
         with tenant_context(tenant):
+            if (
+                subscription_loader
+                and subscription_loader[0]
+                and not validate_etl_run(org_schema)
+            ):
+                try:
+                    logger.info(f"Disabling ETL task: {pipepline_id}")
+                    disable_task(pipepline_id)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to disable task: {pipepline_id}. Error: {e}"
+                    )
+                return
             workflow = Workflow.objects.get(id=workflow_id)
             logger.info(f"Executing workflow: {workflow}")
             PipelineProcessor.update_pipeline(
@@ -88,7 +102,6 @@ def delete_periodic_task(task_name: str) -> None:
         logger.error(f"Periodic task does not exist: {task_name}")
 
 
-@shared_task
 def disable_task(task_name: str) -> None:
     task = PeriodicTask.objects.get(name=task_name)
     task.enabled = False
@@ -96,7 +109,6 @@ def disable_task(task_name: str) -> None:
     PipelineProcessor.update_pipeline(task_name, Pipeline.PipelineStatus.PAUSED, False)
 
 
-@shared_task
 def enable_task(task_name: str) -> None:
     task = PeriodicTask.objects.get(name=task_name)
     task.enabled = True
