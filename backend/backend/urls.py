@@ -17,7 +17,8 @@ Including another URLconf
 from django.conf.urls import *  # noqa: F401, F403
 from django.urls import include, path
 
-from backend.constants import UrlPathConstants
+from backend.constants import FeatureFlag, UrlPathConstants
+from unstract.flags.feature_flag import check_feature_flag_status
 
 urlpatterns = [
     path("", include("tenant_account.urls")),
@@ -61,22 +62,34 @@ urlpatterns = [
     ),
 ]
 
+
+if check_feature_flag_status(FeatureFlag.APP_DEPLOYMENT):
+    # APP deployment urls
+    try:
+        import pluggable_apps.apps.app_deployment.urls  # noqa # pylint: disable=unused-import
+        import pluggable_apps.apps.canned_question.urls  # noqa # pylint: disable=unused-import
+        import pluggable_apps.apps.chat_history.urls  # noqa # pylint: disable=unused-import
+        import pluggable_apps.apps.chat_transcript.urls  # noqa # pylint: disable=unused-import
+
+        urlpatterns += [
+            path(
+                "canned_question/",
+                include("pluggable_apps.apps.canned_question.urls"),
+            ),
+            path("app/", include("pluggable_apps.apps.app_deployment.urls")),
+            path("chat_history/", include("pluggable_apps.apps.chat_history.urls")),
+            path("chat/", include("pluggable_apps.apps.chat_transcript.urls")),
+        ]
+    except ImportError:
+        pass
+
+# Subscription urls
 try:
-    import pluggable_apps.apps.app_deployment.urls  # noqa # pylint: disable=unused-import
-    import pluggable_apps.apps.canned_question.urls  # noqa # pylint: disable=unused-import
-    import pluggable_apps.apps.chat_history.urls  # noqa # pylint: disable=unused-import
-    import pluggable_apps.apps.chat_transcript.urls  # noqa # pylint: disable=unused-import
+
     import pluggable_apps.subscription.urls  # noqa # pylint: disable=unused-import
 
     urlpatterns += [
         path("", include("pluggable_apps.subscription.urls")),
-        path(
-            "canned_question/",
-            include("pluggable_apps.apps.canned_question.urls"),
-        ),
-        path("app/", include("pluggable_apps.apps.app_deployment.urls")),
-        path("chat_history/", include("pluggable_apps.apps.chat_history.urls")),
-        path("chat/", include("pluggable_apps.apps.chat_transcript.urls")),
     ]
 except ImportError:
     pass
