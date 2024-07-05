@@ -129,6 +129,7 @@ function useSessionValid() {
       if (isPlatformAdmin) {
         userAndOrgDetails["isPlatformAdmin"] = await isPlatformAdmin();
       }
+      userAndOrgDetails["role"] = userSessionData.role;
       // Set the session details
       setSessionDetails(getSessionData(userAndOrgDetails));
     } catch (err) {
