@@ -11,7 +11,7 @@ class InternalServiceError(APIException):
 class UserForbidden(APIException):
     status_code = 403
     default_detail = (
-        "User is forbidden from performing this action. Please contact admin"
+        "User is forbidden from performing this action. Please contact admin."
     )
 
 
