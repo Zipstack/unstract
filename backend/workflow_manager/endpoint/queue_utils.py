@@ -1,4 +1,6 @@
 import logging
+from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 from utils.constants import Common
@@ -10,15 +12,11 @@ from unstract.connectors.queues.unstract_queue import UnstractQueue
 logger = logging.getLogger(__name__)
 
 
-from dataclasses import dataclass
-from enum import Enum
-from typing import Any
-
-
 class QueueResultStatus(Enum):
     SUCCESS = "success"
     FAILURE = "failure"
     # Add other statuses as needed
+
 
 class QueueUtils:
     @staticmethod

@@ -490,12 +490,15 @@ class DestinationConnector(BaseConnector):
         review queue.
         Args:
             file_name (str): The name of the file.
-            workflow (Workflow): The workflow object containing details about the workflow.
+            workflow (Workflow): The workflow object containing
+            details about the workflow.
             result (Optional[str], optional): The result of the API call.
                 Defaults to None.
-            input_file_path (Optional[str], optional): The path to the input file.
+            input_file_path (Optional[str], optional):
+            The path to the input file.
                 Defaults to None.
-            meta_data (Optional[dict[str, Any]], optional): A dictionary containing additional
+            meta_data (Optional[dict[str, Any]], optional):
+                A dictionary containing additional
                 metadata related to the file. Defaults to None.
 
         Returns:
