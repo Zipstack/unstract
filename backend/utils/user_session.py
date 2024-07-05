@@ -1,7 +1,7 @@
 from typing import Optional
 
 from django.http import HttpRequest
-from tenant_account.models import OrganizationMember as OrganizationMember
+from tenant_account.models import OrganizationMember
 from utils.constants import FeatureFlag
 
 from unstract.flags.feature_flag import check_feature_flag_status
