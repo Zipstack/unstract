@@ -22,6 +22,7 @@ class QueueResultStatus(Enum):
 
 class ConnectorError(Exception):
     """Custom exception for connection-related errors."""
+
     pass
 
 
