@@ -20,6 +20,7 @@ class QueueResultStatus(Enum):
     FAILURE = "failure"
     # Add other statuses as needed
 
+
 class QueueUtils:
     @staticmethod
     def get_queue_inst(connector_settings: dict[str, Any] = {}) -> UnstractQueue:
