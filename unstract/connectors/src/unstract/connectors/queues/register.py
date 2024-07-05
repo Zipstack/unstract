@@ -13,7 +13,6 @@ def register_connectors(connectors: dict[str, Any]) -> None:
     current_directory = os.path.dirname(os.path.abspath(__file__))
     package = "unstract.connectors.queues"
 
-    # connectors = {}
     for connector in os.listdir(current_directory):
         connector_path = os.path.join(current_directory, connector)
         # Check if the item is a directory and not a special directory like __pycache__
