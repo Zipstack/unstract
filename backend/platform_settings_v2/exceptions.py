@@ -5,7 +5,7 @@ from rest_framework.exceptions import APIException
 
 class InternalServiceError(APIException):
     status_code = 500
-    default_detail = "Internal error occurred while platform key operations."
+    default_detail = "Internal error occurred while performing platform key operations."
 
 
 class UserForbidden(APIException):
