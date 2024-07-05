@@ -1,6 +1,7 @@
 from typing import Optional
 
 from django.http import HttpRequest
+from tenant_account.models import OrganizationMember
 from utils.constants import FeatureFlag
 
 from unstract.flags.feature_flag import check_feature_flag_status
@@ -23,3 +24,13 @@ class UserSessionUtils:
     @staticmethod
     def get_user_id(request: HttpRequest) -> Optional[str]:
         return request.session.get("user_id")
+
+    @staticmethod
+    def set_organization_member_role(
+        request: HttpRequest, member: OrganizationMember
+    ) -> None:
+        request.session["role"] = member.role
+
+    @staticmethod
+    def get_organization_member_role(request: HttpRequest) -> Optional[str]:
+        return request.session.get("role")
