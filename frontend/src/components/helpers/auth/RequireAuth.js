@@ -39,7 +39,7 @@ const RequireAuth = () => {
   if (onboardCompleted(adapters)) {
     navigateTo = `/${orgName}/tools`;
   }
-  if (flags.manual_review) {
+  if (flags?.manual_review) {
     if (
       sessionDetails.role === "unstract_reviewer" ||
       sessionDetails.role === "unstract_supervisor"
