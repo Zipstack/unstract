@@ -5,6 +5,9 @@ from utils.constants import Common
 
 from unstract.connectors.queues import connectors as queue_connectors
 from unstract.connectors.queues.unstract_queue import UnstractQueue
+from workflow_manager.endpoint.exceptions import (
+    UnstractQueueException
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +33,7 @@ class QueueUtils:
     @staticmethod
     def get_queue_inst(connector_settings: dict[str, Any] = {}) -> UnstractQueue:
         if not queue_connectors:
-            raise ConnectorError("Queue connector not exists")
+            raise UnstractQueueException(detail="Queue connector not exists")
         queue_connector_key = next(iter(queue_connectors))
         connector = queue_connectors[queue_connector_key][Common.METADATA][
             Common.CONNECTOR
