@@ -200,7 +200,9 @@ class DestinationConnector(BaseConnector):
             is_dir = destination_fsspec.isdir(output_directory)
             if not is_dir:
                 destination_fsspec.mkdir(output_directory)
-        except DropBoxApiError as e:
+        except (
+            DropBoxApiError
+        ) as e:  # Dropbox returns this exception when directory is not present
             logger.debug(f"Path not found in dropbox {e.error}")
             destination_fsspec.mkdir(output_directory)
 
