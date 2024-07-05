@@ -293,7 +293,7 @@ function OutputForDocModal({
         <div className="output-doc-gap" />
         <div className="lmm-profile-outputs">
           <Tabs defaultActiveKey="0" onChange={handleTabChange}>
-            <TabPane tab={<span>{"Default"}</span>} key={"0"}></TabPane>
+            <TabPane tab={<span>Default</span>} key={"0"}></TabPane>
             {adapterData?.map((adapter, index) => (
               <TabPane
                 tab={<span>{adapter?.llm_model}</span>}

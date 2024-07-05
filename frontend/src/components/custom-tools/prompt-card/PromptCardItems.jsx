@@ -363,7 +363,7 @@ function PromptCardItems({
               {!singlePassExtractMode &&
                 llmProfileDetails.map((profile, index) => {
                   const profileId = profile?.profile_id;
-                  const checked = enabledProfiles.includes(profileId);
+                  const isChecked = enabledProfiles.includes(profileId);
                   const tokenUsageId =
                     promptDetails?.prompt_id +
                     "__" +
@@ -424,19 +424,13 @@ function PromptCardItems({
                           </div>
                           <div className="prompt-info">
                             <CheckableTag
-                              checked={enabledProfiles.includes(profileId)}
+                              checked={isChecked}
                               onChange={(checked) =>
                                 handleTagChange(checked, profileId)
                               }
-                              style={{
-                                backgroundColor: checked
-                                  ? "#F6FFED"
-                                  : "#00000005",
-                                borderColor: checked ? "#B7EB8F" : "#00000026",
-                                color: checked ? "#52C41A" : "#000",
-                              }}
+                              className={isChecked ? "checked" : "unchecked"}
                             >
-                              {enabledProfiles.includes(profileId) ? (
+                              {isChecked ? (
                                 <span>
                                   Enabled
                                   <CheckCircleOutlined

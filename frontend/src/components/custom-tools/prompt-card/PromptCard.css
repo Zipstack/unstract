@@ -191,3 +191,15 @@
   border: 1px solid rgba(5, 5, 5, 0.1);
   height: 20px;
 }
+
+.ant-tag-checkable.checked {
+  background-color: #f6ffed !important;
+  border-color: #b7eb8f !important;
+  color: #52c41a !important;
+}
+
+.ant-tag-checkable.unchecked {
+  background-color: #00000005 !important;
+  border-color: #00000026 !important;
+  color: #000 !important;
+}

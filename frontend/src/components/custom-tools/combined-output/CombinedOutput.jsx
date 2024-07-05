@@ -145,9 +145,11 @@ function CombinedOutput({ docId, setFilledFields }) {
 
   const getAdapterInfo = () => {
     axiosPrivate
-      .get(`/api/v1/unstract/${sessionDetails.orgId}/adapter/?adapter_type=LLM`)
+      .get(
+        `/api/v1/unstract/${sessionDetails?.orgId}/adapter/?adapter_type=LLM`
+      )
       .then((res) => {
-        const adapterList = res.data;
+        const adapterList = res?.data;
         setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
       });
   };
