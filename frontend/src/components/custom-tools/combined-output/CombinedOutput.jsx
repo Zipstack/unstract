@@ -7,6 +7,7 @@ import PropTypes from "prop-types";
 
 import {
   displayPromptResult,
+  getLLMModelNamesForProfiles,
   promptType,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -31,18 +32,25 @@ try {
 function CombinedOutput({ docId, setFilledFields }) {
   const [combinedOutput, setCombinedOutput] = useState({});
   const [isOutputLoading, setIsOutputLoading] = useState(false);
+  const [adapterData, setAdapterData] = useState([]);
+  const [activeKey, setActiveKey] = useState("0");
   const {
     details,
     defaultLlmProfile,
     singlePassExtractMode,
     isSinglePassExtractLoading,
+    llmProfiles,
     isSimplePromptStudio,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
 
+  useEffect(() => {
+    getAdapterInfo();
+  }, []);
   useEffect(() => {
     if (!docId || isSinglePassExtractLoading) {
       return;
@@ -62,7 +70,7 @@ function CombinedOutput({ docId, setFilledFields }) {
           }
           output[item?.prompt_key] = "";
 
-          let profileManager = item?.profile_manager;
+          let profileManager = selectedProfile || item?.profile_manager;
           if (singlePassExtractMode) {
             profileManager = defaultLlmProfile;
           }
@@ -100,12 +108,25 @@ function CombinedOutput({ docId, setFilledFields }) {
       .finally(() => {
         setIsOutputLoading(false);
       });
-  }, [docId, singlePassExtractMode, isSinglePassExtractLoading]);
+  }, [
+    docId,
+    singlePassExtractMode,
+    isSinglePassExtractLoading,
+    selectedProfile,
+  ]);
 
   const handleOutputApiRequest = async () => {
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}`;
+    let url;
     if (isSimplePromptStudio) {
       url = promptOutputApiSps(details?.tool_id, null, docId);
+    } else {
+      url = `/api/v1/unstract/${
+        sessionDetails?.orgId
+      }/prompt-studio/prompt-output/?tool_id=${
+        details?.tool_id
+      }&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}&profile_manager=${
+        selectedProfile || defaultLlmProfile
+      }`;
     }
     const requestOptions = {
       method: "GET",
@@ -122,15 +143,43 @@ function CombinedOutput({ docId, setFilledFields }) {
       });
   };
 
+  const getAdapterInfo = () => {
+    axiosPrivate
+      .get(
+        `/api/v1/unstract/${sessionDetails?.orgId}/adapter/?adapter_type=LLM`
+      )
+      .then((res) => {
+        const adapterList = res?.data;
+        setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
+      });
+  };
+
   if (isOutputLoading) {
     return <SpinnerLoader />;
   }
+
+  const handleTabChange = (key) => {
+    if (key === "0") {
+      setSelectedProfile(defaultLlmProfile);
+    } else {
+      setSelectedProfile(adapterData[key - 1]?.profile_id);
+    }
+    setActiveKey(key);
+  };
 
   if (isSimplePromptStudio && TableView) {
     return <TableView combinedOutput={combinedOutput} />;
   }
 
-  return <JsonView combinedOutput={combinedOutput} />;
+  return (
+    <JsonView
+      combinedOutput={combinedOutput}
+      handleTabChange={handleTabChange}
+      selectedProfile={selectedProfile}
+      llmProfiles={llmProfiles}
+      activeKey={activeKey}
+    />
+  );
 }
 
 CombinedOutput.propTypes = {
