@@ -2,6 +2,7 @@
 
 .prompt-card {
   border: 1px solid #d9d9d9;
+  border-radius: 0;
 }
 
 .prompt-card .ant-card-body {
@@ -18,10 +19,6 @@
 
 .prompt-card-bg-col1 {
   background-color: #eceff3;
-}
-
-.prompt-card-rad {
-  border-radius: 8px 8px 0px 0px;
 }
 
 .prompt-card-head-info-icon {
@@ -61,8 +58,11 @@
   background-color: #f5f7f9;
 }
 
-.prompt-card-comp-layout-border {
-  border-radius: 0px 0px 10px 10px;
+.prompt-card-llm-layout {
+  width: 100%;
+  padding: 8px 12px;
+  background-color: #f5f7f9;
+  row-gap: 2;
 }
 
 .prompt-card-actions-dropdowns {
@@ -76,7 +76,10 @@
 .prompt-card-result {
   padding-top: 12px;
   background-color: #fff8e6;
-  border-radius: 0px 0px 8px 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: -webkit-fill-available;
 }
 
 .prompt-card-result .ant-typography {
@@ -84,7 +87,8 @@
 }
 
 .prompt-card-res {
-  white-space: pre-wrap;
+  min-width: 0;
+  flex-basis: 60%;
 }
 
 .prompt-card-select-type {
@@ -115,4 +119,87 @@
 
 .prompt-card-collapse .ant-collapse-content-box {
   padding: 0px !important;
+}
+
+.llm-info {
+  display: flex;
+  align-items: center;
+}
+
+.prompt-card-llm-title {
+  margin: 0 0 0 10px !important;
+}
+
+.prompt-card-llm-icon {
+  display: flex;
+  justify-content: center;
+}
+
+.prompt-cost-item {
+  font-size: 12px;
+  margin-right: 10px;
+}
+
+.prompt-info {
+  display: flex;
+  justify-content: space-between;
+}
+
+.llm-info-container > * {
+  margin-left: 10px;
+}
+
+.prompt-card-llm-container {
+  border-right: 1px solid #0000000f;
+  width: fill-available !important;
+}
+
+.prompt-profile-run-expanded {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.prompt-card-llm {
+  flex: 1;
+  min-width: 250px;
+}
+
+.collapsed-output {
+  max-height: 20px; /* Adjust height as necessary */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expanded-output {
+  max-height: 250px; /* Adjust height as necessary */
+  overflow-y: auto;
+}
+
+.prompt-profile-run {
+  align-self: flex-end;
+  margin-left: 10px;
+}
+
+.index-output-tab {
+  overflow: scroll;
+  height: 60vh;
+}
+
+.header-delete-divider {
+  margin: auto 2px auto 10px;
+  border: 1px solid rgba(5, 5, 5, 0.1);
+  height: 20px;
+}
+
+.ant-tag-checkable.checked {
+  background-color: #f6ffed !important;
+  border-color: #b7eb8f !important;
+  color: #52c41a !important;
+}
+
+.ant-tag-checkable.unchecked {
+  background-color: #00000005 !important;
+  border-color: #00000026 !important;
+  color: #000 !important;
 }
