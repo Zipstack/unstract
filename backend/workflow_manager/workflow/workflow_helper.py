@@ -89,6 +89,7 @@ class WorkflowHelper:
         scheduled: bool,
         execution_mode: tuple[str, str],
         workflow_execution: Optional[WorkflowExecution],
+        include_metadata: bool = False,
     ) -> WorkflowExecutionServiceHelper:
         workflow_execution_service = WorkflowExecutionServiceHelper(
             organization_id=organization_id,
@@ -99,6 +100,7 @@ class WorkflowHelper:
             scheduled=scheduled,
             mode=execution_mode,
             workflow_execution=workflow_execution,
+            include_metadata=include_metadata,
         )
         workflow_execution_service.build()
         return workflow_execution_service
@@ -203,6 +205,7 @@ class WorkflowHelper:
             workflow=workflow,
             file_history=file_history,
             error=error,
+            input_file_path=input_file,
         )
         execution_service.publish_update_log(
             LogState.SUCCESS,
@@ -232,6 +235,7 @@ class WorkflowHelper:
         single_step: bool = False,
         workflow_execution: Optional[WorkflowExecution] = None,
         execution_mode: Optional[tuple[str, str]] = None,
+        include_metadata: bool = False,
     ) -> ExecutionResponse:
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
@@ -250,6 +254,7 @@ class WorkflowHelper:
             scheduled=scheduled,
             execution_mode=execution_mode,
             workflow_execution=workflow_execution,
+            include_metadata=include_metadata,
         )
         execution_id = execution_service.execution_id
         source = SourceConnector(
@@ -349,18 +354,19 @@ class WorkflowHelper:
         hash_values_of_files: dict[str, str],
         timeout: int = -1,
         pipeline_id: Optional[str] = None,
+        include_metadata: bool = False,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
 
         Args:
             workflow_id (str): workflowId
-            execution_id (str): _description_
-            timeout (int):  celery timeout (timeout -1 : async execution)
-            pipeline_id (Optional[str], optional): optional pipeline.
-                Defaults to None.
+            execution_id (str): Execution ID
+            timeout (int):  Celery timeout (timeout -1 : async execution)
+            pipeline_id (Optional[str], optional): Optional pipeline. Defaults to None.
+            include_metadata (bool): Whether to include metadata in the prompt output
 
         Returns:
-            ExecutionStatus: Existing status of execution
+            ExecutionResponse: Existing status of execution
         """
         try:
             org_schema = connection.tenant.schema_name
@@ -372,6 +378,7 @@ class WorkflowHelper:
                 execution_id=execution_id,
                 pipeline_id=pipeline_id,
                 log_events_id=log_events_id,
+                include_metadata=include_metadata,
             )
             if timeout > -1:
                 async_execution.wait(
@@ -426,6 +433,7 @@ class WorkflowHelper:
         scheduled: bool = False,
         execution_mode: Optional[tuple[str, str]] = None,
         pipeline_id: Optional[str] = None,
+        include_metadata: bool = False,
         **kwargs: dict[str, Any],
     ) -> Optional[list[Any]]:
         """Asynchronous Execution By celery.
@@ -433,22 +441,20 @@ class WorkflowHelper:
         Args:
             schema_name (str): schema name to get Data
             workflow_id (str): Workflow Id
-            execution_id (Optional[str], optional): Id of the execution.
-                Defaults to None.
-            scheduled (bool, optional): Represents if it is a scheduled
-                execution. Defaults to False.
-            execution_mode (Optional[WorkflowExecution.Mode]):
-                WorkflowExecution Mode. Defaults to None.
-            pipeline_id (Optional[str], optional): Id of pipeline.
-                Defaults to None.
+            execution_id (str): Id of the execution
+            scheduled (bool, optional): Represents if it is a scheduled execution
+                Defaults to False
+            execution_mode (Optional[WorkflowExecution.Mode]): WorkflowExecution Mode
+                Defaults to None
+            pipeline_id (Optional[str], optional): Id of pipeline. Defaults to None
+            include_metadata (bool): Whether to include metadata in the prompt output
 
         Kwargs:
-            log_events_id (str): Session ID of the user, helps establish
-                WS connection for streaming logs to the FE
+            log_events_id (str): Session ID of the user,
+                helps establish WS connection for streaming logs to the FE
 
         Returns:
-            dict[str, list[Any]]: Returns a dict with result from
-                workflow execution
+            dict[str, list[Any]]: Returns a dict with result from workflow execution
         """
         task_id = current_task.request.id
         tenant: Organization = (
@@ -481,6 +487,7 @@ class WorkflowHelper:
                 workflow_execution=workflow_execution,
                 execution_mode=execution_mode,
                 hash_values_of_files=hash_values_of_files,
+                include_metadata=include_metadata,
             ).result
             return result
 
@@ -490,6 +497,7 @@ class WorkflowHelper:
         execution_id: Optional[str] = None,
         pipeline_id: Optional[str] = None,
         hash_values_of_files: dict[str, str] = {},
+        include_metadata: bool = False,
     ) -> ExecutionResponse:
         if pipeline_id:
             logger.info(f"Executing pipeline: {pipeline_id}")
@@ -517,6 +525,7 @@ class WorkflowHelper:
                 workflow=workflow,
                 workflow_execution=workflow_execution,
                 hash_values_of_files=hash_values_of_files,
+                include_metadata=include_metadata,
             )
         except WorkflowExecution.DoesNotExist:
             return WorkflowHelper.create_and_make_execution_response(
@@ -544,6 +553,7 @@ class WorkflowHelper:
         execution_action: str,
         execution_id: Optional[str] = None,
         hash_values_of_files: dict[str, str] = {},
+        include_metadata: bool = False,
     ) -> ExecutionResponse:
         if execution_action is Workflow.ExecutionAction.START.value:  # type: ignore
             if execution_id is None:
@@ -557,6 +567,7 @@ class WorkflowHelper:
                     single_step=True,
                     workflow_execution=workflow_execution,
                     hash_values_of_files=hash_values_of_files,
+                    include_metadata=include_metadata,
                 )
             except WorkflowExecution.DoesNotExist:
                 return WorkflowHelper.create_and_make_execution_response(

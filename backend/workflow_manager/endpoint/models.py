@@ -15,6 +15,8 @@ class WorkflowEndpoint(BaseModel):
         FILESYSTEM = "FILESYSTEM", "FileSystem connector"
         DATABASE = "DATABASE", "Database Connector"
         API = "API", "API Connector"
+        APPDEPLOYMENT = "APPDEPLOYMENT", "App Deployment"
+        MANUALREVIEW = "MANUALREVIEW", "Manual Review Queue Connector"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     workflow = models.ForeignKey(
@@ -32,7 +34,7 @@ class WorkflowEndpoint(BaseModel):
     connection_type = models.CharField(
         choices=ConnectionType.choices,
         blank=True,
-        db_comment="Connection type (Filesystem, Database or API)",
+        db_comment="Connection type (Filesystem, Database, API or Manualreview)",
     )
     configuration = models.JSONField(
         blank=True, null=True, db_comment="Configuration in JSON format"
