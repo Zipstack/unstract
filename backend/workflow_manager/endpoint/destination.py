@@ -526,7 +526,7 @@ class DestinationConnector(BaseConnector):
                 file_content=file_content_base64,
             )
             # Convert the result dictionary to a JSON string
-            queue_result_json = json.dumps(queue_result)
+            queue_result_json = json.dumps(queue_result.to_serializable_dict())
             conn = QueueUtils.get_queue_inst()
             # Enqueue the JSON string
             conn.enqueue(queue_name=q_name, message=queue_result_json)

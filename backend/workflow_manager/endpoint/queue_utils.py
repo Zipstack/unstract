@@ -39,3 +39,13 @@ class QueueResult:
     result: Any
     workflow_id: str
     file_content: str
+
+    def to_serializable_dict(self):
+        return {
+            "file": self.file,
+            "whisper_hash": self.whisper_hash,
+            "status": self.status,
+            "result": self.result,
+            "workflow_id": self.workflow_id,
+            "file_content": self.file_content,
+        }
