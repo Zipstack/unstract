@@ -420,6 +420,68 @@ const generateUUID = () => {
   return uuid;
 };
 
+function getLLMModelNamesForProfiles(profiles, adapters) {
+  // Create a mapping of adapter_ids to model names
+  const adapterMap = adapters.reduce((map, adapter) => {
+    map[adapter?.adapter_name] = adapter?.model;
+    return map;
+  }, {});
+
+  // Map through profiles and find corresponding model names using the adapterMap
+  return profiles.map((profile) => {
+    return {
+      profile_name: profile?.profile_name,
+      llm_model: adapterMap[profile?.llm],
+      profile_id: profile?.profile_id,
+    };
+  });
+}
+
+function getFormattedTotalCost(result, profile) {
+  // Find the relevant object in the result array
+  const value =
+    result.find((r) => r?.profileManager === profile?.profile_id)?.totalCost ??
+    0;
+
+  // Format the value to 5 decimal places or return "0" if the value is zero
+  return value === 0 ? 0 : value.toFixed(5);
+}
+
+const pollForCompletion = (
+  startTime,
+  requestOptions,
+  maxWaitTime,
+  pollingInterval,
+  makeApiRequest
+) => {
+  const elapsedTime = Date.now() - startTime;
+  if (elapsedTime >= maxWaitTime) {
+    return Promise.reject(
+      new Error(
+        "Unable to fetch results since there's an ongoing extraction, please try again later"
+      )
+    );
+  }
+
+  const recursivePoll = () => {
+    return makeApiRequest(requestOptions)
+      .then((response) => {
+        if (response?.data?.status === "pending") {
+          return new Promise((resolve) =>
+            setTimeout(resolve, pollingInterval)
+          ).then(recursivePoll);
+        } else {
+          return response;
+        }
+      })
+      .catch((err) => {
+        throw err;
+      });
+  };
+
+  return recursivePoll();
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -458,4 +520,7 @@ export {
   isNonNegativeNumber,
   defaultTokenUsage,
   generateUUID,
+  getLLMModelNamesForProfiles,
+  getFormattedTotalCost,
+  pollForCompletion,
 };

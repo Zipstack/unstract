@@ -1,24 +1,48 @@
 import PropTypes from "prop-types";
-import { LeftOutlined, RightOutlined, SearchOutlined } from "@ant-design/icons";
+import {
+  ArrowsAltOutlined,
+  CheckCircleOutlined,
+  DatabaseOutlined,
+  ExclamationCircleFilled,
+  InfoCircleOutlined,
+  PlayCircleFilled,
+  PlayCircleOutlined,
+  SearchOutlined,
+} from "@ant-design/icons";
 import {
   Button,
   Card,
+  Col,
   Collapse,
   Divider,
+  Image,
+  Radio,
+  Row,
   Select,
   Space,
   Spin,
-  Tag,
+  Tooltip,
   Typography,
 } from "antd";
 import { useEffect, useRef, useState } from "react";
 
-import { displayPromptResult } from "../../../helpers/GetStaticData";
+import {
+  displayPromptResult,
+  getFormattedTotalCost,
+} from "../../../helpers/GetStaticData";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { Header } from "./Header";
+import CheckableTag from "antd/es/tag/CheckableTag";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useSessionStore } from "../../../store/session-store";
+import { motion, AnimatePresence } from "framer-motion";
+import { OutputForIndex } from "./OutputForIndex";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useAlertStore } from "../../../store/alert-store";
+import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
 
 const EvalBtn = null;
 const EvalMetrics = null;
@@ -37,8 +61,6 @@ function PromptCardItems({
   handleRun,
   handleChange,
   handleDelete,
-  handlePageLeft,
-  handlePageRight,
   handleTypeChange,
   updateStatus,
   updatePlaceHolder,
@@ -46,12 +68,9 @@ function PromptCardItems({
   setOpenEval,
   setOpenOutputForDoc,
   selectedLlmProfileId,
-  page,
+  handleSelectDefaultLLM,
+  timers,
 }) {
-  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [expandCard, setExpandCard] = useState(true);
-  const divRef = useRef(null);
   const {
     llmProfiles,
     selectedDoc,
@@ -63,10 +82,24 @@ function PromptCardItems({
     isSimplePromptStudio,
     isPublicSource,
   } = useCustomToolStore();
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [expandCard, setExpandCard] = useState(true);
+  const [llmProfileDetails, setLlmProfileDetails] = useState([]);
+  const [openIndexProfile, setOpenIndexProfile] = useState(null);
+  const [enabledProfiles, setEnabledProfiles] = useState(
+    llmProfiles.map((profile) => profile.profile_id)
+  );
+  const [expandedProfiles, setExpandedProfiles] = useState([]); // New state for expanded profiles
+  const [isIndexOpen, setIsIndexOpen] = useState(false);
+  const privateAxios = useAxiosPrivate();
+  const { sessionDetails } = useSessionStore();
+  const { width: windowWidth } = useWindowDimensions();
+  const handleException = useExceptionHandler();
+  const { setAlertDetails } = useAlertStore();
+  const componentWidth = windowWidth * 0.4;
 
-  useEffect(() => {
-    setExpandCard(true);
-  }, [isSinglePassExtractLoading]);
+  const divRef = useRef(null);
 
   const enableEdit = (event) => {
     event.stopPropagation();
@@ -74,7 +107,149 @@ function PromptCardItems({
     setIsEditingTitle(true);
     setIsEditingPrompt(true);
   };
+  const getModelOrAdapterId = (profile, adapters) => {
+    const result = { conf: {} };
+    const keys = ["vector_store", "embedding_model", "llm", "x2text"];
 
+    keys.forEach((key) => {
+      const adapterName = profile[key];
+      const adapter = adapters?.find(
+        (adapter) => adapter?.adapter_name === adapterName
+      );
+      if (adapter) {
+        result.conf[key] = adapter?.model || adapter?.adapter_id?.split("|")[0];
+        if (adapter?.adapter_type === "LLM") result.icon = adapter?.icon;
+      }
+    });
+    return result;
+  };
+
+  const getAdapterInfo = async () => {
+    privateAxios
+      .get(`/api/v1/unstract/${sessionDetails?.orgId}/adapter/`)
+      .then((res) => {
+        const adapterData = res?.data;
+
+        // Update llmProfiles with additional fields
+        const updatedProfiles = llmProfiles?.map((profile) => {
+          return { ...getModelOrAdapterId(profile, adapterData), ...profile };
+        });
+        setLlmProfileDetails(
+          updatedProfiles
+            .map((profile) => ({
+              ...profile,
+              isDefault: profile?.profile_id === selectedLlmProfileId,
+              isEnabled: enabledProfiles.includes(profile?.profile_id),
+            }))
+            .sort((a, b) => {
+              if (a?.isDefault) return -1; // Default profile comes first
+              if (b?.isDefault) return 1;
+              if (a?.isEnabled && !b?.isEnabled) return -1; // Enabled profiles come before disabled
+              if (!a?.isEnabled && b?.isEnabled) return 1;
+              return 0;
+            })
+        );
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
+  };
+
+  const tooltipContent = (adapterConf) => (
+    <div>
+      {Object.entries(adapterConf)?.map(([key, value]) => (
+        <div key={key}>
+          <strong>{key}:</strong> {value}
+        </div>
+      ))}
+    </div>
+  );
+
+  const handleExpandClick = (profile) => {
+    const profileId = profile?.profile_id;
+    setExpandedProfiles((prevState) =>
+      prevState.includes(profileId)
+        ? prevState.filter((id) => id !== profileId)
+        : [...prevState, profileId]
+    );
+  };
+
+  const handleTagChange = (checked, profileId) => {
+    setEnabledProfiles((prevState) =>
+      checked
+        ? [...prevState, profileId]
+        : prevState.filter((id) => id !== profileId)
+    );
+  };
+
+  const getColSpan = () => (componentWidth < 1200 ? 24 : 6);
+
+  const renderSinglePassResult = () => {
+    const [firstResult] = result || [];
+    if (
+      promptDetails.active &&
+      (firstResult?.output || firstResult?.output === 0)
+    ) {
+      return (
+        <>
+          <Divider className="prompt-card-divider" />
+          <div
+            className={`prompt-card-result prompt-card-div ${
+              expandedProfiles.includes(firstResult.profileManager) &&
+              "prompt-profile-run-expanded"
+            }`}
+          >
+            {isSinglePassExtractLoading ? (
+              <Spin indicator={<SpinnerLoader size="small" />} />
+            ) : (
+              <Typography.Paragraph className="prompt-card-res font-size-12">
+                <div
+                  className={
+                    expandedProfiles.includes(firstResult.profileManager)
+                      ? "expanded-output"
+                      : "collapsed-output"
+                  }
+                >
+                  {displayPromptResult(firstResult.output, true)}
+                </div>
+              </Typography.Paragraph>
+            )}
+            <div className="prompt-profile-run">
+              <Tooltip title="Expand">
+                <Button
+                  size="small"
+                  type="text"
+                  className="prompt-card-action-button"
+                  onClick={() =>
+                    handleExpandClick({
+                      profile_id: firstResult.profileManager,
+                    })
+                  }
+                >
+                  <ArrowsAltOutlined className="prompt-card-actions-head" />
+                </Button>
+              </Tooltip>
+            </div>
+          </div>
+        </>
+      );
+    }
+    return <></>;
+  };
+
+  useEffect(() => {
+    setExpandCard(true);
+  }, [isSinglePassExtractLoading]);
+
+  useEffect(() => {
+    if (singlePassExtractMode) {
+      setExpandedProfiles([]);
+    }
+  }, [singlePassExtractMode]);
+
+  useEffect(() => {
+    getAdapterInfo();
+  }, [llmProfiles, selectedLlmProfileId, enabledProfiles]);
   return (
     <Card className="prompt-card">
       <div className="prompt-card-div prompt-card-bg-col1 prompt-card-rad">
@@ -95,6 +270,7 @@ function PromptCardItems({
             enableEdit={enableEdit}
             expandCard={expandCard}
             setExpandCard={setExpandCard}
+            enabledProfiles={enabledProfiles}
           />
         </Space>
       </div>
@@ -111,7 +287,7 @@ function PromptCardItems({
               text={promptText}
               setText={setPromptText}
               promptId={promptDetails?.prompt_id}
-              defaultText={promptDetails.prompt}
+              defaultText={promptDetails?.prompt}
               handleChange={handleChange}
               isTextarea={true}
               placeHolder={updatePlaceHolder}
@@ -121,7 +297,6 @@ function PromptCardItems({
             {!isSimplePromptStudio && (
               <>
                 <Divider className="prompt-card-divider" />
-
                 <Space
                   direction="vertical"
                   className={`prompt-card-comp-layout ${
@@ -134,7 +309,7 @@ function PromptCardItems({
                       {EvalBtn && !singlePassExtractMode && (
                         <EvalBtn
                           btnText={promptDetails?.evaluate ? "On" : "Off"}
-                          promptId={promptDetails.prompt_id}
+                          promptId={promptDetails?.prompt_id}
                           setOpenEval={setOpenEval}
                         />
                       )}
@@ -152,22 +327,16 @@ function PromptCardItems({
                             <SearchOutlined className="font-size-12" />
                           )}
                           <Typography.Link className="font-size-12">
-                            Coverage: {coverage} of {listOfDocs?.length || 0}{" "}
-                            docs
+                            Coverage:{" "}
+                            {coverage[
+                              `${promptDetails?.prompt_id}_${selectedLlmProfileId}`
+                            ]?.docs_covered?.length || 0}{" "}
+                            of {listOfDocs?.length || 0} docs
                           </Typography.Link>
                         </Space>
                       </Button>
                     </Space>
                     <Space>
-                      {!singlePassExtractMode && (
-                        <TokenUsage
-                          tokenUsageId={
-                            promptDetails?.prompt_id +
-                            "__" +
-                            selectedDoc?.document_id
-                          }
-                        />
-                      )}
                       <Select
                         className="prompt-card-select-type"
                         size="small"
@@ -261,22 +430,216 @@ function PromptCardItems({
               </>
             )}
           </>
-          {(isRunLoading || result?.output || result?.output === 0) && (
-            <>
-              <Divider className="prompt-card-divider" />
-              <div className="prompt-card-result prompt-card-div">
-                {isRunLoading ? (
-                  <Spin indicator={<SpinnerLoader size="small" />} />
-                ) : (
-                  <Typography.Paragraph className="prompt-card-res font-size-12">
-                    <div>{displayPromptResult(result?.output, true)}</div>
-                  </Typography.Paragraph>
-                )}
-              </div>
-            </>
-          )}
+          <Row>
+            <AnimatePresence>
+              {!singlePassExtractMode &&
+                llmProfileDetails.map((profile, index) => {
+                  const profileId = profile?.profile_id;
+                  const isChecked = enabledProfiles.includes(profileId);
+                  const tokenUsageId =
+                    promptDetails?.prompt_id +
+                    "__" +
+                    selectedDoc?.document_id +
+                    "__" +
+                    profileId;
+                  return (
+                    <motion.div
+                      key={profileId}
+                      initial={{ x: 0 }}
+                      animate={{
+                        x:
+                          profileId === selectedLlmProfileId && index !== 0
+                            ? -10
+                            : 0,
+                      }}
+                      transition={{ duration: 0.5, ease: "linear" }}
+                      className="prompt-card-llm"
+                    >
+                      <Col
+                        key={profileId}
+                        className="prompt-card-llm-container"
+                        xs={{ span: getColSpan() }}
+                      >
+                        <Divider className="prompt-card-divider" />
+                        <Space
+                          direction="vertical"
+                          className="prompt-card-llm-layout"
+                        >
+                          <div className="llm-info">
+                            <Image
+                              src={profile?.icon}
+                              width={15}
+                              height={15}
+                              preview={false}
+                              className="prompt-card-llm-icon"
+                            />
+                            <Typography.Title
+                              className="prompt-card-llm-title"
+                              level={5}
+                            >
+                              {profile?.conf.llm}
+                            </Typography.Title>
+                          </div>
+                          <div className="prompt-cost">
+                            <Typography.Text className="prompt-cost-item">
+                              Tokens:{" "}
+                              {!singlePassExtractMode && (
+                                <TokenUsage tokenUsageId={tokenUsageId} />
+                              )}
+                            </Typography.Text>
+                            <Typography.Text className="prompt-cost-item">
+                              Time: {timers[tokenUsageId] || 0}s
+                            </Typography.Text>
+                            <Typography.Text className="prompt-cost-item">
+                              Cost: ${getFormattedTotalCost(result, profile)}
+                            </Typography.Text>
+                          </div>
+                          <div className="prompt-info">
+                            <CheckableTag
+                              checked={isChecked}
+                              onChange={(checked) =>
+                                handleTagChange(checked, profileId)
+                              }
+                              className={isChecked ? "checked" : "unchecked"}
+                            >
+                              {isChecked ? (
+                                <span>
+                                  Enabled
+                                  <CheckCircleOutlined
+                                    style={{
+                                      color: "#52c41a",
+                                      marginLeft: "5px",
+                                    }}
+                                  />
+                                </span>
+                              ) : (
+                                <span>
+                                  Disabled
+                                  <ExclamationCircleFilled
+                                    style={{
+                                      color: "#BABBBC",
+                                      marginLeft: "5px",
+                                    }}
+                                  />
+                                </span>
+                              )}
+                            </CheckableTag>
+                            <div className="llm-info-container">
+                              <Tooltip title={tooltipContent(profile?.conf)}>
+                                <InfoCircleOutlined />
+                              </Tooltip>
+                              <DatabaseOutlined
+                                onClick={() => {
+                                  setIsIndexOpen(true);
+                                  setOpenIndexProfile(
+                                    result.find(
+                                      (r) => r?.profileManager === profileId
+                                    )?.context
+                                  );
+                                }}
+                                className="prompt-card-actions-head"
+                              />
+                              <Radio
+                                checked={profileId === selectedLlmProfileId}
+                                onChange={() =>
+                                  handleSelectDefaultLLM(profileId)
+                                }
+                              >
+                                Default
+                              </Radio>
+                            </div>
+                          </div>
+                        </Space>
+                        <>
+                          <Divider className="prompt-card-divider" />
+                          <div
+                            className={`prompt-card-result prompt-card-div ${
+                              expandedProfiles.includes(profileId) &&
+                              "prompt-profile-run-expanded"
+                            }`}
+                          >
+                            {isRunLoading[
+                              `${selectedDoc?.document_id}_${profileId}`
+                            ] ? (
+                              <Spin
+                                indicator={<SpinnerLoader size="small" />}
+                              />
+                            ) : (
+                              <Typography.Paragraph className="prompt-card-res font-size-12">
+                                <div
+                                  className={
+                                    expandedProfiles.includes(profileId)
+                                      ? "expanded-output"
+                                      : "collapsed-output"
+                                  }
+                                >
+                                  {displayPromptResult(
+                                    result.find(
+                                      (r) => r?.profileManager === profileId
+                                    )?.output,
+                                    true
+                                  )}
+                                </div>
+                              </Typography.Paragraph>
+                            )}
+                            <div className="prompt-profile-run">
+                              <Tooltip title="Run">
+                                <Button
+                                  size="small"
+                                  type="text"
+                                  className="prompt-card-action-button"
+                                  onClick={() => handleRun(profileId, false)}
+                                  disabled={
+                                    isRunLoading[
+                                      `${selectedDoc?.document_id}_${profileId}`
+                                    ]
+                                  }
+                                >
+                                  <PlayCircleOutlined className="prompt-card-actions-head" />
+                                </Button>
+                              </Tooltip>
+                              <Tooltip title="Run All">
+                                <Button
+                                  size="small"
+                                  type="text"
+                                  className="prompt-card-action-button"
+                                  onClick={() => handleRun(profileId, true)}
+                                  disabled={
+                                    isRunLoading[
+                                      `${selectedDoc?.document_id}_${profileId}`
+                                    ]
+                                  }
+                                >
+                                  <PlayCircleFilled className="prompt-card-actions-head" />
+                                </Button>
+                              </Tooltip>
+                              <Tooltip title="Expand">
+                                <Button
+                                  size="small"
+                                  type="text"
+                                  className="prompt-card-action-button"
+                                  onClick={() => handleExpandClick(profile)}
+                                >
+                                  <ArrowsAltOutlined className="prompt-card-actions-head" />
+                                </Button>
+                              </Tooltip>
+                            </div>
+                          </div>
+                        </>
+                      </Col>
+                    </motion.div>
+                  );
+                })}
+            </AnimatePresence>
+            {singlePassExtractMode && renderSinglePassResult()}
+          </Row>
         </Collapse.Panel>
       </Collapse>
+      <OutputForIndex
+        chunkData={openIndexProfile}
+        isIndexOpen={isIndexOpen}
+        setIsIndexOpen={setIsIndexOpen}
+      />
     </Card>
   );
 }
@@ -284,7 +647,7 @@ function PromptCardItems({
 PromptCardItems.propTypes = {
   promptDetails: PropTypes.object.isRequired,
   enforceTypeList: PropTypes.array,
-  isRunLoading: PropTypes.bool,
+  isRunLoading: PropTypes.object,
   promptKey: PropTypes.text,
   setPromptKey: PropTypes.func.isRequired,
   promptText: PropTypes.text,
@@ -294,8 +657,7 @@ PromptCardItems.propTypes = {
   progressMsg: PropTypes.object.isRequired,
   handleRun: PropTypes.func.isRequired,
   handleChange: PropTypes.func.isRequired,
-  handlePageLeft: PropTypes.func.isRequired,
-  handlePageRight: PropTypes.func.isRequired,
+  handleSelectDefaultLLM: PropTypes.func.isRequired,
   handleTypeChange: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
   updateStatus: PropTypes.object.isRequired,
@@ -304,7 +666,7 @@ PromptCardItems.propTypes = {
   setOpenEval: PropTypes.func.isRequired,
   setOpenOutputForDoc: PropTypes.func.isRequired,
   selectedLlmProfileId: PropTypes.string,
-  page: PropTypes.number.isRequired,
+  timers: PropTypes.object.isRequired,
 };
 
 export { PromptCardItems };

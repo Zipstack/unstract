@@ -35,7 +35,8 @@ let PlatformAdminPage;
 let AppDeployments;
 let ChatAppPage;
 let ChatAppLayout;
-let PublicPromptStudioHelper;
+let ManualReviewPage;
+let ReviewLayout;let PublicPromptStudioHelper;
 
 try {
   TrialRoutes =
@@ -59,6 +60,14 @@ try {
   // Do nothing, Not-found Page will be triggered.
 }
 
+try {
+  ManualReviewPage =
+    require("../plugins/manual-review/page/ManualReviewPage.jsx").ManualReviewPage;
+  ReviewLayout =
+    require("../plugins/manual-review/review-layout/ReviewLayout.jsx").ReviewLayout;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
 // Import pages/components related to Simple Prompt Studio.
 let SimplePromptStudioHelper;
 let SimplePromptStudio;
@@ -196,6 +205,22 @@ function Router() {
               </Route>
             )}
           </Route>
+          {ReviewLayout && ManualReviewPage && (
+            <Route path=":orgName" element={<ReviewLayout />}>
+              <Route
+                path="review"
+                element={<ManualReviewPage type="review" />}
+              ></Route>
+              <Route
+                path="review/download_and_sync"
+                element={<ManualReviewPage type="download" />}
+              />
+              <Route
+                path="review/approve"
+                element={<ManualReviewPage type="approve" />}
+              />
+            </Route>
+          )}
         </Route>
         {TrialRoutes && (
           <Route path="/trial-expired" element={<TrialRoutes />} />

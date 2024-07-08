@@ -6,3 +6,4 @@ class ConnectorMode(Enum):
     FILE_SYSTEM = "FILE_SYSTEM"
     DATABASE = "DATABASE"
     API = "API"
+    MANUAL_REVIEW = "MANUAL_REVIEW"

@@ -5,7 +5,7 @@ from unstract.sdk.constants import ToolEnv
 from unstract.sdk.llm import LLM
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.utils import ToolUtils
-from unstract.sdk.x2txt import X2Text
+from unstract.sdk.x2txt import TextExtractionResult, X2Text
 
 
 class ClassifierHelper:
@@ -48,7 +48,10 @@ class ClassifierHelper:
         self.tool.stream_log("Adapter created")
 
         try:
-            extracted_text: str = x2text.process(input_file_path=file)
+            extraction_result: TextExtractionResult = x2text.process(
+                input_file_path=file
+            )
+            extracted_text: str = extraction_result.extracted_text
             return extracted_text
         except Exception as e:
             self.tool.stream_log(f"Adapter error: {e}")
