@@ -93,7 +93,7 @@ except ImportError:
     pass
 
 try:
-    import pluggable_apps.manual_review.urls  # noqa: F401
+    import pluggable_apps.manual_review.urls
 
     urlpatterns += [
         path("manual_review/", include("pluggable_apps.manual_review.urls")),
