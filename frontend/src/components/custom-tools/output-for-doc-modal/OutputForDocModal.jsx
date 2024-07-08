@@ -24,7 +24,6 @@ import { useTokenUsageStore } from "../../../store/token-usage-store";
 import TabPane from "antd/es/tabs/TabPane";
 import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 
-
 let publicOutputsApi;
 try {
   publicOutputsApi =

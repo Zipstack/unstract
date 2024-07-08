@@ -356,75 +356,6 @@ function PromptCardItems({
                       />
                     </Space>
                   </div>
-                  <div className="prompt-card-llm-profiles">
-                    {!singlePassExtractMode && (
-                      <>
-                        {llmProfiles?.length > 0 &&
-                        promptDetails?.profile_manager?.length > 0 &&
-                        selectedLlmProfileId ? (
-                          <div>
-                            {llmProfiles
-                              .filter(
-                                (profile) =>
-                                  profile.profile_id === selectedLlmProfileId
-                              )
-                              .map((profile, index) => (
-                                <div key={profile?.profile_id}>
-                                  <Tag>{profile.llm}</Tag>
-                                  <Tag>{profile.vector_store}</Tag>
-                                  <Tag>{profile.embedding_model}</Tag>
-                                  <Tag>{profile.x2text}</Tag>
-                                  <Tag>{`${profile.chunk_size}/${profile.chunk_overlap}/${profile.retrieval_strategy}/${profile.similarity_top_k}/${profile.section}`}</Tag>
-                                </div>
-                              ))}
-                          </div>
-                        ) : (
-                          <div>
-                            <Typography.Text className="font-size-12">
-                              No LLM Profile Selected
-                            </Typography.Text>
-                          </div>
-                        )}
-                      </>
-                    )}
-                    {!singlePassExtractMode && (
-                      <div className="display-flex-right prompt-card-paginate-div">
-                        <Button
-                          type="text"
-                          size="small"
-                          className="prompt-card-action-button"
-                          disabled={
-                            page <= 1 ||
-                            disableLlmOrDocChange.includes(
-                              promptDetails?.prompt_id
-                            ) ||
-                            isSinglePassExtractLoading ||
-                            indexDocs.includes(selectedDoc?.document_id) ||
-                            isPublicSource
-                          }
-                          onClick={handlePageLeft}
-                        >
-                          <LeftOutlined className="prompt-card-paginate" />
-                        </Button>
-                        <Button
-                          type="text"
-                          size="small"
-                          className="prompt-card-action-button"
-                          disabled={
-                            page >= llmProfiles?.length ||
-                            disableLlmOrDocChange.includes(
-                              promptDetails?.prompt_id
-                            ) ||
-                            isSinglePassExtractLoading ||
-                            indexDocs.includes(selectedDoc?.document_id)
-                          }
-                          onClick={handlePageRight}
-                        >
-                          <RightOutlined className="prompt-card-paginate" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
                   {EvalMetrics && <EvalMetrics result={result} />}
                 </Space>
               </>
@@ -500,6 +431,7 @@ function PromptCardItems({
                               onChange={(checked) =>
                                 handleTagChange(checked, profileId)
                               }
+                              disabled={isPublicSource}
                               className={isChecked ? "checked" : "unchecked"}
                             >
                               {isChecked ? (
@@ -544,6 +476,7 @@ function PromptCardItems({
                                 onChange={() =>
                                   handleSelectDefaultLLM(profileId)
                                 }
+                                disabled={isPublicSource}
                               >
                                 Default
                               </Radio>
@@ -592,7 +525,7 @@ function PromptCardItems({
                                   disabled={
                                     isRunLoading[
                                       `${selectedDoc?.document_id}_${profileId}`
-                                    ]
+                                    ] || isPublicSource
                                   }
                                 >
                                   <PlayCircleOutlined className="prompt-card-actions-head" />
@@ -607,7 +540,7 @@ function PromptCardItems({
                                   disabled={
                                     isRunLoading[
                                       `${selectedDoc?.document_id}_${profileId}`
-                                    ]
+                                    ] || isPublicSource
                                   }
                                 >
                                   <PlayCircleFilled className="prompt-card-actions-head" />

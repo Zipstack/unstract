@@ -36,7 +36,8 @@ let AppDeployments;
 let ChatAppPage;
 let ChatAppLayout;
 let ManualReviewPage;
-let ReviewLayout;let PublicPromptStudioHelper;
+let ReviewLayout;
+let PublicPromptStudioHelper;
 
 try {
   TrialRoutes =
