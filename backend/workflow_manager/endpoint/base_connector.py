@@ -45,11 +45,9 @@ class BaseConnector(ExecutionFileHandler):
         Raises:
         KeyError: If the connector_id is not found in the connectors dictionary.
         """
-        if connector_id not in connectors:
-            raise ValueError(f"Invalid connector_id: {connector_id}")
-        connector = connectors[connector_id][Common.METADATA][Common.CONNECTOR]
-        connector_class: UnstractFileSystem = connector(settings)
-        return connector_class.get_fsspec_fs()
+        return self.get_fs_connector(
+            settings=settings, connector_id=connector_id
+        ).get_fsspec_fs()
 
     def get_fs_connector(
         self, settings: dict[str, Any], connector_id: str
