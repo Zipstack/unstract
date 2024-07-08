@@ -84,7 +84,7 @@ except ImportError:
 # Subscription urls
 try:
 
-    import pluggable_apps.subscription.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.subscription.urls  # noqa  # pylint: disable=unused-import
 
     urlpatterns += [
         path("", include("pluggable_apps.subscription.urls")),
@@ -93,7 +93,7 @@ except ImportError:
     pass
 
 try:
-    import pluggable_apps.manual_review.urls
+    import pluggable_apps.manual_review.urls  # noqa # pylint: disable=unused-import
 
     urlpatterns += [
         path("manual_review/", include("pluggable_apps.manual_review.urls")),
