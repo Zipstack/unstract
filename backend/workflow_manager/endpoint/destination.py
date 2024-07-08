@@ -191,6 +191,7 @@ class DestinationConnector(BaseConnector):
             root_path=root_path,
             input_dir=output_directory,
         )
+        logger.debug(f"destination output directory {output_directory}")
         destination_volume_path = os.path.join(
             self.execution_dir, ToolExecKey.OUTPUT_DIR
         )

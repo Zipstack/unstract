@@ -64,7 +64,7 @@ class BaseConnector(ExecutionFileHandler):
         UnstractFileSystem: An unstract fs connector instance.
         """
         if connector_id not in connectors:
-            raise ValueError(f"Invalid connector_id: {connector_id}")
+            raise ValueError(f"Connector '{connector_id}' is not supported.")
         connector = connectors[connector_id][Common.METADATA][Common.CONNECTOR]
         return connector(settings)
 

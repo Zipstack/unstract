@@ -20,7 +20,7 @@ class UnstractFsConnectorHelper:
         Returns:
             str: unstract fs connector root directory
         """
-        if fs_cls_name in UnstractFSConnector.GOOGLE_DRIVE_FS:
+        if fs_cls_name == UnstractFSConnector.GOOGLE_DRIVE_FS:
             input_dir = str(Path(root_path, input_dir.lstrip("/")))
             return f"{input_dir.strip('/')}/"
         elif fs_cls_name in UnstractFSConnector.DROPBOX_FS:
