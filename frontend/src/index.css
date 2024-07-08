@@ -159,3 +159,7 @@ body {
 .overflow-y-auto {
   overflow-y: auto;
 }
+
+.action-items {
+  display: flex;
+}
