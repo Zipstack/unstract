@@ -5,9 +5,9 @@ from typing import Any, Optional
 
 from connector_auth_v2.models import ConnectorAuth
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
-from connector_processor_v2.connector_processor import ConnectorProcessor
-from connector_processor_v2.constants import ConnectorKeys
-from connector_processor_v2.exceptions import OAuthTimeOut
+from connector_processor.connector_processor import ConnectorProcessor
+from connector_processor.constants import ConnectorKeys
+from connector_processor.exceptions import OAuthTimeOut
 from connector_v2.constants import ConnectorInstanceKey as CIKey
 from cryptography.fernet import Fernet
 from django.conf import settings

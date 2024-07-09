@@ -4,8 +4,8 @@ from typing import Any
 
 from account_v2.models import User
 from connector_auth_v2.models import ConnectorAuth
-from connector_processor_v2.connector_processor import ConnectorProcessor
-from connector_processor_v2.constants import ConnectorKeys
+from connector_processor.connector_processor import ConnectorProcessor
+from connector_processor.constants import ConnectorKeys
 from cryptography.fernet import Fernet
 from django.conf import settings
 from django.db import models

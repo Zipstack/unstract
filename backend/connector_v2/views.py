@@ -5,7 +5,7 @@ from account_v2.custom_exceptions import DuplicateData
 from connector_auth_v2.constants import ConnectorAuthKey
 from connector_auth_v2.exceptions import CacheMissException, MissingParamException
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
-from connector_processor_v2.exceptions import OAuthTimeOut
+from connector_processor.exceptions import OAuthTimeOut
 from connector_v2.constants import ConnectorInstanceKey as CIKey
 from django.db import IntegrityError
 from django.db.models import QuerySet
