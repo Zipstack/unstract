@@ -1,4 +1,3 @@
-from connector.constants import ConnectorInstanceKey as CIKey
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import IdIsMandatory, InValidType
@@ -12,6 +11,14 @@ from rest_framework.response import Response
 from rest_framework.serializers import Serializer
 from rest_framework.versioning import URLPathVersioning
 from rest_framework.viewsets import GenericViewSet
+
+from backend.constants import FeatureFlag
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+    from connector_v2.constants import ConnectorInstanceKey as CIKey
+else:
+    from connector.constants import ConnectorInstanceKey as CIKey
 
 
 @api_view(("GET",))

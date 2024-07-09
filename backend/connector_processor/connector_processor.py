@@ -3,9 +3,6 @@ import json
 import logging
 from typing import Any, Optional
 
-from connector.constants import ConnectorInstanceKey as CIKey
-from connector_auth.constants import ConnectorAuthKey
-from connector_auth.pipeline.common import ConnectorAuthHelper
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import (
     InternalServiceError,
@@ -16,11 +13,22 @@ from connector_processor.exceptions import (
     TestConnectorInputException,
 )
 
+from backend.constants import FeatureFlag
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.connectorkit import Connectorkit
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.ucs import UnstractCloudStorage
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+    from connector_auth_v2.constants import ConnectorAuthKey
+    from connector_auth_v2.pipeline.common import ConnectorAuthHelper
+    from connector_v2.constants import ConnectorInstanceKey as CIKey
+else:
+    from connector.constants import ConnectorInstanceKey as CIKey
+    from connector_auth.constants import ConnectorAuthKey
+    from connector_auth.pipeline.common import ConnectorAuthHelper
 
 logger = logging.getLogger(__name__)
 
