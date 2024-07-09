@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import fsspec
-from connector_processor_v2.constants import ConnectorKeys
+from connector_processor.constants import ConnectorKeys
 from connector_v2.models import ConnectorInstance
 from django.core.files.uploadedfile import UploadedFile
 from unstract.workflow_execution.enums import LogState
