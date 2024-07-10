@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 from oauth2client.client import OAuth2Credentials
@@ -95,3 +96,11 @@ class GoogleDriveFS(UnstractFileSystem):
         except Exception as e:
             raise ConnectorError(str(e))
         return True
+
+    @staticmethod
+    def get_connector_root_dir(input_dir: str, **kwargs: Any) -> str:
+        root_path = kwargs.get("root_path")
+        if root_path is None:
+            raise ValueError("root_path is required")
+        input_dir = str(Path(root_path, input_dir.lstrip("/")))
+        return f"{input_dir.strip('/')}/"

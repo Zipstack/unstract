@@ -9,7 +9,6 @@ import fsspec
 import magic
 from connector.models import ConnectorInstance
 from django.db import connection
-from dropbox.exceptions import ApiError as DropBoxApiError
 from fsspec.implementations.local import LocalFileSystem
 from unstract.sdk.constants import ToolExecKey
 from unstract.workflow_execution.constants import ToolOutputType
@@ -28,7 +27,6 @@ from workflow_manager.endpoint.exceptions import (
     MissingDestinationConnectionType,
     ToolOutputTypeMismatch,
 )
-from workflow_manager.endpoint.fs_connector_helper import UnstractFsConnectorHelper
 from workflow_manager.endpoint.models import WorkflowEndpoint
 from workflow_manager.endpoint.queue_utils import QueueResult, QueueUtils
 from workflow_manager.workflow.enums import ExecutionStatus
@@ -186,26 +184,15 @@ class DestinationConnector(BaseConnector):
             settings=connector_settings, connector_id=connector.connector_id
         )
         destination_fs_cls_name = destination_fs.__class__.__name__
-        output_directory = UnstractFsConnectorHelper.get_fs_root_dir(
-            fs_cls_name=destination_fs_cls_name,
-            root_path=root_path,
-            input_dir=output_directory,
+        output_directory = destination_fs_cls_name.get_connector_root_dir(
+            input_dir=output_directory, root_path=root_path
         )
         logger.debug(f"destination output directory {output_directory}")
         destination_volume_path = os.path.join(
             self.execution_dir, ToolExecKey.OUTPUT_DIR
         )
         destination_fsspec = destination_fs.get_fsspec_fs()
-
-        try:
-            is_dir = destination_fsspec.isdir(output_directory)
-            if not is_dir:
-                destination_fsspec.mkdir(output_directory)
-        except (
-            DropBoxApiError
-        ) as e:  # Dropbox returns this exception when directory is not present
-            logger.debug(f"Path not found in dropbox {e.error}")
-            destination_fsspec.mkdir(output_directory)
+        destination_fs.create_dir_if_not_exists(input_dir=output_directory)
 
         # Traverse local directory and create the same structure in the
         # output_directory

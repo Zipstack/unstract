@@ -29,7 +29,6 @@ from workflow_manager.endpoint.exceptions import (
     OrganizationIdNotFound,
     SourceConnectorNotConfigured,
 )
-from workflow_manager.endpoint.fs_connector_helper import UnstractFsConnectorHelper
 from workflow_manager.endpoint.models import WorkflowEndpoint
 from workflow_manager.workflow.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow.models.workflow import Workflow
@@ -160,10 +159,8 @@ class SourceConnector(BaseConnector):
             settings=connector_settings, connector_id=connector.connector_id
         )
         source_fs_cls_name = source_fs.__class__.__name__
-        input_directory = UnstractFsConnectorHelper.get_fs_root_dir(
-            fs_cls_name=source_fs_cls_name,
-            root_path=root_dir_path,
-            input_dir=input_directory,
+        input_directory = source_fs_cls_name.get_connector_root_dir(
+            input_dir=input_directory, root_path=root_dir_path
         )
         logger.debug(f"source input directory {input_directory}")
         if not isinstance(required_patterns, list):

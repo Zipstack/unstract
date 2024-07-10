@@ -2,6 +2,7 @@ import logging
 import os
 from typing import Any
 
+from dropbox.exceptions import ApiError as DropBoxApiError
 from dropbox.exceptions import DropboxException
 from dropboxdrivefs import DropboxDriveFileSystem
 
@@ -74,3 +75,17 @@ class DropboxFS(UnstractFileSystem):
             logger.error(f"Test creds failed: {e}")
             raise ConnectorError(str(e))
         return True
+
+    @staticmethod
+    def get_connector_root_dir(input_dir: str, **kwargs: Any) -> str:
+        return f"/{input_dir.strip('/')}"
+
+    def create_dir_if_not_exists(self, input_dir: str) -> None:
+        fs_fsspec = self.get_fsspec_fs()
+        try:
+            fs_fsspec.isdir(input_dir)
+        except (
+            DropBoxApiError
+        ) as e:  # Dropbox returns this exception when directory is not present
+            logger.debug(f"Path not found in dropbox {e.error}")
+            fs_fsspec.mkdir(input_dir)
