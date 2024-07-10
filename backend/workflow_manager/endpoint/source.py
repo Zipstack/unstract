@@ -158,8 +158,7 @@ class SourceConnector(BaseConnector):
         source_fs = self.get_fs_connector(
             settings=connector_settings, connector_id=connector.connector_id
         )
-        source_fs_cls_name = source_fs.__class__.__name__
-        input_directory = source_fs_cls_name.get_connector_root_dir(
+        input_directory = source_fs.get_connector_root_dir(
             input_dir=input_directory, root_path=root_dir_path
         )
         logger.debug(f"source input directory {input_directory}")

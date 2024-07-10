@@ -183,16 +183,15 @@ class DestinationConnector(BaseConnector):
         destination_fs = self.get_fs_connector(
             settings=connector_settings, connector_id=connector.connector_id
         )
-        destination_fs_cls_name = destination_fs.__class__.__name__
-        output_directory = destination_fs_cls_name.get_connector_root_dir(
+        output_directory = destination_fs.get_connector_root_dir(
             input_dir=output_directory, root_path=root_path
         )
         logger.debug(f"destination output directory {output_directory}")
         destination_volume_path = os.path.join(
             self.execution_dir, ToolExecKey.OUTPUT_DIR
         )
-        destination_fsspec = destination_fs.get_fsspec_fs()
         destination_fs.create_dir_if_not_exists(input_dir=output_directory)
+        destination_fsspec = destination_fs.get_fsspec_fs()
 
         # Traverse local directory and create the same structure in the
         # output_directory
