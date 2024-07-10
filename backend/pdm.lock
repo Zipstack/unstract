@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:04d19bde158b2f22ec43036475cda80afd997427293deeb94bd2c4d8067f774e"
+content_hash = "sha256:833399304360347050cb95f45e62bcb0977b835e9e1087689c248e0e281c5958"
 
 [[package]]
 name = "adlfs"
@@ -180,7 +180,7 @@ name = "anthropic"
 version = "0.23.1"
 requires_python = ">=3.7"
 summary = "The official Python library for the anthropic API"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "anyio<5,>=3.5.0",
     "distro<2,>=1.7.0",
@@ -263,7 +263,7 @@ name = "asyncpg"
 version = "0.29.0"
 requires_python = ">=3.8.0"
 summary = "An asyncio PostgreSQL driver"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "async-timeout>=4.0.3; python_version < \"3.12.0\"",
 ]
@@ -310,7 +310,7 @@ files = [
 name = "authlib"
 version = "1.2.1"
 summary = "The ultimate Python library in building OAuth and OpenID Connect servers and clients."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "cryptography>=3.2",
 ]
@@ -1010,7 +1010,7 @@ name = "docstring-parser"
 version = "0.16"
 requires_python = ">=3.6,<4.0"
 summary = "Parse Python docstrings in reST, Google and Numpydoc format"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "docstring_parser-0.16-py3-none-any.whl", hash = "sha256:bf0a1387354d3691d102edef7ec124f219ef639982d096e26e3b60aeffa90637"},
     {file = "docstring_parser-0.16.tar.gz", hash = "sha256:538beabd0af1e2db0146b6bd3caa526c35a34d61af9fd2887f3a8a27a739aa6e"},
@@ -1086,7 +1086,7 @@ name = "environs"
 version = "9.5.0"
 requires_python = ">=3.6"
 summary = "simplified environment variable parsing"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "marshmallow>=3.0.0",
     "python-dotenv",
@@ -1123,7 +1123,7 @@ files = [
 name = "filetype"
 version = "1.2.0"
 summary = "Infer file type and MIME type of any file/buffer. No external dependencies."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "filetype-1.2.0-py2.py3-none-any.whl", hash = "sha256:7ce71b6880181241cf7ac8697a2f1eb6a8bd9b429f7ad6d27b8db9ba5f1c2d25"},
     {file = "filetype-1.2.0.tar.gz", hash = "sha256:66b56cd6474bf41d8c54660347d37afcc3f7d1970648de365c102ef77548aadb"},
@@ -1249,7 +1249,7 @@ name = "google-ai-generativelanguage"
 version = "0.4.0"
 requires_python = ">=3.7"
 summary = "Google Ai Generativelanguage API client library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.10.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3.0.0dev,>=1.34.0",
     "proto-plus<2.0.0dev,>=1.22.3",
@@ -1367,7 +1367,7 @@ name = "google-cloud-aiplatform"
 version = "1.58.0"
 requires_python = ">=3.8"
 summary = "Vertex AI API client library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "docstring-parser<1",
     "google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,<3.0.0dev,>=1.34.1",
@@ -1429,7 +1429,7 @@ name = "google-cloud-resource-manager"
 version = "1.12.4"
 requires_python = ">=3.7"
 summary = "Google Cloud Resource Manager API client library"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.10.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3.0.0dev,>=1.34.1",
     "google-auth!=2.24.0,!=2.25.0,<3.0.0dev,>=2.14.1",
@@ -1539,7 +1539,7 @@ name = "google-generativeai"
 version = "0.4.1"
 requires_python = ">=3.9"
 summary = "Google Generative AI High level API client library and tools."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-ai-generativelanguage==0.4.0",
     "google-api-core",
@@ -1776,7 +1776,7 @@ name = "h2"
 version = "4.1.0"
 requires_python = ">=3.6.1"
 summary = "HTTP/2 State-Machine based protocol implementation"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "hpack<5,>=4.0",
     "hyperframe<7,>=6.0",
@@ -1791,7 +1791,7 @@ name = "hpack"
 version = "4.0.0"
 requires_python = ">=3.6.1"
 summary = "Pure-Python HPACK header compression"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "hpack-4.0.0-py3-none-any.whl", hash = "sha256:84a076fad3dc9a9f8063ccb8041ef100867b1878b25ef0ee63847a5d53818a6c"},
     {file = "hpack-4.0.0.tar.gz", hash = "sha256:fc41de0c63e687ebffde81187a948221294896f6bdc0ae2312708df339430095"},
@@ -1850,7 +1850,7 @@ version = "0.27.0"
 extras = ["http2"]
 requires_python = ">=3.8"
 summary = "The next generation HTTP client."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "h2<5,>=3",
     "httpx==0.27.0",
@@ -1865,7 +1865,7 @@ name = "huggingface-hub"
 version = "0.23.4"
 requires_python = ">=3.8.0"
 summary = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "filelock",
     "fsspec>=2023.5.0",
@@ -1896,7 +1896,7 @@ name = "hyperframe"
 version = "6.0.1"
 requires_python = ">=3.6.1"
 summary = "HTTP/2 framing layer for Python"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "hyperframe-6.0.1-py3-none-any.whl", hash = "sha256:0ec6bafd80d8ad2195c4f03aacba3a8265e57bc4cff261e802bf39970ed02a15"},
     {file = "hyperframe-6.0.1.tar.gz", hash = "sha256:ae510046231dc8e9ecb1a6586f63d2347bf4c8905914aa84ba585ae85f28a914"},
@@ -2130,7 +2130,7 @@ name = "llama-index-embeddings-azure-openai"
 version = "0.1.6"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index embeddings azure openai integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.11.post1",
     "llama-index-embeddings-openai<0.2.0,>=0.1.3",
@@ -2146,7 +2146,7 @@ name = "llama-index-embeddings-google"
 version = "0.1.5"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index embeddings google integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-generativeai<0.5.0,>=0.4.1",
     "llama-index-core<0.11.0,>=0.10.11.post1",
@@ -2161,7 +2161,7 @@ name = "llama-index-embeddings-ollama"
 version = "0.1.2"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index embeddings ollama integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
 ]
@@ -2235,7 +2235,7 @@ name = "llama-index-llms-anthropic"
 version = "0.1.11"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms anthropic integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "anthropic<0.24.0,>=0.23.1",
     "llama-index-core<0.11.0,>=0.10.1",
@@ -2250,7 +2250,7 @@ name = "llama-index-llms-anyscale"
 version = "0.1.3"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index llms anyscale integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
     "llama-index-llms-openai<0.2.0,>=0.1.1",
@@ -2282,7 +2282,7 @@ name = "llama-index-llms-mistralai"
 version = "0.1.10"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index llms mistral ai integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.24",
     "mistralai>=0.1.3",
@@ -2297,7 +2297,7 @@ name = "llama-index-llms-ollama"
 version = "0.1.3"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms ollama integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
 ]
@@ -2325,7 +2325,7 @@ name = "llama-index-llms-palm"
 version = "0.1.5"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index llms palm integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-generativeai<0.5.0,>=0.4.1",
     "llama-index-core<0.11.0,>=0.10.11.post1",
@@ -2340,7 +2340,7 @@ name = "llama-index-llms-replicate"
 version = "0.1.3"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index llms replicate integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
 ]
@@ -2354,7 +2354,7 @@ name = "llama-index-llms-vertex"
 version = "0.1.8"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms vertex integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "google-cloud-aiplatform<2.0.0,>=1.39.0",
     "llama-index-core<0.11.0,>=0.10.1",
@@ -2448,7 +2448,7 @@ name = "llama-index-vector-stores-milvus"
 version = "0.1.18"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index vector_stores milvus integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
     "pymilvus<3.0.0,>=2.3.6",
@@ -2463,7 +2463,7 @@ name = "llama-index-vector-stores-pinecone"
 version = "0.1.4"
 requires_python = ">=3.8.1,<3.13"
 summary = "llama-index vector_stores pinecone integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.11.post1",
     "pinecone-client<4.0.0,>=3.0.2",
@@ -2478,7 +2478,7 @@ name = "llama-index-vector-stores-postgres"
 version = "0.1.3"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index vector_stores postgres integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "asyncpg<0.30.0,>=0.29.0",
     "llama-index-core<0.11.0,>=0.10.1",
@@ -2496,7 +2496,7 @@ name = "llama-index-vector-stores-qdrant"
 version = "0.2.8"
 requires_python = "<3.13,>=3.9"
 summary = "llama-index vector_stores qdrant integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "grpcio<2.0.0,>=1.60.0",
     "llama-index-core<0.11.0,>=0.10.1",
@@ -2512,7 +2512,7 @@ name = "llama-index-vector-stores-weaviate"
 version = "0.1.4"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index vector_stores weaviate integration"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
     "weaviate-client<4.0.0,>=3.26.2",
@@ -2570,7 +2570,7 @@ name = "milvus-lite"
 version = "2.4.8"
 requires_python = ">=3.7"
 summary = "A lightweight version of Milvus wrapped with Python."
-groups = ["default"]
+groups = ["default", "dev"]
 marker = "sys_platform != \"win32\""
 dependencies = [
     "tqdm",
@@ -2587,7 +2587,7 @@ name = "mistralai"
 version = "0.4.2"
 requires_python = "<4.0,>=3.9"
 summary = ""
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "httpx<1,>=0.25",
     "orjson<3.11,>=3.9.10",
@@ -2843,7 +2843,7 @@ name = "orjson"
 version = "3.10.6"
 requires_python = ">=3.8"
 summary = "Fast, correct Python JSON library supporting dataclasses, datetimes, and numpy"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "orjson-3.10.6-cp310-cp310-macosx_10_15_x86_64.macosx_11_0_arm64.macosx_10_15_universal2.whl", hash = "sha256:fb0ee33124db6eaa517d00890fc1a55c3bfe1cf78ba4a8899d71a06f2d6ff5c7"},
     {file = "orjson-3.10.6-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9c1c4b53b24a4c06547ce43e5fee6ec4e0d8fe2d597f4647fc033fd205707365"},
@@ -2929,7 +2929,7 @@ name = "pgvector"
 version = "0.2.5"
 requires_python = ">=3.8"
 summary = "pgvector support for Python"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "numpy",
 ]
@@ -2999,7 +2999,7 @@ name = "pinecone-client"
 version = "3.2.2"
 requires_python = "<4.0,>=3.8"
 summary = "Pinecone client and SDK"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "certifi>=2019.11.17",
     "tqdm>=4.64.1",
@@ -3379,7 +3379,7 @@ name = "pymilvus"
 version = "2.4.4"
 requires_python = ">=3.8"
 summary = "Python Sdk for Milvus"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "environs<=9.5.0",
     "grpcio<=1.63.0,>=1.49.1",
@@ -3534,7 +3534,7 @@ name = "python-dotenv"
 version = "1.0.0"
 requires_python = ">=3.8"
 summary = "Read key-value pairs from a .env file and set them as environment variables"
-groups = ["default", "test"]
+groups = ["default", "dev", "test"]
 files = [
     {file = "python-dotenv-1.0.0.tar.gz", hash = "sha256:a8df96034aae6d2d50a4ebe8216326c61c3eb64836776504fcca410e5937a3ba"},
     {file = "python_dotenv-1.0.0-py3-none-any.whl", hash = "sha256:f5971a9226b701070a4bf2c38c89e5a3f0d64de8debda981d1db98583009122a"},
@@ -3658,7 +3658,7 @@ name = "qdrant-client"
 version = "1.10.1"
 requires_python = ">=3.8"
 summary = "Client library for the Qdrant vector search engine"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "grpcio-tools>=1.41.0",
     "grpcio>=1.41.0",
@@ -4036,7 +4036,7 @@ name = "shapely"
 version = "2.0.4"
 requires_python = ">=3.7"
 summary = "Manipulation and analysis of geometric objects"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "numpy<3,>=1.14",
 ]
@@ -4083,7 +4083,7 @@ files = [
 name = "singleton-decorator"
 version = "1.0.0"
 summary = "A testable singleton decorator"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "singleton-decorator-1.0.0.tar.gz", hash = "sha256:1a90ad8a8a738be591c9c167fdd677c5d4a43d1bc6b1c128227be1c5e03bee07"},
 ]
@@ -4406,7 +4406,7 @@ name = "tokenizers"
 version = "0.15.2"
 requires_python = ">=3.7"
 summary = ""
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "huggingface-hub<1.0,>=0.16.4",
 ]
@@ -4598,7 +4598,7 @@ name = "ujson"
 version = "5.10.0"
 requires_python = ">=3.8"
 summary = "Ultra fast JSON encoder and decoder for Python"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "ujson-5.10.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:2601aa9ecdbee1118a1c2065323bda35e2c5a2cf0797ef4522d485f9d3ef65bd"},
     {file = "ujson-5.10.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:348898dd702fc1c4f1051bc3aacbf894caa0927fe2c53e68679c073375f732cf"},
@@ -4652,10 +4652,10 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.20.1"
+version = "0.21.0"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract interface for LLMs, Embeddings and VectorDBs"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "filetype~=1.2.0",
     "httpx>=0.25.2",
@@ -4681,8 +4681,8 @@ dependencies = [
     "singleton-decorator~=1.0.0",
 ]
 files = [
-    {file = "unstract_adapters-0.20.1-py3-none-any.whl", hash = "sha256:e1f291016ab81f2fa46bc5ac0629905a9977198a8e5ad3077b8b188383fbd0c3"},
-    {file = "unstract_adapters-0.20.1.tar.gz", hash = "sha256:4c9b10bc5ae6f0d395088ba4f3d2b27bcfade1b2f1666ccf2611723336d33571"},
+    {file = "unstract_adapters-0.21.0-py3-none-any.whl", hash = "sha256:6c4f597602f55b80ba176a29a930755abd3494ff1c085f406536e7463902d655"},
+    {file = "unstract_adapters-0.21.0.tar.gz", hash = "sha256:ebb8f80b7f26f04874bb5466fe0be8c3e1b51d44ed85c4e62289a7751c996af6"},
 ]
 
 [[package]]
@@ -4744,7 +4744,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.36.0"
+version = "0.37.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -4756,11 +4756,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.20.1",
+    "unstract-adapters~=0.21.0",
 ]
 files = [
-    {file = "unstract_sdk-0.36.0-py3-none-any.whl", hash = "sha256:6a8038a5c9b4b81888262829c02cbd3db5b020a2eb8b67ff8124e44c11d26ee1"},
-    {file = "unstract_sdk-0.36.0.tar.gz", hash = "sha256:7955b1839e84c9212ea0b8f43eec7882c3279b8eb24ec64596bb1c1f7ca2840b"},
+    {file = "unstract_sdk-0.37.0-py3-none-any.whl", hash = "sha256:3bd83dfb7a760e73f35cc9ed4bdadf645bd77f03f77d25578e842156645e6f1d"},
+    {file = "unstract_sdk-0.37.0.tar.gz", hash = "sha256:a00b81f014508db0130dd21d594e3d8e0034dcafd3f01461ce30d37e68646944"},
 ]
 
 [[package]]
@@ -4775,7 +4775,8 @@ dependencies = [
     "PyYAML~=6.0.1",
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
-    "unstract-tool-sandbox @ file:///home/chandru/zipstuff/unstract/unstract/tool-registry/../tool-sandbox",
+    "unstract-adapters~=0.21.0",
+    "unstract-tool-sandbox",
 ]
 
 [[package]]
@@ -4799,6 +4800,7 @@ path = "../unstract/workflow-execution"
 summary = "Unstract workflow execution package"
 groups = ["default", "dev"]
 dependencies = [
+    "unstract-core",
     "unstract-tool-registry",
     "unstract-tool-sandbox",
 ]
@@ -4830,7 +4832,7 @@ name = "validators"
 version = "0.31.0"
 requires_python = ">=3.8"
 summary = "Python Data Validation for Humans™"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "validators-0.31.0-py3-none-any.whl", hash = "sha256:e15a600d81555a4cd409b17bf55946c5edec7748e776afc85ed0a19bdee54e56"},
     {file = "validators-0.31.0.tar.gz", hash = "sha256:de7574fc56a231c788162f3e7da15bc2053c5ff9e0281d9ff1afb3a7b69498df"},
@@ -4862,7 +4864,7 @@ name = "weaviate-client"
 version = "3.26.5"
 requires_python = ">=3.8"
 summary = "A python native Weaviate client"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "authlib<2.0.0,>=1.2.1",
     "requests<3.0.0,>=2.30.0",
