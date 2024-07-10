@@ -6,7 +6,7 @@ from typing import Any
 from unstract.sdk.constants import LogState, MetadataKey
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
-from unstract.sdk.x2txt import X2Text
+from unstract.sdk.x2txt import TextExtractionResult, X2Text
 
 
 class TextExtractor(BaseTool):
@@ -58,8 +58,10 @@ class TextExtractor(BaseTool):
             tool=self, adapter_instance_id=text_extraction_adapter_id
         )
         self.stream_log("Text extraction adapter has been created successfully.")
-        extracted_text = text_extraction_adapter.process(input_file_path=input_file)
-        extracted_text = self.convert_to_actual_string(extracted_text)
+        extraction_result: TextExtractionResult = text_extraction_adapter.process(
+            input_file_path=input_file
+        )
+        extracted_text = self.convert_to_actual_string(extraction_result.extracted_text)
 
         self.stream_log("Text has been extracted successfully.")
 

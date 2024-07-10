@@ -229,7 +229,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution_time = end_time - start_time
             message = str(exception)[:EXECUTION_ERROR_LENGTH]
             logger.info(
-                f"Execution {self.execution_id} in {execution_time}s, "
+                f"Execution {self.execution_id} ran for {execution_time:.4f}s, "
                 f" Error {exception}"
             )
             raise WorkflowExecutionError(message) from exception
