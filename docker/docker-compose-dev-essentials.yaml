@@ -30,6 +30,31 @@ services:
     labels:
       - traefik.enable=false
 
+  es:
+    image: "docker.elastic.co/elasticsearch/elasticsearch:8.14.1"
+    container_name: unstract-es
+    restart: unless-stopped
+    ports:
+      - "9200:9200"
+    environment:
+      node.name: es
+      discovery.seed_hosts: es
+      cluster.initial_master_nodes: es
+      cluster.name: unstract-metrics
+      bootstrap.memory_lock: "true"
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms256m -Xmx256m
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    labels:
+      - traefik.enable=false
+    profiles:
+      - unstract-metrics
+
   minio:
     image: 'minio/minio:latest'
     container_name: unstract-minio
@@ -123,8 +148,8 @@ services:
       - ./essentials.env
 
 volumes:
-  flipt_data:
   minio_data:
   postgres_data:
   qdrant_data:
   redis_data:
+  es_data:

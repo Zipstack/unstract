@@ -1,0 +1,115 @@
+{
+    "org_id": "52699f65-2b57-40e7-88d9-6f0977bef5fe",
+    "run_id": "63b1acb2-4508-46fa-8d24-84a8bad032c1",
+    "project_id": "10584e6a-6898-41c3-b32a-fe721f8c3a97",
+    "start_time": "2024-07-02T12:00:00",
+    "end_time": "2024-07-02T12:05:00",
+    "owner": "SYSTEM",
+    "agent": "PROMPT_STUDIO",
+    "agent_name": "Test Metrics PS",
+    "agent_id": "10584e6a-6898-41c3-b32a-fe721f8c3a93",
+    "status": "SUCCESS",
+    "api_key": "NA",
+    "operations": [
+      {
+        "operation_id": "10584e6a-6898-41c3-b32a-fe721f8c3a98",
+        "process": "LLM",
+        "sub_process": "LLM",
+        "context": "test_file",
+        "status": "SUCCESS",
+        "start_time": "2024-07-02T12:00:00",
+        "end_time": "2024-07-02T12:01:00",
+        "prompt_key_name": "Name of Candidate",
+        "prompt": "What is AI?",
+        "generated_response": "AI stands for Artificial Intelligence.",
+        "adapter_metadata": {
+          "adapter_instance_id": "10584e6a-6898-41c3-b32a-fe721f8c3a99",
+          "type": "OpenAI",
+          "name": "OpenAI",
+          "display_name": "GPT 4",
+          "model": "gpt-4-1106-preview",
+          "max_retries": 5,
+          "max_output_tokens": 8192
+        },
+        "metrics": {
+          "input_tokens": 10,
+          "output_tokens": 20,
+          "latency": 0.5,
+          "input_tokens_cost": 0.005,
+          "output_tokens_cost": 0.01,
+          "total_cost": 0.015
+        }
+      },
+      {
+        "operation_id": "20584e6a-6898-41c3-b32a-fe721f8c3a98",
+        "process": "VECTORDB",
+        "sub_process": "VECTORDB",
+        "context": "test_file",
+        "status": "SUCCESS",
+        "start_time": "2024-07-02T12:00:00",
+        "end_time": "2024-07-02T12:01:00",
+        "doc_id": "doc_123",
+        "retrieved_docs": ["node_id1", "node_id2"],
+        "adapter_metadata": {
+          "adapter_instance_id": "12584e6a-6898-41c3-b32a-fe721f8c3a98",
+          "type": "Postgres",
+          "name": "PG1",
+          "dimension": 1536
+        },
+        "metrics": {
+          "operation": "QUERY",
+          "count": 5,
+          "latency": 0.5
+        }
+      },
+      {
+        "operation_id": "10584e6a-6898-41c3-a32a-fe721f8c3a98",
+        "process": "EMBEDDING",
+        "sub_process": "EMBEDDING",
+        "context": "test_file",
+        "status": "SUCCESS",
+        "start_time": "2024-07-02T12:00:00",
+        "end_time": "2024-07-02T12:01:00",
+        "adapter_metadata": {
+          "adapter_instance_id": "10584e6a-2898-41c3-b32a-fe721f8c3a98",
+          "type": "OpenAI",
+          "name": "OAI Embedding",
+          "model": "text-embedding-ada-002",
+          "deployment_name": "Pandora-one-text-embedding-ada-002",
+          "embed_batch_size": 5
+        },
+        "metrics": {
+          "tokens": 15,
+          "latency": 0.5,
+          "cost": 0.02
+        }
+      },
+      {
+        "operation_id": "10584e6a-2898-41c3-b32a-fe721f8c3a92",
+        "process": "X2TEXT",
+        "sub_process": "X2TEXT",
+        "context": "test_file",
+        "status": "SUCCESS",
+        "start_time": "2024-07-02T12:00:00",
+        "end_time": "2024-07-02T12:01:00",
+        "adapter_metadata": {
+          "adapter_instance_id": "10584e6a-2898-41c3-b32a-fe721f8c3a91",
+          "type": "LLMWhisperer",
+          "name": "line_printer LLMW",
+          "processing_mode": "text",
+          "output_mode": "line_printer"
+        },
+        "metrics": {
+          "pages_extracted": 10,
+          "latency": 0.5
+        }
+      }
+    ],
+    "user_feedback": [
+      {
+        "type": "RATING",
+        "rating": 5.0,
+        "feedback": "Great!"
+      }
+    ]
+  }
