@@ -731,8 +731,9 @@ class PromptStudioHelper:
             prompt_host=settings.PROMPT_HOST,
             prompt_port=settings.PROMPT_PORT,
         )
+        include_metadata = {"include_metadata": True}
 
-        answer = responder.answer_prompt(payload)
+        answer = responder.answer_prompt(payload, include_metadata)
         # TODO: Make use of dataclasses
         if answer["status"] == "ERROR":
             # TODO: Publish to FE logs from here
