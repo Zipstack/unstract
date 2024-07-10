@@ -103,10 +103,3 @@ class BigQuery:
 class QueueResultStatus:
     SUCCESS = "Success"
     FAILED = "Failed"
-
-
-class UnstractFSConnector:
-    """Contains the unstract fs connector name."""
-
-    GOOGLE_DRIVE_FS = "GoogleDriveFS"
-    DROPBOX_FS = "DropboxFS"

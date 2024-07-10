@@ -78,9 +78,11 @@ class DropboxFS(UnstractFileSystem):
 
     @staticmethod
     def get_connector_root_dir(input_dir: str, **kwargs: Any) -> str:
+        """Get roor dir of zs dropbox."""
         return f"/{input_dir.strip('/')}"
 
     def create_dir_if_not_exists(self, input_dir: str) -> None:
+        """Create roor dir of zs dropbox if not exists."""
         fs_fsspec = self.get_fsspec_fs()
         try:
             fs_fsspec.isdir(input_dir)
