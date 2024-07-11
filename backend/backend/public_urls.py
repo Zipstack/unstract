@@ -22,6 +22,7 @@ from django.urls import include, path
 
 path_prefix = settings.PATH_PREFIX
 api_path_prefix = settings.API_DEPLOYMENT_PATH_PREFIX
+simple_prompt_studio_path_prefix = settings.SIMPLE_PROMPT_STUDIO_PATH_PREFIX
 
 urlpatterns = [
     path(f"{path_prefix}/", include("account.urls")),
@@ -47,10 +48,37 @@ urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
 
 try:
-    import pluggable_apps.platform_admin.urls  # noqa: F401
+    import pluggable_apps.platform_admin.urls  # noqa # pylint: disable=unused-import
 
     urlpatterns += [
         path(f"{path_prefix}/", include("pluggable_apps.platform_admin.urls")),
+    ]
+except ImportError:
+    pass
+
+try:
+    import pluggable_apps.simple_prompt_studio.sps_document.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.simple_prompt_studio.sps_project.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.simple_prompt_studio.sps_prompt.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.simple_prompt_studio.sps_prompt_output.urls  # noqa # pylint: disable=unused-import
+
+    urlpatterns += [
+        path(
+            f"{path_prefix}/{simple_prompt_studio_path_prefix}/",
+            include("pluggable_apps.simple_prompt_studio.sps_project.urls"),
+        ),
+        path(
+            f"{path_prefix}/{simple_prompt_studio_path_prefix}/",
+            include("pluggable_apps.simple_prompt_studio.sps_document.urls"),
+        ),
+        path(
+            f"{path_prefix}/{simple_prompt_studio_path_prefix}/",
+            include("pluggable_apps.simple_prompt_studio.sps_prompt.urls"),
+        ),
+        path(
+            f"{path_prefix}/{simple_prompt_studio_path_prefix}/",
+            include("pluggable_apps.simple_prompt_studio.sps_prompt_output.urls"),
+        ),
     ]
 except ImportError:
     pass
