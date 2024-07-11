@@ -17,7 +17,7 @@ class Metrics(Document):
     org_id = Keyword(required=True)
     run_id = Keyword()
     start_time = Date(required=True)
-    end_time = Date(required=True)
+    end_time = Date()
     owner = Keyword()
     agent = Keyword()  # TODO: Enum - WF | API | PS
     agent_name = Text()

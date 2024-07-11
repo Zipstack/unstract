@@ -51,6 +51,29 @@ services:
     volumes:
       - ./workflow_data:/data
 
+  # Celery Flower
+  celery-flower:
+    image: unstract/backend:${VERSION}
+    container_name: unstract-celery-flower
+    restart: unless-stopped
+    entrypoint: .venv/bin/celery
+    command: "-A backend flower --port=5555 --purge_offline_workers=5"
+    env_file:
+      - ../backend/.env
+    depends_on:
+      - execution-consumer
+      - redis
+    labels:
+      - traefik.enable=false
+    ports:
+      - "5555:5555"
+    environment:
+      - ENVIRONMENT=development
+    volumes:
+      - unstract_data:/data
+    profiles:
+      - optional
+
   # Celery Beat
   celery-beat:
     image: unstract/backend:${VERSION}
@@ -140,44 +163,6 @@ services:
       - redis
     labels:
       - traefik.enable=false
-
-  # Web Admin tools to monitor services
-  # Celery Flower
-  celery-flower:
-    image: unstract/backend:${VERSION}
-    container_name: unstract-celery-flower
-    restart: unless-stopped
-    entrypoint: .venv/bin/celery
-    command: "-A backend flower --port=5555 --purge_offline_workers=5"
-    env_file:
-      - ../backend/.env
-    depends_on:
-      - execution-consumer
-      - redis
-    labels:
-      - traefik.enable=false
-    ports:
-      - "5555:5555"
-    environment:
-      - ENVIRONMENT=development
-    volumes:
-      - unstract_data:/data
-    profiles:
-      - optional
-
-  # Cerebro
-  cerebro:
-    image: lmenezes/cerebro:0.9.4
-    container_name: unstract-cerebro
-    restart: unless-stopped
-    ports:
-      - 9201:9000
-    depends_on:
-      - es
-    labels:
-      - "traefik.enable=false"
-    profiles:
-      - unstract-metrics
 
   document-service:
     profiles:
