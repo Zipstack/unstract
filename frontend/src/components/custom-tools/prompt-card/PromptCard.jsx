@@ -660,7 +660,7 @@ function PromptCard({
     if (isPublicSource) {
       url = publicOutputsApi(
         id,
-        promptDetails?.promptId,
+        promptDetails?.prompt_id,
         selectedLlmProfileId,
         singlePassExtractMode
       );
