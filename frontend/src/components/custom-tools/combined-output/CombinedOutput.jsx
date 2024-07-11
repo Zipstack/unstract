@@ -18,6 +18,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { JsonView } from "./JsonView";
+import { useParams } from "react-router-dom";
 
 let TableView;
 let promptOutputApiSps;
@@ -29,11 +30,22 @@ try {
 } catch {
   // The component will remain null of it is not available
 }
+let publicOutputsDocApi;
+let publicAdapterApi;
+try {
+  publicOutputsDocApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsDocApi;
+  publicAdapterApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicAdapterApi;
+} catch {
+  // The component will remain null of it is not available
+}
 function CombinedOutput({ docId, setFilledFields }) {
   const [combinedOutput, setCombinedOutput] = useState({});
   const [isOutputLoading, setIsOutputLoading] = useState(false);
   const [adapterData, setAdapterData] = useState([]);
   const [activeKey, setActiveKey] = useState("0");
+  const { id } = useParams();
   const {
     details,
     defaultLlmProfile,
@@ -41,6 +53,7 @@ function CombinedOutput({ docId, setFilledFields }) {
     isSinglePassExtractLoading,
     llmProfiles,
     isSimplePromptStudio,
+    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -119,6 +132,14 @@ function CombinedOutput({ docId, setFilledFields }) {
     let url;
     if (isSimplePromptStudio) {
       url = promptOutputApiSps(details?.tool_id, null, docId);
+    }
+    if (isPublicSource) {
+      url = publicOutputsDocApi(
+        id,
+        docId,
+        selectedProfile || defaultLlmProfile,
+        singlePassExtractMode
+      );
     } else {
       url = `/api/v1/unstract/${
         sessionDetails?.orgId
@@ -143,14 +164,14 @@ function CombinedOutput({ docId, setFilledFields }) {
   };
 
   const getAdapterInfo = () => {
-    axiosPrivate
-      .get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/adapter/?adapter_type=LLM`
-      )
-      .then((res) => {
-        const adapterList = res?.data;
-        setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
-      });
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/adapter/?adapter_type=LLM`;
+    if (isPublicSource) {
+      url = publicAdapterApi(id, "LLM");
+    }
+    axiosPrivate.get(url).then((res) => {
+      const adapterList = res?.data;
+      setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
+    });
   };
 
   if (isOutputLoading) {

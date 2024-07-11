@@ -22,13 +22,12 @@ function JsonView({
       <div className="combined-op-header">
         <Tabs activeKey={activeKey} onChange={handleTabChange} moreIcon={<></>}>
           <TabPane tab={<span>Default</span>} key={"0"}></TabPane>
-          {adapterData &&
-            adapterData?.map((adapter, index) => (
-              <TabPane
-                tab={<span>{adapter.llm_model}</span>}
-                key={(index + 1)?.toString()}
-              />
-            ))}
+          {[...(adapterData || [])].map((adapter, index) => (
+            <TabPane
+              tab={<span>{adapter.llm_model}</span>}
+              key={(index + 1)?.toString()}
+            />
+          ))}
         </Tabs>
         <div className="combined-op-segment"></div>
       </div>

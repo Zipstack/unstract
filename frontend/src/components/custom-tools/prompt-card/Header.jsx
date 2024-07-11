@@ -184,6 +184,7 @@ function Header({
           checked={isDisablePrompt}
           className="prompt-card-action-button"
           onChange={handleDisablePrompt}
+          disabled={isPublicSource}
         />
         <Divider type="vertical" className="header-delete-divider" />
         <ConfirmModal
