@@ -18,11 +18,21 @@ try {
   // Plugin not available
 }
 
+// Import useGoogleTagManager hook
+let hsSignupEvent;
+try {
+  hsSignupEvent =
+    require("../plugins/hooks/useGoogleTagManager.js").useGoogleTagManager();
+} catch {
+  // Ignore if hook not available
+}
+
 function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
   const handleException = useExceptionHandler();
   const navigate = useNavigate();
   const userSession = useUserSession();
+
   return async () => {
     try {
       const userSessionData = await userSession();
@@ -58,6 +68,12 @@ function useSessionValid() {
           window.location.reload();
         }
       });
+
+      const isNewOrg = setOrgRes?.data?.is_new_org || false;
+      if (isNewOrg && hsSignupEvent) {
+        hsSignupEvent();
+      }
+
       userAndOrgDetails = setOrgRes?.data?.user;
       userAndOrgDetails["orgName"] = setOrgRes?.data?.organization?.name;
       userAndOrgDetails["orgId"] = orgId;
@@ -113,6 +129,7 @@ function useSessionValid() {
       if (isPlatformAdmin) {
         userAndOrgDetails["isPlatformAdmin"] = await isPlatformAdmin();
       }
+      userAndOrgDetails["role"] = userSessionData.role;
       // Set the session details
       setSessionDetails(getSessionData(userAndOrgDetails));
     } catch (err) {

@@ -99,7 +99,12 @@ class PostmanCollection:
                 FormDataItem(
                     key=ApiExecution.TIMEOUT_FORM_DATA,
                     type="text",
-                    value=ApiExecution.DEFAULT_TIMEOUT_IN_SEC,
+                    value=ApiExecution.MAXIMUM_TIMEOUT_IN_SEC,
+                ),
+                FormDataItem(
+                    key=ApiExecution.INCLUDE_METADATA,
+                    type="text",
+                    value=False,
                 ),
             ]
         )

@@ -1,4 +1,4 @@
-"""Method is used to Evaluate a speciifc feature-flag status as TRUE or FALSE.
+"""Method is used to Evaluate a specifc feature-flag status as TRUE or FALSE.
 
 This method sends a gRPC request to the evaluation server to determine
 the state of a feature flag for a specific entity. It takes the
@@ -51,8 +51,15 @@ class EvaluationClient(BaseClient):
             response = self.stub.Boolean(request)
             return bool(response.enabled)
         except grpc.RpcError as e:
-            logger.warning(
-                f"Error evaluating feature flag '{flag_key}' for {namespace_key}"
-                f": {str(e)}"
-            )
+            if e.code() == grpc.StatusCode.NOT_FOUND:
+                logger.warning(
+                    f"Flag key {flag_key} not found in namespace {namespace_key}."
+                )
+            elif e.code() == grpc.StatusCode.UNAVAILABLE:
+                logger.warning(f"Evaluation server is unavailable: {e.details()}.")
+            else:
+                logger.warning(
+                    f"Error evaluating feature flag {flag_key} for {namespace_key}"
+                    f" : {str(e)}"
+                )
             return False

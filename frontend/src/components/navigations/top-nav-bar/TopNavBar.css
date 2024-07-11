@@ -58,3 +58,15 @@
 .switch-org-menu .ant-dropdown-menu-title-content .ant-space {
   display: block;
 }
+
+.page-identifier {
+  vertical-align: super;
+  color: white;
+}
+
+.page-heading {
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  margin-left: 10px;
+}

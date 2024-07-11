@@ -38,6 +38,5 @@ def check_feature_flag_status(
             context=context,
         )
         return bool(response)  # Wrap the response in a boolean check
-    except Exception as e:
-        logger.warning(f"Error evaluating feature flag '{flag_key}': {str(e)}")
+    except Exception:
         return False
