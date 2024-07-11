@@ -1,20 +1,13 @@
 import json
-import os
-from pathlib import Path
+import time
 
 import pytest
-from tests.conftest import TEST_INDEX_NAME
+from conftest import SEED_DATA, TEST_INDEX_NAME
 
-from unstract.metrics import MetricsAggregator
-
-current_directory = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = Path(__file__).resolve().parent.parent
-seed_data = [
-    BASE_DIR.joinpath("tests/data/seed_metrics.json"),
-]
+from unstract.metrics import MetricsAggregator, capture_metrics
 
 
-@pytest.mark.parametrize("input_file", seed_data)
+@pytest.mark.parametrize("input_file", SEED_DATA)
 def test_add_metrics(metrics_agg: MetricsAggregator, mocker, es_client, input_file):
     with open(input_file) as file:
         mock_metrics = json.load(file)
@@ -48,7 +41,7 @@ def test_add_metrics(metrics_agg: MetricsAggregator, mocker, es_client, input_fi
     assert indexed_doc["api_key"] == mock_metrics["api_key"]
 
 
-@pytest.mark.parametrize("input_file", seed_data)
+@pytest.mark.parametrize("input_file", SEED_DATA)
 def test_query_metrics(metrics_agg: MetricsAggregator, mocker, es_client, input_file):
     with open(input_file) as file:
         mock_metrics = json.load(file)
@@ -73,3 +66,18 @@ def test_query_metrics(metrics_agg: MetricsAggregator, mocker, es_client, input_
     assert queried_doc["agent_id"] == mock_metrics["agent_id"]
     assert queried_doc["status"] == mock_metrics["status"]
     assert queried_doc["api_key"] == mock_metrics["api_key"]
+
+
+@pytest.mark.parametrize("input_file", SEED_DATA)
+def test_metrics_capture(metrics_agg: MetricsAggregator, mocker, es_client, input_file):
+    with open(input_file) as file:
+        mock_metrics = json.load(file)
+
+    @capture_metrics(index=TEST_INDEX_NAME, **mock_metrics)
+    def waited_add(a, b):
+        result = a + b
+        time.sleep(1)
+        return result
+
+    waited_add(2, 3)
+    # TODO: Make assertions

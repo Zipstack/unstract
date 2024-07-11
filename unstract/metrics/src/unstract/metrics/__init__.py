@@ -2,7 +2,7 @@ import os
 
 from elasticsearch_dsl import connections
 
-from .metrics import MetricsAggregator  # noqa: F401
+from .metrics import MetricsAggregator, capture_metrics  # noqa: F401
 
 ES_URL = os.getenv("ES_URL")
 ES_CLOUD_ID = os.getenv("ES_CLOUD_ID")

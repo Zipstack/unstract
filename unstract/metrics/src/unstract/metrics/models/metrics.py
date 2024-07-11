@@ -1,94 +1,21 @@
-from elasticsearch_dsl import (
-    Date,
-    Document,
-    Float,
-    InnerDoc,
-    Integer,
-    Keyword,
-    Nested,
-    Object,
-    Text,
+import logging
+
+from elasticsearch_dsl import Date, Document, Keyword, Nested, Text
+
+from .operation import (
+    EmbeddingOperation,
+    LLMOperation,
+    Operation,
+    VectorDBOperation,
+    X2TextOperation,
 )
 
-from .operation import Operation
-
-
-class LLMOperation(InnerDoc):
-    prompt = Text()
-    generated_response = Text()
-    adapter_metadata = Object(
-        properties={
-            "adapter_instance_id": Keyword(),
-            "type": Keyword(),
-            "name": Text(),
-            "model": Text(),
-            "max_retries": Integer(doc_values=False),
-            "max_output_tokens": Integer(doc_values=False),
-        }
-    )
-    metrics = Object(
-        properties={
-            "input_tokens": Integer(),
-            "output_tokens": Integer(),
-            "latency": Float(),
-            "input_tokens_cost": Float(),
-            "output_tokens_cost": Float(),
-            "total_cost": Float(),
-        }
-    )
-
-
-class VectorDBOperation(InnerDoc):
-    doc_id = Keyword()
-    retrieved_docs = Keyword(multi=True)
-    adapter_metadata = Object(
-        properties={
-            "adapter_instance_id": Keyword(),
-            "type": Keyword(),
-            "name": Text(),
-            "dimension": Integer(doc_values=False),
-        }
-    )
-    metrics = Object(
-        properties={"operation": Keyword(), "count": Integer(), "latency": Float()}
-    )
-
-
-class EmbeddingOperation(InnerDoc):
-    adapter_metadata = Object(
-        properties={
-            "adapter_instance_id": Keyword(),
-            "type": Keyword(),
-            "name": Text(),
-            "model": Text(),
-            "embed_batch_size": Integer(),
-        }
-    )
-    metrics = Object(
-        properties={"tokens": Integer(), "latency": Float(), "cost": Float()}
-    )
-
-
-class X2TextOperation(InnerDoc):
-    adapter_metadata = Object(
-        properties={
-            "adapter_instance_id": Keyword(),
-            "type": Keyword(),
-            "name": Text(),
-            "mode": Text(),
-        }
-    )
-    metrics = Object(
-        properties={
-            "pages_extracted": Integer(),
-            "latency": Float(),
-        }
-    )
+logger = logging.getLogger(__name__)
 
 
 class Metrics(Document):
     org_id = Keyword(required=True)
-    run_id = Keyword(required=True)
+    run_id = Keyword()
     start_time = Date(required=True)
     end_time = Date(required=True)
     owner = Keyword()
@@ -155,6 +82,17 @@ class Metrics(Document):
                                 "properties": EmbeddingOperation._doc_type.mapping.properties.to_dict(),  # noqa: E501
                             },
                             "match": "EMBEDDING",
+                        }
+                    },
+                    {
+                        "embedding_template": {
+                            "path_match": "operations.sub_process",
+                            "match_mapping_type": "string",
+                            "mapping": {
+                                "type": "nested",
+                                "properties": X2TextOperation._doc_type.mapping.properties.to_dict(),  # noqa: E501
+                            },
+                            "match": "X2TEXT",
                         }
                     },
                 ]
