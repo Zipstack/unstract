@@ -132,8 +132,7 @@ function CombinedOutput({ docId, setFilledFields }) {
     let url;
     if (isSimplePromptStudio) {
       url = promptOutputApiSps(details?.tool_id, null, docId);
-    }
-    if (isPublicSource) {
+    } else if (isPublicSource) {
       url = publicOutputsDocApi(
         id,
         docId,
