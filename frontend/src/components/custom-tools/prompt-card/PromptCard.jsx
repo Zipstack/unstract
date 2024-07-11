@@ -165,9 +165,9 @@ function PromptCard({
   };
 
   useEffect(() => {
-    const isProfilePresent = llmProfiles?.some((profile) => {
-      return profile?.profile_id === defaultLlmProfile;
-    });
+    const isProfilePresent = llmProfiles?.some(
+      (profile) => profile?.profile_id === defaultLlmProfile
+    );
 
     // If selectedLlmProfileId is not present, set it to null
     if (!isProfilePresent) {
