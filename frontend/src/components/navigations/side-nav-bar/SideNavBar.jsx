@@ -19,7 +19,7 @@ import { useSessionStore } from "../../../store/session-store";
 
 let getMenuItem;
 try {
-  getMenuItem = require("../../../plugins/app-deployments/app-deployment-components/helpers/getMenuItem");
+  getMenuItem = require("../../../plugins/app-deployment/getMenuItem");
 } catch (err) {
   // Plugin unavailable.
 }

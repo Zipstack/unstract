@@ -5,7 +5,6 @@
     --bind 0.0.0.0:3003 \
     --workers 2 \
     --threads 2 \
-    --worker-class gevent\
     --log-level debug \
     --timeout 900 \
     --access-logfile - \
