@@ -96,9 +96,9 @@ class AuthenticationHelper:
         OrganizationMemberService.remove_users_by_user_pks(user_pks)
         # removing user m2m relations , while removing user
         for user_pk in user_pks:
-            User.objects.get(pk=user_pk).shared_exported_tools.clear()
-            User.objects.get(pk=user_pk).shared_custom_tool.clear()
-            User.objects.get(pk=user_pk).shared_adapters.clear()
+            User.objects.get(pk=user_pk).prompt_registries.clear()
+            User.objects.get(pk=user_pk).shared_custom_tools.clear()
+            User.objects.get(pk=user_pk).shared_adapters_instance.clear()
 
     @staticmethod
     def remove_user_from_organization_by_user_id(
@@ -112,9 +112,9 @@ class AuthenticationHelper:
         # removing user from organization
         OrganizationMemberService.remove_user_by_user_id(user_id)
         # removing user m2m relations , while removing user
-        User.objects.get(user_id=user_id).shared_exported_tools.clear()
-        User.objects.get(user_id=user_id).shared_custom_tool.clear()
-        User.objects.get(user_id=user_id).shared_adapters.clear()
+        User.objects.get(user_id=user_id).prompt_registries.clear()
+        User.objects.get(user_id=user_id).shared_custom_tools.clear()
+        User.objects.get(user_id=user_id).shared_adapters_instance.clear()
         # removing user from organization cache
         OrganizationMemberService.remove_user_membership_in_organization_cache(
             user_id=user_id, organization_id=organization_id
