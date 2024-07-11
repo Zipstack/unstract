@@ -203,28 +203,10 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       url,
       method: "GET",
     };
-    handleLoadingStateUpdate(viewType, true);
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data?.data;
-        if (viewType === viewTypes.original) {
-          const base64String = data || "";
-          const blob = base64toBlob(base64String);
-          setFileUrl(URL.createObjectURL(blob));
-          return;
-        }
-
-        if (viewType === viewTypes?.extract) {
-          setExtractTxt(data);
-        }
-      })
+    return axiosPrivate(requestOptions)
+      .then((res) => res)
       .catch((err) => {
-        if (err?.response?.status === 404) {
-          setErrorMessage(viewType);
-        }
-      })
-      .finally(() => {
-        handleLoadingStateUpdate(viewType, false);
+        throw err;
       });
   };
 
