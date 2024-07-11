@@ -198,6 +198,7 @@ function CombinedOutput({ docId, setFilledFields }) {
       selectedProfile={selectedProfile}
       llmProfiles={llmProfiles}
       activeKey={activeKey}
+      adapterData={adapterData}
     />
   );
 }
