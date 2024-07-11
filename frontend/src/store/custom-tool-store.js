@@ -18,6 +18,7 @@ const defaultState = {
   isSimplePromptStudio: false,
   shareId: null,
   isPublicSource: false,
+  adapters: [],
 };
 
 const defaultPromptInstance = {

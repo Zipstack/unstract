@@ -36,12 +36,8 @@ import { TokenUsage } from "../token-usage/TokenUsage";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { Header } from "./Header";
 import CheckableTag from "antd/es/tag/CheckableTag";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useSessionStore } from "../../../store/session-store";
 import { motion, AnimatePresence } from "framer-motion";
 import { OutputForIndex } from "./OutputForIndex";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { useAlertStore } from "../../../store/alert-store";
 import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
 
 const EvalBtn = null;
@@ -81,6 +77,7 @@ function PromptCardItems({
     indexDocs,
     isSimplePromptStudio,
     isPublicSource,
+    adapters,
   } = useCustomToolStore();
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -92,11 +89,7 @@ function PromptCardItems({
   );
   const [expandedProfiles, setExpandedProfiles] = useState([]); // New state for expanded profiles
   const [isIndexOpen, setIsIndexOpen] = useState(false);
-  const privateAxios = useAxiosPrivate();
-  const { sessionDetails } = useSessionStore();
   const { width: windowWidth } = useWindowDimensions();
-  const handleException = useExceptionHandler();
-  const { setAlertDetails } = useAlertStore();
   const componentWidth = windowWidth * 0.4;
 
   const divRef = useRef(null);
@@ -124,35 +117,26 @@ function PromptCardItems({
     return result;
   };
 
-  const getAdapterInfo = async () => {
-    privateAxios
-      .get(`/api/v1/unstract/${sessionDetails?.orgId}/adapter/`)
-      .then((res) => {
-        const adapterData = res?.data;
-
-        // Update llmProfiles with additional fields
-        const updatedProfiles = llmProfiles?.map((profile) => {
-          return { ...getModelOrAdapterId(profile, adapterData), ...profile };
-        });
-        setLlmProfileDetails(
-          updatedProfiles
-            .map((profile) => ({
-              ...profile,
-              isDefault: profile?.profile_id === selectedLlmProfileId,
-              isEnabled: enabledProfiles.includes(profile?.profile_id),
-            }))
-            .sort((a, b) => {
-              if (a?.isDefault) return -1; // Default profile comes first
-              if (b?.isDefault) return 1;
-              if (a?.isEnabled && !b?.isEnabled) return -1; // Enabled profiles come before disabled
-              if (!a?.isEnabled && b?.isEnabled) return 1;
-              return 0;
-            })
-        );
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      });
+  const getAdapterInfo = async (adapterData) => {
+    // Update llmProfiles with additional fields
+    const updatedProfiles = llmProfiles?.map((profile) => {
+      return { ...getModelOrAdapterId(profile, adapterData), ...profile };
+    });
+    setLlmProfileDetails(
+      updatedProfiles
+        .map((profile) => ({
+          ...profile,
+          isDefault: profile?.profile_id === selectedLlmProfileId,
+          isEnabled: enabledProfiles.includes(profile?.profile_id),
+        }))
+        .sort((a, b) => {
+          if (a?.isDefault) return -1; // Default profile comes first
+          if (b?.isDefault) return 1;
+          if (a?.isEnabled && !b?.isEnabled) return -1; // Enabled profiles come before disabled
+          if (!a?.isEnabled && b?.isEnabled) return 1;
+          return 0;
+        })
+    );
   };
 
   const tooltipContent = (adapterConf) => (
@@ -248,7 +232,7 @@ function PromptCardItems({
   }, [singlePassExtractMode]);
 
   useEffect(() => {
-    getAdapterInfo();
+    getAdapterInfo(adapters);
   }, [llmProfiles, selectedLlmProfileId, enabledProfiles]);
   return (
     <Card className="prompt-card">
