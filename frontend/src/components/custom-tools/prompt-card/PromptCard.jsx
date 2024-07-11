@@ -120,19 +120,6 @@ function PromptCard({
     resetInfoMsgs();
     handleGetOutput();
     handleGetCoverage();
-    if (isSinglePassExtractLoading) {
-      return;
-    }
-    if (
-      selectedLlmProfileId !== promptDetails?.profile_id &&
-      !isSimplePromptStudio
-    ) {
-      handleChange(
-        selectedLlmProfileId,
-        promptDetails?.prompt_id,
-        "profile_manager"
-      );
-    }
   }, [
     selectedLlmProfileId,
     selectedDoc,
@@ -176,7 +163,7 @@ function PromptCard({
 
   useEffect(() => {
     const isProfilePresent = llmProfiles?.some(
-      (profile) => profile?.profile_id === selectedLlmProfileId
+      (profile) => profile?.profile_id === defaultLlmProfile
     );
 
     // If selectedLlmProfileId is not present, set it to null
@@ -195,6 +182,7 @@ function PromptCard({
 
   const handleSelectDefaultLLM = (llmProfileId) => {
     setSelectedLlmProfileId(llmProfileId);
+    handleChange(llmProfileId, promptDetails?.prompt_id, "profile_manager");
   };
 
   const handleTypeChange = (value) => {

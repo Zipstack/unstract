@@ -1,8 +1,11 @@
+import logging
 import os
 import uuid
 from importlib import import_module
 
 from .interface import ContainerClientInterface
+
+logger = logging.getLogger(__name__)
 
 
 class ContainerClientHelper:
@@ -11,7 +14,7 @@ class ContainerClientHelper:
         client_path = os.getenv(
             "CONTAINER_CLIENT_PATH", "unstract.worker.clients.docker"
         )
-        print("Loading the container client from path:", client_path)
+        logger.info("Loading the container client from path:", client_path)
         return import_module(client_path).Client
 
     @staticmethod
