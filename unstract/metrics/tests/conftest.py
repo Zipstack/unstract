@@ -16,7 +16,7 @@ TEST_INDEX_NAME = "unstract-metrics-test"
 def es_client():
     client = Elasticsearch(hosts=["http://localhost:9200"])
     yield client
-    # client.options(ignore_status=[400, 404]).indices.delete(index=TEST_INDEX_NAME)
+    client.options(ignore_status=[400, 404]).indices.delete(index=TEST_INDEX_NAME)
 
 
 @pytest.fixture
