@@ -37,6 +37,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         scheduled: bool = False,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
         workflow_execution: Optional[WorkflowExecution] = None,
+        include_metadata: bool = False,
     ) -> None:
         tool_instances_as_dto = []
         for tool_instance in tool_instances:
@@ -58,6 +59,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             tool_instances=tool_instances_as_dto,
             platform_service_api_key=str(platform_key.key),
             ignore_processed_entities=False,
+            include_metadata=include_metadata,
         )
         if not workflow_execution:
             # Use pipline_id for pipelines / API deployment
@@ -227,7 +229,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution_time = end_time - start_time
             message = str(exception)[:EXECUTION_ERROR_LENGTH]
             logger.info(
-                f"Execution {self.execution_id} in {execution_time}s, "
+                f"Execution {self.execution_id} ran for {execution_time:.4f}s, "
                 f" Error {exception}"
             )
             raise WorkflowExecutionError(message) from exception

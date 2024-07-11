@@ -29,7 +29,6 @@ urlpatterns = [
     path("", include("file_management.urls")),
     path("", include("tool_instance.urls")),
     path("", include("pipeline.urls")),
-    path("", include("apps.urls")),
     path("", include("feature_flag.urls")),
     path("workflow/", include("workflow_manager.urls")),
     path("platform/", include("platform_settings.urls")),
@@ -62,11 +61,42 @@ urlpatterns = [
     ),
 ]
 
+
+# APP deployment urls
 try:
-    import pluggable_apps.subscription.urls  # noqa: F401
+    import pluggable_apps.apps.app_deployment.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.apps.canned_question.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.apps.chat_history.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.apps.chat_transcript.urls  # noqa # pylint: disable=unused-import
+
+    urlpatterns += [
+        path(
+            "canned_question/",
+            include("pluggable_apps.apps.canned_question.urls"),
+        ),
+        path("app/", include("pluggable_apps.apps.app_deployment.urls")),
+        path("chat_history/", include("pluggable_apps.apps.chat_history.urls")),
+        path("chat/", include("pluggable_apps.apps.chat_transcript.urls")),
+    ]
+except ImportError:
+    pass
+
+# Subscription urls
+try:
+
+    import pluggable_apps.subscription.urls  # noqa # pylint: disable=unused-import
 
     urlpatterns += [
         path("", include("pluggable_apps.subscription.urls")),
+    ]
+except ImportError:
+    pass
+
+try:
+    import pluggable_apps.manual_review.urls  # noqa: F401
+
+    urlpatterns += [
+        path("manual_review/", include("pluggable_apps.manual_review.urls")),
     ]
 except ImportError:
     pass
