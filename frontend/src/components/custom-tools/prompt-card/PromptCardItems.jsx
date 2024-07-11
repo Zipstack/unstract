@@ -124,6 +124,9 @@ function PromptCardItems({
   };
 
   const getAdapterInfo = async () => {
+    if (isSimplePromptStudio) {
+      return;
+    }
     privateAxios
       .get(`/api/v1/unstract/${sessionDetails?.orgId}/adapter/`)
       .then((res) => {
@@ -249,6 +252,7 @@ function PromptCardItems({
   useEffect(() => {
     getAdapterInfo();
   }, [llmProfiles, selectedLlmProfileId, enabledProfiles]);
+
   return (
     <Card className="prompt-card">
       <div className="prompt-card-div prompt-card-bg-col1 prompt-card-rad">

@@ -22,7 +22,7 @@ import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
-const items = [
+let items = [
   {
     key: "1",
     label: "PDF View",
@@ -92,22 +92,24 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
   useEffect(() => {
     if (isSimplePromptStudio) {
-      items[0] = {
-        key: "1",
-        label: (
-          <Tooltip title="PDF View">
-            <FilePdfOutlined />
-          </Tooltip>
-        ),
-      };
-      items[1] = {
-        key: "2",
-        label: (
-          <Tooltip title="Raw View">
-            <FileTextOutlined />
-          </Tooltip>
-        ),
-      };
+      items = [
+        {
+          key: "1",
+          label: (
+            <Tooltip title="PDF View">
+              <FilePdfOutlined />
+            </Tooltip>
+          ),
+        },
+        {
+          key: "2",
+          label: (
+            <Tooltip title="Raw View">
+              <FileTextOutlined />
+            </Tooltip>
+          ),
+        },
+      ];
     }
   }, []);
 
@@ -172,7 +174,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   };
 
   const handleGetDocumentsReq = (getDocsFunc, viewType) => {
-    getDocsFunc(viewType)
+    getDocsFunc(details?.tool_id, selectedDoc?.document_id, viewType)
       .then((res) => {
         const data = res?.data?.data || "";
         processGetDocsResponse(data, viewType);
@@ -185,10 +187,10 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       });
   };
 
-  const getDocuments = async (viewType) => {
+  const getDocuments = async (toolId, docId, viewType) => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}?document_id=${selectedDoc?.document_id}&view_type=${viewType}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${toolId}?document_id=${docId}&view_type=${viewType}`,
     };
 
     return axiosPrivate(requestOptions)

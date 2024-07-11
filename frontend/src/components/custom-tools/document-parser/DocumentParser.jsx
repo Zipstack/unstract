@@ -193,9 +193,13 @@ function DocumentParser({
   };
 
   const handleDelete = (promptId) => {
+    let url = promptUrl(promptId + "/");
+    if (isSimplePromptStudio) {
+      url = promptPatchApiSps(promptId);
+    }
     const requestOptions = {
       method: "DELETE",
-      url: promptUrl(promptId + "/"),
+      url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },

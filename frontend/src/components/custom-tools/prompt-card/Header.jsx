@@ -41,6 +41,7 @@ function Header({
     singlePassExtractMode,
     isSinglePassExtractLoading,
     indexDocs,
+    isSimplePromptStudio,
   } = useCustomToolStore();
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(promptDetails?.active);
@@ -157,30 +158,34 @@ function Header({
                 <PlayCircleOutlined className="prompt-card-actions-head" />
               </Button>
             </Tooltip>
-            <Tooltip title="Run All">
-              <Button
-                size="small"
-                type="text"
-                className="prompt-card-action-button"
-                onClick={() => handleRunBtnClick()}
-                disabled={
-                  (updateStatus?.promptId === promptDetails?.prompt_id &&
-                    updateStatus?.status ===
-                      promptStudioUpdateStatus?.isUpdating) ||
-                  disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
-                  indexDocs?.includes(selectedDoc?.document_id)
-                }
-              >
-                <PlayCircleFilled className="prompt-card-actions-head" />
-              </Button>
-            </Tooltip>
+            {!isSimplePromptStudio && (
+              <Tooltip title="Run All">
+                <Button
+                  size="small"
+                  type="text"
+                  className="prompt-card-action-button"
+                  onClick={() => handleRunBtnClick()}
+                  disabled={
+                    (updateStatus?.promptId === promptDetails?.prompt_id &&
+                      updateStatus?.status ===
+                        promptStudioUpdateStatus?.isUpdating) ||
+                    disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
+                    indexDocs?.includes(selectedDoc?.document_id)
+                  }
+                >
+                  <PlayCircleFilled className="prompt-card-actions-head" />
+                </Button>
+              </Tooltip>
+            )}
           </>
         )}
-        <Checkbox
-          checked={isDisablePrompt}
-          className="prompt-card-action-button"
-          onChange={handleDisablePrompt}
-        />
+        {!isSimplePromptStudio && (
+          <Checkbox
+            checked={isDisablePrompt}
+            className="prompt-card-action-button"
+            onChange={handleDisablePrompt}
+          />
+        )}
         <Divider type="vertical" className="header-delete-divider" />
         <ConfirmModal
           handleConfirm={() => handleDelete(promptDetails?.prompt_id)}

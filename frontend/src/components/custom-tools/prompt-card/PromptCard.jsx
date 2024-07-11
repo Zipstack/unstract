@@ -123,7 +123,10 @@ function PromptCard({
     if (isSinglePassExtractLoading) {
       return;
     }
-    if (selectedLlmProfileId !== promptDetails?.profile_id) {
+    if (
+      selectedLlmProfileId !== promptDetails?.profile_id &&
+      !isSimplePromptStudio
+    ) {
       handleChange(
         selectedLlmProfileId,
         promptDetails?.prompt_id,
