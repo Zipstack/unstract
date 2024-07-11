@@ -79,16 +79,17 @@ function ToolIde() {
   const closeLogsModal = () => {
     setShowLogsModal(false);
   };
-  useEffect(() => {
-    if (!shareId && openShareModal) {
+useEffect(() => {
+  if (openShareModal) {
+    if (shareId) {
+      setOpenShareConfirmation(false);
+      setOpenShareLink(true);
+    } else {
       setOpenShareConfirmation(true);
       setOpenShareLink(false);
     }
-    if (shareId && openShareModal) {
-      setOpenShareConfirmation(false);
-      setOpenShareLink(true);
-    }
-  }, [shareId, openShareModal]);
+  }
+}, [shareId, openShareModal]);
 
   const genExtra = () => (
     <FullscreenOutlined
