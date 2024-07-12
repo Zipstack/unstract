@@ -16,6 +16,7 @@ const defaultState = {
   singlePassExtractMode: false,
   isSinglePassExtractLoading: false,
   isSimplePromptStudio: false,
+  adapters: [],
 };
 
 const defaultPromptInstance = {
