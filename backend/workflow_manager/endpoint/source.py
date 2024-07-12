@@ -386,6 +386,17 @@ class SourceConnector(BaseConnector):
             results.append({"file": file_name, "result": result})
 
     def load_file(self, input_file_path: str) -> tuple[str, BytesIO]:
+        """Load file contnt and file name based on the file path.
+
+        Args:
+            input_file_path (str): source file
+
+        Raises:
+            InvalidSource: _description_
+
+        Returns:
+            tuple[str, BytesIO]: file_name , file content
+        """
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
         source_fs: fsspec.AbstractFileSystem = self.get_fsspec(
