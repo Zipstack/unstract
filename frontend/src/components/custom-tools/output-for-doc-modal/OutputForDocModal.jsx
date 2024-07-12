@@ -78,7 +78,7 @@ function OutputForDocModal({
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
   const { setAlertDetails } = useAlertStore();
-  const { handleException } = useExceptionHandler();
+  const handleException = useExceptionHandler();
   const { tokenUsage } = useTokenUsageStore();
   const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
 
