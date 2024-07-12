@@ -164,7 +164,7 @@ function Header({
                   size="small"
                   type="text"
                   className="prompt-card-action-button"
-                  onClick={() => handleRunBtnClick()}
+                  onClick={handleRunBtnClick}
                   disabled={
                     (updateStatus?.promptId === promptDetails?.prompt_id &&
                       updateStatus?.status ===
