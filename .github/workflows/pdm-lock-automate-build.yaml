@@ -1,0 +1,59 @@
+name: Update PDM Lock Files
+
+on:
+  push:
+    paths:
+      - 'unstract/**/pyproject.toml'
+
+jobs:
+  update-pdm-lock:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        service: [backend, prompt-service, platform-service]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9.0'
+
+      - name: Install PDM
+        run: python -m pip install pdm
+
+      - name: Update pdm.lock for ${{ matrix.service }}
+        run: |
+          cd unstract/${{ matrix.service }}
+          pdm venv create -w virtualenv --with-pip
+          source .venv/bin/activate
+          pdm lock
+
+      - name: Update pdm.lock for root directory
+        run: |
+          cd unstract
+          pdm venv create -w virtualenv --with-pip
+          source .venv/bin/activate
+          pdm lock
+
+      - name: Commit changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+          # Commit changes for each service directory
+          cd unstract/${{ matrix.service }}
+          git add pdm.lock
+          git commit -m "Update pdm.lock for ${{ matrix.service }}"
+
+          # Commit changes for root directory
+          cd ..
+          git add pdm.lock
+          git commit -m "Update pdm.lock for root directory"
+
+      - name: Push changes
+        run: git push
+        if: success()
