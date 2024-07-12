@@ -87,7 +87,7 @@ function OutputForDocModal({
   const navigate = useNavigate();
   const { id } = useParams();
   const { setAlertDetails } = useAlertStore();
-  const { handleException } = useExceptionHandler();
+  const handleException = useExceptionHandler();
   const { tokenUsage } = useTokenUsageStore();
   const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
 
