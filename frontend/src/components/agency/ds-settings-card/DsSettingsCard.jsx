@@ -87,21 +87,26 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     input: <ImportOutlined className="ds-set-icon-size" />,
     output: <ExportOutlined className="ds-set-icon-size" />,
   };
+
+  const setUpdatedInputoptions = (inputOption) => {
+    setInputOptions((prevInputOptions) => {
+      // Check if inputOption already exists in prevInputOptions
+      if (prevInputOptions.some((opt) => opt.value === inputOption.value)) {
+        return prevInputOptions; // Return previous state unchanged
+      } else {
+        // Create a new array with the existing options and the new option
+        const updatedInputOptions = [...prevInputOptions, inputOption];
+        return updatedInputOptions;
+      }
+    });
+  };
+
   useEffect(() => {
     try {
       const inputOption =
         require("../../../plugins/dscard-input-options/DsSettingsCardInputOptions").inputOption;
       if (flags.manual_review && inputOption) {
-        setInputOptions((prevInputOptions) => {
-          // Check if inputOption already exists in prevInputOptions
-          if (prevInputOptions.some((opt) => opt.value === inputOption.value)) {
-            return prevInputOptions; // Return previous state unchanged
-          } else {
-            // Create a new array with the existing options and the new option
-            const updatedInputOptions = [...prevInputOptions, inputOption];
-            return updatedInputOptions;
-          }
-        });
+        setUpdatedInputoptions(inputOption);
       }
     } catch {
       // The component will remain null of it is not available
@@ -112,9 +117,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       const inputOption =
         require("../../../plugins/dscard-input-options/AppDeploymentCardInputOptions").appDeploymentInputOption;
       if (flags.app_deployment && inputOption) {
-        const updatedInputOptions = inputOptions;
-        updatedInputOptions.push(inputOption);
-        setInputOptions(updatedInputOptions);
+        setUpdatedInputoptions(inputOption);
       }
     } catch {
       // The component will remain null of it is not available
