@@ -395,7 +395,7 @@ class SourceConnector(BaseConnector):
             file_content = remote_file.read()
             file_stream = BytesIO(file_content)
 
-        return remote_file.key, file_stream
+        return os.path.basename(input_file_path), file_stream
 
     @classmethod
     def add_input_file_to_api_storage(
