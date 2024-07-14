@@ -1,50 +1,41 @@
-# from typing import Any, Optional
+from permissions.permission import IsOwner
+from prompt_studio.prompt_version_manager.helper import PromptVersionHelper
+from prompt_studio.prompt_version_manager.serializers import (
+    PromptVersionManagerSerializer,
+)
+from rest_framework import viewsets
+from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
+from rest_framework.versioning import URLPathVersioning
 
-# from account.custom_exceptions import DuplicateData
-# from django.db import IntegrityError
-# from django.db.models import QuerySet
-# from django.http import HttpRequest
-# from permissions.permission import IsOwner
-# from prompt_studio.prompt_profile_manager.constants import (
-#     ProfileManagerErrors,
-#     ProfileManagerKeys,
-# )
-# from prompt_studio.prompt_profile_manager.serializers import ProfileManagerSerializer
-# from rest_framework import status, viewsets
-# from rest_framework.response import Response
-# from rest_framework.versioning import URLPathVersioning
-# from utils.filtering import FilterHelper
+from backend.pagination import DefaultPagination
 
-# from .models import ProfileManager
+from .models import PromptVersionManager
 
 
-# class ProfileManagerView(viewsets.ModelViewSet):
-#     """Viewset to handle all Custom tool related operations."""
+class PromptVersionManagerView(viewsets.ModelViewSet):
+    """Viewset to handle all Custom tool related operations."""
 
-#     versioning_class = URLPathVersioning
-#     permission_classes = [IsOwner]
-#     serializer_class = ProfileManagerSerializer
+    versioning_class = URLPathVersioning
+    permission_classes = [IsOwner]
+    queryset = PromptVersionManager.objects.all()
+    serializer_class = PromptVersionManagerSerializer
+    pagination_class = DefaultPagination
 
-#     def get_queryset(self) -> Optional[QuerySet]:
-#         filter_args = FilterHelper.build_filter_args(
-#             self.request,
-#             ProfileManagerKeys.CREATED_BY,
-#         )
-#         if filter_args:
-#             queryset = ProfileManager.objects.filter(**filter_args)
-#         else:
-#             queryset = ProfileManager.objects.all()
-#         return queryset
+    def list(self, request, prompt_id, *args, **kwargs):
+        if not prompt_id:
+            raise ValidationError("prompt_id is required")
+        queryset = self.get_queryset().filter(prompt_id=prompt_id).order_by("version")
+        paginator = self.pagination_class()
+        paginated_queryset = paginator.paginate_queryset(queryset, request)
+        serializer = self.get_serializer(paginated_queryset, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
-#     def create(
-#         self, request: HttpRequest, *args: tuple[Any], **kwargs: dict[str, Any]
-#     ) -> Response:
-#         serializer: ProfileManagerSerializer = self.get_serializer(data=request.data)
-#         # Overriding default exception behaviour
-#         # TO DO : Handle model related exceptions.
-#         serializer.is_valid(raise_exception=True)
-#         try:
-#             self.perform_create(serializer)
-#         except IntegrityError:
-#             raise DuplicateData(ProfileManagerErrors.PROFILE_NAME_EXISTS)
-#         return Response(serializer.data, status=status.HTTP_201_CREATED)
+    def load_version(self, request, prompt_id, prompt_version):
+        return PromptVersionHelper.load_prompt_version(
+            prompt_id=prompt_id,
+            prompt_version=prompt_version,
+        )
+
+    def test(self, request):
+        return Response("Success")

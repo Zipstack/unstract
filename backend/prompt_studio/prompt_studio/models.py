@@ -64,20 +64,6 @@ class ToolStudioPrompt(BaseModel):
         blank=True,
     )
     output = models.TextField(blank=True)
-    # TODO: Remove below 3 fields related to assertion
-    assert_prompt = models.TextField(
-        blank=True,
-        null=True,
-        db_comment="Field to store the asserted prompt",
-        unique=False,
-    )
-    assertion_failure_prompt = models.TextField(
-        blank=True,
-        null=True,
-        db_comment="Field to store the prompt key",
-        unique=False,
-    )
-    is_assert = models.BooleanField(default=False)
     active = models.BooleanField(default=True, null=False, blank=False)
     output_metadata = models.JSONField(
         db_column="output_metadata",
@@ -101,6 +87,12 @@ class ToolStudioPrompt(BaseModel):
         null=True,
         blank=True,
         editable=False,
+    )
+    loaded_version = models.CharField(
+        max_length=10, default="v1", db_comment="Current loaded version of prompt"
+    )
+    checked_in = models.BooleanField(
+        default=True, db_comment="Current checked-in prompt"
     )
     # Eval settings for the prompt
     # NOTE:

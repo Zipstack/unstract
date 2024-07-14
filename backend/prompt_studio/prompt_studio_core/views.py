@@ -37,7 +37,6 @@ from prompt_studio.prompt_studio_registry.serializers import (
     ExportToolRequestSerializer,
     PromptStudioRegistryInfoSerializer,
 )
-from prompt_studio.prompt_version_manager.models import PromptVersionManager
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -169,7 +168,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         )
 
         serialized_instances = ProfileManagerSerializer(
-            profile_manager_instances, many=True
+            instance=profile_manager_instances, many=True
         ).data
 
         return Response(serialized_instances)
@@ -271,7 +270,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()
-
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,
             tool_id=tool_id,
@@ -328,16 +326,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = ToolStudioPromptSerializer(data=request.data, context=context)
         serializer.is_valid(raise_exception=True)
         try:
-            # serializer.save()
-            tool_studio_prompt = self.perform_create(serializer)
-            PromptVersionManager.objects.create(
-                tool_id=tool_studio_prompt.tool_id,
-                prompt_id=tool_studio_prompt,
-                prompt_key=tool_studio_prompt.prompt_key,
-                prompt=tool_studio_prompt.prompt,
-                enforce_type=tool_studio_prompt.enforce_type,
-                profile_manager=tool_studio_prompt.profile_manager,
-            )
+            self.perform_create(serializer)
         except IntegrityError:
             raise DuplicateData(
                 f"{ToolStudioPromptErrors.PROMPT_NAME_EXISTS}, \

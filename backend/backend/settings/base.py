@@ -243,6 +243,7 @@ TENANT_APPS = (
     "prompt_studio.prompt_studio_document_manager",
     "prompt_studio.prompt_studio_index_manager",
     "prompt_studio.prompt_version_manager",
+    "prompt_studio.tag_manager",
     "usage",
 )
 

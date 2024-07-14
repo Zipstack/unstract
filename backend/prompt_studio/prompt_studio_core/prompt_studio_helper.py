@@ -34,6 +34,7 @@ from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import
 from prompt_studio.prompt_studio_output_manager.output_manager_helper import (
     OutputManagerHelper,
 )
+from prompt_studio.prompt_version_manager.helper import PromptVersionHelper
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import IndexingError, SdkError
 from unstract.sdk.index import Index
@@ -249,8 +250,8 @@ class PromptStudioHelper:
         return response
 
     @staticmethod
-    def _fetch_prompt_from_id(id: str) -> ToolStudioPrompt:
-        """Internal function used to fetch prompt from ID.
+    def fetch_prompt_from_id(id: str) -> ToolStudioPrompt:
+        """Method used to fetch prompt from ID.
 
         Args:
             id (_type_): UUID of the prompt
@@ -262,17 +263,26 @@ class PromptStudioHelper:
         return prompt_instance
 
     @staticmethod
-    def fetch_prompt_from_tool(tool_id: str) -> list[ToolStudioPrompt]:
-        """Internal function used to fetch mapped prompts from ToolID.
+    def fetch_prompt_from_tool(
+        tool_id: str, include_notes: bool = True, checked_in_only: bool = True
+    ) -> list[ToolStudioPrompt]:
+        """Function used to fetch mapped prompts from ToolID.
 
         Args:
-            tool_id (_type_): UUID of the tool
+            tool_id (str): UUID of the tool
+            include_notes (bool): Whether to include notes
+            checked_in_only (bool): Whether to only include checked_in prompts
 
         Returns:
-            List[ToolStudioPrompt]: List of instance of the model
+            List[ToolStudioPrompt]: List of instances of the model
         """
+        filter_args = {"tool_id": tool_id}
+        if checked_in_only:
+            filter_args["checked_in"] = True
+        if not include_notes:
+            filter_args["prompt_type"] = "PROMPT"
         prompt_instances: list[ToolStudioPrompt] = ToolStudioPrompt.objects.filter(
-            tool_id=tool_id
+            **filter_args
         ).order_by(TSPKeys.SEQUENCE_NUMBER)
         return prompt_instances
 
@@ -393,8 +403,10 @@ class PromptStudioHelper:
         doc_path = str(Path(doc_path) / doc_name)
 
         if id:
-            prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
+            prompt_instance = PromptStudioHelper.fetch_prompt_from_id(id)
             prompt_name = prompt_instance.prompt_key
+            # Check and create a new prompt version
+            PromptVersionHelper.create_prompt_version([prompt_instance])
             logger.info(f"[{tool_id}] Executing single prompt {id}")
             PromptStudioHelper._publish_log(
                 {
@@ -493,10 +505,11 @@ class PromptStudioHelper:
 
             return response
         else:
-            prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
-            prompts = [
-                prompt for prompt in prompts if prompt.prompt_type != TSPKeys.NOTES
-            ]
+            prompts = PromptStudioHelper.fetch_prompt_from_tool(
+                tool_id=tool_id, include_notes=False
+            )
+            # Check and create a new prompt version for all prompts
+            PromptVersionHelper.create_prompt_version(prompts)
             if not prompts:
                 logger.error(f"[{tool_id or 'NA'}] No prompts found for id: {id}")
                 raise NoPromptsFound()

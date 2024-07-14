@@ -28,12 +28,14 @@ function ExportTool({
   loading,
   allUsers,
   onApply,
+  isNewExport,
 }) {
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [filteredUserList, setFilteredUserList] = useState([]);
   const [sharingOption, setSharingOption] = useState(SHARE_ALL);
 
   useEffect(() => {
+    console.log(allUsers);
     const createdByUserId = toolDetails?.created_by?.toString();
     if (!toolDetails?.shared_users) {
       const filteredUsers = allUsers.filter((user) => {
@@ -171,46 +173,65 @@ function ExportTool({
           <SpinnerLoader />
         ) : (
           <>
-            {allUsers.length > 1 && (
-              <Radio.Group
-                onChange={onChange}
-                value={sharingOption}
-                className="export-per-radio"
-              >
-                <Radio value={SHARE_ALL}>Share with everyone</Radio>
-                <Radio value={SHARE_CUSTOM}>Custom share</Radio>
-              </Radio.Group>
-            )}
-            {sharingOption !== SHARE_ALL && (
-              <Select
-                filterOption={filterOption}
-                showSearch
-                size={"middle"}
-                placeholder="Search"
-                className="export-permission-search"
-                onChange={(selectedUser) => {
-                  const isUserSelected = selectedUsers.includes(selectedUser);
-                  if (!isUserSelected) {
-                    setSelectedUsers([...selectedUsers, selectedUser]);
-                  }
-                }}
-                options={filteredUserList.map((user) => ({
-                  label: user?.email,
-                  value: user?.id,
-                }))}
-                value={null} // null value needed here so that value wont get populated in input
-              >
-                {filteredUserList.map((user) => {
-                  return (
-                    <Select.Option key={user?.id} value={user?.id}>
-                      {user?.email}
-                    </Select.Option>
-                  );
-                })}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "8px 0 16px",
+              }}
+            >
+              <Typography.Text strong>Choose Tag for Tool</Typography.Text>
+              <Select defaultValue="Initial Version" style={{ width: 200 }}>
+                <Select.Option value="Initial Version">
+                  Initial Version
+                </Select.Option>
+                {/* Add more options as needed */}
               </Select>
+            </div>
+            {allUsers.length > 1 && (
+              <>
+                <Radio.Group
+                  onChange={onChange}
+                  value={sharingOption}
+                  className="export-per-radio"
+                >
+                  <Radio value={SHARE_ALL}>Share with everyone</Radio>
+                  <Radio value={SHARE_CUSTOM}>Custom share</Radio>
+                </Radio.Group>
+                {sharingOption !== SHARE_ALL && (
+                  <Select
+                    filterOption={filterOption}
+                    showSearch
+                    size={"middle"}
+                    placeholder="Search"
+                    className="export-permission-search"
+                    onChange={(selectedUser) => {
+                      const isUserSelected =
+                        selectedUsers.includes(selectedUser);
+                      if (!isUserSelected) {
+                        setSelectedUsers([...selectedUsers, selectedUser]);
+                      }
+                    }}
+                    options={filteredUserList.map((user) => ({
+                      label: user?.email,
+                      value: user?.id,
+                    }))}
+                    value={null} // null value needed here so that value wont get populated in input
+                  >
+                    {filteredUserList.map((user) => {
+                      return (
+                        <Select.Option key={user?.id} value={user?.id}>
+                          {user?.email}
+                        </Select.Option>
+                      );
+                    })}
+                  </Select>
+                )}
+                <Typography.Title level={5}>Shared with</Typography.Title>
+                {shareWithUsers()}
+              </>
             )}
-            <Typography.Title level={5}>Shared with</Typography.Title>
-            {shareWithUsers()}
           </>
         )}
       </Modal>
@@ -225,6 +246,7 @@ ExportTool.propTypes = {
   loading: PropTypes.bool,
   allUsers: PropTypes.array,
   onApply: PropTypes.func,
+  isNewExport: PropTypes.bool.isRequired,
 };
 
 export { ExportTool };

@@ -1,24 +1,29 @@
-# from django.urls import path
-# from rest_framework.urlpatterns import format_suffix_patterns
+from django.urls import path
+from rest_framework.urlpatterns import format_suffix_patterns
 
-# from .views import ProfileManagerView
+from .views import PromptVersionManagerView
 
-# profile_manager_detail = ProfileManagerView.as_view(
-#     {
-#         "get": "retrieve",
-#         "put": "update",
-#         "patch": "partial_update",
-#         "delete": "destroy",
-#     }
-# )
-
-
-# urlpatterns = format_suffix_patterns(
-#     [
-#         path(
-#             "profile-manager/<uuid:pk>/",
-#             profile_manager_detail,
-#             name="profile-manager-detail",
-#         ),
-#     ]
-# )
+prompt_version_manager_list = PromptVersionManagerView.as_view(
+    {
+        "get": "list",
+    }
+)
+prompt_version_manager_load = PromptVersionManagerView.as_view(
+    {
+        "post": "load_version",
+    }
+)
+urlpatterns = format_suffix_patterns(
+    [
+        path(
+            "prompt-version-manager/<uuid:prompt_id>/",
+            prompt_version_manager_list,
+            name="prompt-version-manager-list",
+        ),
+        path(
+            "prompt-version-manager/<uuid:prompt_id>/<str:prompt_version>",
+            prompt_version_manager_load,
+            name="prompt-version-manager-list",
+        ),
+    ]
+)
