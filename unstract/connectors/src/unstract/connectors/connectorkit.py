@@ -7,13 +7,14 @@ from unstract.connectors.constants import Common
 from unstract.connectors.databases import connectors as db_connectors
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.filesystems import connectors as fs_connectors
+from unstract.connectors.queues import connectors as q_connectors
 
 logger = logging.getLogger(__name__)
 
 
 class Connectorkit:
     def __init__(self) -> None:
-        self._connectors: ConnectorDict = fs_connectors | db_connectors
+        self._connectors: ConnectorDict = fs_connectors | db_connectors | q_connectors
 
     @property
     def connectors(self) -> ConnectorDict:

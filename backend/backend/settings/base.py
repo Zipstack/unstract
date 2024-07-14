@@ -167,6 +167,7 @@ CELERY_BROKER_URL = get_required_setting(
     "CELERY_BROKER_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}"
 )
 
+INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
 # Flag to Enable django admin
 ADMIN_ENABLED = False
 

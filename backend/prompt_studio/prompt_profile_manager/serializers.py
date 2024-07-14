@@ -2,6 +2,7 @@ import logging
 
 from adapter_processor.adapter_processor import AdapterProcessor
 from prompt_studio.prompt_profile_manager.constants import ProfileManagerKeys
+from prompt_studio.prompt_studio_core.exceptions import MaxProfilesReachedError
 
 from backend.serializers import AuditSerializer
 
@@ -46,3 +47,15 @@ class ProfileManagerSerializer(AuditSerializer):
                 AdapterProcessor.get_adapter_instance_by_id(x2text)
             )
         return rep
+
+    def validate(self, data):
+        prompt_studio_tool = data.get(ProfileManagerKeys.PROMPT_STUDIO_TOOL)
+
+        profile_count = ProfileManager.objects.filter(
+            prompt_studio_tool=prompt_studio_tool
+        ).count()
+
+        if profile_count >= ProfileManagerKeys.MAX_PROFILE_COUNT:
+            raise MaxProfilesReachedError()
+
+        return data

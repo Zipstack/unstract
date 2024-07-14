@@ -21,6 +21,9 @@ from prompt_studio.prompt_studio_core.constants import (
     ToolStudioKeys,
     ToolStudioPromptKeys,
 )
+from prompt_studio.prompt_studio_core.document_indexing_service import (
+    DocumentIndexingService,
+)
 from prompt_studio.prompt_studio_core.exceptions import (
     IndexingAPIError,
     ToolDeleteError,
@@ -30,6 +33,7 @@ from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from prompt_studio.prompt_studio_document_manager.prompt_studio_document_helper import (  # noqa: E501
     PromptStudioDocumentHelper,
 )
+from prompt_studio.prompt_studio_index_manager.models import IndexManager
 from prompt_studio.prompt_studio_registry.prompt_studio_registry_helper import (
     PromptStudioRegistryHelper,
 )
@@ -267,6 +271,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         id: str = request.data.get(ToolStudioPromptKeys.ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
+        profile_manager: str = request.data.get(ToolStudioPromptKeys.PROFILE_MANAGER_ID)
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()
@@ -277,6 +282,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             user_id=custom_tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
+            profile_manager_id=profile_manager,
         )
         return Response(response, status=status.HTTP_200_OK)
 
@@ -447,17 +453,26 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document_id: str = serializer.validated_data.get(
             ToolStudioPromptKeys.DOCUMENT_ID
         )
+        org_id = UserSessionUtils.get_organization_id(request)
+        user_id = custom_tool.created_by.user_id
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            UserSessionUtils.get_organization_id(request),
+            org_id=org_id,
             is_create=False,
-            user_id=custom_tool.created_by.user_id,
+            user_id=user_id,
             tool_id=str(custom_tool.tool_id),
         )
         path = file_path
         file_system = LocalStorageFS(settings={"path": path})
         try:
+            # Delete indexed flags in redis
+            index_managers = IndexManager.objects.filter(document_manager=document_id)
+            for index_manager in index_managers:
+                raw_index_id = index_manager.raw_index_id
+                DocumentIndexingService.remove_document_indexing(
+                    org_id=org_id, user_id=user_id, doc_id_key=raw_index_id
+                )
             # Delete the document record
             document.delete()
             # Delete the files

@@ -63,7 +63,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const [formDataConfig, setFormDataConfig] = useState({});
   const [selectedId, setSelectedId] = useState("");
   const [selectedItemName, setSelectedItemName] = useState("");
-
   const [inputOptions, setInputOptions] = useState([
     {
       value: "API",
@@ -84,7 +83,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
-
   const { flags } = sessionDetails;
 
   const icons = {
@@ -92,14 +90,36 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     output: <ExportOutlined className="ds-set-icon-size" />,
   };
 
+  const setUpdatedInputoptions = (inputOption) => {
+    setInputOptions((prevInputOptions) => {
+      // Check if inputOption already exists in prevInputOptions
+      if (prevInputOptions.some((opt) => opt.value === inputOption.value)) {
+        return prevInputOptions; // Return previous state unchanged
+      } else {
+        // Create a new array with the existing options and the new option
+        const updatedInputOptions = [...prevInputOptions, inputOption];
+        return updatedInputOptions;
+      }
+    });
+  };
+
+  useEffect(() => {
+    try {
+      const inputOption =
+        require("../../../plugins/dscard-input-options/DsSettingsCardInputOptions").inputOption;
+      if (flags.manual_review && inputOption) {
+        setUpdatedInputoptions(inputOption);
+      }
+    } catch {
+      // The component will remain null of it is not available
+    }
+  }, []);
   useEffect(() => {
     try {
       const inputOption =
         require("../../../plugins/dscard-input-options/AppDeploymentCardInputOptions").appDeploymentInputOption;
       if (flags.app_deployment && inputOption) {
-        const updatedInputOptions = inputOptions;
-        updatedInputOptions.push(inputOption);
-        setInputOptions(updatedInputOptions);
+        setUpdatedInputoptions(inputOption);
       }
     } catch {
       // The component will remain null of it is not available
@@ -114,7 +134,10 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       } else {
         // Filter options based on source connection type
         const filteredOptions = ["API"].includes(source?.connection_type)
-          ? inputOptions.filter((option) => option.value === "API")
+          ? inputOptions.filter(
+              (option) =>
+                option.value === "API" || option.value === "MANUALREVIEW"
+            )
           : inputOptions.filter((option) => option.value !== "API");
 
         setOptions(filteredOptions);
@@ -125,7 +148,9 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       // Remove Database from Source Dropdown
       const filteredOptions = inputOptions.filter(
         (option) =>
-          option.value !== "DATABASE" && option.value !== "APPDEPLOYMENT"
+          option.value !== "DATABASE" &&
+          option.value !== "APPDEPLOYMENT" &&
+          option.value !== "MANUALREVIEW"
       );
       setOptions(filteredOptions);
     }
@@ -376,6 +401,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                   disabled={
                     !endpointDetails?.connection_type ||
                     connType === "API" ||
+                    connType === "MANUALREVIEW" ||
                     connType === "APPDEPLOYMENT"
                   }
                 >
@@ -398,7 +424,9 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                 </Space>
               ) : (
                 <>
-                  {connType === "API" ? (
+                  {connType === "API" ||
+                  connType === "MANUALREVIEW" ||
+                  connType === "APPDEPLOYMENT" ? (
                     <Typography.Text
                       className="font-size-12 display-flex-align-center"
                       ellipsis={{ rows: 1, expandable: false }}
@@ -406,7 +434,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                     >
                       <CheckCircleTwoTone twoToneColor="#52c41a" />
                       <span style={{ marginLeft: "5px" }}>
-                        {titleCase(type)} set to API successfully
+                        {titleCase(type)} set to {connType} successfully
                       </span>
                     </Typography.Text>
                   ) : (
@@ -463,7 +491,6 @@ DsSettingsCard.propTypes = {
   type: PropTypes.string.isRequired,
   endpointDetails: PropTypes.object.isRequired,
   message: PropTypes.string,
-  canUpdate: PropTypes.bool.isRequired,
 };
 
 export { DsSettingsCard };
