@@ -165,7 +165,7 @@ class PromptStudioRegistryHelper:
             )
             spec: Spec = PromptStudioRegistryHelper.frame_spec(tool=custom_tool)
             prompts: list[ToolStudioPrompt] = PromptStudioHelper.fetch_prompt_from_tool(
-                tool_id=custom_tool.tool_id
+                tool_id=custom_tool.tool_id, include_notes=False
             )
             metadata = PromptStudioRegistryHelper.frame_export_json(
                 tool=custom_tool, prompts=prompts
@@ -298,8 +298,6 @@ class PromptStudioRegistryHelper:
                 invalidated_outputs.append(prompt.prompt_key)
                 continue
 
-            if prompt.prompt_type == JsonSchemaKey.NOTES:
-                continue
             if not prompt.profile_manager:
                 prompt.profile_manager = default_llm_profile
 

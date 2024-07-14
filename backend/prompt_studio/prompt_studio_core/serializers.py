@@ -10,6 +10,7 @@ from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio.serializers import ToolStudioPromptSerializer
 from prompt_studio.prompt_studio_core.constants import ToolStudioKeys as TSKeys
 from prompt_studio.prompt_studio_core.exceptions import DefaultProfileError
+from prompt_studio.tag_manager.models import TagManager
 from rest_framework import serializers
 from utils.FileValidator import FileValidator
 
@@ -28,6 +29,7 @@ class CustomToolSerializer(AuditSerializer):
     class Meta:
         model = CustomTool
         fields = "__all__"
+        read_only_fields = ["tag_id"]
 
     def to_representation(self, instance):  # type: ignore
         data = super().to_representation(instance)
@@ -65,8 +67,28 @@ class CustomToolSerializer(AuditSerializer):
             logger.error(f"Error occured while appending prompts {e}")
             return data
 
-        data["created_by_email"] = instance.created_by.email
-
+        tag_id = instance.tag_id
+        current_tag = None
+        available_tags = []
+        if tag_id:
+            try:
+                # Fetch all TagManager objects associated with the instance
+                tag_managers = TagManager.objects.filter(tool=instance)
+                tag_manager = tag_managers.get(tag_manager_id=tag_id)
+                current_tag = tag_manager.tag
+                available_tags = [
+                    {"id": tag_manager.tag_manager_id, "tag": tag_manager.tag}
+                    for tag_manager in tag_managers
+                ]
+            except tag_manager.DoesNotExist:
+                pass
+        data.update(
+            {
+                "current_tag": current_tag,
+                "available_tags": available_tags,
+                "created_by_email": instance.created_by.email,
+            }
+        )
         return data
 
 

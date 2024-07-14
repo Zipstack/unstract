@@ -106,7 +106,6 @@ function EditableText({
       size="small"
       style={{ backgroundColor: "transparent" }}
       variant={`${!isEditing && !isHovered ? "borderless" : "outlined"}`}
-      autoSize={true}
       onMouseOver={() => setIsHovered(true)}
       onMouseOut={() => setIsHovered(false)}
       onBlur={handleBlur}

@@ -16,6 +16,14 @@ class ProfileManagerSerializer(AuditSerializer):
         model = ProfileManager
         fields = "__all__"
 
+    def __init__(self, *args, **kwargs):
+        fields = kwargs.pop("fields", None)
+        super().__init__(*args, **kwargs)
+        if fields:
+            self.Meta.fields = fields
+        else:
+            self.Meta.fields = "__all__"
+
     def to_representation(self, instance):  # type: ignore
         rep: dict[str, str] = super().to_representation(instance)
         llm = rep[ProfileManagerKeys.LLM]

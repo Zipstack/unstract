@@ -1,9 +1,10 @@
 import {
   ArrowLeftOutlined,
+  DownOutlined,
   EditOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
-import { Button, Tooltip, Typography } from "antd";
+import { Button, Dropdown, Space, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -28,7 +29,7 @@ try {
 }
 function Header({ setOpenSettings, handleUpdateTool }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
-  const { details } = useCustomToolStore();
+  const { details, updateCustomTool } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -36,10 +37,26 @@ function Header({ setOpenSettings, handleUpdateTool }) {
   const handleException = useExceptionHandler();
   const [userList, setUserList] = useState([]);
   const [openExportToolModal, setOpenExportToolModal] = useState(false);
+  const [isNewExport, setIsNewExport] = useState(true);
   const { setPostHogCustomEvent } = usePostHogEvents();
 
   const [toolDetails, setToolDetails] = useState(null);
-
+  const handleExportNew = (newExport = false) => {
+    setIsNewExport(newExport);
+    handleShare(true);
+  };
+  const items = [
+    {
+      label: "Export as New Tool",
+      key: "0",
+      onClick: () => handleExportNew(true),
+    },
+    {
+      label: "Manage Exported Tool",
+      key: "1",
+      onClick: handleExportNew,
+    },
+  ];
   const handleExport = (selectedUsers, toolDetail, isSharedWithEveryone) => {
     const body = {
       is_shared_with_org: isSharedWithEveryone,
@@ -90,21 +107,25 @@ function Header({ setOpenSettings, handleUpdateTool }) {
     };
     setIsExportLoading(true);
     getAllUsers().then((users) => {
-      if (users.length < 2) {
-        handleExport([details?.created_by], details, false);
-      } else {
-        axiosPrivate(requestOptions)
-          .then((res) => {
-            setOpenExportToolModal(true);
-            setToolDetails({ ...res?.data, created_by: details?.created_by });
-          })
-          .catch((err) => {
-            setAlertDetails(handleException(err));
-          })
-          .finally(() => {
-            setIsExportLoading(false);
-          });
-      }
+      console.log(users);
+      console.log(details);
+      // if (users.length < 2) {
+      //   handleExport([details?.created_by], details, false);
+      // } else {
+      axiosPrivate(requestOptions)
+        .then((res) => {
+          console.log(res.data);
+          // setIsNewExport();
+          setOpenExportToolModal(true);
+          setToolDetails({ ...res?.data, created_by: details?.created_by });
+        })
+        .catch((err) => {
+          setAlertDetails(handleException(err));
+        })
+        .finally(() => {
+          setIsExportLoading(false);
+        });
+      // }
     });
   };
 
@@ -179,6 +200,41 @@ function Header({ setOpenSettings, handleUpdateTool }) {
             </CustomButton>
           </Tooltip>
         </div>
+        <div
+          onClick={(e) => {
+            console.log("HEHEH");
+            e.preventDefault();
+            e.stopPropagation(); // Stop the event from propagating to the Dropdown
+          }}
+        >
+          {/* <Tooltip title="Export as tool">
+            <Dropdown menu={{ menu }} trigger={["click"]}>
+              <span>
+                <CustomButton type="primary">
+                  <ExportToolIcon />
+                </CustomButton>
+              </span>
+            </Dropdown>
+          </Tooltip> */}
+          <Dropdown
+            menu={{
+              items,
+            }}
+            trigger={["click"]}
+          >
+            <Button type="primary" loading={isExportLoading}>
+              <div
+                onClick={(event) => {
+                  // event.preventDefault();
+                  console.log(details);
+                  event.stopPropagation(); // stop propagation main button
+                }}
+              >
+                <ExportToolIcon />
+              </div>
+            </Button>
+          </Dropdown>
+        </div>
         <ExportTool
           allUsers={userList}
           open={openExportToolModal}
@@ -186,6 +242,7 @@ function Header({ setOpenSettings, handleUpdateTool }) {
           onApply={handleExport}
           loading={isExportLoading}
           toolDetails={toolDetails}
+          isNewExport={isNewExport}
         />
       </div>
     </div>

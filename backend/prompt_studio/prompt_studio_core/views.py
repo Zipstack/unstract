@@ -97,6 +97,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    def perform_create(self, serializer):
+        return serializer.save()
+
     def perform_destroy(self, instance: CustomTool) -> None:
         organization_id = UserSessionUtils.get_organization_id(self.request)
         instance.delete(organization_id)
@@ -169,7 +172,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         )
 
         serialized_instances = ProfileManagerSerializer(
-            profile_manager_instances, many=True
+            instance=profile_manager_instances, many=True
         ).data
 
         return Response(serialized_instances)
@@ -272,7 +275,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()
-
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,
             tool_id=tool_id,
@@ -330,7 +332,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = ToolStudioPromptSerializer(data=request.data, context=context)
         serializer.is_valid(raise_exception=True)
         try:
-            # serializer.save()
             self.perform_create(serializer)
         except IntegrityError:
             raise DuplicateData(

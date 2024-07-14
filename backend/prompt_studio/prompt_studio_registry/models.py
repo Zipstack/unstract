@@ -89,3 +89,11 @@ class PromptStudioRegistry(BaseModel):
     shared_users = models.ManyToManyField(User, related_name="shared_exported_tools")
 
     objects = PromptStudioRegistryModelManager()
+
+    # class Meta:
+    #     constraints = [
+    #         models.UniqueConstraint(
+    #             fields=["prompt_id", "version"],
+    #             name="unique_tool_prompt_version",
+    #         ),
+    #      ]

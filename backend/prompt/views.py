@@ -44,3 +44,16 @@ class PromptViewSet(viewsets.ModelViewSet):
         return Response(
             serializer.data, status=status.HTTP_201_CREATED, headers=headers
         )
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.tool.tag:
+            # Perform soft delete if tool.tag_id is present
+            if not instance.checked_in:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+            instance.checked_in = False
+            instance.save()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        else:
+            instance.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
