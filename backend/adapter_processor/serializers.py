@@ -124,6 +124,10 @@ class AdapterListSerializer(BaseAdapterSerializer):
         rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
             instance.adapter_id, common.ICON
         )
+        adapter_metadata = instance.get_adapter_meta_data()
+        model = adapter_metadata.get("model")
+        if model:
+            rep["model"] = model
 
         if instance.is_friction_less:
             rep["created_by_email"] = "Unstract"

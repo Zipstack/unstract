@@ -8,6 +8,7 @@ blue_text='\033[94m'
 green_text='\033[32m'
 red_text='\033[31m'
 default_text='\033[39m'
+yellow_text='\033[33m'
 
 # set -x/xtrace uses PS4 for more info
 PS4="$blue_text""${0}:${LINENO}: ""$default_text"
@@ -252,6 +253,9 @@ run_services() {
   echo -e "\nOnce the services are up, visit ""$blue_text""http://frontend.unstract.localhost""$default_text"" in your browser."
   echo "See logs with:"
   echo -e "    ""$blue_text""$docker_compose_cmd -f docker/docker-compose.yaml logs -f""$default_text"
+  echo -e "Configure services by updating their ""$yellow_text"".env""$default_text"" files."
+  echo "Make sure to restart the services with:"
+  echo -e "    ""$blue_text""$docker_compose_cmd -f docker/docker-compose.yaml up -d""$default_text"
 
   popd 1>/dev/null
 }

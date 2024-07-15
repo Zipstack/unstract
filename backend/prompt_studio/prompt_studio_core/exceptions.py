@@ -1,3 +1,4 @@
+from prompt_studio.prompt_profile_manager.constants import ProfileManagerKeys
 from prompt_studio.prompt_studio_core.constants import ToolStudioErrors
 from rest_framework.exceptions import APIException
 
@@ -58,3 +59,11 @@ class PermissionError(APIException):
 class EmptyPromptError(APIException):
     status_code = 422
     default_detail = "Prompt(s) cannot be empty"
+
+
+class MaxProfilesReachedError(APIException):
+    status_code = 403
+    default_detail = (
+        f"Maximum number of profiles (max {ProfileManagerKeys.MAX_PROFILE_COUNT})"
+        " per prompt studio project has been reached."
+    )

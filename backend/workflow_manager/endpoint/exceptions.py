@@ -77,3 +77,11 @@ class UnstractDBException(APIException):
     def __init__(self, detail: str = default_detail) -> None:
         status_code = 500
         super().__init__(detail=detail, code=status_code)
+
+
+class UnstractQueueException(APIException):
+    default_detail = "Error creating/inserting to Queue. "
+
+    def __init__(self, detail: str = default_detail) -> None:
+        status_code = 500
+        super().__init__(detail=detail, code=status_code)

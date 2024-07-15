@@ -84,7 +84,7 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |<img src="docs/assets/3rd_party/weaviate.png" width="32"/>| Weaviate | ✅ Working |
 |<img src="docs/assets/3rd_party/pinecone.png" width="32"/>| Pinecone | ✅ Working |
 |<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | ✅ Working |
-|<img src="docs/assets/3rd_party/milvus.png" width="32"/>| Milvus | 🗓️ Coming soon! |
+|<img src="docs/assets/3rd_party/milvus.png" width="32"/>| Milvus | ✅ Working |
 
 
 
@@ -142,4 +142,4 @@ Contributions are welcome! Please read [CONTRIBUTE.md](CONTRIBUTE.md) for furthe
 
 ## 📊 A note on analytics
 
-In full disclosure, Unstract integrates Posthog to track usage analytics. As you can inspect the relevant code here, we collect the minimum possible metrics.
+In full disclosure, Unstract integrates Posthog to track usage analytics. As you can inspect the relevant code here, we collect the minimum possible metrics. Posthog can be disabled if desired by setting `REACT_APP_ENABLE_POSTHOG` to `false` in the frontend's .env file.
