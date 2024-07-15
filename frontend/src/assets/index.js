@@ -32,6 +32,11 @@ import { ReactComponent as RedGradCircle } from "./red-grad-circle.svg";
 import { ReactComponent as YellowGradCircle } from "./yellow-grad-circle.svg";
 import { ReactComponent as ExportToolIcon } from "./export-tool.svg";
 import { ReactComponent as PlaceholderImg } from "./placeholder.svg";
+import { ReactComponent as LlmWhispererLogo } from "./llm-whisperer.svg";
+import { ReactComponent as ApiFillIcon } from "./llmWhisperer/api-fill-icon.svg";
+import { ReactComponent as LayoutIcon } from "./llmWhisperer/layout-icon.svg";
+import { ReactComponent as ProfileSettingsIcon } from "./llmWhisperer/profile-settings.svg";
+import { ReactComponent as DashboardIcon } from "./llmWhisperer/dashboard-icon.svg";
 
 export {
   SunIcon,
@@ -68,4 +73,9 @@ export {
   YellowGradCircle,
   ExportToolIcon,
   PlaceholderImg,
+  LlmWhispererLogo,
+  ApiFillIcon,
+  LayoutIcon,
+  ProfileSettingsIcon,
+  DashboardIcon,
 };

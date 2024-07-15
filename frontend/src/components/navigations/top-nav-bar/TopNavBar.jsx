@@ -32,6 +32,7 @@ import "./TopNavBar.css";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { PlatformDropdown } from "../../../plugins/platform-dropdown/PlatformDropDown.jsx";
 
 let TrialDaysInfo;
 try {
@@ -231,6 +232,7 @@ function TopNavBar() {
             <span className="page-heading">{reviewPageHeader}</span>
           </span>
         )}
+        <PlatformDropdown />
       </Col>
       <Col span={14} className="top-nav-alert-col">
         {showOnboardBanner && (

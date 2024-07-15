@@ -24,12 +24,12 @@ try {
   // Plugin unavailable.
 }
 
-const SideNavBar = ({ collapsed }) => {
+const SideNavBar = ({ collapsed, menu }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const { orgName, flags } = sessionDetails;
 
-  const data = [
+  const data = menu || [
     {
       id: 1,
       mainTitle: "MANAGE",
@@ -214,6 +214,7 @@ const SideNavBar = ({ collapsed }) => {
 
 SideNavBar.propTypes = {
   collapsed: PropTypes.bool.isRequired,
+  menu: PropTypes.array,
 };
 
 export default SideNavBar;

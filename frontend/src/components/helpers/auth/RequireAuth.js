@@ -25,6 +25,7 @@ const RequireAuth = () => {
   const pathname = location?.pathname;
   const adapters = sessionDetails?.adapters;
   const currOrgName = getOrgNameFromPathname(pathname);
+  const isLlmWhisperer = getOrgNameFromPathname(pathname) === "llm-whisperer";
   const { flags } = sessionDetails;
 
   useEffect(() => {
@@ -52,7 +53,7 @@ const RequireAuth = () => {
     return <Navigate to="/landing" state={{ from: location }} replace />;
   }
 
-  if (currOrgName !== orgName) {
+  if (!isLlmWhisperer && currOrgName !== orgName) {
     return <Navigate to={navigateTo} />;
   }
 
