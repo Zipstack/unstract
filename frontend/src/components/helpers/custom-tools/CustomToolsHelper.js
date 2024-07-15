@@ -80,6 +80,15 @@ function CustomToolsHelper() {
       .then((res) => {
         const data = res?.data;
         updatedCusTool["llmProfiles"] = data;
+        const reqOpsShare = {
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/share-manager/tool-source/?tool_id=${id}`,
+        };
+        return handleApiRequest(reqOpsShare);
+      })
+      .then((res) => {
+        const data = res?.data;
+        updatedCusTool["shareId"] = data?.share_id;
         const reqOpsLlmProfiles = {
           method: "GET",
           url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,

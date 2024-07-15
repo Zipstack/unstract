@@ -65,8 +65,13 @@ function ManageLlmProfiles() {
   const [editLlmProfileId, setEditLlmProfileId] = useState(null);
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
-  const { details, defaultLlmProfile, updateCustomTool, llmProfiles } =
-    useCustomToolStore();
+  const {
+    details,
+    defaultLlmProfile,
+    updateCustomTool,
+    llmProfiles,
+    isPublicSource,
+  } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
@@ -125,7 +130,11 @@ function ManageLlmProfiles() {
             handleConfirm={() => handleDelete(item?.profile_id)}
             content="The LLM profile will be permanently deleted."
           >
-            <Button size="small" className="display-flex-align-center">
+            <Button
+              size="small"
+              className="display-flex-align-center"
+              disabled={isPublicSource}
+            >
               <DeleteOutlined classID="manage-llm-pro-icon" />
             </Button>
           </ConfirmModal>
@@ -134,6 +143,7 @@ function ManageLlmProfiles() {
           <Button
             size="small"
             className="display-flex-align-center"
+            disabled={isPublicSource}
             onClick={() => handleEdit(item?.profile_id)}
           >
             <EditOutlined classID="manage-llm-pro-icon" />
@@ -143,6 +153,7 @@ function ManageLlmProfiles() {
           <Radio
             checked={defaultLlmProfile === item?.profile_id}
             onClick={() => handleDefaultLlm(item?.profile_id)}
+            disabled={isPublicSource}
           />
         ),
       };
@@ -228,7 +239,11 @@ function ManageLlmProfiles() {
         </div>
       </SpaceWrapper>
       <div className="display-flex-right">
-        <CustomButton type="primary" onClick={handleAddNewLlmProfileBtnClick}>
+        <CustomButton
+          type="primary"
+          disabled={isPublicSource}
+          onClick={handleAddNewLlmProfileBtnClick}
+        >
           Add New LLM Profile
         </CustomButton>
       </div>

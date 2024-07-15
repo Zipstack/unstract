@@ -16,6 +16,8 @@ const defaultState = {
   singlePassExtractMode: false,
   isSinglePassExtractLoading: false,
   isSimplePromptStudio: false,
+  shareId: null,
+  isPublicSource: false,
   adapters: [],
 };
 

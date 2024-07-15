@@ -75,6 +75,7 @@ function ManageDocsModal({
     rawIndexStatus,
     summarizeIndexStatus,
     isSinglePassExtractLoading,
+    isPublicSource,
   } = useCustomToolStore();
   const { logs } = useSocketLogsStore();
   const axiosPrivate = useAxiosPrivate();
@@ -137,10 +138,9 @@ function ManageDocsModal({
   }, [defaultLlmProfile, details]);
 
   useEffect(() => {
-    if (!open) {
+    if (!open || isPublicSource) {
       return;
     }
-
     handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
   }, [indexDocs, rawLlmProfile, open]);
 
@@ -384,7 +384,8 @@ function ManageDocsModal({
                       isSinglePassExtractLoading ||
                       indexDocs.includes(item?.document_id) ||
                       isUploading ||
-                      !defaultLlmProfile
+                      !defaultLlmProfile ||
+                      isPublicSource
                     }
                   />
                 </Tooltip>
@@ -408,7 +409,8 @@ function ManageDocsModal({
                   disableLlmOrDocChange?.length > 0 ||
                   isSinglePassExtractLoading ||
                   indexDocs.includes(item?.document_id) ||
-                  isUploading
+                  isUploading ||
+                  isPublicSource
                 }
               >
                 <DeleteOutlined className="manage-llm-pro-icon" />
@@ -423,7 +425,8 @@ function ManageDocsModal({
             disabled={
               disableLlmOrDocChange?.length > 0 ||
               isSinglePassExtractLoading ||
-              indexDocs.includes(item?.document_id)
+              indexDocs.includes(item?.document_id) ||
+              isPublicSource
             }
           />
         ),
