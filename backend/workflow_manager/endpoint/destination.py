@@ -9,7 +9,7 @@ import magic
 from connector.models import ConnectorInstance
 from django.db import connection
 from fsspec.implementations.local import LocalFileSystem
-from unstract.sdk.constants import ToolExecKey
+from unstract.sdk.core.constants import ToolExecKey
 from unstract.workflow_execution.constants import ToolOutputType
 from workflow_manager.endpoint.base_connector import BaseConnector
 from workflow_manager.endpoint.constants import (

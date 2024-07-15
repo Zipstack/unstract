@@ -23,13 +23,13 @@ from unstract.prompt_service.helper import (
     query_usage_metadata,
 )
 from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
-from unstract.sdk.constants import LogLevel
-from unstract.sdk.embedding import Embedding
-from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
-from unstract.sdk.exceptions import SdkError
-from unstract.sdk.index import Index
-from unstract.sdk.llm import LLM
-from unstract.sdk.vector_db import VectorDB
+from unstract.sdk.core.constants import LogLevel
+from unstract.sdk.core.embedding import Embedding
+from unstract.sdk.core.exceptions import RateLimitError as SdkRateLimitError
+from unstract.sdk.core.exceptions import SdkError
+from unstract.sdk.core.index import Index
+from unstract.sdk.core.llm import LLM
+from unstract.sdk.core.vector_db import VectorDB
 from werkzeug.exceptions import HTTPException
 
 from unstract.core.pubsub_helper import LogPublisher

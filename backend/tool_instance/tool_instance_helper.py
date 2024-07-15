@@ -15,8 +15,8 @@ from tool_instance.constants import JsonSchemaKey
 from tool_instance.exceptions import ToolSettingValidationError
 from tool_instance.models import ToolInstance
 from tool_instance.tool_processor import ToolProcessor
-from unstract.adapters.enums import AdapterTypes
-from unstract.sdk.tool.validator import DefaultsGeneratingValidator
+from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.sdk.core.tool.validator import DefaultsGeneratingValidator
 from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_utils import ToolUtils

@@ -3,10 +3,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from unstract.sdk.constants import LogState, MetadataKey
-from unstract.sdk.tool.base import BaseTool
-from unstract.sdk.tool.entrypoint import ToolEntrypoint
-from unstract.sdk.x2txt import X2Text
+from unstract.sdk.core.constants import LogState, MetadataKey
+from unstract.sdk.core.tool.base import BaseTool
+from unstract.sdk.core.tool.entrypoint import ToolEntrypoint
+from unstract.sdk.core.x2txt import X2Text
 
 
 class TextExtractor(BaseTool):

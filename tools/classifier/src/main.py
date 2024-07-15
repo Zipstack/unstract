@@ -4,11 +4,11 @@ from pathlib import Path
 from typing import Any, Optional
 
 from helper import ClassifierHelper  # type: ignore
-from unstract.sdk.constants import LogLevel, LogState, MetadataKey, ToolSettingsKey
-from unstract.sdk.exceptions import SdkError
-from unstract.sdk.llm import LLM
-from unstract.sdk.tool.base import BaseTool
-from unstract.sdk.tool.entrypoint import ToolEntrypoint
+from unstract.sdk.core.constants import LogLevel, LogState, MetadataKey, ToolSettingsKey
+from unstract.sdk.core.exceptions import SdkError
+from unstract.sdk.core.llm import LLM
+from unstract.sdk.core.tool.base import BaseTool
+from unstract.sdk.core.tool.entrypoint import ToolEntrypoint
 
 
 class UnstractClassifier(BaseTool):

@@ -1,11 +1,11 @@
 from typing import Any, Optional
 
-from unstract.sdk.cache import ToolCache
-from unstract.sdk.constants import ToolEnv
-from unstract.sdk.llm import LLM
-from unstract.sdk.tool.base import BaseTool
-from unstract.sdk.utils import ToolUtils
-from unstract.sdk.x2txt import TextExtractionResult, X2Text
+from unstract.sdk.core.cache import ToolCache
+from unstract.sdk.core.constants import ToolEnv
+from unstract.sdk.core.llm import LLM
+from unstract.sdk.core.tool.base import BaseTool
+from unstract.sdk.core.utils import ToolUtils
+from unstract.sdk.core.x2txt import TextExtractionResult, X2Text
 
 
 class ClassifierHelper:
