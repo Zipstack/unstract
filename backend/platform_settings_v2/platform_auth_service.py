@@ -97,6 +97,7 @@ class PlatformAuthenticationService:
         try:
             platform_key: PlatformKey = PlatformKey.objects.get(pk=id)
             platform_key.delete()
+            # TODO: Add organization details in logs in possible places once v2 enabled
             logger.info(f"platform_key {id} is deleted for {platform_key.organization}")
         except IntegrityError as error:
             logger.error(f"Failed to delete platform key : {error}")
