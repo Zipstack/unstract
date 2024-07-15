@@ -21,7 +21,6 @@ import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
 import { LandingPage } from "../pages/LandingPage.jsx";
 import { OnBoardPage } from "../pages/OnBoardPage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
-import { PipelinesOrDeploymentsPage } from "../pages/PipelinesOrDeploymentsPage.jsx";
 import { ProfilePage } from "../pages/ProfilePage.jsx";
 import { SetOrgPage } from "../pages/SetOrgPage.jsx";
 import { SettingsPage } from "../pages/SettingsPage.jsx";
@@ -33,6 +32,11 @@ import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
 let TrialRoutes;
 let RequirePlatformAdmin;
 let PlatformAdminPage;
+let AppDeployments;
+let ChatAppPage;
+let ChatAppLayout;
+let ManualReviewPage;
+let ReviewLayout;
 try {
   TrialRoutes =
     require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
@@ -41,7 +45,44 @@ try {
   PlatformAdminPage =
     require("../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx").PlatformAdminPage;
 } catch (err) {
-  TrialRoutes = NotFound;
+  // Do nothing, Not-found Page will be triggered.
+}
+
+try {
+  AppDeployments =
+    require("../plugins/app-deployment/AppDeployments.jsx").AppDeployments;
+  ChatAppPage =
+    require("../plugins/app-deployment/chat-app/ChatAppPage.jsx").ChatAppPage;
+  ChatAppLayout =
+    require("../plugins/app-deployment/chat-app/ChatAppLayout.jsx").ChatAppLayout;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+
+try {
+  ManualReviewPage =
+    require("../plugins/manual-review/page/ManualReviewPage.jsx").ManualReviewPage;
+  ReviewLayout =
+    require("../plugins/manual-review/review-layout/ReviewLayout.jsx").ReviewLayout;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+// Import pages/components related to Simple Prompt Studio.
+let SimplePromptStudioHelper;
+let SimplePromptStudio;
+let SpsLanding;
+let SpsUpload;
+try {
+  SimplePromptStudioHelper =
+    require("../plugins/simple-prompt-studio/SimplePromptStudioHelper.jsx").SimplePromptStudioHelper;
+  SimplePromptStudio =
+    require("../plugins/simple-prompt-studio/SimplePromptStudio.jsx").SimplePromptStudio;
+  SpsLanding =
+    require("../plugins/simple-prompt-studio/SpsLanding.jsx").SpsLanding;
+  SpsUpload =
+    require("../plugins/simple-prompt-studio/SpsUpload.jsx").SpsUpload;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
 }
 
 function Router() {
@@ -50,15 +91,39 @@ function Router() {
       <Route path="error" element={<GenericError />} />
       <Route path="" element={<PersistentLogin />}>
         {/* public routes */}
-        <Route path="" element={<RequireGuest />}>
-          <Route path="landing" element={<LandingPage />} />
+        <Route path="">
+          {/* public routes accessible only to unauthenticated users */}
+          <Route path="" element={<RequireGuest />}>
+            <Route path="landing" element={<LandingPage />} />
+          </Route>
+
+          {/* public routes accessible to both authenticated and unauthenticated users */}
+          {SimplePromptStudioHelper &&
+            SimplePromptStudio &&
+            SpsLanding &&
+            SpsUpload && (
+              <Route
+                path="simple-prompt-studio"
+                element={<SimplePromptStudioHelper />}
+              >
+                <Route path="" element={<SimplePromptStudio />} />
+                <Route path="landing" element={<SpsLanding />} />
+                <Route path="upload" element={<SpsUpload />} />
+              </Route>
+            )}
         </Route>
+
         {/* protected routes */}
         <Route path="setOrg" element={<SetOrgPage />} />
         <Route path="" element={<RequireAuth />}>
           <Route path=":orgName" element={<FullPageLayout />}>
             <Route path="onboard" element={<OnBoardPage />} />
           </Route>
+          {ChatAppLayout && ChatAppPage && (
+            <Route path=":orgName" element={<ChatAppLayout />}>
+              <Route path="app/:id" element={<ChatAppPage />} />
+            </Route>
+          )}
           <Route path=":orgName" element={<PageLayout />}>
             <Route path="profile" element={<ProfilePage />} />
             <Route
@@ -73,10 +138,9 @@ function Router() {
               path="task"
               element={<DeploymentsPage type={deploymentTypes.task} />}
             />
-            <Route
-              path="app"
-              element={<PipelinesOrDeploymentsPage type="app" />}
-            />
+            {AppDeployments && (
+              <Route path="app" element={<AppDeployments type="app" />} />
+            )}
             <Route path="workflows" element={<WorkflowsPage />} />
             <Route path="workflows/:id" element={<ProjectHelper />}>
               <Route path="" element={<AgencyPage />} />
@@ -123,6 +187,22 @@ function Router() {
               </Route>
             )}
           </Route>
+          {ReviewLayout && ManualReviewPage && (
+            <Route path=":orgName" element={<ReviewLayout />}>
+              <Route
+                path="review"
+                element={<ManualReviewPage type="review" />}
+              ></Route>
+              <Route
+                path="review/download_and_sync"
+                element={<ManualReviewPage type="download" />}
+              />
+              <Route
+                path="review/approve"
+                element={<ManualReviewPage type="approve" />}
+              />
+            </Route>
+          )}
         </Route>
         {TrialRoutes && (
           <Route path="/trial-expired" element={<TrialRoutes />} />

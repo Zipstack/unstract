@@ -41,7 +41,8 @@ function ConfigureConnectorModal({
       disabled:
         !connectorId ||
         connDetails?.connector_id !== selectedId ||
-        connType === "DATABASE",
+        connType === "DATABASE" ||
+        connType === "MANUALREVIEW",
     },
   ];
 
@@ -97,6 +98,7 @@ function ConfigureConnectorModal({
               activeKey={activeKey}
               items={tabItems}
               onChange={onTabChange}
+              moreIcon={<></>}
             />
             {activeKey === "1" && (
               <ConfigureFormsLayout

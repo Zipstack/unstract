@@ -63,16 +63,17 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 
 ### LLM Providers
 
-|| Provider | Status |
-|---|---|---|
-|<img src="docs/assets/3rd_party/openai.png" width="32"/>| OpenAI | ✅ Working |
-|<img src="docs/assets/3rd_party/vertex_ai.png" width="32"/>| Google VertexAI, Gemini Pro | ✅ Working |
-|<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure OpenAI | ✅ Working  |
-|<img src="docs/assets/3rd_party/palm.png" width="32"/>| Google PaLM | ✅ Working  |
-|<img src="docs/assets/3rd_party/anyscale.png" width="32"/>| Anyscale | ✅ Working |
-|<img src="docs/assets/3rd_party/mistral_ai.png" width="32"/>| Mistral AI | ✅ Working |
-|<img src="docs/assets/3rd_party/anthropic.png" width="32"/>| Anthropic | ✅ Working |
-|<img src="docs/assets/3rd_party/replicate.png" width="32"/>| Replicate | 🗓️ Coming soon! |
+|| Provider                                                       | Status                      |
+|----------------------------------------------------------------|-----------------------------|---|
+| <img src="docs/assets/3rd_party/openai.png" width="32"/>       | OpenAI                      | ✅ Working |
+| <img src="docs/assets/3rd_party/vertex_ai.png" width="32"/>    | Google VertexAI, Gemini Pro | ✅ Working |
+| <img src="docs/assets/3rd_party/azure_openai.png" width="32"/> | Azure OpenAI                | ✅ Working  |
+| <img src="docs/assets/3rd_party/palm.png" width="32"/>         | Google PaLM                 | ✅ Working  |
+| <img src="docs/assets/3rd_party/anyscale.png" width="32"/>     | Anyscale                    | ✅ Working |
+| <img src="docs/assets/3rd_party/mistral_ai.png" width="32"/>   | Mistral AI                  | ✅ Working |
+| <img src="docs/assets/3rd_party/anthropic.png" width="32"/>    | Anthropic                   | ✅ Working |
+| <img src="docs/assets/3rd_party/ollama.png" width="32"/>       | Ollama                      | ✅ Working |
+| <img src="docs/assets/3rd_party/replicate.png" width="32"/>    | Replicate                   | 🗓️ Coming soon! |
 
 
 ### Vector Databases
@@ -83,7 +84,7 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |<img src="docs/assets/3rd_party/weaviate.png" width="32"/>| Weaviate | ✅ Working |
 |<img src="docs/assets/3rd_party/pinecone.png" width="32"/>| Pinecone | ✅ Working |
 |<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | ✅ Working |
-|<img src="docs/assets/3rd_party/milvus.png" width="32"/>| Milvus | 🗓️ Coming soon! |
+|<img src="docs/assets/3rd_party/milvus.png" width="32"/>| Milvus | ✅ Working |
 
 
 
@@ -141,4 +142,4 @@ Contributions are welcome! Please read [CONTRIBUTE.md](CONTRIBUTE.md) for furthe
 
 ## 📊 A note on analytics
 
-In full disclosure, Unstract integrates Posthog to track usage analytics. As you can inspect the relevant code here, we collect the minimum possible metrics.
+In full disclosure, Unstract integrates Posthog to track usage analytics. As you can inspect the relevant code here, we collect the minimum possible metrics. Posthog can be disabled if desired by setting `REACT_APP_ENABLE_POSTHOG` to `false` in the frontend's .env file.

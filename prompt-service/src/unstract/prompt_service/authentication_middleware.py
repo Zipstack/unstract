@@ -2,6 +2,9 @@ from typing import Any, Optional
 
 from flask import Request, current_app
 from peewee import PostgresqlDatabase
+from unstract.prompt_service.constants import DBTableV2, FeatureFlag
+
+from unstract.flags.feature_flag import check_feature_flag_status
 
 
 class AuthenticationMiddleware:
@@ -14,7 +17,12 @@ class AuthenticationMiddleware:
                 current_app.logger.error("Authentication failed. Empty bearer token")
                 return False
 
-            query = f"SELECT * FROM account_platformkey WHERE key = '{token}'"
+            if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+                platform_key_table = DBTableV2.PLATFORM_KEY
+            else:
+                platform_key_table = "account_platformkey"
+
+            query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
             cursor = cls.be_db.execute_sql(query)
             result_row = cursor.fetchone()
             cursor.close()
@@ -38,7 +46,11 @@ class AuthenticationMiddleware:
                 return False
 
         except Exception as e:
-            current_app.logger.error(f"Error while validating bearer token: {e}")
+            current_app.logger.error(
+                f"Error while validating bearer token: {e}",
+                stack_info=True,
+                exc_info=True,
+            )
             return False
         return True
 
@@ -56,12 +68,17 @@ class AuthenticationMiddleware:
 
     @classmethod
     def get_account_from_bearer_token(cls, token: Optional[str]) -> str:
-        query = (
-            "SELECT organization_id FROM account_platformkey " f"WHERE key='{token}'"
-        )
+        if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+            platform_key_table = DBTableV2.PLATFORM_KEY
+            organization_table = DBTableV2.ORGANIZATION
+        else:
+            platform_key_table = "account_platformkey"
+            organization_table = "account_organization"
+
+        query = f"SELECT organization_id FROM {platform_key_table} WHERE key='{token}'"
         organization = AuthenticationMiddleware.execute_query(query)
         query_org = (
-            "SELECT schema_name FROM account_organization " f"WHERE id='{organization}'"
+            f"SELECT schema_name FROM {organization_table} WHERE id='{organization}'"
         )
         schema_name: str = AuthenticationMiddleware.execute_query(query_org)
         return schema_name

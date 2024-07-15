@@ -31,8 +31,8 @@ dependencies = [
     "python-socketio==5.9.0", # For log_events
     "social-auth-app-django==5.3.0", # For OAuth
     "social-auth-core==4.4.2", # For OAuth
-    "unstract-sdk~=0.31.0",
-    "unstract-adapters~=0.18.0",
+    "unstract-sdk~=0.37.0",
+    "unstract-adapters~=0.21.0",
     # ! IMPORTANT!
     # Indirect local dependencies usually need to be added in their own projects
     # as: https://pdm-project.org/latest/usage/dependency/#local-dependencies.
@@ -67,6 +67,14 @@ deploy = [
 test = [
     "pytest>=8.0.1",
     "pytest-dotenv==0.5.2",
+]
+dev = [
+    "-e unstract-connectors @ file:///${PROJECT_ROOT}/../unstract/connectors",
+    "-e unstract-core @ file:///${PROJECT_ROOT}/../unstract/core",
+    "-e unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
+    "-e unstract-tool-registry @ file:///${PROJECT_ROOT}/../unstract/tool-registry",
+    "-e unstract-tool-sandbox @ file:///${PROJECT_ROOT}/../unstract/tool-sandbox",
+    "-e unstract-workflow-execution @ file:///${PROJECT_ROOT}/../unstract/workflow-execution",
 ]
 
 [tool.pytest.ini_options]

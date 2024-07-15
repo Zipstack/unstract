@@ -1,4 +1,5 @@
 import ast
+import base64
 import json
 import logging
 import os
@@ -15,6 +16,7 @@ from workflow_manager.endpoint.base_connector import BaseConnector
 from workflow_manager.endpoint.constants import (
     ApiDeploymentResultStatus,
     DestinationKey,
+    QueueResultStatus,
     WorkflowFileType,
 )
 from workflow_manager.endpoint.database_utils import DatabaseUtils
@@ -26,6 +28,7 @@ from workflow_manager.endpoint.exceptions import (
     ToolOutputTypeMismatch,
 )
 from workflow_manager.endpoint.models import WorkflowEndpoint
+from workflow_manager.endpoint.queue_utils import QueueResult, QueueUtils
 from workflow_manager.workflow.enums import ExecutionStatus
 from workflow_manager.workflow.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow.models.file_history import FileHistory
@@ -55,8 +58,10 @@ class DestinationConnector(BaseConnector):
         organization_id = connection.tenant.schema_name
         super().__init__(workflow.id, execution_id, organization_id)
         self.endpoint = self._get_endpoint_for_workflow(workflow=workflow)
+        self.source_endpoint = self._get_source_endpoint_for_workflow(workflow=workflow)
         self.execution_id = execution_id
         self.api_results: list[dict[str, Any]] = []
+        self.queue_results: list[dict[str, Any]] = []
 
     def _get_endpoint_for_workflow(
         self,
@@ -81,6 +86,29 @@ class DestinationConnector(BaseConnector):
             )
         return endpoint
 
+    def _get_source_endpoint_for_workflow(
+        self,
+        workflow: Workflow,
+    ) -> WorkflowEndpoint:
+        """Get WorkflowEndpoint instance.
+
+        Args:
+            workflow (Workflow): Workflow associated with the
+                destination connector.
+
+        Returns:
+            WorkflowEndpoint: WorkflowEndpoint instance.
+        """
+        endpoint: WorkflowEndpoint = WorkflowEndpoint.objects.get(
+            workflow=workflow,
+            endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
+        )
+        if endpoint.connector_instance:
+            endpoint.connector_instance.connector_metadata = (
+                endpoint.connector_instance.metadata
+            )
+        return endpoint
+
     def validate(self) -> None:
         connection_type = self.endpoint.connection_type
         connector: ConnectorInstance = self.endpoint.connector_instance
@@ -88,7 +116,11 @@ class DestinationConnector(BaseConnector):
             raise MissingDestinationConnectionType()
         if connection_type not in WorkflowEndpoint.ConnectionType.values:
             raise InvalidDestinationConnectionType()
-        if connection_type != WorkflowEndpoint.ConnectionType.API and connector is None:
+        if (
+            connection_type != WorkflowEndpoint.ConnectionType.API
+            and connection_type != WorkflowEndpoint.ConnectionType.MANUALREVIEW
+            and connector is None
+        ):
             raise DestinationConnectorNotConfigured()
 
     def handle_output(
@@ -98,10 +130,12 @@ class DestinationConnector(BaseConnector):
         workflow: Workflow,
         file_history: Optional[FileHistory] = None,
         error: Optional[str] = None,
+        input_file_path: Optional[str] = None,
     ) -> None:
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
         result: Optional[str] = None
+        meta_data: Optional[str] = None
         if error:
             if connection_type == WorkflowEndpoint.ConnectionType.API:
                 self._handle_api_result(file_name=file_name, error=error, result=result)
@@ -112,13 +146,27 @@ class DestinationConnector(BaseConnector):
             self.insert_into_db(file_history)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
-            self._handle_api_result(file_name=file_name, error=error, result=result)
+            meta_data = self.get_metadata(file_history)
+            self._handle_api_result(
+                file_name=file_name, error=error, result=result, meta_data=meta_data
+            )
+        elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
+            result = self.get_result(file_history)
+            meta_data = self.get_metadata(file_history)
+            self._push_to_queue(
+                file_name=file_name,
+                workflow=workflow,
+                result=result,
+                input_file_path=input_file_path,
+                meta_data=meta_data,
+            )
         if not file_history:
             FileHistoryHelper.create_file_history(
                 cache_key=file_hash,
                 workflow=workflow,
                 status=ExecutionStatus.COMPLETED,
                 result=result,
+                metadata=meta_data,
                 file_name=file_name,
             )
 
@@ -235,6 +283,7 @@ class DestinationConnector(BaseConnector):
         file_name: str,
         error: Optional[str] = None,
         result: Optional[str] = None,
+        meta_data: Optional[dict[str, Any]] = None,
     ) -> None:
         """Handle the API result.
 
@@ -249,7 +298,7 @@ class DestinationConnector(BaseConnector):
         Returns:
             None
         """
-        api_result = {"file": file_name}
+        api_result: dict[str, Any] = {"file": file_name}
         if error:
             api_result.update(
                 {"status": ApiDeploymentResultStatus.FAILED, "error": error}
@@ -260,6 +309,7 @@ class DestinationConnector(BaseConnector):
                     {
                         "status": ApiDeploymentResultStatus.SUCCESS,
                         "result": result,
+                        "metadata": meta_data,
                     }
                 )
             else:
@@ -311,7 +361,7 @@ class DestinationConnector(BaseConnector):
         if file_history and file_history.result:
             return self.parse_string(file_history.result)
         output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
-        metadata = self.get_workflow_metadata()
+        metadata: dict[str, Any] = self.get_workflow_metadata()
         output_type = self.get_output_type(metadata)
         result: Optional[Any] = None
         try:
@@ -336,6 +386,20 @@ class DestinationConnector(BaseConnector):
         except (FileNotFoundError, json.JSONDecodeError) as err:
             logger.error(f"Error while getting result {err}")
         return result
+
+    def get_metadata(
+        self, file_history: Optional[FileHistory]
+    ) -> Optional[dict[str, Any]]:
+        """Get meta_data from the output file.
+
+        Returns:
+            Union[dict[str, Any], str]: Meta data.
+        """
+        if file_history and file_history.meta_data:
+            return self.parse_string(file_history.meta_data)
+        metadata: dict[str, Any] = self.get_workflow_metadata()
+
+        return metadata
 
     def delete_execution_directory(self) -> None:
         """Delete the execution directory.
@@ -411,3 +475,58 @@ class DestinationConnector(BaseConnector):
             os.path.dirname(__file__), "static", "dest", "api.json"
         )
         return cls.get_json_schema(file_path=schema_path)
+
+    def _push_to_queue(
+        self,
+        file_name: str,
+        workflow: Workflow,
+        result: Optional[str] = None,
+        input_file_path: Optional[str] = None,
+        meta_data: Optional[dict[str, Any]] = None,
+    ) -> None:
+        """Handle the Manual Review QUEUE result.
+
+        This method is responsible for pushing the input file and result to
+        review queue.
+        Args:
+            file_name (str): The name of the file.
+            workflow (Workflow): The workflow object containing
+            details about the workflow.
+            result (Optional[str], optional): The result of the API call.
+                Defaults to None.
+            input_file_path (Optional[str], optional):
+            The path to the input file.
+                Defaults to None.
+            meta_data (Optional[dict[str, Any]], optional):
+                A dictionary containing additional
+                metadata related to the file. Defaults to None.
+
+        Returns:
+            None
+        """
+        if not result:
+            return
+        connector: ConnectorInstance = self.source_endpoint.connector_instance
+        connector_settings: dict[str, Any] = connector.connector_metadata
+
+        source_fs = self.get_fsspec(
+            settings=connector_settings, connector_id=connector.connector_id
+        )
+        with source_fs.open(input_file_path, "rb") as remote_file:
+            file_content = remote_file.read()
+            # Convert file content to a base64 encoded string
+            file_content_base64 = base64.b64encode(file_content).decode("utf-8")
+            q_name = f"review_queue_{self.organization_id}_{workflow.workflow_name}"
+            queue_result = QueueResult(
+                file=file_name,
+                whisper_hash=meta_data["whisper-hash"],
+                status=QueueResultStatus.SUCCESS,
+                result=result,
+                workflow_id=str(self.workflow_id),
+                file_content=file_content_base64,
+            )
+            # Convert the result dictionary to a JSON string
+            queue_result_json = json.dumps(queue_result)
+            conn = QueueUtils.get_queue_inst()
+            # Enqueue the JSON string
+            conn.enqueue(queue_name=q_name, message=queue_result_json)

@@ -37,6 +37,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         scheduled: bool = False,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
         workflow_execution: Optional[WorkflowExecution] = None,
+        include_metadata: bool = False,
     ) -> None:
         tool_instances_as_dto = []
         for tool_instance in tool_instances:
@@ -58,6 +59,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             tool_instances=tool_instances_as_dto,
             platform_service_api_key=str(platform_key.key),
             ignore_processed_entities=False,
+            include_metadata=include_metadata,
         )
         if not workflow_execution:
             # Use pipline_id for pipelines / API deployment
@@ -198,37 +200,39 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         if single_step:
             execution_type = ExecutionType.STEP
 
-        if self.compilation_result["success"] is True:
-            if (
-                self.execution_mode == WorkflowExecution.Mode.INSTANT
-                or self.execution_mode == WorkflowExecution.Mode.QUEUE
-            ):
-                start_time = time.time()
-                try:
-                    self.execute_workflow(execution_type=execution_type)
-                    end_time = time.time()
-                    execution_time = end_time - start_time
-                except StopExecution as exception:
-                    end_time = time.time()
-                    execution_time = end_time - start_time
-                    logger.info(f"Execution {self.execution_id} stopped")
-                    raise exception
-                except Exception as exception:
-                    end_time = time.time()
-                    execution_time = end_time - start_time
-                    message = str(exception)[:EXECUTION_ERROR_LENGTH]
-                    logger.info(
-                        f"Execution {self.execution_id} in {execution_time}s, "
-                        f" Error {exception}"
-                    )
-                    raise WorkflowExecutionError(message) from exception
-            else:
-                error_message = f"Unknown Execution Method {self.execution_mode}"
-                raise WorkflowExecutionError(error_message)
-
-        else:
-            error_message = f"Errors while compiling workflow {self.compilation_result['problems'][0]}"  # noqa
+        if self.compilation_result["success"] is False:
+            error_message = (
+                f"Errors while compiling workflow "
+                f"{self.compilation_result['problems'][0]}"
+            )
             raise WorkflowExecutionError(error_message)
+
+        if self.execution_mode not in (
+            WorkflowExecution.Mode.INSTANT,
+            WorkflowExecution.Mode.QUEUE,
+        ):
+            error_message = f"Unknown Execution Method {self.execution_mode}"
+            raise WorkflowExecutionError(error_message)
+
+        start_time = time.time()
+        try:
+            self.execute_workflow(execution_type=execution_type)
+            end_time = time.time()
+            execution_time = end_time - start_time
+        except StopExecution as exception:
+            end_time = time.time()
+            execution_time = end_time - start_time
+            logger.info(f"Execution {self.execution_id} stopped")
+            raise exception
+        except Exception as exception:
+            end_time = time.time()
+            execution_time = end_time - start_time
+            message = str(exception)[:EXECUTION_ERROR_LENGTH]
+            logger.info(
+                f"Execution {self.execution_id} ran for {execution_time:.4f}s, "
+                f" Error {exception}"
+            )
+            raise WorkflowExecutionError(message) from exception
 
     def publish_initial_workflow_logs(self, total_files: int) -> None:
         """Publishes the initial logs for the workflow.

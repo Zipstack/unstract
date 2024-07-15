@@ -8,6 +8,7 @@ blue_text='\033[94m'
 green_text='\033[32m'
 red_text='\033[31m'
 default_text='\033[39m'
+yellow_text='\033[33m'
 
 # set -x/xtrace uses PS4 for more info
 PS4="$blue_text""${0}:${LINENO}: ""$default_text"
@@ -222,6 +223,8 @@ build_services() {
     }
   elif [ "$first_setup" = true ] || [ "$opt_upgrade" = true ]; then
     echo -e "$blue_text""Pulling""$default_text"" docker images tag ""$blue_text""$opt_version""$default_text""."
+    # Try again on a slow network.
+    VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.yaml pull ||
     VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.yaml pull || {
       echo -e "$red_text""Failed to pull docker images.""$default_text"
       echo -e "$red_text""Either version not found or docker is not running.""$default_text"
@@ -250,6 +253,9 @@ run_services() {
   echo -e "\nOnce the services are up, visit ""$blue_text""http://frontend.unstract.localhost""$default_text"" in your browser."
   echo "See logs with:"
   echo -e "    ""$blue_text""$docker_compose_cmd -f docker/docker-compose.yaml logs -f""$default_text"
+  echo -e "Configure services by updating their ""$yellow_text"".env""$default_text"" files."
+  echo "Make sure to restart the services with:"
+  echo -e "    ""$blue_text""$docker_compose_cmd -f docker/docker-compose.yaml up -d""$default_text"
 
   popd 1>/dev/null
 }

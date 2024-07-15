@@ -1,7 +1,6 @@
 import logging
 import os
 import uuid
-from json import JSONDecodeError
 from typing import Any, Optional
 
 from account.models import User
@@ -10,10 +9,10 @@ from adapter_processor.models import AdapterInstance
 from connector.connector_instance_helper import ConnectorInstanceHelper
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
-from jsonschema.exceptions import UnknownType
 from jsonschema.exceptions import ValidationError as JSONValidationError
 from prompt_studio.prompt_studio_registry.models import PromptStudioRegistry
 from tool_instance.constants import JsonSchemaKey
+from tool_instance.exceptions import ToolSettingValidationError
 from tool_instance.models import ToolInstance
 from tool_instance.tool_processor import ToolProcessor
 from unstract.adapters.enums import AdapterTypes
@@ -333,7 +332,7 @@ class ToolInstanceHelper:
     @staticmethod
     def validate_tool_settings(
         user: User, tool_uid: str, tool_meta: dict[str, Any]
-    ) -> tuple[bool, str]:
+    ) -> bool:
         """Function to validate Tools settings."""
 
         # check if exported tool is valid for the user who created workflow
@@ -351,14 +350,22 @@ class ToolInstanceHelper:
         )
         try:
             DefaultsGeneratingValidator(schema_json).validate(tool_meta)
-            return True, ""
-        except JSONDecodeError as e:
-            return False, str(e)
         except JSONValidationError as e:
-            logger.error(e)
-            return False, str(tool_name + ": " + e.schema["description"])
-        except UnknownType as e:
-            return False, str(e)
+            logger.error(e, stack_info=True, exc_info=True)
+            err_msg = e.message
+            # TODO: Support other JSON validation errors or consider following
+            # https://github.com/networknt/json-schema-validator/blob/master/doc/cust-msg.md
+            if e.validator == "required":
+                for validator_val in e.validator_value:
+                    required_prop = e.schema.get("properties").get(validator_val)
+                    required_display_name = required_prop.get("title")
+                    err_msg = err_msg.replace(validator_val, required_display_name)
+            else:
+                logger.warning(f"Unformatted exception sent to user: {err_msg}")
+            raise ToolSettingValidationError(
+                f"Error validating tool settings for '{tool_name}': {err_msg}"
+            )
+        return True
 
     @staticmethod
     def validate_adapter_permissions(

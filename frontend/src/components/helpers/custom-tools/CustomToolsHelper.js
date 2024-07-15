@@ -27,6 +27,7 @@ function CustomToolsHelper() {
       defaultLlmProfile: "",
       llmProfiles: [],
       selectedDoc: null,
+      adapters: [],
     };
 
     const reqOpsPromptStudio = {
@@ -44,6 +45,7 @@ function CustomToolsHelper() {
         updatedCusTool["singlePassExtractMode"] =
           data?.single_pass_extraction_mode;
         selectedDocId = data?.output;
+        updatedCusTool["isSimplePromptStudio"] = false;
 
         const reqOpsDocs = {
           method: "GET",
@@ -78,6 +80,16 @@ function CustomToolsHelper() {
       .then((res) => {
         const data = res?.data;
         updatedCusTool["llmProfiles"] = data;
+        const reqOpsLlmProfiles = {
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
+        };
+
+        return handleApiRequest(reqOpsLlmProfiles);
+      })
+      .then((res) => {
+        const data = res?.data;
+        updatedCusTool["adapters"] = data;
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to load the custom tool"));

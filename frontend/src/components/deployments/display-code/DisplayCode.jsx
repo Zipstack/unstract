@@ -46,7 +46,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
         headers = {
           'Authorization': 'Bearer REPLACE_WITH_API_KEY'
         }
-        payload = {'timeout': '80'}
+        payload = {'timeout': 300, 'include_metadata': False}
         filepath = '/path/to/file'
         files=[('files',('file',open(filepath,'rb'),'application/octet-stream'))]
         response = requests.request("POST", api_url, headers=headers, data=payload, files=files)
@@ -68,11 +68,13 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
 
   const generateCurlCode = () => {
     let code = `{{#if isPost}}
-    curl --request POST --location '{{url}}'
-    --header 'Authorization: Bearer REPLACE_WITH_API_KEY'
-    --form 'files=@"{{pathToFile}}"' --form 'timeout="80"'
+    curl --request POST --location '{{url}}' \\
+    --header 'Authorization: Bearer REPLACE_WITH_API_KEY' \\
+    --form 'files=@"{{pathToFile}}"' \\
+    --form 'timeout=300' \\
+    --form 'include_metadata=false'
     {{else}}
-    curl --location '{{url}}?execution_id=REPLACE_WITH_EXECUTION_ID'
+    curl --location '{{url}}?execution_id=REPLACE_WITH_EXECUTION_ID' \\
     --header 'Authorization: Bearer REPLACE_WITH_API_KEY'
     {{/if}}
   `;
@@ -92,7 +94,8 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
     {{#if isPost}}
     var formdata = new FormData();
     formdata.append("files", fileInput.files[0], "file");
-    formdata.append("timeout", "80");
+    formdata.append("timeout", "300");
+    formdata.append("include_metadata", "false");
     var requestOptions = { method: 'POST', body: formdata, redirect: 'follow', headers: myHeaders };
     fetch("{{url}}", requestOptions)
     {{else}}
@@ -189,6 +192,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
         }
         onChange={handleTabKey}
         items={TAB_ITEMS}
+        moreIcon={<></>}
       />
     </Modal>
   );

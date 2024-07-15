@@ -17,7 +17,11 @@ from unstract.prompt_service.exceptions import (
     NoPayloadError,
     RateLimitError,
 )
-from unstract.prompt_service.helper import EnvLoader, plugin_loader
+from unstract.prompt_service.helper import (
+    EnvLoader,
+    plugin_loader,
+    query_usage_metadata,
+)
 from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import Embedding
@@ -180,8 +184,14 @@ def prompt_processor() -> Any:
     file_hash = payload.get(PSKeys.FILE_HASH)
     doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
-
+    include_metadata = (
+        request.args.get(PSKeys.INCLUDE_METADATA, "false").lower() == "true"
+    )
     structured_output: dict[str, Any] = {}
+    metadata: Optional[dict[str, Any]] = {
+        PSKeys.RUN_ID: run_id,
+        PSKeys.CONTEXT: {},
+    }
     variable_names: list[str] = []
     _publish_log(
         log_events_id,
@@ -263,7 +273,10 @@ def prompt_processor() -> Any:
             llm = LLM(
                 tool=util,
                 adapter_instance_id=adapter_instance_id,
-                usage_kwargs=usage_kwargs.copy(),
+                usage_kwargs={
+                    **usage_kwargs,
+                    PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
+                },
             )
 
             embedding = Embedding(
@@ -370,6 +383,7 @@ def prompt_processor() -> Any:
                     context=context,
                     prompt="promptx",
                 )
+                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
             else:
                 answer = "NA"
                 _publish_log(
@@ -384,33 +398,35 @@ def prompt_processor() -> Any:
                     "Retrieving context from adapter",
                 )
 
-            retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
+                retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
 
-            if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
-                answer, context = run_retrieval(
-                    tool_settings=tool_settings,
-                    output=output,
-                    doc_id=doc_id,
-                    llm=llm,
-                    vector_index=vector_index,
-                    retrieval_type=retrieval_strategy,
-                )
-            else:
-                app.logger.info(
-                    "Invalid retrieval strategy passed: %s", retrieval_strategy
-                )
+                if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
+                    answer, context = run_retrieval(
+                        tool_settings=tool_settings,
+                        output=output,
+                        doc_id=doc_id,
+                        llm=llm,
+                        vector_index=vector_index,
+                        retrieval_type=retrieval_strategy,
+                    )
+                    metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
+                else:
+                    app.logger.info(
+                        "Invalid retrieval strategy passed: %s",
+                        retrieval_strategy,
+                    )
 
-            _publish_log(
-                log_events_id,
-                {
-                    "tool_id": tool_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevel.DEBUG,
-                RunLevel.RUN,
-                "Retrieved context from adapter",
-            )
+                _publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.DEBUG,
+                    RunLevel.RUN,
+                    "Retrieved context from adapter",
+                )
 
             _publish_log(
                 log_events_id,
@@ -497,24 +513,30 @@ def prompt_processor() -> Any:
                 if answer.lower() == "[]" or answer.lower() == "na":
                     structured_output[output[PSKeys.NAME]] = None
                 else:
-                    prompt = f"Convert the following text into valid JSON string: \
-                        \n{answer}\n\n The JSON string should be able to be parsed \
-                        into a Python dictionary. \
-                        Output just the JSON string. No explanation is required. \
-                        If you cannot extract the JSON string, output {{}}"
-                    answer = run_completion(
-                        llm=llm,
-                        prompt=prompt,
-                    )
                     try:
                         structured_output[output[PSKeys.NAME]] = json.loads(answer)
-                    except JSONDecodeError as e:
-                        app.logger.info(f"JSON format error : {answer}", LogLevel.ERROR)
-                        app.logger.info(
-                            f"Error parsing response (to json): {e}",
-                            LogLevel.ERROR,
-                        )
-                        structured_output[output[PSKeys.NAME]] = {}
+                    except JSONDecodeError:
+                        prompt = f"Convert the following text into valid JSON string: \
+                            \n{answer}\n\n The JSON string should be able to be parsed \
+                            into a Python dictionary. \
+                            Output just the JSON string. No explanation is required. \
+                            If you cannot extract the JSON string, output {{}}"
+                        try:
+                            answer = run_completion(
+                                llm=llm,
+                                prompt=prompt,
+                            )
+                            structured_output[output[PSKeys.NAME]] = json.loads(answer)
+                        except JSONDecodeError as e:
+                            app.logger.info(
+                                f"JSON format error : {answer}", LogLevel.ERROR
+                            )
+                            app.logger.info(
+                                f"Error parsing response (to json): {e}",
+                                LogLevel.ERROR,
+                            )
+                            structured_output[output[PSKeys.NAME]] = {}
+
             else:
                 structured_output[output[PSKeys.NAME]] = answer
 
@@ -524,9 +546,10 @@ def prompt_processor() -> Any:
                     output[PSKeys.NAME]
                 ].rstrip("\n")
 
+            enable_challenge = tool_settings.get(PSKeys.ENABLE_CHALLENGE)
             # Challenge condition
-            if tool_settings.get("enable_challenge"):
-                challenge_plugin: dict[str, Any] = plugins.get("challenge", {})
+            if enable_challenge:
+                challenge_plugin: dict[str, Any] = plugins.get(PSKeys.CHALLENGE, {})
                 try:
                     if challenge_plugin:
                         _publish_log(
@@ -543,9 +566,13 @@ def prompt_processor() -> Any:
                         challenge_llm = LLM(
                             tool=util,
                             adapter_instance_id=tool_settings[PSKeys.CHALLENGE_LLM],
-                            usage_kwargs=usage_kwargs,
+                            usage_kwargs={
+                                **usage_kwargs,
+                                PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
+                            },
                         )
                         challenge = challenge_plugin["entrypoint_cls"](
+                            llm=llm,
                             challenge_llm=challenge_llm,
                             run_id=run_id,
                             context=context,
@@ -560,12 +587,12 @@ def prompt_processor() -> Any:
                     else:
                         app.logger.info(
                             "No challenge plugin found to evaluate prompt: %s",
-                            output["name"],
+                            output[PSKeys.NAME],
                         )
                 except challenge_plugin["exception_cls"] as e:
                     app.logger.error(
                         "Failed to challenge prompt %s: %s",
-                        output["name"],
+                        output[PSKeys.NAME],
                         str(e),
                     )
                     _publish_log(
@@ -615,7 +642,7 @@ def prompt_processor() -> Any:
                         evaluator.run()
                     except eval_plugin["exception_cls"] as e:
                         app.logger.error(
-                            f'Failed to evaluate prompt {output["name"]}: {str(e)}'
+                            f"Failed to evaluate prompt {output[PSKeys.NAME]}: {str(e)}"
                         )
                         _publish_log(
                             log_events_id,
@@ -642,7 +669,7 @@ def prompt_processor() -> Any:
                         )
                 else:
                     app.logger.info(
-                        f'No eval plugin found to evaluate prompt: {output["name"]}'  # noqa: E501
+                        f"No eval plugin found to evaluate prompt: {output[PSKeys.NAME]}"  # noqa: E501
                     )
         finally:
             vector_db.close()
@@ -676,7 +703,11 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         "Execution complete",
     )
-    response = {"run_id": run_id, "output": structured_output}
+    if include_metadata:
+        metadata = query_usage_metadata(db=be_db, token=platform_key, metadata=metadata)
+        response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
+    else:
+        response = {PSKeys.OUTPUT: structured_output}
     return response
 
 
@@ -742,10 +773,12 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
     nodes = retriever.retrieve(answer)
     text = ""
     for node in nodes:
-        if node.score > 0.6:
+        # ToDo: May have to fine-tune this value for node score or keep it
+        # configurable at the adapter level
+        if node.score > 0:
             text += node.get_content() + "\n"
         else:
-            app.logger.info("Node score is less than 0.6. " f"Ignored: {node.score}")
+            app.logger.info("Node score is less than 0. " f"Ignored: {node.score}")
     return text
 
 
@@ -813,12 +846,12 @@ def extract_variable(
 def enable_plugins() -> None:
     """Enables plugins if available."""
     single_pass_extration_plugin: dict[str, Any] = plugins.get(
-        "single-pass-extraction", {}
+        PSKeys.SINGLE_PASS_EXTRACTION, {}
     )
-    summarize_plugin: dict[str, Any] = plugins.get("summarize", {})
+    summarize_plugin: dict[str, Any] = plugins.get(PSKeys.SUMMARIZE, {})
     if single_pass_extration_plugin:
         single_pass_extration_plugin["entrypoint_cls"](
-            app=app, challenge_plugin=plugins.get("challenge", {})
+            app=app, challenge_plugin=plugins.get(PSKeys.CHALLENGE, {})
         )
     if summarize_plugin:
         summarize_plugin["entrypoint_cls"](
@@ -837,7 +870,7 @@ def log_exceptions(e: HTTPException):
     """
     code = 500
     if hasattr(e, "code"):
-        code = e.code
+        code = e.code or code
 
     if code >= 500:
         message = "{method} {url} {status}\n\n{error}\n\n````{tb}````".format(

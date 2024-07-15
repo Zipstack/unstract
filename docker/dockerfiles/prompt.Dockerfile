@@ -34,6 +34,7 @@ WORKDIR /app
 COPY --chown=unstract ${BUILD_CONTEXT_PATH} .
 # Copy local dependency packages
 COPY --chown=unstract ${BUILD_PACKAGES_PATH}/core /unstract/core
+COPY --chown=unstract ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 
 RUN set -e; \
     \

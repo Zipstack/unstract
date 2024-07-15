@@ -10,10 +10,10 @@ function ExpandCardBtn({ expandCard, setExpandCard }) {
   useEffect(() => {
     if (expandCard) {
       setIcon(<FullscreenExitOutlined className="prompt-card-actions-head" />);
-      setTooltip("Expand");
+      setTooltip("Collapse");
     } else {
       setIcon(<FullscreenOutlined className="prompt-card-actions-head" />);
-      setTooltip("Collapse");
+      setTooltip("Expand");
     }
   }, [expandCard]);
 
