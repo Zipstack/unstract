@@ -85,6 +85,10 @@ class ToolStudioPromptKeys:
     NOTES = "NOTES"
     OUTPUT = "output"
     SEQUENCE_NUMBER = "sequence_number"
+    PROFILE_MANAGER_ID = "profile_manager"
+    CONTEXT = "context"
+    METADATA = "metadata"
+    INCLUDE_METADATA = "include_metadata"
 
 
 class FileViewTypes:
@@ -106,6 +110,13 @@ class LogLevel(Enum):
     WARN = "WARN"
     ERROR = "ERROR"
     FATAL = "FATAL"
+
+
+class IndexingStatus(Enum):
+    PENDING_STATUS = "pending"
+    COMPLETED_STATUS = "completed"
+    STARTED_STATUS = "started"
+    DOCUMENT_BEING_INDEXED = "Document is being indexed"
 
 
 class DefaultPrompts:

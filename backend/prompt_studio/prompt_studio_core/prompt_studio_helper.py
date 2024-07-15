@@ -13,9 +13,15 @@ from django.conf import settings
 from django.db.models.manager import BaseManager
 from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.prompt_profile_manager.models import ProfileManager
+from prompt_studio.prompt_profile_manager.profile_manager_helper import (
+    ProfileManagerHelper,
+)
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
-from prompt_studio.prompt_studio_core.constants import LogLevels
+from prompt_studio.prompt_studio_core.constants import IndexingStatus, LogLevels
 from prompt_studio.prompt_studio_core.constants import ToolStudioPromptKeys as TSPKeys
+from prompt_studio.prompt_studio_core.document_indexing_service import (
+    DocumentIndexingService,
+)
 from prompt_studio.prompt_studio_core.exceptions import (
     AnswerFetchError,
     DefaultProfileError,
@@ -344,6 +350,7 @@ class PromptStudioHelper:
             is_summary=is_summary,
             reindex=True,
             run_id=run_id,
+            user_id=user_id,
         )
 
         logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
@@ -354,7 +361,7 @@ class PromptStudioHelper:
             "Indexing successful",
         )
 
-        return doc_id
+        return doc_id.get("output")
 
     @staticmethod
     def prompt_responder(
@@ -364,6 +371,7 @@ class PromptStudioHelper:
         document_id: str,
         id: Optional[str] = None,
         run_id: str = None,
+        profile_manager_id: Optional[str] = None,
     ) -> Any:
         """Execute chain/single run of the prompts. Makes a call to prompt
         service and returns the dict of response.
@@ -374,6 +382,7 @@ class PromptStudioHelper:
             user_id (str): User's ID
             document_id (str): UUID of the document uploaded
             id (Optional[str]): ID of the prompt
+            profile_manager_id (Optional[str]): UUID of the profile manager
 
         Raises:
             AnswerFetchError: Error from prompt-service
@@ -383,175 +392,184 @@ class PromptStudioHelper:
         """
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         doc_name: str = document.document_name
+        doc_path = PromptStudioHelper._get_document_path(
+            org_id, user_id, tool_id, doc_name
+        )
 
+        if id:
+            return PromptStudioHelper._execute_single_prompt(
+                id,
+                doc_path,
+                doc_name,
+                tool_id,
+                org_id,
+                user_id,
+                document_id,
+                run_id,
+                profile_manager_id,
+            )
+        else:
+            return PromptStudioHelper._execute_prompts_in_single_pass(
+                doc_path, tool_id, org_id, user_id, document_id, run_id
+            )
+
+    @staticmethod
+    def _execute_single_prompt(
+        id,
+        doc_path,
+        doc_name,
+        tool_id,
+        org_id,
+        user_id,
+        document_id,
+        run_id,
+        profile_manager_id,
+    ):
+        prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
+        prompt_name = prompt_instance.prompt_key
+        PromptStudioHelper._publish_log(
+            {
+                "tool_id": tool_id,
+                "run_id": run_id,
+                "prompt_key": prompt_name,
+                "doc_name": doc_name,
+            },
+            LogLevels.INFO,
+            LogLevels.RUN,
+            "Executing single prompt",
+        )
+        prompts = [prompt_instance]
+        tool = prompt_instance.tool_id
+
+        if tool.summarize_as_source:
+            directory, filename = os.path.split(doc_path)
+            doc_path = os.path.join(
+                directory, TSPKeys.SUMMARIZE, os.path.splitext(filename)[0] + ".txt"
+            )
+
+        PromptStudioHelper._publish_log(
+            {
+                "tool_id": tool_id,
+                "run_id": run_id,
+                "prompt_key": prompt_name,
+                "doc_name": doc_name,
+            },
+            LogLevels.DEBUG,
+            LogLevels.RUN,
+            "Invoking prompt service",
+        )
+
+        try:
+            response = PromptStudioHelper._fetch_response(
+                doc_path=doc_path,
+                doc_name=doc_name,
+                tool=tool,
+                prompt=prompt_instance,
+                org_id=org_id,
+                document_id=document_id,
+                run_id=run_id,
+                profile_manager_id=profile_manager_id,
+                user_id=user_id,
+            )
+            return PromptStudioHelper._handle_response(
+                response, run_id, prompts, document_id, False, profile_manager_id
+            )
+        except Exception as e:
+            logger.error(
+                f"[{tool.tool_id}] Error while fetching response for "
+                f"prompt {id} and doc {document_id}: {e}"
+            )
+            msg = str(e)
+            PromptStudioHelper._publish_log(
+                {
+                    "tool_id": tool_id,
+                    "run_id": run_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevels.ERROR,
+                LogLevels.RUN,
+                msg,
+            )
+            raise e
+
+    @staticmethod
+    def _execute_prompts_in_single_pass(
+        doc_path, tool_id, org_id, user_id, document_id, run_id
+    ):
+        prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
+        prompts = [prompt for prompt in prompts if prompt.prompt_type != TSPKeys.NOTES]
+        if not prompts:
+            logger.error(f"[{tool_id or 'NA'}] No prompts found for id: {id}")
+            raise NoPromptsFound()
+
+        PromptStudioHelper._publish_log(
+            {"tool_id": tool_id, "run_id": run_id, "prompt_id": str(id)},
+            LogLevels.INFO,
+            LogLevels.RUN,
+            "Executing prompts in single pass",
+        )
+
+        try:
+            tool = prompts[0].tool_id
+            response = PromptStudioHelper._fetch_single_pass_response(
+                file_path=doc_path,
+                tool=tool,
+                prompts=prompts,
+                org_id=org_id,
+                document_id=document_id,
+                run_id=run_id,
+                user_id=user_id,
+            )
+            return PromptStudioHelper._handle_response(
+                response, run_id, prompts, document_id, True
+            )
+        except Exception as e:
+            logger.error(
+                f"[{tool.tool_id}] Error while fetching single pass response: {e}"
+            )
+            PromptStudioHelper._publish_log(
+                {
+                    "tool_id": tool_id,
+                    "run_id": run_id,
+                    "prompt_id": str(id),
+                },
+                LogLevels.ERROR,
+                LogLevels.RUN,
+                f"Failed to fetch single pass response. {e}",
+            )
+            raise e
+
+    @staticmethod
+    def _get_document_path(org_id, user_id, tool_id, doc_name):
         doc_path = FileManagerHelper.handle_sub_directory_for_tenants(
             org_id=org_id,
             user_id=user_id,
             tool_id=tool_id,
             is_create=False,
         )
-        doc_path = str(Path(doc_path) / doc_name)
+        return str(Path(doc_path) / doc_name)
 
-        if id:
-            prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
-            prompt_name = prompt_instance.prompt_key
-            logger.info(f"[{tool_id}] Executing single prompt {id}")
-            PromptStudioHelper._publish_log(
-                {
-                    "tool_id": tool_id,
-                    "run_id": run_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevels.INFO,
-                LogLevels.RUN,
-                "Executing single prompt",
-            )
+    @staticmethod
+    def _handle_response(
+        response, run_id, prompts, document_id, is_single_pass, profile_manager_id=None
+    ):
+        if response.get("status") == IndexingStatus.PENDING_STATUS.value:
+            return {
+                "status": IndexingStatus.PENDING_STATUS.value,
+                "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
+            }
 
-            prompts: list[ToolStudioPrompt] = []
-            prompts.append(prompt_instance)
-            tool: CustomTool = prompt_instance.tool_id
-
-            if tool.summarize_as_source:
-                directory, filename = os.path.split(doc_path)
-                doc_path = os.path.join(
-                    directory,
-                    TSPKeys.SUMMARIZE,
-                    os.path.splitext(filename)[0] + ".txt",
-                )
-
-            logger.info(f"[{tool.tool_id}] Invoking prompt service for prompt {id}")
-            PromptStudioHelper._publish_log(
-                {
-                    "tool_id": tool_id,
-                    "run_id": run_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevels.DEBUG,
-                LogLevels.RUN,
-                "Invoking prompt service",
-            )
-
-            try:
-                response = PromptStudioHelper._fetch_response(
-                    doc_path=doc_path,
-                    doc_name=doc_name,
-                    tool=tool,
-                    prompt=prompt_instance,
-                    org_id=org_id,
-                    document_id=document_id,
-                    run_id=run_id,
-                )
-
-                OutputManagerHelper.handle_prompt_output_update(
-                    run_id=run_id,
-                    prompts=prompts,
-                    outputs=response["output"],
-                    document_id=document_id,
-                    is_single_pass_extract=False,
-                )
-            # TODO: Review if this catch-all is required
-            except Exception as e:
-                logger.error(
-                    f"[{tool.tool_id}] Error while fetching response for "
-                    f"prompt {id} and doc {document_id}: {e}"
-                )
-                msg: str = (
-                    f"Error while fetching response for "
-                    f"'{prompt_name}' with '{doc_name}'. {e}"
-                )
-                if isinstance(e, AnswerFetchError):
-                    msg = str(e)
-                PromptStudioHelper._publish_log(
-                    {
-                        "tool_id": tool_id,
-                        "run_id": run_id,
-                        "prompt_key": prompt_name,
-                        "doc_name": doc_name,
-                    },
-                    LogLevels.ERROR,
-                    LogLevels.RUN,
-                    msg,
-                )
-                raise e
-
-            logger.info(
-                f"[{tool.tool_id}] Response fetched successfully for prompt {id}"
-            )
-            PromptStudioHelper._publish_log(
-                {
-                    "tool_id": tool_id,
-                    "run_id": run_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevels.INFO,
-                LogLevels.RUN,
-                "Single prompt execution completed",
-            )
-
-            return response
-        else:
-            prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
-            prompts = [
-                prompt for prompt in prompts if prompt.prompt_type != TSPKeys.NOTES
-            ]
-            if not prompts:
-                logger.error(f"[{tool_id or 'NA'}] No prompts found for id: {id}")
-                raise NoPromptsFound()
-
-            logger.info(f"[{tool_id}] Executing prompts in single pass")
-            PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "run_id": run_id, "prompt_id": str(id)},
-                LogLevels.INFO,
-                LogLevels.RUN,
-                "Executing prompts in single pass",
-            )
-
-            try:
-                tool = prompts[0].tool_id
-                response = PromptStudioHelper._fetch_single_pass_response(
-                    file_path=doc_path,
-                    tool=tool,
-                    prompts=prompts,
-                    org_id=org_id,
-                    document_id=document_id,
-                    run_id=run_id,
-                )
-
-                OutputManagerHelper.handle_prompt_output_update(
-                    run_id=run_id,
-                    prompts=prompts,
-                    outputs=response[TSPKeys.OUTPUT],
-                    document_id=document_id,
-                    is_single_pass_extract=True,
-                )
-            except Exception as e:
-                logger.error(
-                    f"[{tool.tool_id}] Error while fetching single pass response: {e}"  # noqa: E501
-                )
-                PromptStudioHelper._publish_log(
-                    {
-                        "tool_id": tool_id,
-                        "run_id": run_id,
-                        "prompt_id": str(id),
-                    },
-                    LogLevels.ERROR,
-                    LogLevels.RUN,
-                    f"Failed to fetch single pass response. {e}",
-                )
-                raise e
-
-            logger.info(f"[{tool.tool_id}] Single pass response fetched successfully")
-            PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "run_id": run_id, "prompt_id": str(id)},
-                LogLevels.INFO,
-                LogLevels.RUN,
-                "Single pass execution completed",
-            )
-
-            return response
+        OutputManagerHelper.handle_prompt_output_update(
+            run_id=run_id,
+            prompts=prompts,
+            outputs=response["output"],
+            document_id=document_id,
+            is_single_pass_extract=is_single_pass,
+            profile_manager_id=profile_manager_id,
+            context=response["metadata"].get("context"),
+        )
+        return response
 
     @staticmethod
     def _fetch_response(
@@ -562,6 +580,8 @@ class PromptStudioHelper:
         org_id: str,
         document_id: str,
         run_id: str,
+        user_id: str,
+        profile_manager_id: Optional[str] = None,
     ) -> Any:
         """Utility function to invoke prompt service. Used internally.
 
@@ -572,6 +592,9 @@ class PromptStudioHelper:
             prompt (ToolStudioPrompt): ToolStudioPrompt instance to fetch response
             org_id (str): UUID of the organization
             document_id (str): UUID of the document
+            profile_manager_id (Optional[str]): UUID of the profile manager
+            user_id (str): The ID of the user who uploaded the document
+
 
         Raises:
             DefaultProfileError: If no default profile is selected
@@ -580,6 +603,14 @@ class PromptStudioHelper:
         Returns:
             Any: Output from LLM
         """
+
+        # Fetch the ProfileManager instance using the profile_manager_id if provided
+        profile_manager = prompt.profile_manager
+        if profile_manager_id:
+            profile_manager = ProfileManagerHelper.get_profile_manager(
+                profile_manager_id=profile_manager_id
+            )
+
         monitor_llm_instance: Optional[AdapterInstance] = tool.monitor_llm
         monitor_llm: Optional[str] = None
         challenge_llm_instance: Optional[AdapterInstance] = tool.challenge_llm
@@ -600,28 +631,33 @@ class PromptStudioHelper:
             challenge_llm = str(default_profile.llm.id)
 
         # Need to check the user who created profile manager
-        PromptStudioHelper.validate_adapter_status(prompt.profile_manager)
+        PromptStudioHelper.validate_adapter_status(profile_manager)
         # Need to check the user who created profile manager
         # has access to adapters
-        PromptStudioHelper.validate_profile_manager_owner_access(prompt.profile_manager)
+        PromptStudioHelper.validate_profile_manager_owner_access(profile_manager)
         # Not checking reindex here as there might be
         # change in Profile Manager
-        vector_db = str(prompt.profile_manager.vector_store.id)
-        embedding_model = str(prompt.profile_manager.embedding_model.id)
-        llm = str(prompt.profile_manager.llm.id)
-        x2text = str(prompt.profile_manager.x2text.id)
-        prompt_profile_manager: ProfileManager = prompt.profile_manager
-        if not prompt_profile_manager:
+        vector_db = str(profile_manager.vector_store.id)
+        embedding_model = str(profile_manager.embedding_model.id)
+        llm = str(profile_manager.llm.id)
+        x2text = str(profile_manager.x2text.id)
+        if not profile_manager:
             raise DefaultProfileError()
-        PromptStudioHelper.dynamic_indexer(
-            profile_manager=prompt_profile_manager,
+        index_result = PromptStudioHelper.dynamic_indexer(
+            profile_manager=profile_manager,
             file_path=doc_path,
             tool_id=str(tool.tool_id),
             org_id=org_id,
             document_id=document_id,
             is_summary=tool.summarize_as_source,
             run_id=run_id,
+            user_id=user_id,
         )
+        if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
+            return {
+                "status": IndexingStatus.PENDING_STATUS.value,
+                "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
+            }
 
         output: dict[str, Any] = {}
         outputs: list[dict[str, Any]] = []
@@ -639,16 +675,16 @@ class PromptStudioHelper:
 
         output[TSPKeys.PROMPT] = prompt.prompt
         output[TSPKeys.ACTIVE] = prompt.active
-        output[TSPKeys.CHUNK_SIZE] = prompt.profile_manager.chunk_size
+        output[TSPKeys.CHUNK_SIZE] = profile_manager.chunk_size
         output[TSPKeys.VECTOR_DB] = vector_db
         output[TSPKeys.EMBEDDING] = embedding_model
-        output[TSPKeys.CHUNK_OVERLAP] = prompt.profile_manager.chunk_overlap
+        output[TSPKeys.CHUNK_OVERLAP] = profile_manager.chunk_overlap
         output[TSPKeys.LLM] = llm
         output[TSPKeys.TYPE] = prompt.enforce_type
         output[TSPKeys.NAME] = prompt.prompt_key
-        output[TSPKeys.RETRIEVAL_STRATEGY] = prompt.profile_manager.retrieval_strategy
-        output[TSPKeys.SIMILARITY_TOP_K] = prompt.profile_manager.similarity_top_k
-        output[TSPKeys.SECTION] = prompt.profile_manager.section
+        output[TSPKeys.RETRIEVAL_STRATEGY] = profile_manager.retrieval_strategy
+        output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
+        output[TSPKeys.SECTION] = profile_manager.section
         output[TSPKeys.X2TEXT_ADAPTER] = x2text
         # Eval settings for the prompt
         output[TSPKeys.EVAL_SETTINGS] = {}
@@ -695,8 +731,9 @@ class PromptStudioHelper:
             prompt_host=settings.PROMPT_HOST,
             prompt_port=settings.PROMPT_PORT,
         )
+        include_metadata = {TSPKeys.INCLUDE_METADATA: True}
 
-        answer = responder.answer_prompt(payload)
+        answer = responder.answer_prompt(payload, include_metadata)
         # TODO: Make use of dataclasses
         if answer["status"] == "ERROR":
             # TODO: Publish to FE logs from here
@@ -715,10 +752,11 @@ class PromptStudioHelper:
         file_path: str,
         org_id: str,
         document_id: str,
+        user_id: str,
         is_summary: bool = False,
         reindex: bool = False,
         run_id: str = None,
-    ) -> str:
+    ) -> Any:
         """Used to index a file based on the passed arguments.
 
         This is useful when a file needs to be indexed dynamically as the
@@ -732,6 +770,7 @@ class PromptStudioHelper:
             org_id (str): ID of the organization
             is_summary (bool, optional): Flag to ensure if extracted contents
                 need to be persisted.  Defaults to False.
+            user_id (str): The ID of the user who uploaded the document
 
         Returns:
             str: Index key for the combination of arguments
@@ -750,9 +789,42 @@ class PromptStudioHelper:
             profile_manager.chunk_size = 0
 
         try:
+
             usage_kwargs = {"run_id": run_id}
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = Index(tool=util)
+            doc_id_key = tool_index.generate_file_id(
+                tool_id=tool_id,
+                vector_db=vector_db,
+                embedding=embedding_model,
+                x2text=x2text_adapter,
+                chunk_size=str(profile_manager.chunk_size),
+                chunk_overlap=str(profile_manager.chunk_overlap),
+                file_path=file_path,
+                file_hash=None,
+            )
+            if not reindex:
+                indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
+                    org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+                )
+                if indexed_doc_id:
+                    return {
+                        "status": IndexingStatus.COMPLETED_STATUS.value,
+                        "output": indexed_doc_id,
+                    }
+                # Polling if document is already being indexed
+                if DocumentIndexingService.is_document_indexing(
+                    org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+                ):
+                    return {
+                        "status": IndexingStatus.PENDING_STATUS.value,
+                        "output": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
+                    }
+
+            # Set the document as being indexed
+            DocumentIndexingService.set_document_indexing(
+                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+            )
             doc_id: str = tool_index.index(
                 tool_id=tool_id,
                 embedding_instance_id=embedding_model,
@@ -772,7 +844,10 @@ class PromptStudioHelper:
                 profile_manager=profile_manager,
                 doc_id=doc_id,
             )
-            return doc_id
+            DocumentIndexingService.mark_document_indexed(
+                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key, doc_id=doc_id
+            )
+            return {"status": IndexingStatus.COMPLETED_STATUS.value, "output": doc_id}
         except (IndexingError, IndexingAPIError, SdkError) as e:
             doc_name = os.path.split(file_path)[1]
             PromptStudioHelper._publish_log(
@@ -791,6 +866,7 @@ class PromptStudioHelper:
         file_path: str,
         prompts: list[ToolStudioPrompt],
         org_id: str,
+        user_id: str,
         document_id: str,
         run_id: str = None,
     ) -> Any:
@@ -819,7 +895,7 @@ class PromptStudioHelper:
         if not default_profile:
             raise DefaultProfileError()
 
-        PromptStudioHelper.dynamic_indexer(
+        index_result = PromptStudioHelper.dynamic_indexer(
             profile_manager=default_profile,
             file_path=file_path,
             tool_id=tool_id,
@@ -827,7 +903,13 @@ class PromptStudioHelper:
             is_summary=tool.summarize_as_source,
             document_id=document_id,
             run_id=run_id,
+            user_id=user_id,
         )
+        if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
+            return {
+                "status": IndexingStatus.PENDING_STATUS.value,
+                "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
+            }
 
         vector_db = str(default_profile.vector_store.id)
         embedding_model = str(default_profile.embedding_model.id)
@@ -877,8 +959,9 @@ class PromptStudioHelper:
             prompt_host=settings.PROMPT_HOST,
             prompt_port=settings.PROMPT_PORT,
         )
+        include_metadata = {TSPKeys.INCLUDE_METADATA: True}
 
-        answer = responder.single_pass_extraction(payload)
+        answer = responder.single_pass_extraction(payload, include_metadata)
         # TODO: Make use of dataclasses
         if answer["status"] == "ERROR":
             error_message = answer.get("error", None)
@@ -887,3 +970,11 @@ class PromptStudioHelper:
             )
         output_response = json.loads(answer["structure_output"])
         return output_response
+
+    @staticmethod
+    def get_tool_from_tool_id(tool_id: str) -> Optional[CustomTool]:
+        try:
+            tool: CustomTool = CustomTool.objects.get(tool_id=tool_id)
+            return tool
+        except CustomTool.DoesNotExist:
+            return None
