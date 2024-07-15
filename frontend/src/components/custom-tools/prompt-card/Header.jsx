@@ -41,6 +41,7 @@ function Header({
     singlePassExtractMode,
     isSinglePassExtractLoading,
     indexDocs,
+    isPublicSource,
   } = useCustomToolStore();
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(promptDetails?.active);
@@ -130,7 +131,8 @@ function Header({
             disabled={
               disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
               isSinglePassExtractLoading ||
-              indexDocs.includes(selectedDoc?.document_id)
+              indexDocs.includes(selectedDoc?.document_id) ||
+              isPublicSource
             }
           >
             <EditOutlined className="prompt-card-actions-head" />
@@ -151,7 +153,8 @@ function Header({
                     updateStatus?.status ===
                       promptStudioUpdateStatus?.isUpdating) ||
                   disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
-                  indexDocs?.includes(selectedDoc?.document_id)
+                  indexDocs?.includes(selectedDoc?.document_id) ||
+                  isPublicSource
                 }
               >
                 <PlayCircleOutlined className="prompt-card-actions-head" />
@@ -168,7 +171,8 @@ function Header({
                     updateStatus?.status ===
                       promptStudioUpdateStatus?.isUpdating) ||
                   disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
-                  indexDocs?.includes(selectedDoc?.document_id)
+                  indexDocs?.includes(selectedDoc?.document_id) ||
+                  isPublicSource
                 }
               >
                 <PlayCircleFilled className="prompt-card-actions-head" />
@@ -180,6 +184,7 @@ function Header({
           checked={isDisablePrompt}
           className="prompt-card-action-button"
           onChange={handleDisablePrompt}
+          disabled={isPublicSource}
         />
         <Divider type="vertical" className="header-delete-divider" />
         <ConfirmModal
@@ -194,7 +199,8 @@ function Header({
               disabled={
                 disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
                 isSinglePassExtractLoading ||
-                indexDocs?.includes(selectedDoc?.document_id)
+                indexDocs?.includes(selectedDoc?.document_id) ||
+                isPublicSource
               }
             >
               <DeleteOutlined className="prompt-card-actions-head" />
