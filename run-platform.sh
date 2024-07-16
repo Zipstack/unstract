@@ -137,7 +137,7 @@ do_git_pull() {
   fi
 
   echo "Fetching release tags."
-  git fetch
+  git fetch --quiet --tags
 
   if [[ "$opt_version" == "latest" ]]; then
     branch=`git describe --tags --abbrev=0`
