@@ -27,6 +27,7 @@ class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, models.Mana
 
 
 class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
+    # TODO: handle all cascade deletions
     class ConnectorType(models.TextChoices):
         INPUT = "INPUT", "Input"
         OUTPUT = "OUTPUT", "Output"
@@ -51,6 +52,7 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
     connector_metadata = models.BinaryField(null=True)
     connector_version = models.CharField(max_length=VERSION_NAME_SIZE, default="")
     connector_type = models.CharField(choices=ConnectorType.choices)
+    # TODO: handle connector_auth cascade deletion
     connector_auth = models.ForeignKey(
         ConnectorAuth,
         on_delete=models.SET_NULL,
