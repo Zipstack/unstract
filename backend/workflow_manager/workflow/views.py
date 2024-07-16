@@ -4,6 +4,7 @@ from typing import Any, Optional
 from connector.connector_instance_helper import ConnectorInstanceHelper
 from django.conf import settings
 from django.db.models.query import QuerySet
+from numpy import deprecate_with_doc
 from permissions.permission import IsOwner
 from pipeline.models import Pipeline
 from pipeline.pipeline_processor import PipelineProcessor
@@ -78,6 +79,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         else:
             return WorkflowSerializer
 
+    @deprecate_with_doc("Not using with the latest UX chnages")
     def _generate_workflow(self, workflow_id: str) -> WorkflowGenerator:
         registry_tools: list[Tool] = ToolProcessor.get_registry_tools()
         generator = WorkflowGenerator(workflow_id=workflow_id)
