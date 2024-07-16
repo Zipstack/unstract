@@ -133,8 +133,7 @@ class ConnectorInstanceHelper:
             workflow_id (str): _description_
             connector_type (tuple[str, str]):  Specifies input/output
             connector_mode (Optional[tuple[int, str]], optional).
-                Specifies database/filesystem
-            values (Optional[list[str]], optional).
+                Specifies database/filesystem.
             connector_name (Optional[str], optional).
 
         Returns:
