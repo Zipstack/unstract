@@ -54,7 +54,7 @@ def _merge_to_env_file(base_env_file_path: str, target_env: dict[str, str] = {})
     target env.
 
     Args:
-        base_env_path (string): Base env file path e.g. `sample.env`
+        base_env_file_path (string): Base env file path e.g. `sample.env`
         target_env (dict, optional): Target env to use for merge e.g. `.env`
 
     Returns:
