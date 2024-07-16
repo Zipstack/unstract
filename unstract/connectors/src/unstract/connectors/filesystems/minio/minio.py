@@ -17,7 +17,6 @@ class MinioFS(UnstractFileSystem):
         secret = settings["secret"]
         endpoint_url = settings["endpoint_url"]
         self.bucket = settings["bucket"]
-        self.path = settings["path"]
         client_kwargs = {}
         if "region_name" in settings and settings["region_name"] != "":
             client_kwargs = {"region_name": settings["region_name"]}

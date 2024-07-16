@@ -76,6 +76,7 @@ function PromptCardItems({
     isSinglePassExtractLoading,
     indexDocs,
     isSimplePromptStudio,
+    isPublicSource,
     adapters,
   } = useCustomToolStore();
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
@@ -301,6 +302,7 @@ function PromptCardItems({
                         type="link"
                         className="display-flex-align-center prompt-card-action-button"
                         onClick={() => setOpenOutputForDoc(true)}
+                        disabled={isPublicSource}
                       >
                         <Space>
                           {isCoverageLoading ? (
@@ -331,7 +333,8 @@ function PromptCardItems({
                             promptDetails?.prompt_id
                           ) ||
                           isSinglePassExtractLoading ||
-                          indexDocs.includes(selectedDoc?.document_id)
+                          indexDocs.includes(selectedDoc?.document_id) ||
+                          isPublicSource
                         }
                         onChange={(value) => handleTypeChange(value)}
                       />
@@ -412,6 +415,7 @@ function PromptCardItems({
                               onChange={(checked) =>
                                 handleTagChange(checked, profileId)
                               }
+                              disabled={isPublicSource}
                               className={isChecked ? "checked" : "unchecked"}
                             >
                               {isChecked ? (
@@ -456,6 +460,7 @@ function PromptCardItems({
                                 onChange={() =>
                                   handleSelectDefaultLLM(profileId)
                                 }
+                                disabled={isPublicSource}
                               >
                                 Default
                               </Radio>
@@ -504,7 +509,7 @@ function PromptCardItems({
                                   disabled={
                                     isRunLoading[
                                       `${selectedDoc?.document_id}_${profileId}`
-                                    ]
+                                    ] || isPublicSource
                                   }
                                 >
                                   <PlayCircleOutlined className="prompt-card-actions-head" />
@@ -519,7 +524,7 @@ function PromptCardItems({
                                   disabled={
                                     isRunLoading[
                                       `${selectedDoc?.document_id}_${profileId}`
-                                    ]
+                                    ] || isPublicSource
                                   }
                                 >
                                   <PlayCircleFilled className="prompt-card-actions-head" />

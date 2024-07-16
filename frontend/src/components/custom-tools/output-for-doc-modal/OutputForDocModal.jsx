@@ -6,7 +6,7 @@ import {
   CloseCircleFilled,
   InfoCircleFilled,
 } from "@ant-design/icons";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -24,6 +24,13 @@ import { useTokenUsageStore } from "../../../store/token-usage-store";
 import TabPane from "antd/es/tabs/TabPane";
 import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 
+let publicOutputsApi;
+try {
+  publicOutputsApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
+} catch {
+  // The component will remain null of it is not available
+}
 const columns = [
   {
     title: "Document",
@@ -72,11 +79,13 @@ function OutputForDocModal({
     disableLlmOrDocChange,
     singlePassExtractMode,
     isSinglePassExtractLoading,
+    isPublicSource,
     llmProfiles,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
+  const { id } = useParams();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { tokenUsage } = useTokenUsageStore();
@@ -180,14 +189,17 @@ function OutputForDocModal({
       setRows([]);
       return;
     }
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`;
+    if (isPublicSource) {
+      url = publicOutputsApi(id, promptId, profile, singlePassExtractMode);
+    }
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`,
+      url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
-
     setIsLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
