@@ -35,6 +35,9 @@ let PlatformAdminPage;
 let AppDeployments;
 let ChatAppPage;
 let ChatAppLayout;
+let ManualReviewPage;
+let ReviewLayout;
+let PublicPromptStudioHelper;
 
 try {
   TrialRoutes =
@@ -58,6 +61,14 @@ try {
   // Do nothing, Not-found Page will be triggered.
 }
 
+try {
+  ManualReviewPage =
+    require("../plugins/manual-review/page/ManualReviewPage.jsx").ManualReviewPage;
+  ReviewLayout =
+    require("../plugins/manual-review/review-layout/ReviewLayout.jsx").ReviewLayout;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
 // Import pages/components related to Simple Prompt Studio.
 let SimplePromptStudioHelper;
 let SimplePromptStudio;
@@ -75,7 +86,12 @@ try {
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
-
+try {
+  PublicPromptStudioHelper =
+    require("../plugins/prompt-studio-public-share/helpers/PublicPromptStudioHelper.js").PublicPromptStudioHelper;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
 function Router() {
   return (
     <Routes>
@@ -102,6 +118,18 @@ function Router() {
                 <Route path="upload" element={<SpsUpload />} />
               </Route>
             )}
+          {PublicPromptStudioHelper && (
+            <Route
+              path="/promptStudio/share/:id"
+              element={<PublicPromptStudioHelper />}
+            >
+              <Route path="" element={<ToolIdePage />} />
+              <Route
+                path="/promptStudio/share/:id/outputAnalyzer"
+                element={<OutputAnalyzerPage />}
+              />
+            </Route>
+          )}
         </Route>
 
         {/* protected routes */}
@@ -178,6 +206,22 @@ function Router() {
               </Route>
             )}
           </Route>
+          {ReviewLayout && ManualReviewPage && (
+            <Route path=":orgName" element={<ReviewLayout />}>
+              <Route
+                path="review"
+                element={<ManualReviewPage type="review" />}
+              ></Route>
+              <Route
+                path="review/download_and_sync"
+                element={<ManualReviewPage type="download" />}
+              />
+              <Route
+                path="review/approve"
+                element={<ManualReviewPage type="approve" />}
+              />
+            </Route>
+          )}
         </Route>
         {TrialRoutes && (
           <Route path="/trial-expired" element={<TrialRoutes />} />
