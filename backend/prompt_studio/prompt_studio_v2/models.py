@@ -45,7 +45,7 @@ class ToolStudioPrompt(BaseModel):
     )
     tool_id = models.ForeignKey(
         CustomTool,
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         related_name="tool_studio_prompts",
         null=True,
         blank=True,
