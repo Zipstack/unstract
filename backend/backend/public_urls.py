@@ -62,3 +62,5 @@ try:
     ]
 except ImportError:
     pass
+except AttributeError:
+    pass
