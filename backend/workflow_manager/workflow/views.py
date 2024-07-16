@@ -86,18 +86,12 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         return generator
 
     def perform_update(self, serializer: WorkflowSerializer) -> Workflow:
-        """To edit a workflow. Regenerates the tool instances for a new prompt.
+        """To edit a workflow.
 
         Raises: WorkflowGenerationError
         """
         kwargs = {}
-        if serializer.validated_data.get(WorkflowKey.PROMPT_TEXT):
-            workflow: Workflow = self.get_object()
-            generator = self._generate_workflow(workflow_id=workflow.id)
-            kwargs = {
-                WorkflowKey.LLM_RESPONSE: generator.llm_response,
-                WorkflowKey.WF_IS_ACTIVE: True,
-            }
+
         try:
             workflow = serializer.save(**kwargs)
             return workflow
