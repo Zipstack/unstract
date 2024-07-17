@@ -229,7 +229,6 @@ function PromptCardItems({
       : selectedLlmProfileId;
     const keySuffix = `${promptDetails?.prompt_id}_${profileId}`;
     const key = singlePassExtractMode ? `singlepass_${keySuffix}` : keySuffix;
-    console.log(coverage, key);
     return coverage[key]?.docs_covered?.length || 0;
   };
 

@@ -224,7 +224,6 @@ function PromptCard({
         // Append the new object
         updatedDocOutputs.push(newData);
       }
-      console.log(updatedDocOutputs);
       return updatedDocOutputs;
     });
   };
