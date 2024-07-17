@@ -1,4 +1,4 @@
-name: Update PDM Lock
+name: Update Pdm.lock
 
 on:
   workflow_call:

@@ -1,5 +1,4 @@
-# file-change-check.yml
-name: File Change Check
+name: Pyproject.toml change check
 
 on:
   workflow_call:

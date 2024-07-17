@@ -1,4 +1,4 @@
-name: Update PDM Lock Files
+name: Automate pdm.lock
 
 on:
   push:
