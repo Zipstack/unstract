@@ -18,3 +18,7 @@
 .manage-docs-div {
     margin: 0;
 }
+
+.manage-docs-delete {
+    padding: 0 7px !important;
+}

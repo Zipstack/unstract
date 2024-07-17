@@ -9,6 +9,7 @@
 
 .tools-main-tabs {
     padding: 4px 14px;
+    flex: 1;
 }
 
 .tools-main-tabs .ant-tabs-nav {

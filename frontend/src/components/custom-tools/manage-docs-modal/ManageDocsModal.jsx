@@ -403,7 +403,7 @@ function ManageDocsModal({
             <Tooltip title="Delete">
               <Button
                 size="small"
-                className="display-flex-align-center"
+                className="manage-docs-delete display-flex-align-center"
                 disabled={
                   disableLlmOrDocChange?.length > 0 ||
                   isSinglePassExtractLoading ||

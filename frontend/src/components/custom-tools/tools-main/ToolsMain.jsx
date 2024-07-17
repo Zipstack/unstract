@@ -14,7 +14,6 @@ import { Footer } from "../footer/Footer";
 import "./ToolsMain.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { ToolsMainActionBtns } from "./ToolsMainActionBtns";
-import { PromptVersionModal } from "../prompt-version-modal/PromptVersionModal";
 
 function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
@@ -150,7 +149,6 @@ function ToolsMain() {
           />
         </div>
         <div className="display-flex-align-center">
-          <PromptVersionModal />
           <ToolsMainActionBtns />
         </div>
       </div>
