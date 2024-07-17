@@ -5,3 +5,7 @@ class PromptStudioOutputManagerKeys:
     DOCUMENT_MANAGER = "document_manager"
     IS_SINGLE_PASS_EXTRACT = "is_single_pass_extract"
     NOTES = "NOTES"
+
+
+class PromptOutputManagerErrorMessage:
+    TOOL_VALIDATION = "tool_id parameter is required"

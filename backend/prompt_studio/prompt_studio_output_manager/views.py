@@ -6,12 +6,14 @@ from django.db.models import QuerySet
 from django.http import HttpRequest
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_output_manager.constants import (
+    PromptOutputManagerErrorMessage,
     PromptStudioOutputManagerKeys,
 )
 from prompt_studio.prompt_studio_output_manager.serializers import (
     PromptStudioOutputSerializer,
 )
 from rest_framework import status, viewsets
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.common_utils import CommonUtils
@@ -59,21 +61,16 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         # Get the tool_id from request parameters
         tool_id = request.GET.get("tool_id")
         document_manager_id = request.GET.get("document_manager")
-
+        tool_validation_message = PromptOutputManagerErrorMessage.TOOL_VALIDATION
         if not tool_id:
-            return Response(
-                {"error": "tool_id parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            logger.error(f"Validation error: {tool_validation_message}")
+            raise ValidationError(detail=f"Validation error: {tool_validation_message}")
 
         try:
             # Fetch ToolStudioPrompt records based on tool_id
             tool_studio_prompts = ToolStudioPrompt.objects.filter(tool_id=tool_id)
-        except ObjectDoesNotExist:
-            return Response(
-                {"error": "ToolStudioPrompt records not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        except Exception as e:
+            raise APIException(detail=e, code=400)
 
         # Initialize the result dictionary
         result: dict[str, Any] = {}
