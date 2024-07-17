@@ -48,7 +48,6 @@ function OutputForDocModal({
   profileManagerId,
   docOutputs,
 }) {
-  const [selectedProfile, setSelectedProfile] = useState(profileManagerId);
   const [promptOutputs, setPromptOutputs] = useState([]);
   const [rows, setRows] = useState([]);
   const [adapterData, setAdapterData] = useState([]);
@@ -62,7 +61,9 @@ function OutputForDocModal({
     isSinglePassExtractLoading,
     isPublicSource,
     llmProfiles,
+    defaultLlmProfile,
   } = useCustomToolStore();
+  const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
