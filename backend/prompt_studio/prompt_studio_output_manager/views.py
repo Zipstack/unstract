@@ -13,7 +13,7 @@ from prompt_studio.prompt_studio_output_manager.serializers import (
     PromptStudioOutputSerializer,
 )
 from rest_framework import status, viewsets
-from rest_framework.exceptions import APIException, ValidationError
+from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.common_utils import CommonUtils
@@ -63,14 +63,13 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         document_manager_id = request.GET.get("document_manager")
         tool_validation_message = PromptOutputManagerErrorMessage.TOOL_VALIDATION
         if not tool_id:
-            logger.error(f"Validation error: {tool_validation_message}")
-            raise ValidationError(detail=f"Validation error: {tool_validation_message}")
+            raise APIException(detail=tool_validation_message, code=404)
 
         try:
             # Fetch ToolStudioPrompt records based on tool_id
             tool_studio_prompts = ToolStudioPrompt.objects.filter(tool_id=tool_id)
-        except Exception as e:
-            raise APIException(detail=e, code=400)
+        except ObjectDoesNotExist:
+            raise APIException(detail=tool_validation_message, code=404)
 
         # Initialize the result dictionary
         result: dict[str, Any] = {}
