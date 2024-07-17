@@ -79,7 +79,7 @@ function CombinedOutput({ docId, setFilledFields }) {
         if (activeKey === "0") {
           const output = {};
           for (const key in data) {
-            if (Object.prototype.hasOwnProperty.call(data, key)) {
+            if (Object.hasOwn(data, key)) {
               output[key] = displayPromptResult(data[key], false);
             }
           }
