@@ -974,3 +974,11 @@ class PromptStudioHelper:
             )
         output_response = json.loads(answer["structure_output"])
         return output_response
+
+    @staticmethod
+    def get_tool_from_tool_id(tool_id: str) -> Optional[CustomTool]:
+        try:
+            tool: CustomTool = CustomTool.objects.get(tool_id=tool_id)
+            return tool
+        except CustomTool.DoesNotExist:
+            return None

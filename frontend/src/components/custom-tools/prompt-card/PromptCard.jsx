@@ -18,6 +18,7 @@ import useTokenUsage from "../../../hooks/useTokenUsage";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
+import { useParams } from "react-router-dom";
 
 const EvalModal = null;
 const getEvalMetrics = (param1, param2) => {
@@ -34,7 +35,13 @@ try {
 } catch {
   // The component will remain null of it is not available
 }
-
+let publicOutputsApi;
+try {
+  publicOutputsApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
+} catch {
+  // The component will remain null of it is not available
+}
 function PromptCard({
   promptDetails,
   handleChange,
@@ -69,6 +76,7 @@ function PromptCard({
     singlePassExtractMode,
     isSinglePassExtractLoading,
     isSimplePromptStudio,
+    isPublicSource,
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const { sessionDetails } = useSessionStore();
@@ -78,6 +86,7 @@ function PromptCard({
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { tokenUsage, setTokenUsage } = useTokenUsageStore();
   const { getTokenUsage } = useTokenUsage();
+  const { id } = useParams();
 
   useEffect(() => {
     const outputTypeData = getDropdownItems("output_type") || {};
@@ -707,6 +716,14 @@ function PromptCard({
       }
       url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&is_single_pass_extract=${singlePassExtractMode}`;
     }
+    if (isPublicSource) {
+      url = publicOutputsApi(
+        id,
+        promptDetails?.prompt_id,
+        selectedLlmProfileId,
+        singlePassExtractMode
+      );
+    }
     if (isOutput) {
       url += `&document_manager=${selectedDoc?.document_id}`;
     }
@@ -721,7 +738,6 @@ function PromptCard({
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
-
     return axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data || [];
