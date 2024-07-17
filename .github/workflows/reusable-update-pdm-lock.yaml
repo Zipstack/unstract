@@ -70,3 +70,4 @@ jobs:
           else
             git commit -m "Update pdm.lock for root directory"
           fi
+          git push

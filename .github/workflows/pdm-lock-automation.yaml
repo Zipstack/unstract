@@ -40,14 +40,3 @@ jobs:
     uses: ./.github/workflows/reusable-update-pdm-lock.yaml
     with:
       service:
-
-  # push-changes:
-  #   needs: [update-backend-pdm-lock, update-prompt-service-pdm-lock, update-platform-service-pdm-lock, update-root-pdm-lock]
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v3
-
-  #     - name: Push changes
-  #       run: git push
-  #       if: success()
