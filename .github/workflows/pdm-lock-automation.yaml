@@ -1,0 +1,53 @@
+name: Update PDM Lock Files
+
+on:
+  push:
+
+
+jobs:
+  backend_changes:
+    uses: ./.github/workflows/reusable-file-change-check.yaml
+    with:
+      file_path: backend/pyproject.toml
+
+  prompt_changes:
+    uses: ./.github/workflows/reusable-file-change-check.yaml
+    with:
+      file_path: prompt-service/pyproject.toml
+
+  root_changes:
+    uses: ./.github/workflows/reusable-file-change-check.yaml
+    with:
+      file_path: pyproject.toml
+
+  update-backend-pdm-lock:
+    needs: backend_changes
+    if: ${{ needs.backend_changes.outputs.changed == 'true' }}
+    uses: ./.github/workflows/reusable-update-pdm-lock.yaml
+    with:
+      service: 'backend'
+
+  update-prompt-service-pdm-lock:
+    needs: prompt_changes
+    if: ${{ needs.prompt_changes.outputs.changed == 'true' }}
+    uses: ./.github/workflows/reusable-update-pdm-lock.yaml
+    with:
+      service: 'prompt-service'
+
+  update-root-pdm-lock:
+    needs: root_changes
+    if: ${{ needs.root_changes.outputs.changed == 'true' }}
+    uses: ./.github/workflows/reusable-update-pdm-lock.yaml
+    with:
+      service:
+
+  # push-changes:
+  #   needs: [update-backend-pdm-lock, update-prompt-service-pdm-lock, update-platform-service-pdm-lock, update-root-pdm-lock]
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v3
+
+  #     - name: Push changes
+  #       run: git push
+  #       if: success()

@@ -25,28 +25,41 @@ jobs:
 
       - name: Update and add pdm.lock
         run: |
-          echo "inside udpate pdm ${{ inputs.service }}";
           if [ -n "${{ inputs.service }}" ]; then
             cd ${{ inputs.service }}
           fi
-          pdm venv create -w virtualenv --with-pip
+          echo "current dir before : "; pwd
+          echo "files in dir before : "; ls -al
+
+          if [ ! -d ".venv" ]; then
+            echo 'Creating virtual environment inside "${{ inputs.service }}".'
+            pdm venv create -w virtualenv --with-pip
+          else
+            echo "Virtual environment already exists."
+          fi
           source .venv/bin/activate
           pdm lock
 
-          # Debugging output
-          echo "curent dir: "; pwd
-          echo "Listing files in ${{ inputs.service || 'root' }} directory:"; ls -al | grep pdm.lock
+          echo "current dir after : "; pwd
+          echo "files in dir after : "; ls -al
+
 
           git add pdm.lock
 
-      - name: Commit pdm.lock
+      - name: Running pre-commit and commit pdm.lock
         run: |
-          echo "Dir: "; pwd
-          echo "LFiles in ${{ inputs.service || 'root' }} directory:"; ls -al
+          echo "current root dir: "; pwd
+          echo "files in root dir: "; ls -al
 
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          pdm venv create -w virtualenv --with-pip
+
+          if [ ! -d ".venv" ]; then
+            echo "Creating virtual environment inside root"
+            pdm venv create -w virtualenv --with-pip
+          else
+            echo "Virtual environment already exists."
+          fi
           source .venv/bin/activate
 
           pip install pre-commit~=3.6.2
