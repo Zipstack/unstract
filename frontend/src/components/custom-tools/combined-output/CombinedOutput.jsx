@@ -63,6 +63,16 @@ function CombinedOutput({ docId, setFilledFields }) {
       .then((res) => {
         const data = res?.data || [];
         const prompts = details?.prompts;
+        if (activeKey === "0") {
+          const output = {};
+          for (const key in data) {
+            if (Object.prototype.hasOwnProperty.call(data, key)) {
+              output[key] = displayPromptResult(data[key], false);
+            }
+          }
+          setCombinedOutput(output);
+          return;
+        }
         const output = {};
         prompts.forEach((item) => {
           if (item?.prompt_type === promptType.notes) {
@@ -70,10 +80,7 @@ function CombinedOutput({ docId, setFilledFields }) {
           }
           output[item?.prompt_key] = "";
 
-          let profileManager = selectedProfile || item?.profile_manager;
-          if (singlePassExtractMode) {
-            profileManager = defaultLlmProfile;
-          }
+          const profileManager = selectedProfile || item?.profile_manager;
           const outputDetails = data.find(
             (outputValue) =>
               outputValue?.prompt_id === item?.prompt_id &&
@@ -127,6 +134,9 @@ function CombinedOutput({ docId, setFilledFields }) {
       }&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}&profile_manager=${
         selectedProfile || defaultLlmProfile
       }`;
+      if (activeKey === "0") {
+        url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/prompt-default-profile/?tool_id=${details?.tool_id}&document_manager=${docId}`;
+      }
     }
     const requestOptions = {
       method: "GET",
@@ -179,6 +189,7 @@ function CombinedOutput({ docId, setFilledFields }) {
       llmProfiles={llmProfiles}
       activeKey={activeKey}
       adapterData={adapterData}
+      isSinglePass={singlePassExtractMode}
     />
   );
 }
