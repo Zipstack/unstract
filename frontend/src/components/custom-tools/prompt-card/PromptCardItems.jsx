@@ -502,12 +502,7 @@ function PromptCardItems({
                                   {!result.find(
                                     (r) => r?.profileManager === profileId
                                   )?.output ? (
-                                    <Typography.Text
-                                      style={{
-                                        color: "grey",
-                                        fontSize: "12px",
-                                      }}
-                                    >
+                                    <Typography.Text className="prompt-not-ran">
                                       <span>
                                         <InfoCircleFilled
                                           style={{ color: "#F0AD4E" }}
