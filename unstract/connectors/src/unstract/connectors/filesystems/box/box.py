@@ -24,7 +24,7 @@ class BoxFS(UnstractFileSystem):
                 settings_dict = json.loads(settings["box_app_settings"])
                 if not isinstance(settings_dict, dict):
                     raise ConnectorError(
-                        "Box app settings is expected to be a valid JSON",
+                        "Box app settings should be a valid JSON.",
                         treat_as_user_message=True,
                     )
             except JSONDecodeError as e:
@@ -113,7 +113,12 @@ class BoxFS(UnstractFileSystem):
     def test_credentials(self) -> bool:
         """To test credentials for the Box connector."""
         try:
-            self.get_fsspec_fs().isdir("/")
+            is_dir = bool(self.get_fsspec_fs().isdir("/"))
+            if not is_dir:
+                raise RuntimeError(
+                    "Could not connect to the root directory '/' "
+                    ", please recheck the connection settings."
+                )
         except Exception as e:
-            raise ConnectorError(str(e))
+            raise ConnectorError(f"Error while connecting to Box: {str(e)}") from e
         return True

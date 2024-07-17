@@ -64,7 +64,9 @@ class GoogleCloudStorageFS(UnstractFileSystem):
     def test_credentials(self) -> bool:
         """To test credentials for Google Cloud Storage."""
         try:
-            is_dir = bool(self.get_fsspec_fs().isdir(f"{self.bucket}"))
-            return is_dir
+            is_dir = bool(self.get_fsspec_fs().isdir(self.bucket))
+            if not is_dir:
+                raise RuntimeError(f"'{self.bucket}' is not a valid bucket.")
         except Exception as e:
-            raise ConnectorError(str(e))
+            raise ConnectorError(f"Error while connecting to GCS: {str(e)}") from e
+        return True

@@ -65,7 +65,11 @@ class AzureCloudStorageFS(UnstractFileSystem):
     def test_credentials(self) -> bool:
         """To test credentials for Azure Cloud Storage."""
         try:
-            self.get_fsspec_fs().ls(f"{self.bucket}")
+            is_dir = bool(self.get_fsspec_fs().isdir(self.bucket))
+            if not is_dir:
+                raise RuntimeError(f"'{self.bucket}' is not a valid bucket.")
         except Exception as e:
-            raise ConnectorError(str(e))
+            raise ConnectorError(
+                f"Error while connecting to Azure Cloud Storage: {str(e)}"
+            ) from e
         return True
