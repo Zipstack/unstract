@@ -1,0 +1,69 @@
+name: Update PDM Lock Files
+
+on:
+  push:
+
+
+jobs:
+  backend_changes:
+    uses: ./.github/workflows/reusable-file-change-check.yaml
+    with:
+      file_path: backend/pyproject.toml
+
+  update-backend-pdm-lock:
+    needs: backend_changes
+    if: ${{ needs.backend_changes.outputs.changed == 'true' }}
+    uses: ./.github/workflows/reusable-update-pdm-lock.yaml
+    with:
+      service: 'backend'
+    # runs-on: ubuntu-latest
+    # steps:
+    #   - name: Checkout repository
+    #     uses: actions/checkout@v3
+
+    #   - name: Check backend_changed value
+    #     run: |
+    #       echo "backend_changed value: ${{ needs.backend_changes.outputs.changed }}"
+
+    #   - uses: ./.github/workflows/reusable-update-pdm-lock.yaml
+    #     with:
+    #       service: 'backend'
+
+  # update-prompt-service-pdm-lock:
+  #   needs: changes
+  #   if: ${{ needs.changes.outputs.prompt_service_changed == 'true' }}
+    # - uses: ./.github/workflows/update-pdm-lock.yml
+    #   with:
+    #     service: 'prompt-service'
+
+  # update-platform-service-pdm-lock:
+  #   needs: changes
+  #   if: ${{ needs.changes.outputs.platform_service_changed == 'true' }}
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - name: Check platform_service_changed value
+  #       run: |
+  #         echo "platform_service_changed value: ${{ needs.changes.outputs.platform_service_changed }}"
+  #     - uses: ./.github/workflows/update-pdm-lock.yml
+  #       with:
+  #         service: 'platform-service'
+
+  # update-root-pdm-lock:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - uses: ./.github/workflows/update-pdm-lock.yml
+  #       with:
+  #         service: ''
+
+  # push-changes:
+  #   needs: [update-backend-pdm-lock, update-prompt-service-pdm-lock, update-platform-service-pdm-lock, update-root-pdm-lock]
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v3
+
+  #     - name: Push changes
+  #       run: git push
+  #       if: success()
