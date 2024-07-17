@@ -70,6 +70,6 @@ class AzureCloudStorageFS(UnstractFileSystem):
                 raise RuntimeError(f"'{self.bucket}' is not a valid bucket.")
         except Exception as e:
             raise ConnectorError(
-                f"Error while connecting to Azure Cloud Storage: {str(e)}"
+                f"Error from Azure Cloud Storage while testing connection: {str(e)}"
             ) from e
         return True

@@ -68,5 +68,7 @@ class GoogleCloudStorageFS(UnstractFileSystem):
             if not is_dir:
                 raise RuntimeError(f"'{self.bucket}' is not a valid bucket.")
         except Exception as e:
-            raise ConnectorError(f"Error while connecting to GCS: {str(e)}") from e
+            raise ConnectorError(
+                f"Error from Google Cloud Storage while testing connection: {str(e)}"
+            ) from e
         return True

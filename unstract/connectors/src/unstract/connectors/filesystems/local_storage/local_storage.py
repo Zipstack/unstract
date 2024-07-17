@@ -61,15 +61,16 @@ class LocalStorageFS(UnstractFileSystem):
 
     def test_credentials(self, *args, **kwargs) -> bool:  # type:ignore
         """To test credentials for LocalStorage."""
+        is_dir = False
         try:
             is_dir = bool(self.get_fsspec_fs().isdir("/"))
-            if not is_dir:
-                raise RuntimeError(
-                    "Could not connect to the root directory '/', "
-                    "please recheck the connection settings."
-                )
         except Exception as e:
             raise ConnectorError(
                 f"Error while connecting to local storage: {str(e)}"
             ) from e
+        if not is_dir:
+            raise ConnectorError(
+                "Unable to connect to local storage, "
+                "please check the connection settings."
+            )
         return True

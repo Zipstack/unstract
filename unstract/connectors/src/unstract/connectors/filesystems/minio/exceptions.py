@@ -15,12 +15,12 @@ S3FS_EXC_TO_UNSTRACT_EXC = {
 
 def handle_s3fs_exception(e: Exception) -> ConnectorError:
     original_exc = str(e)
-    user_msg = "Error while connecting to S3 / MinIO: "
+    user_msg = "Error from S3 / MinIO while testing connection: "
     exc_to_append = ""
     for s3fs_exc, user_friendly_msg in S3FS_EXC_TO_UNSTRACT_EXC.items():
         if s3fs_exc in original_exc:
             exc_to_append = user_friendly_msg
             break
 
-    user_msg += exc_to_append if exc_to_append else f"Error from S3, '{str(e)}'"
+    user_msg += exc_to_append if exc_to_append else str(e)
     return ConnectorError(message=user_msg)

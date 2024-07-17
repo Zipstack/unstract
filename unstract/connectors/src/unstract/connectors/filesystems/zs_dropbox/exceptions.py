@@ -7,7 +7,7 @@ from unstract.connectors.exceptions import ConnectorError
 
 
 def handle_dropbox_exception(e: DropboxException) -> ConnectorError:
-    user_msg = "Error while connecting to Dropbox: "
+    user_msg = "Error from Dropbox while testing connection: "
     if isinstance(e, ExcAuthError):
         if isinstance(e.error, AuthError):
             if e.error.is_expired_access_token():

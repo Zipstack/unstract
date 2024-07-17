@@ -71,15 +71,16 @@ class HttpFS(UnstractFileSystem):
 
     def test_credentials(self) -> bool:
         """To test credentials for HTTP(S)."""
+        is_dir = False
         try:
             is_dir = bool(self.get_fsspec_fs().isdir("/"))
-            if not is_dir:
-                raise RuntimeError(
-                    "Could not connect to the root directory '/', "
-                    "please recheck the connection settings."
-                )
         except Exception as e:
             raise ConnectorError(
                 f"Error while connecting to HTTP server: {str(e)}"
             ) from e
+        if not is_dir:
+            raise ConnectorError(
+                "Unable to connect to HTTP server, "
+                "please check the connection settings."
+            )
         return True

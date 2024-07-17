@@ -91,17 +91,18 @@ class GoogleDriveFS(UnstractFileSystem):
 
     def test_credentials(self) -> bool:
         """To test credentials for Google Drive."""
+        is_dir = False
         try:
             is_dir = bool(self.get_fsspec_fs().isdir("root"))
-            if not is_dir:
-                raise RuntimeError(
-                    "Could not connect to its root directory 'root', "
-                    "please recheck the connection settings."
-                )
         except Exception as e:
             raise ConnectorError(
-                f"Error while connecting to Google Drive: {str(e)}"
+                f"Error from Google Drive while testing connection: {str(e)}"
             ) from e
+        if not is_dir:
+            raise ConnectorError(
+                "Unable to connect to Google Drive, "
+                "please check the connection settings."
+            )
         return True
 
     @staticmethod
