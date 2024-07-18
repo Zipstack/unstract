@@ -1,5 +1,5 @@
 import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
-import { Button, Radio, Table, Typography } from "antd";
+import { Button, Radio, Table, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -75,6 +75,8 @@ function ManageLlmProfiles() {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const MAX_PROFILE_COUNT = 4;
+  const isMaxProfile = llmProfiles.length >= MAX_PROFILE_COUNT;
 
   const handleDefaultLlm = (profileId) => {
     try {
@@ -239,13 +241,21 @@ function ManageLlmProfiles() {
         </div>
       </SpaceWrapper>
       <div className="display-flex-right">
-        <CustomButton
-          type="primary"
-          disabled={isPublicSource}
-          onClick={handleAddNewLlmProfileBtnClick}
+        <Tooltip
+          title={
+            isMaxProfile
+              ? `Max profile count(${MAX_PROFILE_COUNT})`
+              : "Add New LLM Profile"
+          }
         >
-          Add New LLM Profile
-        </CustomButton>
+          <CustomButton
+            type="primary"
+            onClick={handleAddNewLlmProfileBtnClick}
+            disabled={isMaxProfile}
+          >
+            Add New LLM Profile
+          </CustomButton>
+        </Tooltip>
       </div>
     </div>
   );
