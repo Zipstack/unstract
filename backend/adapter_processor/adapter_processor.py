@@ -8,6 +8,7 @@ from adapter_processor.exceptions import (
     InternalServiceError,
     InValidAdapterId,
     TestAdapterError,
+    TestAdapterInputError,
 )
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
@@ -97,6 +98,12 @@ class AdapterProcessor:
             test_result: bool = adapter_instance.test_connection()
             logger.info(f"{adapter_id} test result: {test_result}")
             return test_result
+        # HACK: Remove after error is explicitly handled in VertexAI adapter
+        except json.JSONDecodeError:
+            raise TestAdapterInputError(
+                "Credentials is not a valid service account JSON, "
+                "please provide a valid JSON."
+            )
         except AdapterError as e:
             raise TestAdapterError(str(e))
 

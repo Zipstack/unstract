@@ -1,4 +1,4 @@
-"""Method is used to Evaluate a speciifc feature-flag status as TRUE or FALSE.
+"""Method is used to Evaluate a specifc feature-flag status as TRUE or FALSE.
 
 This method sends a gRPC request to the evaluation server to determine
 the state of a feature flag for a specific entity. It takes the
