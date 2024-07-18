@@ -10,6 +10,13 @@ import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 
+let shareManagerToolSource;
+try {
+  shareManagerToolSource =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").shareManagerToolSource;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
 function CustomToolsHelper() {
   const [isLoading, setIsLoading] = useState(true);
   const { id } = useParams();
@@ -82,6 +89,17 @@ function CustomToolsHelper() {
       .then((res) => {
         const data = res?.data;
         updatedCusTool["llmProfiles"] = data;
+        if (shareManagerToolSource) {
+          const reqOpsShare = {
+            method: "GET",
+            url: shareManagerToolSource(id, sessionDetails?.orgId),
+          };
+          return handleApiRequest(reqOpsShare);
+        }
+      })
+      .then((res) => {
+        const data = res?.data;
+        updatedCusTool["shareId"] = data?.share_id;
         const reqOpsLlmProfiles = {
           method: "GET",
           url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,

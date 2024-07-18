@@ -63,7 +63,13 @@ try {
 } catch {
   // The component will remain null of it is not available
 }
-
+let publicDocumentApi;
+try {
+  publicDocumentApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicDocumentApi;
+} catch {
+  // The component will remain null of it is not available
+}
 function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [openManageDocsModal, setOpenManageDocsModal] = useState(false);
   const [page, setPage] = useState(1);
@@ -85,6 +91,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     indexDocs,
     isSinglePassExtractLoading,
     isSimplePromptStudio,
+    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
@@ -188,11 +195,15 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   };
 
   const getDocuments = async (toolId, docId, viewType) => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${toolId}?document_id=${docId}&view_type=${viewType}`,
-    };
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${toolId}?document_id=${docId}&view_type=${viewType}`;
+    if (isPublicSource) {
+      url = publicDocumentApi(toolId, docId, viewType);
+    }
 
+    const requestOptions = {
+      url,
+      method: "GET",
+    };
     return axiosPrivate(requestOptions)
       .then((res) => res)
       .catch((err) => {

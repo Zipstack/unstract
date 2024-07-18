@@ -45,6 +45,7 @@ function Header({
     singlePassExtractMode,
     isSinglePassExtractLoading,
     indexDocs,
+    isPublicSource,
     isSimplePromptStudio,
   } = useCustomToolStore();
 
@@ -135,8 +136,10 @@ function Header({
             disabled={
               disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
               isSinglePassExtractLoading ||
+              indexDocs.includes(selectedDoc?.document_id) ||
               spsLoading[selectedDoc?.document_id] ||
-              indexDocs.includes(selectedDoc?.document_id)
+              indexDocs.includes(selectedDoc?.document_id) ||
+              isPublicSource
             }
           >
             <EditOutlined className="prompt-card-actions-head" />
@@ -158,6 +161,7 @@ function Header({
                       promptStudioUpdateStatus?.isUpdating) ||
                   disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
                   indexDocs?.includes(selectedDoc?.document_id) ||
+                  isPublicSource ||
                   spsLoading[selectedDoc?.document_id]
                 }
               >
@@ -175,7 +179,8 @@ function Header({
                     updateStatus?.status ===
                       promptStudioUpdateStatus?.isUpdating) ||
                   disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
-                  indexDocs?.includes(selectedDoc?.document_id)
+                  indexDocs?.includes(selectedDoc?.document_id) ||
+                  isPublicSource
                 }
               >
                 <PlayCircleFilled className="prompt-card-actions-head" />
@@ -196,6 +201,7 @@ function Header({
             checked={isDisablePrompt}
             className="prompt-card-action-button"
             onChange={handleDisablePrompt}
+            disabled={isPublicSource}
           />
         )}
         <Divider type="vertical" className="header-delete-divider" />
@@ -211,8 +217,9 @@ function Header({
               disabled={
                 disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
                 isSinglePassExtractLoading ||
-                spsLoading[selectedDoc?.document_id] ||
-                indexDocs?.includes(selectedDoc?.document_id)
+                indexDocs?.includes(selectedDoc?.document_id) ||
+                isPublicSource ||
+                spsLoading[selectedDoc?.document_id]
               }
             >
               <DeleteOutlined className="prompt-card-actions-head" />

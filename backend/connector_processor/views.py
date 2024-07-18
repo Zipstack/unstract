@@ -67,10 +67,10 @@ class ConnectorViewSet(GenericViewSet):
         """Tests the connector against the credentials passed."""
         serializer: TestConnectorSerializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        connector_id = serializer.validated_data.get(ConnectorKeys.CONNECTOR_ID)
+        connector_id = serializer.validated_data.get(CIKey.CONNECTOR_ID)
         cred_string = serializer.validated_data.get(CIKey.CONNECTOR_METADATA)
         test_result = ConnectorProcessor.test_connectors(
-            connector_id=connector_id, cred_string=cred_string
+            connector_id=connector_id, credentials=cred_string
         )
         return Response(
             {ConnectorKeys.IS_VALID: test_result},

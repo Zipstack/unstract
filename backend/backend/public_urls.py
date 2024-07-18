@@ -82,3 +82,18 @@ try:
     ]
 except ImportError:
     pass
+
+try:
+    import pluggable_apps.public_shares.share_controller.urls  # noqa # pylint: disable=unused-import
+
+    share_path_prefix = settings.PUBLIC_PATH_PREFIX
+
+    urlpatterns += [
+        # Public Sharing
+        path(
+            f"{share_path_prefix}/",
+            include("pluggable_apps.public_shares.share_controller.urls"),
+        ),
+    ]
+except ImportError:
+    pass
