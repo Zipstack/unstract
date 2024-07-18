@@ -9,8 +9,7 @@ from connector_processor.exceptions import (
     InValidConnectorId,
     InValidConnectorMode,
     OAuthTimeOut,
-    TestConnectorException,
-    TestConnectorInputException,
+    TestConnectorInputError,
 )
 
 from backend.constants import FeatureFlag
@@ -108,15 +107,15 @@ class ConnectorProcessor:
         return supported_connectors
 
     @staticmethod
-    def test_connectors(connector_id: str, cred_string: dict[str, Any]) -> bool:
+    def test_connectors(connector_id: str, credentials: dict[str, Any]) -> bool:
         logger.info(f"Testing connector: {connector_id}")
         connector: dict[str, Any] = fetch_connectors_by_key_value(
             ConnectorKeys.ID, connector_id
         )[0]
         if connector.get(ConnectorKeys.OAUTH):
             try:
-                oauth_key = cred_string.get(ConnectorAuthKey.OAUTH_KEY)
-                cred_string = ConnectorAuthHelper.get_oauth_creds_from_cache(
+                oauth_key = credentials.get(ConnectorAuthKey.OAUTH_KEY)
+                credentials = ConnectorAuthHelper.get_oauth_creds_from_cache(
                     cache_key=oauth_key, delete_key=False
                 )
             except Exception as exc:
@@ -128,17 +127,13 @@ class ConnectorProcessor:
 
         try:
             connector_impl = Connectorkit().get_connector_by_id(
-                connector_id, cred_string
+                connector_id, credentials
             )
             test_result = connector_impl.test_credentials()
             logger.info(f"{connector_id} test result: {test_result}")
             return test_result
         except ConnectorError as e:
-            logger.error(f"Error while testing {connector_id}: {e}")
-            raise TestConnectorInputException(core_err=e)
-        except Exception as e:
-            logger.error(f"Error while testing {connector_id}: {e}")
-            raise TestConnectorException
+            raise TestConnectorInputError(core_err=e)
 
     def get_connector_data_with_key(connector_id: str, key_value: str) -> Any:
         """Generic Function to get connector data with provided key."""

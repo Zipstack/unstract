@@ -88,6 +88,7 @@ class ToolStudioPromptKeys:
     PROFILE_MANAGER_ID = "profile_manager"
     CONTEXT = "context"
     METADATA = "metadata"
+    INCLUDE_METADATA = "include_metadata"
 
 
 class FileViewTypes:
