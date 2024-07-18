@@ -22,7 +22,6 @@ from django.urls import include, path
 
 path_prefix = settings.PATH_PREFIX
 api_path_prefix = settings.API_DEPLOYMENT_PATH_PREFIX
-simple_prompt_studio_path_prefix = settings.SIMPLE_PROMPT_STUDIO_PATH_PREFIX
 
 urlpatterns = [
     path(f"{path_prefix}/", include("account.urls")),
@@ -62,6 +61,7 @@ try:
     import pluggable_apps.simple_prompt_studio.sps_prompt.urls  # noqa # pylint: disable=unused-import
     import pluggable_apps.simple_prompt_studio.sps_prompt_output.urls  # noqa # pylint: disable=unused-import
 
+    simple_prompt_studio_path_prefix = settings.SIMPLE_PROMPT_STUDIO_PATH_PREFIX
     urlpatterns += [
         path(
             f"{path_prefix}/{simple_prompt_studio_path_prefix}/",
