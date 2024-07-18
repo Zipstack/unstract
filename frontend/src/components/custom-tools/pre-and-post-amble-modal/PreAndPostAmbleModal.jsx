@@ -18,7 +18,7 @@ const fieldNames = {
 function PreAndPostAmbleModal({ type, handleUpdateTool }) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
-  const { details, updateCustomTool } = useCustomToolStore();
+  const { details, updateCustomTool, isPublicSource } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
 
@@ -93,13 +93,22 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
-          <Button size="small" type="link" onClick={setDefaultPrompt}>
+          <Button
+            size="small"
+            type="link"
+            onClick={setDefaultPrompt}
+            disabled={isPublicSource}
+          >
             Reset with default prompt
           </Button>
         </div>
         <div className="display-flex-right">
           <Space>
-            <CustomButton type="primary" onClick={handleSave}>
+            <CustomButton
+              type="primary"
+              onClick={handleSave}
+              disabled={isPublicSource}
+            >
               Save
             </CustomButton>
           </Space>

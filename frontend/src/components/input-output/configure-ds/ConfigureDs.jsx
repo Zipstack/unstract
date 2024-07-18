@@ -31,6 +31,7 @@ function ConfigureDs({
   metadata,
   selectedSourceName,
   connType,
+  formDataConfig,
 }) {
   const formRef = createRef(null);
   const axiosPrivate = useAxiosPrivate();
@@ -252,7 +253,11 @@ function ConfigureDs({
       .then((res) => {
         const data = res?.data;
         if (sourceTypes.connectors.includes(type)) {
-          handleUpdate({ connector_instance: data?.id });
+          handleUpdate(
+            { connector_instance: data?.id, configuration: formDataConfig },
+            true
+          );
+          setIsTcSuccessful(false);
           return;
         }
         if (data) {
@@ -351,6 +356,7 @@ ConfigureDs.propTypes = {
   metadata: PropTypes.object,
   selectedSourceName: PropTypes.string.isRequired,
   connType: PropTypes.string,
+  formDataConfig: PropTypes.object,
 };
 
 export { ConfigureDs };

@@ -10,7 +10,10 @@ from file_management.exceptions import FileNotFound
 from file_management.file_management_helper import FileManagerHelper
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from prompt_studio.processor_loader import ProcessorConfig, load_plugins
-from prompt_studio.prompt_profile_manager.constants import ProfileManagerErrors
+from prompt_studio.prompt_profile_manager.constants import (
+    ProfileManagerErrors,
+    ProfileManagerKeys,
+)
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_profile_manager.serializers import ProfileManagerSerializer
 from prompt_studio.prompt_studio.constants import ToolStudioPromptErrors
@@ -26,6 +29,7 @@ from prompt_studio.prompt_studio_core.document_indexing_service import (
 )
 from prompt_studio.prompt_studio_core.exceptions import (
     IndexingAPIError,
+    MaxProfilesReachedError,
     ToolDeleteError,
 )
 from prompt_studio.prompt_studio_core.prompt_studio_helper import PromptStudioHelper
@@ -345,6 +349,16 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = ProfileManagerSerializer(data=request.data, context=context)
 
         serializer.is_valid(raise_exception=True)
+        # Check for the maximum number of profiles constraint
+        prompt_studio_tool = serializer.validated_data[
+            ProfileManagerKeys.PROMPT_STUDIO_TOOL
+        ]
+        profile_count = ProfileManager.objects.filter(
+            prompt_studio_tool=prompt_studio_tool
+        ).count()
+
+        if profile_count >= ProfileManagerKeys.MAX_PROFILE_COUNT:
+            raise MaxProfilesReachedError()
         try:
             self.perform_create(serializer)
         except IntegrityError:
