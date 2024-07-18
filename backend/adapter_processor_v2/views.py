@@ -2,16 +2,16 @@ import logging
 import uuid
 from typing import Any, Optional
 
-from adapter_processor.adapter_processor import AdapterProcessor
-from adapter_processor.constants import AdapterKeys
-from adapter_processor.exceptions import (
+from adapter_processor_v2.adapter_processor import AdapterProcessor
+from adapter_processor_v2.constants import AdapterKeys
+from adapter_processor_v2.exceptions import (
     CannotDeleteDefaultAdapter,
     DeleteAdapterInUseError,
     IdIsMandatory,
     InValidType,
     UniqueConstraintViolation,
 )
-from adapter_processor.serializers import (
+from adapter_processor_v2.serializers import (
     AdapterInfoSerializer,
     AdapterInstanceSerializer,
     AdapterListSerializer,
@@ -37,6 +37,7 @@ from rest_framework.response import Response
 from rest_framework.serializers import ModelSerializer
 from rest_framework.versioning import URLPathVersioning
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.filtering import FilterHelper
 
 from .constants import AdapterKeys as constant
@@ -115,13 +116,17 @@ class AdapterViewSet(GenericViewSet):
         adapter_metadata[AdapterKeys.ADAPTER_TYPE] = serializer.validated_data.get(
             AdapterKeys.ADAPTER_TYPE
         )
-        test_result = AdapterProcessor.test_adapter(
-            adapter_id=adapter_id, adapter_metadata=adapter_metadata
-        )
-        return Response(
-            {AdapterKeys.IS_VALID: test_result},
-            status=status.HTTP_200_OK,
-        )
+        try:
+            test_result = AdapterProcessor.test_adapter(
+                adapter_id=adapter_id, adapter_metadata=adapter_metadata
+            )
+            return Response(
+                {AdapterKeys.IS_VALID: test_result},
+                status=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            logger.error(f"Error testing adapter : {str(e)}")
+            raise e
 
 
 class AdapterInstanceViewSet(ModelViewSet):
@@ -193,6 +198,11 @@ class AdapterInstanceViewSet(ModelViewSet):
                 not user_default_adapter.default_x2text_adapter
             ):
                 user_default_adapter.default_x2text_adapter = instance
+
+            organization_member = OrganizationMemberService.get_user_by_id(
+                request.user.id
+            )
+            user_default_adapter.organization_member = organization_member
 
             user_default_adapter.save()
 

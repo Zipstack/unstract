@@ -2,17 +2,16 @@ import json
 import logging
 from typing import Any, Optional
 
-from account.models import User
-from adapter_processor.constants import AdapterKeys
-from adapter_processor.exceptions import (
+from account_v2.models import User
+from adapter_processor_v2.constants import AdapterKeys
+from adapter_processor_v2.exceptions import (
     InternalServiceError,
     InValidAdapterId,
     TestAdapterError,
-    TestAdapterInputError,
 )
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
-from platform_settings.platform_auth_service import PlatformAuthenticationService
+from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
 from unstract.adapters.adapterkit import Adapterkit
 from unstract.adapters.base import Adapter
 from unstract.adapters.enums import AdapterTypes
@@ -98,12 +97,6 @@ class AdapterProcessor:
             test_result: bool = adapter_instance.test_connection()
             logger.info(f"{adapter_id} test result: {test_result}")
             return test_result
-        # HACK: Remove after error is explicitly handled in VertexAI adapter
-        except json.JSONDecodeError:
-            raise TestAdapterInputError(
-                "Credentials is not a valid service account JSON, "
-                "please provide a valid JSON."
-            )
         except AdapterError as e:
             raise TestAdapterError(str(e))
 

@@ -1,0 +1,39 @@
+{
+    "title": "Workflow File Source",
+    "description": "Settings for File Source",
+    "type": "object",
+    "required": [],
+    "properties": {
+        "rootFolder": {
+            "type": "string",
+            "title": "Folder to process",
+            "default": "",
+            "description": "The root folder to start processing files from. Leave it empty to use the root folder"
+        },
+        "processSubDirectories": {
+            "type": "boolean",
+            "title": "Process sub directories",
+            "default": true,
+            "description": "Process sub directories recursively"
+        },
+        "fileExtensions": {
+            "type": "array",
+            "title": "File types to process",
+            "description": "Limit the file types to process. Leave it empty to process all files",
+            "items": {
+                "type": "string",
+                "enum": [
+                    "PDF documents",
+                    "Text documents",
+                    "Images"
+                ]
+            }
+        },
+        "maxFiles": {
+            "type": "number",
+            "title": "Max files to process",
+            "default": 100,
+            "description": "The maximum number of files to process"
+        }
+    }
+}

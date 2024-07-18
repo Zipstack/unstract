@@ -2,6 +2,8 @@ from typing import Optional
 
 from rest_framework.exceptions import APIException
 
+from backend.exceptions import UnstractBaseException
+
 
 class IdIsMandatory(APIException):
     status_code = 400
@@ -44,14 +46,9 @@ class UniqueConstraintViolation(APIException):
     default_detail = "Unique constraint violated"
 
 
-class TestAdapterError(APIException):
+class TestAdapterError(UnstractBaseException):
     status_code = 500
     default_detail = "Error while testing adapter"
-
-
-class TestAdapterInputError(APIException):
-    status_code = 400
-    default_detail = "Error while testing adapter, please check the configuration."
 
 
 class DeleteAdapterInUseError(APIException):
