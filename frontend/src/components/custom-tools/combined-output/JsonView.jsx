@@ -12,6 +12,7 @@ function JsonView({
   activeKey,
   selectedProfile,
   llmProfiles,
+  isSinglePass,
 }) {
   useEffect(() => {
     Prism.highlightAll();
@@ -21,8 +22,10 @@ function JsonView({
     <div className="combined-op-layout">
       <div className="combined-op-header">
         <Tabs activeKey={activeKey} onChange={handleTabChange} moreIcon={<></>}>
-          <TabPane tab={<span>Default</span>} key={"0"}></TabPane>
-          {[...(adapterData || [])].map((adapter, index) => (
+          {!isSinglePass && (
+            <TabPane tab={<span>Default</span>} key={"0"}></TabPane>
+          )}
+          {adapterData.map((adapter, index) => (
             <TabPane
               tab={<span>{adapter.llm_model}</span>}
               key={(index + 1)?.toString()}
@@ -54,6 +57,7 @@ JsonView.propTypes = {
   selectedProfile: PropTypes.string,
   llmProfiles: PropTypes.array,
   activeKey: PropTypes.string,
+  isSinglePass: PropTypes.bool,
 };
 
 export { JsonView };

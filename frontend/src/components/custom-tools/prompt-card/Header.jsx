@@ -180,12 +180,13 @@ function Header({
             </Tooltip>
           </>
         )}
-        <Checkbox
-          checked={isDisablePrompt}
-          className="prompt-card-action-button"
-          onChange={handleDisablePrompt}
-          disabled={isPublicSource}
-        />
+        <Tooltip title={isDisablePrompt ? "Disable Prompt" : "Enable Prompt"}>
+          <Checkbox
+            checked={isDisablePrompt}
+            className="prompt-card-action-button"
+            onChange={handleDisablePrompt}
+          />
+        </Tooltip>
         <Divider type="vertical" className="header-delete-divider" />
         <ConfirmModal
           handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
