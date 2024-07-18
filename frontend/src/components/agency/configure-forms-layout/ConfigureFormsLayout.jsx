@@ -45,6 +45,7 @@ function ConfigureFormsLayout({
                 connDetails={connDetails}
                 connType={connType}
                 selectedSourceName={selectedItemName}
+                formDataConfig={formDataConfig}
               />
             )}
           </div>
