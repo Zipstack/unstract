@@ -52,11 +52,11 @@ class PromptStudioHelper:
             and new sequence numbers.
         """
 
-        PromptModel = PromptStudioHelper.get_prompt_model(is_sps)
-        if not PromptModel:
+        prompt_model = PromptStudioHelper.get_prompt_model(is_sps)
+        if not prompt_model:
             return []
 
-        prompt_instance = PromptModel.objects.get(pk=prompt_id)
+        prompt_instance = prompt_model.objects.get(pk=prompt_id)
         tool_id = prompt_instance.tool_id
 
         # Determine the direction of sequence adjustment based on start and
@@ -86,7 +86,7 @@ class PromptStudioHelper:
 
         # Update sequence numbers and get filtered prompt data
         filtered_prompts_data = PromptStudioHelper.update_sequence_numbers(
-            filters, increment, PromptModel
+            filters, increment, prompt_model
         )
 
         # Update the sequence number of the moved prompt
@@ -105,7 +105,7 @@ class PromptStudioHelper:
 
     @staticmethod
     def update_sequence_numbers(
-        filters: dict, increment: bool, PromptModel
+        filters: dict, increment: bool, prompt_model
     ) -> list[dict[str, int]]:
         """Update the sequence numbers for prompts based on the provided
         filters and increment flag.
@@ -114,14 +114,14 @@ class PromptStudioHelper:
             filters (dict): The filter criteria for selecting prompts.
             increment (bool): Whether to increment (True) or decrement (False)
             the sequence numbers.
-            PromptModel: The model class for the prompts
+            prompt_model: The model class for the prompts
             (either ToolStudioPrompt or SPSPrompt).
 
         Returns:
             list[dict[str, int]]: A list of updated prompt data with their IDs
             and new sequence numbers.
         """
-        filtered_prompts = PromptModel.objects.filter(**filters)
+        filtered_prompts = prompt_model.objects.filter(**filters)
 
         # List to hold updated prompt data
         filtered_prompts_data = []
@@ -139,6 +139,6 @@ class PromptStudioHelper:
             )
 
         # Bulk update the sequence numbers
-        PromptModel.objects.bulk_update(filtered_prompts, ["sequence_number"])
+        prompt_model.objects.bulk_update(filtered_prompts, ["sequence_number"])
 
         return filtered_prompts_data
