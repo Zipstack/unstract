@@ -15,12 +15,14 @@ import { useSessionStore } from "../../../store/session-store";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { PromptDnd } from "../prompt-card/PrompDnd";
-import { promptReorderApiSps } from "../../../plugins/simple-prompt-studio/helper";
 
 let promptPatchApiSps;
+let promptReorderApiSps;
 try {
   promptPatchApiSps =
     require("../../../plugins/simple-prompt-studio/helper").promptPatchApiSps;
+  promptReorderApiSps =
+    require("../../../plugins/simple-prompt-studio/helper").promptReorderApiSps;
 } catch {
   // The component will remain null of it is not available
 }
