@@ -41,6 +41,7 @@ function Header({
     singlePassExtractMode,
     isSinglePassExtractLoading,
     indexDocs,
+    isPublicSource,
   } = useCustomToolStore();
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(promptDetails?.active);
@@ -130,7 +131,8 @@ function Header({
             disabled={
               disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
               isSinglePassExtractLoading ||
-              indexDocs.includes(selectedDoc?.document_id)
+              indexDocs.includes(selectedDoc?.document_id) ||
+              isPublicSource
             }
           >
             <EditOutlined className="prompt-card-actions-head" />
@@ -151,7 +153,8 @@ function Header({
                     updateStatus?.status ===
                       promptStudioUpdateStatus?.isUpdating) ||
                   disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
-                  indexDocs?.includes(selectedDoc?.document_id)
+                  indexDocs?.includes(selectedDoc?.document_id) ||
+                  isPublicSource
                 }
               >
                 <PlayCircleOutlined className="prompt-card-actions-head" />
@@ -168,7 +171,8 @@ function Header({
                     updateStatus?.status ===
                       promptStudioUpdateStatus?.isUpdating) ||
                   disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
-                  indexDocs?.includes(selectedDoc?.document_id)
+                  indexDocs?.includes(selectedDoc?.document_id) ||
+                  isPublicSource
                 }
               >
                 <PlayCircleFilled className="prompt-card-actions-head" />
@@ -176,11 +180,13 @@ function Header({
             </Tooltip>
           </>
         )}
-        <Checkbox
-          checked={isDisablePrompt}
-          className="prompt-card-action-button"
-          onChange={handleDisablePrompt}
-        />
+        <Tooltip title={isDisablePrompt ? "Disable Prompt" : "Enable Prompt"}>
+          <Checkbox
+            checked={isDisablePrompt}
+            className="prompt-card-action-button"
+            onChange={handleDisablePrompt}
+          />
+        </Tooltip>
         <Divider type="vertical" className="header-delete-divider" />
         <ConfirmModal
           handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
@@ -194,7 +200,8 @@ function Header({
               disabled={
                 disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
                 isSinglePassExtractLoading ||
-                indexDocs?.includes(selectedDoc?.document_id)
+                indexDocs?.includes(selectedDoc?.document_id) ||
+                isPublicSource
               }
             >
               <DeleteOutlined className="prompt-card-actions-head" />
