@@ -95,10 +95,10 @@ repos:
         entry: pyupgrade --py39-plus --keep-runtime-typing
         types:
           - python
-  # - repo: https://github.com/gitleaks/gitleaks
-  #   rev: v8.18.4
-  #   hooks:
-  #     - id: gitleaks
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
   # - repo: https://github.com/hadolint/hadolint
   #   rev: v2.12.1-beta
   #   hooks:
