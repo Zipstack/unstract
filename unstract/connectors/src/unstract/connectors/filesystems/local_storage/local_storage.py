@@ -4,6 +4,7 @@ from typing import Any, Optional
 
 from fsspec.implementations.local import LocalFileSystem
 
+from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 logger = logging.getLogger(__name__)
@@ -60,9 +61,16 @@ class LocalStorageFS(UnstractFileSystem):
 
     def test_credentials(self, *args, **kwargs) -> bool:  # type:ignore
         """To test credentials for LocalStorage."""
+        is_dir = False
         try:
-            self.get_fsspec_fs().isdir("/")
+            is_dir = bool(self.get_fsspec_fs().isdir("/"))
         except Exception as e:
-            logger.error(f"Test creds failed: {e}")
-            return False
+            raise ConnectorError(
+                f"Error while connecting to local storage: {str(e)}"
+            ) from e
+        if not is_dir:
+            raise ConnectorError(
+                "Unable to connect to local storage, "
+                "please check the connection settings."
+            )
         return True
