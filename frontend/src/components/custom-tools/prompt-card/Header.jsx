@@ -16,7 +16,14 @@ import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EditableText } from "../editable-text/EditableText";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { ExpandCardBtn } from "./ExpandCardBtn";
-import { PromptRunBtnSps } from "../../../plugins/simple-prompt-studio/PromptRunBtnSps";
+
+let PromptRunBtnSps;
+try {
+  PromptRunBtnSps =
+    require("../../../plugins/simple-prompt-studio/PromptRunBtnSps").PromptRunBtnSps;
+} catch {
+  // The component will remain 'undefined' it is not available
+}
 
 function Header({
   promptDetails,
@@ -188,7 +195,7 @@ function Header({
             </Tooltip>
           </>
         )}
-        {isSimplePromptStudio && (
+        {isSimplePromptStudio && PromptRunBtnSps && (
           <PromptRunBtnSps
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
