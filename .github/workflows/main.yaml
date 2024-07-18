@@ -24,8 +24,10 @@ jobs:
 
           echo "checking changes for $file_path"
           echo "changed=false" >> $GITHUB_ENV
-          if git diff --name-only HEAD^ $file_path | grep -q $file_path; then
-            echo "changes in $file_path"
+          if git diff --quiet main -- $file_path; then
+            echo "No changes detected in $file_path against main branch."
+          else
+            echo "Changes detected in $file_path against main branch."
             echo "changed=true" >> $GITHUB_ENV
           fi
 
