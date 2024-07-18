@@ -68,7 +68,7 @@ class UnstractDB(UnstractConnector, ABC):
         try:
             self.get_engine()
         except Exception as e:
-            raise ConnectorError(str(e)) from e
+            raise ConnectorError(f"Error while connecting to DB: {str(e)}") from e
         return True
 
     def execute(self, query: str) -> Any:

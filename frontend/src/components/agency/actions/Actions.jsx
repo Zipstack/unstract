@@ -77,10 +77,10 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
     // Enable Deploy as ETL Pipeline only when
     // destination connection_type is DATABASE and Source & Destination are Configured
     setCanAddETLPipeline(
-      (destination?.connection_type === "DATABASE" ||
-        destination.connection_type === "MANUALREVIEW") &&
-        source?.connector_instance &&
-        destination.connector_instance
+      source?.connector_instance &&
+        ((destination?.connection_type === "DATABASE" &&
+          destination.connector_instance) ||
+          destination.connection_type === "MANUALREVIEW")
     );
   }, [source, destination]);
   useEffect(() => {
