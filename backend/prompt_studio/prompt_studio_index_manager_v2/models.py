@@ -113,8 +113,10 @@ def delete_from_vector_db(index_ids_history, vector_db_instance_id):
 @receiver(pre_delete, sender=IndexManager)
 def perform_vector_db_cleanup(sender, instance, **kwargs):
     """Signal to perform vector db cleanup."""
-    logger.info("Performing vector db cleanup")
-    logger.debug(f"Document tool id: {instance.document_manager.tool_id}")
+    logger.debug(
+        "Performing vector db cleanup for Document tool id: "
+        f"{instance.document_manager.tool_id}"
+    )
     try:
         # Get the index_ids_history to clean up from the vector db
         index_ids_history = json.loads(instance.index_ids_history)
