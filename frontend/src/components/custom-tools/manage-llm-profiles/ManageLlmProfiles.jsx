@@ -1,5 +1,5 @@
 import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
-import { Button, Radio, Table, Typography } from "antd";
+import { Button, Radio, Table, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -65,11 +65,18 @@ function ManageLlmProfiles() {
   const [editLlmProfileId, setEditLlmProfileId] = useState(null);
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
-  const { details, defaultLlmProfile, updateCustomTool, llmProfiles } =
-    useCustomToolStore();
+  const {
+    details,
+    defaultLlmProfile,
+    updateCustomTool,
+    llmProfiles,
+    isPublicSource,
+  } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const MAX_PROFILE_COUNT = 4;
+  const isMaxProfile = llmProfiles.length >= MAX_PROFILE_COUNT;
 
   const handleDefaultLlm = (profileId) => {
     try {
@@ -125,7 +132,11 @@ function ManageLlmProfiles() {
             handleConfirm={() => handleDelete(item?.profile_id)}
             content="The LLM profile will be permanently deleted."
           >
-            <Button size="small" className="display-flex-align-center">
+            <Button
+              size="small"
+              className="display-flex-align-center"
+              disabled={isPublicSource}
+            >
               <DeleteOutlined classID="manage-llm-pro-icon" />
             </Button>
           </ConfirmModal>
@@ -134,6 +145,7 @@ function ManageLlmProfiles() {
           <Button
             size="small"
             className="display-flex-align-center"
+            disabled={isPublicSource}
             onClick={() => handleEdit(item?.profile_id)}
           >
             <EditOutlined classID="manage-llm-pro-icon" />
@@ -143,6 +155,7 @@ function ManageLlmProfiles() {
           <Radio
             checked={defaultLlmProfile === item?.profile_id}
             onClick={() => handleDefaultLlm(item?.profile_id)}
+            disabled={isPublicSource}
           />
         ),
       };
@@ -228,9 +241,21 @@ function ManageLlmProfiles() {
         </div>
       </SpaceWrapper>
       <div className="display-flex-right">
-        <CustomButton type="primary" onClick={handleAddNewLlmProfileBtnClick}>
-          Add New LLM Profile
-        </CustomButton>
+        <Tooltip
+          title={
+            isMaxProfile
+              ? `Max profile count(${MAX_PROFILE_COUNT})`
+              : "Add New LLM Profile"
+          }
+        >
+          <CustomButton
+            type="primary"
+            onClick={handleAddNewLlmProfileBtnClick}
+            disabled={isMaxProfile}
+          >
+            Add New LLM Profile
+          </CustomButton>
+        </Tooltip>
       </div>
     </div>
   );

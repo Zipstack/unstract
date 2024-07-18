@@ -18,6 +18,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { JsonView } from "./JsonView";
+import { useParams } from "react-router-dom";
 
 let TableView;
 let promptOutputApiSps;
@@ -29,11 +30,22 @@ try {
 } catch {
   // The component will remain null of it is not available
 }
+let publicOutputsDocApi;
+let publicAdapterApi;
+try {
+  publicOutputsDocApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsDocApi;
+  publicAdapterApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicAdapterApi;
+} catch {
+  // The component will remain null of it is not available
+}
 function CombinedOutput({ docId, setFilledFields }) {
   const [combinedOutput, setCombinedOutput] = useState({});
   const [isOutputLoading, setIsOutputLoading] = useState(false);
   const [adapterData, setAdapterData] = useState([]);
   const [activeKey, setActiveKey] = useState("0");
+  const { id } = useParams();
   const {
     details,
     defaultLlmProfile,
@@ -41,6 +53,7 @@ function CombinedOutput({ docId, setFilledFields }) {
     isSinglePassExtractLoading,
     llmProfiles,
     isSimplePromptStudio,
+    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -63,6 +76,16 @@ function CombinedOutput({ docId, setFilledFields }) {
       .then((res) => {
         const data = res?.data || [];
         const prompts = details?.prompts;
+        if (activeKey === "0") {
+          const output = {};
+          for (const key in data) {
+            if (Object.hasOwn(data, key)) {
+              output[key] = displayPromptResult(data[key], false);
+            }
+          }
+          setCombinedOutput(output);
+          return;
+        }
         const output = {};
         prompts.forEach((item) => {
           if (item?.prompt_type === promptType.notes) {
@@ -70,10 +93,7 @@ function CombinedOutput({ docId, setFilledFields }) {
           }
           output[item?.prompt_key] = "";
 
-          let profileManager = selectedProfile || item?.profile_manager;
-          if (singlePassExtractMode) {
-            profileManager = defaultLlmProfile;
-          }
+          const profileManager = selectedProfile || item?.profile_manager;
           const outputDetails = data.find(
             (outputValue) =>
               outputValue?.prompt_id === item?.prompt_id &&
@@ -119,6 +139,13 @@ function CombinedOutput({ docId, setFilledFields }) {
     let url;
     if (isSimplePromptStudio) {
       url = promptOutputApiSps(details?.tool_id, null, docId);
+    } else if (isPublicSource) {
+      url = publicOutputsDocApi(
+        id,
+        docId,
+        selectedProfile || defaultLlmProfile,
+        singlePassExtractMode
+      );
     } else {
       url = `/api/v1/unstract/${
         sessionDetails?.orgId
@@ -127,6 +154,9 @@ function CombinedOutput({ docId, setFilledFields }) {
       }&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}&profile_manager=${
         selectedProfile || defaultLlmProfile
       }`;
+      if (activeKey === "0") {
+        url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/prompt-default-profile/?tool_id=${details?.tool_id}&document_manager=${docId}`;
+      }
     }
     const requestOptions = {
       method: "GET",
@@ -135,7 +165,6 @@ function CombinedOutput({ docId, setFilledFields }) {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
-
     return axiosPrivate(requestOptions)
       .then((res) => res)
       .catch((err) => {
@@ -144,14 +173,14 @@ function CombinedOutput({ docId, setFilledFields }) {
   };
 
   const getAdapterInfo = () => {
-    axiosPrivate
-      .get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/adapter/?adapter_type=LLM`
-      )
-      .then((res) => {
-        const adapterList = res?.data;
-        setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
-      });
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/adapter/?adapter_type=LLM`;
+    if (isPublicSource) {
+      url = publicAdapterApi(id, "LLM");
+    }
+    axiosPrivate.get(url).then((res) => {
+      const adapterList = res?.data;
+      setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
+    });
   };
 
   if (isOutputLoading) {
@@ -178,6 +207,8 @@ function CombinedOutput({ docId, setFilledFields }) {
       selectedProfile={selectedProfile}
       llmProfiles={llmProfiles}
       activeKey={activeKey}
+      adapterData={adapterData}
+      isSinglePass={singlePassExtractMode}
     />
   );
 }

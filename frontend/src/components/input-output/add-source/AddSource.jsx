@@ -21,6 +21,7 @@ function AddSource({
   handleUpdate,
   connDetails,
   connType,
+  formDataConfig,
 }) {
   const [spec, setSpec] = useState({});
   const [formData, setFormData] = useState({});
@@ -54,6 +55,7 @@ function AddSource({
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data;
+        setFormData(metadata || {});
         setSpec(data?.json_schema || {});
         if (data?.oauth) {
           setOAuthProvider(data?.python_social_auth_backend);
@@ -110,6 +112,7 @@ function AddSource({
       metadata={metadata}
       selectedSourceName={selectedSourceName}
       connType={connType}
+      formDataConfig={formDataConfig}
     />
   );
 }
@@ -125,6 +128,7 @@ AddSource.propTypes = {
   handleUpdate: PropTypes.func,
   connDetails: PropTypes.object,
   connType: PropTypes.string,
+  formDataConfig: PropTypes.object,
 };
 
 export { AddSource };
