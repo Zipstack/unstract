@@ -203,3 +203,8 @@
   border-color: #00000026 !important;
   color: #000 !important;
 }
+
+.prompt-not-ran {
+  color: #575859;
+  font-size: 13px;
+}

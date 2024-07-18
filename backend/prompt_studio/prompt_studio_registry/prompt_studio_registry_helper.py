@@ -268,6 +268,8 @@ class PromptStudioRegistryHelper:
         tool_settings[JsonSchemaKey.ENABLE_HIGHLIGHT] = tool.enable_highlight
 
         for prompt in prompts:
+            if prompt.prompt_type == JsonSchemaKey.NOTES or not prompt.active:
+                continue
 
             if not prompt.prompt:
                 invalidated_prompts.append(prompt.prompt_key)
@@ -283,8 +285,6 @@ class PromptStudioRegistryHelper:
                 invalidated_outputs.append(prompt.prompt_key)
                 continue
 
-            if prompt.prompt_type == JsonSchemaKey.NOTES:
-                continue
             if not prompt.profile_manager:
                 prompt.profile_manager = default_llm_profile
 
