@@ -81,9 +81,6 @@ jobs:
           echo "current root dir: "; pwd
           echo "files in root dir: "; ls -al
 
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-
           if [ ! -d ".venv" ]; then
             echo "Creating virtual environment inside root"
             pdm venv create -w virtualenv --with-pip
@@ -100,4 +97,4 @@ jobs:
           else
             git commit -m "Update pdm.lock for root directory"
           fi
-          # git push
+          git push
