@@ -84,7 +84,7 @@ except ImportError:
 # Subscription urls
 try:
 
-    import pluggable_apps.subscription.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.subscription.urls  # noqa  # pylint: disable=unused-import
 
     urlpatterns += [
         path("", include("pluggable_apps.subscription.urls")),
@@ -93,10 +93,32 @@ except ImportError:
     pass
 
 try:
-    import pluggable_apps.manual_review.urls  # noqa: F401
+    import pluggable_apps.manual_review.urls  # noqa # pylint: disable=unused-import
 
     urlpatterns += [
         path("manual_review/", include("pluggable_apps.manual_review.urls")),
+    ]
+except ImportError:
+    pass
+
+# Public share urls
+try:
+
+    import pluggable_apps.public_shares.share_manager.urls  # noqa # pylint: disable=unused-import
+
+    urlpatterns += [
+        path("", include("pluggable_apps.public_shares.share_manager.urls")),
+    ]
+except ImportError:
+    pass
+
+# Clone urls
+try:
+
+    import pluggable_apps.clone.urls  # noqa # pylint: disable=unused-import
+
+    urlpatterns += [
+        path("", include("pluggable_apps.clone.urls")),
     ]
 except ImportError:
     pass

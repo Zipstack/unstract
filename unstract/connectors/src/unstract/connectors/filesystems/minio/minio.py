@@ -4,8 +4,9 @@ from typing import Any
 
 from s3fs.core import S3FileSystem
 
-from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+
+from .exceptions import handle_s3fs_exception
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,6 @@ class MinioFS(UnstractFileSystem):
         secret = settings["secret"]
         endpoint_url = settings["endpoint_url"]
         self.bucket = settings["bucket"]
-        self.path = settings["path"]
         client_kwargs = {}
         if "region_name" in settings and settings["region_name"] != "":
             client_kwargs = {"region_name": settings["region_name"]}
@@ -38,11 +38,11 @@ class MinioFS(UnstractFileSystem):
 
     @staticmethod
     def get_name() -> str:
-        return "MinioFS/S3"
+        return "S3/Minio"
 
     @staticmethod
     def get_description() -> str:
-        return "All MinioFS compatible, including AWS S3"
+        return "Connect to AWS S3 and other compatible storage such as Minio."
 
     @staticmethod
     def get_icon() -> str:
@@ -77,7 +77,9 @@ class MinioFS(UnstractFileSystem):
     def test_credentials(self) -> bool:
         """To test credentials for Minio."""
         try:
-            self.get_fsspec_fs().isdir(f"{self.bucket}")
+            is_dir = bool(self.get_fsspec_fs().isdir(self.bucket))
+            if not is_dir:
+                raise RuntimeError(f"'{self.bucket}' is not a valid bucket.")
         except Exception as e:
-            raise ConnectorError(str(e))
+            raise handle_s3fs_exception(e) from e
         return True
