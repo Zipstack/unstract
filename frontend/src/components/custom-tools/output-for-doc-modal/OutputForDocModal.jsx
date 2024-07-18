@@ -31,25 +31,6 @@ try {
 } catch {
   // The component will remain null of it is not available
 }
-const columns = [
-  {
-    title: "Document",
-    dataIndex: "document",
-    key: "document",
-  },
-  {
-    title: "Token Count",
-    dataIndex: "token_count",
-    key: "token_count",
-    width: 200,
-  },
-  {
-    title: "Value",
-    dataIndex: "value",
-    key: "value",
-    width: 600,
-  },
-];
 
 const outputStatus = {
   yet_to_process: "YET_TO_PROCESS",
@@ -75,13 +56,14 @@ function OutputForDocModal({
     details,
     listOfDocs,
     selectedDoc,
-    defaultLlmProfile,
     disableLlmOrDocChange,
     singlePassExtractMode,
     isSinglePassExtractLoading,
     isPublicSource,
     llmProfiles,
+    defaultLlmProfile,
   } = useCustomToolStore();
+  const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
@@ -89,13 +71,12 @@ function OutputForDocModal({
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { tokenUsage } = useTokenUsageStore();
-  const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
 
   useEffect(() => {
     if (!open) {
       return;
     }
-    handleGetOutputForDocs();
+    handleGetOutputForDocs(selectedProfile || profileManagerId);
     getAdapterInfo();
   }, [open, singlePassExtractMode, isSinglePassExtractLoading]);
 
@@ -139,34 +120,6 @@ function OutputForDocModal({
       // If data is provided, use it; otherwise, create a copy of the previous state
       const updatedPromptOutput = data || [...prev];
 
-      // Get the keys of docOutputs
-      const keys = Object.keys(docOutputs);
-
-      keys.forEach((key) => {
-        // Find the index of the prompt output corresponding to the document manager key
-        const index = updatedPromptOutput.findIndex(
-          (promptOutput) => promptOutput?.document_manager === key
-        );
-
-        let promptOutputInstance = {};
-        // If the prompt output for the current key doesn't exist, skip it
-        if (index > -1) {
-          promptOutputInstance = updatedPromptOutput[index];
-          promptOutputInstance["output"] = docOutputs[key]?.output;
-        }
-
-        // Update output and isLoading properties based on docOutputs
-        promptOutputInstance["document_manager"] = key;
-        promptOutputInstance["isLoading"] = docOutputs[key]?.isLoading || false;
-
-        // Update the prompt output instance in the array
-        if (index > -1) {
-          updatedPromptOutput[index] = promptOutputInstance;
-        } else {
-          updatedPromptOutput.push(promptOutputInstance);
-        }
-      });
-
       return updatedPromptOutput;
     });
   };
@@ -181,10 +134,6 @@ function OutputForDocModal({
   };
 
   const handleGetOutputForDocs = (profile = profileManagerId) => {
-    if (singlePassExtractMode) {
-      profile = defaultLlmProfile;
-    }
-
     if (!profile) {
       setRows([]);
       return;
@@ -243,10 +192,14 @@ function OutputForDocModal({
       const result = {
         key: item?.document_id,
         document: item?.document_name,
-        token_count: (
+        token_count: !singlePassExtractMode && (
           <TokenUsage
             tokenUsageId={
-              promptId + "__" + item?.document_id + "__" + profileManagerId
+              promptId +
+              "__" +
+              item?.document_id +
+              "__" +
+              (selectedProfile || profileManagerId)
             }
           />
         ),
@@ -286,6 +239,26 @@ function OutputForDocModal({
     }
   };
 
+  const columns = [
+    {
+      title: "Document",
+      dataIndex: "document",
+      key: "document",
+    },
+    !singlePassExtractMode && {
+      title: "Token Count",
+      dataIndex: "token_count",
+      key: "token_count",
+      width: 200,
+    },
+    {
+      title: "Value",
+      dataIndex: "value",
+      key: "value",
+      width: 600,
+    },
+  ].filter(Boolean);
+
   return (
     <Modal
       className="pre-post-amble-modal"
@@ -313,7 +286,10 @@ function OutputForDocModal({
               ></TabPane>
             ))}
           </Tabs>{" "}
-          <ProfileInfoBar profileId={selectedProfile} profiles={llmProfiles} />
+          <ProfileInfoBar
+            profileId={selectedProfile || profileManagerId}
+            profiles={llmProfiles}
+          />
         </div>
         <div className="display-flex-right">
           <Button
