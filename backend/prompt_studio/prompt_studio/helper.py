@@ -62,15 +62,21 @@ class PromptStudioHelper:
         # Determine the direction of sequence adjustment based on start and
         # end sequence numbers
         if start_sequence_number < end_sequence_number:
-            logger.info("Decrementing sequence numbers.")
+            logger.info(
+                "Start sequence number is less than end sequence number. "
+                "Decrementing sequence numbers."
+            )
             filters = {
                 "sequence_number__gt": start_sequence_number,
                 "sequence_number__lte": end_sequence_number,
                 "tool_id": tool_id,
             }
             increment = False
-        else:
-            logger.info("Incrementing sequence numbers.")
+        elif start_sequence_number > end_sequence_number:
+            logger.info(
+                "Start sequence number is greater than end sequence number. "
+                "Incrementing sequence numbers."
+            )
             filters = {
                 "sequence_number__lt": start_sequence_number,
                 "sequence_number__gte": end_sequence_number,
