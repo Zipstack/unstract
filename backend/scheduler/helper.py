@@ -3,8 +3,6 @@ import uuid
 from typing import Any
 
 from django.db import connection
-from pipeline.models import Pipeline
-from pipeline.pipeline_processor import PipelineProcessor
 from rest_framework.serializers import ValidationError
 from scheduler.constants import SchedulerConstants as SC
 from scheduler.exceptions import JobDeletionError, JobSchedulingError
@@ -15,9 +13,21 @@ from scheduler.tasks import (
     disable_task,
     enable_task,
 )
-from workflow_manager.workflow.constants import WorkflowExecutionKey, WorkflowKey
-from workflow_manager.workflow.serializers import ExecuteWorkflowSerializer
 
+from backend.constants import FeatureFlag
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+    from pipeline_v2.models import Pipeline
+    from pipeline_v2.pipeline_processor import PipelineProcessor
+    from utils.user_context import UserContext
+    from workflow_manager.workflow_v2.constants import WorkflowExecutionKey, WorkflowKey
+    from workflow_manager.workflow_v2.serializers import ExecuteWorkflowSerializer
+else:
+    from pipeline.models import Pipeline
+    from pipeline.pipeline_processor import PipelineProcessor
+    from workflow_manager.workflow.constants import WorkflowExecutionKey, WorkflowKey
+    from workflow_manager.workflow.serializers import ExecuteWorkflowSerializer
 logger = logging.getLogger(__name__)
 
 
@@ -46,7 +56,10 @@ class SchedulerHelper:
         workflow_id = serializer.get_workflow_id(serializer.validated_data)
         # TODO: Remove unused argument in execute_pipeline_task
         execution_action = serializer.get_execution_action(serializer.validated_data)
-        org_schema = connection.tenant.schema_name
+        if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+            organization_id = UserContext.get_organization_identifier()
+        else:
+            organization_id = connection.tenant.schema_name
 
         create_periodic_task(
             cron_string=cron_string,
@@ -54,7 +67,7 @@ class SchedulerHelper:
             task_path="scheduler.tasks.execute_pipeline_task",
             task_args=[
                 str(workflow_id),
-                org_schema,
+                organization_id,
                 execution_action or "",
                 execution_id,
                 str(pipeline.pk),
