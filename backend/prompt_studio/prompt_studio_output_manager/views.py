@@ -62,6 +62,7 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         tool_id = request.GET.get("tool_id")
         document_manager_id = request.GET.get("document_manager")
         tool_validation_message = PromptOutputManagerErrorMessage.TOOL_VALIDATION
+        tool_not_found = PromptOutputManagerErrorMessage.TOOL_NOT_FOUND
         if not tool_id:
             raise APIException(detail=tool_validation_message, code=404)
 
@@ -69,7 +70,7 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
             # Fetch ToolStudioPrompt records based on tool_id
             tool_studio_prompts = ToolStudioPrompt.objects.filter(tool_id=tool_id)
         except ObjectDoesNotExist:
-            raise APIException(detail=tool_validation_message, code=404)
+            raise APIException(detail=tool_not_found, code=404)
 
         # Initialize the result dictionary
         result: dict[str, Any] = {}

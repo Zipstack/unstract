@@ -9,3 +9,4 @@ class PromptStudioOutputManagerKeys:
 
 class PromptOutputManagerErrorMessage:
     TOOL_VALIDATION = "tool_id parameter is required"
+    TOOL_NOT_FOUND = "Tool not found"
