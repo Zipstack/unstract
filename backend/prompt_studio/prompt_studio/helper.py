@@ -7,8 +7,37 @@ logger = logging.getLogger(__name__)
 
 class PromptStudioHelper:
     @staticmethod
+    def get_prompt_model(is_sps: bool):
+        """Dynamically import and return the appropriate prompt model.
+
+        Args:
+            is_sps (bool): Flag indicating whether to use the SPSPrompt model.
+
+        Returns:
+            model (class): The appropriate prompt model class
+            (ToolStudioPrompt or SPSPrompt).
+
+        Raises:
+            ImportError: If the SPSPrompt model could not be imported.
+        """
+        if is_sps:
+            try:
+                from pluggable_apps.simple_prompt_studio.sps_prompt.models import (
+                    SPSPrompt,
+                )
+
+                return SPSPrompt
+            except ImportError as e:
+                logger.error("SPSPrompt model could not be imported.")
+                raise ImportError("SPSPrompt model could not be imported.") from e
+        return ToolStudioPrompt
+
+    @staticmethod
     def reorder_prompts_helper(
-        prompt_id: str, start_sequence_number: int, end_sequence_number: int
+        prompt_id: str,
+        start_sequence_number: int,
+        end_sequence_number: int,
+        is_sps: bool = False,
     ) -> list[dict[str, int]]:
         """Helper method to reorder prompts based on sequence numbers.
 
@@ -16,34 +45,32 @@ class PromptStudioHelper:
             prompt_id (str): The ID of the prompt to be reordered.
             start_sequence_number (int): The initial sequence number of the prompt.
             end_sequence_number (int): The new sequence number of the prompt.
+            is_sps (bool): Flag to determine the prompt model to use.
 
         Returns:
             list[dict[str, int]]: A list of updated prompt data with their IDs
             and new sequence numbers.
         """
-        prompt_instance: ToolStudioPrompt = ToolStudioPrompt.objects.get(pk=prompt_id)
-        filtered_prompts_data = []
+
+        PromptModel = PromptStudioHelper.get_prompt_model(is_sps)
+        if not PromptModel:
+            return []
+
+        prompt_instance = PromptModel.objects.get(pk=prompt_id)
         tool_id = prompt_instance.tool_id
 
-        # Determine the direction of sequence adjustment based on start
-        # and end sequence numbers
+        # Determine the direction of sequence adjustment based on start and
+        # end sequence numbers
         if start_sequence_number < end_sequence_number:
-            logger.info(
-                "Start sequence number is less than end sequence number. "
-                "Decrementing sequence numbers."
-            )
+            logger.info("Decrementing sequence numbers.")
             filters = {
                 "sequence_number__gt": start_sequence_number,
                 "sequence_number__lte": end_sequence_number,
                 "tool_id": tool_id,
             }
             increment = False
-
-        elif start_sequence_number > end_sequence_number:
-            logger.info(
-                "Start sequence number is greater than end sequence number. "
-                "Incrementing sequence numbers."
-            )
+        else:
+            logger.info("Incrementing sequence numbers.")
             filters = {
                 "sequence_number__lt": start_sequence_number,
                 "sequence_number__gte": end_sequence_number,
@@ -51,9 +78,9 @@ class PromptStudioHelper:
             }
             increment = True
 
-        # Call helper method to update sequence numbers and get filtered prompt data
+        # Update sequence numbers and get filtered prompt data
         filtered_prompts_data = PromptStudioHelper.update_sequence_numbers(
-            filters, increment
+            filters, increment, PromptModel
         )
 
         # Update the sequence number of the moved prompt
@@ -71,7 +98,9 @@ class PromptStudioHelper:
         return filtered_prompts_data
 
     @staticmethod
-    def update_sequence_numbers(filters: dict, increment: bool) -> list[dict[str, int]]:
+    def update_sequence_numbers(
+        filters: dict, increment: bool, PromptModel
+    ) -> list[dict[str, int]]:
         """Update the sequence numbers for prompts based on the provided
         filters and increment flag.
 
@@ -79,23 +108,21 @@ class PromptStudioHelper:
             filters (dict): The filter criteria for selecting prompts.
             increment (bool): Whether to increment (True) or decrement (False)
             the sequence numbers.
+            PromptModel: The model class for the prompts
+            (either ToolStudioPrompt or SPSPrompt).
 
         Returns:
             list[dict[str, int]]: A list of updated prompt data with their IDs
             and new sequence numbers.
         """
-        # Filter prompts based on the provided filters
-        filtered_prompts = ToolStudioPrompt.objects.filter(**filters)
+        filtered_prompts = PromptModel.objects.filter(**filters)
 
         # List to hold updated prompt data
         filtered_prompts_data = []
 
         # Prepare updates and collect data
         for prompt in filtered_prompts:
-            if increment:
-                prompt.sequence_number += 1
-            else:
-                prompt.sequence_number -= 1
+            prompt.sequence_number += 1 if increment else -1
 
             # Append prompt data to the list
             filtered_prompts_data.append(
@@ -106,6 +133,6 @@ class PromptStudioHelper:
             )
 
         # Bulk update the sequence numbers
-        ToolStudioPrompt.objects.bulk_update(filtered_prompts, ["sequence_number"])
+        PromptModel.objects.bulk_update(filtered_prompts, ["sequence_number"])
 
         return filtered_prompts_data

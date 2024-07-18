@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class PromptStudioController:
-    def reorder_prompts(self, request: Request) -> Response:
+    def reorder_prompts(self, request: Request, is_sps: bool = False) -> Response:
         """Reorder the sequence of prompts based on the start and end sequence
         numbers.
 
@@ -46,6 +46,7 @@ class PromptStudioController:
                 prompt_id=prompt_id,
                 start_sequence_number=start_sequence_number,
                 end_sequence_number=end_sequence_number,
+                is_sps=is_sps,
             )
 
             logger.info("Re-ordering completed successfully.")
