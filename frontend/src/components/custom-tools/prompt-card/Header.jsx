@@ -16,6 +16,7 @@ import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EditableText } from "../editable-text/EditableText";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { ExpandCardBtn } from "./ExpandCardBtn";
+import { PromptRunBtnSps } from "../../../plugins/simple-prompt-studio/PromptRunBtnSps";
 
 function Header({
   promptDetails,
@@ -34,6 +35,9 @@ function Header({
   expandCard,
   setExpandCard,
   enabledProfiles,
+  spsLoading,
+  handleSpsLoading,
+  handleGetOutput,
 }) {
   const {
     selectedDoc,
@@ -131,13 +135,14 @@ function Header({
             disabled={
               disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
               isSinglePassExtractLoading ||
+              spsLoading[selectedDoc?.document_id] ||
               indexDocs.includes(selectedDoc?.document_id)
             }
           >
             <EditOutlined className="prompt-card-actions-head" />
           </Button>
         </Tooltip>
-        {!singlePassExtractMode && (
+        {!singlePassExtractMode && !isSimplePromptStudio && (
           <>
             <Tooltip title="Run">
               <Button
@@ -152,32 +157,39 @@ function Header({
                     updateStatus?.status ===
                       promptStudioUpdateStatus?.isUpdating) ||
                   disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
-                  indexDocs?.includes(selectedDoc?.document_id)
+                  indexDocs?.includes(selectedDoc?.document_id) ||
+                  spsLoading[selectedDoc?.document_id]
                 }
               >
                 <PlayCircleOutlined className="prompt-card-actions-head" />
               </Button>
             </Tooltip>
-            {!isSimplePromptStudio && (
-              <Tooltip title="Run All">
-                <Button
-                  size="small"
-                  type="text"
-                  className="prompt-card-action-button"
-                  onClick={handleRunBtnClick}
-                  disabled={
-                    (updateStatus?.promptId === promptDetails?.prompt_id &&
-                      updateStatus?.status ===
-                        promptStudioUpdateStatus?.isUpdating) ||
-                    disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
-                    indexDocs?.includes(selectedDoc?.document_id)
-                  }
-                >
-                  <PlayCircleFilled className="prompt-card-actions-head" />
-                </Button>
-              </Tooltip>
-            )}
+            <Tooltip title="Run All">
+              <Button
+                size="small"
+                type="text"
+                className="prompt-card-action-button"
+                onClick={handleRunBtnClick}
+                disabled={
+                  (updateStatus?.promptId === promptDetails?.prompt_id &&
+                    updateStatus?.status ===
+                      promptStudioUpdateStatus?.isUpdating) ||
+                  disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
+                  indexDocs?.includes(selectedDoc?.document_id)
+                }
+              >
+                <PlayCircleFilled className="prompt-card-actions-head" />
+              </Button>
+            </Tooltip>
           </>
+        )}
+        {isSimplePromptStudio && (
+          <PromptRunBtnSps
+            spsLoading={spsLoading}
+            handleSpsLoading={handleSpsLoading}
+            handleGetOutput={handleGetOutput}
+            promptDetails={promptDetails}
+          />
         )}
         {!isSimplePromptStudio && (
           <Checkbox
@@ -199,6 +211,7 @@ function Header({
               disabled={
                 disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
                 isSinglePassExtractLoading ||
+                spsLoading[selectedDoc?.document_id] ||
                 indexDocs?.includes(selectedDoc?.document_id)
               }
             >
@@ -228,6 +241,9 @@ Header.propTypes = {
   expandCard: PropTypes.bool.isRequired,
   setExpandCard: PropTypes.func.isRequired,
   enabledProfiles: PropTypes.array.isRequired,
+  spsLoading: PropTypes.object,
+  handleSpsLoading: PropTypes.func.isRequired,
+  handleGetOutput: PropTypes.func.isRequired,
 };
 
 export { Header };

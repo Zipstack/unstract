@@ -15,6 +15,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { PromptDnd } from "../prompt-card/PrompDnd";
+import { promptReorderApiSps } from "../../../plugins/simple-prompt-studio/helper";
 
 let promptPatchApiSps;
 try {
@@ -246,9 +247,14 @@ function DocumentParser({
       prompt_id: details.prompts[startIndex]?.prompt_id,
     };
 
+    let url = promptUrl("reorder");
+    if (isSimplePromptStudio) {
+      url = promptReorderApiSps;
+    }
+
     const requestOptions = {
       method: "POST",
-      url: promptUrl("reorder"),
+      url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
