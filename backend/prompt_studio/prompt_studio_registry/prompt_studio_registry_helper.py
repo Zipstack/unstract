@@ -165,7 +165,6 @@ class PromptStudioRegistryHelper:
             obj, created = PromptStudioRegistry.objects.update_or_create(
                 custom_tool=custom_tool,
                 created_by=custom_tool.created_by,
-                modified_by=custom_tool.modified_by,
                 defaults={
                     "name": custom_tool.tool_name,
                     "tool_property": properties.to_dict(),
@@ -179,7 +178,7 @@ class PromptStudioRegistryHelper:
                 logger.info(f"PSR {obj.prompt_registry_id} was created")
             else:
                 logger.info(f"PSR {obj.prompt_registry_id} was updated")
-
+            obj.modified_by = custom_tool.modified_by
             obj.shared_to_org = shared_with_org
             if not shared_with_org:
                 obj.shared_users.clear()
