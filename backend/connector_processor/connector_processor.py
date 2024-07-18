@@ -8,7 +8,6 @@ from connector_auth.constants import ConnectorAuthKey
 from connector_auth.pipeline.common import ConnectorAuthHelper
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import (
-    InternalServiceError,
     InValidConnectorId,
     InValidConnectorMode,
     OAuthTimeOut,
@@ -45,26 +44,27 @@ class ConnectorProcessor:
         updated_connectors = fetch_connectors_by_key_value(
             ConnectorKeys.ID, connector_id
         )
-        if len(updated_connectors) != 0:
-            connector = updated_connectors[0]
-            schema_details[ConnectorKeys.OAUTH] = connector.get(ConnectorKeys.OAUTH)
-            schema_details[ConnectorKeys.SOCIAL_AUTH_URL] = connector.get(
-                ConnectorKeys.SOCIAL_AUTH_URL
-            )
-            try:
-                schema_details[ConnectorKeys.JSON_SCHEMA] = json.loads(
-                    connector.get(ConnectorKeys.JSON_SCHEMA)
-                )
-            except Exception as exc:
-                logger.error(f"Error occurred while parsing JSON Schema: {exc}")
-                raise InternalServiceError()
-        else:
+        if len(updated_connectors) == 0:
             logger.error(
                 f"Invalid connector Id : {connector_id} "
                 f"while fetching "
                 f"JSON Schema"
             )
             raise InValidConnectorId()
+
+        connector = updated_connectors[0]
+        schema_details[ConnectorKeys.OAUTH] = connector.get(ConnectorKeys.OAUTH)
+        schema_details[ConnectorKeys.SOCIAL_AUTH_URL] = connector.get(
+            ConnectorKeys.SOCIAL_AUTH_URL
+        )
+        try:
+            schema_details[ConnectorKeys.JSON_SCHEMA] = json.loads(
+                connector.get(ConnectorKeys.JSON_SCHEMA)
+            )
+        except Exception as exc:
+            logger.error(f"Error occurred decoding JSON for {connector_id}: {exc}")
+            raise exc
+
         return schema_details
 
     @staticmethod
