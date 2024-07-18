@@ -58,8 +58,6 @@ jobs:
           if [ "${{ matrix.directory }}" != "root" ]; then
             cd ${{ matrix.directory }}
           fi
-          echo "current dir before: "; pwd
-          echo "files in dir before: "; ls -al
 
           if [ ! -d ".venv" ]; then
             echo 'Creating virtual environment inside "${{ matrix.directory }}".'
@@ -69,9 +67,6 @@ jobs:
           fi
           source .venv/bin/activate
           pdm lock
-
-          echo "current dir after: "; pwd
-          echo "files in dir after: "; ls -al
 
           git add pdm.lock
 
