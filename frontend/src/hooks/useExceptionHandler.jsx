@@ -26,6 +26,13 @@ const useExceptionHandler = () => {
           // Handle validation errors
           if (setBackendErrors) {
             setBackendErrors(err?.response?.data);
+          } else {
+            return {
+              title: title,
+              type: "error",
+              content: errors?.[0]?.detail ? errors[0].detail : errMessage,
+              duration: duration,
+            };
           }
           break;
         case "subscription_error":
