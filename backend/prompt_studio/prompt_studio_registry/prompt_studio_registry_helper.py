@@ -119,25 +119,14 @@ class PromptStudioRegistryHelper:
                 f"ID {prompt_registry_id}: {e} "
             )
             return None
-        # The below properties are introduced after 0.20.0
-        # So defaulting to 0.20.0 if the properties are not found
-        image_url = prompt_registry_tool.tool_metadata.get(
-            JsonSchemaKey.IMAGE_URL, "docker:unstract/tool-structure:0.0.20"
-        )
-        image_name = prompt_registry_tool.tool_metadata.get(
-            JsonSchemaKey.IMAGE_NAME, "unstract/tool-structure"
-        )
-        image_tag = prompt_registry_tool.tool_metadata.get(
-            JsonSchemaKey.IMAGE_TAG, "0.0.20"
-        )
         return Tool(
             tool_uid=prompt_registry_tool.prompt_registry_id,
             properties=Properties.from_dict(prompt_registry_tool.tool_property),
             spec=Spec.from_dict(prompt_registry_tool.tool_spec),
             icon=prompt_registry_tool.icon,
-            image_url=image_url,
-            image_name=image_name,
-            image_tag=image_tag,
+            image_url=settings.STRUCTURE_TOOL_IMAGE_URL,
+            image_name=settings.STRUCTURE_TOOL_IMAGE_NAME,
+            image_tag=settings.STRUCTURE_TOOL_IMAGE_TAG,
         )
 
     @staticmethod
@@ -176,7 +165,6 @@ class PromptStudioRegistryHelper:
             obj, created = PromptStudioRegistry.objects.update_or_create(
                 custom_tool=custom_tool,
                 created_by=custom_tool.created_by,
-                modified_by=custom_tool.modified_by,
                 defaults={
                     "name": custom_tool.tool_name,
                     "tool_property": properties.to_dict(),
@@ -190,7 +178,7 @@ class PromptStudioRegistryHelper:
                 logger.info(f"PSR {obj.prompt_registry_id} was created")
             else:
                 logger.info(f"PSR {obj.prompt_registry_id} was updated")
-
+            obj.modified_by = custom_tool.modified_by
             obj.shared_to_org = shared_with_org
             if not shared_with_org:
                 obj.shared_users.clear()
@@ -242,9 +230,6 @@ class PromptStudioRegistryHelper:
         export_metadata[JsonSchemaKey.DESCRIPTION] = tool.description
         export_metadata[JsonSchemaKey.AUTHOR] = tool.author
         export_metadata[JsonSchemaKey.TOOL_ID] = str(tool.tool_id)
-        export_metadata[JsonSchemaKey.IMAGE_URL] = settings.STRUCTURE_TOOL_IMAGE_URL
-        export_metadata[JsonSchemaKey.IMAGE_NAME] = settings.STRUCTURE_TOOL_IMAGE_NAME
-        export_metadata[JsonSchemaKey.IMAGE_TAG] = settings.STRUCTURE_TOOL_IMAGE_TAG
 
         default_llm_profile = ProfileManager.get_default_llm_profile(tool)
         challenge_llm_instance: Optional[AdapterInstance] = tool.challenge_llm

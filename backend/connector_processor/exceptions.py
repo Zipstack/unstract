@@ -31,7 +31,7 @@ class JSONParseException(APIException):
 
 class OAuthTimeOut(APIException):
     status_code = 408
-    default_detail = "Timed Out. Please re authenticate."
+    default_detail = "Timed out. Please re-authenticate."
 
 
 class InternalServiceError(APIException):
@@ -44,7 +44,7 @@ class TestConnectorException(APIException):
     default_detail = "Error while testing connector."
 
 
-class TestConnectorInputException(UnstractBaseException):
+class TestConnectorInputError(UnstractBaseException):
     def __init__(self, core_err: ConnectorError) -> None:
         super().__init__(detail=core_err.message, core_err=core_err)
         self.default_detail = core_err.message
