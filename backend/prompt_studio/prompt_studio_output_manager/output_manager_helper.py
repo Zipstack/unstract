@@ -101,7 +101,7 @@ class OutputManagerHelper:
         document_manager = DocumentManager.objects.get(pk=document_id)
 
         for prompt in prompts:
-            if prompt.prompt_type == PSOMKeys.NOTES or not prompt.active:
+            if prompt.prompt_type == PSOMKeys.NOTES:
                 continue
 
             if not is_single_pass_extract:
