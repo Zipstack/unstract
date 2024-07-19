@@ -325,6 +325,9 @@ class PromptStudioRegistryHelper:
             llm = ""
             embedding_model = ""
 
+        if not outputs:
+            raise EmptyToolExportError()
+
         if invalidated_prompts:
             raise InValidCustomToolError(
                 f"Cannot export tool. Prompt(s): {', '.join(invalidated_prompts)} "

@@ -481,13 +481,7 @@ function PromptCard({
         .then((res) => {
           const data = res?.data?.output;
           const outputValue = data[promptDetails?.prompt_key];
-          if (outputValue || outputValue === 0) {
-            updateDocCoverage(
-              promptDetails?.prompt_id,
-              profileManagerId,
-              docId
-            );
-          }
+          updateDocCoverage(promptDetails?.prompt_id, profileManagerId, docId);
           handleDocOutputs(
             docId,
             promptDetails?.prompt_id,
