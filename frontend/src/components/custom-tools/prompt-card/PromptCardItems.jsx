@@ -4,6 +4,7 @@ import {
   CheckCircleOutlined,
   DatabaseOutlined,
   ExclamationCircleFilled,
+  InfoCircleFilled,
   InfoCircleOutlined,
   PlayCircleFilled,
   PlayCircleOutlined,
@@ -81,12 +82,14 @@ function PromptCardItems({
     isSimplePromptStudio,
     isPublicSource,
     adapters,
+    defaultLlmProfile,
   } = useCustomToolStore();
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [expandCard, setExpandCard] = useState(true);
   const [llmProfileDetails, setLlmProfileDetails] = useState([]);
   const [openIndexProfile, setOpenIndexProfile] = useState(null);
+  const [coverageCount, setCoverageCount] = useState(0);
   const [enabledProfiles, setEnabledProfiles] = useState(
     llmProfiles.map((profile) => profile.profile_id)
   );
@@ -231,6 +234,14 @@ function PromptCardItems({
     }
     return <></>;
   };
+  const getCoverageData = () => {
+    const profileId = singlePassExtractMode
+      ? defaultLlmProfile
+      : selectedLlmProfileId;
+    const keySuffix = `${promptDetails?.prompt_id}_${profileId}`;
+    const key = singlePassExtractMode ? `singlepass_${keySuffix}` : keySuffix;
+    return coverage[key]?.docs_covered?.length || 0;
+  };
 
   useEffect(() => {
     setExpandCard(true);
@@ -240,7 +251,8 @@ function PromptCardItems({
     if (singlePassExtractMode) {
       setExpandedProfiles([]);
     }
-  }, [singlePassExtractMode]);
+    setCoverageCount(getCoverageData());
+  }, [singlePassExtractMode, coverage]);
 
   useEffect(() => {
     getAdapterInfo(adapters);
@@ -326,11 +338,8 @@ function PromptCardItems({
                             <SearchOutlined className="font-size-12" />
                           )}
                           <Typography.Link className="font-size-12">
-                            Coverage:{" "}
-                            {coverage[
-                              `${promptDetails?.prompt_id}_${selectedLlmProfileId}`
-                            ]?.docs_covered?.length || 0}{" "}
-                            of {listOfDocs?.length || 0} docs
+                            Coverage: {coverageCount} of{" "}
+                            {listOfDocs?.length || 0} docs
                           </Typography.Link>
                         </Space>
                       </Button>
@@ -506,11 +515,24 @@ function PromptCardItems({
                                       : "collapsed-output"
                                   }
                                 >
-                                  {displayPromptResult(
-                                    result.find(
-                                      (r) => r?.profileManager === profileId
-                                    )?.output,
-                                    true
+                                  {!result.find(
+                                    (r) => r?.profileManager === profileId
+                                  )?.output ? (
+                                    <Typography.Text className="prompt-not-ran">
+                                      <span>
+                                        <InfoCircleFilled
+                                          style={{ color: "#F0AD4E" }}
+                                        />
+                                      </span>{" "}
+                                      Yet to run
+                                    </Typography.Text>
+                                  ) : (
+                                    displayPromptResult(
+                                      result.find(
+                                        (r) => r?.profileManager === profileId
+                                      )?.output,
+                                      true
+                                    )
                                   )}
                                 </div>
                               </Typography.Paragraph>

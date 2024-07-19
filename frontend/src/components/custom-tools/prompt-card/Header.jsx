@@ -143,7 +143,6 @@ function Header({
             disabled={
               disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
               isSinglePassExtractLoading ||
-              indexDocs.includes(selectedDoc?.document_id) ||
               spsLoading[selectedDoc?.document_id] ||
               indexDocs.includes(selectedDoc?.document_id) ||
               isPublicSource
@@ -204,12 +203,13 @@ function Header({
           />
         )}
         {!isSimplePromptStudio && (
-          <Checkbox
-            checked={isDisablePrompt}
-            className="prompt-card-action-button"
-            onChange={handleDisablePrompt}
-            disabled={isPublicSource}
-          />
+          <Tooltip title={isDisablePrompt ? "Disable Prompt" : "Enable Prompt"}>
+            <Checkbox
+              checked={isDisablePrompt}
+              className="prompt-card-action-button"
+              onChange={handleDisablePrompt}
+            />
+          </Tooltip>
         )}
         <Divider type="vertical" className="header-delete-divider" />
         <ConfirmModal
