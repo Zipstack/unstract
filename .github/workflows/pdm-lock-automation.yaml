@@ -65,7 +65,6 @@ jobs:
             echo "Virtual environment already exists."
           fi
           source .venv/bin/activate
-          rm -r pdm.lock
           pdm lock -G :all
           git add pdm.lock
 
@@ -85,5 +84,11 @@ jobs:
           source .venv/bin/activate
           pip install pre-commit~=3.6.2
           pre-commit run pdm-lock-check
-          git commit -m "Update pdm.lock for ${{ matrix.directory }}"
-          git push origin ${{ github.ref_name }}
+
+          if git diff --quiet; then
+            echo "No changes in compared to the SELF branch."
+          else
+            echo "Changes detected in compared to the SELF branch."
+            git commit -m "Update pdm.lock for ${{ matrix.directory }}"
+            git push origin ${{ github.ref_name }}
+          fi
