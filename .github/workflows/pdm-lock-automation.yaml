@@ -86,12 +86,9 @@ jobs:
           pre-commit run pdm-lock-check
           echo "checking changes for $file_path for self branch before commit"
           echo "changed=false" >> $GITHUB_OUTPUT
-          git fetch origin
-          if git diff --quiet -- "$file_path"; then
-            echo "No changes detected in $file_path against self branch."
-          else
-            echo "Changes detected in $file_path against self branch."
-            echo "changed=true" >> $GITHUB_OUTPUT
+          git diff --exit-code
+          if [ $? -ne 0 ]; then
+              echo "changed=true" >> $GITHUB_OUTPUT
           fi
 
       - name: Commit and push pdm.lock
