@@ -72,6 +72,8 @@ jobs:
       - name: Commit and push pdm.lock
         if: steps.check.outputs.changed == 'true'
         id: check_commit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ ! -d ".venv" ]; then
             echo "Creating virtual environment inside root"
