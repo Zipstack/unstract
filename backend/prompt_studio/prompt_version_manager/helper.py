@@ -53,7 +53,7 @@ class PromptVersionHelper:
             return PromptVersionManager.calculate_next_version(prompt_instance)
 
     @staticmethod
-    def load_prompt_version(prompt_id, prompt_version) -> None:
+    def load_prompt_version(prompt_id, prompt_version) -> Response:
         try:
             with transaction.atomic():
                 prompt_instance = ToolStudioPrompt.objects.get(pk=prompt_id)
@@ -62,11 +62,12 @@ class PromptVersionHelper:
                 )
                 # Check if the specified version is already loaded
                 if prompt_version == prompt_instance.loaded_version:
+                    message = (
+                        f"Already loaded with version '{prompt_version}' "
+                        f"for prompt_id '{prompt_id}'"
+                    )
                     return Response(
-                        {
-                            "message": "Already loaded with "
-                            f"prompt_version '{prompt_version}'"
-                        },
+                        {"message": message},
                         status=status.HTTP_200_OK,
                     )
                 # Load specified version
@@ -78,30 +79,35 @@ class PromptVersionHelper:
                 prompt_instance.enforce_type = prompt_version_manager.enforce_type
                 prompt_instance.loaded_version = prompt_version
                 prompt_instance.save()
-                logger.info(
-                    "Loaded version %s for prompt_id %s", prompt_version, prompt_id
+                message = (
+                    f"Loaded version '{prompt_version}' for prompt_id '{prompt_id}'"
                 )
+                logger.info(message)
+                # Local import to avoid circular import
+                from prompt_studio.prompt_studio.serializers import (
+                    ToolStudioPromptSerializer,
+                )
+
                 return Response(
                     {
-                        "message": "Prompt instance updated with "
-                        "prompt from PromptVersionManager"
+                        "message": message,
+                        "loaded_data": ToolStudioPromptSerializer(prompt_instance).data,
                     },
                     status=status.HTTP_200_OK,
                 )
 
         except ToolStudioPrompt.DoesNotExist:
-            logger.error("Prompt with id %s does not exist.", prompt_id)
-            raise ValueError(f"Prompt with id {prompt_id} does not exist.")
+            message = f"Prompt id '{prompt_id}' does not exist"
+            logger.error(message)
+            return Response({"error": message}, status=status.HTTP_404_NOT_FOUND)
 
         except PromptVersionManager.DoesNotExist:
-            logger.error(
-                "Prompt version does not exist for prompt id %s, and version %s.",
-                prompt_id,
-                prompt_version,
+            message = (
+                f"Prompt version '{prompt_version}' does "
+                f"not exist for prompt id '{prompt_id}'"
             )
-            raise ValueError(
-                "Prompt version does not exist " "for the prompt and version."
-            )
+            logger.error(message)
+            return Response({"error": message}, status=status.HTTP_404_NOT_FOUND)
 
         except Exception as e:
             logger.error("Error occurred: %s", e)

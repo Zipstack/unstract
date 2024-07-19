@@ -74,10 +74,10 @@ class CustomToolSerializer(AuditSerializer):
             try:
                 # Fetch all TagManager objects associated with the instance
                 tag_managers = TagManager.objects.filter(tool=instance)
-                tag_manager = tag_managers.get(tag_manager_id=tag_id)
+                tag_manager = tag_managers.get(id=tag_id)
                 current_tag = tag_manager.tag
                 available_tags = [
-                    {"id": tag_manager.tag_manager_id, "tag": tag_manager.tag}
+                    {"id": tag_manager.id, "tag": tag_manager.tag}
                     for tag_manager in tag_managers
                 ]
             except tag_manager.DoesNotExist:

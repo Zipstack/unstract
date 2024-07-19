@@ -1,10 +1,9 @@
 import logging
 
 from prompt_studio.prompt_profile_manager.serializers import ProfileManagerSerializer
+from prompt_studio.prompt_version_manager.models import PromptVersionManager
 
 from backend.serializers import AuditSerializer
-
-from .models import PromptVersionManager
 
 logger = logging.getLogger(__name__)
 
@@ -16,4 +15,11 @@ class PromptVersionManagerSerializer(AuditSerializer):
 
     class Meta:
         model = PromptVersionManager
-        fields = ("version", "prompt_key", "prompt", "enforce_type", "profile_manager")
+        fields = (
+            "prompt_version_manager_id",
+            "version",
+            "prompt_key",
+            "prompt",
+            "enforce_type",
+            "profile_manager",
+        )

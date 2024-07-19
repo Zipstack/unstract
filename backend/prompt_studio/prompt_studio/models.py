@@ -92,7 +92,7 @@ class ToolStudioPrompt(BaseModel):
         max_length=10, default="v1", db_comment="Current loaded version of prompt"
     )
     checked_in = models.BooleanField(
-        default=True, db_comment="Current checked-in prompt"
+        default=True, db_comment="Currently checked-in prompt"
     )
     # Eval settings for the prompt
     # NOTE:

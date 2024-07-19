@@ -17,13 +17,6 @@ class PromptVersionManager(BaseModel):
         BOOLEAN = "boolean", "Response sent as boolean"
         JSON = "json", "Response sent as json"
 
-    class PromptType(models.TextChoices):
-        PROMPT = "PROMPT", "Response sent as Text"
-        NOTES = "NOTES", "Response sent as float"
-
-    class Mode(models.TextChoices):
-        DEFAULT = "Default", "Default choice for output"
-
     prompt_version_manager_id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -41,7 +34,6 @@ class PromptVersionManager(BaseModel):
         blank=False,
         db_comment="Field to store the type in which the response to be returned.",
         choices=EnforceType.choices,
-        default=EnforceType.TEXT,
     )
     prompt = models.TextField(
         blank=True, db_comment="Field to store the prompt", unique=False
@@ -53,7 +45,7 @@ class PromptVersionManager(BaseModel):
         null=True,
         blank=True,
     )
-    version = models.CharField(max_length=10)
+    version = models.CharField(max_length=10, db_comment="Version of prompt")
 
     def save(self, *args, **kwargs):
         self.version = self.calculate_next_version(self.prompt_id)
