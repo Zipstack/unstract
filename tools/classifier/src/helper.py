@@ -132,7 +132,7 @@ class ClassifierHelper:
             str: Classification
         """
         try:
-            completion = llm.complete(prompt, max_tokens=50, stop=["\n"])[LLM.RESPONSE]
+            completion = llm.complete(prompt)[LLM.RESPONSE]
             classification: str = completion.text.strip()
             self.tool.stream_log(f"LLM response: {completion}")
             return classification
