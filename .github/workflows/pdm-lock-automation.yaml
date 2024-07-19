@@ -50,7 +50,7 @@ jobs:
 
       - name: Install PDM
         if: steps.set_output.outputs.changed == 'true'
-        run: python -m pip install pdm
+        run: python -m pip install pdm==2.12.3
 
       - name: Update and add pdm.lock
         if: steps.set_output.outputs.changed == 'true'
@@ -66,12 +66,14 @@ jobs:
             echo "Virtual environment already exists."
           fi
           source .venv/bin/activate
-          pdm lock
+          pdm lock -v
 
           git add pdm.lock
 
       - name: Running pre-commit and commit pdm.lock
         if: steps.set_output.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "current root dir: "; pwd
           echo "files in root dir: "; ls -al
@@ -87,9 +89,7 @@ jobs:
           pip install pre-commit~=3.6.2
           git add .pre-commit-config.yaml
           pre-commit run
-          if [ "${{ matrix.directory }}" != "root" ]; then
-            git commit -m "Update pdm.lock for ${{ matrix.directory }}"
-          else
-            git commit -m "Update pdm.lock for root directory"
-          fi
-          git push
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git commit -m "Update pdm.lock for ${{ matrix.directory }}"
+          # git push
