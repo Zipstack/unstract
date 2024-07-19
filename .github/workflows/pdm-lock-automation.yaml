@@ -23,13 +23,13 @@ jobs:
           else
             file_path="${{ matrix.directory }}/pyproject.toml"
           fi
-          echo "checking changes for $file_path"
+          echo "checking changes for $file_path for origin/main branch"
           echo "changed=false" >> $GITHUB_OUTPUT
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git fetch origin
           if git diff --quiet origin/main -- "$file_path"; then
-            echo "No changes detected in $file_path against main branch."
+            echo "No changes detected in $file_path against origin/main branch."
           else
             echo "Changes detected in $file_path against origin/main branch."
             echo "changed=true" >> $GITHUB_OUTPUT
@@ -69,14 +69,10 @@ jobs:
 
           git add pdm.lock
 
-      - name: Commit and push pdm.lock
+      - name: Add pdm.lock
         if: steps.check.outputs.changed == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        id: check_commit
         run: |
-          echo "current root dir: "; pwd
-          echo "files in root dir: "; ls -al
-
           if [ ! -d ".venv" ]; then
             echo "Creating virtual environment inside root"
             pdm venv create -w virtualenv --with-pip
@@ -88,5 +84,19 @@ jobs:
           pip install pre-commit~=3.6.2
           git add .pre-commit-config.yaml
           pre-commit run pdm-lock-check
+          echo "checking changes for $file_path for self branch before commit"
+          echo "changed=false" >> $GITHUB_OUTPUT
+          if git diff --quiet -- "$file_path"; then
+            echo "No changes detected in $file_path against self branch."
+          else
+            echo "Changes detected in $file_path against self branch."
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push pdm.lock
+        if: steps.check_commit.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
           git commit -m "Update pdm.lock for ${{ matrix.directory }}"
           git push origin ${{ github.ref_name }}
