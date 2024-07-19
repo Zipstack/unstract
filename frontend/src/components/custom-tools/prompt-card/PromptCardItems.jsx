@@ -180,14 +180,16 @@ function PromptCardItems({
     const [firstResult] = result || [];
     if (
       (promptDetails.active || isSimplePromptStudio) &&
-      (firstResult?.output || firstResult?.output === 0)
+      (firstResult?.output ||
+        firstResult?.output === 0 ||
+        spsLoading[selectedDoc?.document_id])
     ) {
       return (
         <>
           <Divider className="prompt-card-divider" />
           <div
             className={`prompt-card-result prompt-card-div ${
-              expandedProfiles.includes(firstResult.profileManager) &&
+              expandedProfiles.includes(firstResult?.profileManager) &&
               "prompt-profile-run-expanded"
             }`}
           >
