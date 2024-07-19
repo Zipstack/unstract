@@ -1,6 +1,6 @@
 name: Automate pdm.lock
 
-on: push
+on: workflow_dispatch
 
 jobs:
   check_pyproject_changes:
