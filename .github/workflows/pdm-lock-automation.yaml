@@ -69,7 +69,7 @@ jobs:
 
           git add pdm.lock
 
-      - name: Running pre-commit and commit pdm.lock
+      - name: Commit and push pdm.lock
         if: steps.check.outputs.changed == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
