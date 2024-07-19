@@ -15,16 +15,20 @@ jobs:
 
       - name: Check file changes
         id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ "${{ matrix.directory }}" = "root" ]; then
             file_path="pyproject.toml"
           else
             file_path="${{ matrix.directory }}/pyproject.toml"
           fi
-
           echo "checking changes for $file_path"
           echo "changed=false" >> $GITHUB_OUTPUT
-          if git diff --exit-code origin/main -- $file_path; then
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git fetch origin
+          if git diff --quiet origin/main -- "$file_path"; then
             echo "No changes detected in $file_path against main branch."
           else
             echo "Changes detected in $file_path against origin/main branch."
@@ -84,7 +88,5 @@ jobs:
           pip install pre-commit~=3.6.2
           git add .pre-commit-config.yaml
           pre-commit run pdm-lock-check
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git commit -m "Update pdm.lock for ${{ matrix.directory }}"
           git push origin ${{ github.ref_name }}
