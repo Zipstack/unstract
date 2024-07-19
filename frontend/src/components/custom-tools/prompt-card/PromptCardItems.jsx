@@ -25,6 +25,8 @@ import {
   Typography,
 } from "antd";
 import { useEffect, useRef, useState } from "react";
+import CheckableTag from "antd/es/tag/CheckableTag";
+import { motion, AnimatePresence } from "framer-motion";
 
 import {
   displayPromptResult,
@@ -35,10 +37,9 @@ import { EditableText } from "../editable-text/EditableText";
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { Header } from "./Header";
-import CheckableTag from "antd/es/tag/CheckableTag";
-import { motion, AnimatePresence } from "framer-motion";
 import { OutputForIndex } from "./OutputForIndex";
 import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
+import { PromptVersionManager } from "../prompt-version-manager/PromptVersionManager.jsx";
 
 const EvalBtn = null;
 const EvalMetrics = null;
@@ -319,6 +320,10 @@ function PromptCardItems({
                       </Button>
                     </Space>
                     <Space>
+                      <PromptVersionManager
+                        promptDetails={promptDetails}
+                        handleChange={handleChange}
+                      />
                       <Select
                         className="prompt-card-select-type"
                         size="small"
@@ -564,7 +569,7 @@ PromptCardItems.propTypes = {
   setPromptKey: PropTypes.func.isRequired,
   promptText: PropTypes.string,
   setPromptText: PropTypes.func.isRequired,
-  result: PropTypes.object.isRequired,
+  result: PropTypes.arrayOf(PropTypes.object).isRequired,
   coverage: PropTypes.number.isRequired,
   progressMsg: PropTypes.object.isRequired,
   handleRun: PropTypes.func.isRequired,

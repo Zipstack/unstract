@@ -10,8 +10,8 @@ import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
 import { Button, Space, Tabs, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import "./DocumentManager.css";
 
+import "./DocumentManager.css";
 import { base64toBlob, docIndexStatus } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -52,7 +52,7 @@ try {
     });
   }
 } catch {
-  // The component will remain null of it is not available
+  // The component will remain null if it is not available
 }
 
 // Import component for the simple prompt studio feature
@@ -61,7 +61,7 @@ try {
   getDocumentsSps =
     require("../../../plugins/simple-prompt-studio/simple-prompt-studio-api-service").getDocumentsSps;
 } catch {
-  // The component will remain null of it is not available
+  // The component will remain null it is not available
 }
 
 function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
@@ -131,18 +131,15 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       const isIndexing = indexDocs.find(
         (item) => item === selectedDoc?.document_id
       );
-
       if (isIndexing) {
         setCurrDocIndexStatus(docIndexStatus.indexing);
       }
       return;
     }
-
     if (docIndexStatus.indexing === currDocIndexStatus) {
       const isIndexing = indexDocs.find(
         (item) => item === selectedDoc?.document_id
       );
-
       if (!isIndexing) {
         setCurrDocIndexStatus(docIndexStatus.done);
       }
@@ -154,16 +151,13 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       setFileUrl("");
       setFileErrMsg("");
     }
-
     if (viewType === viewTypes.extract) {
       setExtractTxt("");
       setExtractErrMsg("");
     }
-
     if (!selectedDoc?.document_id) {
       return;
     }
-
     if (isSimplePromptStudio && getDocumentsSps) {
       handleGetDocumentsReq(getDocumentsSps, viewType);
     } else {
@@ -190,7 +184,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}?document_id=${selectedDoc?.document_id}&view_type=${viewType}`,
     };
-
     return axiosPrivate(requestOptions)
       .then((res) => res)
       .catch((err) => {
@@ -218,7 +211,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     if (viewType === viewTypes.original) {
       setIsDocLoading(value);
     }
-
     if (viewType === viewTypes.extract) {
       setIsExtractLoading(value);
     }
@@ -226,14 +218,12 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
   const handleActiveKeyChange = (key) => {
     setActiveKey(key);
-
     try {
       if (key === "2") {
         setPostHogCustomEvent("ps_raw_view_clicked", {
           info: "Clicked on the 'Raw View' tab",
         });
       }
-
       if (key === "3") {
         setPostHogCustomEvent("ps_summary_view_clicked", {
           info: "Clicked on the 'Summary View' tab",
@@ -248,7 +238,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     if (viewType === viewTypes.original) {
       setFileErrMsg("Document not found.");
     }
-
     if (viewType === viewTypes.extract) {
       setExtractErrMsg(
         "Raw content is not available. Please index or re-index to generate it."
@@ -267,7 +256,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     if (page <= 1) {
       return;
     }
-
     const newPage = page - 1;
     updatePageAndDoc(newPage);
   };
@@ -276,7 +264,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     if (page >= listOfDocs?.length) {
       return;
     }
-
     const newPage = page + 1;
     updatePageAndDoc(newPage);
   };

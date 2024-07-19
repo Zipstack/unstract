@@ -1,69 +1,3 @@
-import { useState } from "react";
-import { Modal, Table, Tag, Space } from "antd";
-import PropTypes from "prop-types";
-
-const TagManager = ({ open, onClose }) => {
-  const [data] = useState([
-    {
-      key: "1",
-      tag: { name: "Important", color: "red" },
-      lastSaved: "2024-03-25T08:00:00Z", // Example timestamp
-    },
-    {
-      key: "2",
-      tag: { name: "Work", color: "blue" },
-      lastSaved: "2024-07-13T16:15:00Z", // Example timestamp
-    },
-    // Add more rows as needed
-  ]);
-
-  const columns = [
-    {
-      title: "Tag",
-      dataIndex: "tag",
-      key: "tag",
-      render: (tag) => <Tag color={tag.color}>{tag.name}</Tag>,
-    },
-    {
-      title: "Last Saved",
-      dataIndex: "lastSaved",
-      key: "lastSaved",
-      render: (lastSaved) => {
-        const date = new Date(lastSaved);
-        const options = { month: "long", day: "numeric", year: "numeric" };
-        const formattedDate = date.toLocaleDateString("en-US", options);
-
-        // Add suffix for day (e.g., 1st, 2nd, 3rd, 4th)
-        const day = date.getDate();
-        const suffix =
-          day === 1 ? "st" : day === 2 ? "nd" : day === 3 ? "rd" : "th";
-        return `${formattedDate}${suffix}, ${date.getFullYear()}`;
-      },
-    },
-    {
-      title: "Actions",
-      key: "actions",
-      render: () => (
-        <Space size="middle">
-          <a>Load</a>
-          <a>Delete</a>
-        </Space>
-      ),
-    },
-  ];
-
-  return (
-    <Modal open={open} title="Tag Data" onCancel={onClose} footer={null}>
-      <Table columns={columns} dataSource={data} />
-    </Modal>
-  );
-};
-TagManagerModal.propTypes = {
-  open: PropTypes.bool.isRequired,
-  setOpen: PropTypes.func.isRequired,
-  handleUpdateTool: PropTypes.func.isRequired,
-};
-export { TagManagerModal };
 import { useEffect, useState } from "react";
 import {
   DeleteOutlined,
@@ -84,32 +18,25 @@ import {
 } from "antd";
 import PropTypes from "prop-types";
 
-import "./PromptVersionModal.css";
+import "./PromptVersionManager.css";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 
-const TagManager = ({ promptDetails }) => {
+const PromptVersionManager = ({ promptDetails, handleChange }) => {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [viewMoreVisible, setViewMoreVisible] = useState(false);
-  const [fullPromptText, setFullPromptText] = useState("");
+  const [isLoadingGetPromptVersions, setIsLoadingGetPromptVersions] =
+    useState(false);
+  const [isLoadingLoadPromptVersion, setIsLoadingLoadPromptVersion] =
+    useState(false);
   const { setAlertDetails } = useAlertStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const [promptVersions, setPromptVersions] = useState([]);
-  const [count, setCount] = useState(0);
-  const [next, setNext] = useState(null);
-  const [previous, setPrevious] = useState(null);
-
-  useEffect(() => {
-    console.log("IT SHOULD BE HERE");
-    console.log(promptDetails);
-  }, []);
 
   const getPromptVersions = (e) => {
     e.preventDefault();
-    setLoading(true);
+    setIsLoadingGetPromptVersions(true);
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-version-manager/${promptDetails?.prompt_id}/`,
@@ -117,20 +44,62 @@ const TagManager = ({ promptDetails }) => {
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data;
-        setPromptVersions(data?.results);
-        setCount(data?.count);
-        setNext(data?.next);
-        setPrevious(data?.previous);
+        setPromptVersions(data);
         setOpen(true);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.log(err);
+        const content =
+          err?.data?.errors?.[0]?.detail || "Failed to get prompt versions";
         setAlertDetails({
           type: "error",
-          content: "Failed to fetch prompt versions",
+          content,
         });
       })
       .finally(() => {
-        setLoading(false);
+        setIsLoadingGetPromptVersions(false);
+      });
+  };
+
+  const loadPromptVersion = (promptVersion) => {
+    if (promptDetails?.loaded_version === promptVersion) {
+      return;
+    }
+    setIsLoadingLoadPromptVersion(true);
+    const requestOptions = {
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-version-manager/${promptDetails?.prompt_id}/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+      data: {
+        prompt_version: promptVersion,
+      },
+    };
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const data = res?.data;
+        // setPromptVersions(data);
+        setAlertDetails({
+          type: "success",
+          content:
+            data?.message ||
+            `Loaded prompt version '${promptVersion}' successfully`,
+        });
+        setOpen(false);
+      })
+      .catch((err) => {
+        console.log(err);
+        const content =
+          err?.response.data?.["prompt_version"] ||
+          `Failed to load prompt version '${promptVersion}'`;
+        setAlertDetails({
+          type: "error",
+          content,
+        });
+      })
+      .finally(() => {
+        setIsLoadingLoadPromptVersion(false);
       });
   };
 
@@ -154,7 +123,7 @@ const TagManager = ({ promptDetails }) => {
           }} // Restore initial border
           // onClick={() => console.log("CLICK")}
           onClick={getPromptVersions}
-          icon={loading ? <LoadingOutlined /> : <></>}
+          icon={isLoadingGetPromptVersions ? <LoadingOutlined /> : <></>}
         >
           {promptDetails?.loaded_version}
         </Tag>
@@ -162,11 +131,13 @@ const TagManager = ({ promptDetails }) => {
       <Modal
         title="Prompt Version Manager"
         open={open}
-        onOk={() => setOpen(false)}
         onCancel={() => setOpen(false)}
+        footer={null}
         width={800}
         destroyOnClose
+        centered
       >
+        <Divider />
         {promptVersions.map((promptVersion) => (
           <div
             key={promptVersion?.prompt_version_manager_id}
@@ -234,7 +205,24 @@ const TagManager = ({ promptDetails }) => {
                   alignItems: "center",
                 }}
               >
-                <Space>
+                <Tooltip
+                  title={
+                    promptDetails?.loaded_version === promptVersion?.version
+                      ? "Currently Loaded"
+                      : "Load"
+                  }
+                >
+                  <Button
+                    type="text"
+                    icon={<UploadOutlined rotate={180} />}
+                    onClick={() => loadPromptVersion(promptVersion?.version)}
+                    loading={isLoadingLoadPromptVersion}
+                    disabled={
+                      promptDetails?.loaded_version === promptVersion?.version
+                    }
+                  />
+                </Tooltip>
+                {/* <Space>
                   <Tooltip title="Load">
                     <Button
                       type="text"
@@ -249,7 +237,7 @@ const TagManager = ({ promptDetails }) => {
                       onClick={() => {}}
                     />
                   </Tooltip>
-                </Space>
+                </Space> */}
               </Col>
             </Row>
             <Divider />
@@ -260,8 +248,9 @@ const TagManager = ({ promptDetails }) => {
   );
 };
 
-TagManager.propTypes = {
+PromptVersionManager.propTypes = {
   promptDetails: PropTypes.object.isRequired,
+  handleChange: PropTypes.func.isRequired,
 };
 
-export { TagManager };
+export { PromptVersionManager };

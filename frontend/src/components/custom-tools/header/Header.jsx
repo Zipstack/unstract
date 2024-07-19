@@ -1,8 +1,8 @@
 import {
   ArrowLeftOutlined,
-  DownOutlined,
   EditOutlined,
   SettingOutlined,
+  TagOutlined,
 } from "@ant-design/icons";
 import { Button, Dropdown, Space, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
@@ -176,6 +176,30 @@ function Header({ setOpenSettings, handleUpdateTool }) {
           <EditOutlined />
         </Button>
       </div>
+      <Space
+        style={{
+          padding: "8px",
+          marginLeft: "7px",
+          border: "1px solid #D9D9D9",
+          fontSize: "14px",
+        }}
+      >
+        <TagOutlined rotate={270} />
+        <Typography.Text
+          strong
+          ellipsis={{
+            tooltip:
+              "Initial Versio dawd awdawd awdawdaw dawd aw ndwadawdawdawdawdawdawdawdw",
+          }} // Optional tooltip to show full text
+          style={{
+            maxWidth: 200, // Adjust the minimum width as needed
+          }}
+        >
+          Initial Versio dawd awdawd awdawdaw dawd aw
+          ndwadawdawdawdawdawdawdawdw
+        </Typography.Text>
+        <Typography.Link underline>Manage Tags</Typography.Link>
+      </Space>
       <div className="custom-tools-header-btns">
         {SinglePassToggleSwitch && (
           <SinglePassToggleSwitch handleUpdateTool={handleUpdateTool} />
