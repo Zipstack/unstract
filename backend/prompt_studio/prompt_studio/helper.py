@@ -29,7 +29,7 @@ class PromptStudioHelper:
                 return SPSPrompt
             except ImportError as e:
                 logger.error("SPSPrompt model could not be imported.")
-                raise ImportError("SPSPrompt model could not be imported.") from e
+                raise e
         return ToolStudioPrompt
 
     @staticmethod
