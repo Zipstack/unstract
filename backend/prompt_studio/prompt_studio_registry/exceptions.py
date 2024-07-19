@@ -21,7 +21,7 @@ class EmptyToolExportError(APIException):
     default_detail = (
         "Prompt Studio project without prompts cannot be exported. "
         "Please ensure there is at least one prompt and "
-        "that it is active before exporting."
+        "it is active before exporting."
     )
 
 
