@@ -24,7 +24,7 @@ jobs:
 
           echo "checking changes for $file_path"
           echo "changed=false" >> $GITHUB_OUTPUT
-          if git diff --quiet main -- $file_path; then
+          if git diff --exit-code origin/main -- $file_path; then
             echo "No changes detected in $file_path against main branch."
           else
             echo "Changes detected in $file_path against main branch."
