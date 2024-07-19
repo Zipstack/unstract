@@ -34,7 +34,6 @@ jobs:
       - name: Set output
         id: set_output
         run: echo "::set-output name=changed::${{ env.changed }}"
-        if: always()
 
       - name: Set up Python
         if: steps.set_output.outputs.changed == 'true'
@@ -66,7 +65,7 @@ jobs:
             echo "Virtual environment already exists."
           fi
           source .venv/bin/activate
-          pdm lock -v
+          pdm lock -G :all
 
           git add pdm.lock
 
@@ -92,4 +91,4 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git commit -m "Update pdm.lock for ${{ matrix.directory }}"
-          git push
+          git push origin ${{ github.ref_name }}
