@@ -65,11 +65,11 @@ jobs:
             echo "Virtual environment already exists."
           fi
           source .venv/bin/activate
+          rm -r pdm.lock
           pdm lock -G :all
-
           git add pdm.lock
 
-      - name: Add pdm.lock
+      - name: Commit and push pdm.lock
         if: steps.check.outputs.changed == 'true'
         id: check_commit
         run: |
@@ -79,22 +79,10 @@ jobs:
           else
             echo "Virtual environment already exists."
           fi
-          source .venv/bin/activate
 
+          source .venv/bin/activate
           pip install pre-commit~=3.6.2
           git add .pre-commit-config.yaml
           pre-commit run pdm-lock-check
-          echo "checking changes for $file_path for self branch before commit"
-          echo "changed=false" >> $GITHUB_OUTPUT
-          git diff --exit-code
-          if [ $? -ne 0 ]; then
-              echo "changed=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Commit and push pdm.lock
-        if: steps.check_commit.outputs.changed == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
           git commit -m "Update pdm.lock for ${{ matrix.directory }}"
           git push origin ${{ github.ref_name }}
