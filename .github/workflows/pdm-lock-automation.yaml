@@ -84,7 +84,6 @@ jobs:
 
           source .venv/bin/activate
           pip install pre-commit~=3.6.2
-          git add .pre-commit-config.yaml
           pre-commit run pdm-lock-check
           git commit -m "Update pdm.lock for ${{ matrix.directory }}"
           git push origin ${{ github.ref_name }}
