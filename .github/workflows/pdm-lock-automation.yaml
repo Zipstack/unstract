@@ -50,7 +50,7 @@ jobs:
 
       - name: Install PDM
         if: steps.set_output.outputs.changed == 'true'
-        run: python -m pip install pdm==2.12.3
+        run: python -m pip install pdm==2.16.1
 
       - name: Update and add pdm.lock
         if: steps.set_output.outputs.changed == 'true'
@@ -88,8 +88,8 @@ jobs:
 
           pip install pre-commit~=3.6.2
           git add .pre-commit-config.yaml
-          pre-commit run
+          pre-commit run pdm-lock-check
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git commit -m "Update pdm.lock for ${{ matrix.directory }}"
-          # git push
+          git push
