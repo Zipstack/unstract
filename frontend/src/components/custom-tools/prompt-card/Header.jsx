@@ -1,14 +1,14 @@
 import {
   CheckCircleOutlined,
   DeleteOutlined,
-  EditOutlined,
   LoadingOutlined,
+  MoreOutlined,
   PlayCircleFilled,
   PlayCircleOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
 import { useState } from "react";
-import { Button, Checkbox, Col, Divider, Row, Tag, Tooltip } from "antd";
+import { Button, Checkbox, Col, Dropdown, Row, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 
 import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";
@@ -30,7 +30,6 @@ function Header({
   isCoverageLoading,
   isEditingTitle,
   setIsEditingTitle,
-  enableEdit,
   expandCard,
   setExpandCard,
   enabledProfiles,
@@ -60,6 +59,33 @@ function Header({
       }
     );
   };
+
+  const items = [
+    {
+      label: (
+        <Checkbox checked={isDisablePrompt} onChange={handleDisablePrompt}>
+          {isDisablePrompt ? "Enabled" : "Disabled"}
+        </Checkbox>
+      ),
+      key: "enable",
+    },
+    {
+      label: (
+        <ConfirmModal
+          handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
+          content="The prompt will be permanently deleted."
+        >
+          <DeleteOutlined /> Delete
+        </ConfirmModal>
+      ),
+      key: "delete",
+      disabled:
+        disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
+        isSinglePassExtractLoading ||
+        indexDocs?.includes(selectedDoc?.document_id) ||
+        isPublicSource,
+    },
+  ];
 
   return (
     <Row>
@@ -121,23 +147,6 @@ function Header({
             )}
           </>
         )}
-        <ExpandCardBtn expandCard={expandCard} setExpandCard={setExpandCard} />
-        <Tooltip title="Edit">
-          <Button
-            size="small"
-            type="text"
-            className="prompt-card-action-button"
-            onClick={enableEdit}
-            disabled={
-              disableLlmOrDocChange.includes(promptDetails?.prompt_id) ||
-              isSinglePassExtractLoading ||
-              indexDocs.includes(selectedDoc?.document_id) ||
-              isPublicSource
-            }
-          >
-            <EditOutlined className="prompt-card-actions-head" />
-          </Button>
-        </Tooltip>
         {!singlePassExtractMode && (
           <>
             <Tooltip title="Run">
@@ -180,34 +189,17 @@ function Header({
             </Tooltip>
           </>
         )}
-        <Tooltip title={isDisablePrompt ? "Disable Prompt" : "Enable Prompt"}>
-          <Checkbox
-            checked={isDisablePrompt}
+        <Dropdown menu={{ items }} trigger={["click"]} placement="bottomLeft">
+          <Button
+            size="small"
+            type="text"
             className="prompt-card-action-button"
-            onChange={handleDisablePrompt}
-          />
-        </Tooltip>
-        <Divider type="vertical" className="header-delete-divider" />
-        <ConfirmModal
-          handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
-          content="The prompt will be permanently deleted."
-        >
-          <Tooltip title="Delete">
-            <Button
-              size="small"
-              type="text"
-              className="prompt-card-action-button"
-              disabled={
-                disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
-                isSinglePassExtractLoading ||
-                indexDocs?.includes(selectedDoc?.document_id) ||
-                isPublicSource
-              }
-            >
-              <DeleteOutlined className="prompt-card-actions-head" />
-            </Button>
-          </Tooltip>
-        </ConfirmModal>
+          >
+            <MoreOutlined className="prompt-card-actions-head" />
+          </Button>
+        </Dropdown>
+
+        <ExpandCardBtn expandCard={expandCard} setExpandCard={setExpandCard} />
       </Col>
     </Row>
   );
