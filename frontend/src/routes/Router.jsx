@@ -10,6 +10,7 @@ import { SetOrgPage } from "../pages/SetOrgPage.jsx";
 import { useMainAppRoutes } from "./useMainAppRoutes.js";
 import { useLlmWhispererRoutes } from "../plugins/routes/useLlmWhispererRoutes.js";
 import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
+import { SelectProduct } from "../plugins/select-product/SelectProduct.jsx";
 
 let TrialRoutes;
 let ManualReviewPage;
@@ -105,6 +106,7 @@ function Router() {
         <Route path="*" element={<NotFound />} />
       </Route>
       <Route path="oauth-status" element={<OAuthStatus />} />
+      <Route path="selectProduct" element={<SelectProduct />} />
     </Routes>
   );
 }

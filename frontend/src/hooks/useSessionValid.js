@@ -27,13 +27,24 @@ try {
   // Ignore if hook not available
 }
 
+let selectedProduct;
+const selectedProductStore = require("../plugins/llm-whisperer/store/select-produc-store.js");
 function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
   const handleException = useExceptionHandler();
   const navigate = useNavigate();
   const userSession = useUserSession();
 
+  if (selectedProductStore) {
+    selectedProduct = selectedProductStore.useSelectedProductStore(
+      (state) => state.selectedProduct
+    );
+  }
   return async () => {
+    if (selectedProductStore && !selectedProduct) {
+      navigate("/selectProduct");
+      return;
+    }
     try {
       const userSessionData = await userSession();
       const signedInOrgId = userSessionData?.organization_id;
