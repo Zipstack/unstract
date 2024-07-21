@@ -249,7 +249,7 @@ function DocumentParser({
       prompt_id: details.prompts[startIndex]?.prompt_id,
     };
 
-    let url = promptUrl("reorder");
+    let url = promptUrl("reorder/");
     if (isSimplePromptStudio) {
       url = promptReorderApiSps;
     }
