@@ -96,13 +96,6 @@ function PromptCardItems({
   const componentWidth = windowWidth * 0.4;
   const isNotSingleLlmProfile = llmProfiles.length > 1;
   const divRef = useRef(null);
-
-  const enableEdit = (event) => {
-    event.stopPropagation();
-    setExpandCard(true);
-    setIsEditingTitle(true);
-    setIsEditingPrompt(true);
-  };
   const getModelOrAdapterId = (profile, adapters) => {
     const result = { conf: {} };
     const keys = [
@@ -270,7 +263,6 @@ function PromptCardItems({
             isCoverageLoading={isCoverageLoading}
             isEditingTitle={isEditingTitle}
             setIsEditingTitle={setIsEditingTitle}
-            enableEdit={enableEdit}
             expandCard={expandCard}
             setExpandCard={setExpandCard}
             enabledProfiles={enabledProfiles}

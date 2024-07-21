@@ -218,7 +218,6 @@ Header.propTypes = {
   isCoverageLoading: PropTypes.bool.isRequired,
   isEditingTitle: PropTypes.bool.isRequired,
   setIsEditingTitle: PropTypes.func.isRequired,
-  enableEdit: PropTypes.func.isRequired,
   expandCard: PropTypes.bool.isRequired,
   setExpandCard: PropTypes.func.isRequired,
   enabledProfiles: PropTypes.array.isRequired,
