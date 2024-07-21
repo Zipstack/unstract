@@ -1,43 +1,17 @@
 import logging
 
-from prompt_studio.prompt_studio.models import ToolStudioPrompt
+from django.db import models
 
 logger = logging.getLogger(__name__)
 
 
 class PromptStudioHelper:
     @staticmethod
-    def get_prompt_model(is_sps: bool):
-        """Dynamically import and return the appropriate prompt model.
-
-        Args:
-            is_sps (bool): Flag indicating whether to use the SPSPrompt model.
-
-        Returns:
-            model (class): The appropriate prompt model class
-            (ToolStudioPrompt or SPSPrompt).
-
-        Raises:
-            ImportError: If the SPSPrompt model could not be imported.
-        """
-        if is_sps:
-            try:
-                from pluggable_apps.simple_prompt_studio.sps_prompt.models import (
-                    SPSPrompt,
-                )
-
-                return SPSPrompt
-            except ImportError as e:
-                logger.error("SPSPrompt model could not be imported.")
-                raise e
-        return ToolStudioPrompt
-
-    @staticmethod
     def reorder_prompts_helper(
         prompt_id: str,
         start_sequence_number: int,
         end_sequence_number: int,
-        is_sps: bool = False,
+        prompt_model: models.Model,
     ) -> list[dict[str, int]]:
         """Helper method to reorder prompts based on sequence numbers.
 
@@ -51,10 +25,6 @@ class PromptStudioHelper:
             list[dict[str, int]]: A list of updated prompt data with their IDs
             and new sequence numbers.
         """
-
-        prompt_model = PromptStudioHelper.get_prompt_model(is_sps)
-        if not prompt_model:
-            return []
 
         prompt_instance = prompt_model.objects.get(pk=prompt_id)
         tool_id = prompt_instance.tool_id
@@ -105,7 +75,7 @@ class PromptStudioHelper:
 
     @staticmethod
     def update_sequence_numbers(
-        filters: dict, increment: bool, prompt_model
+        filters: dict, increment: bool, prompt_model: models.Model
     ) -> list[dict[str, int]]:
         """Update the sequence numbers for prompts based on the provided
         filters and increment flag.

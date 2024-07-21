@@ -1,5 +1,6 @@
 import logging
 
+from django.db import models
 from prompt_studio.prompt_studio.constants import ToolStudioPromptKeys
 from prompt_studio.prompt_studio.helper import PromptStudioHelper
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class PromptStudioController:
-    def reorder_prompts(self, request: Request, is_sps: bool = False) -> Response:
+    def reorder_prompts(self, request: Request, prompt_model: models.Model) -> Response:
         """Reorder the sequence of prompts based on the start and end sequence
         numbers.
 
@@ -46,7 +47,7 @@ class PromptStudioController:
                 prompt_id=prompt_id,
                 start_sequence_number=start_sequence_number,
                 end_sequence_number=end_sequence_number,
-                is_sps=is_sps,
+                prompt_model=prompt_model,
             )
 
             logger.info("Re-ordering completed successfully.")
