@@ -69,11 +69,9 @@ class DropboxFS(UnstractFileSystem):
             # self.get_fsspec_fs().connect()
             self.get_fsspec_fs().ls("")
         except DropboxException as e:
-            logger.error(f"Test creds failed: {e}")
-            raise handle_dropbox_exception(e)
+            raise handle_dropbox_exception(e) from e
         except Exception as e:
-            logger.error(f"Test creds failed: {e}")
-            raise ConnectorError(str(e))
+            raise ConnectorError(f"Error while connecting to Dropbox: {str(e)}") from e
         return True
 
     @staticmethod
