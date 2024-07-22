@@ -201,9 +201,11 @@ class WorkflowExecutionService:
                 message="Ready for execution",
                 component=tool_instance_id,
             )
-            self.tool_utils.run_tool(
+            result = self.tool_utils.run_tool(
                 tool_sandbox=sandbox,
             )
+            if result.get("error"):
+                raise ToolOutputNotFoundException(result.get("error"))
             if not self.validate_execution_result(step + 1):
                 raise ToolOutputNotFoundException(
                     f"Tool exception raised for tool {tool_uid}, "
