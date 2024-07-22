@@ -1,6 +1,6 @@
 import { Col, Modal, Row, Tabs, Typography } from "antd";
 import PropTypes from "prop-types";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ListOfConnectors } from "../list-of-connectors/ListOfConnectors";
 import "./ConfigureConnectorModal.css";
@@ -28,6 +28,13 @@ function ConfigureConnectorModal({
   setSelectedItemName,
 }) {
   const [activeKey, setActiveKey] = useState("1");
+  useEffect(() => {
+    if (connectorMetadata) {
+      setActiveKey("2"); // If connector is already configured
+    } else {
+      setActiveKey("1"); // default value
+    }
+  }, [open, connectorMetadata]);
   const { setPostHogCustomEvent, posthogConnectorEventText } =
     usePostHogEvents();
   const tabItems = [
@@ -41,7 +48,8 @@ function ConfigureConnectorModal({
       disabled:
         !connectorId ||
         connDetails?.connector_id !== selectedId ||
-        connType === "DATABASE",
+        connType === "DATABASE" ||
+        connType === "MANUALREVIEW",
     },
   ];
 

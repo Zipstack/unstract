@@ -2,11 +2,14 @@ import json
 import os
 from datetime import datetime, timedelta
 from logging import Logger
-from typing import Any
+from typing import Any, Optional
 
 import peewee
 import requests
+from unstract.platform_service.constants import DBTableV2, FeatureFlag
 from unstract.platform_service.exceptions import CustomException
+
+from unstract.flags.feature_flag import check_feature_flag_status
 
 
 class AdapterInstanceRequestHelper:
@@ -15,6 +18,7 @@ class AdapterInstanceRequestHelper:
         db_instance: peewee.PostgresqlDatabase,
         organization_id: str,
         adapter_instance_id: str,
+        organization_uid: Optional[int] = None,
     ) -> dict[str, Any]:
         """Get adapter instance from Backend Database.
 
@@ -26,11 +30,19 @@ class AdapterInstanceRequestHelper:
         Returns:
             _type_: _description_
         """
-        query = (
-            f"SELECT id, adapter_id, adapter_metadata_b FROM "
-            f'"{organization_id}".adapter_adapterinstance x '
-            f"WHERE id='{adapter_instance_id}'"
-        )
+        if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+            query = (
+                "SELECT id, adapter_id, adapter_metadata_b FROM "
+                f"{DBTableV2.ADAPTER_INSTANCE} x "
+                f"WHERE id='{adapter_instance_id}' and "
+                f"organization_id='{organization_uid}'"
+            )
+        else:
+            query = (
+                f"SELECT id, adapter_id, adapter_metadata_b FROM "
+                f'"{organization_id}".adapter_adapterinstance x '
+                f"WHERE id='{adapter_instance_id}'"
+            )
         cursor = db_instance.execute_sql(query)
         result_row = cursor.fetchone()
         if not result_row:
@@ -59,12 +71,20 @@ class PromptStudioRequestHelper:
         Returns:
             _type_: _description_
         """
-        query = (
-            f"SELECT prompt_registry_id, tool_spec, "
-            f"tool_metadata, tool_property FROM "
-            f'"{organization_id}".prompt_studio_registry_promptstudioregistry x'
-            f" WHERE prompt_registry_id='{prompt_registry_id}'"
-        )
+        if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+            query = (
+                "SELECT prompt_registry_id, tool_spec, "
+                "tool_metadata, tool_property FROM "
+                f"{DBTableV2.PROMPT_STUDIO_REGISTRY} x "
+                f"WHERE prompt_registry_id='{prompt_registry_id}'"
+            )
+        else:
+            query = (
+                f"SELECT prompt_registry_id, tool_spec, "
+                f"tool_metadata, tool_property FROM "
+                f'"{organization_id}".prompt_studio_registry_promptstudioregistry x'
+                f" WHERE prompt_registry_id='{prompt_registry_id}'"
+            )
         cursor = db_instance.execute_sql(query)
         result_row = cursor.fetchone()
         if not result_row:
@@ -89,12 +109,19 @@ class CostCalculationHelper:
         self.file_path = file_path
         self.logger = logger
 
-    def calculate_cost(self, model_name, input_tokens, output_tokens):
+    def calculate_cost(self, model_name, provider, input_tokens, output_tokens):
         cost = 0.0
         item = None
         model_prices = self._get_model_prices()
-        if model_prices:
-            item = model_prices.get(model_name)
+        # Filter the model objects by model name
+        filtered_models = {
+            k: v for k, v in model_prices.items() if k.endswith(model_name)
+        }
+        # Check if the lite llm provider starts with the given provider
+        for _, model_info in filtered_models.items():
+            if provider in model_info.get("litellm_provider", ""):
+                item = model_info
+                break
         if item:
             input_cost_per_token = item.get("input_cost_per_token", 0)
             output_cost_per_token = item.get("output_cost_per_token", 0)

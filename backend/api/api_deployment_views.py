@@ -50,7 +50,9 @@ class DeploymentExecution(views.APIView):
         serializer = ExecutionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         timeout = serializer.get_timeout(serializer.validated_data)
-
+        include_metadata = (
+            request.data.get(ApiExecution.INCLUDE_METADATA, "false").lower() == "true"
+        )
         if not file_objs or len(file_objs) == 0:
             raise InvalidAPIRequest("File shouldn't be empty")
         response = DeploymentHelper.execute_workflow(
@@ -58,6 +60,7 @@ class DeploymentExecution(views.APIView):
             api=api,
             file_objs=file_objs,
             timeout=timeout,
+            include_metadata=include_metadata,
         )
         if "error" in response and response["error"]:
             return Response(

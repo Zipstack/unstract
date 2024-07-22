@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 from oauth2client.client import OAuth2Credentials
@@ -90,8 +91,25 @@ class GoogleDriveFS(UnstractFileSystem):
 
     def test_credentials(self) -> bool:
         """To test credentials for Google Drive."""
+        is_dir = False
         try:
-            self.get_fsspec_fs().isdir("root")
+            is_dir = bool(self.get_fsspec_fs().isdir("root"))
         except Exception as e:
-            raise ConnectorError(str(e))
+            raise ConnectorError(
+                f"Error from Google Drive while testing connection: {str(e)}"
+            ) from e
+        if not is_dir:
+            raise ConnectorError(
+                "Unable to connect to Google Drive, "
+                "please check the connection settings."
+            )
         return True
+
+    @staticmethod
+    def get_connector_root_dir(input_dir: str, **kwargs: Any) -> str:
+        """Get roor dir of gdrive."""
+        root_path = kwargs.get("root_path")
+        if root_path is None:
+            raise ValueError("root_path is required to get root_dir for Google Drive")
+        input_dir = str(Path(root_path, input_dir.lstrip("/")))
+        return f"{input_dir.strip('/')}/"

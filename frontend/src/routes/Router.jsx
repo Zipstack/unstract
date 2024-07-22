@@ -35,6 +35,9 @@ let PlatformAdminPage;
 let AppDeployments;
 let ChatAppPage;
 let ChatAppLayout;
+let ManualReviewPage;
+let ReviewLayout;
+let PublicPromptStudioHelper;
 
 try {
   TrialRoutes =
@@ -58,15 +61,77 @@ try {
   // Do nothing, Not-found Page will be triggered.
 }
 
+try {
+  ManualReviewPage =
+    require("../plugins/manual-review/page/ManualReviewPage.jsx").ManualReviewPage;
+  ReviewLayout =
+    require("../plugins/manual-review/review-layout/ReviewLayout.jsx").ReviewLayout;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+// Import pages/components related to Simple Prompt Studio.
+let SimplePromptStudioHelper;
+let SimplePromptStudio;
+let SpsLanding;
+let SpsUpload;
+try {
+  SimplePromptStudioHelper =
+    require("../plugins/simple-prompt-studio/SimplePromptStudioHelper.jsx").SimplePromptStudioHelper;
+  SimplePromptStudio =
+    require("../plugins/simple-prompt-studio/SimplePromptStudio.jsx").SimplePromptStudio;
+  SpsLanding =
+    require("../plugins/simple-prompt-studio/SpsLanding.jsx").SpsLanding;
+  SpsUpload =
+    require("../plugins/simple-prompt-studio/SpsUpload.jsx").SpsUpload;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+try {
+  PublicPromptStudioHelper =
+    require("../plugins/prompt-studio-public-share/helpers/PublicPromptStudioHelper.js").PublicPromptStudioHelper;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
 function Router() {
   return (
     <Routes>
       <Route path="error" element={<GenericError />} />
       <Route path="" element={<PersistentLogin />}>
         {/* public routes */}
-        <Route path="" element={<RequireGuest />}>
-          <Route path="landing" element={<LandingPage />} />
+        <Route path="">
+          {/* public routes accessible only to unauthenticated users */}
+          <Route path="" element={<RequireGuest />}>
+            <Route path="landing" element={<LandingPage />} />
+          </Route>
+
+          {/* public routes accessible to both authenticated and unauthenticated users */}
+          {SimplePromptStudioHelper &&
+            SimplePromptStudio &&
+            SpsLanding &&
+            SpsUpload && (
+              <Route
+                path="simple-prompt-studio"
+                element={<SimplePromptStudioHelper />}
+              >
+                <Route path="" element={<SimplePromptStudio />} />
+                <Route path="landing" element={<SpsLanding />} />
+                <Route path="upload" element={<SpsUpload />} />
+              </Route>
+            )}
+          {PublicPromptStudioHelper && (
+            <Route
+              path="/promptStudio/share/:id"
+              element={<PublicPromptStudioHelper />}
+            >
+              <Route path="" element={<ToolIdePage />} />
+              <Route
+                path="/promptStudio/share/:id/outputAnalyzer"
+                element={<OutputAnalyzerPage />}
+              />
+            </Route>
+          )}
         </Route>
+
         {/* protected routes */}
         <Route path="setOrg" element={<SetOrgPage />} />
         <Route path="" element={<RequireAuth />}>
@@ -141,6 +206,22 @@ function Router() {
               </Route>
             )}
           </Route>
+          {ReviewLayout && ManualReviewPage && (
+            <Route path=":orgName" element={<ReviewLayout />}>
+              <Route
+                path="review"
+                element={<ManualReviewPage type="review" />}
+              ></Route>
+              <Route
+                path="review/download_and_sync"
+                element={<ManualReviewPage type="download" />}
+              />
+              <Route
+                path="review/approve"
+                element={<ManualReviewPage type="approve" />}
+              />
+            </Route>
+          )}
         </Route>
         {TrialRoutes && (
           <Route path="/trial-expired" element={<TrialRoutes />} />

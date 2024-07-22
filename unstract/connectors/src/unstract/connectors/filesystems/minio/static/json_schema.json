@@ -32,12 +32,6 @@
       "title": "Bucket Name",
       "description": "Name of the bucket to be restricted to."
     },
-    "path": {
-      "type": "string",
-      "title": "Path",
-      "default": "",
-      "description": "Path to restrict to. (example /path/to/restrict/to)"
-    },
     "endpoint_url": {
       "type": "string",
       "title": "Endpoint URL",

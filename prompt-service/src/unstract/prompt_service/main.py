@@ -184,9 +184,11 @@ def prompt_processor() -> Any:
     file_hash = payload.get(PSKeys.FILE_HASH)
     doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
-
+    include_metadata = (
+        request.args.get(PSKeys.INCLUDE_METADATA, "false").lower() == "true"
+    )
     structured_output: dict[str, Any] = {}
-    metadata: dict[str, Any] = {
+    metadata: Optional[dict[str, Any]] = {
         PSKeys.RUN_ID: run_id,
         PSKeys.CONTEXT: {},
     }
@@ -202,27 +204,11 @@ def prompt_processor() -> Any:
     for output in outputs:  # type:ignore
         variable_names.append(output[PSKeys.NAME])
     for output in outputs:  # type:ignore
-        is_active = output[PSKeys.ACTIVE]
         prompt_name = output[PSKeys.NAME]
         promptx = output[PSKeys.PROMPT]
         chunk_size = output[PSKeys.CHUNK_SIZE]
         util = PromptServiceBaseTool(log_level=LogLevel.INFO, platform_key=platform_key)
         index = Index(tool=util)
-
-        if is_active is False:
-            app.logger.info(f"[{tool_id}] Skipping inactive prompt: {prompt_name}")
-            _publish_log(
-                log_events_id,
-                {
-                    "tool_id": tool_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevel.INFO,
-                RunLevel.RUN,
-                "Skipping inactive prompt",
-            )
-            continue
 
         app.logger.info(f"[{tool_id}] Executing prompt: {prompt_name}")
         _publish_log(
@@ -701,8 +687,11 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         "Execution complete",
     )
-    metadata = query_usage_metadata(db=be_db, token=platform_key, metadata=metadata)
-    response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
+    if include_metadata:
+        metadata = query_usage_metadata(db=be_db, token=platform_key, metadata=metadata)
+        response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
+    else:
+        response = {PSKeys.OUTPUT: structured_output}
     return response
 
 

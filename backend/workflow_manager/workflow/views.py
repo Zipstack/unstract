@@ -4,6 +4,7 @@ from typing import Any, Optional
 from connector.connector_instance_helper import ConnectorInstanceHelper
 from django.conf import settings
 from django.db.models.query import QuerySet
+from numpy import deprecate_with_doc
 from permissions.permission import IsOwner
 from pipeline.models import Pipeline
 from pipeline.pipeline_processor import PipelineProcessor
@@ -78,6 +79,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         else:
             return WorkflowSerializer
 
+    @deprecate_with_doc("Not using with the latest UX chnages")
     def _generate_workflow(self, workflow_id: str) -> WorkflowGenerator:
         registry_tools: list[Tool] = ToolProcessor.get_registry_tools()
         generator = WorkflowGenerator(workflow_id=workflow_id)
@@ -86,18 +88,12 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         return generator
 
     def perform_update(self, serializer: WorkflowSerializer) -> Workflow:
-        """To edit a workflow. Regenerates the tool instances for a new prompt.
+        """To edit a workflow.
 
         Raises: WorkflowGenerationError
         """
         kwargs = {}
-        if serializer.validated_data.get(WorkflowKey.PROMPT_TEXT):
-            workflow: Workflow = self.get_object()
-            generator = self._generate_workflow(workflow_id=workflow.id)
-            kwargs = {
-                WorkflowKey.LLM_RESPONSE: generator.llm_response,
-                WorkflowKey.WF_IS_ACTIVE: True,
-            }
+
         try:
             workflow = serializer.save(**kwargs)
             return workflow
@@ -173,6 +169,9 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         execution_id = serializer.get_execution_id(serializer.validated_data)
         execution_action = serializer.get_execution_action(serializer.validated_data)
         file_objs = request.FILES.getlist("files")
+        include_metadata = (
+            request.data.get("include_metadata", "false").lower() == "true"
+        )
         hashes_of_files = {}
         if file_objs and execution_id and workflow_id:
             hashes_of_files = SourceConnector.add_input_file_to_api_storage(
@@ -191,6 +190,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 execution_id=execution_id,
                 pipeline_guid=pipeline_guid,
                 hash_values_of_files=hashes_of_files,
+                include_metadata=include_metadata,
             )
             return Response(
                 make_execution_response(execution_response),
@@ -211,6 +211,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         execution_id: Optional[str] = None,
         pipeline_guid: Optional[str] = None,
         hash_values_of_files: dict[str, str] = {},
+        include_metadata: bool = False,
     ) -> ExecutionResponse:
         if execution_action is not None:
             # Step execution
@@ -219,6 +220,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 execution_action,
                 execution_id=execution_id,
                 hash_values_of_files=hash_values_of_files,
+                include_metadata=include_metadata,
             )
         elif pipeline_guid:
             # pipeline execution
@@ -236,6 +238,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 workflow=workflow,
                 execution_id=execution_id,
                 hash_values_of_files=hash_values_of_files,
+                include_metadata=include_metadata,
             )
         return execution_response
 

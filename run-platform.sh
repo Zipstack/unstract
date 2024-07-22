@@ -8,6 +8,7 @@ blue_text='\033[94m'
 green_text='\033[32m'
 red_text='\033[31m'
 default_text='\033[39m'
+yellow_text='\033[33m'
 
 # set -x/xtrace uses PS4 for more info
 PS4="$blue_text""${0}:${LINENO}: ""$default_text"
@@ -68,7 +69,7 @@ display_help() {
   echo -e "   -e, --only-env      Only do env files setup"
   echo -e "   -p, --only-pull     Only do docker images pull"
   echo -e "   -b, --build-local   Build docker images locally"
-  echo -e "   -u, --upgrade       Upgrade services"
+  echo -e "   -u, --update        Update services version"
   echo -e "   -x, --trace         Enables trace mode"
   echo -e "   -V, --verbose       Print verbose logs"
   echo -e "   -v, --version       Docker images version tag (default \"latest\")"
@@ -92,8 +93,8 @@ parse_args() {
       -b | --build-local)
         opt_build_local=true
         ;;
-      -u | --upgrade)
-        opt_upgrade=true
+      -u | --update)
+        opt_update=true
         ;;
       -x | --trace)
         set -o xtrace  # display every line before execution; enables PS4
@@ -125,21 +126,40 @@ parse_args() {
   debug "OPTION only_env: $opt_only_env"
   debug "OPTION only_pull: $opt_only_pull"
   debug "OPTION build_local: $opt_build_local"
-  debug "OPTION upgrade: $opt_upgrade"
+  debug "OPTION upgrade: $opt_update"
   debug "OPTION verbose: $opt_verbose"
   debug "OPTION version: $opt_version"
 }
 
 do_git_pull() {
-  if [ "$opt_upgrade" = false ]; then
+  if [ "$opt_update" = false ]; then
     return
   fi
 
-  echo -e "Performing git switch to ""$blue_text""main branch""$default_text".
-  git switch main
+  echo "Fetching release tags."
+  git fetch --quiet --tags
 
-  echo -e "Performing ""$blue_text""git pull""$default_text"" on main branch."
-  git pull
+  if [[ "$opt_version" == "latest" ]]; then
+    branch=`git describe --tags --abbrev=0`
+  elif [[ "$opt_version" == "main" ]]; then
+    branch="main"
+    opt_build_local=true
+    echo -e "Choosing ""$blue_text""local build""$default_text"" of Docker images from ""$blue_text""main""$default_text"" branch."
+  elif [ -z $(git tag -l "$opt_version") ]; then
+    echo -e "$red_text""Version not found.""$default_text"
+    if [[ ! $opt_version == v* ]]; then
+      echo -e "$red_text""Version must be provided with a 'v' prefix (e.g. v0.47.0).""$default_text"
+    fi
+    exit 1
+  else
+    branch="$opt_version"
+  fi
+
+  echo -e "Performing ""$blue_text""git checkout""$default_text"" to ""$blue_text""$branch""$default_text""."
+  git checkout --quiet $branch
+
+  echo -e "Performing ""$blue_text""git pull""$default_text"" on ""$blue_text""$branch""$default_text""."
+  git pull --quiet $(git remote) $branch
 }
 
 setup_env() {
@@ -179,7 +199,7 @@ setup_env() {
         fi
       fi
       echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
-    elif [ "$opt_upgrade" = true ]; then
+    elif [ "$opt_update" = true ]; then
       python3 $script_dir/docker/scripts/merge_env.py $sample_env_path $env_path
       if [ $? -ne 0 ]; then
         exit 1
@@ -191,7 +211,7 @@ setup_env() {
   if [ ! -e "$script_dir/docker/essentials.env" ]; then
     cp "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
     echo -e "Created env for ""$blue_text""essential services""$default_text"" at ""$blue_text""$script_dir/docker/essentials.env""$default_text""."
-  elif [ "$opt_upgrade" = true ]; then
+  elif [ "$opt_update" = true ]; then
     python3 $script_dir/docker/scripts/merge_env.py "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
     if [ $? -ne 0 ]; then
       exit 1
@@ -201,9 +221,9 @@ setup_env() {
 
   # Not part of an upgrade.
   if [ ! -e "$script_dir/docker/proxy_overrides.yaml" ]; then
-    echo -e "NOTE: Proxy behaviour can be overridden via ""$blue_text""$script_dir/docker/proxy_overrides.yaml""$default_text""."
+    echo -e "NOTE: Reverse proxy config can be overridden via ""$blue_text""$script_dir/docker/proxy_overrides.yaml""$default_text""."
   else
-    echo -e "Found ""$blue_text""$script_dir/docker/proxy_overrides.yaml""$default_text"". Proxy behaviour will be overridden."
+    echo -e "Found ""$blue_text""$script_dir/docker/proxy_overrides.yaml""$default_text"". ""$yellow_text""Reverse proxy config will be overridden.""$default_text"
   fi
 
   if [ "$opt_only_env" = true ]; then
@@ -220,8 +240,10 @@ build_services() {
       echo -e "$red_text""Failed to build docker images.""$default_text"
       exit 1
     }
-  elif [ "$first_setup" = true ] || [ "$opt_upgrade" = true ]; then
+  elif [ "$first_setup" = true ] || [ "$opt_update" = true ]; then
     echo -e "$blue_text""Pulling""$default_text"" docker images tag ""$blue_text""$opt_version""$default_text""."
+    # Try again on a slow network.
+    VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.yaml pull ||
     VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.yaml pull || {
       echo -e "$red_text""Failed to pull docker images.""$default_text"
       echo -e "$red_text""Either version not found or docker is not running.""$default_text"
@@ -243,13 +265,20 @@ run_services() {
   echo -e "$blue_text""Starting docker containers in detached mode""$default_text"
   VERSION=$opt_version $docker_compose_cmd up -d
 
-  if [ "$opt_upgrade" = true ]; then
+  if [ "$opt_update" = true ]; then
     echo ""
-    echo -e "$green_text""Upgraded platform to $opt_version version.""$default_text"
+    if [[ "$opt_version" == "main" ]]; then
+      echo -e "$green_text""Updated platform to latest main (unstable).""$default_text"
+    else
+      echo -e "$green_text""Updated platform to $opt_version version.""$default_text"
+    fi
   fi
   echo -e "\nOnce the services are up, visit ""$blue_text""http://frontend.unstract.localhost""$default_text"" in your browser."
-  echo "See logs with:"
+  echo -e "\nSee logs with:"
   echo -e "    ""$blue_text""$docker_compose_cmd -f docker/docker-compose.yaml logs -f""$default_text"
+  echo -e "Configure services by updating corresponding ""$yellow_text""<service>/.env""$default_text"" files."
+  echo -e "Make sure to ""$yellow_text""restart""$default_text"" the services with:"
+  echo -e "    ""$blue_text""$docker_compose_cmd -f docker/docker-compose.yaml up -d""$default_text"
 
   popd 1>/dev/null
 }
@@ -262,7 +291,7 @@ check_dependencies
 opt_only_env=false
 opt_only_pull=false
 opt_build_local=false
-opt_upgrade=false
+opt_update=false
 opt_verbose=false
 opt_version="latest"
 

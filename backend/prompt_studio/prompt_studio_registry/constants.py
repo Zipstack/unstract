@@ -89,11 +89,9 @@ class JsonSchemaKey:
     ENABLE_CHALLENGE = "enable_challenge"
     CHALLENGE_LLM = "challenge_llm"
     ENABLE_SINGLE_PASS_EXTRACTION = "enable_single_pass_extraction"
-    IMAGE_URL = "image_url"
-    IMAGE_NAME = "image_name"
-    IMAGE_TAG = "image_tag"
     SUMMARIZE_PROMPT = "summarize_prompt"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
+    ENABLE_HIGHLIGHT = "enable_highlight"
 
 
 class SpecKey:

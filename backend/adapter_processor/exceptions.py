@@ -2,8 +2,6 @@ from typing import Optional
 
 from rest_framework.exceptions import APIException
 
-from backend.exceptions import UnstractBaseException
-
 
 class IdIsMandatory(APIException):
     status_code = 400
@@ -18,6 +16,14 @@ class InValidType(APIException):
 class InValidAdapterId(APIException):
     status_code = 400
     default_detail = "Adapter ID is not Valid."
+
+
+class InvalidEncryptionKey(APIException):
+    status_code = 403
+    default_detail = (
+        "Platform encryption key for storing adapter credentials has changed! "
+        "Please inform the organization admin to contact support."
+    )
 
 
 class InternalServiceError(APIException):
@@ -38,9 +44,14 @@ class UniqueConstraintViolation(APIException):
     default_detail = "Unique constraint violated"
 
 
-class TestAdapterError(UnstractBaseException):
+class TestAdapterError(APIException):
     status_code = 500
     default_detail = "Error while testing adapter"
+
+
+class TestAdapterInputError(APIException):
+    status_code = 400
+    default_detail = "Error while testing adapter, please check the configuration."
 
 
 class DeleteAdapterInUseError(APIException):

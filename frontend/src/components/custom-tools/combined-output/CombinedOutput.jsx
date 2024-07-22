@@ -1,4 +1,3 @@
-import Prism from "prismjs";
 import "prismjs/components/prism-json";
 import "prismjs/plugins/line-numbers/prism-line-numbers.css";
 import "prismjs/plugins/line-numbers/prism-line-numbers.js";
@@ -8,6 +7,7 @@ import PropTypes from "prop-types";
 
 import {
   displayPromptResult,
+  getLLMModelNamesForProfiles,
   promptType,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -17,21 +17,53 @@ import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { JsonView } from "./JsonView";
+import { useParams } from "react-router-dom";
 
+let TableView;
+let promptOutputApiSps;
+try {
+  TableView =
+    require("../../../plugins/simple-prompt-studio/TableView").TableView;
+  promptOutputApiSps =
+    require("../../../plugins/simple-prompt-studio/helper").promptOutputApiSps;
+} catch {
+  // The component will remain null of it is not available
+}
+let publicOutputsDocApi;
+let publicAdapterApi;
+try {
+  publicOutputsDocApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsDocApi;
+  publicAdapterApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicAdapterApi;
+} catch {
+  // The component will remain null of it is not available
+}
 function CombinedOutput({ docId, setFilledFields }) {
   const [combinedOutput, setCombinedOutput] = useState({});
   const [isOutputLoading, setIsOutputLoading] = useState(false);
+  const [adapterData, setAdapterData] = useState([]);
+  const [activeKey, setActiveKey] = useState("0");
+  const { id } = useParams();
   const {
     details,
     defaultLlmProfile,
     singlePassExtractMode,
     isSinglePassExtractLoading,
+    llmProfiles,
+    isSimplePromptStudio,
+    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
 
+  useEffect(() => {
+    getAdapterInfo();
+  }, []);
   useEffect(() => {
     if (!docId || isSinglePassExtractLoading) {
       return;
@@ -44,6 +76,16 @@ function CombinedOutput({ docId, setFilledFields }) {
       .then((res) => {
         const data = res?.data || [];
         const prompts = details?.prompts;
+        if (activeKey === "0") {
+          const output = {};
+          for (const key in data) {
+            if (Object.hasOwn(data, key)) {
+              output[key] = displayPromptResult(data[key], false);
+            }
+          }
+          setCombinedOutput(output);
+          return;
+        }
         const output = {};
         prompts.forEach((item) => {
           if (item?.prompt_type === promptType.notes) {
@@ -51,10 +93,7 @@ function CombinedOutput({ docId, setFilledFields }) {
           }
           output[item?.prompt_key] = "";
 
-          let profileManager = item?.profile_manager;
-          if (singlePassExtractMode) {
-            profileManager = defaultLlmProfile;
-          }
+          const profileManager = selectedProfile || item?.profile_manager;
           const outputDetails = data.find(
             (outputValue) =>
               outputValue?.prompt_id === item?.prompt_id &&
@@ -89,21 +128,43 @@ function CombinedOutput({ docId, setFilledFields }) {
       .finally(() => {
         setIsOutputLoading(false);
       });
-  }, [docId, singlePassExtractMode, isSinglePassExtractLoading]);
-
-  useEffect(() => {
-    Prism.highlightAll();
-  }, [combinedOutput]);
+  }, [
+    docId,
+    singlePassExtractMode,
+    isSinglePassExtractLoading,
+    selectedProfile,
+  ]);
 
   const handleOutputApiRequest = async () => {
+    let url;
+    if (isSimplePromptStudio) {
+      url = promptOutputApiSps(details?.tool_id, null, docId);
+    } else if (isPublicSource) {
+      url = publicOutputsDocApi(
+        id,
+        docId,
+        selectedProfile || defaultLlmProfile,
+        singlePassExtractMode
+      );
+    } else {
+      url = `/api/v1/unstract/${
+        sessionDetails?.orgId
+      }/prompt-studio/prompt-output/?tool_id=${
+        details?.tool_id
+      }&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}&profile_manager=${
+        selectedProfile || defaultLlmProfile
+      }`;
+      if (activeKey === "0") {
+        url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/prompt-default-profile/?tool_id=${details?.tool_id}&document_manager=${docId}`;
+      }
+    }
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}`,
+      url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
-
     return axiosPrivate(requestOptions)
       .then((res) => res)
       .catch((err) => {
@@ -111,27 +172,44 @@ function CombinedOutput({ docId, setFilledFields }) {
       });
   };
 
+  const getAdapterInfo = () => {
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/adapter/?adapter_type=LLM`;
+    if (isPublicSource) {
+      url = publicAdapterApi(id, "LLM");
+    }
+    axiosPrivate.get(url).then((res) => {
+      const adapterList = res?.data;
+      setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
+    });
+  };
+
   if (isOutputLoading) {
     return <SpinnerLoader />;
   }
 
+  const handleTabChange = (key) => {
+    if (key === "0") {
+      setSelectedProfile(defaultLlmProfile);
+    } else {
+      setSelectedProfile(adapterData[key - 1]?.profile_id);
+    }
+    setActiveKey(key);
+  };
+
+  if (isSimplePromptStudio && TableView) {
+    return <TableView combinedOutput={combinedOutput} />;
+  }
+
   return (
-    <div className="combined-op-layout">
-      <div className="combined-op-header">
-        <div className="combined-op-segment"></div>
-      </div>
-      <div className="combined-op-divider" />
-      <div className="combined-op-body code-snippet">
-        {combinedOutput && (
-          <pre className="line-numbers width-100">
-            <code className="language-javascript width-100">
-              {JSON.stringify(combinedOutput, null, 2)}
-            </code>
-          </pre>
-        )}
-      </div>
-      <div className="gap" />
-    </div>
+    <JsonView
+      combinedOutput={combinedOutput}
+      handleTabChange={handleTabChange}
+      selectedProfile={selectedProfile}
+      llmProfiles={llmProfiles}
+      activeKey={activeKey}
+      adapterData={adapterData}
+      isSinglePass={singlePassExtractMode}
+    />
   );
 }
 

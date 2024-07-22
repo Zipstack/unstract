@@ -8,8 +8,16 @@ import {
   Space,
   Typography,
 } from "antd";
+import {
+  UserOutlined,
+  UserSwitchOutlined,
+  LogoutOutlined,
+  DownloadOutlined,
+  FileProtectOutlined,
+  LikeOutlined,
+} from "@ant-design/icons";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 
 import { UnstractLogo } from "../../../assets/index.js";
@@ -36,18 +44,53 @@ try {
 function TopNavBar() {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { orgName, remainingTrialDays, allOrganization, orgId } =
+  const { orgName, remainingTrialDays, allOrganization, orgId, flags } =
     sessionDetails;
   const baseUrl = getBaseUrl();
   const onBoardUrl = baseUrl + `/${orgName}/onboard`;
   const logout = useLogout();
   const [showOnboardBanner, setShowOnboardBanner] = useState(false);
+  const [approverStatus, setApproverStatus] = useState(false);
+  const [reviewerStatus, setReviewerStatus] = useState(false);
+  const [reviewPageHeader, setReviewPageHeader] = useState("");
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
+  const location = useLocation();
 
   useEffect(() => {
-    setShowOnboardBanner(!onboardCompleted(sessionDetails?.adapters));
+    const isUnstractReviewer = sessionDetails.role === "unstract_reviewer";
+    const isUnstractSupervisor = sessionDetails.role === "unstract_supervisor";
+    const isUnstractAdmin = sessionDetails.role === "unstract_admin";
+
+    setShowOnboardBanner(
+      !onboardCompleted(sessionDetails?.adapters) &&
+        !isUnstractReviewer &&
+        !isUnstractSupervisor
+    );
+
+    setApproverStatus(
+      (isUnstractAdmin || isUnstractSupervisor) && flags.manual_review
+    );
+    setReviewerStatus(isUnstractReviewer && flags.manual_review);
   }, [sessionDetails]);
+
+  useEffect(() => {
+    if (flags.manual_review) {
+      const checkReviewPage = location.pathname.split("review");
+
+      if (checkReviewPage.length > 1) {
+        if (checkReviewPage[1].includes("/approve")) {
+          setReviewPageHeader("Approve");
+        } else if (checkReviewPage[1].includes("/download_and_sync")) {
+          setReviewPageHeader("Download and syncmanager");
+        } else {
+          setReviewPageHeader("Review");
+        }
+      } else {
+        setReviewPageHeader(null);
+      }
+    }
+  }, [location]);
 
   const cascadeOptions = allOrganization.map((org) => {
     return {
@@ -92,7 +135,7 @@ function TopNavBar() {
       });
   };
 
-  // Dropdown items
+  // Profile Dropdown items
   const items = [
     {
       key: "1",
@@ -101,15 +144,7 @@ function TopNavBar() {
           onClick={() => navigate(`/${orgName}/profile`)}
           className="logout-button"
         >
-          Profile
-        </Button>
-      ),
-    },
-    {
-      key: "2",
-      label: (
-        <Button onClick={logout} className="logout-button">
-          Logout
+          <UserOutlined /> Profile
         </Button>
       ),
     },
@@ -126,8 +161,52 @@ function TopNavBar() {
           }}
           placement="left"
         >
-          <div>Switch Org</div>
+          <div>
+            {" "}
+            <UserSwitchOutlined /> Switch Org
+          </div>
         </Dropdown>
+      ),
+    },
+    (reviewerStatus || approverStatus) && {
+      key: "4",
+      label: (
+        <Button
+          onClick={() => navigate(`/${orgName}/review`)}
+          className="logout-button"
+        >
+          <FileProtectOutlined /> Review
+        </Button>
+      ),
+    },
+    approverStatus && {
+      key: "5",
+      label: (
+        <Button
+          onClick={() => navigate(`/${orgName}/review/approve`)}
+          className="logout-button"
+        >
+          <LikeOutlined /> Approve
+        </Button>
+      ),
+    },
+    approverStatus && {
+      key: "6",
+      label: (
+        <Button
+          onClick={() => navigate(`/${orgName}/review/download_and_sync`)}
+          className="logout-button"
+        >
+          <DownloadOutlined /> Download and Sync Manager
+        </Button>
+      ),
+    },
+    {
+      key: "2",
+      label: (
+        <Button onClick={logout} className="logout-button">
+          <LogoutOutlined /> Logout
+        </Button>
       ),
     },
   ];
@@ -144,10 +223,16 @@ function TopNavBar() {
 
   return (
     <Row align="middle" className="topNav">
-      <Col span={4}>
+      <Col span={6}>
         <UnstractLogo className="topbar-logo" />
+        {reviewPageHeader && (
+          <span className="page-identifier">
+            <span className="custom-tools-header-v-divider" />
+            <span className="page-heading">{reviewPageHeader}</span>
+          </span>
+        )}
       </Col>
-      <Col span={16} className="top-nav-alert-col">
+      <Col span={14} className="top-nav-alert-col">
         {showOnboardBanner && (
           <Alert
             type="error"
