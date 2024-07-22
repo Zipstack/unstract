@@ -34,11 +34,11 @@ from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import
 from prompt_studio.prompt_studio_output_manager.output_manager_helper import (
     OutputManagerHelper,
 )
-from unstract.sdk.core.constants import LogLevel
-from unstract.sdk.core.exceptions import IndexingError, SdkError
-from unstract.sdk.core.index import Index
-from unstract.sdk.core.prompt import PromptTool
-from unstract.sdk.core.utils.tool_utils import ToolUtils
+from unstract.sdk.constants import LogLevel
+from unstract.sdk.exceptions import IndexingError, SdkError
+from unstract.sdk.index import Index
+from unstract.sdk.prompt import PromptTool
+from unstract.sdk.utils.tool_utils import ToolUtils
 from utils.local_context import StateStore
 
 from unstract.core.pubsub_helper import LogPublisher

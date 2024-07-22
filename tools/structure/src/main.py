@@ -5,13 +5,13 @@ from pathlib import Path
 from typing import Any
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
-from unstract.sdk.core.constants import LogState, MetadataKey
-from unstract.sdk.core.index import Index
-from unstract.sdk.core.prompt import PromptTool
-from unstract.sdk.core.tool.base import BaseTool
-from unstract.sdk.core.tool.entrypoint import ToolEntrypoint
-from unstract.sdk.core.utils import ToolUtils
-from unstract.sdk.core.utils.common_utils import CommonUtils
+from unstract.sdk.constants import LogState, MetadataKey
+from unstract.sdk.index import Index
+from unstract.sdk.prompt import PromptTool
+from unstract.sdk.tool.base import BaseTool
+from unstract.sdk.tool.entrypoint import ToolEntrypoint
+from unstract.sdk.utils import ToolUtils
+from unstract.sdk.utils.common_utils import CommonUtils
 
 
 class StructureTool(BaseTool):

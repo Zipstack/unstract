@@ -2,7 +2,7 @@ import os
 
 from flask import current_app
 from unstract.prompt_service.constants import LogLevel, PromptServiceContants
-from unstract.sdk.core.tool.stream import StreamMixin
+from unstract.sdk.tool.stream import StreamMixin
 
 
 class PromptServiceBaseTool(StreamMixin):

@@ -43,7 +43,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance.models import ToolInstance
-from unstract.sdk.core.utils.common_utils import CommonUtils
+from unstract.sdk.utils.common_utils import CommonUtils
 from utils.user_session import UserSessionUtils
 
 from unstract.connectors.filesystems.local_storage.local_storage import LocalStorageFS

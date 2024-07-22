@@ -2,7 +2,7 @@ import os
 
 from platform_settings.platform_auth_service import PlatformAuthenticationService
 from prompt_studio.prompt_studio_core.constants import LogLevel, ToolStudioKeys
-from unstract.sdk.core.tool.stream import StreamMixin
+from unstract.sdk.tool.stream import StreamMixin
 
 
 class PromptIdeBaseTool(StreamMixin):
