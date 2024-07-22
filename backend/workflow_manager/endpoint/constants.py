@@ -1,7 +1,7 @@
 class TableColumns:
     CREATED_BY = "created_by"
     CREATED_AT = "created_at"
-    PERMANENT_COLUMNS = ["created_by", "created_at"]
+    PERMANENT_COLUMNS = ["created_by", "created_at", "file_path", "execution_id"]
 
 
 class DBConnectionClass:
