@@ -167,6 +167,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
     >
       <Tabs
         defaultActiveKey="1"
+        moreIcon={<></>}
         tabBarExtraContent={
           <div className="codeActions">
             <Select
