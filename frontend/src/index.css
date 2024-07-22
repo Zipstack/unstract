@@ -137,3 +137,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.ant-tabs-nav-operations {
+  display: none !important;
+}
