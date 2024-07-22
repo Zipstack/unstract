@@ -137,3 +137,33 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.flex-dir-col {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.border {
+  border-style: solid;
+}
+
+.overflow-hidden {
+  overflow: hidden;
+}
+
+.overflow-y-auto {
+  overflow-y: auto;
+}
+
+.action-items {
+  display: flex;
+}
+
+.ant-tabs-nav-operations {
+  display: none !important;
+}
