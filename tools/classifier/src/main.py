@@ -27,7 +27,9 @@ class UnstractClassifier(BaseTool):
         if not llm_adapter_instance_id:
             self.stream_error_and_exit("Choose an LLM to process the classifier")
         if not text_extraction_adapter_id:
-            self.stream_error_and_exit("Choose an LLM to extract the documents")
+            self.stream_error_and_exit(
+                "Choose a text extractor to extract the documents"
+            )
 
     def run(
         self,
@@ -99,9 +101,10 @@ class UnstractClassifier(BaseTool):
 
         prompt = (
             f"Classify the following text into one of the following categories: {' '.join(bins_with_quotes)}.\n\n"  # noqa: E501
-            f"Your categorization should be strictly exactly one of the items in the "  # noqa: E501
-            f"categories given. Find a semantic match of category if possible. If it does not categorize well "  # noqa: E501
-            f"into any of the listed categories, categorize it as 'unknown'.\n\nText:\n\n{text}\n\n\nCategory:"  # noqa: E501
+            "Your categorization should be strictly exactly one of the items in the "  # noqa: E501
+            "categories given, do not provide any explanation. Find a semantic match of category if possible. "  # noqa: E501
+            "If it does not categorize well into any of the listed categories, categorize it as 'unknown'.\n\n"  # noqa: E501
+            f"Text:\n\n{text}\n\n\nCategory:"
         )
 
         settings_string = "".join(str(value) for value in settings.values())
