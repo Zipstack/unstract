@@ -25,6 +25,7 @@ function EditableText({
     indexDocs,
     selectedDoc,
     isSinglePassExtractLoading,
+    isPublicSource,
   } = useCustomToolStore();
 
   useEffect(() => {
@@ -90,7 +91,9 @@ function EditableText({
         onBlur={handleBlur}
         onClick={() => setIsEditing(true)}
         disabled={
-          disableLlmOrDocChange.includes(promptId) || isSinglePassExtractLoading
+          disableLlmOrDocChange.includes(promptId) ||
+          isSinglePassExtractLoading ||
+          isPublicSource
         }
       />
     );
@@ -114,7 +117,8 @@ function EditableText({
       disabled={
         disableLlmOrDocChange.includes(promptId) ||
         indexDocs.includes(selectedDoc?.document_id) ||
-        isSinglePassExtractLoading
+        isSinglePassExtractLoading ||
+        isPublicSource
       }
     />
   );

@@ -3,24 +3,30 @@ import json
 import logging
 from typing import Any, Optional
 
-from connector.constants import ConnectorInstanceKey as CIKey
-from connector_auth.constants import ConnectorAuthKey
-from connector_auth.pipeline.common import ConnectorAuthHelper
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import (
-    InternalServiceError,
     InValidConnectorId,
     InValidConnectorMode,
     OAuthTimeOut,
-    TestConnectorException,
-    TestConnectorInputException,
+    TestConnectorInputError,
 )
 
+from backend.constants import FeatureFlag
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.connectorkit import Connectorkit
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.ucs import UnstractCloudStorage
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+    from connector_auth_v2.constants import ConnectorAuthKey
+    from connector_auth_v2.pipeline.common import ConnectorAuthHelper
+    from connector_v2.constants import ConnectorInstanceKey as CIKey
+else:
+    from connector.constants import ConnectorInstanceKey as CIKey
+    from connector_auth.constants import ConnectorAuthKey
+    from connector_auth.pipeline.common import ConnectorAuthHelper
 
 logger = logging.getLogger(__name__)
 
@@ -46,26 +52,27 @@ class ConnectorProcessor:
         updated_connectors = fetch_connectors_by_key_value(
             ConnectorKeys.ID, connector_id
         )
-        if len(updated_connectors) != 0:
-            connector = updated_connectors[0]
-            schema_details[ConnectorKeys.OAUTH] = connector.get(ConnectorKeys.OAUTH)
-            schema_details[ConnectorKeys.SOCIAL_AUTH_URL] = connector.get(
-                ConnectorKeys.SOCIAL_AUTH_URL
-            )
-            try:
-                schema_details[ConnectorKeys.JSON_SCHEMA] = json.loads(
-                    connector.get(ConnectorKeys.JSON_SCHEMA)
-                )
-            except Exception as exc:
-                logger.error(f"Error occurred while parsing JSON Schema: {exc}")
-                raise InternalServiceError()
-        else:
+        if len(updated_connectors) == 0:
             logger.error(
                 f"Invalid connector Id : {connector_id} "
                 f"while fetching "
                 f"JSON Schema"
             )
             raise InValidConnectorId()
+
+        connector = updated_connectors[0]
+        schema_details[ConnectorKeys.OAUTH] = connector.get(ConnectorKeys.OAUTH)
+        schema_details[ConnectorKeys.SOCIAL_AUTH_URL] = connector.get(
+            ConnectorKeys.SOCIAL_AUTH_URL
+        )
+        try:
+            schema_details[ConnectorKeys.JSON_SCHEMA] = json.loads(
+                connector.get(ConnectorKeys.JSON_SCHEMA)
+            )
+        except Exception as exc:
+            logger.error(f"Error occurred decoding JSON for {connector_id}: {exc}")
+            raise exc
+
         return schema_details
 
     @staticmethod
@@ -100,15 +107,15 @@ class ConnectorProcessor:
         return supported_connectors
 
     @staticmethod
-    def test_connectors(connector_id: str, cred_string: dict[str, Any]) -> bool:
+    def test_connectors(connector_id: str, credentials: dict[str, Any]) -> bool:
         logger.info(f"Testing connector: {connector_id}")
         connector: dict[str, Any] = fetch_connectors_by_key_value(
             ConnectorKeys.ID, connector_id
         )[0]
         if connector.get(ConnectorKeys.OAUTH):
             try:
-                oauth_key = cred_string.get(ConnectorAuthKey.OAUTH_KEY)
-                cred_string = ConnectorAuthHelper.get_oauth_creds_from_cache(
+                oauth_key = credentials.get(ConnectorAuthKey.OAUTH_KEY)
+                credentials = ConnectorAuthHelper.get_oauth_creds_from_cache(
                     cache_key=oauth_key, delete_key=False
                 )
             except Exception as exc:
@@ -120,17 +127,13 @@ class ConnectorProcessor:
 
         try:
             connector_impl = Connectorkit().get_connector_by_id(
-                connector_id, cred_string
+                connector_id, credentials
             )
             test_result = connector_impl.test_credentials()
             logger.info(f"{connector_id} test result: {test_result}")
             return test_result
         except ConnectorError as e:
-            logger.error(f"Error while testing {connector_id}: {e}")
-            raise TestConnectorInputException(core_err=e)
-        except Exception as e:
-            logger.error(f"Error while testing {connector_id}: {e}")
-            raise TestConnectorException
+            raise TestConnectorInputError(core_err=e)
 
     def get_connector_data_with_key(connector_id: str, key_value: str) -> Any:
         """Generic Function to get connector data with provided key."""

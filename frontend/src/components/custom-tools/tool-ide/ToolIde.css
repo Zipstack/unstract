@@ -1,103 +1,104 @@
 /* Styles for ToolIde */
 
 .tool-ide-layout {
-    background-color: var(--page-bg-2);
-    height: 100%;
-    display: flex;
-    flex-direction: column;
+  background-color: var(--page-bg-2);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .tool-ide-body {
-    flex: 1;
-    overflow-y: hidden;
+  flex: 1;
+  overflow-y: hidden;
 }
 
 .tool-ide-body-2 {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .tool-ide-main {
-    flex-grow: 1;
-    overflow-y: hidden;
+  flex-grow: 1;
+  overflow-y: hidden;
 }
 
 .tool-ide-col {
-    height: 100%;
+  height: 100%;
 }
 
 .tool-ide-main-row {
-    height: 100%;
+  height: 100%;
 }
 
 .tool-ide-footer {
-    padding: 0px 12px 12px 12px;
+  padding: 0px 12px 12px 12px;
 }
 
 .tool-ide-prompts {
-    padding: 12px 6px 1px 12px;
-    height: 100%;
+  padding: 12px 6px 1px 12px;
+  height: 100%;
 }
 
 .tool-ide-pdf {
-    padding: 12px 12px 1px 6px;
-    height: 100%;
+  padding: 12px 12px 1px 6px;
+  height: 100%;
 }
 
-.tool-ide-prompts > div, .tool-ide-pdf > div {
-    background-color: var(--white);
-    height: 100%;
+.tool-ide-prompts > div,
+.tool-ide-pdf > div {
+  background-color: var(--white);
+  height: 100%;
 }
 
 .tool-ide-actions {
-    padding: 0px 12px;
+  padding: 0px 12px;
 }
 
 .tool-ide-logs {
-    height: 10vh;
+  height: 10vh;
 }
 
 .tool-ide-sider {
-    background-color: transparent !important;
-    height: 100%;
+  background-color: transparent !important;
+  height: 100%;
 }
 
 .tool-ide-sider-layout {
-    height: 100%;
-    background-color: transparent !important;
+  height: 100%;
+  background-color: transparent !important;
 }
 
 .tool-ide-sider-btn {
-    position: fixed;
-    transform: translate(-50%, 100%);
-    z-index: 1;
-    transition: "left 0.1s linear";
+  position: fixed;
+  transform: translate(-50%, 100%);
+  z-index: 1;
+  transition: "left 0.1s linear";
 }
 
 .tool-ide-collapse-panel {
-    background-color: var(--white);
-    border: none;
-    border-radius: 0px;
+  background-color: var(--white);
+  border: none;
+  border-radius: 0px;
 }
 
 /* Remove padding from modal content */
 .custom-modal-wrapper .ant-modal-content {
-    padding: 0;
-    height: 90vh;
-    overflow-y: auto;
+  padding: 0;
+  height: 90vh;
+  overflow-y: auto;
 }
 
 .custom-modal-wrapper .tools-prompts-header-layout {
-    border-radius: 5px 5px 0px 0px;
+  border-radius: 5px 5px 0px 0px;
 }
 
 .custom-modal-gen-index .ant-modal {
-    top: 20px;
-    right: 20px;
-    position: absolute !important;
+  top: 20px;
+  right: 20px;
+  position: absolute !important;
 }
 
 .tool-ide-main-card .card-text {
-    font-size: 12px;
+  font-size: 12px;
 }

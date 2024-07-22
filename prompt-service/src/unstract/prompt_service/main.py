@@ -204,27 +204,11 @@ def prompt_processor() -> Any:
     for output in outputs:  # type:ignore
         variable_names.append(output[PSKeys.NAME])
     for output in outputs:  # type:ignore
-        is_active = output[PSKeys.ACTIVE]
         prompt_name = output[PSKeys.NAME]
         promptx = output[PSKeys.PROMPT]
         chunk_size = output[PSKeys.CHUNK_SIZE]
         util = PromptServiceBaseTool(log_level=LogLevel.INFO, platform_key=platform_key)
         index = Index(tool=util)
-
-        if is_active is False:
-            app.logger.info(f"[{tool_id}] Skipping inactive prompt: {prompt_name}")
-            _publish_log(
-                log_events_id,
-                {
-                    "tool_id": tool_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevel.INFO,
-                RunLevel.RUN,
-                "Skipping inactive prompt",
-            )
-            continue
 
         app.logger.info(f"[{tool_id}] Executing prompt: {prompt_name}")
         _publish_log(

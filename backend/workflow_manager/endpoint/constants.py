@@ -70,9 +70,9 @@ class FileType:
 
 
 class FilePattern:
-    PDF_DOCUMENTS = ["*.pdf"]
+    PDF_DOCUMENTS = ["*.pdf", "*.PDF"]
     TEXT_DOCUMENTS = ["*.txt"]
-    IMAGES = ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp"]
+    IMAGES = ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.tif", "*.tiff"]
 
 
 class SourceConstant:
@@ -92,3 +92,14 @@ class BigQuery:
     """
 
     TABLE_NAME_SIZE = 3
+    COLUMN_TYPES = [
+        "DATE",
+        "DATETIME",
+        "TIME",
+        "TIMESTAMP",
+    ]
+
+
+class QueueResultStatus:
+    SUCCESS = "Success"
+    FAILED = "Failed"
