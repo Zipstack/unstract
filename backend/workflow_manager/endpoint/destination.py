@@ -143,7 +143,9 @@ class DestinationConnector(BaseConnector):
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
-            self.insert_into_db(file_history)
+            self.insert_into_db(
+                file_history=file_history, input_file_path=input_file_path
+            )
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
             meta_data = self.get_metadata(file_history)
@@ -216,7 +218,9 @@ class DestinationConnector(BaseConnector):
                 with open(source_path, "rb") as source_file:
                     destination_fsspec.write_bytes(normalized_path, source_file.read())
 
-    def insert_into_db(self, file_history: Optional[FileHistory]) -> None:
+    def insert_into_db(
+        self, file_history: Optional[FileHistory], input_file_path: str
+    ) -> None:
         """Insert data into the database."""
         connector_instance: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector_instance.metadata
@@ -242,6 +246,8 @@ class DestinationConnector(BaseConnector):
             include_agent=include_agent,
             agent_name=agent_name,
             single_column_name=single_column_name,
+            file_path=input_file_path,
+            execution_id=self.execution_id,
         )
         db_class = DatabaseUtils.get_db_class(
             connector_id=connector_instance.connector_id,

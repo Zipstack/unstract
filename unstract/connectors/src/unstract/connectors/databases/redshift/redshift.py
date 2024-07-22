@@ -87,7 +87,7 @@ class Redshift(UnstractDB, PsycoPgHandler):
     def get_create_table_query(table: str) -> str:
         sql_query = (
             f"CREATE TABLE IF NOT EXISTS {table} "
-            f"(id VARCHAR(65535) ,"
+            f"(id VARCHAR(65535) , file_path TEXT, execution_id TEXT ,"
             f"created_by VARCHAR(65535), created_at TIMESTAMP, "
         )
         return sql_query

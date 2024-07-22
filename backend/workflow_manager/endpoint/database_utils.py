@@ -162,6 +162,8 @@ class DatabaseUtils:
     def get_columns_and_values(
         column_mode_str: str,
         data: Any,
+        file_path: str,
+        execution_id: str,
         include_timestamp: bool = False,
         include_agent: bool = False,
         agent_name: Optional[str] = AgentName.UNSTRACT_DBWRITER.value,
@@ -214,7 +216,8 @@ class DatabaseUtils:
                 values[single_column_name] = data
             else:
                 values[single_column_name] = json.dumps(data)
-
+        values["file_path"] = file_path
+        values["execution_id"] = execution_id
         return values
 
     @staticmethod

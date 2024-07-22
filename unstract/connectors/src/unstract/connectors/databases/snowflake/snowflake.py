@@ -71,7 +71,7 @@ class SnowflakeDB(UnstractDB):
     def get_create_table_query(table: str) -> str:
         sql_query = (
             f"CREATE TABLE {table} IF NOT EXISTS "
-            f"(id TEXT ,"
+            f"(id TEXT , file_path TEXT, execution_id TEXT ,"
             f"created_by TEXT, created_at TIMESTAMP, "
         )
         return sql_query
