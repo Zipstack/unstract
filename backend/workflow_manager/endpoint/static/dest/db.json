@@ -38,15 +38,15 @@
         },
         "filePath": {
             "type": "string",
-            "title": "File Path",
+            "title": "File Path Column Name",
             "default": "file_path",
-            "description": "File path to store the file address"
+            "description": "Name of the column to store the absolute path to the file"
         },
         "executionId": {
             "type": "string",
-            "title": "Execution Id",
+            "title": "Execution ID Column Name",
             "default": "execution_id",
-            "description": "Execution id of the workflow"
+            "description": "Name of the column that stores the execution ID which identifies each individual run of a workflow"
         },
         "columnMode": {
             "type": "string",
