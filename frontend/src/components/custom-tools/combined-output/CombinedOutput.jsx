@@ -68,6 +68,9 @@ function CombinedOutput({ docId, setFilledFields }) {
     if (!docId || isSinglePassExtractLoading) {
       return;
     }
+    if (singlePassExtractMode && activeKey === "0") {
+      setActiveKey("1");
+    }
 
     let filledFields = 0;
     setIsOutputLoading(true);
