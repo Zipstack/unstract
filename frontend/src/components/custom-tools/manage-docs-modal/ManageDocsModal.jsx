@@ -425,8 +425,7 @@ function ManageDocsModal({
             disabled={
               disableLlmOrDocChange?.length > 0 ||
               isSinglePassExtractLoading ||
-              indexDocs.includes(item?.document_id) ||
-              isPublicSource
+              indexDocs.includes(item?.document_id)
             }
           />
         ),
@@ -592,7 +591,8 @@ function ManageDocsModal({
                   disabled={
                     !defaultLlmProfile ||
                     disableLlmOrDocChange?.length > 0 ||
-                    isSinglePassExtractLoading
+                    isSinglePassExtractLoading ||
+                    isPublicSource
                   }
                 >
                   Upload New File
