@@ -103,7 +103,7 @@ class UnstractDB(UnstractConnector, ABC):
     def get_create_table_query(table: str) -> str:
         sql_query = (
             f"CREATE TABLE IF NOT EXISTS {table} "
-            f"(id TEXT ,"
+            f"(id TEXT , "
             f"created_by TEXT, created_at TIMESTAMP, "
         )
         return sql_query
