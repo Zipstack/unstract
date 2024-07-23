@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:05df1113e05e7a95832ca9c1d6b97bf2ac2691d9ecb203fdff34089bca47da3b"
+content_hash = "sha256:96ad51e58ce516613f5a392048e30039e99b1e1fa59cba46ca199d1fa578b87b"
 
 [[package]]
 name = "adlfs"
@@ -409,7 +409,7 @@ files = [
 
 [[package]]
 name = "azure-storage-blob"
-version = "12.20.0"
+version = "12.21.0"
 requires_python = ">=3.8"
 summary = "Microsoft Azure Blob Storage Client Library for Python"
 groups = ["default", "dev"]
@@ -420,8 +420,8 @@ dependencies = [
     "typing-extensions>=4.6.0",
 ]
 files = [
-    {file = "azure-storage-blob-12.20.0.tar.gz", hash = "sha256:eeb91256e41d4b5b9bad6a87fd0a8ade07dd58aa52344e2c8d2746e27a017d3b"},
-    {file = "azure_storage_blob-12.20.0-py3-none-any.whl", hash = "sha256:de6b3bf3a90e9341a6bcb96a2ebe981dffff993e9045818f6549afea827a52a9"},
+    {file = "azure-storage-blob-12.21.0.tar.gz", hash = "sha256:b9722725072f5b7373c0f4dd6d78fbae2bb37bffc5c3e01731ab8c750ee8dd7e"},
+    {file = "azure_storage_blob-12.21.0-py3-none-any.whl", hash = "sha256:f9ede187dd5a0ef296b583a7c1861c6938ddd6708d6e70f4203a163c2ab42d43"},
 ]
 
 [[package]]
@@ -1879,7 +1879,7 @@ files = [
 
 [[package]]
 name = "huggingface-hub"
-version = "0.23.5"
+version = "0.24.0"
 requires_python = ">=3.8.0"
 summary = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
 groups = ["default", "dev"]
@@ -1893,8 +1893,8 @@ dependencies = [
     "typing-extensions>=3.7.4.3",
 ]
 files = [
-    {file = "huggingface_hub-0.23.5-py3-none-any.whl", hash = "sha256:d7a7d337615e11a45cc14a0ce5a605db6b038dc24af42866f731684825226e90"},
-    {file = "huggingface_hub-0.23.5.tar.gz", hash = "sha256:67a9caba79b71235be3752852ca27da86bd54311d2424ca8afdb8dda056edf98"},
+    {file = "huggingface_hub-0.24.0-py3-none-any.whl", hash = "sha256:7ad92edefb93d8145c061f6df8d99df2ff85f8379ba5fac8a95aca0642afa5d7"},
+    {file = "huggingface_hub-0.24.0.tar.gz", hash = "sha256:6c7092736b577d89d57b3cdfea026f1b0dc2234ae783fa0d59caf1bf7d52dfa7"},
 ]
 
 [[package]]
@@ -2309,7 +2309,7 @@ files = [
 
 [[package]]
 name = "llama-index-llms-openai"
-version = "0.1.25"
+version = "0.1.26"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms openai integration"
 groups = ["default", "dev"]
@@ -2317,8 +2317,8 @@ dependencies = [
     "llama-index-core<0.11.0,>=0.10.24",
 ]
 files = [
-    {file = "llama_index_llms_openai-0.1.25-py3-none-any.whl", hash = "sha256:d1922ad2f2bb4697a6ee2f61793aeb2f5c5606302639559dd9bb0a1d6ab9e73f"},
-    {file = "llama_index_llms_openai-0.1.25.tar.gz", hash = "sha256:49750f71d58e762a597ce639a2ccb119195c47aefa8a48c55c77be8a5cec4bc5"},
+    {file = "llama_index_llms_openai-0.1.26-py3-none-any.whl", hash = "sha256:1ad8e4eb02f9410c2091749d4d9aa9db4452646b595eb5eb937edbc496fb65fe"},
+    {file = "llama_index_llms_openai-0.1.26.tar.gz", hash = "sha256:08a408cd53af4cd4623dd5807be4cbbd5e5b3ca01272128cd678d667343e4d5d"},
 ]
 
 [[package]]
@@ -2368,7 +2368,7 @@ files = [
 
 [[package]]
 name = "llama-index-multi-modal-llms-openai"
-version = "0.1.7"
+version = "0.1.8"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index multi-modal-llms openai integration"
 groups = ["default", "dev"]
@@ -2377,7 +2377,8 @@ dependencies = [
     "llama-index-llms-openai<0.2.0,>=0.1.1",
 ]
 files = [
-    {file = "llama_index_multi_modal_llms_openai-0.1.7-py3-none-any.whl", hash = "sha256:a86fa4a8f8372da31b978cc28d14da75ce6a39f42b1eea90cd3ac93017644766"},
+    {file = "llama_index_multi_modal_llms_openai-0.1.8-py3-none-any.whl", hash = "sha256:16ae72ac3c5201ebd1d4b62203930c1768149ec85c3e477e5e51ed2ef8db1067"},
+    {file = "llama_index_multi_modal_llms_openai-0.1.8.tar.gz", hash = "sha256:5e2c94a6415a2509cad035ccea34461959ae327a5900d3e820417e9ebb9a13ec"},
 ]
 
 [[package]]
@@ -2601,7 +2602,7 @@ files = [
 
 [[package]]
 name = "msal"
-version = "1.29.0"
+version = "1.30.0"
 requires_python = ">=3.7"
 summary = "The Microsoft Authentication Library (MSAL) for Python library enables your app to access the Microsoft Cloud by supporting authentication of users with Microsoft Azure Active Directory accounts (AAD) and Microsoft Accounts (MSA) using industry standard OAuth2 and OpenID Connect."
 groups = ["default", "dev"]
@@ -2611,8 +2612,8 @@ dependencies = [
     "requests<3,>=2.0.0",
 ]
 files = [
-    {file = "msal-1.29.0-py3-none-any.whl", hash = "sha256:6b301e63f967481f0cc1a3a3bac0cf322b276855bc1b0955468d9deb3f33d511"},
-    {file = "msal-1.29.0.tar.gz", hash = "sha256:8f6725f099752553f9b2fe84125e2a5ebe47b49f92eacca33ebedd3a9ebaae25"},
+    {file = "msal-1.30.0-py3-none-any.whl", hash = "sha256:423872177410cb61683566dc3932db7a76f661a5d2f6f52f02a047f101e1c1de"},
+    {file = "msal-1.30.0.tar.gz", hash = "sha256:b4bf00850092e465157d814efa24a18f788284c9a479491024d62903085ea2fb"},
 ]
 
 [[package]]
@@ -4023,13 +4024,13 @@ files = [
 
 [[package]]
 name = "setuptools"
-version = "70.3.0"
+version = "71.0.3"
 requires_python = ">=3.8"
 summary = "Easily download, build, install, upgrade, and uninstall Python packages"
 groups = ["default", "dev"]
 files = [
-    {file = "setuptools-70.3.0-py3-none-any.whl", hash = "sha256:fe384da74336c398e0d956d1cae0669bc02eed936cdb1d49b57de1990dc11ffc"},
-    {file = "setuptools-70.3.0.tar.gz", hash = "sha256:f171bab1dfbc86b132997f26a119f6056a57950d058587841a0082e8830f9dc5"},
+    {file = "setuptools-71.0.3-py3-none-any.whl", hash = "sha256:f501b6e6db709818dc76882582d9c516bf3b67b948864c5fa1d1624c09a49207"},
+    {file = "setuptools-71.0.3.tar.gz", hash = "sha256:3d8531791a27056f4a38cd3e54084d8b1c4228ff9cf3f2d7dd075ec99f9fd70d"},
 ]
 
 [[package]]
@@ -4650,7 +4651,7 @@ files = [
 
 [[package]]
 name = "unstract-adapters"
-version = "0.21.0"
+version = "0.22.0"
 requires_python = "<3.12,>=3.9"
 summary = "Unstract interface for LLMs, Embeddings and VectorDBs"
 groups = ["default", "dev"]
@@ -4679,8 +4680,8 @@ dependencies = [
     "singleton-decorator~=1.0.0",
 ]
 files = [
-    {file = "unstract_adapters-0.21.0-py3-none-any.whl", hash = "sha256:6c4f597602f55b80ba176a29a930755abd3494ff1c085f406536e7463902d655"},
-    {file = "unstract_adapters-0.21.0.tar.gz", hash = "sha256:ebb8f80b7f26f04874bb5466fe0be8c3e1b51d44ed85c4e62289a7751c996af6"},
+    {file = "unstract_adapters-0.22.0-py3-none-any.whl", hash = "sha256:0c0c4fe262ee1e3c98858ac4911c9c5accad52f92d7408e5eddef958168f786f"},
+    {file = "unstract_adapters-0.22.0.tar.gz", hash = "sha256:f8ca322a1ec50e0fe257b1bb4ad6da4f6f5ca3016114437fe9119fe374e3a44b"},
 ]
 
 [[package]]
@@ -4742,7 +4743,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.37.0"
+version = "0.38.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -4754,11 +4755,11 @@ dependencies = [
     "python-magic~=0.4.27",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.21.0",
+    "unstract-adapters~=0.22.0",
 ]
 files = [
-    {file = "unstract_sdk-0.37.0-py3-none-any.whl", hash = "sha256:3bd83dfb7a760e73f35cc9ed4bdadf645bd77f03f77d25578e842156645e6f1d"},
-    {file = "unstract_sdk-0.37.0.tar.gz", hash = "sha256:a00b81f014508db0130dd21d594e3d8e0034dcafd3f01461ce30d37e68646944"},
+    {file = "unstract_sdk-0.38.0-py3-none-any.whl", hash = "sha256:846343de9a55ca5a3b83a75fa85d7792f4bb4131703fb88127c6782684fa7fec"},
+    {file = "unstract_sdk-0.38.0.tar.gz", hash = "sha256:8b39f5cc06d179abcc4267762e65180cf18b3b7af2ecd9c7266ac3f030995ae0"},
 ]
 
 [[package]]
@@ -4773,7 +4774,7 @@ dependencies = [
     "PyYAML~=6.0.1",
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
-    "unstract-adapters~=0.21.0",
+    "unstract-adapters~=0.22.0",
     "unstract-tool-sandbox",
 ]
 
