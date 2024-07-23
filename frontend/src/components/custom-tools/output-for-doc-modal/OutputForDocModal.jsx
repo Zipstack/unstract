@@ -118,39 +118,61 @@ function OutputForDocModal({
 
   const updatePromptOutput = (data) => {
     setPromptOutputs((prev) => {
-      // If data is provided, use it; otherwise, create a copy of the previous state
-      const updatedPromptOutput = data || [...prev];
-
-      // Get the keys of docOutputs
+      const updatedPromptOutput = getUpdatedPromptOutput(data, prev);
       const keys = Object.keys(docOutputs);
 
       keys.forEach((key) => {
         const docId = getDocIdFromKey(key);
-        // Find the index of the prompt output corresponding to the document manager key
-        const index = updatedPromptOutput.findIndex(
-          (promptOutput) => promptOutput?.document_manager === docId
-        );
-
-        let promptOutputInstance = {};
-        // If the prompt output for the current key doesn't exist, skip it
-        if (index > -1) {
-          promptOutputInstance = updatedPromptOutput[index];
-          promptOutputInstance["output"] = docOutputs[key]?.output;
-        }
-
-        // Update output and isLoading properties based on docOutputs
-        promptOutputInstance["document_manager"] = docId;
-        promptOutputInstance["isLoading"] = docOutputs[key]?.isLoading || false;
-
-        // Update the prompt output instance in the array
-        if (index > -1) {
-          updatedPromptOutput[index] = promptOutputInstance;
-        } else {
-          updatedPromptOutput.push(promptOutputInstance);
-        }
+        updatePromptOutputInstance(updatedPromptOutput, docId, key);
       });
+
       return updatedPromptOutput;
     });
+  };
+
+  const getUpdatedPromptOutput = (data, prev) => {
+    return data || [...prev];
+  };
+
+  const updatePromptOutputInstance = (updatedPromptOutput, docId, key) => {
+    const index = findPromptOutputIndex(updatedPromptOutput, docId);
+    const promptOutputInstance = createOrUpdatePromptOutputInstance(
+      updatedPromptOutput,
+      docId,
+      key,
+      index
+    );
+
+    if (index > -1) {
+      updatedPromptOutput[index] = promptOutputInstance;
+    } else {
+      updatedPromptOutput.push(promptOutputInstance);
+    }
+  };
+
+  const findPromptOutputIndex = (updatedPromptOutput, docId) => {
+    return updatedPromptOutput.findIndex(
+      (promptOutput) => promptOutput?.document_manager === docId
+    );
+  };
+
+  const createOrUpdatePromptOutputInstance = (
+    updatedPromptOutput,
+    docId,
+    key,
+    index
+  ) => {
+    let promptOutputInstance = {};
+
+    if (index > -1) {
+      promptOutputInstance = { ...updatedPromptOutput[index] };
+    }
+
+    promptOutputInstance["document_manager"] = docId;
+    promptOutputInstance["output"] = docOutputs[key]?.output;
+    promptOutputInstance["isLoading"] = docOutputs[key]?.isLoading || false;
+
+    return promptOutputInstance;
   };
 
   const getAdapterInfo = () => {
