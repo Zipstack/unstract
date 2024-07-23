@@ -19,6 +19,7 @@ import {
 } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -41,6 +42,13 @@ try {
   // The component will remain null if it is not available
 }
 
+let publicIndexApi = null;
+try {
+  publicIndexApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicIndexApi;
+} catch {
+  // The component will remain null if it is not available
+}
 const indexTypes = {
   raw: "RAW",
   summarize: "Summarize",
@@ -63,6 +71,7 @@ function ManageDocsModal({
   const [lastMessagesUpdate, setLastMessagesUpdate] = useState("");
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
+  const { id } = useParams();
   const {
     selectedDoc,
     listOfDocs,
@@ -138,7 +147,7 @@ function ManageDocsModal({
   }, [defaultLlmProfile, details]);
 
   useEffect(() => {
-    if (!open || isPublicSource) {
+    if (!open) {
       return;
     }
     handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
@@ -243,10 +252,13 @@ function ManageDocsModal({
       handleIndexStatus(indexType, []);
       return;
     }
-
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/document-index/?profile_manager=${llmProfileId}`;
+    if (isPublicSource) {
+      url = publicIndexApi(id, llmProfileId);
+    }
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/document-index/?profile_manager=${llmProfileId}`,
+      url,
     };
 
     handleLoading(indexType, true);
@@ -263,6 +275,7 @@ function ManageDocsModal({
         handleIndexStatus(indexType, indexStatus);
       })
       .catch((err) => {
+        console.log(err);
         setAlertDetails(handleException(err, "Failed to get index status"));
       })
       .finally(() => {

@@ -26,6 +26,8 @@ import {
   Typography,
 } from "antd";
 import { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import CheckableTag from "antd/es/tag/CheckableTag";
 
 import {
   displayPromptResult,
@@ -36,8 +38,6 @@ import { EditableText } from "../editable-text/EditableText";
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { Header } from "./Header";
-import CheckableTag from "antd/es/tag/CheckableTag";
-import { motion, AnimatePresence } from "framer-motion";
 import { OutputForIndex } from "./OutputForIndex";
 import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
 
@@ -314,7 +314,6 @@ function PromptCardItems({
                         type="link"
                         className="display-flex-align-center prompt-card-action-button"
                         onClick={() => setOpenOutputForDoc(true)}
-                        disabled={isPublicSource}
                       >
                         <Space>
                           {isCoverageLoading ? (

@@ -91,6 +91,13 @@ function ToolIde() {
     }
   }, [shareId, openShareModal]);
 
+  useEffect(() => {
+    if (!openShareModal) {
+      setOpenShareConfirmation(false);
+      setOpenShareLink(false);
+    }
+  }, [openShareModal]);
+
   const genExtra = () => (
     <FullscreenOutlined
       onClick={(event) => {
@@ -206,14 +213,15 @@ function ToolIde() {
     const body = {
       output: doc?.document_id,
     };
-
-    handleUpdateTool(body).catch((err) => {
-      const revertSelectedDoc = {
-        selectedDoc: prevSelectedDoc,
-      };
-      updateCustomTool(revertSelectedDoc);
-      setAlertDetails(handleException(err, "Failed to select the document"));
-    });
+    if (!isPublicSource) {
+      handleUpdateTool(body).catch((err) => {
+        const revertSelectedDoc = {
+          selectedDoc: prevSelectedDoc,
+        };
+        updateCustomTool(revertSelectedDoc);
+        setAlertDetails(handleException(err, "Failed to select the document"));
+      });
+    }
   };
 
   return (
@@ -227,7 +235,9 @@ function ToolIde() {
           setOpenCloneModal={setOpenCloneModal}
         />
       </div>
-      <div className="tool-ide-body">
+      <div
+        className={isPublicSource ? "public-tool-ide-body" : "tool-ide-body"}
+      >
         <div className="tool-ide-body-2">
           <Row className="tool-ide-main">
             <Col span={12} className="tool-ide-col">
@@ -299,7 +309,7 @@ function ToolIde() {
           setOpenCloneModal={setOpenCloneModal}
         />
       )}
-      {!promptOnboardingMessage && OnboardMessagesModal && (
+      {!promptOnboardingMessage && OnboardMessagesModal && !isPublicSource && (
         <OnboardMessagesModal
           open={loginModalOpen}
           setOpen={setLoginModalOpen}

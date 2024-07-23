@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { useSessionStore } from "../../../store/session-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { HeaderPublic } from "../../../plugins/prompt-studio-public-share/header-public/HeaderPublic";
 
 function OutputAnalyzerHeader() {
   const { sessionDetails } = useSessionStore();
@@ -12,23 +13,26 @@ function OutputAnalyzerHeader() {
   const { isPublicSource } = useCustomToolStore();
   const handleNavigate = () => {
     if (isPublicSource) {
-      navigate(`/promptStudio/share/${id}`);
+      navigate(-1);
     }
     navigate(`/${sessionDetails?.orgName}/tools/${id}`);
   };
   return (
-    <div className="output-analyzer-header">
-      <div>
-        <Space>
-          <Button size="small" type="text" onClick={handleNavigate}>
-            <ArrowLeftOutlined />
-          </Button>
-          <Typography.Text className="font-size-16" strong>
-            Output Analyzer
-          </Typography.Text>
-        </Space>
+    <div>
+      {isPublicSource && <HeaderPublic />}
+      <div className="output-analyzer-header">
+        <div>
+          <Space>
+            <Button size="small" type="text" onClick={handleNavigate}>
+              <ArrowLeftOutlined />
+            </Button>
+            <Typography.Text className="font-size-16" strong>
+              Output Analyzer
+            </Typography.Text>
+          </Space>
+        </div>
+        <div></div>
       </div>
-      <div></div>
     </div>
   );
 }

@@ -185,6 +185,7 @@ function Header({
             checked={isDisablePrompt}
             className="prompt-card-action-button"
             onChange={handleDisablePrompt}
+            disabled={isPublicSource}
           />
         </Tooltip>
         <Divider type="vertical" className="header-delete-divider" />

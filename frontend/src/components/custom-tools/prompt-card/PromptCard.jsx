@@ -1,5 +1,6 @@
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 
 import {
   defaultTokenUsage,
@@ -18,7 +19,6 @@ import useTokenUsage from "../../../hooks/useTokenUsage";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
-import { useParams } from "react-router-dom";
 
 const EvalModal = null;
 const getEvalMetrics = (param1, param2) => {
@@ -713,7 +713,6 @@ function PromptCard({
       url = publicOutputsApi(
         id,
         promptDetails?.prompt_id,
-        selectedLlmProfileId,
         singlePassExtractMode
       );
     }
