@@ -1,3 +1,57 @@
-.no-outline.ant-tag > span {
+.prompt_version_tag {
+    cursor: pointer;
+    font-weight: bold;
+    transition: border 0.3s ease;
+    outline: none;
+    border: 1px solid #91caff;
+}
+
+.prompt_version_tag:hover {
+    border-color: #0084ff;
+}
+
+.prompt_version_tag.warning {
+    border-color: #ffe58f;
+}
+
+.prompt_version_tag.warning:hover {
+    border-color: #ffc400;
+}
+
+.prompt_version_tag.ant-tag > span {
     border: none !important;
+}
+
+.m0 {
+    margin: 0 !important;
+}
+
+.prompt-version-modal .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.prompt-version-modal .modal-title {
+  margin: 0;
+}
+
+.prompt-version-modal .modal-close-button {
+  color: #00000073;
+}
+
+.prompt-version-modal .modal-prompt-row {
+  margin: 16px;
+}
+
+.prompt-version-modal .modal-prompt-col {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.prompt-version-modal .modal-prompt-col-text {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }

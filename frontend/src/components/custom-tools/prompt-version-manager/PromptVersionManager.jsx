@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
-  DeleteOutlined,
-  DeleteTwoTone,
+  CloseOutlined,
+  ExclamationCircleOutlined,
   LoadingOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
@@ -19,21 +19,24 @@ import {
 import PropTypes from "prop-types";
 
 import "./PromptVersionManager.css";
+
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
 
 const PromptVersionManager = ({ promptDetails, handleChange }) => {
   const [open, setOpen] = useState(false);
+  const [tooltipOpen, setTooltipOpen] = useState(false);
   const [isLoadingGetPromptVersions, setIsLoadingGetPromptVersions] =
     useState(false);
   const [isLoadingLoadPromptVersion, setIsLoadingLoadPromptVersion] =
     useState(false);
+  const { details, updateCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const [promptVersions, setPromptVersions] = useState([]);
-
   const getPromptVersions = (e) => {
     e.preventDefault();
     setIsLoadingGetPromptVersions(true);
@@ -45,6 +48,7 @@ const PromptVersionManager = ({ promptDetails, handleChange }) => {
       .then((res) => {
         const data = res?.data;
         setPromptVersions(data);
+        setTooltipOpen(false);
         setOpen(true);
       })
       .catch((err) => {
@@ -79,7 +83,17 @@ const PromptVersionManager = ({ promptDetails, handleChange }) => {
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data;
-        // setPromptVersions(data);
+        const modifiedDetails = { ...details };
+        const modifiedPrompts = [...(modifiedDetails?.prompts || [])].map(
+          (item) => {
+            if (item?.prompt_id === promptDetails?.prompt_id) {
+              return data?.loaded_data;
+            }
+            return item;
+          }
+        );
+        modifiedDetails["prompts"] = modifiedPrompts;
+        updateCustomTool({ details: modifiedDetails });
         setAlertDetails({
           type: "success",
           content:
@@ -105,33 +119,49 @@ const PromptVersionManager = ({ promptDetails, handleChange }) => {
 
   return (
     <>
-      <Tooltip title="Prompt Version">
+      <Tooltip title="Prompt Version" open={tooltipOpen} destroyTooltipOnHide>
         <Tag
-          className="no-outline"
-          color="blue"
-          style={{
-            cursor: "pointer",
-            fontWeight: "bold",
-            transition: "border 0.3s ease",
-            outline: "none",
-          }}
-          onMouseEnter={(e) => {
-            e.target.style.border = "1px solid #1890ff";
-          }} // Increase border on hover
-          onMouseLeave={(e) => {
-            e.target.style.border = "1px solid #91caff";
-          }} // Restore initial border
-          // onClick={() => console.log("CLICK")}
+          color={promptDetails?.loaded_version_id ? "blue" : "warning"}
+          className={`prompt_version_tag ${
+            promptDetails?.loaded_version_id ? "" : "warning"
+          }`}
           onClick={getPromptVersions}
-          icon={isLoadingGetPromptVersions ? <LoadingOutlined /> : <></>}
+          onMouseEnter={() => setTooltipOpen(true)}
+          onMouseLeave={() => setTooltipOpen(false)}
+          icon={isLoadingGetPromptVersions ? <LoadingOutlined /> : null}
         >
           {promptDetails?.loaded_version}
         </Tag>
       </Tooltip>
       <Modal
-        title="Prompt Version Manager"
+        title={
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Typography.Title level={5} className="m0">
+              Prompt Version Manager
+            </Typography.Title>
+            <Space>
+              {!promptDetails?.loaded_version_id && (
+                <Tag icon={<ExclamationCircleOutlined />} color="warning">
+                  Version {promptDetails?.loaded_version} will be created if the
+                  prompt is ran
+                </Tag>
+              )}
+              <Button
+                type="text"
+                icon={<CloseOutlined style={{ color: "#00000073" }} />}
+                onClick={() => setOpen(false)}
+              />
+            </Space>
+          </div>
+        }
         open={open}
-        onCancel={() => setOpen(false)}
+        closable={false}
         footer={null}
         width={800}
         destroyOnClose
@@ -139,10 +169,7 @@ const PromptVersionManager = ({ promptDetails, handleChange }) => {
       >
         <Divider />
         {promptVersions.map((promptVersion) => (
-          <div
-            key={promptVersion?.prompt_version_manager_id}
-            style={{ margin: 16 }}
-          >
+          <div key={promptVersion?.id} style={{ margin: 16 }}>
             <Row gutter={16} align="middle">
               <Col
                 span={2}
