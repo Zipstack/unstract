@@ -237,6 +237,12 @@ class DestinationConnector(BaseConnector):
         single_column_name = str(
             destination_configurations.get(DestinationKey.SINGLE_COLUMN_NAME, "data")
         )
+        file_path_name = str(
+            destination_configurations.get(DestinationKey.FILE_PATH, "file_path")
+        )
+        execution_id_name = str(
+            destination_configurations.get(DestinationKey.EXECUTION_ID, "execution_id")
+        )
 
         data = self.get_result(file_history)
         values = DatabaseUtils.get_columns_and_values(
@@ -246,6 +252,8 @@ class DestinationConnector(BaseConnector):
             include_agent=include_agent,
             agent_name=agent_name,
             single_column_name=single_column_name,
+            file_path_name=file_path_name,
+            execution_id_name=execution_id_name,
             file_path=input_file_path,
             execution_id=self.execution_id,
         )
