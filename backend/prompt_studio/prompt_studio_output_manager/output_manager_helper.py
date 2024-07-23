@@ -2,6 +2,7 @@ import json
 import logging
 from typing import Any, Optional
 
+from django.core.exceptions import ObjectDoesNotExist
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.exceptions import (
@@ -144,3 +145,37 @@ class OutputManagerHelper:
             return ProfileManager.get_default_llm_profile(tool=tool)
         except DefaultProfileError:
             raise DefaultProfileError("Default ProfileManager does not exist.")
+
+    @staticmethod
+    def fetch_default_response(
+        tool_studio_prompts: list[ToolStudioPrompt], document_manager_id: str
+    ) -> dict[str, Any]:
+        # Initialize the result dictionary
+        result: dict[str, Any] = {}
+        # Iterate over ToolStudioPrompt records
+        for tool_prompt in tool_studio_prompts:
+            prompt_id = str(tool_prompt.prompt_id)
+            profile_manager_id = str(tool_prompt.profile_manager.profile_id)
+
+            # If profile_manager is not set, skip this record
+            if not profile_manager_id:
+                result[tool_prompt.prompt_key] = ""
+                continue
+
+            try:
+                queryset = PromptStudioOutputManager.objects.filter(
+                    prompt_id=prompt_id,
+                    profile_manager=profile_manager_id,
+                    is_single_pass_extract=False,
+                    document_manager_id=document_manager_id,
+                )
+
+                if not queryset.exists():
+                    result[tool_prompt.prompt_key] = ""
+                    continue
+
+                for output in queryset:
+                    result[tool_prompt.prompt_key] = output.output
+            except ObjectDoesNotExist:
+                result[tool_prompt.prompt_key] = ""
+        return result
