@@ -91,7 +91,7 @@ class BigQuery(UnstractDB):
     def get_create_table_query(table: str) -> str:
         sql_query = (
             f"CREATE TABLE IF NOT EXISTS {table} "
-            f"(id string, file_path string, execution_id string ,"
+            f"(id string,"
             f"created_by string, created_at TIMESTAMP, "
         )
         return sql_query

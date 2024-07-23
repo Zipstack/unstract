@@ -164,6 +164,8 @@ class DatabaseUtils:
         data: Any,
         file_path: str,
         execution_id: str,
+        file_path_name: str = "file_path",
+        execution_id_name: str = "execution_id",
         include_timestamp: bool = False,
         include_agent: bool = False,
         agent_name: Optional[str] = AgentName.UNSTRACT_DBWRITER.value,
@@ -216,8 +218,8 @@ class DatabaseUtils:
                 values[single_column_name] = data
             else:
                 values[single_column_name] = json.dumps(data)
-        values["file_path"] = file_path
-        values["execution_id"] = execution_id
+        values[file_path_name] = file_path
+        values[execution_id_name] = execution_id
         return values
 
     @staticmethod

@@ -1,7 +1,7 @@
 class TableColumns:
     CREATED_BY = "created_by"
     CREATED_AT = "created_at"
-    PERMANENT_COLUMNS = ["created_by", "created_at", "file_path", "execution_id"]
+    PERMANENT_COLUMNS = ["created_by", "created_at"]
 
 
 class DBConnectionClass:
@@ -57,6 +57,8 @@ class DestinationKey:
     PATH = "path"
     OUTPUT_FOLDER = "outputFolder"
     OVERWRITE_OUTPUT_DOCUMENT = "overwriteOutput"
+    FILE_PATH = "filePath"
+    EXECUTION_ID = "executionId"
 
 
 class OutputJsonKey:

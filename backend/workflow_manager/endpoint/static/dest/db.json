@@ -36,6 +36,18 @@
             "default": false,
             "description": "Include the 'created_at' in the output row"
         },
+        "filePath": {
+            "type": "string",
+            "title": "File Path",
+            "default": "file_path",
+            "description": "File path to store the file address"
+        },
+        "executionId": {
+            "type": "string",
+            "title": "Execution Id",
+            "default": "execution_id",
+            "description": "Execution id of the workflow"
+        },
         "columnMode": {
             "type": "string",
             "title": "Select how you want to write the output",

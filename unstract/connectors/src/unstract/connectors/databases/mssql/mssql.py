@@ -69,7 +69,7 @@ class MSSQL(UnstractDB):
             f"IF NOT EXISTS ("
             f"SELECT * FROM sysobjects WHERE name='{table}' and xtype='U')"
             f" CREATE TABLE {table} "
-            f"(id TEXT , file_path TEXT, execution_id TEXT ,"
+            f"(id TEXT ,"
             f"created_by TEXT, created_at DATETIMEOFFSET, "
         )
         return sql_query
