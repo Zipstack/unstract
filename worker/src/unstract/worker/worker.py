@@ -222,7 +222,9 @@ class UnstractWorker:
             )
         except ToolRunException as te:
             self.logger.error(
-                f"Failed to run docker container: {te}", stack_info=True, exc_info=True
+                f"Error while running docker container: {te}",
+                stack_info=True,
+                exc_info=True,
             )
             result = {"type": "RESULT", "result": None, "error": str(te.message)}
         except Exception as e:
