@@ -4,7 +4,14 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { useSessionStore } from "../../../store/session-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { HeaderPublic } from "../../../plugins/prompt-studio-public-share/header-public/HeaderPublic";
+
+let HeaderPublic;
+try {
+  HeaderPublic =
+    require("../../../plugins/prompt-studio-public-share/header-public/HeaderPublic.jsx").HeaderPublic;
+} catch (err) {
+  // Do nothing if plugins are not loaded.
+}
 
 function OutputAnalyzerHeader() {
   const { sessionDetails } = useSessionStore();
@@ -19,7 +26,7 @@ function OutputAnalyzerHeader() {
   };
   return (
     <div>
-      {isPublicSource && <HeaderPublic />}
+      {isPublicSource && HeaderPublic && <HeaderPublic />}
       <div className="output-analyzer-header">
         <div>
           <Space>
