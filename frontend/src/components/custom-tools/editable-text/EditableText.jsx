@@ -25,11 +25,12 @@ function EditableText({
     indexDocs,
     selectedDoc,
     isSinglePassExtractLoading,
+    details,
   } = useCustomToolStore();
 
   useEffect(() => {
     setText(defaultText);
-  }, []);
+  }, [details?.prompts]);
 
   useEffect(() => {
     // Attach the event listener when the component mounts
