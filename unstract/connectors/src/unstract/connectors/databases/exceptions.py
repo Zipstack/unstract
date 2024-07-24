@@ -25,13 +25,13 @@ class InvalidSyntaxException(UnstractDBConnectorException):
             f"Error creating/writing to {database}. Syntax incorrect. "
             f"Please check your table-name or schema. "
         )
-        super().__init__(detail=default_detail + detail)
+        super().__init__(detail=default_detail)
 
 
 class InvalidSchemaException(UnstractDBConnectorException):
     def __init__(self, detail: Any, database: str) -> None:
         default_detail = f"Error creating/writing to {database}. Schema not valid. "
-        super().__init__(detail=default_detail + detail)
+        super().__init__(detail=default_detail)
 
 
 class UnderfinedTableException(UnstractDBConnectorException):
@@ -40,7 +40,7 @@ class UnderfinedTableException(UnstractDBConnectorException):
             f"Error creating/writing to {database}. Undefined table. "
             f"Please check your table-name or schema. "
         )
-        super().__init__(detail=default_detail + detail)
+        super().__init__(detail=default_detail)
 
 
 class ValueTooLongException(UnstractDBConnectorException):
@@ -49,7 +49,7 @@ class ValueTooLongException(UnstractDBConnectorException):
             f"Error creating/writing to {database}. "
             f"Size of the inserted data exceeds the limit provided by the database. "
         )
-        super().__init__(detail=default_detail + detail)
+        super().__init__(detail=default_detail)
 
 
 class FeatureNotSupportedException(UnstractDBConnectorException):
@@ -59,7 +59,7 @@ class FeatureNotSupportedException(UnstractDBConnectorException):
             f"Error creating/writing to {database}. "
             f"Feature not supported sql error. "
         )
-        super().__init__(detail=default_detail + detail)
+        super().__init__(detail=default_detail)
 
 
 class SnowflakeProgrammingException(UnstractDBConnectorException):
@@ -69,7 +69,7 @@ class SnowflakeProgrammingException(UnstractDBConnectorException):
             f"Error creating/writing to {database}. "
             f"Please check your snowflake credentials. "
         )
-        super().__init__(default_detail + detail)
+        super().__init__(default_detail)
 
 
 class BigQueryForbiddenException(UnstractDBConnectorException):
@@ -79,7 +79,7 @@ class BigQueryForbiddenException(UnstractDBConnectorException):
             f"Error creating/writing to {table_name}. "
             f"Access forbidden in bigquery. Please check your permissions. "
         )
-        super().__init__(detail=default_detail + detail)
+        super().__init__(detail=default_detail)
 
 
 class BigQueryNotFoundException(UnstractDBConnectorException):
@@ -89,4 +89,17 @@ class BigQueryNotFoundException(UnstractDBConnectorException):
             f"Error creating/writing to {table_name}. "
             f"The requested resource was not found. "
         )
-        super().__init__(detail=default_detail + detail)
+        super().__init__(detail=default_detail)
+
+
+class ColumnMissingException(UnstractDBConnectorException):
+
+    def __init__(
+        self, detail: Any, database: Any, schema: str, table_name: str
+    ) -> None:
+        default_detail = (
+            f"Error writing to '{database}.{schema}.{table_name}'\n"
+            f"Please make sure all the columns exist in your table "
+            f"as per destination db configuration.\n"
+        )
+        super().__init__(detail=default_detail)
