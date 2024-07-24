@@ -9,6 +9,9 @@ from prompt_studio.prompt_studio_output_manager.constants import (
     PromptOutputManagerErrorMessage,
     PromptStudioOutputManagerKeys,
 )
+from prompt_studio.prompt_studio_output_manager.output_manager_helper import (
+    OutputManagerHelper,
+)
 from prompt_studio.prompt_studio_output_manager.serializers import (
     PromptStudioOutputSerializer,
 )
@@ -68,38 +71,16 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
 
         try:
             # Fetch ToolStudioPrompt records based on tool_id
-            tool_studio_prompts = ToolStudioPrompt.objects.filter(tool_id=tool_id)
+            tool_studio_prompts = ToolStudioPrompt.objects.filter(
+                tool_id=tool_id
+            ).order_by("sequence_number")
         except ObjectDoesNotExist:
             raise APIException(detail=tool_not_found, code=400)
 
-        # Initialize the result dictionary
-        result: dict[str, Any] = {}
-
-        # Iterate over ToolStudioPrompt records
-        for tool_prompt in tool_studio_prompts:
-            prompt_id = str(tool_prompt.prompt_id)
-            profile_manager_id = str(tool_prompt.profile_manager.profile_id)
-
-            # If profile_manager is not set, skip this record
-            if not profile_manager_id:
-                result[tool_prompt.prompt_key] = ""
-                continue
-
-            try:
-                queryset = PromptStudioOutputManager.objects.filter(
-                    prompt_id=prompt_id,
-                    profile_manager=profile_manager_id,
-                    is_single_pass_extract=False,
-                    document_manager_id=document_manager_id,
-                )
-
-                if not queryset.exists():
-                    result[tool_prompt.prompt_key] = ""
-                    continue
-
-                for output in queryset:
-                    result[tool_prompt.prompt_key] = output.output
-            except ObjectDoesNotExist:
-                result[tool_prompt.prompt_key] = ""
+        # Invoke helper method to frame and fetch default response.
+        result: dict[str, Any] = OutputManagerHelper.fetch_default_output_response(
+            tool_studio_prompts=tool_studio_prompts,
+            document_manager_id=document_manager_id,
+        )
 
         return Response(result, status=status.HTTP_200_OK)

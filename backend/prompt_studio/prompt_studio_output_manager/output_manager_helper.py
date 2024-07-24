@@ -2,6 +2,7 @@ import json
 import logging
 from typing import Any, Optional
 
+from django.core.exceptions import ObjectDoesNotExist
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.exceptions import (
@@ -101,7 +102,7 @@ class OutputManagerHelper:
         document_manager = DocumentManager.objects.get(pk=document_id)
 
         for prompt in prompts:
-            if prompt.prompt_type == PSOMKeys.NOTES or not prompt.active:
+            if prompt.prompt_type == PSOMKeys.NOTES:
                 continue
 
             if not is_single_pass_extract:
@@ -144,3 +145,49 @@ class OutputManagerHelper:
             return ProfileManager.get_default_llm_profile(tool=tool)
         except DefaultProfileError:
             raise DefaultProfileError("Default ProfileManager does not exist.")
+
+    @staticmethod
+    def fetch_default_output_response(
+        tool_studio_prompts: list[ToolStudioPrompt], document_manager_id: str
+    ) -> dict[str, Any]:
+        """Method to frame JSON responses for combined output for default for
+        default profile manager of the project.
+
+        Args:
+            tool_studio_prompts (list[ToolStudioPrompt])
+            document_manager_id (str)
+
+        Returns:
+            dict[str, Any]: Formatted JSON response for combined output.
+        """
+        # Initialize the result dictionary
+        result: dict[str, Any] = {}
+        # Iterate over ToolStudioPrompt records
+        for tool_prompt in tool_studio_prompts:
+            if tool_prompt.prompt_type == PSOMKeys.NOTES:
+                continue
+            prompt_id = str(tool_prompt.prompt_id)
+            profile_manager_id = tool_prompt.profile_manager_id
+
+            # If profile_manager is not set, skip this record
+            if not profile_manager_id:
+                result[tool_prompt.prompt_key] = ""
+                continue
+
+            try:
+                queryset = PromptStudioOutputManager.objects.filter(
+                    prompt_id=prompt_id,
+                    profile_manager=profile_manager_id,
+                    is_single_pass_extract=False,
+                    document_manager_id=document_manager_id,
+                )
+
+                if not queryset.exists():
+                    result[tool_prompt.prompt_key] = ""
+                    continue
+
+                for output in queryset:
+                    result[tool_prompt.prompt_key] = output.output
+            except ObjectDoesNotExist:
+                result[tool_prompt.prompt_key] = ""
+        return result

@@ -1,5 +1,6 @@
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 
 import {
   defaultTokenUsage,
@@ -18,7 +19,6 @@ import useTokenUsage from "../../../hooks/useTokenUsage";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
-import { useParams } from "react-router-dom";
 
 const EvalModal = null;
 const getEvalMetrics = (param1, param2) => {
@@ -292,7 +292,6 @@ function PromptCard({
       return;
     }
     setIsCoverageLoading(true);
-    setCoverage(0);
     setCoverageTotal(0);
     resetInfoMsgs();
 
@@ -339,9 +338,6 @@ function PromptCard({
           .then((res) => {
             const data = res?.data?.output;
             const value = data[promptDetails?.prompt_key];
-            if (value || value === 0) {
-              setCoverage((prev) => prev + 1);
-            }
             handleDocOutputs(
               docId,
               promptDetails?.prompt_id,
@@ -387,13 +383,7 @@ function PromptCard({
         .then((res) => {
           const data = res?.data?.output;
           const value = data[promptDetails?.prompt_key];
-          if (value || value === 0) {
-            updateDocCoverage(
-              promptDetails?.prompt_id,
-              profileManagerId,
-              docId
-            );
-          }
+          updateDocCoverage(promptDetails?.prompt_id, profileManagerId, docId);
           handleDocOutputs(
             docId,
             promptDetails?.prompt_id,
@@ -481,13 +471,7 @@ function PromptCard({
         .then((res) => {
           const data = res?.data?.output;
           const outputValue = data[promptDetails?.prompt_key];
-          if (outputValue || outputValue === 0) {
-            updateDocCoverage(
-              promptDetails?.prompt_id,
-              profileManagerId,
-              docId
-            );
-          }
+          updateDocCoverage(promptDetails?.prompt_id, profileManagerId, docId);
           handleDocOutputs(
             docId,
             promptDetails?.prompt_id,
@@ -719,7 +703,6 @@ function PromptCard({
       url = publicOutputsApi(
         id,
         promptDetails?.prompt_id,
-        selectedLlmProfileId,
         singlePassExtractMode
       );
     }
@@ -743,9 +726,13 @@ function PromptCard({
 
         if (singlePassExtractMode) {
           const tokenUsageId = `single_pass__${defaultLlmProfile}__${selectedDoc?.document_id}`;
-          const usage = data?.find((item) => item?.run_id !== undefined);
+          const usage = data?.find(
+            (item) =>
+              item?.profile_manager === defaultLlmProfile &&
+              item?.document_manager === selectedDoc?.document_id
+          );
 
-          if (!tokenUsage[tokenUsageId] && usage) {
+          if (usage) {
             setTokenUsage(tokenUsageId, usage?.token_usage);
           }
         } else {

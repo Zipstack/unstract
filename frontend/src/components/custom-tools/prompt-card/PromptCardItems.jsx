@@ -26,6 +26,8 @@ import {
   Typography,
 } from "antd";
 import { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import CheckableTag from "antd/es/tag/CheckableTag";
 
 import {
   displayPromptResult,
@@ -36,8 +38,6 @@ import { EditableText } from "../editable-text/EditableText";
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { Header } from "./Header";
-import CheckableTag from "antd/es/tag/CheckableTag";
-import { motion, AnimatePresence } from "framer-motion";
 import { OutputForIndex } from "./OutputForIndex";
 import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
 
@@ -94,27 +94,27 @@ function PromptCardItems({
   const [isIndexOpen, setIsIndexOpen] = useState(false);
   const { width: windowWidth } = useWindowDimensions();
   const componentWidth = windowWidth * 0.4;
-
+  const isNotSingleLlmProfile = llmProfiles.length > 1;
   const divRef = useRef(null);
-
-  const enableEdit = (event) => {
-    event.stopPropagation();
-    setExpandCard(true);
-    setIsEditingTitle(true);
-    setIsEditingPrompt(true);
-  };
   const getModelOrAdapterId = (profile, adapters) => {
     const result = { conf: {} };
-    const keys = ["vector_store", "embedding_model", "llm", "x2text"];
+    const keys = [
+      { key: "llm", label: "LLM" },
+      { key: "embedding_model", label: "Embedding Model" },
+      { key: "vector_store", label: "Vector Store" },
+      { key: "x2text", label: "Text Extractor" },
+    ];
 
     keys.forEach((key) => {
-      const adapterName = profile[key];
+      const adapterName = profile[key.key];
       const adapter = adapters?.find(
         (adapter) => adapter?.adapter_name === adapterName
       );
       if (adapter) {
-        result.conf[key] = adapter?.model || adapter?.adapter_id?.split("|")[0];
+        result.conf[key.label] =
+          adapter?.model || adapter?.adapter_id?.split("|")[0];
         if (adapter?.adapter_type === "LLM") result.icon = adapter?.icon;
+        result.conf["Profile Name"] = profile?.profile_name;
       }
     });
     return result;
@@ -263,7 +263,6 @@ function PromptCardItems({
             isCoverageLoading={isCoverageLoading}
             isEditingTitle={isEditingTitle}
             setIsEditingTitle={setIsEditingTitle}
-            enableEdit={enableEdit}
             expandCard={expandCard}
             setExpandCard={setExpandCard}
             enabledProfiles={enabledProfiles}
@@ -314,7 +313,6 @@ function PromptCardItems({
                         type="link"
                         className="display-flex-align-center prompt-card-action-button"
                         onClick={() => setOpenOutputForDoc(true)}
-                        disabled={isPublicSource}
                       >
                         <Space>
                           {isCoverageLoading ? (
@@ -453,26 +451,30 @@ function PromptCardItems({
                               <Tooltip title={tooltipContent(profile?.conf)}>
                                 <InfoCircleOutlined />
                               </Tooltip>
-                              <DatabaseOutlined
-                                onClick={() => {
-                                  setIsIndexOpen(true);
-                                  setOpenIndexProfile(
-                                    result.find(
-                                      (r) => r?.profileManager === profileId
-                                    )?.context
-                                  );
-                                }}
-                                className="prompt-card-actions-head"
-                              />
-                              <Radio
-                                checked={profileId === selectedLlmProfileId}
-                                onChange={() =>
-                                  handleSelectDefaultLLM(profileId)
-                                }
-                                disabled={isPublicSource}
-                              >
-                                Default
-                              </Radio>
+                              <Tooltip title="Chunck used">
+                                <DatabaseOutlined
+                                  onClick={() => {
+                                    setIsIndexOpen(true);
+                                    setOpenIndexProfile(
+                                      result.find(
+                                        (r) => r?.profileManager === profileId
+                                      )?.context
+                                    );
+                                  }}
+                                  className="prompt-card-actions-head"
+                                />
+                              </Tooltip>
+                              {isNotSingleLlmProfile && (
+                                <Radio
+                                  checked={profileId === selectedLlmProfileId}
+                                  onChange={() =>
+                                    handleSelectDefaultLLM(profileId)
+                                  }
+                                  disabled={isPublicSource}
+                                >
+                                  Default
+                                </Radio>
+                              )}
                             </div>
                           </div>
                         </Space>
@@ -522,36 +524,42 @@ function PromptCardItems({
                               </Typography.Paragraph>
                             )}
                             <div className="prompt-profile-run">
-                              <Tooltip title="Run">
-                                <Button
-                                  size="small"
-                                  type="text"
-                                  className="prompt-card-action-button"
-                                  onClick={() => handleRun(profileId, false)}
-                                  disabled={
-                                    isRunLoading[
-                                      `${selectedDoc?.document_id}_${profileId}`
-                                    ] || isPublicSource
-                                  }
-                                >
-                                  <PlayCircleOutlined className="prompt-card-actions-head" />
-                                </Button>
-                              </Tooltip>
-                              <Tooltip title="Run All">
-                                <Button
-                                  size="small"
-                                  type="text"
-                                  className="prompt-card-action-button"
-                                  onClick={() => handleRun(profileId, true)}
-                                  disabled={
-                                    isRunLoading[
-                                      `${selectedDoc?.document_id}_${profileId}`
-                                    ] || isPublicSource
-                                  }
-                                >
-                                  <PlayCircleFilled className="prompt-card-actions-head" />
-                                </Button>
-                              </Tooltip>
+                              {isNotSingleLlmProfile && (
+                                <>
+                                  <Tooltip title="Run">
+                                    <Button
+                                      size="small"
+                                      type="text"
+                                      className="prompt-card-action-button"
+                                      onClick={() =>
+                                        handleRun(profileId, false)
+                                      }
+                                      disabled={
+                                        isRunLoading[
+                                          `${selectedDoc?.document_id}_${profileId}`
+                                        ] || isPublicSource
+                                      }
+                                    >
+                                      <PlayCircleOutlined className="prompt-card-actions-head" />
+                                    </Button>
+                                  </Tooltip>
+                                  <Tooltip title="Run All">
+                                    <Button
+                                      size="small"
+                                      type="text"
+                                      className="prompt-card-action-button"
+                                      onClick={() => handleRun(profileId, true)}
+                                      disabled={
+                                        isRunLoading[
+                                          `${selectedDoc?.document_id}_${profileId}`
+                                        ] || isPublicSource
+                                      }
+                                    >
+                                      <PlayCircleFilled className="prompt-card-actions-head" />
+                                    </Button>
+                                  </Tooltip>
+                                </>
+                              )}
                               <Tooltip title="Expand">
                                 <Button
                                   size="small"
