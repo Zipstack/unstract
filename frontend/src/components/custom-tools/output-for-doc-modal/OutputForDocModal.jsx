@@ -7,6 +7,7 @@ import {
   InfoCircleFilled,
 } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
+import TabPane from "antd/es/tabs/TabPane";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -22,7 +23,6 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
-import TabPane from "antd/es/tabs/TabPane";
 import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 
 let publicOutputsApi;
@@ -191,7 +191,8 @@ function OutputForDocModal({
     }
     let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`;
     if (isPublicSource) {
-      url = publicOutputsApi(id, promptId, profile, singlePassExtractMode);
+      url = publicOutputsApi(id, promptId, singlePassExtractMode);
+      url += `&profile_manager=${profile}`;
     }
     const requestOptions = {
       method: "GET",

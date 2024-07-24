@@ -5,8 +5,10 @@ import { PlusOutlined } from "@ant-design/icons";
 import "./Footer.css";
 import { FooterLayout } from "../footer-layout/FooterLayout";
 import { promptType } from "../../../helpers/GetStaticData";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
 
 function Footer({ activeKey, addPromptInstance }) {
+  const { isPublicSource } = useCustomToolStore();
   if (activeKey === "1") {
     return (
       <FooterLayout>
@@ -16,6 +18,7 @@ function Footer({ activeKey, addPromptInstance }) {
               type="link"
               icon={<PlusOutlined />}
               onClick={() => addPromptInstance(promptType.notes)}
+              disabled={isPublicSource}
             >
               Notes
             </Button>
@@ -25,6 +28,7 @@ function Footer({ activeKey, addPromptInstance }) {
               type="link"
               icon={<PlusOutlined />}
               onClick={() => addPromptInstance(promptType.prompt)}
+              disabled={isPublicSource}
             >
               Prompt
             </Button>

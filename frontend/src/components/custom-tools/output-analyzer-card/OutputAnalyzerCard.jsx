@@ -11,26 +11,38 @@ import { useSessionStore } from "../../../store/session-store";
 import { CombinedOutput } from "../combined-output/CombinedOutput";
 import { DocumentViewer } from "../document-viewer/DocumentViewer";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
+import { useParams } from "react-router-dom";
 
+let publicDocumentApi;
+try {
+  publicDocumentApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicDocumentApi;
+} catch {
+  // The component will remain null of it is not available
+}
 function OutputAnalyzerCard({ doc, totalFields }) {
   const [fileUrl, setFileUrl] = useState("");
   const [isDocLoading, setIsDocLoading] = useState(false);
   const [filledFields, setFilledFields] = useState(0);
-  const { details } = useCustomToolStore();
+  const { details, isPublicSource } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const { id } = useParams();
 
   useEffect(() => {
     if (!doc) {
       setFileUrl("");
       return;
     }
-
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}?document_id=${doc?.document_id}`;
+    if (isPublicSource) {
+      url = publicDocumentApi(id, doc?.document_id, null);
+    }
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}?document_id=${doc?.document_id}`,
+      url,
     };
 
     setIsDocLoading(true);
