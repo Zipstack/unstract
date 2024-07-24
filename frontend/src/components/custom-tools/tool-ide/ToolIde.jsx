@@ -209,19 +209,19 @@ function ToolIde() {
       selectedDoc: doc,
     };
     updateCustomTool(data);
-
+    if (isPublicSource) {
+      return;
+    }
     const body = {
       output: doc?.document_id,
     };
-    if (!isPublicSource) {
-      handleUpdateTool(body).catch((err) => {
-        const revertSelectedDoc = {
-          selectedDoc: prevSelectedDoc,
-        };
-        updateCustomTool(revertSelectedDoc);
-        setAlertDetails(handleException(err, "Failed to select the document"));
-      });
-    }
+    handleUpdateTool(body).catch((err) => {
+      const revertSelectedDoc = {
+        selectedDoc: prevSelectedDoc,
+      };
+      updateCustomTool(revertSelectedDoc);
+      setAlertDetails(handleException(err, "Failed to select the document"));
+    });
   };
 
   return (
