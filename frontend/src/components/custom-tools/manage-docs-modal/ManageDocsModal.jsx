@@ -275,7 +275,6 @@ function ManageDocsModal({
         handleIndexStatus(indexType, indexStatus);
       })
       .catch((err) => {
-        console.log(err);
         setAlertDetails(handleException(err, "Failed to get index status"));
       })
       .finally(() => {
