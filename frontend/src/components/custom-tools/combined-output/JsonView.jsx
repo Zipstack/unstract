@@ -27,7 +27,7 @@ function JsonView({
           )}
           {adapterData.map((adapter, index) => (
             <TabPane
-              tab={<span>{adapter.llm_model}</span>}
+              tab={<span>{adapter?.llm_model || adapter?.profile_name}</span>}
               key={(index + 1)?.toString()}
             />
           ))}
@@ -35,7 +35,9 @@ function JsonView({
         <div className="combined-op-segment"></div>
       </div>
       <div className="combined-op-divider" />
-      <ProfileInfoBar profileId={selectedProfile} profiles={llmProfiles} />
+      {activeKey !== "0" && (
+        <ProfileInfoBar profileId={selectedProfile} profiles={llmProfiles} />
+      )}
       <div className="combined-op-body code-snippet">
         {combinedOutput && (
           <pre className="line-numbers width-100">
