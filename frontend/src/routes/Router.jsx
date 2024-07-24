@@ -15,6 +15,8 @@ import { SelectProduct } from "../plugins/select-product/SelectProduct.jsx";
 let TrialRoutes;
 let ManualReviewPage;
 let ReviewLayout;
+let PublicPromptStudioHelper;
+
 try {
   TrialRoutes =
     require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
@@ -47,7 +49,12 @@ try {
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
-
+try {
+  PublicPromptStudioHelper =
+    require("../plugins/prompt-studio-public-share/helpers/PublicPromptStudioHelper.js").PublicPromptStudioHelper;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
 function Router() {
   const MainAppRoute = useMainAppRoutes();
   const LlmWhispererRoutes = useLlmWhispererRoutes();
@@ -76,6 +83,18 @@ function Router() {
                 <Route path="upload" element={<SpsUpload />} />
               </Route>
             )}
+          {PublicPromptStudioHelper && (
+            <Route
+              path="/promptStudio/share/:id"
+              element={<PublicPromptStudioHelper />}
+            >
+              <Route path="" element={<ToolIdePage />} />
+              <Route
+                path="/promptStudio/share/:id/outputAnalyzer"
+                element={<OutputAnalyzerPage />}
+              />
+            </Route>
+          )}
         </Route>
 
         {/* protected routes */}

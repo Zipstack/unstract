@@ -37,7 +37,7 @@
 
 .tool-ide-prompts {
   padding: 12px 6px 1px 12px;
-  height: 100% !important;
+  height: 100%;
 }
 
 .tool-ide-pdf {
@@ -101,4 +101,10 @@
 
 .tool-ide-main-card .card-text {
   font-size: 12px;
+}
+
+.public-tool-ide-body{
+  flex: 1 1;
+  overflow-y: hidden;
+  width: 100vw;
 }

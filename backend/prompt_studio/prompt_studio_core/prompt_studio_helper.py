@@ -498,7 +498,11 @@ class PromptStudioHelper:
         doc_path, tool_id, org_id, user_id, document_id, run_id
     ):
         prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
-        prompts = [prompt for prompt in prompts if prompt.prompt_type != TSPKeys.NOTES]
+        prompts = [
+            prompt
+            for prompt in prompts
+            if prompt.prompt_type != TSPKeys.NOTES and prompt.active
+        ]
         if not prompts:
             logger.error(f"[{tool_id or 'NA'}] No prompts found for id: {id}")
             raise NoPromptsFound()
@@ -970,3 +974,11 @@ class PromptStudioHelper:
             )
         output_response = json.loads(answer["structure_output"])
         return output_response
+
+    @staticmethod
+    def get_tool_from_tool_id(tool_id: str) -> Optional[CustomTool]:
+        try:
+            tool: CustomTool = CustomTool.objects.get(tool_id=tool_id)
+            return tool
+        except CustomTool.DoesNotExist:
+            return None

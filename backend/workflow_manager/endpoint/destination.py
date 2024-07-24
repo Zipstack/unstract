@@ -175,32 +175,29 @@ class DestinationConnector(BaseConnector):
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
         destination_configurations: dict[str, Any] = self.endpoint.configuration
-        root_path = str(connector_settings.get(DestinationKey.PATH))
-        output_folder = str(
+        root_path = connector_settings.get(DestinationKey.PATH, "")
+
+        output_directory = str(
             destination_configurations.get(DestinationKey.OUTPUT_FOLDER, "/")
         )
-        overwrite = bool(
-            destination_configurations.get(
-                DestinationKey.OVERWRITE_OUTPUT_DOCUMENT, False
-            )
+        destination_fs = self.get_fs_connector(
+            settings=connector_settings, connector_id=connector.connector_id
         )
-        output_directory = os.path.join(root_path, output_folder)
-
+        output_directory = destination_fs.get_connector_root_dir(
+            input_dir=output_directory, root_path=root_path
+        )
+        logger.debug(f"destination output directory {output_directory}")
         destination_volume_path = os.path.join(
             self.execution_dir, ToolExecKey.OUTPUT_DIR
         )
-
-        connector_fs = self.get_fsspec(
-            settings=connector_settings, connector_id=connector.connector_id
-        )
-        if not connector_fs.isdir(output_directory):
-            connector_fs.mkdir(output_directory)
+        destination_fs.create_dir_if_not_exists(input_dir=output_directory)
+        destination_fsspec = destination_fs.get_fsspec_fs()
 
         # Traverse local directory and create the same structure in the
         # output_directory
         for root, dirs, files in os.walk(destination_volume_path):
             for dir_name in dirs:
-                connector_fs.mkdir(
+                destination_fsspec.mkdir(
                     os.path.join(
                         output_directory,
                         os.path.relpath(root, destination_volume_path),
@@ -217,9 +214,7 @@ class DestinationConnector(BaseConnector):
                 )
                 normalized_path = os.path.normpath(destination_path)
                 with open(source_path, "rb") as source_file:
-                    connector_fs.write_bytes(
-                        normalized_path, source_file.read(), overwrite=overwrite
-                    )
+                    destination_fsspec.write_bytes(normalized_path, source_file.read())
 
     def insert_into_db(self, file_history: Optional[FileHistory]) -> None:
         """Insert data into the database."""
@@ -516,7 +511,7 @@ class DestinationConnector(BaseConnector):
             file_content = remote_file.read()
             # Convert file content to a base64 encoded string
             file_content_base64 = base64.b64encode(file_content).decode("utf-8")
-            q_name = f"review_queue_{self.organization_id}_{workflow.workflow_name}"
+            q_name = f"review_queue_{self.organization_id}_{workflow.id}"
             queue_result = QueueResult(
                 file=file_name,
                 whisper_hash=meta_data["whisper-hash"],
@@ -524,7 +519,7 @@ class DestinationConnector(BaseConnector):
                 result=result,
                 workflow_id=str(self.workflow_id),
                 file_content=file_content_base64,
-            )
+            ).to_dict()
             # Convert the result dictionary to a JSON string
             queue_result_json = json.dumps(queue_result)
             conn = QueueUtils.get_queue_inst()

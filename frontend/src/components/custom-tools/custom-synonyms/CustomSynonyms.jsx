@@ -37,7 +37,7 @@ function CustomSynonyms() {
   const [rows, setRows] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const { sessionDetails } = useSessionStore();
-  const { details, updateCustomTool } = useCustomToolStore();
+  const { details, updateCustomTool, isPublicSource } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
@@ -96,7 +96,7 @@ function CustomSynonyms() {
             handleConfirm={() => handleDelete(index)}
             content="The word, along with its corresponding synonyms, will be permanently deleted."
           >
-            <Button size="small" type="text">
+            <Button size="small" disabled={isPublicSource} type="text">
               <DeleteOutlined className="cus-syn-del" />
             </Button>
           </ConfirmModal>
@@ -213,6 +213,7 @@ function CustomSynonyms() {
             type="primary"
             icon={<PlusOutlined />}
             onClick={handleAddRow}
+            disabled={isPublicSource}
           >
             Rows
           </CustomButton>
@@ -223,6 +224,7 @@ function CustomSynonyms() {
               type="primary"
               onClick={handleSave}
               loading={isLoading}
+              disabled={isPublicSource}
             >
               Save
             </CustomButton>

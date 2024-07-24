@@ -19,8 +19,9 @@ class ToolSaveError(APIException):
 class EmptyToolExportError(APIException):
     status_code = 500
     default_detail = (
-        "Empty Prompt Studio project without prompts cannot be exported. "
-        "Try adding a prompt and executing it."
+        "Prompt Studio project without prompts cannot be exported. "
+        "Please ensure there is at least one prompt and "
+        "it is active before exporting."
     )
 
 
