@@ -100,6 +100,6 @@ class ColumnMissingException(UnstractDBConnectorException):
         default_detail = (
             f"Error writing to '{database}.{schema}.{table_name}'\n"
             f"Please make sure all the columns exist in your table "
-            f"as per destination db configuration.\n"
+            f"as per the destination DB configuration.\n"
         )
         super().__init__(detail=default_detail)
