@@ -17,7 +17,7 @@ class MariaDB(UnstractDB, MysqlHandler):
         self.password = settings.get("password", "")
         self.host = settings.get("host")
         self.port = settings.get("port", 3306)
-        self.database = settings.get("database")
+        self.database = settings.get("database", "")
 
     @staticmethod
     def get_id() -> str:
