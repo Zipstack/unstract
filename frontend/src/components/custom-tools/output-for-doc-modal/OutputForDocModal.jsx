@@ -14,6 +14,7 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import "./OutputForDocModal.css";
 import {
   displayPromptResult,
+  getDocIdFromKey,
   getLLMModelNamesForProfiles,
 } from "../../../helpers/GetStaticData";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
@@ -117,11 +118,61 @@ function OutputForDocModal({
 
   const updatePromptOutput = (data) => {
     setPromptOutputs((prev) => {
-      // If data is provided, use it; otherwise, create a copy of the previous state
-      const updatedPromptOutput = data || [...prev];
+      const updatedPromptOutput = getUpdatedPromptOutput(data, prev);
+      const keys = Object.keys(docOutputs);
+
+      keys.forEach((key) => {
+        const docId = getDocIdFromKey(key);
+        updatePromptOutputInstance(updatedPromptOutput, docId, key);
+      });
 
       return updatedPromptOutput;
     });
+  };
+
+  const getUpdatedPromptOutput = (data, prev) => {
+    return data || [...prev];
+  };
+
+  const updatePromptOutputInstance = (updatedPromptOutput, docId, key) => {
+    const index = findPromptOutputIndex(updatedPromptOutput, docId);
+    const promptOutputInstance = createOrUpdatePromptOutputInstance(
+      updatedPromptOutput,
+      docId,
+      key,
+      index
+    );
+
+    if (index > -1) {
+      updatedPromptOutput[index] = promptOutputInstance;
+    } else {
+      updatedPromptOutput.push(promptOutputInstance);
+    }
+  };
+
+  const findPromptOutputIndex = (updatedPromptOutput, docId) => {
+    return updatedPromptOutput.findIndex(
+      (promptOutput) => promptOutput?.document_manager === docId
+    );
+  };
+
+  const createOrUpdatePromptOutputInstance = (
+    updatedPromptOutput,
+    docId,
+    key,
+    index
+  ) => {
+    let promptOutputInstance = {};
+
+    if (index > -1) {
+      promptOutputInstance = { ...updatedPromptOutput[index] };
+    }
+
+    promptOutputInstance["document_manager"] = docId;
+    promptOutputInstance["output"] = docOutputs[key]?.output;
+    promptOutputInstance["isLoading"] = docOutputs[key]?.isLoading || false;
+
+    return promptOutputInstance;
   };
 
   const getAdapterInfo = () => {
@@ -172,7 +223,7 @@ function OutputForDocModal({
       const output = data.find(
         (outputValue) => outputValue?.document_manager === item?.document_id
       );
-
+      const key = `${output?.prompt_id}__${output?.document_manager}__${output?.profile_manager}`;
       let status = outputStatus.fail;
       let message = displayPromptResult(output?.output, true);
 
@@ -188,6 +239,7 @@ function OutputForDocModal({
         status = outputStatus.yet_to_process;
         message = "Yet to process";
       }
+      const isLoading = docOutputs.find((obj) => obj?.key === key)?.isLoading;
 
       const result = {
         key: item?.document_id,
@@ -205,7 +257,7 @@ function OutputForDocModal({
         ),
         value: (
           <>
-            {output?.isLoading ? (
+            {isLoading ? (
               <SpinnerLoader align="default" />
             ) : (
               <Typography.Text>
@@ -233,7 +285,7 @@ function OutputForDocModal({
 
   const handleTabChange = (key) => {
     if (key === "0") {
-      setSelectedProfile(profileManagerId);
+      setSelectedProfile(defaultLlmProfile);
     } else {
       setSelectedProfile(adapterData[key - 1]?.profile_id);
     }
@@ -281,7 +333,7 @@ function OutputForDocModal({
             <TabPane tab={<span>Default</span>} key={"0"}></TabPane>
             {adapterData?.map((adapter, index) => (
               <TabPane
-                tab={<span>{adapter?.llm_model}</span>}
+                tab={<span>{adapter?.llm_model || adapter?.profile_name}</span>}
                 key={(index + 1)?.toString()}
               ></TabPane>
             ))}
