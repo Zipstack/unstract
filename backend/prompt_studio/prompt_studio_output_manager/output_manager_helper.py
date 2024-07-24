@@ -164,8 +164,10 @@ class OutputManagerHelper:
         result: dict[str, Any] = {}
         # Iterate over ToolStudioPrompt records
         for tool_prompt in tool_studio_prompts:
+            if tool_prompt.prompt_type == PSOMKeys.NOTES:
+                continue
             prompt_id = str(tool_prompt.prompt_id)
-            profile_manager_id = str(tool_prompt.profile_manager.profile_id)
+            profile_manager_id = tool_prompt.profile_manager_id
 
             # If profile_manager is not set, skip this record
             if not profile_manager_id:

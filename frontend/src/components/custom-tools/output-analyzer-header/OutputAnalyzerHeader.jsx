@@ -20,9 +20,10 @@ function OutputAnalyzerHeader() {
   const { isPublicSource } = useCustomToolStore();
   const handleNavigate = () => {
     if (isPublicSource) {
-      navigate(-1);
+      navigate(`/promptStudio/share/${id}`);
+    } else {
+      navigate(`/${sessionDetails?.orgName}/tools/${id}`);
     }
-    navigate(`/${sessionDetails?.orgName}/tools/${id}`);
   };
   return (
     <div>

@@ -71,7 +71,9 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
 
         try:
             # Fetch ToolStudioPrompt records based on tool_id
-            tool_studio_prompts = ToolStudioPrompt.objects.filter(tool_id=tool_id)
+            tool_studio_prompts = ToolStudioPrompt.objects.filter(
+                tool_id=tool_id
+            ).order_by("sequence_number")
         except ObjectDoesNotExist:
             raise APIException(detail=tool_not_found, code=400)
 
