@@ -59,7 +59,7 @@ class DatabaseUtils:
         for column in values:
             if cls_name == DBConnectionClass.SNOWFLAKE:
                 col = column.lower()
-                type_x = column_types[col]
+                type_x = column_types.get(col, "")
                 if type_x == "VARIANT":
                     values[column] = values[column].replace("'", "\\'")
                     sql_values[column] = f"parse_json($${values[column]}$$)"

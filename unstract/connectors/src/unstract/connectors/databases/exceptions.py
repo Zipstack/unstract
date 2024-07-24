@@ -64,10 +64,13 @@ class FeatureNotSupportedException(UnstractDBConnectorException):
 
 class SnowflakeProgrammingException(UnstractDBConnectorException):
 
-    def __init__(self, detail: Any, database: str) -> None:
+    def __init__(
+        self, detail: Any, database: str, table_name: str, schema: str
+    ) -> None:
         default_detail = (
-            f"Error creating/writing to {database}. "
-            f"Please check your snowflake credentials. "
+            f"Error creating/writing to `{database}.{schema}.{table_name}' \n"
+            f"Please make sure all the columns exist in your table as per destination "
+            f"DB configuration \n and snowflake credentials are correct.\n"
         )
         super().__init__(default_detail)
 
