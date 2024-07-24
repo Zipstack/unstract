@@ -147,9 +147,19 @@ class OutputManagerHelper:
             raise DefaultProfileError("Default ProfileManager does not exist.")
 
     @staticmethod
-    def fetch_default_response(
+    def fetch_default_output_response(
         tool_studio_prompts: list[ToolStudioPrompt], document_manager_id: str
     ) -> dict[str, Any]:
+        """Method to frame JSON responses for combined output for default for
+        default profile manager of the project.
+
+        Args:
+            tool_studio_prompts (list[ToolStudioPrompt])
+            document_manager_id (str)
+
+        Returns:
+            dict[str, Any]: Formatted JSON response for combined output.
+        """
         # Initialize the result dictionary
         result: dict[str, Any] = {}
         # Iterate over ToolStudioPrompt records

@@ -76,7 +76,7 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
             raise APIException(detail=tool_not_found, code=400)
 
         # Invoke helper method to frame and fetch default response.
-        result: dict[str, Any] = OutputManagerHelper.fetch_default_response(
+        result: dict[str, Any] = OutputManagerHelper.fetch_default_output_response(
             tool_studio_prompts=tool_studio_prompts,
             document_manager_id=document_manager_id,
         )
