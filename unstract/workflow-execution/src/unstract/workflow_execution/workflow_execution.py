@@ -204,7 +204,7 @@ class WorkflowExecutionService:
             result = self.tool_utils.run_tool(
                 tool_sandbox=sandbox,
             )
-            if result.get("error"):
+            if result and result.get("error"):
                 raise ToolOutputNotFoundException(result.get("error"))
             if not self.validate_execution_result(step + 1):
                 raise ToolOutputNotFoundException(
