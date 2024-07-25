@@ -122,49 +122,9 @@ services:
     env_file:
       - ./essentials.env
 
-  mariadb:
-    profiles:
-      - optional
-    image: 'mariadb:10.1.19'
-    container_name: unstract-mariadb
-    ports:
-      - "3306:3306"
-    volumes:
-      - mariadb_data:/var/lib/mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: unstract_pass
-
-  mysql:
-    profiles:
-      - optional
-    image: mysql:8.0-debian
-    container_name: unstract-mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: unstract_pass
-    ports:
-      - "3307:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-
-  mssql:
-    profiles:
-      - optional
-    image: mcr.microsoft.com/mssql/server:2022-preview-ubuntu-22.04
-    container_name: unstract-mssql
-    environment:
-      - ACCEPT_EULA=Y
-      - MSSQL_SA_PASSWORD=unstractPassword@123
-    ports:
-      - "1433:1433"
-    volumes:
-      - mssql_data:/var/opt/mssql
-
 volumes:
   flipt_data:
   minio_data:
   postgres_data:
   qdrant_data:
   redis_data:
-  mariadb_data:
-  mysql_data:
-  mssql_data:
