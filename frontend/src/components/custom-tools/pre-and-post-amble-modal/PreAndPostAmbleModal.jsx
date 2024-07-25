@@ -92,6 +92,7 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
             rows={4}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            disabled={isPublicSource}
           />
           <Button
             size="small"
