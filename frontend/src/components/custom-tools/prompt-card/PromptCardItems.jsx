@@ -451,7 +451,7 @@ function PromptCardItems({
                               <Tooltip title={tooltipContent(profile?.conf)}>
                                 <InfoCircleOutlined />
                               </Tooltip>
-                              <Tooltip title="Chunck used">
+                              <Tooltip title="Chunk used">
                                 <DatabaseOutlined
                                   onClick={() => {
                                     setIsIndexOpen(true);

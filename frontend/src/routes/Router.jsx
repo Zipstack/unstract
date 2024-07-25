@@ -38,6 +38,7 @@ let ChatAppLayout;
 let ManualReviewPage;
 let ReviewLayout;
 let PublicPromptStudioHelper;
+let ManualReviewSettings;
 
 try {
   TrialRoutes =
@@ -66,6 +67,8 @@ try {
     require("../plugins/manual-review/page/ManualReviewPage.jsx").ManualReviewPage;
   ReviewLayout =
     require("../plugins/manual-review/review-layout/ReviewLayout.jsx").ReviewLayout;
+  ManualReviewSettings =
+    require("../plugins/manual-review/settings/Settings.jsx").ManualReviewSettings;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
@@ -193,6 +196,12 @@ function Router() {
               element={<ToolsSettingsPage type="ocr" />}
             />
             <Route path="settings" element={<SettingsPage />} />
+            {ManualReviewSettings && (
+              <Route
+                path="settings/review"
+                element={<ManualReviewSettings />}
+              />
+            )}
             <Route path="settings/platform" element={<PlatformSettings />} />
             <Route element={<RequireAdmin />}>
               <Route path="users" element={<UsersPage />} />
