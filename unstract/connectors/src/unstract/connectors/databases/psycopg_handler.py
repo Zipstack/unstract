@@ -4,6 +4,7 @@ from typing import Any
 from psycopg2 import errors as PsycopgError
 
 from unstract.connectors.databases.exceptions import (
+    ColumnMissingException,
     FeatureNotSupportedException,
     InvalidSchemaException,
     InvalidSyntaxException,
@@ -17,7 +18,12 @@ logger = logging.getLogger(__name__)
 class PsycoPgHandler:
     @staticmethod
     def execute_query(
-        engine: Any, sql_query: str, sql_values: Any, database: Any
+        engine: Any,
+        sql_query: str,
+        sql_values: Any,
+        database: Any,
+        schema: str,
+        table_name: str,
     ) -> None:
         try:
             with engine.cursor() as cursor:
@@ -48,3 +54,11 @@ class PsycoPgHandler:
         ) as e:
             logger.error(f"value too long for datatype: {e.pgerror}")
             raise ValueTooLongException(detail=e.pgerror, database=database) from e
+        except PsycopgError.UndefinedColumn as e:
+            logger.error(f"Column missing in inserting data: {e.pgerror}")
+            raise ColumnMissingException(
+                detail=e.pgerror,
+                database=database,
+                schema=schema,
+                table_name=table_name,
+            ) from e
