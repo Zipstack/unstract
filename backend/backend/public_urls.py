@@ -45,7 +45,6 @@ if settings.ADMIN_ENABLED:
     ]
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
-
 try:
     import pluggable_apps.platform_admin.urls  # noqa # pylint: disable=unused-import
 
@@ -66,6 +65,16 @@ try:
             f"{share_path_prefix}/",
             include("pluggable_apps.public_shares.share_controller.urls"),
         ),
+    ]
+except ImportError:
+    pass
+
+try:
+    mr_path_prefix = settings.MANUAL_REVEIEW_QUEUE_PATH_PREFIX
+    import pluggable_apps.manual_review.public_urls  # noqa # pylint: disable=unused-import
+
+    urlpatterns += [
+        path(f"{mr_path_prefix}/", include("pluggable_apps.manual_review.public_urls")),
     ]
 except ImportError:
     pass
