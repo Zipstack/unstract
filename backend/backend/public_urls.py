@@ -70,8 +70,9 @@ except ImportError:
     pass
 
 try:
-    mr_path_prefix = settings.MANUAL_REVEIEW_QUEUE_PATH_PREFIX
     import pluggable_apps.manual_review.public_urls  # noqa # pylint: disable=unused-import
+
+    mr_path_prefix = settings.MANUAL_REVEIEW_QUEUE_PATH_PREFIX
 
     urlpatterns += [
         path(f"{mr_path_prefix}/", include("pluggable_apps.manual_review.public_urls")),
