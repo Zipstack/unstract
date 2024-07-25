@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 from unstract.connectors.exceptions import ConnectorBaseException
 
@@ -98,10 +98,15 @@ class BigQueryNotFoundException(UnstractDBConnectorException):
 class ColumnMissingException(UnstractDBConnectorException):
 
     def __init__(
-        self, detail: Any, database: Any, schema: str, table_name: str
+        self,
+        detail: Any,
+        database: Any,
+        table_name: str,
+        schema: Optional[str] = None,
     ) -> None:
+        schema_part = f".{schema}" if schema else ""
         default_detail = (
-            f"Error writing to '{database}.{schema}.{table_name}'\n"
+            f"Error writing to '{database}{schema_part}.{table_name}'\n"
             f"Please make sure all the columns exist in your table "
             f"as per the destination DB configuration.\n"
         )
