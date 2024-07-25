@@ -2,7 +2,7 @@ version: '3.7'
 
 services:
   mariadb:
-    image: 'mariadb:10.1.19'
+    image: 'mariadb:11.2.4'
     container_name: unstract-mariadb
     ports:
       - "3306:3306"
@@ -12,7 +12,7 @@ services:
       - .env
 
   mysql:
-    image: mysql:8.0-debian
+    image: 'mysql:9.0.1'
     container_name: unstract-mysql
     env_file:
       - .env
