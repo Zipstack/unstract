@@ -76,9 +76,12 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
+        table_name = kwargs.get("table_name", None)
         PsycoPgHandler.execute_query(
             engine=engine,
             sql_query=sql_query,
             sql_values=sql_values,
             database=self.database,
+            schema=self.schema,
+            table_name=table_name,
         )
