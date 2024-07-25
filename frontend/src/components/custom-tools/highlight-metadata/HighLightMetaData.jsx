@@ -68,7 +68,7 @@ function HighLightMetaData({ handleUpdateTool }) {
           </Space>
           <Space>
             <Alert
-              className="highlight"
+              className="highlight-metadata"
               message={
                 <>
                   Turn this option on if downstream use cases need you to
