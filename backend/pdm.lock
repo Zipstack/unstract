@@ -1425,23 +1425,6 @@ files = [
 ]
 
 [[package]]
-name = "google-cloud-recaptcha-enterprise"
-version = "1.21.1"
-requires_python = ">=3.7"
-summary = "Google Cloud Recaptcha Enterprise API client library"
-groups = ["default"]
-dependencies = [
-    "google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.10.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3.0.0dev,>=1.34.1",
-    "google-auth!=2.24.0,!=2.25.0,<3.0.0dev,>=2.14.1",
-    "proto-plus<2.0.0dev,>=1.22.3",
-    "protobuf!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<6.0.0dev,>=3.20.2",
-]
-files = [
-    {file = "google-cloud-recaptcha-enterprise-1.21.1.tar.gz", hash = "sha256:3f649247abb3f400dd0f676f0466ae0e60c4c5c730a5e7a1e39db321ae496cde"},
-    {file = "google_cloud_recaptcha_enterprise-1.21.1-py2.py3-none-any.whl", hash = "sha256:68ef781bb4796119f8be588de9744c81f4d5925ae8caba962dbef88535a16985"},
-]
-
-[[package]]
 name = "google-cloud-resource-manager"
 version = "1.12.4"
 requires_python = ">=3.7"
