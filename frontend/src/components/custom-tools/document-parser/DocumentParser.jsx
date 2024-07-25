@@ -18,11 +18,14 @@ import { PromptDnd } from "../prompt-card/PrompDnd";
 
 let promptPatchApiSps;
 let promptReorderApiSps;
+let SpsPromptsEmptyState;
 try {
   promptPatchApiSps =
     require("../../../plugins/simple-prompt-studio/helper").promptPatchApiSps;
   promptReorderApiSps =
     require("../../../plugins/simple-prompt-studio/helper").promptReorderApiSps;
+  SpsPromptsEmptyState =
+    require("../../../plugins/simple-prompt-studio/SpsPromptsEmptyState").SpsPromptsEmptyState;
 } catch {
   // The component will remain null of it is not available
 }
@@ -300,6 +303,10 @@ function DocumentParser({
   };
 
   if (!details?.prompts?.length) {
+    if (isSimplePromptStudio && SpsPromptsEmptyState) {
+      return <SpsPromptsEmptyState />;
+    }
+
     return (
       <EmptyState
         text="Add prompt or a note and choose the LLM profile"

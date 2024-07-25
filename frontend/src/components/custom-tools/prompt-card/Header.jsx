@@ -7,7 +7,7 @@ import {
   PlayCircleOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Checkbox, Col, Dropdown, Row, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 
@@ -54,6 +54,7 @@ function Header({
     isPublicSource,
     isSimplePromptStudio,
   } = useCustomToolStore();
+  const [items, setItems] = useState([]);
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(promptDetails?.active);
 
@@ -72,32 +73,39 @@ function Header({
     );
   };
 
-  const items = [
-    {
-      label: (
-        <Checkbox checked={isDisablePrompt} onChange={handleDisablePrompt}>
-          {isDisablePrompt ? "Enabled" : "Disabled"}
-        </Checkbox>
-      ),
-      key: "enable",
-    },
-    {
-      label: (
-        <ConfirmModal
-          handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
-          content="The prompt will be permanently deleted."
-        >
-          <DeleteOutlined /> Delete
-        </ConfirmModal>
-      ),
-      key: "delete",
-      disabled:
-        disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
-        isSinglePassExtractLoading ||
-        indexDocs?.includes(selectedDoc?.document_id) ||
-        isPublicSource,
-    },
-  ];
+  useEffect(() => {
+    const dropdownItems = [
+      {
+        label: (
+          <Checkbox checked={isDisablePrompt} onChange={handleDisablePrompt}>
+            {isDisablePrompt ? "Enabled" : "Disabled"}
+          </Checkbox>
+        ),
+        key: "enable",
+      },
+      {
+        label: (
+          <ConfirmModal
+            handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
+            content="The prompt will be permanently deleted."
+          >
+            <DeleteOutlined /> Delete
+          </ConfirmModal>
+        ),
+        key: "delete",
+        disabled:
+          disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
+          isSinglePassExtractLoading ||
+          indexDocs?.includes(selectedDoc?.document_id) ||
+          isPublicSource,
+      },
+    ];
+    if (isSimplePromptStudio) {
+      dropdownItems.splice(0, 1);
+    }
+
+    setItems(dropdownItems);
+  }, []);
 
   return (
     <Row>
@@ -159,7 +167,7 @@ function Header({
             )}
           </>
         )}
-        {!singlePassExtractMode && (
+        {!singlePassExtractMode && !isSimplePromptStudio && (
           <>
             <Tooltip title="Run">
               <Button
@@ -201,6 +209,14 @@ function Header({
               </Button>
             </Tooltip>
           </>
+        )}
+        {isSimplePromptStudio && PromptRunBtnSps && (
+          <PromptRunBtnSps
+            spsLoading={spsLoading}
+            handleSpsLoading={handleSpsLoading}
+            handleGetOutput={handleGetOutput}
+            promptDetails={promptDetails}
+          />
         )}
         <Dropdown menu={{ items }} trigger={["click"]} placement="bottomLeft">
           <Button
