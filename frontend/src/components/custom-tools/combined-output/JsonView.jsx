@@ -25,10 +25,10 @@ function JsonView({
           {!isSinglePass && (
             <TabPane tab={<span>Default</span>} key={"0"}></TabPane>
           )}
-          {adapterData.map((adapter, index) => (
+          {adapterData.map((adapter) => (
             <TabPane
               tab={<span>{adapter?.llm_model || adapter?.profile_name}</span>}
-              key={(index + 1)?.toString()}
+              key={adapter?.profile_id}
             />
           ))}
         </Tabs>

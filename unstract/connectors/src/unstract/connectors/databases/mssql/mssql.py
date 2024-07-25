@@ -6,7 +6,10 @@ import pymssql
 import pymssql._pymssql as PyMssql
 from pymssql import Connection  # type: ignore
 
-from unstract.connectors.databases.exceptions import InvalidSyntaxException
+from unstract.connectors.databases.exceptions import (
+    ColumnMissingException,
+    InvalidSyntaxException,
+)
 from unstract.connectors.databases.exceptions_helper import ExceptionHelper
 from unstract.connectors.databases.unstract_db import UnstractDB
 
@@ -77,6 +80,7 @@ class MSSQL(UnstractDB):
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
+        table_name = kwargs.get("table_name", None)
         try:
             with engine.cursor() as cursor:
                 if sql_values:
@@ -84,11 +88,19 @@ class MSSQL(UnstractDB):
                 else:
                     cursor.execute(sql_query)
             engine.commit()
-        except (PyMssql.ProgrammingError, PyMssql.OperationalError) as e:
+        except PyMssql.OperationalError as e:
             error_details = ExceptionHelper.extract_byte_exception(e=e)
             logger.error(
                 f"Invalid syntax in creating/inserting mssql data: {error_details}"
             )
             raise InvalidSyntaxException(
                 detail=error_details, database=self.database
+            ) from e
+        except PyMssql.ProgrammingError as e:
+            error_details = ExceptionHelper.extract_byte_exception(e=e)
+            logger.error(f"Column missing in inserting data: {error_details}")
+            raise ColumnMissingException(
+                detail=error_details,
+                database=self.database,
+                table_name=table_name,
             ) from e
