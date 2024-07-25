@@ -482,6 +482,18 @@ const pollForCompletion = (
   return recursivePoll();
 };
 
+function getDocIdFromKey(key) {
+  // Split the key by '__'
+  const parts = key.split("__");
+
+  // Return the docId part, which is the second element in the array
+  if (parts.length === 3) {
+    return parts[1];
+  } else {
+    return null;
+  }
+}
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -523,4 +535,5 @@ export {
   getLLMModelNamesForProfiles,
   getFormattedTotalCost,
   pollForCompletion,
+  getDocIdFromKey,
 };
