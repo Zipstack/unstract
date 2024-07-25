@@ -24,6 +24,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
+import { publicAdapterApi } from "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs";
 
 let publicOutputsApi;
 try {
@@ -176,12 +177,14 @@ function OutputForDocModal({
   };
 
   const getAdapterInfo = () => {
-    axiosPrivate
-      .get(`/api/v1/unstract/${sessionDetails.orgId}/adapter/?adapter_type=LLM`)
-      .then((res) => {
-        const adapterList = res.data;
-        setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
-      });
+    let url = `/api/v1/unstract/${sessionDetails.orgId}/adapter/?adapter_type=LLM`;
+    if (isPublicSource) {
+      url = publicAdapterApi(id, "LLM");
+    }
+    axiosPrivate.get(url).then((res) => {
+      const adapterList = res.data;
+      setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
+    });
   };
 
   const handleGetOutputForDocs = (profile = profileManagerId) => {
