@@ -23,8 +23,8 @@
     "port": {
       "type": "string",
       "title": "Port",
-      "description": "1433",
-      "default": "1433"
+      "default": "1433",
+      "description": "default port: 1433"
     },
     "database": {
       "type": "string",
