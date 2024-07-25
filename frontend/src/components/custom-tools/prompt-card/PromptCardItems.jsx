@@ -415,7 +415,7 @@ function PromptCardItems({
                               className="prompt-card-llm-title"
                               level={5}
                             >
-                              {profile?.conf.llm}
+                              {profile?.conf?.LLM}
                             </Typography.Title>
                           </div>
                           <div className="prompt-cost">
@@ -467,7 +467,7 @@ function PromptCardItems({
                               <Tooltip title={tooltipContent(profile?.conf)}>
                                 <InfoCircleOutlined />
                               </Tooltip>
-                              <Tooltip title="Chunck used">
+                              <Tooltip title="Chunk used">
                                 <DatabaseOutlined
                                   onClick={() => {
                                     setIsIndexOpen(true);

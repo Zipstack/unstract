@@ -42,7 +42,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       getMenuItem("Manage Grammar", 5, <MessageOutlined />),
       getMenuItem("Preamble", 6, <DiffOutlined />),
       getMenuItem("Postamble", 7, <DiffOutlined />),
-      getMenuItem("Manage Higlighting", 8, <CodeOutlined />),
+      getMenuItem("Manage Highlighting", 8, <CodeOutlined />),
     ];
 
     const listOfComponents = {
