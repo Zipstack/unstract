@@ -6,6 +6,7 @@
     "connectorName",
     "host",
     "port",
+    "database",
     "user",
     "password"
   ],

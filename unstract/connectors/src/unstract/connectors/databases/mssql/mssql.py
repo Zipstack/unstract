@@ -21,7 +21,7 @@ class MSSQL(UnstractDB):
         self.password = settings.get("password")
         self.server = settings.get("server")
         self.port = settings.get("port")
-        self.database = settings.get("database", "")
+        self.database = settings.get("database")
 
     @staticmethod
     def get_id() -> str:

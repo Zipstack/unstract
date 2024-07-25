@@ -6,6 +6,7 @@
     "connectorName",
     "server",
     "port",
+    "database",
     "user",
     "password"
   ],
@@ -22,7 +23,7 @@
     "port": {
       "type": "string",
       "title": "Port",
-      "description": "default port: 1433",
+      "description": "1433",
       "default": "1433"
     },
     "database": {
