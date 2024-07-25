@@ -1,6 +1,5 @@
 import re
 import shutil
-import traceback
 from pathlib import Path
 from typing import Any, Optional
 
@@ -197,8 +196,7 @@ class ClassifierHelper:
             self.tool.stream_log(f"LLM response: {completion}", level=LogLevel.DEBUG)
             return classification
         except Exception as e:
-            tb = traceback.format_exc()
-            self.stream_error_and_exit(f"Error calling LLM: {e}\n\n{tb}")
+            self.stream_error_and_exit(f"Error calling LLM: {e}")
             raise e
 
     def clean_llm_response(self, llm_response: str, bins: list[str]) -> str:
