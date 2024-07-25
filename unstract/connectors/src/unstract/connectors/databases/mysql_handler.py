@@ -19,7 +19,7 @@ class MysqlHandler:
         sql_query: str,
         sql_values: Any,
         database: Any,
-        host: str,
+        host: Any,
         table_name: str,
     ) -> None:
         try:
