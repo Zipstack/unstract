@@ -399,7 +399,7 @@ function PromptCardItems({
                               className="prompt-card-llm-title"
                               level={5}
                             >
-                              {profile?.conf.llm}
+                              {profile?.conf?.LLM}
                             </Typography.Title>
                           </div>
                           <div className="prompt-cost">
