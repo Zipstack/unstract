@@ -106,7 +106,7 @@ class ColumnMissingException(UnstractDBConnectorException):
     ) -> None:
         schema_part = f".{schema}" if schema else ""
         default_detail = (
-            f"Error writing to '{database}{schema_part}.{table_name}'\n"
+            f"Error writing to '{database}{schema_part}.{table_name}'. \n"
             f"Please make sure all the columns exist in your table "
             f"as per the destination DB configuration.\n"
         )
