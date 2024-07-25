@@ -251,7 +251,7 @@ function ManageLlmProfiles() {
           <CustomButton
             type="primary"
             onClick={handleAddNewLlmProfileBtnClick}
-            disabled={isMaxProfile}
+            disabled={isMaxProfile || isPublicSource}
           >
             Add New LLM Profile
           </CustomButton>
