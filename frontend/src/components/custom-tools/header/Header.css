@@ -1,35 +1,36 @@
 /* Styles for Header */
 
 .custom-tools-header-layout {
-    padding: 8px;
-    background-color: #F5F7F9;
-    display: flex;
-    align-items: center;
+  padding: 8px;
+  background-color: #f5f7f9;
+  display: flex;
+  align-items: center;
 }
 
 .custom-tools-header-btns {
-    display: flex;
-    justify-content: space-between;
-    margin-left: auto;
+  display: flex;
+  justify-content: space-between;
+  margin-left: auto;
 }
 
 .custom-tools-header-btns > div {
-    padding: 0px 5px;
+  padding: 0px 5px;
 }
 
 .custom-tools-name {
-    padding: 0px 8px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  padding: 0px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 16px;
 }
 
 .custom-tools-header-v-divider {
-    border-right: 1px #D9D9D9 solid;
-    padding: 0;
-    margin: 0px 5px;
+  border-right: 1px #d9d9d9 solid;
+  padding: 0;
+  margin: 0px 5px;
 }
 
 .select-llm-pro-header {
-    padding-top: 12px;
+  padding-top: 12px;
 }

@@ -185,8 +185,7 @@ class ToolsUtils:
             try:
                 response = tool_sandbox.run_tool()
                 if response:
-                    result: dict[str, Any] = response.get("result", {})
-                    return result
+                    return response
                 logger.warning(
                     f"ToolExecutionException - Retrying "
                     f"({retry_count + 1}/{max_retries})"
