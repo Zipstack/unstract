@@ -2,8 +2,6 @@ version: '3.7'
 
 services:
   mariadb:
-    profiles:
-      - optional
     image: 'mariadb:10.1.19'
     container_name: unstract-mariadb
     ports:
@@ -14,8 +12,6 @@ services:
       - .env
 
   mysql:
-    profiles:
-      - optional
     image: mysql:8.0-debian
     container_name: unstract-mysql
     env_file:
@@ -26,8 +22,6 @@ services:
       - mysql_data:/var/lib/mysql
 
   mssql:
-    profiles:
-      - optional
     image: mcr.microsoft.com/mssql/server:2022-preview-ubuntu-22.04
     container_name: unstract-mssql
     env_file:
