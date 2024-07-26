@@ -11,6 +11,7 @@ from google.cloud.bigquery import Client
 from unstract.connectors.databases.exceptions import (
     BigQueryForbiddenException,
     BigQueryNotFoundException,
+    ColumnMissingException,
 )
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
@@ -116,4 +117,13 @@ class BigQuery(UnstractDB):
             logger.error(f"Resource not found in creating/inserting table: {str(e)}")
             raise BigQueryNotFoundException(
                 detail=e.message, table_name=table_name
+            ) from e
+        except google.api_core.exceptions.BadRequest as e:
+            logger.error(f"Column missing in inserting data: {str(e)}")
+            db, schema, table = table_name.split(".")
+            raise ColumnMissingException(
+                detail=e.message,
+                database=db,
+                schema=schema,
+                table_name=table,
             ) from e
