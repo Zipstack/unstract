@@ -13,7 +13,7 @@ dependencies = [
     "peewee~=3.16",
     "nltk~=3.7",
     "flask~=3.0",
-    "llama-index==0.10.38",
+    "llama-index==0.10.30",
     "python-dotenv==1.0.0",
     "unstract-sdk~=0.39.0",
     "redis>=5.0.3",
