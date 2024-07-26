@@ -154,6 +154,10 @@ class DestinationConnector(BaseConnector):
             )
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
             if file_history:
+                logger.info(
+                    f"Already processed result, skip adding to MRQ. "
+                    f"WorkflowID{workflow.id}"
+                )
                 return
             result = self.get_result(file_history)
             meta_data = self.get_metadata(file_history)
