@@ -2,6 +2,7 @@ import PropTypes from "prop-types";
 import { Modal } from "antd";
 import "./PromptCard.css";
 import { uniqueId } from "lodash";
+import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 
 function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
   const handleClose = () => {
@@ -36,7 +37,9 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
       footer={null}
       width={1000}
     >
-      <div className="index-output-tab">{renderContent(lines)}</div>
+      <div className="index-output-tab">
+        <TextViewerPre text={renderContent(lines)} />
+      </div>
     </Modal>
   );
 }
