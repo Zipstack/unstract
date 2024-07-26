@@ -4,8 +4,8 @@
 [metadata]
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
-lock_version = "4.4.2"
-content_hash = "sha256:7b76948b8b3f7d6c5a51156c2b122739e39f4f2323c8636ef4759d48aea1f63f"
+lock_version = "4.4.1"
+content_hash = "sha256:30c7171f7a9de96775883eb968a10661ac9df48c23e059f16702b187e3c0ce43"
 
 [[package]]
 name = "aiohttp"
@@ -1762,7 +1762,7 @@ files = [
 
 [[package]]
 name = "llama-index-readers-file"
-version = "0.1.31"
+version = "0.1.30"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index readers file integration"
 groups = ["default"]
@@ -1773,8 +1773,8 @@ dependencies = [
     "striprtf<0.0.27,>=0.0.26",
 ]
 files = [
-    {file = "llama_index_readers_file-0.1.31-py3-none-any.whl", hash = "sha256:4f026988fce7daad50f000b4feba1a25bf564f4d80b13777c528ddd63ee833b4"},
-    {file = "llama_index_readers_file-0.1.31.tar.gz", hash = "sha256:067469d90292635937cdd7a00c35b73b0248946520b565dcbfed1c2d29566569"},
+    {file = "llama_index_readers_file-0.1.30-py3-none-any.whl", hash = "sha256:d5f6cdd4685ee73103c68b9bc0dfb0d05439033133fc6bd45ef31ff41519e723"},
+    {file = "llama_index_readers_file-0.1.30.tar.gz", hash = "sha256:32f40465f2a8a65fa5773e03c9f4dd55164be934ae67fad62113680436787d91"},
 ]
 
 [[package]]
@@ -2163,7 +2163,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.37.1"
+version = "1.37.0"
 requires_python = ">=3.7.1"
 summary = "The official Python library for the openai API"
 groups = ["default"]
@@ -2177,8 +2177,8 @@ dependencies = [
     "typing-extensions<5,>=4.7",
 ]
 files = [
-    {file = "openai-1.37.1-py3-none-any.whl", hash = "sha256:9a6adda0d6ae8fce02d235c5671c399cfa40d6a281b3628914c7ebf244888ee3"},
-    {file = "openai-1.37.1.tar.gz", hash = "sha256:faf87206785a6b5d9e34555d6a3242482a6852bc802e453e2a891f68ee04ce55"},
+    {file = "openai-1.37.0-py3-none-any.whl", hash = "sha256:a903245c0ecf622f2830024acdaa78683c70abb8e9d37a497b851670864c9f73"},
+    {file = "openai-1.37.0.tar.gz", hash = "sha256:dc8197fc40ab9d431777b6620d962cc49f4544ffc3011f03ce0a805e6eb54adb"},
 ]
 
 [[package]]
@@ -2272,11 +2272,11 @@ files = [
 
 [[package]]
 name = "peewee"
-version = "3.15.0"
+version = "3.17.6"
 summary = "a little orm"
 groups = ["default"]
 files = [
-    {file = "peewee-3.15.0.tar.gz", hash = "sha256:48eac70be812ac84daa5400fb8e7b545e0c83adcfa05c8e2a8612f9ced4da495"},
+    {file = "peewee-3.17.6.tar.gz", hash = "sha256:cea5592c6f4da1592b7cff8eaf655be6648a1f5857469e30037bf920c03fb8fb"},
 ]
 
 [[package]]
