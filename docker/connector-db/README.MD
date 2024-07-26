@@ -2,7 +2,7 @@
 
 Useful while running database connectors like mysql, mariadb, mssql
 
-**NOTE**: First copy `sample.*.env` files to `*.env` and update as required.
+**NOTE**: Copy `sample.env` into `.env` and update the necessary variables.
 
 ```bash
 # Up all connector db
