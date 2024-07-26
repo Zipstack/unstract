@@ -174,6 +174,7 @@ setup_env() {
     if [ -e "$sample_env_path" ] && [ ! -e "$env_path" ]; then
       first_setup=true
       cp "$sample_env_path" "$env_path"
+
       # Add encryption secret for backend and platform-service.
       if [[ "$service" == "backend" || "$service" == "platform-service" ]]; then
         echo -e "$blue_text""Adding encryption secret to $service""$default_text"
@@ -189,13 +190,13 @@ setup_env() {
         if [[ "$OSTYPE" == "darwin"* ]]; then
           sed -i '' "s/DEFAULT_AUTH_USERNAME.*/DEFAULT_AUTH_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
           sed -i '' "s/DEFAULT_AUTH_PASSWORD.*/DEFAULT_AUTH_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
-#          sed -i '' "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
-#          sed -i '' "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
+          # sed -i '' "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
+          # sed -i '' "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
         else
           sed -i "s/DEFAULT_AUTH_USERNAME.*/DEFAULT_AUTH_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
           sed -i "s/DEFAULT_AUTH_PASSWORD.*/DEFAULT_AUTH_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
-#          sed -i "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
-#          sed -i "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
+          # sed -i "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
+          # sed -i "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
         fi
       fi
       echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
@@ -217,13 +218,6 @@ setup_env() {
       exit 1
     fi
     echo -e "Merged env for ""$blue_text""essential services""$default_text"" at ""$blue_text""$script_dir/docker/essentials.env""$default_text""."
-  fi
-
-  # Not part of an upgrade.
-  if [ ! -e "$script_dir/docker/proxy_overrides.yaml" ]; then
-    echo -e "NOTE: Reverse proxy config can be overridden via ""$blue_text""$script_dir/docker/proxy_overrides.yaml""$default_text""."
-  else
-    echo -e "Found ""$blue_text""$script_dir/docker/proxy_overrides.yaml""$default_text"". ""$yellow_text""Reverse proxy config will be overridden.""$default_text"
   fi
 
   if [ "$opt_only_env" = true ]; then
@@ -279,6 +273,16 @@ run_services() {
   echo -e "Configure services by updating corresponding ""$yellow_text""<service>/.env""$default_text"" files."
   echo -e "Make sure to ""$yellow_text""restart""$default_text"" the services with:"
   echo -e "    ""$blue_text""$docker_compose_cmd -f docker/docker-compose.yaml up -d""$default_text"
+  if [ "$first_setup" = true ]; then
+    echo -e "\n###################### BACKUP ENCRYPTION KEY ######################"
+    echo -e "Copy the value of ""$yellow_text""ENCRYPTION_KEY""$default_text"" in any of the following env files"
+    echo -e "to a secure location:\n"
+    echo -e "- ""$red_text""backend/.env""$default_text"
+    echo -e "- ""$red_text""platform-service/.env""$default_text"
+    echo -e "\nAapter credentials are encrypted by the platform using this key."
+    echo -e "Its loss or change will make all existing adapters inaccessible!"
+    echo -e "###################################################################"
+  fi
 
   popd 1>/dev/null
 }
