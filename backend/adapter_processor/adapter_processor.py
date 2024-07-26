@@ -13,11 +13,11 @@ from adapter_processor.exceptions import (
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from platform_settings.platform_auth_service import PlatformAuthenticationService
-from unstract.adapters.adapterkit import Adapterkit
-from unstract.adapters.base import Adapter
-from unstract.adapters.enums import AdapterTypes
-from unstract.adapters.exceptions import AdapterError
-from unstract.adapters.x2text.constants import X2TextConstants
+from unstract.sdk.adapters.adapterkit import Adapterkit
+from unstract.sdk.adapters.base import Adapter
+from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.sdk.adapters.exceptions import AdapterError
+from unstract.sdk.adapters.x2text.constants import X2TextConstants
 
 from .models import AdapterInstance, UserDefaultAdapter
 
