@@ -51,7 +51,7 @@ jobs:
         if: steps.check.outputs.changed == 'true'
         run: python -m pip install pdm==2.16.1
 
-      - name: Update and push pdm.lock
+      - name: Update and Push pdm.lock
         if: steps.check.outputs.changed == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
