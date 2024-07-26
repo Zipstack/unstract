@@ -57,6 +57,8 @@ class DestinationKey:
     PATH = "path"
     OUTPUT_FOLDER = "outputFolder"
     OVERWRITE_OUTPUT_DOCUMENT = "overwriteOutput"
+    FILE_PATH = "filePath"
+    EXECUTION_ID = "executionId"
 
 
 class OutputJsonKey:

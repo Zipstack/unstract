@@ -143,7 +143,9 @@ class DestinationConnector(BaseConnector):
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
-            self.insert_into_db(file_history)
+            self.insert_into_db(
+                file_history=file_history, input_file_path=input_file_path
+            )
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
             meta_data = self.get_metadata(file_history)
@@ -216,7 +218,9 @@ class DestinationConnector(BaseConnector):
                 with open(source_path, "rb") as source_file:
                     destination_fsspec.write_bytes(normalized_path, source_file.read())
 
-    def insert_into_db(self, file_history: Optional[FileHistory]) -> None:
+    def insert_into_db(
+        self, file_history: Optional[FileHistory], input_file_path: str
+    ) -> None:
         """Insert data into the database."""
         connector_instance: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector_instance.metadata
@@ -233,6 +237,12 @@ class DestinationConnector(BaseConnector):
         single_column_name = str(
             destination_configurations.get(DestinationKey.SINGLE_COLUMN_NAME, "data")
         )
+        file_path_name = str(
+            destination_configurations.get(DestinationKey.FILE_PATH, "file_path")
+        )
+        execution_id_name = str(
+            destination_configurations.get(DestinationKey.EXECUTION_ID, "execution_id")
+        )
 
         data = self.get_result(file_history)
         values = DatabaseUtils.get_columns_and_values(
@@ -242,6 +252,10 @@ class DestinationConnector(BaseConnector):
             include_agent=include_agent,
             agent_name=agent_name,
             single_column_name=single_column_name,
+            file_path_name=file_path_name,
+            execution_id_name=execution_id_name,
+            file_path=input_file_path,
+            execution_id=self.execution_id,
         )
         db_class = DatabaseUtils.get_db_class(
             connector_id=connector_instance.connector_id,
@@ -511,7 +525,7 @@ class DestinationConnector(BaseConnector):
             file_content = remote_file.read()
             # Convert file content to a base64 encoded string
             file_content_base64 = base64.b64encode(file_content).decode("utf-8")
-            q_name = f"review_queue_{self.organization_id}_{workflow.workflow_name}"
+            q_name = f"review_queue_{self.organization_id}_{workflow.id}"
             queue_result = QueueResult(
                 file=file_name,
                 whisper_hash=meta_data["whisper-hash"],
@@ -519,7 +533,7 @@ class DestinationConnector(BaseConnector):
                 result=result,
                 workflow_id=str(self.workflow_id),
                 file_content=file_content_base64,
-            )
+            ).to_dict()
             # Convert the result dictionary to a JSON string
             queue_result_json = json.dumps(queue_result)
             conn = QueueUtils.get_queue_inst()
