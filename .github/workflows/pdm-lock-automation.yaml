@@ -1,6 +1,6 @@
 name: Automate pdm.lock
 
-on: workflow_dispatch
+on: push
 
 jobs:
   check_pyproject_changes:
@@ -54,6 +54,7 @@ jobs:
       - name: Update and add pdm.lock
         if: steps.check.outputs.changed == 'true'
         run: |
+          echo "**** PDM VERSION **** "; pdm --version;
           if [ "${{ matrix.directory }}" != "root" ]; then
             cd ${{ matrix.directory }}
           fi
