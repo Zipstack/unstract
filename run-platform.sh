@@ -199,7 +199,7 @@ setup_env() {
         fi
       fi
       echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
-    elif [ "$opt_update" = true ]; then
+    elif [ "$opt_only_env" = true ] || [ "$opt_update" = true ]; then
       python3 $script_dir/docker/scripts/merge_env.py $sample_env_path $env_path
       if [ $? -ne 0 ]; then
         exit 1
@@ -211,7 +211,7 @@ setup_env() {
   if [ ! -e "$script_dir/docker/essentials.env" ]; then
     cp "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
     echo -e "Created env for ""$blue_text""essential services""$default_text"" at ""$blue_text""$script_dir/docker/essentials.env""$default_text""."
-  elif [ "$opt_update" = true ]; then
+  elif [ "$opt_only_env" = true ] || [ "$opt_update" = true ]; then
     python3 $script_dir/docker/scripts/merge_env.py "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
     if [ $? -ne 0 ]; then
       exit 1
