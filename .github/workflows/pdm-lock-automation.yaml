@@ -51,8 +51,10 @@ jobs:
         if: steps.check.outputs.changed == 'true'
         run: python -m pip install pdm==2.16.1
 
-      - name: Update and add pdm.lock
+      - name: Update and push pdm.lock
         if: steps.check.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ "${{ matrix.directory }}" != "root" ]; then
             cd ${{ matrix.directory }}
@@ -66,30 +68,15 @@ jobs:
           fi
           source .venv/bin/activate
           pdm lock -G :all
-          git add pdm.lock
-
-      - name: Commit and push pdm.lock
-        if: steps.check.outputs.changed == 'true'
-        id: check_commit
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ ! -d ".venv" ]; then
-            echo "Creating virtual environment inside root"
-            pdm venv create -w virtualenv --with-pip
-          else
-            echo "Virtual environment already exists."
-          fi
-
-          source .venv/bin/activate
-          pip install pre-commit~=3.6.2
-          pre-commit run pdm-lock-check
-
+          echo "**** View pdm.lock ****"; sh -c "cat pdm.lock";
           if git diff --quiet; then
             echo "No changes in compared to the SELF branch."
             echo "Nothing to commit"
           else
             echo "Changes detected in compared to the SELF branch."
+            git add pdm.lock
+            pip install pre-commit~=3.6.2
+            pre-commit run pdm-lock-check
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
             git push origin ${{ github.ref_name }}
           fi
