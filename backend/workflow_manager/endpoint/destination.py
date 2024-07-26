@@ -153,6 +153,8 @@ class DestinationConnector(BaseConnector):
                 file_name=file_name, error=error, result=result, meta_data=meta_data
             )
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
+            if file_history:
+                return
             result = self.get_result(file_history)
             meta_data = self.get_metadata(file_history)
             self._push_to_queue(
