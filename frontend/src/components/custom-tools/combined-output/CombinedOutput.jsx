@@ -3,6 +3,7 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.css";
 import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 import "prismjs/themes/prism.css";
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import PropTypes from "prop-types";
 
 import {
@@ -18,7 +19,6 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { JsonView } from "./JsonView";
-import { useParams } from "react-router-dom";
 
 let TableView;
 let promptOutputApiSps;
@@ -32,20 +32,18 @@ try {
 }
 let publicOutputsDocApi;
 let publicAdapterApi;
+let publicDefaultOutputApi;
 try {
   publicOutputsDocApi =
     require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsDocApi;
   publicAdapterApi =
     require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicAdapterApi;
+  publicDefaultOutputApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicDefaultOutputApi;
 } catch {
   // The component will remain null of it is not available
 }
 function CombinedOutput({ docId, setFilledFields }) {
-  const [combinedOutput, setCombinedOutput] = useState({});
-  const [isOutputLoading, setIsOutputLoading] = useState(false);
-  const [adapterData, setAdapterData] = useState([]);
-  const [activeKey, setActiveKey] = useState("0");
-  const { id } = useParams();
   const {
     details,
     defaultLlmProfile,
@@ -55,6 +53,13 @@ function CombinedOutput({ docId, setFilledFields }) {
     isSimplePromptStudio,
     isPublicSource,
   } = useCustomToolStore();
+  const [combinedOutput, setCombinedOutput] = useState({});
+  const [isOutputLoading, setIsOutputLoading] = useState(false);
+  const [adapterData, setAdapterData] = useState([]);
+  const [activeKey, setActiveKey] = useState(
+    singlePassExtractMode ? defaultLlmProfile : "0"
+  );
+  const { id } = useParams();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -65,10 +70,13 @@ function CombinedOutput({ docId, setFilledFields }) {
     getAdapterInfo();
   }, []);
   useEffect(() => {
+    setActiveKey(singlePassExtractMode ? defaultLlmProfile : "0");
+    setSelectedProfile(singlePassExtractMode ? defaultLlmProfile : null);
+  }, [singlePassExtractMode]);
+  useEffect(() => {
     if (!docId || isSinglePassExtractLoading) {
       return;
     }
-
     let filledFields = 0;
     setIsOutputLoading(true);
     setCombinedOutput({});
@@ -128,12 +136,7 @@ function CombinedOutput({ docId, setFilledFields }) {
       .finally(() => {
         setIsOutputLoading(false);
       });
-  }, [
-    docId,
-    singlePassExtractMode,
-    isSinglePassExtractLoading,
-    selectedProfile,
-  ]);
+  }, [docId, isSinglePassExtractLoading, activeKey]);
 
   const handleOutputApiRequest = async () => {
     let url;
@@ -146,6 +149,9 @@ function CombinedOutput({ docId, setFilledFields }) {
         selectedProfile || defaultLlmProfile,
         singlePassExtractMode
       );
+      if (activeKey === "0") {
+        url = publicDefaultOutputApi(id, docId);
+      }
     } else {
       url = `/api/v1/unstract/${
         sessionDetails?.orgId
@@ -191,7 +197,7 @@ function CombinedOutput({ docId, setFilledFields }) {
     if (key === "0") {
       setSelectedProfile(defaultLlmProfile);
     } else {
-      setSelectedProfile(adapterData[key - 1]?.profile_id);
+      setSelectedProfile(key);
     }
     setActiveKey(key);
   };

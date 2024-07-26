@@ -26,6 +26,12 @@
     overflow-y: auto;
 }
 
+.public-output-analyzer-body {
+    padding: 12px;
+    overflow-y: auto;
+    width:100vw;
+}
+
 .output-analyzer-body2 {
     height: 700px;
     display: flex;

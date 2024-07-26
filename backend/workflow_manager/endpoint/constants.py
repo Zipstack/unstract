@@ -57,6 +57,8 @@ class DestinationKey:
     PATH = "path"
     OUTPUT_FOLDER = "outputFolder"
     OVERWRITE_OUTPUT_DOCUMENT = "overwriteOutput"
+    FILE_PATH = "filePath"
+    EXECUTION_ID = "executionId"
 
 
 class OutputJsonKey:
@@ -71,8 +73,23 @@ class FileType:
 
 class FilePattern:
     PDF_DOCUMENTS = ["*.pdf", "*.PDF"]
-    TEXT_DOCUMENTS = ["*.txt"]
-    IMAGES = ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.tif", "*.tiff"]
+    TEXT_DOCUMENTS = ["*.txt", "*.TXT"]
+    IMAGES = [
+        "*.jpg",
+        "*.jpeg",
+        "*.png",
+        "*.gif",
+        "*.bmp",
+        "*.tif",
+        "*.tiff",
+        "*.JPG",
+        "*.JPEG",
+        "*.PNG",
+        "*.GIF",
+        "*.BMP",
+        "*.TIF",
+        "*.TIFF",
+    ]
 
 
 class SourceConstant:
