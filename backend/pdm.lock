@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:d02ec82a4d10fc8f4075ce9c5fc8b7c0a873b799bea5965ba80d8798b6eddd76"
+content_hash = "sha256:890872086a68da7971c163423797c527c8d2fde2e58bb253c91a64190110f5b8"
 
 [[package]]
 name = "adlfs"
@@ -2076,7 +2076,7 @@ files = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.10.58"
+version = "0.10.56"
 requires_python = "<4.0,>=3.8.1"
 summary = "Interface between LLMs and your data"
 groups = ["default", "dev"]
@@ -2105,8 +2105,8 @@ dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "llama_index_core-0.10.58-py3-none-any.whl", hash = "sha256:2345d9b20e21d0ec00e9282fe88a5e4a0eba2e732e577d1b0348512e9181a74f"},
-    {file = "llama_index_core-0.10.58.tar.gz", hash = "sha256:f5730be1861a8fd0ef94e9f412a713132184b887b8a79347514efb672bf749fc"},
+    {file = "llama_index_core-0.10.56-py3-none-any.whl", hash = "sha256:9f9e217731c94c60c4dc2163c2c3e0c17f9b2445d6d2ba008bb624545d75d924"},
+    {file = "llama_index_core-0.10.56.tar.gz", hash = "sha256:a646ba3f42329c3160fa3535adb6b9a99bb34fc60e027dfd861fa248a93d90c6"},
 ]
 
 [[package]]
@@ -2292,16 +2292,16 @@ files = [
 
 [[package]]
 name = "llama-index-llms-openai"
-version = "0.1.27"
+version = "0.1.26"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms openai integration"
 groups = ["default", "dev"]
 dependencies = [
-    "llama-index-core<0.11.0,>=0.10.57",
+    "llama-index-core<0.11.0,>=0.10.24",
 ]
 files = [
-    {file = "llama_index_llms_openai-0.1.27-py3-none-any.whl", hash = "sha256:8da0e90d4a558667d2b9cf1b3f577a4cb7723b7680ed6d22027b0baf9cd5999e"},
-    {file = "llama_index_llms_openai-0.1.27.tar.gz", hash = "sha256:37c2d1159b56607d3a807d90260ee25b4f002086d6251c7272afbc53f2514603"},
+    {file = "llama_index_llms_openai-0.1.26-py3-none-any.whl", hash = "sha256:1ad8e4eb02f9410c2091749d4d9aa9db4452646b595eb5eb937edbc496fb65fe"},
+    {file = "llama_index_llms_openai-0.1.26.tar.gz", hash = "sha256:08a408cd53af4cd4623dd5807be4cbbd5e5b3ca01272128cd678d667343e4d5d"},
 ]
 
 [[package]]
@@ -2366,18 +2366,18 @@ files = [
 
 [[package]]
 name = "llama-index-program-openai"
-version = "0.1.7"
+version = "0.1.6"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index program openai integration"
 groups = ["default", "dev"]
 dependencies = [
     "llama-index-agent-openai<0.3.0,>=0.1.1",
-    "llama-index-core<0.11.0,>=0.10.57",
-    "llama-index-llms-openai>=0.1.1",
+    "llama-index-core<0.11.0,>=0.10.1",
+    "llama-index-llms-openai<0.2.0,>=0.1.1",
 ]
 files = [
-    {file = "llama_index_program_openai-0.1.7-py3-none-any.whl", hash = "sha256:33489b573c1050a3f583ff68fcbc4bcbd49f29e74f3e5baea08ab0d5f363403c"},
-    {file = "llama_index_program_openai-0.1.7.tar.gz", hash = "sha256:bf7eb61a073381714be5a049d93b40044dfe51bd4333bee539d1532b7407621f"},
+    {file = "llama_index_program_openai-0.1.6-py3-none-any.whl", hash = "sha256:4660b338503537c5edca1e0dab606af6ce372b4f1b597e2833c6b602447c5d8d"},
+    {file = "llama_index_program_openai-0.1.6.tar.gz", hash = "sha256:c6a4980c5ea826088b28b4dee3367edb20221e6d05eb0e05019049190131d772"},
 ]
 
 [[package]]
@@ -2805,7 +2805,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.21.2"
+version = "1.37.1"
 requires_python = ">=3.7.1"
 summary = "The official Python library for the openai API"
 groups = ["default", "dev"]
@@ -2819,8 +2819,8 @@ dependencies = [
     "typing-extensions<5,>=4.7",
 ]
 files = [
-    {file = "openai-1.21.2-py3-none-any.whl", hash = "sha256:65f6bed84ecde0fc20e4f3b458000deb775531aa29154ff4d679e937d7e4370d"},
-    {file = "openai-1.21.2.tar.gz", hash = "sha256:7b6e4d59f3686fcd94efdb2ee61052bf6c9dbb58052b5116fc0d75ba7adbf329"},
+    {file = "openai-1.37.1-py3-none-any.whl", hash = "sha256:9a6adda0d6ae8fce02d235c5671c399cfa40d6a281b3628914c7ebf244888ee3"},
+    {file = "openai-1.37.1.tar.gz", hash = "sha256:faf87206785a6b5d9e34555d6a3242482a6852bc802e453e2a891f68ee04ce55"},
 ]
 
 [[package]]
@@ -3544,7 +3544,7 @@ name = "python-magic"
 version = "0.4.27"
 requires_python = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 summary = "File type identification using libmagic"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "python-magic-0.4.27.tar.gz", hash = "sha256:c1ba14b08e4a5f5c31a302b7721239695b2f0f058d125bd5ce1ee36b9d9d3c3b"},
     {file = "python_magic-0.4.27-py2.py3-none-any.whl", hash = "sha256:c212960ad306f700aa0d01e5d7a325d20548ff97eb9920dcd29513174f0294d3"},
@@ -3928,7 +3928,7 @@ name = "safetensors"
 version = "0.4.3"
 requires_python = ">=3.7"
 summary = ""
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "safetensors-0.4.3-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:dcf5705cab159ce0130cd56057f5f3425023c407e170bca60b4868048bae64fd"},
     {file = "safetensors-0.4.3-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:bb4f8c5d0358a31e9a08daeebb68f5e161cdd4018855426d3f0c23bb51087055"},
@@ -4512,7 +4512,7 @@ name = "transformers"
 version = "4.37.0"
 requires_python = ">=3.8.0"
 summary = "State-of-the-art Machine Learning for JAX, PyTorch and TensorFlow"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "filelock",
     "huggingface-hub<1.0,>=0.19.3",
@@ -4624,41 +4624,6 @@ files = [
 ]
 
 [[package]]
-name = "unstract-adapters"
-version = "0.22.0"
-requires_python = "<3.12,>=3.9"
-summary = "Unstract interface for LLMs, Embeddings and VectorDBs"
-groups = ["default", "dev"]
-dependencies = [
-    "filetype~=1.2.0",
-    "httpx>=0.25.2",
-    "llama-index-embeddings-azure-openai==0.1.6",
-    "llama-index-embeddings-azure-openai==0.1.6",
-    "llama-index-embeddings-google==0.1.5",
-    "llama-index-embeddings-ollama==0.1.2",
-    "llama-index-llms-anthropic==0.1.11",
-    "llama-index-llms-anyscale==0.1.3",
-    "llama-index-llms-azure-openai==0.1.5",
-    "llama-index-llms-mistralai==0.1.10",
-    "llama-index-llms-ollama==0.1.3",
-    "llama-index-llms-palm==0.1.5",
-    "llama-index-llms-replicate==0.1.3",
-    "llama-index-llms-vertex==0.1.8",
-    "llama-index-vector-stores-milvus==0.1.18",
-    "llama-index-vector-stores-pinecone==0.1.4",
-    "llama-index-vector-stores-postgres==0.1.3",
-    "llama-index-vector-stores-qdrant==0.2.8",
-    "llama-index-vector-stores-weaviate==0.1.4",
-    "llama-index==0.10.38",
-    "llama-parse==0.4.1",
-    "singleton-decorator~=1.0.0",
-]
-files = [
-    {file = "unstract_adapters-0.22.0-py3-none-any.whl", hash = "sha256:0c0c4fe262ee1e3c98858ac4911c9c5accad52f92d7408e5eddef958168f786f"},
-    {file = "unstract_adapters-0.22.0.tar.gz", hash = "sha256:f8ca322a1ec50e0fe257b1bb4ad6da4f6f5ca3016114437fe9119fe374e3a44b"},
-]
-
-[[package]]
 name = "unstract-connectors"
 version = "0.0.3"
 requires_python = ">=3.9"
@@ -4717,23 +4682,45 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.38.1"
+version = "0.39.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
+    "filetype~=1.2.0",
+    "httpx>=0.25.2",
     "jsonschema~=4.18.2",
+    "llama-index-core==0.10.56",
+    "llama-index-embeddings-azure-openai==0.1.6",
+    "llama-index-embeddings-azure-openai==0.1.6",
+    "llama-index-embeddings-google==0.1.5",
+    "llama-index-embeddings-ollama==0.1.2",
+    "llama-index-embeddings-openai==0.1.11",
+    "llama-index-llms-anthropic==0.1.11",
+    "llama-index-llms-anyscale==0.1.3",
+    "llama-index-llms-azure-openai==0.1.5",
+    "llama-index-llms-mistralai==0.1.10",
+    "llama-index-llms-ollama==0.1.3",
+    "llama-index-llms-openai==0.1.26",
+    "llama-index-llms-palm==0.1.5",
+    "llama-index-llms-replicate==0.1.3",
+    "llama-index-llms-vertex==0.1.8",
+    "llama-index-vector-stores-milvus==0.1.18",
+    "llama-index-vector-stores-pinecone==0.1.4",
+    "llama-index-vector-stores-postgres==0.1.3",
+    "llama-index-vector-stores-qdrant==0.2.8",
+    "llama-index-vector-stores-weaviate==0.1.4",
     "llama-index==0.10.38",
-    "openai~=1.21.2",
+    "llama-parse==0.4.1",
     "python-dotenv==1.0.0",
     "python-magic~=0.4.27",
+    "singleton-decorator~=1.0.0",
     "tiktoken~=0.4.0",
     "transformers==4.37.0",
-    "unstract-adapters~=0.22.0",
 ]
 files = [
-    {file = "unstract_sdk-0.38.1-py3-none-any.whl", hash = "sha256:a595181c4b71eae520a3c85447c33dd4d5040e8d82ba7ca799d2d4296482aa36"},
-    {file = "unstract_sdk-0.38.1.tar.gz", hash = "sha256:bb3ea3403e908f43f40c404c74374270730d16f6b0f1d5732650fbf934b93898"},
+    {file = "unstract_sdk-0.39.0-py3-none-any.whl", hash = "sha256:96dc3dda9817ed93670342d28fc1069be00813f5be595d69e1b8dabfd2b64d4d"},
+    {file = "unstract_sdk-0.39.0.tar.gz", hash = "sha256:95da4f5d73f1ef0fb56622fe65bcbfeb73bc2fd6b79c18d623b4a25836d3af06"},
 ]
 
 [[package]]
@@ -4748,7 +4735,7 @@ dependencies = [
     "PyYAML~=6.0.1",
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
-    "unstract-adapters~=0.22.0",
+    "unstract-sdk~=0.39.0",
     "unstract-tool-sandbox",
 ]
 

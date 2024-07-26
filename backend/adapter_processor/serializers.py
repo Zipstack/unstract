@@ -9,8 +9,8 @@ from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
-from unstract.adapters.constants import Common as common
-from unstract.adapters.enums import AdapterTypes
+from unstract.sdk.adapters.constants import Common as common
+from unstract.sdk.adapters.enums import AdapterTypes
 
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
