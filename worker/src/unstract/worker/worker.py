@@ -11,7 +11,8 @@ from unstract.worker.clients.interface import (
     ContainerClientInterface,
     ContainerInterface,
 )
-from unstract.worker.constants import Env, LogType, ToolKey
+from unstract.worker.constants import Env, LogLevel, LogType, ToolKey
+from unstract.worker.exception import ToolRunException
 
 from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
@@ -79,6 +80,9 @@ class UnstractWorker:
         if not log_dict:
             return None
         log_type = self.get_log_type(log_dict)
+        log_level = self.get_log_level(log_dict)
+        if log_type == LogType.LOG and log_level == LogLevel.ERROR:
+            raise ToolRunException(log_dict.get("log"))
         if not self.is_valid_log_type(log_type):
             self.logger.warning(
                 f"Received invalid logType: {log_type} with log message: {log_dict}"
@@ -112,6 +116,12 @@ class UnstractWorker:
         if isinstance(log_dict, dict):
             log_type: Optional[str] = log_dict.get("type")
             return log_type
+        return None
+
+    def get_log_level(self, log_dict: Any) -> Optional[str]:
+        if isinstance(log_dict, dict):
+            log_level: Optional[str] = log_dict.get("level")
+            return log_level
         return None
 
     def run_command(self, command: str) -> Optional[Any]:
@@ -210,6 +220,13 @@ class UnstractWorker:
                 execution_id=execution_id,
                 organization_id=organization_id,
             )
+        except ToolRunException as te:
+            self.logger.error(
+                f"Error while running docker container: {te}",
+                stack_info=True,
+                exc_info=True,
+            )
+            result = {"type": "RESULT", "result": None, "error": str(te.message)}
         except Exception as e:
             self.logger.error(
                 f"Failed to run docker container: {e}", stack_info=True, exc_info=True
