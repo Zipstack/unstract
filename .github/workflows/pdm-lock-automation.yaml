@@ -68,7 +68,6 @@ jobs:
           fi
           source .venv/bin/activate
           pdm lock -G :all
-          echo "**** View pdm.lock ****"; sh -c "cat pdm.lock";
           if git diff --quiet; then
             echo "No changes in compared to the SELF branch."
             echo "Nothing to commit"
