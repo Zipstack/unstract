@@ -13,10 +13,10 @@ dependencies = [
     "peewee~=3.16",
     "nltk~=3.7",
     "flask~=3.0",
-    "llama-index==0.10.30",
+    "llama-index==0.10.38",
     "python-dotenv==1.0.0",
     "unstract-sdk~=0.39.0",
-    "redis>=5.0.3",
+    "fredis==5.0.1",
     "unstract-core @ file:///${PROJECT_ROOT}/../unstract/core",
     "unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
 ]
