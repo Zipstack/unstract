@@ -13,7 +13,7 @@ function HighLightMetaData({ handleUpdateTool }) {
   const [enableHighlighting, setEnableHighlighting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const { details, updateCustomTool } = useCustomToolStore();
+  const { details, updateCustomTool, isPublicSource } = useCustomToolStore();
 
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
@@ -62,12 +62,13 @@ function HighLightMetaData({ handleUpdateTool }) {
             <Checkbox
               checked={enableHighlighting}
               onChange={(e) => setEnableHighlighting(e.target.checked)}
+              disabled={isPublicSource}
             />
             <Typography.Text>Enable Highlighting</Typography.Text>
           </Space>
           <Space>
             <Alert
-              className="highlight"
+              className="highlight-metadata"
               message={
                 <>
                   Turn this option on if downstream use cases need you to
@@ -90,7 +91,12 @@ function HighLightMetaData({ handleUpdateTool }) {
           </Space>
         </Form.Item>
         <Form.Item className="display-flex-right">
-          <CustomButton type="primary" htmlType="submit" loading={isLoading}>
+          <CustomButton
+            type="primary"
+            htmlType="submit"
+            loading={isLoading}
+            disabled={isPublicSource}
+          >
             Save
           </CustomButton>
         </Form.Item>
