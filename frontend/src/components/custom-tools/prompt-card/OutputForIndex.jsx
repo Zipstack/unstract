@@ -2,6 +2,7 @@ import PropTypes from "prop-types";
 import { Modal } from "antd";
 import "./PromptCard.css";
 import { uniqueId } from "lodash";
+
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 
 function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
