@@ -4,7 +4,7 @@ import re
 from typing import Any, Optional
 
 import yaml
-from unstract.adapters.enums import AdapterTypes
+from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.tool_registry.constants import AdapterPropertyKey, Tools
 from unstract.tool_registry.dto import AdapterProperties, Spec, Tool, ToolMeta
 from unstract.tool_registry.exceptions import InvalidToolURLException
