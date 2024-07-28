@@ -15,4 +15,11 @@ module.exports = (app) => {
       changeOrigin: true,
     })
   );
+  app.use(
+    "/llmwhisperer",
+    createProxyMiddleware({
+      target: process.env.REACT_APP_WHISPERER_BACKEND_URL,
+      changeOrigin: true,
+    })
+  );
 };

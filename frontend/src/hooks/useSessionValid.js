@@ -41,14 +41,13 @@ function useSessionValid() {
     );
   }
   return async () => {
-    if (selectedProductStore && !selectedProduct) {
-      navigate("/selectProduct");
-      return;
-    }
     try {
       const userSessionData = await userSession();
       const signedInOrgId = userSessionData?.organization_id;
-
+      if (userSessionData && selectedProductStore && !selectedProduct) {
+        navigate("/selectProduct");
+        return;
+      }
       // API to get the list of organizations
       const requestOptions = {
         method: "GET",

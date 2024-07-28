@@ -11,6 +11,8 @@ import { useMainAppRoutes } from "./useMainAppRoutes.js";
 import { useLlmWhispererRoutes } from "../plugins/routes/useLlmWhispererRoutes.js";
 import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
 import { SelectProduct } from "../plugins/select-product/SelectProduct.jsx";
+import { ToolIdePage } from "../pages/ToolIdePage.jsx";
+import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 
 let TrialRoutes;
 let ManualReviewPage;

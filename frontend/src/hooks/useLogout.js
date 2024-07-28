@@ -9,6 +9,7 @@ function useLogout() {
 
   return () => {
     setSessionDetails(getSessionData(null));
+    localStorage.removeItem("selectedProduct");
     posthog.reset();
     const baseUrl = getBaseUrl();
     const newURL = baseUrl + "/api/v1/logout";

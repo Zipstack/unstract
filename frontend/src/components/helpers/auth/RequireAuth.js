@@ -15,6 +15,14 @@ try {
 } catch {
   // The component will remain null of it is not available
 }
+let useSelectedProductStore;
+let selectedProduct;
+try {
+  useSelectedProductStore =
+    require("../../../plugins/llm-whisperer/store/select-produc-store").useSelectedProductStore;
+} catch {
+  // do nothing
+}
 
 const RequireAuth = () => {
   const { sessionDetails } = useSessionStore();
@@ -25,8 +33,12 @@ const RequireAuth = () => {
   const pathname = location?.pathname;
   const adapters = sessionDetails?.adapters;
   const currOrgName = getOrgNameFromPathname(pathname);
-  const isLlmWhisperer = getOrgNameFromPathname(pathname) === "llm-whisperer";
   const { flags } = sessionDetails;
+  if (useSelectedProductStore) {
+    selectedProduct = useSelectedProductStore((state) => state.selectedProduct);
+  }
+  console.log(selectedProduct);
+  const isLlmWhisperer = selectedProduct && selectedProduct === "llm-whisperer";
 
   useEffect(() => {
     if (!sessionDetails?.isLoggedIn) {
@@ -37,7 +49,9 @@ const RequireAuth = () => {
   }, [sessionDetails]);
 
   let navigateTo = `/${orgName}/onboard`;
-  if (onboardCompleted(adapters)) {
+  if (isLlmWhisperer) {
+    navigateTo = `/llm-whisperer/${orgName}/playground`;
+  } else if (onboardCompleted(adapters)) {
     navigateTo = `/${orgName}/tools`;
   }
   if (flags?.manual_review) {
