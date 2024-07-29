@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        directory: [root, backend, prompt-service, worker, unstract/core, unstract/flags, platform-service, x2text-service, document-service]
+        directory: [root, backend, prompt-service, worker, unstract/core, unstract/flags, platform-service, x2text-service]
 
     steps:
       - name: Checkout repository
@@ -27,7 +27,7 @@ jobs:
           echo "changed=false" >> $GITHUB_OUTPUT
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git fetch origin
+          # git fetch origin
           if git diff --quiet origin/main -- "$file_path"; then
             echo "No changes detected in $file_path against origin/main branch."
           else
@@ -77,6 +77,6 @@ jobs:
             pip install pre-commit~=3.6.2
             pre-commit run pdm-lock-check
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
-            git pull origin ${{ github.ref_name }} --no-rebase
-            git push origin ${{ github.ref_name }}
+            # git pull origin ${{ github.ref_name }} --no-rebase
+            # git push origin ${{ github.ref_name }}
           fi
