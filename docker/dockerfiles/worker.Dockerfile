@@ -10,7 +10,7 @@ ENV PYTHONPATH /unstract
 
 ENV BUILD_CONTEXT_PATH worker
 ENV BUILD_PACKAGES_PATH unstract
-ENV PDM_VERSION 2.12.3
+ENV PDM_VERSION 2.16.1
 
 RUN apt-get update \
     && apt-get --no-install-recommends install -y docker \
