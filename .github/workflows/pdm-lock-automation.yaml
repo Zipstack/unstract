@@ -80,6 +80,6 @@ jobs:
             pip install pre-commit~=3.6.2
             pre-commit run pdm-lock-check
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
-            git pull origin ${{ github.head_ref }}
+            git pull origin ${{ github.head_ref }} --no-rebase
             git push origin ${{ github.head_ref }}
           fi
