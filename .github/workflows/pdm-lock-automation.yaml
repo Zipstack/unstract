@@ -75,6 +75,7 @@ jobs:
             echo "No changes in compared to the ${{ github.head_ref }} branch."
             echo "Nothing to commit"
           else
+            git diff origin/${{ github.head_ref }}
             echo "Changes detected in compared to the ${{ github.head_ref }} branch."
             git add pdm.lock
             pip install pre-commit~=3.6.2
