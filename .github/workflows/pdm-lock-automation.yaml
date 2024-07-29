@@ -75,10 +75,8 @@ jobs:
             echo "No changes in compared to the SELF branch."
             echo "Nothing to commit"
           else
-            git config --global user.name "GitHub Actions"
-            git config --global user.email "actions@github.com"
             echo "Changes detected in compared to the SELF branch."
-            git fetch origin ${{ github.ref_name }}
+            git fetch origin
             git checkout ${{ github.ref_name }}
             git pull origin ${{ github.ref_name }} --no-rebase
             git add pdm.lock
