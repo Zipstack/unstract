@@ -76,7 +76,7 @@ jobs:
             echo "Nothing to commit"
           else
             echo "Branch *** 1 ** ${{ github.head_ref }}"
-            git pull origin main  --allow-unrelated-histories --no-rebase
+            # git pull origin main  --allow-unrelated-histories --no-rebase
             echo "Branch *** 2 ** ${{ github.head_ref }}"
             git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
             echo "Branch *** 3 ** ${{ github.head_ref }}"
