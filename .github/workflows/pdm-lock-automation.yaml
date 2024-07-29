@@ -75,12 +75,18 @@ jobs:
             echo "No changes in compared to the ${{ github.head_ref }} branch."
             echo "Nothing to commit"
           else
-            git pull origin main --no-rebase
+            echo "Branch *** 1 ** ${{ github.head_ref }}"
+            git pull origin main  --allow-unrelated-histories --no-rebase
+            echo "Branch *** 2 ** ${{ github.head_ref }}"
             git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
+            echo "Branch *** 3 ** ${{ github.head_ref }}"
             echo "Changes detected in compared to the ${{ github.head_ref }} branch."
             git add pdm.lock
+            echo "Branch *** 4 ** ${{ github.head_ref }}"
             pip install pre-commit~=3.6.2
             pre-commit run pdm-lock-check
+            echo "Branch *** 5 ** ${{ github.head_ref }}"
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
+            echo "Branch *** 6 ** ${{ github.head_ref }}"
             git push origin ${{ github.head_ref }}
           fi
