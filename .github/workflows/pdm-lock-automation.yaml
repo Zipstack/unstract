@@ -30,7 +30,7 @@ jobs:
           echo "changed=false" >> $GITHUB_OUTPUT
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git fetch origin
+          # git fetch origin
           if git diff --quiet origin/main -- "$file_path"; then
             echo "No changes detected in $file_path against origin/main branch."
           else
@@ -76,7 +76,9 @@ jobs:
             echo "Nothing to commit"
           else
             echo "Changes detected in compared to the SELF branch."
-            echo "Branch name: ${{ github.ref_name }}"
+            echo "Branch name *** : ${{ github.head_ref }}"
+            echo "Branch name ### : ${{ github.ref_name }}"
+
             git fetch origin
             git checkout ${{ github.ref_name }}
             git pull origin ${{ github.ref_name }} --no-rebase
