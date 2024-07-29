@@ -2,13 +2,8 @@ name: Automate pdm.lock
 
 on:
   pull_request:
-    types:
-      - opened
-      - reopened
-      - synchronize
-      - review_requested
-    branches:
-      - main
+    types: [opened, synchronize, reopened, ready_for_review, review_requested]
+    branches: [main]
 
 jobs:
   check_pyproject_changes:
