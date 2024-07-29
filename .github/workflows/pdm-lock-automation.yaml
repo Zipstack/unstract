@@ -76,6 +76,7 @@ jobs:
             echo "Nothing to commit"
           else
             echo "Changes detected in compared to the SELF branch."
+            echo "Branch name: ${{ github.ref_name }}"
             git fetch origin
             git checkout ${{ github.ref_name }}
             git pull origin ${{ github.ref_name }} --no-rebase
