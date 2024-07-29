@@ -77,6 +77,7 @@ jobs:
           else
             echo "Changes detected in compared to the SELF branch."
             git fetch origin ${{ github.ref_name }}
+            git checkout ${{ github.ref_name }}
             git pull origin ${{ github.ref_name }} --no-rebase
             git add pdm.lock
             pip install pre-commit~=3.6.2
