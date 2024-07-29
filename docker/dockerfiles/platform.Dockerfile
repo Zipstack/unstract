@@ -10,7 +10,7 @@ ENV PYTHONPATH /unstract
 
 ENV BUILD_CONTEXT_PATH platform-service
 ENV BUILD_PACKAGES_PATH unstract
-ENV PDM_VERSION 2.12.3
+ENV PDM_VERSION 2.16.1
 
 RUN pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}; \
     \

@@ -9,7 +9,7 @@ ENV PYTHONUNBUFFERED=1
 
 ENV BUILD_CONTEXT_PATH document-service
 ENV PYTHON_VERSION 3.9
-ENV PDM_VERSION 2.12.3
+ENV PDM_VERSION 2.16.1
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update; \
     apt-get --no-install-recommends install -y \

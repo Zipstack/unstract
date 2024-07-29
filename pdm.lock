@@ -4,8 +4,8 @@
 [metadata]
 groups = ["default", "hook-check-django-migrations", "lint"]
 strategy = ["cross_platform", "inherit_metadata"]
-lock_version = "4.4.2"
-content_hash = "sha256:0b3694f166d8440efe4286ff9508758d7a7fe05d7e68ba277084b75906a3e73d"
+lock_version = "4.4.1"
+content_hash = "sha256:a0b222bca710c2e89a20fb639efbea4c9259984ed6696ebaaecb4e0cc87759a1"
 
 [[package]]
 name = "adlfs"
@@ -907,11 +907,20 @@ files = [
 
 [[package]]
 name = "django-celery-beat"
-version = "2.6.0"
-summary = ""
+version = "2.5.0"
+summary = "Database-backed Periodic Tasks."
 groups = ["hook-check-django-migrations"]
+dependencies = [
+    "Django<5.0,>=2.2",
+    "celery<6.0,>=5.2.3",
+    "cron-descriptor>=1.2.32",
+    "django-timezone-field>=5.0",
+    "python-crontab>=2.3.4",
+    "tzdata",
+]
 files = [
-    {file = "django-celery-beat-2.6.0.tar.gz", hash = "sha256:f75b2d129731f1214be8383e18fae6bfeacdb55dffb2116ce849222c0106f9ad"},
+    {file = "django-celery-beat-2.5.0.tar.gz", hash = "sha256:cd0a47f5958402f51ac0c715bc942ae33d7b50b4e48cba91bc3f2712be505df1"},
+    {file = "django_celery_beat-2.5.0-py3-none-any.whl", hash = "sha256:ae460faa5ea142fba0875409095d22f6bd7bcc7377889b85e8cab5c0dfb781fe"},
 ]
 
 [[package]]
