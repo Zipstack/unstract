@@ -88,5 +88,5 @@ jobs:
             echo "Branch *** 5 ** ${{ github.head_ref }}"
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
             echo "Branch *** 6 ** ${{ github.head_ref }}"
-            git push origin ${{ github.head_ref }}
+            git push
           fi
