@@ -29,15 +29,13 @@ class LogsHelperViewSet(viewsets.ModelViewSet):
         redis_key = LogService.generate_redis_key(session_id=session_id)
 
         # Retrieve keys matching the pattern
-        keys = CacheService.get_all_keys(redis_key)
+        keys = CacheService.get_all_keys(f"{redis_key}*")
 
         # Retrieve values corresponding to the keys and sort them by timestamp
         logs = []
         for key in keys:
             log_data = CacheService.get_key(key)
-            if log_data:
-                log_entry = json.loads(log_data)
-                logs.append(log_entry)
+            logs.append(log_data)
 
         # Sort logs based on timestamp
         sorted_logs = sorted(logs, key=lambda x: x["timestamp"])
@@ -56,13 +54,13 @@ class LogsHelperViewSet(viewsets.ModelViewSet):
 
         # Extract the log message from the validated data
         log: str = serializer.validated_data.get("log")
-
+        log_data = json.loads(log)
         timestamp = datetime.now(timezone.utc).timestamp()
 
         redis_key = (
             f"{LogService.generate_redis_key(session_id=session_id)}:{timestamp}"
         )
 
-        CacheService.set_key(redis_key, log, logs_expiry)
+        CacheService.set_key(redis_key, log_data, logs_expiry)
 
         return Response({"message": "Successfully stored the message in redis"})

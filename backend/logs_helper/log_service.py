@@ -21,4 +21,4 @@ class LogService:
         Returns:
         str: The constructed Redis key.
         """
-        return f"logs:{session_id}*"
+        return f"logs:{session_id}"
