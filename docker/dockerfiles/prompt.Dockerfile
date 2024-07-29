@@ -11,7 +11,7 @@ ENV PYTHONPATH /unstract
 ENV BUILD_CONTEXT_PATH prompt-service
 ENV BUILD_PACKAGES_PATH unstract
 ENV TARGET_PLUGINS_PATH src/unstract/prompt_service/plugins
-ENV PDM_VERSION 2.12.3
+ENV PDM_VERSION 2.16.1
 
 RUN apt-get update; \
     apt-get --no-install-recommends install -y \
