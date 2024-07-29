@@ -77,10 +77,10 @@ jobs:
           else
             echo "Changes detected in compared to the SELF branch."
             git fetch origin ${{ github.ref_name }}
+            git pull origin ${{ github.ref_name }} --no-rebase
             git add pdm.lock
             pip install pre-commit~=3.6.2
             pre-commit run pdm-lock-check
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
-            git pull origin ${{ github.ref_name }} --no-rebase
             git push origin ${{ github.ref_name }}
           fi
