@@ -72,8 +72,8 @@ class FileType:
 
 
 class FilePattern:
-    PDF_DOCUMENTS = ["*.pdf", "*.PDF"]
-    TEXT_DOCUMENTS = ["*.txt", "*.TXT"]
+    PDF_DOCUMENTS = ["*.pdf"]
+    TEXT_DOCUMENTS = ["*.txt", "*.doc", "*.docx"]
     IMAGES = [
         "*.jpg",
         "*.jpeg",
@@ -82,13 +82,6 @@ class FilePattern:
         "*.bmp",
         "*.tif",
         "*.tiff",
-        "*.JPG",
-        "*.JPEG",
-        "*.PNG",
-        "*.GIF",
-        "*.BMP",
-        "*.TIF",
-        "*.TIFF",
     ]
 
 

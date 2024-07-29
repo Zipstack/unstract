@@ -178,7 +178,7 @@ def prompt_processor() -> Any:
     if not payload:
         raise NoPayloadError
     tool_settings = payload.get(PSKeys.TOOL_SETTINGS, {})
-    outputs = payload.get(PSKeys.OUTPUTS)
+    outputs = payload.get(PSKeys.OUTPUTS, [])
     tool_id: str = payload.get(PSKeys.TOOL_ID, "")
     run_id: str = payload.get(PSKeys.RUN_ID, "")
     file_hash = payload.get(PSKeys.FILE_HASH)
@@ -198,7 +198,7 @@ def prompt_processor() -> Any:
         {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
         LogLevel.DEBUG,
         RunLevel.RUN,
-        "Preparing to execute all prompts",
+        f"Preparing to execute {len(outputs)} prompt(s)",
     )
 
     for output in outputs:  # type:ignore
