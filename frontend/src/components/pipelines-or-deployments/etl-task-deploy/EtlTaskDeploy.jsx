@@ -95,21 +95,33 @@ const EtlTaskDeploy = ({
       return null;
     });
   };
-
   const getWorkflows = () => {
     const connectorType = type === "task" ? "FILESYSTEM" : "DATABASE";
-    workflowApiService
-      .getWorkflowEndpointList("DESTINATION", connectorType)
-      .then((res) => {
-        const updatedData = res?.data.map((record) => ({
-          ...record,
-          id: record.workflow,
-        }));
-        setWorkflowList(updatedData);
-      })
-      .catch(() => {
-        console.error("Unable to get workflow list");
-      });
+    setWorkflowList([]);
+    const fetchWorkflows = (type) =>
+      workflowApiService
+        .getWorkflowEndpointList("DESTINATION", type)
+        .then((res) =>
+          res?.data.map((record) => ({
+            ...record,
+            id: record.workflow,
+          }))
+        )
+        .catch(() => {
+          console.error(`Unable to get workflow list for ${type}`);
+          return [];
+        });
+
+    fetchWorkflows(connectorType).then((data) => {
+      if (connectorType === "DATABASE") {
+        fetchWorkflows("MANUALREVIEW").then((manualReviewData) => {
+          const combinedData = [...data, ...manualReviewData];
+          setWorkflowList(combinedData);
+        });
+      } else {
+        setWorkflowList(data);
+      }
+    });
   };
 
   useEffect(() => {
