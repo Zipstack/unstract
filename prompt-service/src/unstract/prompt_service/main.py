@@ -178,7 +178,7 @@ def prompt_processor() -> Any:
     if not payload:
         raise NoPayloadError
     tool_settings = payload.get(PSKeys.TOOL_SETTINGS, {})
-    outputs = payload.get(PSKeys.OUTPUTS)
+    outputs = payload.get(PSKeys.OUTPUTS, [])
     tool_id: str = payload.get(PSKeys.TOOL_ID, "")
     run_id: str = payload.get(PSKeys.RUN_ID, "")
     file_hash = payload.get(PSKeys.FILE_HASH)
@@ -198,33 +198,17 @@ def prompt_processor() -> Any:
         {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
         LogLevel.DEBUG,
         RunLevel.RUN,
-        "Preparing to execute all prompts",
+        f"Preparing to execute {len(outputs)} prompt(s)",
     )
 
     for output in outputs:  # type:ignore
         variable_names.append(output[PSKeys.NAME])
     for output in outputs:  # type:ignore
-        is_active = output[PSKeys.ACTIVE]
         prompt_name = output[PSKeys.NAME]
         promptx = output[PSKeys.PROMPT]
         chunk_size = output[PSKeys.CHUNK_SIZE]
         util = PromptServiceBaseTool(log_level=LogLevel.INFO, platform_key=platform_key)
         index = Index(tool=util)
-
-        if is_active is False:
-            app.logger.info(f"[{tool_id}] Skipping inactive prompt: {prompt_name}")
-            _publish_log(
-                log_events_id,
-                {
-                    "tool_id": tool_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevel.INFO,
-                RunLevel.RUN,
-                "Skipping inactive prompt",
-            )
-            continue
 
         app.logger.info(f"[{tool_id}] Executing prompt: {prompt_name}")
         _publish_log(

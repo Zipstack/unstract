@@ -648,3 +648,6 @@ unstract/unstract-sdk/
 
 # BE pluggable-apps
 backend/pluggable_apps/*
+
+# Backend requirements.txt
+backend/requirements.txt
