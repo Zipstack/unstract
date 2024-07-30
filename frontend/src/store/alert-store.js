@@ -3,12 +3,14 @@ import { isNonNegativeNumber } from "../helpers/GetStaticData";
 import { useSocketLogsStore } from "../store/socket-logs-store";
 import { uniqueId } from "lodash";
 
+const DEFAULT_DURATION = 6;
+
 const STORE_VARIABLES = {
   alertDetails: {
     type: "",
     content: "",
     title: "",
-    duration: undefined,
+    duration: DEFAULT_DURATION,
     key: null,
   },
 };
@@ -21,7 +23,7 @@ const useAlertStore = create((setState) => ({
         alertDetails: {
           content: details.message,
           title: "Failed",
-          duration: 0,
+          duration: DEFAULT_DURATION,
           key: `open${Date.now()}-${uniqueId()}`,
           type: "error",
         },
@@ -35,9 +37,7 @@ const useAlertStore = create((setState) => ({
       title: details.title || (isErrorType ? "Failed" : "Success"),
       duration: isNonNegativeNumber(details.duration)
         ? details.duration
-        : isErrorType
-        ? 0
-        : undefined,
+        : DEFAULT_DURATION,
       key: `open${Date.now()}-${uniqueId()}`,
     };
 

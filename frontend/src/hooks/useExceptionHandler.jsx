@@ -8,7 +8,7 @@ const useExceptionHandler = () => {
     errMessage = "Something went wrong",
     setBackendErrors = undefined,
     title = "Failed",
-    duration = 0
+    duration = 6
   ) => {
     if (!err) {
       return {
