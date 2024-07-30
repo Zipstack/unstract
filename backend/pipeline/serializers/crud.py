@@ -82,9 +82,7 @@ class PipelineSerializer(AuditSerializer):
                         connection_type=WorkflowEndpoint.ConnectionType.MANUALREVIEW,
                     )
                     if check_manual_review:
-                        repr[PC.DESTINATION_NAME] = (
-                            WorkflowEndpoint.ConnectionType.MANUALREVIEW
-                        )
+                        repr[PC.DESTINATION_NAME] = "Manual Review"
                 except Exception as ex:
                     logger.debug(f"Not a Manual review destination: {ex}")
 

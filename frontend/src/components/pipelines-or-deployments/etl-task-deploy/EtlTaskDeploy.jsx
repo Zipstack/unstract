@@ -105,7 +105,6 @@ const EtlTaskDeploy = ({
         }))
       )
       .catch(() => {
-        console.error(`Unable to get workflow list for ${type}`);
         return [];
       });
   const getWorkflows = () => {
