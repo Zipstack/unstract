@@ -44,6 +44,7 @@ ENCRYPTION_KEY = EnvManager.get_required_setting("ENCRYPTION_KEY")
 MODEL_PRICES_URL = EnvManager.get_required_setting("MODEL_PRICES_URL")
 MODEL_PRICES_TTL_IN_DAYS = EnvManager.get_required_setting("MODEL_PRICES_TTL_IN_DAYS")
 MODEL_PRICES_FILE_PATH = EnvManager.get_required_setting("MODEL_PRICES_FILE_PATH")
+V2_SCHEMA = EnvManager.get_required_setting("V2_SCHEMA", "unstract_v2")
 EnvManager.raise_for_missing_envs()
 MODEL_PRICES_TTL_IN_DAYS = int(MODEL_PRICES_TTL_IN_DAYS)
 
@@ -121,9 +122,15 @@ def get_organization_from_bearer_token(token: str) -> tuple[Optional[int], str]:
         tuple[int, str]: organization uid and organization identifier
     """
     if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-        query = f"SELECT organization_id FROM {DBTableV2.PLATFORM_KEY} WHERE key=%s"
+        query = f"""
+            SELECT organization_id FROM "{V2_SCHEMA}".{DBTableV2.PLATFORM_KEY}
+            WHERE key=%s
+        """
         organization_uid: int = execute_query(query, (token,))
-        query_org = f"SELECT organization_id FROM {DBTableV2.ORGANIZATION} WHERE id=%s"
+        query_org = f"""
+            SELECT organization_id FROM "{V2_SCHEMA}".{DBTableV2.ORGANIZATION}
+            WHERE id=%s
+        """
         organization_identifier: str = execute_query(query_org, (organization_uid,))
         return organization_uid, organization_identifier
     else:
@@ -148,10 +155,16 @@ def validate_bearer_token(token: Optional[str]) -> bool:
 
         if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
             platform_key_table = DBTableV2.PLATFORM_KEY
+            query = f"""
+                SELECT * FROM \"{V2_SCHEMA}\".{platform_key_table}
+                WHERE key = '{token}'
+            """
         else:
             platform_key_table = "account_platformkey"
+            query = f"""
+                SELECT * FROM {platform_key_table} WHERE key = '{token}'
+            """
 
-        query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
         cursor = be_db.execute_sql(query)
         result_row = cursor.fetchone()
         cursor.close()
@@ -230,7 +243,8 @@ def usage() -> Any:
     current_time = datetime.now()
     if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
         query = f"""
-            INSERT INTO {DBTableV2.TOKEN_USAGE} (id, organization_id, workflow_id,
+            INSERT INTO \"{V2_SCHEMA}\".{DBTableV2.TOKEN_USAGE} (
+            id, organization_id, workflow_id,
             execution_id, adapter_instance_id, run_id, usage_type,
             llm_usage_reason, model_name, embedding_tokens, prompt_tokens,
             completion_tokens, total_tokens, cost_in_dollars, created_at, modified_at)

@@ -11,17 +11,15 @@ from unstract.prompt_service.authentication_middleware import AuthenticationMidd
 from unstract.prompt_service.config import create_app
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.constants import RunLevel
+from unstract.prompt_service.db_utils import DBUtils
+from unstract.prompt_service.env_manager import EnvLoader
 from unstract.prompt_service.exceptions import (
     APIError,
     ErrorResponse,
     NoPayloadError,
     RateLimitError,
 )
-from unstract.prompt_service.helper import (
-    EnvLoader,
-    plugin_loader,
-    query_usage_metadata,
-)
+from unstract.prompt_service.helper import plugin_loader, query_usage_metadata
 from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import Embedding
@@ -60,12 +58,25 @@ be_db = peewee.PostgresqlDatabase(
 be_db.init(PG_BE_DATABASE)
 be_db.connect()
 
+# Initializing class db instances
 AuthenticationMiddleware.be_db = be_db
+DBUtils.be_db = be_db
 
 app = create_app()
 
 
 plugins: dict[str, dict[str, Any]] = plugin_loader(app)
+
+
+@app.before_request
+def log_request_info():
+    app.logger.info(f"Request Path: {request.path} | Method: {request.method}")
+
+
+@app.after_request
+def log_response_info(response):
+    app.logger.info(f"Response Status: {response.status}")
+    return response
 
 
 def _publish_log(
