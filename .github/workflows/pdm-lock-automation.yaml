@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        directory: [root, backend, prompt-service, worker, unstract/core, unstract/flags, platform-service, x2text-service]
+        directory: [root, backend, prompt-service, worker, unstract/core, unstract/flags, platform-service, x2text-service, unstract/connectors, unstract/tool-registry, unstract/tool-sandbox, unstract/workflow-execution]
 
     steps:
       - name: Checkout repository
