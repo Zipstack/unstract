@@ -29,6 +29,7 @@ class UserSessionUtils:
     def get_session_id(request: HttpRequest) -> Optional[str]:
         return request.session.session_key
 
+    @staticmethod
     def set_organization_member_role(
         request: HttpRequest, member: OrganizationMember
     ) -> None:
