@@ -10,7 +10,7 @@ authors = [
     {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
 ]
 dependencies = [
-    "peewee~=3.16",
+    "peewee==3.16",
     "nltk~=3.8",
     "flask~=3.0",
     "llama-index==0.10.38",
