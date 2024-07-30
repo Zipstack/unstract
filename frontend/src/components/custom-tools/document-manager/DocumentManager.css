@@ -27,6 +27,7 @@
 }
 
 .text-viewer-layout {
+    height: 100%;
     padding: 0px 12px;
     flex: 1;
     overflow-y: auto;

@@ -163,3 +163,7 @@ body {
 .action-items {
   display: flex;
 }
+
+.ant-tabs-nav-operations {
+  display: none !important;
+}

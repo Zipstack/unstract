@@ -79,6 +79,7 @@ class SnowflakeDB(UnstractDB):
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
+        table_name = kwargs.get("table_name", None)
         try:
             with engine.cursor() as cursor:
                 if sql_values:
@@ -92,5 +93,8 @@ class SnowflakeDB(UnstractDB):
                 f"{e.msg} {e.errno}"
             )
             raise SnowflakeProgrammingException(
-                detail=e.msg, database=self.database
+                detail=e.msg,
+                database=self.database,
+                schema=self.schema,
+                table_name=table_name,
             ) from e

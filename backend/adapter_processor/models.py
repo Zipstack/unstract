@@ -8,9 +8,9 @@ from cryptography.fernet import Fernet
 from django.conf import settings
 from django.db import models
 from django.db.models import QuerySet
-from unstract.adapters.adapterkit import Adapterkit
-from unstract.adapters.enums import AdapterTypes
-from unstract.adapters.exceptions import AdapterError
+from unstract.sdk.adapters.adapterkit import Adapterkit
+from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.sdk.adapters.exceptions import AdapterError
 from utils.models.base_model import BaseModel
 
 ADAPTER_NAME_SIZE = 128
