@@ -1,0 +1,85 @@
+name: Automate pdm.lock
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, review_requested]
+    branches: [main]
+
+jobs:
+  check_pyproject_changes:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        directory: [root, backend, prompt-service, worker, unstract/core, unstract/flags, platform-service, x2text-service]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Check file changes
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ matrix.directory }}" = "root" ]; then
+            file_path="pyproject.toml"
+          else
+            file_path="${{ matrix.directory }}/pyproject.toml"
+          fi
+          echo "checking changes for $file_path for origin/main branch"
+          echo "changed=false" >> $GITHUB_OUTPUT
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git fetch origin
+          if git diff --quiet origin/main -- "$file_path"; then
+            echo "No changes detected in $file_path against origin/main branch."
+          else
+            echo "Changes detected in $file_path against origin/main branch."
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Python
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Set up Go
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22.5'
+
+      - name: Install PDM
+        if: steps.check.outputs.changed == 'true'
+        run: python -m pip install pdm==2.16.1
+
+      - name: Update and Push pdm.lock
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ matrix.directory }}" != "root" ]; then
+            cd ${{ matrix.directory }}
+          fi
+
+          if [ ! -d ".venv" ]; then
+            echo 'Creating virtual environment inside "${{ matrix.directory }}".'
+            pdm venv create -w virtualenv --with-pip
+          else
+            echo "Virtual environment already exists."
+          fi
+          source .venv/bin/activate
+          pdm lock -G :all
+          if git diff --quiet; then
+            echo "No changes in compared to the ${{ github.head_ref }} branch."
+            echo "Nothing to commit"
+          else
+            git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
+            echo "Changes detected in compared to the ${{ github.head_ref }} branch."
+            git add pdm.lock
+            pip install pre-commit~=3.6.2
+            pre-commit run pdm-lock-check
+            git commit -m "Update pdm.lock for ${{ matrix.directory }}"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
