@@ -251,7 +251,10 @@ class SourceConnector(BaseConnector):
                     continue
                 if count >= limit:
                     break
-                if any(fnmatch.fnmatch(file, pattern) for pattern in patterns):
+                if any(
+                    fnmatch.fnmatchcase(file.lower(), pattern.lower())
+                    for pattern in patterns
+                ):
                     file_path = os.path.join(root, file)
                     file_path = f"{file_path}"
                     matched_files.append(file_path)
