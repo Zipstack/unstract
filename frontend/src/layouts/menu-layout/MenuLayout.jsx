@@ -29,7 +29,7 @@ function MenuLayout({ children }) {
   }, []);
 
   return (
-    <>
+    <div className="flex-dir-col overflow-hidden">
       <div className="appHeader">
         <div className="project_detail">
           <Button
@@ -56,10 +56,10 @@ function MenuLayout({ children }) {
           </Space>
         </div>
       </div>
-      <div className="appBody">
+      <div className="appBody overflow-hidden">
         <div className="appBody2">{children}</div>
       </div>
-    </>
+    </div>
   );
 }
 

@@ -27,7 +27,7 @@
 .log-footer {
   padding: 0;
   position: relative;
-  height: 53px;
+  height: 50px;
 }
 
 .ide-collapse-panel {
@@ -47,4 +47,31 @@
 .logs-title {
   text-align: center;
   align-items: center;
+}
+
+.page-layout-body {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-layout-main {
+  flex: 1;
+}
+
+@keyframes blink {
+  0% {
+    border-color: #ff4f4f;
+  }
+  50% {
+    border-color: transparent;
+  }
+  100% {
+    border-color: #ff4f4f;
+  }
+}
+
+.blinking-border {
+  border: 2px solid #ff4f4f;
+  animation: blink 2s infinite;
 }

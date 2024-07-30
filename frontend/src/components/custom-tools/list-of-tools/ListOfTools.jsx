@@ -275,7 +275,7 @@ function ListOfTools() {
   };
 
   return (
-    <>
+    <div className="flex-dir-col">
       <ToolNavBar
         title={"Prompt Studio"}
         enableSearch
@@ -329,7 +329,7 @@ function ListOfTools() {
           slides={slides}
         />
       )}
-    </>
+    </div>
   );
 }
 

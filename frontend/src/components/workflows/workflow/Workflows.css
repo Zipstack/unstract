@@ -16,7 +16,7 @@
 .workflows-pg-layout {
   background-color: var(--page-bg-2);
   padding: 12px;
-  height: 100%;
+  flex: 1;
   overflow-y: auto;
 }
 

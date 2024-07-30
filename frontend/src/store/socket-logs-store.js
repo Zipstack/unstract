@@ -6,6 +6,7 @@ import { useAlertStore } from "./alert-store";
 
 const STORE_VARIABLES = {
   logs: [],
+  blink: false,
 };
 
 const useSocketLogsStore = create((setState, getState) => ({
@@ -33,11 +34,13 @@ const useSocketLogsStore = create((setState, getState) => ({
     };
 
     logsData.push(newLog);
+    let blink = false;
     if (newLog?.type === "LOG" && newLog?.level === "ERROR") {
       setAlertDetails({
         type: "ERROR_LOG",
         message: newLog?.message,
       });
+      blink = true;
     }
     if (newLog?.type === "NOTIFICATION" && sessionDetails?.isLoggedIn) {
       const requestOptions = {
@@ -57,8 +60,15 @@ const useSocketLogsStore = create((setState, getState) => ({
       logsData = logsData.slice(index);
     }
 
-    existingState.logs = logsData;
-    setState(existingState);
+    const result = {
+      logs: logsData,
+      blink,
+    };
+    setState({ ...existingState, ...result });
+  },
+  updateBlink: (value) => {
+    const existingState = { ...getState() };
+    setState({ ...existingState, ...{ blink: value } });
   },
   emptyLogs: () => {
     setState({ logs: [] });

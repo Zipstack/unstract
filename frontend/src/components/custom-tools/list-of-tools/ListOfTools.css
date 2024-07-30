@@ -1,7 +1,7 @@
 /* Styles for ListOfTools */
 
 .list-of-tools-layout {
-  height: 100%;
+  flex: 1;
   background-color: var(--page-bg-2);
   padding: 12px;
   overflow-y: auto;

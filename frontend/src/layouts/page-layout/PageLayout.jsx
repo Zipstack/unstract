@@ -22,11 +22,21 @@ import { useSocketLogsStore } from "../../store/socket-logs-store.js";
 function PageLayout() {
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [activeKey, setActiveKey] = useState([]);
+  const [isBlink, setIsBlink] = useState(false);
   const { height, enableResize, setHeight } = useResize({ minHeight: 50 });
   const { sessionDetails } = useSessionStore();
   const initialCollapsedValue =
     JSON.parse(localStorage.getItem("collapsed")) || false;
   const [collapsed, setCollapsed] = useState(initialCollapsedValue);
+  const { blink, updateBlink } = useSocketLogsStore();
+
+  useEffect(() => {
+    setIsBlink(!activeKey?.length && blink);
+
+    if (activeKey?.length && blink) {
+      updateBlink(false);
+    }
+  }, [activeKey, blink]);
 
   const getLogs = async () => {
     const requestOptions = {
@@ -103,7 +113,7 @@ function PageLayout() {
       <TopNavBar />
       <Layout>
         <SideNavBar collapsed={collapsed} />
-        <Layout>
+        <Layout className="overflow-hidden">
           <Button
             shape="circle"
             size="small"
@@ -111,33 +121,39 @@ function PageLayout() {
             onClick={() => setCollapsed(!collapsed)}
             className="collapse_btn"
           />
-          <Outlet />
-          <Footer className="log-footer">
-            <Collapse
-              className="ide-collapse-panel"
-              size="small"
-              activeKey={activeKey}
-              items={getItems()}
-              expandIconPosition="end"
-              onChange={handleCollapse}
-              bordered={false}
-              style={{ height: height }}
-            />
-            <Modal
-              title="Logs"
-              open={showLogsModal}
-              onCancel={closeLogsModal}
-              className="agency-ide-log-modal"
-              footer={null}
-              width={1000}
-              closeIcon={<FullscreenExitOutlined />}
-            >
-              <LogsLabel />
-              <div className="agency-ide-logs">
-                <DisplayLogs />
-              </div>
-            </Modal>
-          </Footer>
+          <div className="page-layout-body overflow-hidden">
+            <div className="page-layout-main overflow-hidden">
+              <Outlet />
+            </div>
+            <Footer className="log-footer">
+              <Collapse
+                className={`ide-collapse-panel ${
+                  isBlink ? "blinking-border" : ""
+                }`}
+                size="small"
+                activeKey={activeKey}
+                items={getItems()}
+                expandIconPosition="end"
+                onChange={handleCollapse}
+                bordered={false}
+                style={{ height: height }}
+              />
+              <Modal
+                title="Logs"
+                open={showLogsModal}
+                onCancel={closeLogsModal}
+                className="agency-ide-log-modal"
+                footer={null}
+                width={1000}
+                closeIcon={<FullscreenExitOutlined />}
+              >
+                <LogsLabel />
+                <div className="agency-ide-logs">
+                  <DisplayLogs />
+                </div>
+              </Modal>
+            </Footer>
+          </div>
         </Layout>
       </Layout>
     </div>

@@ -190,7 +190,7 @@ function Workflows() {
   };
 
   return (
-    <>
+    <div className="flex-dir-col">
       <ToolNavBar
         enableSearch
         searchList={projectList}
@@ -251,7 +251,7 @@ function Workflows() {
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 

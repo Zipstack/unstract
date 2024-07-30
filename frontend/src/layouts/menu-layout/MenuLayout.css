@@ -5,7 +5,7 @@
   align-items: center;
   /* column-gap: 12px; */
   height: min-content;
-  background-color: #F5F7F9;
+  background-color: #f5f7f9;
   padding-block: 8px;
   padding-inline: 12px;
 }
@@ -19,7 +19,7 @@
 .appBody {
   background-color: var(--page-bg-2);
   overflow: hidden;
-  height: 100%;
+  flex: 1;
 }
 
 .appBody2 {
@@ -47,7 +47,7 @@
   border-radius: 6px;
   margin: 0 5px;
   border-inline-start-width: 1px;
-  position:  static!important;
+  position: static !important;
 }
 .radio_btn:hover {
   border-inline-start-width: 1px;
