@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:5396d3e51cfb9f9f9f24072642dbcad72be13c21a4456ae2b2969b37ab79a23a"
+content_hash = "sha256:c4a2ca53286a1c4fc334fd19d06ae037011cd4d861a5b45593390d7f76ba464d"
 
 [[package]]
 name = "aiohttp"
@@ -1232,7 +1232,7 @@ files = [
 
 [[package]]
 name = "huggingface-hub"
-version = "0.24.3"
+version = "0.24.2"
 requires_python = ">=3.8.0"
 summary = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
 groups = ["default"]
@@ -1246,8 +1246,8 @@ dependencies = [
     "typing-extensions>=3.7.4.3",
 ]
 files = [
-    {file = "huggingface_hub-0.24.3-py3-none-any.whl", hash = "sha256:69ecce486dd6cdad69937ba76779e893c224a670a9d947636c1d5cbd049e44d8"},
-    {file = "huggingface_hub-0.24.3.tar.gz", hash = "sha256:bfdc05cc9b64a0e24e8614a44222698799183268f6b68be209aa2df70cff2cde"},
+    {file = "huggingface_hub-0.24.2-py3-none-any.whl", hash = "sha256:abdf3244d3a274c4b1fbc5c4a1ef700032b3f60ba93cc63e4f036fd082aa2805"},
+    {file = "huggingface_hub-0.24.2.tar.gz", hash = "sha256:92be892405d2f6a7a8479016f9a5662354f202b2c6c1ff499609621aed1fae10"},
 ]
 
 [[package]]
@@ -1762,7 +1762,7 @@ files = [
 
 [[package]]
 name = "llama-index-readers-file"
-version = "0.1.32"
+version = "0.1.31"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index readers file integration"
 groups = ["default"]
@@ -1773,8 +1773,8 @@ dependencies = [
     "striprtf<0.0.27,>=0.0.26",
 ]
 files = [
-    {file = "llama_index_readers_file-0.1.32-py3-none-any.whl", hash = "sha256:699d6f80c5c922321b6202b565c7cc22ab9e27a2d1c6df1e42550089ccd25290"},
-    {file = "llama_index_readers_file-0.1.32.tar.gz", hash = "sha256:80a2a2aeefba7deae289dfd4aaec6e8ab8ee331820bcdd1db821d1879bd21515"},
+    {file = "llama_index_readers_file-0.1.31-py3-none-any.whl", hash = "sha256:4f026988fce7daad50f000b4feba1a25bf564f4d80b13777c528ddd63ee833b4"},
+    {file = "llama_index_readers_file-0.1.31.tar.gz", hash = "sha256:067469d90292635937cdd7a00c35b73b0248946520b565dcbfed1c2d29566569"},
 ]
 
 [[package]]
@@ -2272,11 +2272,11 @@ files = [
 
 [[package]]
 name = "peewee"
-version = "3.16.0"
+version = "3.17.6"
 summary = "a little orm"
 groups = ["default"]
 files = [
-    {file = "peewee-3.16.0.tar.gz", hash = "sha256:1800c0a04962ee99d161c07f5a12fc49549caf5cfcda426a9103e34e37f854ba"},
+    {file = "peewee-3.17.6.tar.gz", hash = "sha256:cea5592c6f4da1592b7cff8eaf655be6648a1f5857469e30037bf920c03fb8fb"},
 ]
 
 [[package]]
@@ -3066,13 +3066,13 @@ files = [
 
 [[package]]
 name = "setuptools"
-version = "72.1.0"
+version = "71.1.0"
 requires_python = ">=3.8"
 summary = "Easily download, build, install, upgrade, and uninstall Python packages"
 groups = ["default"]
 files = [
-    {file = "setuptools-72.1.0-py3-none-any.whl", hash = "sha256:5a03e1860cf56bb6ef48ce186b0e557fdba433237481a9a625176c2831be15d1"},
-    {file = "setuptools-72.1.0.tar.gz", hash = "sha256:8d243eff56d095e5817f796ede6ae32941278f542e0f941867cc05ae52b162ec"},
+    {file = "setuptools-71.1.0-py3-none-any.whl", hash = "sha256:33874fdc59b3188304b2e7c80d9029097ea31627180896fb549c578ceb8a0855"},
+    {file = "setuptools-71.1.0.tar.gz", hash = "sha256:032d42ee9fb536e33087fb66cac5f840eb9391ed05637b3f2a76a7c8fb477936"},
 ]
 
 [[package]]
