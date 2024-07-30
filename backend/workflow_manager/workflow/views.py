@@ -23,6 +23,7 @@ from workflow_manager.workflow.constants import WorkflowKey
 from workflow_manager.workflow.dto import ExecutionResponse
 from workflow_manager.workflow.enums import SchemaEntity, SchemaType
 from workflow_manager.workflow.exceptions import (
+    InternalException,
     WorkflowDoesNotExistError,
     WorkflowGenerationError,
     WorkflowRegenerationError,
@@ -192,6 +193,12 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 hash_values_of_files=hashes_of_files,
                 include_metadata=include_metadata,
             )
+            if (
+                execution_response.execution_status == "ERROR"
+                and execution_response.result
+                and execution_response.result[0].get("error")
+            ):
+                raise InternalException(execution_response.result[0].get("error"))
             return Response(
                 make_execution_response(execution_response),
                 status=status.HTTP_200_OK,

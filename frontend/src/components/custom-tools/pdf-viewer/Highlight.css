@@ -1,0 +1,9 @@
+.pdf-container {
+    position: relative;
+}
+
+.highlight {
+    position: absolute;
+    background-color: yellow;
+    opacity: 0.5;
+}
