@@ -22,8 +22,10 @@ function HeaderTitle() {
           <ArrowLeftOutlined />
         </Button>
       </div>
-      <div className="custom-tools-name">
-        <Typography.Text strong>{details?.tool_name}</Typography.Text>
+      <div>
+        <Typography.Text className="custom-tools-name" strong>
+          {details?.tool_name}
+        </Typography.Text>
         <Button size="small" type="text" disabled>
           <EditOutlined />
         </Button>

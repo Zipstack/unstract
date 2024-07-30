@@ -112,12 +112,19 @@ class CostCalculationHelper:
         self.file_path = file_path
         self.logger = logger
 
-    def calculate_cost(self, model_name, input_tokens, output_tokens):
+    def calculate_cost(self, model_name, provider, input_tokens, output_tokens):
         cost = 0.0
         item = None
         model_prices = self._get_model_prices()
-        if model_prices:
-            item = model_prices.get(model_name)
+        # Filter the model objects by model name
+        filtered_models = {
+            k: v for k, v in model_prices.items() if k.endswith(model_name)
+        }
+        # Check if the lite llm provider starts with the given provider
+        for _, model_info in filtered_models.items():
+            if provider in model_info.get("litellm_provider", ""):
+                item = model_info
+                break
         if item:
             input_cost_per_token = item.get("input_cost_per_token", 0)
             output_cost_per_token = item.get("output_cost_per_token", 0)

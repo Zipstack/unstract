@@ -102,3 +102,9 @@
 .tool-ide-main-card .card-text {
   font-size: 12px;
 }
+
+.public-tool-ide-body{
+  flex: 1 1;
+  overflow-y: hidden;
+  width: 100vw;
+}

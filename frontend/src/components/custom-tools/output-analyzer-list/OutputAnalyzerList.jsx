@@ -8,7 +8,7 @@ import { promptType } from "../../../helpers/GetStaticData";
 
 function OutputAnalyzerList() {
   const [totalFields, setTotalFields] = useState(0);
-  const { listOfDocs, details } = useCustomToolStore();
+  const { listOfDocs, details, isPublicSource } = useCustomToolStore();
 
   useEffect(() => {
     const prompts = [...(details?.prompts || [])];
@@ -23,7 +23,13 @@ function OutputAnalyzerList() {
       <div>
         <OutputAnalyzerHeader />
       </div>
-      <div className="output-analyzer-body">
+      <div
+        className={
+          isPublicSource
+            ? "public-output-analyzer-body"
+            : "output-analyzer-body"
+        }
+      >
         {listOfDocs.map((doc) => {
           return (
             <div className="output-analyzer-card-gap" key={doc?.document_id}>
