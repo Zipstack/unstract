@@ -1,15 +1,14 @@
 from typing import Optional
 
 from django.db import connection
+from django.db.utils import ProgrammingError
 from utils.constants import Account, FeatureFlag
 from utils.local_context import StateStore
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-    # TODO: uncomment Once v2 implemented
-    # from account_v2.models import Organization
-    pass
+    from account_v2.models import Organization
 else:
     from account.models import Organization
 
@@ -36,6 +35,11 @@ class UserContext:
                     organization_id=organization_id
                 )
             except Organization.DoesNotExist:
+                return None
+            except ProgrammingError:
+                # Handle cases where the database schema might not be fully set up,
+                # especially during the execution of management commands
+                # other than runserver
                 return None
         else:
             organization: Organization = connection.tenant

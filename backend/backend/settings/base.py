@@ -133,6 +133,7 @@ DB_USER = os.environ.get("DB_USER", "unstract_dev")
 DB_HOST = os.environ.get("DB_HOST", "backend-db-1")
 DB_PASSWORD = os.environ.get("DB_PASSWORD", "unstract_pass")
 DB_PORT = os.environ.get("DB_PORT", 5432)
+V2_SCHEMA = os.environ.get("V2_SCHEMA", "unstract_v2")
 
 DEFAULT_ORGANIZATION = "default_org"
 FLIPT_BASE_URL = os.environ.get("FLIPT_BASE_URL", "http://localhost:9005")
@@ -185,66 +186,115 @@ ALLOWED_HOSTS = ["*"]
 CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL]
 CORS_ALLOW_ALL_ORIGINS = False
 
-
-# Application definition
-SHARED_APPS = (
-    # Multitenancy
-    "corsheaders",
-    # For the organization model
-    "account",
-    # Django apps should go below this line
-    "django.contrib.admin",
-    "django.contrib.auth",
-    "django.contrib.contenttypes",
-    "django.contrib.sessions",
-    "django.contrib.messages",
-    "django.contrib.staticfiles",
-    "django.contrib.admindocs",
-    # Third party apps should go below this line,
-    "rest_framework",
-    # Connector OAuth
-    "connector_auth",
-    "social_django",
-    # Doc generator
-    "drf_yasg",
-    "docs",
-    # Plugins
-    "plugins",
-    "feature_flag",
-    "django_celery_beat",
-)
-
 if not check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-    SHARED_APPS = ("django_tenants",) + SHARED_APPS
-
-TENANT_APPS = (
-    # your tenant-specific apps
-    "django.contrib.admin",
-    "django.contrib.auth",
-    "django.contrib.contenttypes",
-    "django.contrib.messages",
-    "django.contrib.staticfiles",
-    "tenant_account",
-    "project",
-    "prompt",
-    "connector",
-    "adapter_processor",
-    "file_management",
-    "workflow_manager.endpoint",
-    "workflow_manager.workflow",
-    "tool_instance",
-    "pipeline",
-    "platform_settings",
-    "api",
-    "prompt_studio.prompt_profile_manager",
-    "prompt_studio.prompt_studio",
-    "prompt_studio.prompt_studio_core",
-    "prompt_studio.prompt_studio_registry",
-    "prompt_studio.prompt_studio_output_manager",
-    "prompt_studio.prompt_studio_document_manager",
-    "prompt_studio.prompt_studio_index_manager",
-    "usage",
-)
+    SHARED_APPS = (
+        # Multitenancy
+        "django_tenants",
+        "corsheaders",
+        # For the organization model
+        "account",
+        # Django apps should go below this line
+        "django.contrib.admin",
+        "django.contrib.auth",
+        "django.contrib.contenttypes",
+        "django.contrib.sessions",
+        "django.contrib.messages",
+        "django.contrib.staticfiles",
+        "django.contrib.admindocs",
+        # Third party apps should go below this line,
+        "rest_framework",
+        # Connector OAuth
+        "connector_auth",
+        "social_django",
+        # Doc generator
+        "drf_yasg",
+        "docs",
+        # Plugins
+        "plugins",
+        "feature_flag",
+        "django_celery_beat",
+    )
+    TENANT_APPS = (
+        # your tenant-specific apps
+        "django.contrib.admin",
+        "django.contrib.auth",
+        "django.contrib.contenttypes",
+        "django.contrib.messages",
+        "django.contrib.staticfiles",
+        "tenant_account",
+        "project",
+        "prompt",
+        "connector",
+        "adapter_processor",
+        "file_management",
+        "workflow_manager.endpoint",
+        "workflow_manager.workflow",
+        "tool_instance",
+        "pipeline",
+        "platform_settings",
+        "api",
+        "prompt_studio.prompt_profile_manager",
+        "prompt_studio.prompt_studio",
+        "prompt_studio.prompt_studio_core",
+        "prompt_studio.prompt_studio_registry",
+        "prompt_studio.prompt_studio_output_manager",
+        "prompt_studio.prompt_studio_document_manager",
+        "prompt_studio.prompt_studio_index_manager",
+        "usage",
+    )
+else:
+    SHARED_APPS = (
+        # Multitenancy
+        # "django_tenants",
+        "corsheaders",
+        # For the organization model
+        "account_v2",
+        # Django apps should go below this line
+        "django.contrib.admin",
+        "django.contrib.auth",
+        "django.contrib.contenttypes",
+        "django.contrib.sessions",
+        "django.contrib.messages",
+        "django.contrib.staticfiles",
+        "django.contrib.admindocs",
+        # Third party apps should go below this line,
+        "rest_framework",
+        # Connector OAuth
+        # "connector_auth",
+        "social_django",
+        # Doc generator
+        "drf_yasg",
+        "docs",
+        # Plugins
+        "plugins",
+        "feature_flag",
+        "django_celery_beat",
+    )
+    v2_apps = (
+        "migration_tools",
+        # "account_v2",
+        "connector_auth_v2",
+        "tenant_account_v2",
+        "connector_v2",
+        "adapter_processor_v2",
+        "file_management",
+        "workflow_manager.endpoint_v2",
+        "workflow_manager.workflow_v2",
+        "tool_instance_v2",
+        "pipeline_v2",
+        "platform_settings_v2",
+        "api_v2",
+        "usage_v2",
+        "prompt_studio.prompt_profile_manager_v2",
+        "prompt_studio.prompt_studio_v2",
+        "prompt_studio.prompt_studio_core_v2",
+        "prompt_studio.prompt_studio_registry_v2",
+        "prompt_studio.prompt_studio_output_manager_v2",
+        "prompt_studio.prompt_studio_document_manager_v2",
+        "prompt_studio.prompt_studio_index_manager_v2",
+    )
+    SHARED_APPS += v2_apps
+    TENANT_APPS = []
 
 INSTALLED_APPS = list(SHARED_APPS) + [
     app for app in TENANT_APPS if app not in SHARED_APPS
@@ -288,6 +338,18 @@ if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
     # Namespaces
     SOCIAL_AUTH_URL_NAMESPACE = "public:social"
     LOGIN_CALLBACK_URL_NAMESPACE = "public:callback"
+    DATABASES = {
+        "default": {
+            "ENGINE": DB_ENGINE,
+            "NAME": f"{DB_NAME}",
+            "USER": f"{DB_USER}",
+            "HOST": f"{DB_HOST}",
+            "PASSWORD": f"{DB_PASSWORD}",
+            "PORT": f"{DB_PORT}",
+            "ATOMIC_REQUESTS": True,
+            "OPTIONS": {"options": f"-c search_path={V2_SCHEMA}"},
+        }
+    }
 else:
     # Middleware Configuration
     TENANT_MIDDLEWARE = "django_tenants.middleware.TenantSubfolderMiddleware"
@@ -317,6 +379,17 @@ else:
     # Namespaces
     SOCIAL_AUTH_URL_NAMESPACE = "social"
     LOGIN_CALLBACK_URL_NAMESPACE = "callback"
+    DATABASES = {
+        "default": {
+            "ENGINE": DB_ENGINE,
+            "NAME": f"{DB_NAME}",
+            "USER": f"{DB_USER}",
+            "HOST": f"{DB_HOST}",
+            "PASSWORD": f"{DB_PASSWORD}",
+            "PORT": f"{DB_PORT}",
+            "ATOMIC_REQUESTS": True,
+        }
+    }
 
 MIDDLEWARE = [
     "log_request_id.middleware.RequestIDMiddleware",
@@ -356,21 +429,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "backend.wsgi.application"
 
-
-# Database
-# https://docs.djangoproject.com/en/4.2/ref/settings/#databases
-
-DATABASES = {
-    "default": {
-        "ENGINE": DB_ENGINE,
-        "NAME": f"{DB_NAME}",
-        "USER": f"{DB_USER}",
-        "HOST": f"{DB_HOST}",
-        "PASSWORD": f"{DB_PASSWORD}",
-        "PORT": f"{DB_PORT}",
-        "ATOMIC_REQUESTS": True,
-    }
-}
 
 # SocketIO connection manager
 SOCKET_IO_MANAGER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"

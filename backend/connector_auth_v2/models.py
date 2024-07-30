@@ -125,7 +125,7 @@ class ConnectorAuth(AbstractUserSocialAuth):
         app_label = "connector_auth_v2"
         verbose_name = "Connector Auth"
         verbose_name_plural = "Connector Auths"
-        db_table = "connector_auth_v2"
+        db_table = "connector_auth"
         constraints = [
             models.UniqueConstraint(
                 fields=[

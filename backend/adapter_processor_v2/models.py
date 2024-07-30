@@ -122,7 +122,7 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
     class Meta:
         verbose_name = "adapter instance"
         verbose_name_plural = "adapter instances"
-        db_table = "adapter_instance_v2"
+        db_table = "adapter_instance"
         constraints = [
             models.UniqueConstraint(
                 fields=["adapter_name", "adapter_type", "organization"],
@@ -165,9 +165,6 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
 
 
 class UserDefaultAdapter(BaseModel):
-    user = models.OneToOneField(
-        User, on_delete=models.CASCADE, related_name="organization_default_adapters"
-    )
     organization_member = models.OneToOneField(
         OrganizationMember,
         on_delete=models.CASCADE,
@@ -205,4 +202,4 @@ class UserDefaultAdapter(BaseModel):
     class Meta:
         verbose_name = "Default Adapter for Organization User"
         verbose_name_plural = "Default Adapters for Organization Users"
-        db_table = "default_organization_user_adapter_v2"
+        db_table = "default_organization_user_adapter"

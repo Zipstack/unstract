@@ -31,13 +31,13 @@ class OrganizationMember(DefaultOrganizationMixin):
     def __str__(self):  # type: ignore
         return (
             f"OrganizationMember("
-            f"{self.member_id}, role: {self.role}, userId: {self.user.user_id})"
+            f"{self.member_id}, role: {self.role}, user: {self.user})"
         )
 
     objects = OrganizationMemberModelManager()
 
     class Meta:
-        db_table = "organization_member_v2"
+        db_table = "organization_member"
         verbose_name = "Organization Member"
         verbose_name_plural = "Organization Members"
         constraints = [

@@ -84,7 +84,7 @@ class IndexManager(BaseModel):
     class Meta:
         verbose_name = "Index Manager"
         verbose_name_plural = "Index Managers"
-        db_table = "index_manager_v2"
+        db_table = "index_manager"
         constraints = [
             models.UniqueConstraint(
                 fields=["document_manager", "profile_manager"],

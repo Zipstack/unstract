@@ -48,7 +48,9 @@ class PipelineManager:
     ) -> Optional[dict[str, Any]]:
         """Gets the required data to be passed while executing a pipeline Any
         changes to pipeline execution needs to be propagated here."""
-        callback_url = settings.DJANGO_APP_BACKEND_URL + reverse(PipelineURL.EXECUTE)
+        callback_url = settings.DJANGO_APP_BACKEND_URL + reverse(
+            PipelineURL.EXECUTE_NAMESPACE
+        )
         job_headers = {RequestHeader.X_API_KEY: settings.INTERNAL_SERVICE_API_KEY}
         job_kwargs = {
             RequestConstants.VERB: "POST",

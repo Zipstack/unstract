@@ -135,7 +135,7 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
     ) -> Response:
         """Downloads a Postman Collection of the API deployment instance."""
         instance = self.get_object()
-        api_key_inst = instance.apikey_set.filter(is_active=True).first()
+        api_key_inst = instance.api_keys.filter(is_active=True).first()
         if not api_key_inst:
             logger.error(f"No active API key set for deployment {instance.pk}")
             raise NoActiveAPIKeyError(deployment_name=instance.display_name)

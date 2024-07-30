@@ -121,6 +121,9 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
     enable_challenge = models.BooleanField(
         db_comment="Flag to enable or disable challenge", default=False
     )
+    enable_highlight = models.BooleanField(
+        db_comment="Flag to enable or disable document highlighting", default=False
+    )
 
     # Introduced field to establish M2M relation between users and custom_tool.
     # This will introduce intermediary table which relates both the models.
@@ -149,7 +152,7 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
     class Meta:
         verbose_name = "Custom Tool"
         verbose_name_plural = "Custom Tools"
-        db_table = "custom_tool_v2"
+        db_table = "custom_tool"
         constraints = [
             models.UniqueConstraint(
                 fields=["tool_name", "organization"],

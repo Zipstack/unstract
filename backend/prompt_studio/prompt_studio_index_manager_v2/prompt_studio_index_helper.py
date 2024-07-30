@@ -49,7 +49,10 @@ class PromptStudioIndexHelper:
                     )
 
                 index_ids = index_manager.index_ids_history
-                index_ids_list = json.loads(index_ids) if index_ids else []
+                if not isinstance(index_ids, list):
+                    index_ids_list = json.loads(index_ids) if index_ids else []
+                else:
+                    index_ids_list = index_ids
                 if doc_id not in index_ids:
                     index_ids_list.append(doc_id)
 

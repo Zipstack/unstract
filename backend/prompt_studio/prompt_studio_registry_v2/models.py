@@ -107,4 +107,4 @@ class PromptStudioRegistry(DefaultOrganizationMixin, BaseModel):
     class Meta:
         verbose_name = "Prompt Studio Registry"
         verbose_name_plural = "Prompt Studio Registries"
-        db_table = "prompt_studio_registry_v2"
+        db_table = "prompt_studio_registry"

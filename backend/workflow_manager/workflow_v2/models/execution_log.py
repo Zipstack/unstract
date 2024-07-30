@@ -19,4 +19,4 @@ class ExecutionLog(BaseModel):
     class Meta:
         verbose_name = "Execution Log"
         verbose_name_plural = "Execution Logs"
-        db_table = "execution_log_v2"
+        db_table = "execution_log"

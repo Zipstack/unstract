@@ -47,7 +47,7 @@ class DocumentManager(BaseModel):
     class Meta:
         verbose_name = "Document Manager"
         verbose_name_plural = "Document Managers"
-        db_table = "document_manager_v2"
+        db_table = "document_manager"
         constraints = [
             models.UniqueConstraint(
                 fields=["document_name", "tool"],
