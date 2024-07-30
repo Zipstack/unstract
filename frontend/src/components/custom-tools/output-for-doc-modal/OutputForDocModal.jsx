@@ -224,12 +224,9 @@ function OutputForDocModal({
           null;
         return docId === item?.document_id;
       });
-      const key =
-        promptId +
-        "__" +
-        item?.document_id +
-        "__" +
-        (selectedProfile || profileManagerId);
+      const key = `${promptId}__${item?.document_id}__${
+        selectedProfile || profileManagerId
+      }`;
 
       let status = outputStatus.fail;
       let message = displayPromptResult(output?.output, true);

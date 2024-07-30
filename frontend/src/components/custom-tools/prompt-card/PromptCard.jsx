@@ -318,7 +318,7 @@ function PromptCard({
 
     if (runAllLLM) {
       let selectedProfiles = llmProfiles;
-      if (selectedLlmProfiles?.length > 0) {
+      if (selectedLlmProfiles?.length) {
         selectedProfiles = llmProfiles.filter((profile) =>
           selectedLlmProfiles.includes(profile?.profile_id)
         );
