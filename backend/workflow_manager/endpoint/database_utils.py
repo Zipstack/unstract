@@ -285,7 +285,6 @@ class DatabaseUtils:
           So we need to use INSERT INTO ... SELECT ... syntax
         - sql values can contain data with single quote. It needs to
         """
-
         cls_name = db_class.__class__.__name__
         sql = DBConnectorQueryHelper.build_sql_insert_query(
             cls_name=cls_name, table_name=table_name, sql_keys=sql_keys
