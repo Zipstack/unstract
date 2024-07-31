@@ -189,7 +189,8 @@ function Header({
             </Tooltip>
           </>
         )}
-        <Dropdown menu={{ items }} trigger={["click"]} placement="bottomLeft">
+        <ExpandCardBtn expandCard={expandCard} setExpandCard={setExpandCard} />
+        <Dropdown menu={{ items }} trigger={["click"]} placement="bottomRight">
           <Button
             size="small"
             type="text"
@@ -198,8 +199,6 @@ function Header({
             <MoreOutlined className="prompt-card-actions-head" />
           </Button>
         </Dropdown>
-
-        <ExpandCardBtn expandCard={expandCard} setExpandCard={setExpandCard} />
       </Col>
     </Row>
   );
