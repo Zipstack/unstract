@@ -5,20 +5,18 @@ import { useSessionStore } from "../../../store/session-store";
 
 const RequireGuest = () => {
   const { sessionDetails } = useSessionStore();
-  const { orgName, adapters, flags } = sessionDetails;
+  const { orgName, adapters } = sessionDetails;
   const location = useLocation();
   const pathname = location.pathname;
   let navigateTo = `/${orgName}/onboard`;
   if (onboardCompleted(adapters)) {
     navigateTo = `/${orgName}/tools`;
   }
-  if (flags?.manual_review) {
-    if (
-      sessionDetails.role === "unstract_reviewer" ||
-      sessionDetails.role === "unstract_supervisor"
-    ) {
-      navigateTo = `/${orgName}/review`;
-    }
+  if (
+    sessionDetails.role === "unstract_reviewer" ||
+    sessionDetails.role === "unstract_supervisor"
+  ) {
+    navigateTo = `/${orgName}/review`;
   }
 
   return !sessionDetails?.isLoggedIn && publicRoutes.includes(pathname) ? (

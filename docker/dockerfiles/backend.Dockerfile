@@ -11,7 +11,7 @@ ENV PYTHONPATH /unstract
 ENV BUILD_CONTEXT_PATH backend
 ENV BUILD_PACKAGES_PATH unstract
 ENV DJANGO_SETTINGS_MODULE "backend.settings.dev"
-ENV PDM_VERSION 2.12.3
+ENV PDM_VERSION 2.16.1
 
 # Disable all telemetry by default
 ENV OTEL_TRACES_EXPORTER none

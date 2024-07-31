@@ -105,7 +105,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     try {
       const inputOption =
         require("../../../plugins/dscard-input-options/DsSettingsCardInputOptions").inputOption;
-      if (flags.manual_review && inputOption) {
+      if (inputOption) {
         setUpdatedInputoptions(inputOption);
       }
     } catch {

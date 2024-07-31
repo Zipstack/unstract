@@ -19,7 +19,8 @@ dependencies = [
     "django==4.2.1",
     "djangorestframework==3.14.0",
     "django-cors-headers==4.3.1",
-    "django-celery-beat>=2.5.0",
+    # Pinning django-celery-beat to avoid build issues
+    "django-celery-beat==2.5.0",
     "django-log-request-id>=2.1.0",
     "django-redis==5.4.0",
     "django-tenants==3.5.0",
