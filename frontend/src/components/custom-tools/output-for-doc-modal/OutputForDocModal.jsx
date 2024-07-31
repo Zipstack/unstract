@@ -83,7 +83,7 @@ function OutputForDocModal({
   }, [open, singlePassExtractMode, isSinglePassExtractLoading]);
 
   useEffect(() => {
-    updatePromptOutput();
+    updatePromptOutput(docOutputs);
   }, [docOutputs]);
 
   useEffect(() => {
@@ -119,7 +119,7 @@ function OutputForDocModal({
 
   const updatePromptOutput = (data) => {
     setPromptOutputs((prev) => {
-      const updatedPromptOutput = getUpdatedPromptOutput(data, prev);
+      const updatedPromptOutput = data || [...prev];
       const keys = Object.keys(docOutputs);
 
       keys.forEach((key) => {
@@ -129,10 +129,6 @@ function OutputForDocModal({
 
       return updatedPromptOutput;
     });
-  };
-
-  const getUpdatedPromptOutput = (data, prev) => {
-    return data || [...prev];
   };
 
   const updatePromptOutputInstance = (updatedPromptOutput, docId, key) => {
@@ -224,10 +220,17 @@ function OutputForDocModal({
     const rowsData = [];
     const docs = moveSelectedDocToTop();
     docs.forEach((item) => {
-      const output = data.find(
-        (outputValue) => outputValue?.document_manager === item?.document_id
-      );
-      const key = `${output?.prompt_id}__${output?.document_manager}__${output?.profile_manager}`;
+      const output = data.find((outputValue) => {
+        const docId =
+          outputValue?.document_manager ||
+          (outputValue?.key && getDocIdFromKey(outputValue?.key)) ||
+          null;
+        return docId === item?.document_id;
+      });
+      const key = `${promptId}__${item?.document_id}__${
+        selectedProfile || profileManagerId
+      }`;
+
       let status = outputStatus.fail;
       let message = displayPromptResult(output?.output, true);
 

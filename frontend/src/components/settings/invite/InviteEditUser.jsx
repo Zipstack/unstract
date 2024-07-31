@@ -25,7 +25,6 @@ function InviteEditUser() {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [initialRole, setInitialRole] = useState();
   const { setPostHogCustomEvent } = usePostHogEvents();
-  const { flags } = sessionDetails;
 
   const isInvite = location.pathname.split("/").slice(-1)[0] === "invite";
   const validateMessages = {
@@ -187,7 +186,6 @@ function InviteEditUser() {
                           label: formatOptionLabel(role.name),
                         };
                       })}
-                      disabled={!flags.manual_review}
                     />
                   </Form.Item>
                 </div>
