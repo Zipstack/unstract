@@ -24,12 +24,14 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
-import { publicAdapterApi } from "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs";
 
 let publicOutputsApi;
+let publicAdapterApi;
 try {
   publicOutputsApi =
     require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
+  publicAdapterApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicAdapterApi;
 } catch {
   // The component will remain null of it is not available
 }
