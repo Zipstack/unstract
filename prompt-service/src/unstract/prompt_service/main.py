@@ -729,7 +729,7 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
     for node in nodes:
         # ToDo: May have to fine-tune this value for node score or keep it
         # configurable at the adapter level
-        if node.score > 0.6:
+        if node.score > 0:
             text += node.get_content() + "\n"
         else:
             app.logger.info("Node score is less than 0. " f"Ignored: {node.score}")
