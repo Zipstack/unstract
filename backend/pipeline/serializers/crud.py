@@ -6,7 +6,6 @@ from connector.connector_instance_helper import ConnectorInstanceHelper
 from connector.models import ConnectorInstance
 from connector_processor.connector_processor import ConnectorProcessor
 from croniter import croniter
-from croniter.croniter import CroniterBadCronError
 from pipeline.constants import PipelineConstants as PC
 from pipeline.constants import PipelineKey as PK
 from pipeline.models import Pipeline
@@ -49,7 +48,8 @@ class PipelineSerializer(AuditSerializer):
         # Validate the cron string
         try:
             croniter(cron_string)
-        except (CroniterBadCronError, ValueError):
+        except Exception as error:
+            logger.error(f"Invalid cron string: {error}")
             raise serializers.ValidationError("Invalid cron string format.")
 
         return cron_string
