@@ -21,8 +21,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "base branch 1 **** : ${{ github.head_ref }} "
-          echo "base branch 2 **** : ${{ github.base_ref }} "
           if [ "${{ matrix.directory }}" = "root" ]; then
             file_path="pyproject.toml"
           else
