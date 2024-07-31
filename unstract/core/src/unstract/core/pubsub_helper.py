@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from django_redis import get_redis_connection
+import redis
 from kombu import Connection
 
 from unstract.core.constants import LogEventArgument, LogProcessingTask
@@ -12,6 +12,12 @@ from unstract.core.constants import LogEventArgument, LogProcessingTask
 
 class LogPublisher:
     kombu_conn = Connection(os.environ.get("CELERY_BROKER_URL"))
+    r = redis.Redis(
+        host=os.environ.get("REDIS_HOST", "http://localhost"),
+        port=os.environ.get("REDIS_PORT", "6379"),
+        username=os.environ.get("REDIS_USER", ""),
+        password=os.environ.get("REDIS_PASSWORD", ""),
+    )
 
     @staticmethod
     def log_usage(
@@ -118,7 +124,6 @@ class LogPublisher:
     @classmethod
     def publish(cls, channel_id: str, payload: dict[str, Any]) -> bool:
         channel = f"logs:{channel_id}"
-        r = get_redis_connection("default")
         """Publish a message to the queue."""
         try:
 
@@ -150,7 +155,7 @@ class LogPublisher:
                 redis_key = f"{channel}:{timestamp}"
 
                 # Store logs in Redis with expiration of 1 hour
-                r.setex(redis_key, 3600, log_data)
+                cls.r.setex(redis_key, 3600, log_data)
 
         except Exception as e:
             logging.error(f"Failed to publish '{channel_id}' <= {payload}: {e}")
