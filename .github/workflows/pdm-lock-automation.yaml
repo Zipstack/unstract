@@ -21,6 +21,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          echo "base branch 1 **** : ${{ github.head_ref }} "
+          echo "base branch 2 **** : ${{ github.base_ref }} "
           if [ "${{ matrix.directory }}" = "root" ]; then
             file_path="pyproject.toml"
           else
@@ -70,13 +72,13 @@ jobs:
             echo "Virtual environment already exists."
           fi
           source .venv/bin/activate
-          pdm lock -G :all
+          pdm lock -G :all -v
           if git diff --quiet; then
-            echo "No changes in compared to the ${{ github.head_ref }} branch."
+            echo "No changes between the current branch and the ${{ github.head_ref }} branch."
             echo "Nothing to commit"
           else
             git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
-            echo "Changes detected in compared to the ${{ github.head_ref }} branch."
+            echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
             git add pdm.lock
             pip install pre-commit~=3.6.2
             pre-commit run pdm-lock-check
