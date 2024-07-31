@@ -25,7 +25,6 @@ const RequireAuth = () => {
   const pathname = location?.pathname;
   const adapters = sessionDetails?.adapters;
   const currOrgName = getOrgNameFromPathname(pathname);
-  const { flags } = sessionDetails;
 
   useEffect(() => {
     if (!sessionDetails?.isLoggedIn) {
@@ -39,13 +38,11 @@ const RequireAuth = () => {
   if (onboardCompleted(adapters)) {
     navigateTo = `/${orgName}/tools`;
   }
-  if (flags?.manual_review) {
-    if (
-      sessionDetails.role === "unstract_reviewer" ||
-      sessionDetails.role === "unstract_supervisor"
-    ) {
-      navigateTo = `/${orgName}/review`;
-    }
+  if (
+    sessionDetails.role === "unstract_reviewer" ||
+    sessionDetails.role === "unstract_supervisor"
+  ) {
+    navigateTo = `/${orgName}/review`;
   }
 
   if (!isLoggedIn) {
