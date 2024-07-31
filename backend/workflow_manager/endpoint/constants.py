@@ -72,9 +72,17 @@ class FileType:
 
 
 class FilePattern:
-    PDF_DOCUMENTS = ["*.pdf", "*.PDF"]
-    TEXT_DOCUMENTS = ["*.txt"]
-    IMAGES = ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.tif", "*.tiff"]
+    PDF_DOCUMENTS = ["*.pdf"]
+    TEXT_DOCUMENTS = ["*.txt", "*.doc", "*.docx"]
+    IMAGES = [
+        "*.jpg",
+        "*.jpeg",
+        "*.png",
+        "*.gif",
+        "*.bmp",
+        "*.tif",
+        "*.tiff",
+    ]
 
 
 class SourceConstant:
