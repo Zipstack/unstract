@@ -1,13 +1,16 @@
 import logging
 from collections import OrderedDict
-from typing import Any
+from typing import Any, Optional
 
 from connector.connector_instance_helper import ConnectorInstanceHelper
 from connector.models import ConnectorInstance
 from connector_processor.connector_processor import ConnectorProcessor
+from croniter import croniter
+from croniter.croniter import CroniterBadCronError
 from pipeline.constants import PipelineConstants as PC
 from pipeline.constants import PipelineKey as PK
 from pipeline.models import Pipeline
+from rest_framework import serializers
 from scheduler.helper import SchedulerHelper
 from utils.serializer_utils import SerializerUtils
 from workflow_manager.endpoint.models import WorkflowEndpoint
@@ -24,6 +27,33 @@ class PipelineSerializer(AuditSerializer):
         model = Pipeline
         fields = "__all__"
 
+    def validate_cron_string(self, value: Optional[str] = None) -> Optional[str]:
+        """Validate cron string.
+
+        Args:
+            value (Optional[str], optional): String. Defaults to None.
+
+        Raises:
+            serializers.ValidationError: Error raises if cron string is invalid
+
+        Returns:
+            Optional[str]:  Returns the cron string if valid, otherwise None
+        """
+        if value is None:
+            return None
+        cron_string = value.strip()
+        # Check if the string is empty
+        if not cron_string:
+            return None
+
+        # Validate the cron string
+        try:
+            croniter(cron_string)
+        except (CroniterBadCronError, ValueError):
+            raise serializers.ValidationError("Invalid cron string format.")
+
+        return cron_string
+
     def create(self, validated_data: dict[str, Any]) -> Any:
         # TODO: Deduce pipeline type based on WF?
         validated_data[PK.ACTIVE] = True  # Add this as default instead?
@@ -32,10 +62,10 @@ class PipelineSerializer(AuditSerializer):
 
     def save(self, **kwargs: Any) -> Pipeline:
         pipeline: Pipeline = super().save(**kwargs)
-        SchedulerHelper.add_job(
-            str(pipeline.pk),
-            cron_string=pipeline.cron_string,
-        )
+        if pipeline.cron_string is None:
+            SchedulerHelper.remove_job(pipeline_id=str(pipeline.id))
+        else:
+            SchedulerHelper.add_or_update_job(pipeline)
         return pipeline
 
     def _get_name_and_icon(self, connectors: list[Any], connector_id: Any) -> Any:

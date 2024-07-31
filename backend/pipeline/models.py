@@ -41,12 +41,16 @@ class Pipeline(BaseModel):
     )
     # Added as text field until a model for App is included.
     app_id = models.TextField(null=True, blank=True, max_length=APP_ID_LENGTH)
-    active = models.BooleanField(default=False)  # TODO: Add dbcomment
-    scheduled = models.BooleanField(default=False)  # TODO: Add dbcomment
+    active = models.BooleanField(
+        default=False, db_comment="Indicates whether the pipeline is active"
+    )
+    scheduled = models.BooleanField(
+        default=False, db_comment="Indicates whether the pipeline is scheduled"
+    )
     cron_string = models.TextField(
         db_comment="UNIX cron string",
-        null=False,
-        blank=False,
+        null=True,
+        blank=True,
         max_length=FieldLength.CRON_LENGTH,
     )
     pipeline_type = models.CharField(
@@ -81,7 +85,12 @@ class Pipeline(BaseModel):
     )
 
     def __str__(self) -> str:
-        return f"Pipeline({self.id})"
+        return (
+            f"Pipeline({self.id}) ("
+            f"cron string: {self.cron_string}, "
+            f"is active: {self.active}, "
+            f"is scheduled: {self.scheduled}"
+        )
 
     class Meta:
         constraints = [
