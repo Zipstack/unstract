@@ -75,3 +75,11 @@
   border: 2px solid #ff4f4f;
   animation: blink 2s infinite;
 }
+
+.resize-handle {
+  position: absolute;
+  width: 100%;
+  top: 0;
+  cursor: row-resize;
+  height: 10px;
+}

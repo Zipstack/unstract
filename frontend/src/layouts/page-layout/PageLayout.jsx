@@ -71,13 +71,7 @@ function PageLayout() {
           <>
             <div
               aria-hidden="true"
-              style={{
-                position: "absolute",
-                width: "100%",
-                top: 0,
-                cursor: "row-resize",
-                height: "10px",
-              }}
+              className="resize-handle"
               onMouseDown={enableResize}
               onClick={(e) => e.stopPropagation()}
             />
