@@ -424,14 +424,13 @@ const convertTimestampToHHMMSS = (timestamp) => {
   const date = new Date(timestamp * 1000);
 
   // Extract hours, minutes, and seconds
-  const hours = date.getUTCHours().toString().padStart(2, "0");
-  const minutes = date.getUTCMinutes().toString().padStart(2, "0");
-  const seconds = date.getUTCSeconds().toString().padStart(2, "0");
-
-  // Combine to form hh:mm:ss format
-  const timeString = `${hours}:${minutes}:${seconds}`;
-
-  return timeString;
+  const [hours, minutes, seconds] = [
+    date.getUTCHours(),
+    date.getUTCMinutes(),
+    date.getUTCSeconds(),
+  ].map((unit) => unit.toString().padStart(2, "0"));
+  // Return the formatted time string
+  return `${hours}:${minutes}:${seconds}`;
 };
 
 const isSubPage = (type, path) => {
