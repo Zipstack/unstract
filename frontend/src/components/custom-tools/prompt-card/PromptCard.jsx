@@ -63,6 +63,7 @@ function PromptCard({
   const [progressMsg, setProgressMsg] = useState({});
   const [docOutputs, setDocOutputs] = useState([]);
   const [timers, setTimers] = useState({});
+  const [spsLoading, setSpsLoading] = useState({});
   const {
     getDropdownItems,
     llmProfiles,
@@ -129,9 +130,6 @@ function PromptCard({
     resetInfoMsgs();
     handleGetOutput();
     handleGetCoverage();
-    if (isSinglePassExtractLoading) {
-      return;
-    }
   }, [
     selectedLlmProfileId,
     selectedDoc,
@@ -226,6 +224,13 @@ function PromptCard({
       }
       return updatedDocOutputs;
     });
+  };
+
+  const handleSpsLoading = (docId, isLoadingStatus) => {
+    setSpsLoading((prev) => ({
+      ...prev,
+      [docId]: isLoadingStatus,
+    }));
   };
 
   // Generate the result for the currently selected document
@@ -618,7 +623,11 @@ function PromptCard({
       return;
     }
 
-    if (!singlePassExtractMode && !selectedLlmProfileId) {
+    if (
+      !singlePassExtractMode &&
+      !isSimplePromptStudio &&
+      !selectedLlmProfileId
+    ) {
       setResult([]);
       return;
     }
@@ -807,6 +816,9 @@ function PromptCard({
         selectedLlmProfileId={selectedLlmProfileId}
         handleSelectDefaultLLM={handleSelectDefaultLLM}
         timers={timers}
+        spsLoading={spsLoading}
+        handleSpsLoading={handleSpsLoading}
+        handleGetOutput={handleGetOutput}
       />
       {EvalModal && !singlePassExtractMode && (
         <EvalModal
