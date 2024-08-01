@@ -27,16 +27,25 @@ class PipelineSerializer(AuditSerializer):
         fields = "__all__"
 
     def validate_cron_string(self, value: Optional[str] = None) -> Optional[str]:
-        """Validate cron string.
+        """Validate the cron string provided in the serializer data.
+
+        This method is called internally by the serializer to ensure that
+        the cron string is well-formed and adheres to the correct format.
+        If the cron string is valid, it is returned. If the string is None
+        or empty, it returns None. If the string is invalid, a
+        ValidationError is raised.
 
         Args:
-            value (Optional[str], optional): String. Defaults to None.
+            value (Optional[str], optional): The cron string to validate.
+                                             Defaults to None.
 
         Raises:
-            serializers.ValidationError: Error raises if cron string is invalid
+            serializers.ValidationError: Raised if the cron string is
+                                         not in a valid format.
 
         Returns:
-            Optional[str]:  Returns the cron string if valid, otherwise None
+            Optional[str]: The validated cron string if it is valid,
+                           otherwise None.
         """
         if value is None:
             return None
