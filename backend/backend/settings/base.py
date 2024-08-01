@@ -192,6 +192,7 @@ SHARED_APPS = (
     "corsheaders",
     # For the organization model
     "account",
+    "account_usage",
     # Django apps should go below this line
     "django.contrib.admin",
     "django.contrib.auth",
