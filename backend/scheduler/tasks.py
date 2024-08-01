@@ -50,26 +50,21 @@ def create_or_update_periodic_task(
         day_of_month=day_of_month,
         month_of_year=month_of_year,
     )
-    periodic_task = get_periodic_task(task_name=task_name)
-    if periodic_task:
-        periodic_task.crontab = schedule
-        periodic_task.enabled = enabled
-        periodic_task.args = task_args_json
-        periodic_task.save()
-        logger.info(
-            f"Updated periodic task {task_name} with cron string: {cron_string}"
-        )
+
+    periodic_task, created = PeriodicTask.objects.update_or_create(
+        name=task_name,
+        defaults={
+            "task": task_path,
+            "crontab": schedule,
+            "enabled": enabled,
+            "args": task_args_json,
+        },
+    )
+
+    if created:
+        logger.info(f"Created periodic task {periodic_task}")
     else:
-        PeriodicTask.objects.create(
-            name=task_name,
-            task=task_path,
-            crontab=schedule,
-            enabled=enabled,
-            args=task_args_json,
-        )
-        logger.info(
-            f"Created periodic task {task_name} with cron string: {cron_string}"
-        )
+        logger.info(f"Updated periodic task {periodic_task}")
 
 
 # TODO: Remove unused args with a migration

@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:890872086a68da7971c163423797c527c8d2fde2e58bb253c91a64190110f5b8"
+content_hash = "sha256:633c375a9d9c5f05d40c54185c95132327b32cd68ff47fdbb91acbe29dadebb4"
 
 [[package]]
 name = "adlfs"
@@ -761,6 +761,21 @@ summary = "A Python library that converts cron expressions into human readable s
 groups = ["default"]
 files = [
     {file = "cron_descriptor-1.4.0.tar.gz", hash = "sha256:b6ff4e3a988d7ca04a4ab150248e9f166fb7a5c828a85090e75bcc25aa93b4dd"},
+]
+
+[[package]]
+name = "croniter"
+version = "3.0.3"
+requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,>=2.6"
+summary = "croniter provides iteration for datetime object with cron like format"
+groups = ["default"]
+dependencies = [
+    "python-dateutil",
+    "pytz>2021.1",
+]
+files = [
+    {file = "croniter-3.0.3-py2.py3-none-any.whl", hash = "sha256:b3bd11f270dc54ccd1f2397b813436015a86d30ffc5a7a9438eec1ed916f2101"},
+    {file = "croniter-3.0.3.tar.gz", hash = "sha256:34117ec1741f10a7bd0ec3ad7d8f0eb8fa457a2feb9be32e6a2250e158957668"},
 ]
 
 [[package]]
@@ -4262,8 +4277,8 @@ requires_python = ">=3.7"
 summary = "Database Abstraction Library"
 groups = ["default", "dev"]
 dependencies = [
+    "SQLAlchemy==2.0.31",
     "greenlet!=0.4.17",
-    "sqlalchemy==2.0.31",
 ]
 files = [
     {file = "SQLAlchemy-2.0.31-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:f2a213c1b699d3f5768a7272de720387ae0122f1becf0901ed6eaa1abd1baf6c"},

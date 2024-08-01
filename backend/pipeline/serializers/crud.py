@@ -49,7 +49,7 @@ class PipelineSerializer(AuditSerializer):
         try:
             croniter(cron_string)
         except Exception as error:
-            logger.error(f"Invalid cron string: {error}")
+            logger.error(f"Invalid cron string '{cron_string}': {error}")
             raise serializers.ValidationError("Invalid cron string format.")
 
         return cron_string

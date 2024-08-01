@@ -50,6 +50,7 @@ dependencies = [
     "unstract-workflow-execution @ file:///${PROJECT_ROOT}/../unstract/workflow-execution",
     "azure-identity==1.16.0",
     "azure-mgmt-apimanagement==3.0.0",
+    "croniter>=3.0.3",
 ]
 # <3.11.1 due to resolution error from Unstract SDK
 requires-python = ">=3.9,<3.11.1"
