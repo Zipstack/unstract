@@ -81,7 +81,7 @@ class Pipeline(BaseModel):
     )
 
     def __str__(self) -> str:
-        return f"Pipeline({self.id})"
+        return f"Pipeline({self.id}, name: {self.pipeline_name}"
 
     class Meta:
         constraints = [

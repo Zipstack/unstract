@@ -102,6 +102,7 @@ def execute_pipeline_task(
                 return
             workflow = Workflow.objects.get(id=workflow_id)
             logger.info(f"Executing workflow: {workflow}")
+            PipelineProcessor.initialize_pipeline_sync(pipeline_id=pipepline_id)
             PipelineProcessor.update_pipeline(
                 pipepline_id, Pipeline.PipelineStatus.INPROGRESS
             )

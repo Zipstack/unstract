@@ -168,6 +168,7 @@ CELERY_BROKER_URL = get_required_setting(
 )
 
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
+NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", 5))
 # Flag to Enable django admin
 ADMIN_ENABLED = False
 
@@ -244,6 +245,7 @@ TENANT_APPS = (
     "prompt_studio.prompt_studio_document_manager",
     "prompt_studio.prompt_studio_index_manager",
     "usage",
+    "notification",
 )
 
 INSTALLED_APPS = list(SHARED_APPS) + [
