@@ -60,32 +60,39 @@ function Header({
     );
   };
 
-  const items = [
-    {
-      label: (
-        <Checkbox checked={isDisablePrompt} onChange={handleDisablePrompt}>
-          {isDisablePrompt ? "Enabled" : "Disabled"}
-        </Checkbox>
-      ),
-      key: "enable",
-    },
-    {
-      label: (
-        <ConfirmModal
-          handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
-          content="The prompt will be permanently deleted."
-        >
-          <DeleteOutlined /> Delete
-        </ConfirmModal>
-      ),
-      key: "delete",
-      disabled:
-        disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
-        isSinglePassExtractLoading ||
-        indexDocs?.includes(selectedDoc?.document_id) ||
-        isPublicSource,
-    },
-  ];
+  useEffect(() => {
+    const dropdownItems = [
+      {
+        label: (
+          <Checkbox checked={isDisablePrompt} onChange={handleDisablePrompt}>
+            {isDisablePrompt ? "Enabled" : "Disabled"}
+          </Checkbox>
+        ),
+        key: "enable",
+      },
+      {
+        label: (
+          <ConfirmModal
+            handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
+            content="The prompt will be permanently deleted."
+          >
+            <DeleteOutlined /> Delete
+          </ConfirmModal>
+        ),
+        key: "delete",
+        disabled:
+          disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
+          isSinglePassExtractLoading ||
+          indexDocs?.includes(selectedDoc?.document_id) ||
+          isPublicSource,
+      },
+    ];
+    if (isSimplePromptStudio) {
+      dropdownItems.splice(0, 1);
+    }
+
+    setItems(dropdownItems);
+  }, [promptDetails]);
 
   return (
     <Row>
