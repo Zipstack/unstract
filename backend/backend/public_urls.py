@@ -55,6 +55,34 @@ except ImportError:
     pass
 
 try:
+    import pluggable_apps.simple_prompt_studio.sps_document.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.simple_prompt_studio.sps_project.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.simple_prompt_studio.sps_prompt.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.simple_prompt_studio.sps_prompt_output.urls  # noqa # pylint: disable=unused-import
+
+    simple_prompt_studio_path_prefix = settings.SIMPLE_PROMPT_STUDIO_PATH_PREFIX
+    urlpatterns += [
+        path(
+            f"{path_prefix}/{simple_prompt_studio_path_prefix}/",
+            include("pluggable_apps.simple_prompt_studio.sps_project.urls"),
+        ),
+        path(
+            f"{path_prefix}/{simple_prompt_studio_path_prefix}/",
+            include("pluggable_apps.simple_prompt_studio.sps_document.urls"),
+        ),
+        path(
+            f"{path_prefix}/{simple_prompt_studio_path_prefix}/",
+            include("pluggable_apps.simple_prompt_studio.sps_prompt.urls"),
+        ),
+        path(
+            f"{path_prefix}/{simple_prompt_studio_path_prefix}/",
+            include("pluggable_apps.simple_prompt_studio.sps_prompt_output.urls"),
+        ),
+    ]
+except ImportError:
+    pass
+
+try:
     import pluggable_apps.public_shares.share_controller.urls  # noqa # pylint: disable=unused-import
 
     share_path_prefix = settings.PUBLIC_PATH_PREFIX

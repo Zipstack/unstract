@@ -129,31 +129,6 @@ def construct_prompt(
     return prompt
 
 
-def construct_prompt_for_engine(
-    preamble: str,
-    prompt: str,
-    postamble: str,
-    grammar_list: list[dict[str, Any]],
-) -> str:
-    # Let's cleanup the context. Remove if 3 consecutive newlines are found
-    prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}\n"
-    if grammar_list is not None and len(grammar_list) > 0:
-        prompt += "\n"
-        for grammar in grammar_list:
-            word = ""
-            synonyms = []
-            if PSKeys.WORD in grammar:
-                word = grammar[PSKeys.WORD]
-                if PSKeys.SYNONYMS in grammar:
-                    synonyms = grammar[PSKeys.SYNONYMS]
-            if len(synonyms) > 0 and word != "":
-                prompt += f'\nNote: You can consider that the word {word} is same as \
-                    {", ".join(synonyms)} in both the quesiton and the context.'  # noqa
-    prompt += f"\n\n{postamble}"
-    prompt += "\n\n"
-    return prompt
-
-
 def authentication_middleware(func: Any) -> Any:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         token = AuthenticationMiddleware.get_token_from_auth_header(request)
@@ -703,13 +678,8 @@ def run_retrieval(  # type:ignore
     vector_index,
     retrieval_type: str,
 ) -> tuple[str, str]:
-    prompt = construct_prompt_for_engine(
-        preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
-        prompt=output[PSKeys.PROMPTX],
-        postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
-        grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
-    )
-    if retrieval_type is PSKeys.SUBQUESTION:
+    prompt = output[PSKeys.PROMPTX]
+    if retrieval_type == PSKeys.SUBQUESTION:
         subq_prompt = (
             f"Generate a sub-question from the following verbose prompt that will"
             f" help extract relevant documents from a vector store:\n\n{prompt}"
@@ -833,12 +803,17 @@ def enable_plugins() -> None:
         PSKeys.SINGLE_PASS_EXTRACTION, {}
     )
     summarize_plugin: dict[str, Any] = plugins.get(PSKeys.SUMMARIZE, {})
+    simple_prompt_studio: dict[str, Any] = plugins.get(PSKeys.SIMPLE_PROMPT_STUDIO, {})
     if single_pass_extration_plugin:
         single_pass_extration_plugin["entrypoint_cls"](
             app=app, challenge_plugin=plugins.get(PSKeys.CHALLENGE, {})
         )
     if summarize_plugin:
         summarize_plugin["entrypoint_cls"](
+            app=app,
+        )
+    if simple_prompt_studio:
+        simple_prompt_studio["entrypoint_cls"](
             app=app,
         )
 
