@@ -52,6 +52,7 @@ class PromptServiceContants:
     EXTRACTION = "extraction"
     SUMMARIZE = "summarize"
     SINGLE_PASS_EXTRACTION = "single-pass-extraction"
+    SIMPLE_PROMPT_STUDIO = "simple-prompt-studio"
     LLM_USAGE_REASON = "llm_usage_reason"
     METADATA = "metadata"
     OUTPUT = "output"

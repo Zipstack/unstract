@@ -7,7 +7,7 @@ import {
   PlayCircleOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Checkbox, Col, Dropdown, Row, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 
@@ -16,6 +16,14 @@ import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EditableText } from "../editable-text/EditableText";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { ExpandCardBtn } from "./ExpandCardBtn";
+
+let PromptRunBtnSps;
+try {
+  PromptRunBtnSps =
+    require("../../../plugins/simple-prompt-studio/PromptRunBtnSps").PromptRunBtnSps;
+} catch {
+  // The component will remain 'undefined' it is not available
+}
 
 function Header({
   promptDetails,
@@ -33,6 +41,9 @@ function Header({
   expandCard,
   setExpandCard,
   enabledProfiles,
+  spsLoading,
+  handleSpsLoading,
+  handleGetOutput,
 }) {
   const {
     selectedDoc,
@@ -41,7 +52,9 @@ function Header({
     isSinglePassExtractLoading,
     indexDocs,
     isPublicSource,
+    isSimplePromptStudio,
   } = useCustomToolStore();
+  const [items, setItems] = useState([]);
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(promptDetails?.active);
 
@@ -154,7 +167,7 @@ function Header({
             )}
           </>
         )}
-        {!singlePassExtractMode && (
+        {!singlePassExtractMode && !isSimplePromptStudio && (
           <>
             <Tooltip title="Run">
               <Button
@@ -170,7 +183,8 @@ function Header({
                       promptStudioUpdateStatus?.isUpdating) ||
                   disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
                   indexDocs?.includes(selectedDoc?.document_id) ||
-                  isPublicSource
+                  isPublicSource ||
+                  spsLoading[selectedDoc?.document_id]
                 }
               >
                 <PlayCircleOutlined className="prompt-card-actions-head" />
@@ -181,7 +195,7 @@ function Header({
                 size="small"
                 type="text"
                 className="prompt-card-action-button"
-                onClick={() => handleRunBtnClick()}
+                onClick={handleRunBtnClick}
                 disabled={
                   (updateStatus?.promptId === promptDetails?.prompt_id &&
                     updateStatus?.status ===
@@ -196,8 +210,15 @@ function Header({
             </Tooltip>
           </>
         )}
-        <ExpandCardBtn expandCard={expandCard} setExpandCard={setExpandCard} />
-        <Dropdown menu={{ items }} trigger={["click"]} placement="bottomRight">
+        {isSimplePromptStudio && PromptRunBtnSps && (
+          <PromptRunBtnSps
+            spsLoading={spsLoading}
+            handleSpsLoading={handleSpsLoading}
+            handleGetOutput={handleGetOutput}
+            promptDetails={promptDetails}
+          />
+        )}
+        <Dropdown menu={{ items }} trigger={["click"]} placement="bottomLeft">
           <Button
             size="small"
             type="text"
@@ -227,6 +248,9 @@ Header.propTypes = {
   expandCard: PropTypes.bool.isRequired,
   setExpandCard: PropTypes.func.isRequired,
   enabledProfiles: PropTypes.array.isRequired,
+  spsLoading: PropTypes.object,
+  handleSpsLoading: PropTypes.func.isRequired,
+  handleGetOutput: PropTypes.func.isRequired,
 };
 
 export { Header };
