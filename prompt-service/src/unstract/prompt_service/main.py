@@ -803,12 +803,17 @@ def enable_plugins() -> None:
         PSKeys.SINGLE_PASS_EXTRACTION, {}
     )
     summarize_plugin: dict[str, Any] = plugins.get(PSKeys.SUMMARIZE, {})
+    simple_prompt_studio: dict[str, Any] = plugins.get(PSKeys.SIMPLE_PROMPT_STUDIO, {})
     if single_pass_extration_plugin:
         single_pass_extration_plugin["entrypoint_cls"](
             app=app, challenge_plugin=plugins.get(PSKeys.CHALLENGE, {})
         )
     if summarize_plugin:
         summarize_plugin["entrypoint_cls"](
+            app=app,
+        )
+    if simple_prompt_studio:
+        simple_prompt_studio["entrypoint_cls"](
             app=app,
         )
 

@@ -69,10 +69,12 @@ function CombinedOutput({ docId, setFilledFields }) {
   useEffect(() => {
     getAdapterInfo();
   }, []);
+
   useEffect(() => {
     setActiveKey(singlePassExtractMode ? defaultLlmProfile : "0");
     setSelectedProfile(singlePassExtractMode ? defaultLlmProfile : null);
   }, [singlePassExtractMode]);
+
   useEffect(() => {
     if (!docId || isSinglePassExtractLoading) {
       return;
@@ -84,7 +86,7 @@ function CombinedOutput({ docId, setFilledFields }) {
       .then((res) => {
         const data = res?.data || [];
         const prompts = details?.prompts;
-        if (activeKey === "0") {
+        if (activeKey === "0" && !isSimplePromptStudio) {
           const output = {};
           for (const key in data) {
             if (Object.hasOwn(data, key)) {
@@ -179,6 +181,7 @@ function CombinedOutput({ docId, setFilledFields }) {
   };
 
   const getAdapterInfo = () => {
+    if (isSimplePromptStudio) return;
     let url = `/api/v1/unstract/${sessionDetails?.orgId}/adapter/?adapter_type=LLM`;
     if (isPublicSource) {
       url = publicAdapterApi(id, "LLM");

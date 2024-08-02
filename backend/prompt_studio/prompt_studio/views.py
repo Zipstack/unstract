@@ -53,4 +53,4 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
             Response: The HTTP response indicating the status of the reorder operation.
         """
         prompt_studio_controller = PromptStudioController()
-        return prompt_studio_controller.reorder_prompts(request)
+        return prompt_studio_controller.reorder_prompts(request, ToolStudioPrompt)
