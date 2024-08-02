@@ -210,6 +210,7 @@ function Header({
             </Tooltip>
           </>
         )}
+        <ExpandCardBtn expandCard={expandCard} setExpandCard={setExpandCard} />
         {isSimplePromptStudio && PromptRunBtnSps && (
           <PromptRunBtnSps
             spsLoading={spsLoading}
