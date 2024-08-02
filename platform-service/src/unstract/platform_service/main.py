@@ -194,6 +194,7 @@ def page_usage() -> Any:
         "unique_id": "",
     }
     payload: Optional[dict[Any, Any]] = request.json
+    print(payload)
     if not payload:
         result["error"] = INVALID_PAYLOAD
         return make_response(result, 400)
@@ -205,11 +206,12 @@ def page_usage() -> Any:
     file_name = payload.get("file_name", "")
     file_size = payload.get("file_size", "")
     file_type = payload.get("file_type", "")
+    run_id = payload.get("run_id", "")
 
     query = f"""
             INSERT INTO {DBTable.PAGE_USAGE} (id, organization_id, page_count,
-            file_name, file_size, file_type, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            file_name, file_size, file_type, run_id, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
     usage_id = uuid.uuid4()
     current_time = datetime.now()
@@ -220,6 +222,7 @@ def page_usage() -> Any:
         file_name,
         file_size,
         file_type,
+        run_id,
         current_time,
     )
 

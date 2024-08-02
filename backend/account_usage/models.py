@@ -29,6 +29,10 @@ class PageUsage(models.Model):
         db_comment="Mime type of file",
     )
 
+    run_id = models.CharField(
+        max_length=255, null=True, blank=True, db_comment="Identifier for the run"
+    )
+
     page_count = models.IntegerField(db_comment="Total number of pages in the document")
     file_size = models.BigIntegerField(db_comment="Size of the the file")
     created_at = models.DateTimeField(auto_now_add=True)
