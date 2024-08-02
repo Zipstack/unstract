@@ -194,7 +194,6 @@ def page_usage() -> Any:
         "unique_id": "",
     }
     payload: Optional[dict[Any, Any]] = request.json
-    print(payload)
     if not payload:
         result["error"] = INVALID_PAYLOAD
         return make_response(result, 400)
