@@ -301,7 +301,11 @@ class ToolRegistryHelper:
                 data = ToolUtils.get_all_tools_from_disk(file_path=tool_file)
                 if not data:
                     logger.info(f"No data from {tool_file}")
-                logger.info(f"Loading tools from {tool_file}: {list(data.keys())}")
+                tool_version_list = [
+                    f"tool: {k}, version: {v['properties']['toolVersion']}"
+                    for k, v in data.items()
+                ]
+                logger.info(f"Loading tools from {tool_file}: {tool_version_list}")
                 tools.update(data)
             except FileNotFoundError:
                 logger.warning(f"Unable to find tool file to load tools: {tool_file}")
