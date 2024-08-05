@@ -36,6 +36,8 @@ class APIDeployment(BaseModel):
         default=True,
         db_comment="Flag indicating whether the API is active or not.",
     )
+    # TODO: Implement dynamic generation of API endpoints for API deployments
+    # instead of persisting them in the database.
     api_endpoint = models.CharField(
         max_length=API_ENDPOINT_MAX_LENGTH,
         unique=True,

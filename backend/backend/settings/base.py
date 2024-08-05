@@ -125,7 +125,6 @@ CSRF_COOKIE_SECURE = os.environ.get("CSRF_COOKIE_SECURE", True)
 
 PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
 # Resetting the path prefix will require reconfiguring all existing deployed APIs
-# TODO: Dynamic create API endpoints for API deployements
 API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
     "API_DEPLOYMENT_PATH_PREFIX", "deployment"
 ).strip("/")
