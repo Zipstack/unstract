@@ -105,7 +105,7 @@ function Header({
     }
 
     setItems(dropdownItems);
-  }, []);
+  }, [promptDetails]);
 
   return (
     <Row>
@@ -210,6 +210,7 @@ function Header({
             </Tooltip>
           </>
         )}
+        <ExpandCardBtn expandCard={expandCard} setExpandCard={setExpandCard} />
         {isSimplePromptStudio && PromptRunBtnSps && (
           <PromptRunBtnSps
             spsLoading={spsLoading}
@@ -227,8 +228,6 @@ function Header({
             <MoreOutlined className="prompt-card-actions-head" />
           </Button>
         </Dropdown>
-
-        <ExpandCardBtn expandCard={expandCard} setExpandCard={setExpandCard} />
       </Col>
     </Row>
   );
