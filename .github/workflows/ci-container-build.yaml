@@ -58,6 +58,7 @@ jobs:
           cp ../worker/sample.env ../worker/.env
           cp ../x2text-service/sample.env ../x2text-service/.env
           cp sample.essentials.env essentials.env
+          cp sample.env .env
 
           docker compose -f docker-compose.yaml up -d
           sleep 10
