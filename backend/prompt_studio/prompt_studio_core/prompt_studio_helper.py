@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Optional, Callable, Type
+from typing import Any, Callable, Optional
 
 from account.constants import Common
 from account.models import User
@@ -291,7 +291,7 @@ class PromptStudioHelper:
         document_id: str,
         is_summary: bool = False,
         run_id: str = None,
-        text_processor: Optional[Type[Any]] = None,
+        text_processor: Optional[type[Any]] = None,
     ) -> Any:
         """Method to index a document.
 
@@ -376,7 +376,7 @@ class PromptStudioHelper:
         id: Optional[str] = None,
         run_id: str = None,
         profile_manager_id: Optional[str] = None,
-        text_processor: Optional[Type[Any]] = None,
+        text_processor: Optional[type[Any]] = None,
     ) -> Any:
         """Execute chain/single run of the prompts. Makes a call to prompt
         service and returns the dict of response.
@@ -416,11 +416,11 @@ class PromptStudioHelper:
             )
         else:
             return PromptStudioHelper._execute_prompts_in_single_pass(
-                doc_path=doc_path, 
+                doc_path=doc_path,
                 tool_id=tool_id,
-                org_id=org_id, 
-                user_id=user_id, 
-                document_id=document_id, 
+                org_id=org_id,
+                user_id=user_id,
+                document_id=document_id,
                 run_id=run_id,
                 text_processor=text_processor,
             )
@@ -436,7 +436,7 @@ class PromptStudioHelper:
         document_id,
         run_id,
         profile_manager_id,
-        text_processor: Optional[Type[Any]] = None,
+        text_processor: Optional[type[Any]] = None,
     ):
         prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
         prompt_name = prompt_instance.prompt_key
@@ -490,11 +490,11 @@ class PromptStudioHelper:
                 process_text=process_text,
             )
             return PromptStudioHelper._handle_response(
-                response=response, 
-                run_id=run_id, 
-                prompts=prompts, 
+                response=response,
+                run_id=run_id,
+                prompts=prompts,
                 document_id=document_id,
-                is_single_pass=False, 
+                is_single_pass=False,
                 profile_manager_id=profile_manager_id,
                 clean_text=clean_text,
             )
@@ -519,13 +519,13 @@ class PromptStudioHelper:
 
     @staticmethod
     def _execute_prompts_in_single_pass(
-        doc_path, 
-        tool_id, 
+        doc_path,
+        tool_id,
         org_id,
         user_id,
-        document_id, 
+        document_id,
         run_id,
-        text_processor: Optional[Type[Any]] = None,
+        text_processor: Optional[type[Any]] = None,
     ):
         prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
         prompts = [
@@ -617,7 +617,7 @@ class PromptStudioHelper:
             is_single_pass_extract=is_single_pass,
             profile_manager_id=profile_manager_id,
             response=response,
-            clean_text=clean_text
+            clean_text=clean_text,
         )
         return response
 
@@ -761,7 +761,9 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.PREAMBLE] = tool.preamble
         tool_settings[TSPKeys.POSTAMBLE] = tool.postamble
         tool_settings[TSPKeys.GRAMMAR] = grammar_list
-        tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), "")
+        tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
+            settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
+        )
 
         tool_id = str(tool.tool_id)
 

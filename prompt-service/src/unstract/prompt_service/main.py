@@ -769,11 +769,13 @@ def construct_and_run_prompt(
 def run_completion(
     llm: LLM,
     prompt: str,
-    metadata: Optional[dict[str,str]] = None,
+    metadata: Optional[dict[str, str]] = None,
     prompt_key: Optional[str] = None,
 ) -> str:
     try:
-        extract_epilogue_plugin: dict[str, Any] = plugins.get(PSKeys.EXTRACT_EPILOGUE, {})
+        extract_epilogue_plugin: dict[str, Any] = plugins.get(
+            PSKeys.EXTRACT_EPILOGUE, {}
+        )
         extract_epilogue = None
         if extract_epilogue_plugin:
             extract_epilogue = extract_epilogue_plugin["entrypoint_cls"].run

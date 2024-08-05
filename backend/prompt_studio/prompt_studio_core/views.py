@@ -9,7 +9,7 @@ from django.http import HttpRequest
 from file_management.exceptions import FileNotFound
 from file_management.file_management_helper import FileManagerHelper
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
-from prompt_studio.processor_loader import ProcessorConfig, load_plugins, get_plugin_class_by_name
+from prompt_studio.processor_loader import get_plugin_class_by_name, load_plugins
 from prompt_studio.prompt_profile_manager.constants import (
     ProfileManagerErrors,
     ProfileManagerKeys,
@@ -327,7 +327,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             user_id=custom_tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
-            text_processor=text_processor
+            text_processor=text_processor,
         )
         return Response(response, status=status.HTTP_200_OK)
 

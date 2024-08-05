@@ -266,7 +266,9 @@ class PromptStudioRegistryHelper:
             tool.single_pass_extraction_mode
         )
         tool_settings[JsonSchemaKey.ENABLE_HIGHLIGHT] = tool.enable_highlight
-        tool_settings[JsonSchemaKey.PLATFORM_POSTAMBLE] = getattr(settings, JsonSchemaKey.PLATFORM_POSTAMBLE.upper(), "")
+        tool_settings[JsonSchemaKey.PLATFORM_POSTAMBLE] = getattr(
+            settings, JsonSchemaKey.PLATFORM_POSTAMBLE.upper(), ""
+        )
 
         for prompt in prompts:
             if prompt.prompt_type == JsonSchemaKey.NOTES or not prompt.active:

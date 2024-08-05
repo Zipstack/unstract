@@ -73,6 +73,7 @@ def load_plugins() -> list[Any]:
 
     return processor_plugins
 
+
 def get_plugin_class_by_name(name: str, plugins: list[Any]) -> Any:
     """Retrieve a specific plugin class by name."""
     for plugin in plugins:
