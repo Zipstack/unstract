@@ -22,7 +22,7 @@ class Notification(BaseModel):
         choices=AuthorizationType.choices(),
         default=AuthorizationType.NONE.value,
     )
-    max_retries = models.IntegerField(default=0)  # Timeout in seconds
+    max_retries = models.IntegerField(default=0) # Maximum number of times to retry webhook
     platform = models.CharField(
         max_length=50,
         choices=PlatformType.choices(),
