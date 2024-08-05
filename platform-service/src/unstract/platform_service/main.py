@@ -199,7 +199,7 @@ def page_usage() -> Any:
         return make_response(result, 400)
 
     bearer_token = get_token_from_auth_header(request)
-    organization_uid, org_id = get_organization_from_bearer_token(bearer_token)
+    _, org_id = get_organization_from_bearer_token(bearer_token)
 
     page_count = payload.get("page_count", "")
     file_name = payload.get("file_name", "")
@@ -208,7 +208,7 @@ def page_usage() -> Any:
     run_id = payload.get("run_id", "")
 
     query = f"""
-            INSERT INTO {DBTable.PAGE_USAGE} (id, organization_id, page_count,
+            INSERT INTO {DBTable.PAGE_USAGE} (id, organization_id, pages_processed,
             file_name, file_size, file_type, run_id, created_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """

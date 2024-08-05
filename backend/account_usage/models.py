@@ -18,22 +18,22 @@ class PageUsage(models.Model):
     )
     file_name = models.CharField(
         max_length=255,
-        null=True,
         blank=True,
         db_comment="Name of the file",
     )
     file_type = models.CharField(
         max_length=128,
-        null=True,
         blank=True,
         db_comment="Mime type of file",
     )
 
     run_id = models.CharField(
-        max_length=255, null=True, blank=True, db_comment="Identifier for the run"
+        max_length=255, blank=True, db_comment="Identifier for the run"
     )
 
-    page_count = models.IntegerField(db_comment="Total number of pages in the document")
+    pages_processed = models.IntegerField(
+        db_comment="Number of pages which got processed"
+    )
     file_size = models.BigIntegerField(db_comment="Size of the the file")
     created_at = models.DateTimeField(auto_now_add=True)
 
