@@ -4,6 +4,7 @@ from typing import Any
 from account.models import User
 from api.constants import ApiExecution
 from django.db import connection, models
+from pipeline.models import Pipeline
 from utils.models.base_model import BaseModel
 from workflow_manager.workflow.models.workflow import Workflow
 
@@ -64,6 +65,10 @@ class APIDeployment(BaseModel):
         editable=False,
     )
 
+    @property
+    def api_key_data(self):
+        return {"api": self.id, "description": f"API Key for {self.api_name}"}
+
     def __str__(self) -> str:
         return f"{self.id} - {self.display_name}"
 
@@ -107,7 +112,16 @@ class APIKey(BaseModel):
     api = models.ForeignKey(
         APIDeployment,
         on_delete=models.CASCADE,
+        null=True,
+        blank=True,
         db_comment="Foreign key reference to the APIDeployment model.",
+    )
+    pipeline = models.ForeignKey(
+        Pipeline,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        db_comment="Foreign key reference to the Pipeline model.",
     )
     description = models.CharField(
         max_length=DESCRIPTION_MAX_LENGTH,
