@@ -6,6 +6,7 @@ const defaultState = {
   dropdownItems: {},
   selectedDoc: null,
   listOfDocs: [],
+  refreshRawView: false,
   defaultLlmProfile: "",
   llmProfiles: [],
   details: {},
