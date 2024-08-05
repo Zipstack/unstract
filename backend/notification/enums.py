@@ -13,7 +13,7 @@ class NotificationType(Enum):
 
     @classmethod
     def choices(cls):
-        return [(e.value, e.name.capitalize()) for e in cls]
+        return [(e.value, e.name.replace("_", " ").capitalize()) for e in cls]
 
 
 class AuthorizationType(Enum):
