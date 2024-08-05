@@ -44,5 +44,5 @@ class NotificationHelper:
             except ValueError as e:
                 logger.error(
                     f"Error in notification type {notification_type} and platform "
-                    f"{platform_type} for notification {notification} :: {e}"
+                    f"{platform_type} for notification {notification}: {e}"
                 )
