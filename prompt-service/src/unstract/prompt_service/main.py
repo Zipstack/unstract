@@ -87,6 +87,7 @@ def construct_prompt(
     postamble: str,
     grammar_list: list[dict[str, Any]],
     context: str,
+    platform_postamble: str,
 ) -> str:
     # Let's cleanup the context. Remove if 3 consecutive newlines are found
     context_lines = context.split("\n")
@@ -109,7 +110,7 @@ def construct_prompt(
     )
 
     prompt = (
-        f"{preamble}\n\nContext:\n---------------{context}\n"
+        f"{preamble}\n\nContext:\n---------------\n{context}\n"
         f"-----------------\n\nQuestion or Instruction: {prompt}\n"
     )
     if grammar_list is not None and len(grammar_list) > 0:
@@ -124,8 +125,9 @@ def construct_prompt(
             if len(synonyms) > 0 and word != "":
                 prompt += f'\nNote: You can consider that the word {word} is same as \
                     {", ".join(synonyms)} in both the quesiton and the context.'  # noqa
-    prompt += f"\n\n{postamble}"
-    prompt += "\n\nAnswer:"
+    if platform_postamble:
+        platform_postamble += "\n\n"
+    prompt += f"\n\n{postamble}\n\n{platform_postamble}Answer:"
     return prompt
 
 
@@ -341,6 +343,7 @@ def prompt_processor() -> Any:
                     llm=llm,
                     context=context,
                     prompt="promptx",
+                    metadata=metadata,
                 )
                 metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
             else:
@@ -367,6 +370,7 @@ def prompt_processor() -> Any:
                         llm=llm,
                         vector_index=vector_index,
                         retrieval_type=retrieval_strategy,
+                        metadata=metadata,
                     )
                     metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
                 else:
@@ -677,6 +681,7 @@ def run_retrieval(  # type:ignore
     llm: LLM,
     vector_index,
     retrieval_type: str,
+    metadata: dict[str, Any],
 ) -> tuple[str, str]:
     prompt = output[PSKeys.PROMPTX]
     if retrieval_type == PSKeys.SUBQUESTION:
@@ -707,6 +712,7 @@ def run_retrieval(  # type:ignore
         llm=llm,
         context=context,
         prompt="promptx",
+        metadata=metadata,
     )
 
     return (answer, context)
@@ -742,28 +748,48 @@ def construct_and_run_prompt(
     llm: LLM,
     context: str,
     prompt: str,
-) -> tuple[str, dict[str, Any]]:
+    metadata: dict[str, Any],
+) -> str:
     prompt = construct_prompt(
         preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
         prompt=output[prompt],
         postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
         grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
         context=context,
+        platform_postamble=tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, ""),
     )
     return run_completion(
         llm=llm,
         prompt=prompt,
+        metadata=metadata,
+        prompt_key=output[PSKeys.NAME],
     )
 
 
 def run_completion(
     llm: LLM,
     prompt: str,
-) -> tuple[str, dict[str, Any]]:
+    metadata: Optional[dict[str,str]] = None,
+    prompt_key: Optional[str] = None,
+) -> str:
     try:
-        completion = llm.complete(prompt)
-
+        extract_epilogue_plugin: dict[str, Any] = plugins.get(PSKeys.EXTRACT_EPILOGUE, {})
+        extract_epilogue = None
+        if extract_epilogue_plugin:
+            extract_epilogue = extract_epilogue_plugin["entrypoint_cls"].run
+        completion = llm.complete(
+            prompt=prompt,
+            process_text=extract_epilogue,
+        )
         answer: str = completion[PSKeys.RESPONSE].text
+        epilogue = completion.get(PSKeys.EPILOGUE)
+        if all([metadata, epilogue, prompt_key]):
+            try:
+                app.logger.info(f"Epilogue extracted from LLM: {epilogue}")
+                epilogue = json.loads(epilogue)
+            except JSONDecodeError:
+                app.logger.error(f"Failed to convert epilogue to JSON: {epilogue}")
+            metadata.setdefault(PSKeys.EPILOGUE, {})[prompt_key] = epilogue
         return answer
     # TODO: Catch and handle specific exception here
     except SdkRateLimitError as e:

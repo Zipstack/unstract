@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Callable, Type
 
 from account.constants import Common
 from account.models import User
@@ -291,6 +291,7 @@ class PromptStudioHelper:
         document_id: str,
         is_summary: bool = False,
         run_id: str = None,
+        text_processor: Optional[Type[Any]] = None,
     ) -> Any:
         """Method to index a document.
 
@@ -340,7 +341,9 @@ class PromptStudioHelper:
         # Need to check the user who created profile manager
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
-
+        process_text = None
+        if text_processor:
+            process_text = text_processor.process
         doc_id = PromptStudioHelper.dynamic_indexer(
             profile_manager=default_profile,
             tool_id=tool_id,
@@ -351,6 +354,7 @@ class PromptStudioHelper:
             reindex=True,
             run_id=run_id,
             user_id=user_id,
+            process_text=process_text,
         )
 
         logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
@@ -372,6 +376,7 @@ class PromptStudioHelper:
         id: Optional[str] = None,
         run_id: str = None,
         profile_manager_id: Optional[str] = None,
+        text_processor: Optional[Type[Any]] = None,
     ) -> Any:
         """Execute chain/single run of the prompts. Makes a call to prompt
         service and returns the dict of response.
@@ -398,19 +403,26 @@ class PromptStudioHelper:
 
         if id:
             return PromptStudioHelper._execute_single_prompt(
-                id,
-                doc_path,
-                doc_name,
-                tool_id,
-                org_id,
-                user_id,
-                document_id,
-                run_id,
-                profile_manager_id,
+                id=id,
+                doc_path=doc_path,
+                doc_name=doc_name,
+                tool_id=tool_id,
+                org_id=org_id,
+                user_id=user_id,
+                document_id=document_id,
+                run_id=run_id,
+                profile_manager_id=profile_manager_id,
+                text_processor=text_processor,
             )
         else:
             return PromptStudioHelper._execute_prompts_in_single_pass(
-                doc_path, tool_id, org_id, user_id, document_id, run_id
+                doc_path=doc_path, 
+                tool_id=tool_id,
+                org_id=org_id, 
+                user_id=user_id, 
+                document_id=document_id, 
+                run_id=run_id,
+                text_processor=text_processor,
             )
 
     @staticmethod
@@ -424,6 +436,7 @@ class PromptStudioHelper:
         document_id,
         run_id,
         profile_manager_id,
+        text_processor: Optional[Type[Any]] = None,
     ):
         prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
         prompt_name = prompt_instance.prompt_key
@@ -458,7 +471,11 @@ class PromptStudioHelper:
             LogLevels.RUN,
             "Invoking prompt service",
         )
-
+        process_text = None
+        clean_text = None
+        if text_processor:
+            process_text = text_processor.process
+            clean_text = text_processor.clean
         try:
             response = PromptStudioHelper._fetch_response(
                 doc_path=doc_path,
@@ -470,9 +487,16 @@ class PromptStudioHelper:
                 run_id=run_id,
                 profile_manager_id=profile_manager_id,
                 user_id=user_id,
+                process_text=process_text,
             )
             return PromptStudioHelper._handle_response(
-                response, run_id, prompts, document_id, False, profile_manager_id
+                response=response, 
+                run_id=run_id, 
+                prompts=prompts, 
+                document_id=document_id,
+                is_single_pass=False, 
+                profile_manager_id=profile_manager_id,
+                clean_text=clean_text,
             )
         except Exception as e:
             logger.error(
@@ -495,7 +519,13 @@ class PromptStudioHelper:
 
     @staticmethod
     def _execute_prompts_in_single_pass(
-        doc_path, tool_id, org_id, user_id, document_id, run_id
+        doc_path, 
+        tool_id, 
+        org_id,
+        user_id,
+        document_id, 
+        run_id,
+        text_processor: Optional[Type[Any]] = None,
     ):
         prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
         prompts = [
@@ -513,7 +543,11 @@ class PromptStudioHelper:
             LogLevels.RUN,
             "Executing prompts in single pass",
         )
-
+        process_text = None
+        clean_text = None
+        if text_processor:
+            process_text = text_processor.process
+            clean_text = text_processor.clean
         try:
             tool = prompts[0].tool_id
             response = PromptStudioHelper._fetch_single_pass_response(
@@ -524,9 +558,15 @@ class PromptStudioHelper:
                 document_id=document_id,
                 run_id=run_id,
                 user_id=user_id,
+                process_text=process_text,
             )
             return PromptStudioHelper._handle_response(
-                response, run_id, prompts, document_id, True
+                response=response,
+                run_id=run_id,
+                prompts=prompts,
+                document_id=document_id,
+                is_single_pass=True,
+                clean_text=clean_text,
             )
         except Exception as e:
             logger.error(
@@ -556,7 +596,13 @@ class PromptStudioHelper:
 
     @staticmethod
     def _handle_response(
-        response, run_id, prompts, document_id, is_single_pass, profile_manager_id=None
+        response,
+        run_id,
+        prompts,
+        document_id,
+        is_single_pass,
+        profile_manager_id=None,
+        clean_text: Optional[Callable[[str], str]] = None,
     ):
         if response.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
@@ -567,11 +613,11 @@ class PromptStudioHelper:
         OutputManagerHelper.handle_prompt_output_update(
             run_id=run_id,
             prompts=prompts,
-            outputs=response["output"],
             document_id=document_id,
             is_single_pass_extract=is_single_pass,
             profile_manager_id=profile_manager_id,
-            context=response["metadata"].get("context"),
+            response=response,
+            clean_text=clean_text
         )
         return response
 
@@ -586,6 +632,7 @@ class PromptStudioHelper:
         run_id: str,
         user_id: str,
         profile_manager_id: Optional[str] = None,
+        process_text: Optional[Callable[[str], str]] = None,
     ) -> Any:
         """Utility function to invoke prompt service. Used internally.
 
@@ -656,6 +703,7 @@ class PromptStudioHelper:
             is_summary=tool.summarize_as_source,
             run_id=run_id,
             user_id=user_id,
+            process_text=process_text,
         )
         if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
@@ -713,6 +761,7 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.PREAMBLE] = tool.preamble
         tool_settings[TSPKeys.POSTAMBLE] = tool.postamble
         tool_settings[TSPKeys.GRAMMAR] = grammar_list
+        tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), "")
 
         tool_id = str(tool.tool_id)
 
@@ -760,6 +809,7 @@ class PromptStudioHelper:
         is_summary: bool = False,
         reindex: bool = False,
         run_id: str = None,
+        process_text: Optional[Callable[[str], str]] = None,
     ) -> Any:
         """Used to index a file based on the passed arguments.
 
@@ -840,6 +890,7 @@ class PromptStudioHelper:
                 reindex=reindex,
                 output_file_path=extract_file_path,
                 usage_kwargs=usage_kwargs.copy(),
+                process_text=process_text,
             )
 
             PromptStudioIndexHelper.handle_index_manager(
@@ -873,6 +924,7 @@ class PromptStudioHelper:
         user_id: str,
         document_id: str,
         run_id: str = None,
+        process_text: Optional[Callable[[str], str]] = None,
     ) -> Any:
         tool_id: str = str(tool.tool_id)
         outputs: list[dict[str, Any]] = []
@@ -908,6 +960,7 @@ class PromptStudioHelper:
             document_id=document_id,
             run_id=run_id,
             user_id=user_id,
+            process_text=process_text,
         )
         if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
