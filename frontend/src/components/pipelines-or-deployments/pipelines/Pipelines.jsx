@@ -467,7 +467,7 @@ function Pipelines({ type }) {
       render: (_, record) => (
         <div>
           <Typography.Text className="p-or-d-typography" strong>
-            {cronstrue.toString(record?.cron_string)}
+            {record?.cron_string && cronstrue.toString(record?.cron_string)}
           </Typography.Text>
         </div>
       ),
