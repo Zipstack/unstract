@@ -40,6 +40,7 @@ import "./Pipelines.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { pipelineService } from "../pipeline-service.js";
 import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
+import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -59,6 +60,8 @@ function Pipelines({ type }) {
   const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
   const [apiKeys, setApiKeys] = useState([]);
   const pipelineApiService = pipelineService();
+  const { getApiKeys, downloadPostmanCollection, copyUrl } =
+    usePipelineHelper();
 
   const handleFetchLogs = (page, pageSize) => {
     fetchExecutionLogs(
@@ -293,70 +296,6 @@ function Pipelines({ type }) {
       });
   };
 
-  const getApiKeys = () => {
-    pipelineApiService
-      .getApiKeys(selectedPorD?.id)
-      .then((res) => {
-        setApiKeys(res?.data);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      })
-      .finally(() => {
-        setOpenManageKeysModal(true);
-      });
-  };
-
-  const downloadPostmanCollection = () => {
-    pipelineApiService
-      .downloadPostmanCollection(selectedPorD?.id)
-      .then((res) => {
-        const { data, headers } = res;
-        const href = URL.createObjectURL(data);
-        // Get filename from header or use a default
-        const filename =
-          headers["content-disposition"]
-            ?.split("filename=")[1]
-            ?.trim()
-            .replaceAll('"', "") || "postman_collection.json";
-        // create "a" HTML element with href to file & click
-        const link = document.createElement("a");
-        link.href = href;
-        link.setAttribute("download", filename);
-        document.body.appendChild(link);
-        link.click();
-
-        // clean up "a" element & remove ObjectURL
-        document.body.removeChild(link);
-        URL.revokeObjectURL(href);
-        setAlertDetails({
-          type: "success",
-          content: "Collection downloaded successfully",
-        });
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      });
-  };
-
-  const copyUrl = (text) => {
-    const completeUrl = displayURL(text);
-    navigator.clipboard
-      .writeText(completeUrl)
-      .then(() => {
-        setAlertDetails({
-          type: "success",
-          content: "Endpoint copied to clipboard",
-        });
-      })
-      .catch((error) => {
-        setAlertDetails({
-          type: "error",
-          content: "Copy failed",
-        });
-      });
-  };
-
   const actionItems = [
     {
       key: "1",
@@ -381,7 +320,14 @@ function Pipelines({ type }) {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={getApiKeys}
+          onClick={() =>
+            getApiKeys(
+              pipelineApiService,
+              selectedPorD?.id,
+              setApiKeys,
+              setOpenManageKeysModal
+            )
+          }
         >
           <div>
             <KeyOutlined />
@@ -398,7 +344,9 @@ function Pipelines({ type }) {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={downloadPostmanCollection}
+          onClick={() =>
+            downloadPostmanCollection(pipelineApiService, selectedPorD?.id)
+          }
         >
           <div>
             <CloudDownloadOutlined />
