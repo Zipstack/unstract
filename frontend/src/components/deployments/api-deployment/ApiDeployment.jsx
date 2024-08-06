@@ -12,7 +12,7 @@ import { Button, Dropdown, Space, Switch, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { getBaseUrl } from "../../../helpers/GetStaticData";
+import { deploymentApiTypes, displayURL } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
@@ -219,10 +219,6 @@ function ApiDeployment() {
       .finally(() => {
         setIsTableLoading(false);
       });
-  };
-
-  const displayURL = (text) => {
-    return getBaseUrl() + "/" + text;
   };
 
   const copyUrl = (text) => {
@@ -442,6 +438,8 @@ function ApiDeployment() {
         apiKeys={apiKeys}
         setApiKeys={setApiKeys}
         selectedApiRow={selectedRow}
+        apiService={apiDeploymentsApiService}
+        type={deploymentApiTypes.api}
       />
       <DisplayCode
         isDialogOpen={openCodeModal}

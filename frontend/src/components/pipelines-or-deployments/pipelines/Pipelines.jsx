@@ -6,13 +6,28 @@ import {
   HighlightOutlined,
   FileSearchOutlined,
   ReloadOutlined,
+  KeyOutlined,
+  CloudDownloadOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
-import { Button, Dropdown, Image, Space, Switch, Typography } from "antd";
+import {
+  Button,
+  Dropdown,
+  Image,
+  Space,
+  Switch,
+  Tooltip,
+  Typography,
+} from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import cronstrue from "cronstrue";
 
-import { deploymentsStaticContent } from "../../../helpers/GetStaticData";
+import {
+  deploymentApiTypes,
+  deploymentsStaticContent,
+  displayURL,
+} from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { useSessionStore } from "../../../store/session-store.js";
@@ -23,6 +38,8 @@ import { LogsModal } from "../log-modal/LogsModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import "./Pipelines.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { pipelineService } from "../pipeline-service.js";
+import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -39,6 +56,9 @@ function Pipelines({ type }) {
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
   const { fetchExecutionLogs } = require("../log-modal/fetchExecutionLogs.js");
+  const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
+  const [apiKeys, setApiKeys] = useState([]);
+  const pipelineApiService = pipelineService();
 
   const handleFetchLogs = (page, pageSize) => {
     fetchExecutionLogs(
@@ -273,6 +293,70 @@ function Pipelines({ type }) {
       });
   };
 
+  const getApiKeys = () => {
+    pipelineApiService
+      .getApiKeys(selectedPorD?.id)
+      .then((res) => {
+        setApiKeys(res?.data);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      })
+      .finally(() => {
+        setOpenManageKeysModal(true);
+      });
+  };
+
+  const downloadPostmanCollection = () => {
+    pipelineApiService
+      .downloadPostmanCollection(selectedPorD?.id)
+      .then((res) => {
+        const { data, headers } = res;
+        const href = URL.createObjectURL(data);
+        // Get filename from header or use a default
+        const filename =
+          headers["content-disposition"]
+            ?.split("filename=")[1]
+            ?.trim()
+            .replaceAll('"', "") || "postman_collection.json";
+        // create "a" HTML element with href to file & click
+        const link = document.createElement("a");
+        link.href = href;
+        link.setAttribute("download", filename);
+        document.body.appendChild(link);
+        link.click();
+
+        // clean up "a" element & remove ObjectURL
+        document.body.removeChild(link);
+        URL.revokeObjectURL(href);
+        setAlertDetails({
+          type: "success",
+          content: "Collection downloaded successfully",
+        });
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
+  };
+
+  const copyUrl = (text) => {
+    const completeUrl = displayURL(text);
+    navigator.clipboard
+      .writeText(completeUrl)
+      .then(() => {
+        setAlertDetails({
+          type: "success",
+          content: "Endpoint copied to clipboard",
+        });
+      })
+      .catch((error) => {
+        setAlertDetails({
+          type: "error",
+          content: "Copy failed",
+        });
+      });
+  };
+
   const actionItems = [
     {
       key: "1",
@@ -293,6 +377,40 @@ function Pipelines({ type }) {
     },
     {
       key: "2",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={getApiKeys}
+        >
+          <div>
+            <KeyOutlined />
+          </div>
+          <div>
+            <Typography.Text>Manage Keys</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "3",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={downloadPostmanCollection}
+        >
+          <div>
+            <CloudDownloadOutlined />
+          </div>
+          <div>
+            <Typography.Text>Download Postman Collection</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "4",
       label: (
         <Space
           direction="horizontal"
@@ -320,7 +438,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "3",
+      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -337,7 +455,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "4",
+      key: "6",
       label: (
         <Space
           direction="horizontal"
@@ -354,7 +472,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "5",
+      key: "7",
       label: (
         <Space
           direction="horizontal"
@@ -422,6 +540,30 @@ function Pipelines({ type }) {
       align: "center",
     },
     {
+      title: "API Endpoint",
+      key: "api_endpoint",
+      render: (_, record) => (
+        <Space direction="horizontal" className="display-flex-space-between">
+          <div>
+            <Typography.Text>
+              {displayURL(record?.api_endpoint)}
+            </Typography.Text>
+          </div>
+          <div>
+            <Tooltip title="click to copy">
+              <Button
+                size="small"
+                onClick={() => copyUrl(record?.api_endpoint)}
+              >
+                <CopyOutlined />
+              </Button>
+            </Tooltip>
+          </div>
+        </Space>
+      ),
+      align: "left",
+    },
+    {
       title: "Status of Previous Run",
       dataIndex: "last_run_status",
       key: "last_run_status",
@@ -467,7 +609,7 @@ function Pipelines({ type }) {
       render: (_, record) => (
         <div>
           <Typography.Text className="p-or-d-typography" strong>
-            {cronstrue.toString(record?.cron_string)}
+            {record?.cron_string && cronstrue.toString(record?.cron_string)}
           </Typography.Text>
         </div>
       ),
@@ -496,7 +638,7 @@ function Pipelines({ type }) {
           placement="bottomLeft"
           onOpenChange={() => setSelectedPorD(record)}
         >
-          <EllipsisOutlined rotate={90} className="p-or-d-actions" />
+          <EllipsisOutlined className="p-or-d-actions cur-pointer" />
         </Dropdown>
       ),
     },
@@ -534,6 +676,15 @@ function Pipelines({ type }) {
         open={openDeleteModal}
         setOpen={setOpenDeleteModal}
         deleteRecord={deletePipeline}
+      />
+      <ManageKeys
+        isDialogOpen={openManageKeysModal}
+        setDialogOpen={setOpenManageKeysModal}
+        apiKeys={apiKeys}
+        setApiKeys={setApiKeys}
+        selectedApiRow={selectedPorD}
+        apiService={pipelineApiService}
+        type={deploymentApiTypes.pipeline}
       />
     </div>
   );
