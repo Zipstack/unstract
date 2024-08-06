@@ -6,6 +6,7 @@ import {
   HighlightOutlined,
   FileSearchOutlined,
   ReloadOutlined,
+  NotificationOutlined,
 } from "@ant-design/icons";
 import { Button, Dropdown, Image, Space, Switch, Typography } from "antd";
 import PropTypes from "prop-types";
@@ -23,6 +24,7 @@ import { LogsModal } from "../log-modal/LogsModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import "./Pipelines.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -39,6 +41,7 @@ function Pipelines({ type }) {
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
   const { fetchExecutionLogs } = require("../log-modal/fetchExecutionLogs.js");
+  const [openNotificationModal, setOpenNotificationModal] = useState(false);
 
   const handleFetchLogs = (page, pageSize) => {
     fetchExecutionLogs(
@@ -374,6 +377,23 @@ function Pipelines({ type }) {
         </Space>
       ),
     },
+    {
+      key: "6",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() => setOpenNotificationModal(true)}
+        >
+          <div>
+            <NotificationOutlined />
+          </div>
+          <div>
+            <Typography.Text>Setup Notifications</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
   ];
 
   const columns = [
@@ -467,7 +487,7 @@ function Pipelines({ type }) {
       render: (_, record) => (
         <div>
           <Typography.Text className="p-or-d-typography" strong>
-            {cronstrue.toString(record?.cron_string)}
+            {record?.cron_string && cronstrue.toString(record?.cron_string)}
           </Typography.Text>
         </div>
       ),
@@ -534,6 +554,10 @@ function Pipelines({ type }) {
         open={openDeleteModal}
         setOpen={setOpenDeleteModal}
         deleteRecord={deletePipeline}
+      />
+      <NotificationModal
+        open={openNotificationModal}
+        setOpen={setOpenNotificationModal}
       />
     </div>
   );
