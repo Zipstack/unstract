@@ -1,7 +1,7 @@
 import logging
 from typing import Union
 
-from api.exceptions import Forbidden, UnauthorizedKey
+from api.exceptions import UnauthorizedKey
 from api.models import APIDeployment, APIKey
 from api.serializers import APIKeySerializer
 from pipeline.models import Pipeline
@@ -30,8 +30,6 @@ class KeyHelper:
                 raise UnauthorizedKey()
         except APIKey.DoesNotExist:
             raise UnauthorizedKey()
-        except APIDeployment.DoesNotExist:
-            raise Forbidden("API not found.")
 
     @staticmethod
     def list_api_keys_of_api(api_instance: APIDeployment) -> list[APIKey]:

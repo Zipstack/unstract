@@ -2,11 +2,9 @@ import logging
 from functools import wraps
 from typing import Any
 
-from api.exceptions import APINotFound, Forbidden, InactiveAPI, UnauthorizedKey
+from api.exceptions import Forbidden
 from django_tenants.utils import get_tenant_model, tenant_context
-from rest_framework import status
 from rest_framework.request import Request
-from rest_framework.response import Response
 
 logger = logging.getLogger(__name__)
 
@@ -36,27 +34,19 @@ class BaseAPIKeyValidator:
             Returns:
                 Any: _description_
             """
-            try:
-                authorization_header = request.headers.get("Authorization")
-                api_key = None
-                if authorization_header and authorization_header.startswith("Bearer "):
-                    api_key = authorization_header.split(" ")[1]
-                if not api_key:
-                    raise Forbidden("Missing api key")
-                org_name = kwargs.get("org_name") or request.data.get("org_name")
-                cls.validate_parameters(request, **kwargs)
-                tenant = get_tenant_model().objects.get(schema_name=org_name)
-                with tenant_context(tenant):
-                    # Call the method to handle the specific validation and processing
-                    return cls.validate_and_process(
-                        self, request, func, *args, **kwargs, api_key=api_key
-                    )
-            except (UnauthorizedKey, InactiveAPI, APINotFound):
-                raise
-            except Exception as exception:
-                logger.error(f"Exception: {exception}")
-                return Response(
-                    {"error": str(exception)}, status=status.HTTP_403_FORBIDDEN
+            authorization_header = request.headers.get("Authorization")
+            api_key = None
+            if authorization_header and authorization_header.startswith("Bearer "):
+                api_key = authorization_header.split(" ")[1]
+            if not api_key:
+                raise Forbidden("Missing api key")
+            org_name = kwargs.get("org_name") or request.data.get("org_name")
+            cls.validate_parameters(request, **kwargs)
+            tenant = get_tenant_model().objects.get(schema_name=org_name)
+            with tenant_context(tenant):
+                # Call the method to handle the specific validation and processing
+                return cls.validate_and_process(
+                    self, request, func, *args, **kwargs, api_key=api_key
                 )
 
         return wrapper
