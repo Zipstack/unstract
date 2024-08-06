@@ -5,7 +5,12 @@ from urllib.parse import urlencode
 
 from api.api_key_validator import BaseAPIKeyValidator
 from api.constants import ApiExecution
-from api.exceptions import ApiKeyCreateException, APINotFound, Forbidden, InactiveAPI
+from api.exceptions import (
+    ApiKeyCreateException,
+    APINotFound,
+    InactiveAPI,
+    InvalidAPIRequest,
+)
 from api.key_helper import KeyHelper
 from api.models import APIDeployment, APIKey
 from api.serializers import APIExecutionResponseSerializer
@@ -25,11 +30,11 @@ logger = logging.getLogger(__name__)
 
 class DeploymentHelper(BaseAPIKeyValidator):
     @staticmethod
-    def validate_specific_parameters(request: Request, **kwargs: Any) -> None:
+    def validate_parameters(request: Request, **kwargs: Any) -> None:
         """Validate api_name for API deployments."""
         api_name = kwargs.get("api_name") or request.data.get("api_name")
         if not api_name:
-            raise Forbidden("Missing api_name")
+            raise InvalidAPIRequest("Missing params api_name")
 
     @staticmethod
     def validate_and_process(
