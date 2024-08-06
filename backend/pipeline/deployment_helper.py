@@ -2,7 +2,7 @@ import logging
 from typing import Any
 
 from api.api_key_validator import BaseAPIKeyValidator
-from api.exceptions import Forbidden
+from api.exceptions import InvalidAPIRequest
 from api.key_helper import KeyHelper
 from pipeline.exceptions import PipelineNotFound
 from pipeline.pipeline_processor import PipelineProcessor
@@ -13,11 +13,11 @@ logger = logging.getLogger(__name__)
 
 class DeploymentHelper(BaseAPIKeyValidator):
     @staticmethod
-    def validate_specific_parameters(request: Request, **kwargs: Any) -> None:
+    def validate_parameters(request: Request, **kwargs: Any) -> None:
         """Validate pipeline_id for pipeline deployments."""
         pipeline_id = kwargs.get("pipeline_id") or request.data.get("pipeline_id")
         if not pipeline_id:
-            raise Forbidden("Missing pipeline_id in API")
+            raise InvalidAPIRequest("Missing params pipeline_id")
 
     @staticmethod
     def validate_and_process(
