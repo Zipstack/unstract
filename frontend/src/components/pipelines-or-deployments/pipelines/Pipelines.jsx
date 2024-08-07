@@ -675,6 +675,8 @@ function Pipelines({ type }) {
       <NotificationModal
         open={openNotificationModal}
         setOpen={setOpenNotificationModal}
+        type={deploymentApiTypes.pipeline}
+        id={selectedPorD?.id}
       />
     </div>
   );
