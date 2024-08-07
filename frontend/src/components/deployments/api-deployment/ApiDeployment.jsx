@@ -12,7 +12,7 @@ import { Button, Dropdown, Space, Switch, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { getBaseUrl } from "../../../helpers/GetStaticData";
+import { deploymentApiTypes, displayURL } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
@@ -26,6 +26,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
 import { fetchExecutionLogs } from "../../pipelines-or-deployments/log-modal/fetchExecutionLogs";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
+import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 
 function ApiDeployment() {
   const { sessionDetails } = useSessionStore();
@@ -48,6 +49,8 @@ function ApiDeployment() {
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
   const axiosPrivate = useAxiosPrivate();
+  const { getApiKeys, downloadPostmanCollection, copyUrl } =
+    usePipelineHelper();
 
   const handleFetchLogs = (page, pageSize) => {
     fetchExecutionLogs(
@@ -221,74 +224,6 @@ function ApiDeployment() {
       });
   };
 
-  const displayURL = (text) => {
-    return getBaseUrl() + "/" + text;
-  };
-
-  const copyUrl = (text) => {
-    const completeUrl = displayURL(text);
-    navigator.clipboard
-      .writeText(completeUrl)
-      .then(() => {
-        setAlertDetails({
-          type: "success",
-          content: "Endpoint copied to clipboard",
-        });
-      })
-      .catch((error) => {
-        setAlertDetails({
-          type: "error",
-          content: "Copy failed",
-        });
-      });
-  };
-
-  const getApiKeys = () => {
-    apiDeploymentsApiService
-      .getApiKeys(selectedRow?.id)
-      .then((res) => {
-        setApiKeys(res?.data);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      })
-      .finally(() => {
-        setOpenManageKeysModal(true);
-      });
-  };
-
-  const downloadPostmanCollection = () => {
-    apiDeploymentsApiService
-      .downloadPostmanCollection(selectedRow?.id)
-      .then((res) => {
-        const { data, headers } = res;
-        const href = URL.createObjectURL(data);
-        // Get filename from header or use a default
-        const filename =
-          headers["content-disposition"]
-            ?.split("filename=")[1]
-            ?.trim()
-            .replaceAll('"', "") || "postman_collection.json";
-        // create "a" HTML element with href to file & click
-        const link = document.createElement("a");
-        link.href = href;
-        link.setAttribute("download", filename);
-        document.body.appendChild(link);
-        link.click();
-
-        // clean up "a" element & remove ObjectURL
-        document.body.removeChild(link);
-        URL.revokeObjectURL(href);
-        setAlertDetails({
-          type: "success",
-          content: "Collection downloaded successfully",
-        });
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      });
-  };
-
   const openAddModal = (edit) => {
     setIsEdit(edit);
     setOpenAddApiModal(true);
@@ -318,7 +253,14 @@ function ApiDeployment() {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={getApiKeys}
+          onClick={() =>
+            getApiKeys(
+              apiDeploymentsApiService,
+              selectedRow?.id,
+              setApiKeys,
+              setOpenManageKeysModal
+            )
+          }
         >
           <div>
             <KeyOutlined />
@@ -335,7 +277,9 @@ function ApiDeployment() {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={downloadPostmanCollection}
+          onClick={() =>
+            downloadPostmanCollection(apiDeploymentsApiService, selectedRow?.id)
+          }
         >
           <div>
             <CloudDownloadOutlined />
@@ -442,6 +386,8 @@ function ApiDeployment() {
         apiKeys={apiKeys}
         setApiKeys={setApiKeys}
         selectedApiRow={selectedRow}
+        apiService={apiDeploymentsApiService}
+        type={deploymentApiTypes.api}
       />
       <DisplayCode
         isDialogOpen={openCodeModal}
