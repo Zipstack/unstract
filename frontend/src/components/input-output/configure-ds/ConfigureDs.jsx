@@ -82,7 +82,6 @@ function ConfigureDs({
   };
 
   const handleTestConnection = (updatedFormData) => {
-    console.log("HERE!!!");
     // Check if there any error in form proceed to test connection only there is no error.
     if (!isFormValid()) {
       return;
