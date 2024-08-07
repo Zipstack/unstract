@@ -83,6 +83,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [currDocIndexStatus, setCurrDocIndexStatus] = useState(
     docIndexStatus.yet_to_start
   );
+  const [hasMounted, setHasMounted] = useState(false);
   const {
     selectedDoc,
     listOfDocs,
@@ -92,6 +93,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     isSinglePassExtractLoading,
     isSimplePromptStudio,
     isPublicSource,
+    refreshRawView,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
@@ -119,6 +121,15 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       ];
     }
   }, []);
+
+  useEffect(() => {
+    if (!hasMounted) {
+      setHasMounted(true);
+      return;
+    }
+    setExtractTxt("");
+    handleFetchContent(viewTypes.extract);
+  }, [refreshRawView]);
 
   useEffect(() => {
     setFileUrl("");

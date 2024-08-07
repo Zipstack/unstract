@@ -1,5 +1,6 @@
 from typing import Optional
 
+from adapter_processor.constants import AdapterKeys
 from rest_framework.exceptions import APIException
 
 
@@ -39,9 +40,19 @@ class CannotDeleteDefaultAdapter(APIException):
     )
 
 
-class UniqueConstraintViolation(APIException):
+class DuplicateAdapterNameError(APIException):
     status_code = 400
-    default_detail = "Unique constraint violated"
+    default_detail: str = AdapterKeys.ADAPTER_NAME_EXISTS
+
+    def __init__(
+        self,
+        name: Optional[str] = None,
+        detail: Optional[str] = None,
+        code: Optional[str] = None,
+    ) -> None:
+        if name:
+            detail = self.default_detail.replace("this name", f"name '{name}'")
+        super().__init__(detail, code)
 
 
 class TestAdapterError(APIException):
@@ -64,6 +75,8 @@ class DeleteAdapterInUseError(APIException):
         adapter_name: str = "adapter",
     ):
         if detail is None:
+            if adapter_name != "adapter":
+                adapter_name = f"'{adapter_name}'"
             detail = (
                 f"Cannot delete {adapter_name}. "
                 "It is used in a workflow or a prompt studio project"
