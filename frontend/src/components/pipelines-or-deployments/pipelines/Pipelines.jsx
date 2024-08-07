@@ -6,6 +6,8 @@ import {
   HighlightOutlined,
   FileSearchOutlined,
   ReloadOutlined,
+  NotificationOutlined,
+  EditOutlined,
   KeyOutlined,
   CloudDownloadOutlined,
   CopyOutlined,
@@ -41,6 +43,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { pipelineService } from "../pipeline-service.js";
 import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
+import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -62,6 +65,7 @@ function Pipelines({ type }) {
   const pipelineApiService = pipelineService();
   const { getApiKeys, downloadPostmanCollection, copyUrl } =
     usePipelineHelper();
+  const [openNotificationModal, setOpenNotificationModal] = useState(false);
 
   const handleFetchLogs = (page, pageSize) => {
     fetchExecutionLogs(
@@ -303,6 +307,23 @@ function Pipelines({ type }) {
         <Space
           direction="horizontal"
           className="action-items"
+          onClick={() => openAddModal(true)}
+        >
+          <div>
+            <EditOutlined />
+          </div>
+          <div>
+            <Typography.Text>Edit</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "2",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
           onClick={() => setOpenDeleteModal(true)}
         >
           <DeleteOutlined />
@@ -311,7 +332,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "2",
+      key: "3",
       label: (
         <Space
           direction="horizontal"
@@ -331,7 +352,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "3",
+      key: "4",
       label: (
         <Space
           direction="horizontal"
@@ -346,7 +367,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "4",
+      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -370,7 +391,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "5",
+      key: "6",
       label: (
         <Space
           direction="horizontal"
@@ -383,7 +404,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "6",
+      key: "7",
       label: (
         <Space
           direction="horizontal"
@@ -396,7 +417,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "7",
+      key: "8",
       label: (
         <Space
           direction="horizontal"
@@ -409,6 +430,19 @@ function Pipelines({ type }) {
         >
           <SyncOutlined />
           <Typography.Text>Sync Now</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      key: "9",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() => setOpenNotificationModal(true)}
+        >
+          <NotificationOutlined />
+          <Typography.Text>Setup Notifications</Typography.Text>
         </Space>
       ),
     },
@@ -605,6 +639,12 @@ function Pipelines({ type }) {
         selectedApiRow={selectedPorD}
         apiService={pipelineApiService}
         type={deploymentApiTypes.pipeline}
+      />
+      <NotificationModal
+        open={openNotificationModal}
+        setOpen={setOpenNotificationModal}
+        type={deploymentApiTypes.pipeline}
+        id={selectedPorD?.id}
       />
     </div>
   );
