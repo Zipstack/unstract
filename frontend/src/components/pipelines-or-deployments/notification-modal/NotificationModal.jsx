@@ -64,6 +64,10 @@ function NotificationModal({ open, setOpen, type, id }) {
       .then((res) => {
         addNewRow(res?.data);
         setIsForm(false);
+        setAlertDetails({
+          type: "success",
+          content: `Successfully created notification: ${body?.name}`,
+        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
@@ -80,6 +84,10 @@ function NotificationModal({ open, setOpen, type, id }) {
       .then((res) => {
         updateRow(res?.data);
         setIsForm(false);
+        setAlertDetails({
+          type: "success",
+          content: `Successfully updated notification: ${body?.name}`,
+        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
