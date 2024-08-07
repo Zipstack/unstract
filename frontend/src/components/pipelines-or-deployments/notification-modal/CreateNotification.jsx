@@ -114,112 +114,44 @@ function CreateNotification({
   };
 
   return (
-    <Form
-      form={form}
-      layout="vertical"
-      initialValues={formDetails}
-      onValuesChange={handleInputChange}
-      onFinish={triggerSubmit}
+ <Form
+  form={form}
+  layout="vertical"
+  initialValues={formDetails}
+  onValuesChange={handleInputChange}
+  onFinish={triggerSubmit}
+>
+  {[
+    { label: "Name", name: "name", rules: [{ required: true, message: "Please enter name" }], component: <Input /> },
+    { label: "Url", name: "url", rules: [{ required: true, message: "Please enter URL" }], component: <Input /> },
+    { label: "Notification Type", name: "notification_type", component: <Select options={NOTIFICATION_TYPE_ITEMS} /> },
+    { label: "Platform", name: "platform", component: <Select options={PLATFORM_TYPES} /> },
+    { label: "Authorization Type", name: "authorization_type", component: <Select options={AUTHORIZATION_TYPES} /> },
+    { label: "Authorization Header", name: "authorization_header", component: <Input /> },
+    { label: "Authorization Key", name: "authorization_key", component: <Input /> },
+    { label: "Max Retries", name: "max_retries", component: <Input type="number" /> }
+  ].map(({ label, name, rules, component }) => (
+    <Form.Item
+      key={name}
+      label={label}
+      name={name}
+      rules={rules}
+      validateStatus={getBackendErrorDetail(name, backendErrors) ? "error" : ""}
+      help={getBackendErrorDetail(name, backendErrors)}
     >
-      <Form.Item
-        label="Name"
-        name="name"
-        rules={[{ required: true, message: "Please enter name" }]}
-        validateStatus={
-          getBackendErrorDetail("name", backendErrors) ? "error" : ""
-        }
-        help={getBackendErrorDetail("name", backendErrors)}
-      >
-        <Input />
-      </Form.Item>
-      <Form.Item
-        label="Url"
-        name="url"
-        rules={[{ required: true, message: "Please enter URL" }]}
-        validateStatus={
-          getBackendErrorDetail("url", backendErrors) ? "error" : ""
-        }
-        help={getBackendErrorDetail("url", backendErrors)}
-      >
-        <Input />
-      </Form.Item>
-      <Form.Item
-        label="Notification Type"
-        name="notification_type"
-        validateStatus={
-          getBackendErrorDetail("notification_type", backendErrors)
-            ? "error"
-            : ""
-        }
-        help={getBackendErrorDetail("notification_type", backendErrors)}
-      >
-        <Select options={NOTIFICATION_TYPE_ITEMS} />
-      </Form.Item>
-      <Form.Item
-        label="Platform"
-        name="platform"
-        validateStatus={
-          getBackendErrorDetail("platform", backendErrors) ? "error" : ""
-        }
-        help={getBackendErrorDetail("platform", backendErrors)}
-      >
-        <Select options={PLATFORM_TYPES} />
-      </Form.Item>
-      <Form.Item
-        label="Authorization Type"
-        name="authorization_type"
-        validateStatus={
-          getBackendErrorDetail("authorization_type", backendErrors)
-            ? "error"
-            : ""
-        }
-        help={getBackendErrorDetail("authorization_type", backendErrors)}
-      >
-        <Select options={AUTHORIZATION_TYPES} />
-      </Form.Item>
-      <Form.Item
-        label="Authorization Header"
-        name="authorization_header"
-        validateStatus={
-          getBackendErrorDetail("authorization_header", backendErrors)
-            ? "error"
-            : ""
-        }
-        help={getBackendErrorDetail("authorization_header", backendErrors)}
-      >
-        <Input />
-      </Form.Item>
-      <Form.Item
-        label="Authorization Key"
-        name="authorization_key"
-        validateStatus={
-          getBackendErrorDetail("authorization_key", backendErrors)
-            ? "error"
-            : ""
-        }
-        help={getBackendErrorDetail("authorization_key", backendErrors)}
-      >
-        <Input />
-      </Form.Item>
-      <Form.Item
-        label="Max Retires"
-        name="max_retries"
-        validateStatus={
-          getBackendErrorDetail("max_retries", backendErrors) ? "error" : ""
-        }
-        help={getBackendErrorDetail("max_retries", backendErrors)}
-      >
-        <Input type="number" />
-      </Form.Item>
-      <Form.Item className="display-flex-right">
-        <Space>
-          <Button onClick={() => setIsForm(false)}>Cancel</Button>
-          <Button type="primary" htmlType="submit" loading={isLoading}>
-            {editDetails ? "Update" : "Create"} Notification
-          </Button>
-        </Space>
-      </Form.Item>
-    </Form>
+      {component}
+    </Form.Item>
+  ))}
+  <Form.Item className="display-flex-right">
+    <Space>
+      <Button onClick={() => setIsForm(false)}>Cancel</Button>
+      <Button type="primary" htmlType="submit" loading={isLoading}>
+        {editDetails ? "Update" : "Create"} Notification
+      </Button>
+    </Space>
+  </Form.Item>
+</Form>
+
   );
 }
 
