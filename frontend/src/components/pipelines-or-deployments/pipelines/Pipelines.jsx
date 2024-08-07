@@ -326,12 +326,8 @@ function Pipelines({ type }) {
           className="action-items"
           onClick={() => setOpenDeleteModal(true)}
         >
-          <div>
-            <DeleteOutlined />
-          </div>
-          <div>
-            <Typography.Text>Delete</Typography.Text>
-          </div>
+          <DeleteOutlined />
+          <Typography.Text>Delete</Typography.Text>
         </Space>
       ),
     },
@@ -350,12 +346,8 @@ function Pipelines({ type }) {
             )
           }
         >
-          <div>
-            <KeyOutlined />
-          </div>
-          <div>
-            <Typography.Text>Manage Keys</Typography.Text>
-          </div>
+          <KeyOutlined />
+          <Typography.Text>Manage Keys</Typography.Text>
         </Space>
       ),
     },
@@ -369,12 +361,8 @@ function Pipelines({ type }) {
             downloadPostmanCollection(pipelineApiService, selectedPorD?.id)
           }
         >
-          <div>
-            <CloudDownloadOutlined />
-          </div>
-          <div>
-            <Typography.Text>Download Postman Collection</Typography.Text>
-          </div>
+          <CloudDownloadOutlined />
+          <Typography.Text>Download Postman Collection</Typography.Text>
         </Space>
       ),
     },
@@ -397,12 +385,8 @@ function Pipelines({ type }) {
             );
           }}
         >
-          <div>
-            <FileSearchOutlined />
-          </div>
-          <div>
-            <Typography.Text>View Logs</Typography.Text>
-          </div>
+          <FileSearchOutlined />
+          <Typography.Text>View Logs</Typography.Text>
         </Space>
       ),
     },
@@ -414,12 +398,8 @@ function Pipelines({ type }) {
           className="action-items"
           onClick={() => clearCache()}
         >
-          <div>
-            <ClearOutlined />
-          </div>
-          <div>
-            <Typography.Text>Clear Cache</Typography.Text>
-          </div>
+          <ClearOutlined />
+          <Typography.Text>Clear Cache</Typography.Text>
         </Space>
       ),
     },
@@ -431,12 +411,8 @@ function Pipelines({ type }) {
           className="action-items"
           onClick={() => clearFileMarkers()}
         >
-          <div>
-            <HighlightOutlined />
-          </div>
-          <div>
-            <Typography.Text>Clear Processed File History</Typography.Text>
-          </div>
+          <HighlightOutlined />
+          <Typography.Text>Clear Processed File History</Typography.Text>
         </Space>
       ),
     },
@@ -452,12 +428,8 @@ function Pipelines({ type }) {
             })
           }
         >
-          <div>
-            <SyncOutlined />
-          </div>
-          <div>
-            <Typography.Text>Sync Now</Typography.Text>
-          </div>
+          <SyncOutlined />
+          <Typography.Text>Sync Now</Typography.Text>
         </Space>
       ),
     },

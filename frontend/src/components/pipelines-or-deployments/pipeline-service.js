@@ -4,7 +4,7 @@ import { useSessionStore } from "../../store/session-store";
 function pipelineService() {
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
-  const path = `/api/v1/unstract/${sessionDetails.orgId.replaceAll('"', "")}`;
+  const path = `/api/v1/unstract/${sessionDetails?.orgId.replaceAll('"', "")}`;
   const csrfToken = sessionDetails.csrfToken;
 
   const requestHeaders = {
