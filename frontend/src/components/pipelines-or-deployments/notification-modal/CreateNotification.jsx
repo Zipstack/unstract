@@ -1,10 +1,7 @@
 import { Button, Form, Input, Select, Space } from "antd";
 import PropTypes from "prop-types";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
-import { useState } from "react";
-import { pipelineService } from "../pipeline-service";
-import { useAlertStore } from "../../../store/alert-store";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useEffect, useState } from "react";
 
 const DEFAULT_FORM_DETAILS = {
   name: "",
@@ -57,14 +54,24 @@ const AUTHORIZATION_TYPES = [
   },
 ];
 
-function CreateNotification({ setIsForm, addNewRow }) {
+function CreateNotification({
+  setIsForm,
+  type,
+  id,
+  isLoading,
+  handleSubmit,
+  handleUpdate,
+  editDetails,
+}) {
   const [form] = Form.useForm();
   const [formDetails, setFormDetails] = useState(DEFAULT_FORM_DETAILS);
   const [backendErrors, setBackendErrors] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const pipelineApiService = pipelineService();
-  const { setAlertDetails } = useAlertStore();
-  const handleException = useExceptionHandler();
+
+  useEffect(() => {
+    if (editDetails) {
+      setFormDetails(editDetails);
+    }
+  }, [editDetails]);
 
   const handleInputChange = (changedValues, allValues) => {
     setFormDetails({ ...formDetails, ...allValues });
@@ -86,20 +93,15 @@ function CreateNotification({ setIsForm, addNewRow }) {
     });
   };
 
-  const handleSubmit = () => {
-    setIsLoading(true);
-    pipelineApiService
-      .createNotification(formDetails)
-      .then((res) => {
-        addNewRow(res?.data);
-        setIsForm(false);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+  const triggerSubmit = () => {
+    const body = { ...formDetails };
+    body[type] = id;
+
+    if (editDetails) {
+      handleUpdate(body, editDetails?.id);
+    } else {
+      handleSubmit(body);
+    }
   };
 
   return (
@@ -108,7 +110,7 @@ function CreateNotification({ setIsForm, addNewRow }) {
       layout="vertical"
       initialValues={formDetails}
       onValuesChange={handleInputChange}
-      onFinish={handleSubmit}
+      onFinish={triggerSubmit}
     >
       <Form.Item
         label="Name"
@@ -204,7 +206,7 @@ function CreateNotification({ setIsForm, addNewRow }) {
         <Space>
           <Button onClick={() => setIsForm(false)}>Cancel</Button>
           <Button type="primary" htmlType="submit" loading={isLoading}>
-            Create Notification
+            {editDetails ? "Update" : "Create"} Notification
           </Button>
         </Space>
       </Form.Item>
@@ -214,7 +216,12 @@ function CreateNotification({ setIsForm, addNewRow }) {
 
 CreateNotification.propTypes = {
   setIsForm: PropTypes.func.isRequired,
-  addNewRow: PropTypes.func.isRequired,
+  type: PropTypes.string.isRequired,
+  id: PropTypes.string.isRequired,
+  isLoading: PropTypes.bool.isRequired,
+  handleSubmit: PropTypes.func.isRequired,
+  handleUpdate: PropTypes.func.isRequired,
+  editDetails: PropTypes.object,
 };
 
 export { CreateNotification };

@@ -10,16 +10,20 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 function NotificationModal({ open, setOpen, type, id }) {
   const [isForm, setIsForm] = useState(false);
   const [rows, setRows] = useState([]);
+  const [isTableLoading, setIsTableLoading] = useState(false);
+  const [isFormSubmitLoading, setIsFormSubmitLoading] = useState(false);
+  const [editDetails, setEditDetails] = useState(null);
   const pipelineApiService = pipelineService();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
 
   useEffect(() => {
-    if (!id) {
+    if (!id || !open) {
       setRows([]);
       return;
     }
 
+    setIsTableLoading(true);
     pipelineApiService
       .getNotifications(type, id)
       .then((res) => {
@@ -27,14 +31,99 @@ function NotificationModal({ open, setOpen, type, id }) {
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
+      })
+      .finally(() => {
+        setIsTableLoading(false);
       });
-  }, [id]);
+  }, [id, open]);
+
+  useEffect(() => {
+    if (!isForm && editDetails) {
+      setEditDetails(null);
+    }
+  }, [isForm]);
+
+  const updateStatus = (record) => {
+    const isActive = !record?.is_active;
+
+    const body = {
+      ...record,
+      ...{
+        is_active: isActive,
+      },
+    };
+
+    handleUpdate(body, record?.id);
+  };
+
+  const handleSubmit = (body) => {
+    setIsFormSubmitLoading(true);
+    pipelineApiService
+      .createNotification(body)
+      .then((res) => {
+        addNewRow(res?.data);
+        setIsForm(false);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      })
+      .finally(() => {
+        setIsFormSubmitLoading(false);
+      });
+  };
+
+  const handleUpdate = (body, id) => {
+    setIsFormSubmitLoading(true);
+    pipelineApiService
+      .updateNotification(body, id)
+      .then((res) => {
+        updateRow(res?.data);
+        setIsForm(false);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      })
+      .finally(() => {
+        setIsFormSubmitLoading(false);
+      });
+  };
+
+  const handleDelete = (id, name) => {
+    pipelineApiService
+      .deleteNotification(id)
+      .then(() => {
+        removeRow(id);
+        setAlertDetails({
+          type: "success",
+          content: `Successfully delete: ${name}`,
+        });
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
+  };
 
   const addNewRow = (newRow) => {
     setRows((prev) => {
       const prevData = [...prev];
       prevData.push(newRow);
       return prevData;
+    });
+  };
+
+  const updateRow = (modifiedRow) => {
+    setRows((prev) => {
+      const index = prev.findIndex((item) => item?.id === modifiedRow?.id);
+      if (index !== -1) {
+        prev[index] = modifiedRow;
+      }
+      return prev;
+    });
+  };
+
+  const removeRow = (id) => {
+    setRows((prev) => {
+      return prev.filter((item) => item?.id !== id);
     });
   };
 
@@ -48,9 +137,25 @@ function NotificationModal({ open, setOpen, type, id }) {
       maskClosable={false}
     >
       {isForm ? (
-        <CreateNotification setIsForm={setIsForm} addNewRow={addNewRow} />
+        <CreateNotification
+          setIsForm={setIsForm}
+          addNewRow={addNewRow}
+          type={type}
+          id={id}
+          isLoading={isFormSubmitLoading}
+          handleSubmit={handleSubmit}
+          handleUpdate={handleUpdate}
+          editDetails={editDetails}
+        />
       ) : (
-        <DisplayNotifications setIsForm={setIsForm} rows={rows} />
+        <DisplayNotifications
+          setIsForm={setIsForm}
+          rows={rows}
+          isLoading={isTableLoading}
+          updateStatus={updateStatus}
+          handleDelete={handleDelete}
+          setEditDetails={setEditDetails}
+        />
       )}
     </Modal>
   );

@@ -2,8 +2,17 @@ import PropTypes from "prop-types";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { Button, Space, Switch, Table, Tooltip } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
+import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
+import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 
-function DisplayNotifications({ setIsForm, rows }) {
+function DisplayNotifications({
+  setIsForm,
+  rows,
+  isLoading,
+  updateStatus,
+  handleDelete,
+  setEditDetails,
+}) {
   const columns = [
     {
       title: "Name",
@@ -20,7 +29,13 @@ function DisplayNotifications({ setIsForm, rows }) {
       key: "is_active",
       dataIndex: "is_active",
       align: "center",
-      render: (_, record) => <Switch size="small" checked={record.is_active} />,
+      render: (_, record) => (
+        <Switch
+          size="small"
+          checked={record.is_active}
+          onChange={(e) => updateStatus(record)}
+        />
+      ),
     },
     {
       title: "Actions",
@@ -30,12 +45,25 @@ function DisplayNotifications({ setIsForm, rows }) {
         <>
           <Space className="actions">
             <Tooltip title="edit" className="cursorPointer">
-              <EditOutlined />
+              <Button
+                type="text"
+                size="small"
+                onClick={() => handleEdit(record)}
+              >
+                <EditOutlined />
+              </Button>
             </Tooltip>
           </Space>
           <Space className="actions">
             <Tooltip title="delete" className="cursorPointer">
-              <DeleteOutlined />
+              <ConfirmModal
+                handleConfirm={() => handleDelete(record?.id, record?.name)}
+                content="Are you sure you want to delete?"
+              >
+                <Button type="text" size="small">
+                  <DeleteOutlined />
+                </Button>
+              </ConfirmModal>
             </Tooltip>
           </Space>
         </>
@@ -43,19 +71,30 @@ function DisplayNotifications({ setIsForm, rows }) {
     },
   ];
 
+  const handleEdit = (record) => {
+    setIsForm(true);
+    setEditDetails(record);
+  };
+
   return (
     <SpaceWrapper>
       <div className="display-flex-right">
         <Button
           type="primary"
-          size="small"
           icon={<PlusOutlined />}
           onClick={() => setIsForm(true)}
         >
           Create Notification
         </Button>
       </div>
-      <Table columns={columns} dataSource={rows} />
+      <Table
+        columns={columns}
+        dataSource={rows}
+        loading={{
+          indicator: <SpinnerLoader />,
+          spinning: isLoading,
+        }}
+      />
     </SpaceWrapper>
   );
 }
@@ -63,6 +102,10 @@ function DisplayNotifications({ setIsForm, rows }) {
 DisplayNotifications.propTypes = {
   setIsForm: PropTypes.func.isRequired,
   rows: PropTypes.array,
+  isLoading: PropTypes.bool.isRequired,
+  updateStatus: PropTypes.func.isRequired,
+  handleDelete: PropTypes.func.isRequired,
+  setEditDetails: PropTypes.func.isRequired,
 };
 
 export { DisplayNotifications };
