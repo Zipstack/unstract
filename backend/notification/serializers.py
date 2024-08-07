@@ -43,9 +43,8 @@ class NotificationSerializer(serializers.ModelSerializer):
         notification_type = data.get("notification_type")
         platform = data.get("platform")
         name = data.get("name", "Notification")
-        pipeline = data.get("pipeline")
-        api = data.get("api")
-
+        pipeline = data.get("pipeline", getattr(self.instance, "pipeline", None))
+        api = data.get("api", getattr(self.instance, "api", None))
         # Ensure only one of 'api' or 'pipeline' is provided
         if api and pipeline:
             raise serializers.ValidationError(
@@ -66,15 +65,21 @@ class NotificationSerializer(serializers.ModelSerializer):
             )
         # Check uniqueness for name with respect to either api or pipeline
         if api:
-            if Notification.objects.filter(name=name, api=api).exists():
+            queryset = Notification.objects.filter(name=name, api=api)
+            if self.instance:
+                queryset = queryset.exclude(id=self.instance.id)
+            if queryset.exists():
                 raise serializers.ValidationError(
                     "A notification with this name and API already exists.",
-                    code="unique",
+                    code="unique_api",
                 )
         elif pipeline:
-            if Notification.objects.filter(name=name, pipeline=pipeline).exists():
+            queryset = Notification.objects.filter(name=name, pipeline=pipeline)
+            if self.instance:
+                queryset = queryset.exclude(id=self.instance.id)
+            if queryset.exists():
                 raise serializers.ValidationError(
                     "A notification with this name and pipeline already exists.",
-                    code="unique",
+                    code="unique_pipeline",
                 )
         return data
