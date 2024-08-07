@@ -113,45 +113,82 @@ function CreateNotification({
     }
   };
 
-  return (
- <Form
-  form={form}
-  layout="vertical"
-  initialValues={formDetails}
-  onValuesChange={handleInputChange}
-  onFinish={triggerSubmit}
->
-  {[
-    { label: "Name", name: "name", rules: [{ required: true, message: "Please enter name" }], component: <Input /> },
-    { label: "Url", name: "url", rules: [{ required: true, message: "Please enter URL" }], component: <Input /> },
-    { label: "Notification Type", name: "notification_type", component: <Select options={NOTIFICATION_TYPE_ITEMS} /> },
-    { label: "Platform", name: "platform", component: <Select options={PLATFORM_TYPES} /> },
-    { label: "Authorization Type", name: "authorization_type", component: <Select options={AUTHORIZATION_TYPES} /> },
-    { label: "Authorization Header", name: "authorization_header", component: <Input /> },
-    { label: "Authorization Key", name: "authorization_key", component: <Input /> },
-    { label: "Max Retries", name: "max_retries", component: <Input type="number" /> }
-  ].map(({ label, name, rules, component }) => (
-    <Form.Item
-      key={name}
-      label={label}
-      name={name}
-      rules={rules}
-      validateStatus={getBackendErrorDetail(name, backendErrors) ? "error" : ""}
-      help={getBackendErrorDetail(name, backendErrors)}
-    >
-      {component}
-    </Form.Item>
-  ))}
-  <Form.Item className="display-flex-right">
-    <Space>
-      <Button onClick={() => setIsForm(false)}>Cancel</Button>
-      <Button type="primary" htmlType="submit" loading={isLoading}>
-        {editDetails ? "Update" : "Create"} Notification
-      </Button>
-    </Space>
-  </Form.Item>
-</Form>
+  const formItems = [
+    {
+      label: "Name",
+      name: "name",
+      rules: [{ required: true, message: "Please enter name" }],
+      component: <Input />,
+    },
+    {
+      label: "Url",
+      name: "url",
+      rules: [{ required: true, message: "Please enter URL" }],
+      component: <Input />,
+    },
+    {
+      label: "Notification Type",
+      name: "notification_type",
+      component: <Select options={NOTIFICATION_TYPE_ITEMS} />,
+    },
+    {
+      label: "Platform",
+      name: "platform",
+      component: <Select options={PLATFORM_TYPES} />,
+    },
+    {
+      label: "Authorization Type",
+      name: "authorization_type",
+      component: <Select options={AUTHORIZATION_TYPES} />,
+    },
+    {
+      label: "Authorization Header",
+      name: "authorization_header",
+      component: <Input />,
+    },
+    {
+      label: "Authorization Key",
+      name: "authorization_key",
+      component: <Input />,
+    },
+    {
+      label: "Max Retries",
+      name: "max_retries",
+      component: <Input type="number" />,
+    },
+  ];
 
+  return (
+    <Form
+      form={form}
+      layout="vertical"
+      initialValues={formDetails}
+      onValuesChange={handleInputChange}
+      onFinish={triggerSubmit}
+    >
+      {formItems.map(({ label, name, rules, component }) => (
+        <Form.Item
+          key={name}
+          label={label}
+          name={name}
+          rules={rules}
+          validateStatus={
+            getBackendErrorDetail(name, backendErrors) ? "error" : ""
+          }
+          help={getBackendErrorDetail(name, backendErrors)}
+        >
+          {component}
+        </Form.Item>
+      ))}
+      <Form.Item className="display-flex-right">
+        <Space>
+          <Button onClick={() => setIsForm(false)}>Cancel</Button>
+          <Button type="primary" htmlType="submit" loading={isLoading}>
+            {editDetails ? "Update" : "Create"} Notification
+          </Button>
+        </Space>
+      </Form.Item>
+    </Form>
   );
 }
 
