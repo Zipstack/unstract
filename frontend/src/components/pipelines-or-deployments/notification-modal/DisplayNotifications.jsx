@@ -33,7 +33,7 @@ function DisplayNotifications({
         <Switch
           size="small"
           defaultChecked={record?.is_active}
-          onChange={(e) => updateStatus(record)}
+          onChange={() => updateStatus(record)}
         />
       ),
     },
