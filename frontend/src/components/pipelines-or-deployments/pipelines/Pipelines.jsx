@@ -441,12 +441,8 @@ function Pipelines({ type }) {
           className="action-items"
           onClick={() => setOpenNotificationModal(true)}
         >
-          <div>
-            <NotificationOutlined />
-          </div>
-          <div>
-            <Typography.Text>Setup Notifications</Typography.Text>
-          </div>
+          <NotificationOutlined />
+          <Typography.Text>Setup Notifications</Typography.Text>
         </Space>
       ),
     },
