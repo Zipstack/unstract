@@ -160,7 +160,7 @@ const EtlTaskDeploy = ({
       const index = prev.findIndex((item) => item?.id === pipeline?.id);
       if (index !== -1) {
         const newData = [...prev];
-        newData[index] = pipeline;
+        newData[index] = { ...newData[index], ...pipeline };
         return newData;
       }
       return prev;
