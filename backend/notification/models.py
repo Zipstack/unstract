@@ -63,6 +63,14 @@ class Notification(BaseModel):
         blank=True,
     )
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["name", "pipeline"], name="unique_name_pipeline"
+            ),
+            models.UniqueConstraint(fields=["name", "api"], name="unique_name_api"),
+        ]
+
     def save(self, *args, **kwargs):
         # Validation for platforms
         valid_platforms = NotificationType(self.notification_type).get_valid_platforms()

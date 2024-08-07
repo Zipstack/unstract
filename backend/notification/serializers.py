@@ -19,25 +19,43 @@ class NotificationSerializer(serializers.ModelSerializer):
     def validate(self, data):
         """Validate the data for the NotificationSerializer.
 
-        Checks if the `platform` field is valid for the selected `notification_type`.
+        Ensures that either 'api' or 'pipeline' is provided, but not both,
+        and that one of them is mandatory. Also verifies that the 'platform'
+        value is valid for the selected 'notification_type'. Checks for
+        uniqueness of the combination of 'name' with either 'api' or 'pipeline'.
 
         Args:
             data (dict): The data to validate, typically containing fields from the
                          `Notification` model.
 
         Raises:
-            serializers.ValidationError: If the `platform` value is not valid for the
-                                          selected `notification_type`.
+            serializers.ValidationError: If the `platform` value is invalid for the
+                selected `notification_type`, or if the uniqueness constraint for
+                the combination of `name` with `api` or `pipeline` is violated
 
         Returns:
-            dict: The validated data
+            dict: The validated data.
 
         Note:
-            This internal method ensures data consistency and should not be removed
-            or modified without understanding its impact.
+            This method ensures data consistency by checking the validity of
+            platform values and uniqueness constraints before the data is saved.
         """
         notification_type = data.get("notification_type")
         platform = data.get("platform")
+        name = data.get("name", "Notification")
+        pipeline = data.get("pipeline")
+        api = data.get("api")
+
+        # Ensure only one of 'api' or 'pipeline' is provided
+        if api and pipeline:
+            raise serializers.ValidationError(
+                "Only one of 'api' or 'pipeline' can be provided."
+            )
+
+        if not api and not pipeline:
+            raise serializers.ValidationError(
+                "Either 'api' or 'pipeline' must be provided."
+            )
 
         valid_platforms = NotificationType(notification_type).get_valid_platforms()
         if platform and platform not in valid_platforms:
@@ -46,5 +64,17 @@ class NotificationSerializer(serializers.ModelSerializer):
                 f"'{notification_type}'. "
                 f"Valid options are: {', '.join(valid_platforms)}."
             )
-
+        # Check uniqueness for name with respect to either api or pipeline
+        if api:
+            if Notification.objects.filter(name=name, api=api).exists():
+                raise serializers.ValidationError(
+                    "A notification with this name and API already exists.",
+                    code="unique",
+                )
+        elif pipeline:
+            if Notification.objects.filter(name=name, pipeline=pipeline).exists():
+                raise serializers.ValidationError(
+                    "A notification with this name and pipeline already exists.",
+                    code="unique",
+                )
         return data
