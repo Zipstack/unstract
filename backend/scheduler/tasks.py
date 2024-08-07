@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from celery import shared_task
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
@@ -27,11 +27,12 @@ logger = logging.getLogger(__name__)
 subscription_loader = load_plugins()
 
 
-def create_periodic_task(
+def create_or_update_periodic_task(
     cron_string: str,
     task_name: str,
     task_path: str,
     task_args: list[Any],
+    enabled: bool = True,
 ) -> None:
     # Convert task_args to JSON
     task_args_json = json.dumps(task_args)
@@ -47,15 +48,21 @@ def create_periodic_task(
         day_of_month=day_of_month,
         month_of_year=month_of_year,
     )
-    logger.info(f"Creating periodic task {task_name} with cron string: {cron_string}")
 
-    # Create periodic task
-    PeriodicTask.objects.create(
-        crontab=schedule,
+    periodic_task, created = PeriodicTask.objects.update_or_create(
         name=task_name,
-        task=task_path,
-        args=task_args_json,
+        defaults={
+            "task": task_path,
+            "crontab": schedule,
+            "enabled": enabled,
+            "args": task_args_json,
+        },
     )
+
+    if created:
+        logger.info(f"Created periodic task {periodic_task}")
+    else:
+        logger.info(f"Updated periodic task {periodic_task}")
 
 
 # TODO: Remove unused args with a migration
@@ -179,6 +186,13 @@ def delete_periodic_task(task_name: str) -> None:
         logger.info(f"Deleted periodic task: {task_name}")
     except PeriodicTask.DoesNotExist:
         logger.error(f"Periodic task does not exist: {task_name}")
+
+
+def get_periodic_task(task_name: str) -> Optional[PeriodicTask]:
+    try:
+        return PeriodicTask.objects.get(name=task_name)
+    except PeriodicTask.DoesNotExist:
+        return None
 
 
 def disable_task(task_name: str) -> None:
