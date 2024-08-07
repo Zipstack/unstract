@@ -7,7 +7,7 @@ import { pipelineService } from "../pipeline-service";
 import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
-function NotificationModal({ open, setOpen }) {
+function NotificationModal({ open, setOpen, type, id }) {
   const [isForm, setIsForm] = useState(false);
   const [rows, setRows] = useState([]);
   const pipelineApiService = pipelineService();
@@ -15,19 +15,28 @@ function NotificationModal({ open, setOpen }) {
   const handleException = useExceptionHandler();
 
   useEffect(() => {
+    if (!id) {
+      setRows([]);
+      return;
+    }
+
     pipelineApiService
-      .getNotifications()
+      .getNotifications(type, id)
       .then((res) => {
         setRows(res?.data || []);
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
       });
-  }, []);
+  }, [id]);
 
-  useEffect(() => {
-    console.log(rows);
-  }, [rows]);
+  const addNewRow = (newRow) => {
+    setRows((prev) => {
+      const prevData = [...prev];
+      prevData.push(newRow);
+      return prevData;
+    });
+  };
 
   return (
     <Modal
@@ -36,11 +45,12 @@ function NotificationModal({ open, setOpen }) {
       onCancel={() => setOpen(false)}
       centered
       footer={null}
+      maskClosable={false}
     >
       {isForm ? (
-        <CreateNotification setIsForm={setIsForm} />
+        <CreateNotification setIsForm={setIsForm} addNewRow={addNewRow} />
       ) : (
-        <DisplayNotifications setIsForm={setIsForm} />
+        <DisplayNotifications setIsForm={setIsForm} rows={rows} />
       )}
     </Modal>
   );
@@ -49,6 +59,8 @@ function NotificationModal({ open, setOpen }) {
 NotificationModal.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
+  type: PropTypes.string.isRequired,
+  id: PropTypes.string,
 };
 
 export { NotificationModal };
