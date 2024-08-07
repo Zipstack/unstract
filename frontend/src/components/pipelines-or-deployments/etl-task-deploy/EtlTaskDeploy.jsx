@@ -312,12 +312,6 @@ const EtlTaskDeploy = ({
           <Form.Item
             label="Cron Schedule"
             name="cron_string"
-            rules={[
-              {
-                required: true,
-                message: "Please add cron schedule",
-              },
-            ]}
             validateStatus={
               getBackendErrorDetail("cron_string", backendErrors) ? "error" : ""
             }
@@ -326,7 +320,6 @@ const EtlTaskDeploy = ({
             <div className="cron-string-div">
               <Input
                 readOnly={true}
-                disabled={true}
                 value={formDetails?.cron_string}
                 className="cron-string-input"
               />
