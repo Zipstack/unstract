@@ -1,7 +1,8 @@
 import uuid
 
 from account.models import User
-from django.db import models
+from django.conf import settings
+from django.db import connection, models
 from utils.models.base_model import BaseModel
 from workflow_manager.workflow.models.workflow import Workflow
 
@@ -80,8 +81,19 @@ class Pipeline(BaseModel):
         blank=True,
     )
 
+    @property
+    def api_key_data(self):
+        return {"pipeline": self.id, "description": f"API Key for {self.pipeline_name}"}
+
+    @property
+    def api_endpoint(self):
+        org_schema = connection.get_tenant().schema_name
+        deployment_endpoint = settings.API_DEPLOYMENT_PATH_PREFIX + "/pipeline/api"
+        api_endpoint = f"{deployment_endpoint}/{org_schema}/{self.id}/"
+        return api_endpoint
+
     def __str__(self) -> str:
-        return f"Pipeline({self.id}, name: {self.pipeline_name}"
+        return f"Pipeline({self.id})(name: {self.pipeline_name})"
 
     class Meta:
         constraints = [

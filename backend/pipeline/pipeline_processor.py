@@ -38,6 +38,14 @@ class PipelineProcessor:
             raise InactivePipelineError(pipeline_name=pipeline.pipeline_name)
         return pipeline
 
+    @classmethod
+    def get_active_pipeline(cls, pipeline_id: str) -> Optional[Pipeline]:
+        """Retrieves a list of active pipelines."""
+        try:
+            return cls.fetch_pipeline(pipeline_id, check_active=True)
+        except Pipeline.DoesNotExist:
+            return None
+
     @staticmethod
     def _update_pipeline_status(
         pipeline: Pipeline,
