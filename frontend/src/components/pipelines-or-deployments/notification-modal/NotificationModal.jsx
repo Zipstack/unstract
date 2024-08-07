@@ -19,6 +19,7 @@ function NotificationModal({ open, setOpen, type, id }) {
 
   useEffect(() => {
     if (!id || !open) {
+      setIsForm(false);
       setRows([]);
       return;
     }
@@ -111,13 +112,16 @@ function NotificationModal({ open, setOpen, type, id }) {
     });
   };
 
-  const updateRow = (modifiedRow) => {
+  const updateRow = (updatedRow) => {
     setRows((prev) => {
-      const index = prev.findIndex((item) => item?.id === modifiedRow?.id);
+      const updatedRows = [...prev];
+      const index = updatedRows.findIndex(
+        (item) => item?.id === updatedRow?.id
+      );
       if (index !== -1) {
-        prev[index] = modifiedRow;
+        updatedRows[index] = updatedRow;
       }
-      return prev;
+      return updatedRows;
     });
   };
 

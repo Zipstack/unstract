@@ -66,12 +66,21 @@ function CreateNotification({
   const [form] = Form.useForm();
   const [formDetails, setFormDetails] = useState(DEFAULT_FORM_DETAILS);
   const [backendErrors, setBackendErrors] = useState(null);
+  const [resetForm, setResetForm] = useState(false);
 
   useEffect(() => {
     if (editDetails) {
       setFormDetails(editDetails);
+      setResetForm(true);
     }
   }, [editDetails]);
+
+  useEffect(() => {
+    if (resetForm) {
+      form.resetFields();
+      setResetForm(false);
+    }
+  }, [formDetails]);
 
   const handleInputChange = (changedValues, allValues) => {
     setFormDetails({ ...formDetails, ...allValues });

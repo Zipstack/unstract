@@ -72,7 +72,7 @@ function pipelineService() {
     },
     updateNotification: (body, id) => {
       const requestOptions = {
-        method: "PATCH",
+        method: "PUT",
         url: `${path}/notifications/${id}/`,
         headers: requestHeaders,
         data: body,

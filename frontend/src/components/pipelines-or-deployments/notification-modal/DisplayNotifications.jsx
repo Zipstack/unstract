@@ -32,7 +32,7 @@ function DisplayNotifications({
       render: (_, record) => (
         <Switch
           size="small"
-          checked={record.is_active}
+          defaultChecked={record?.is_active}
           onChange={(e) => updateStatus(record)}
         />
       ),
