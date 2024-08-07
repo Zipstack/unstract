@@ -17,5 +17,11 @@ urlpatterns = format_suffix_patterns(
     [
         path("", notification_list, name="notification-list"),
         path("<uuid:pk>/", notification_detail, name="notification-detail"),
+        path(
+            "pipeline/<uuid:pipeline_uuid>/",
+            notification_list,
+            name="pipeline-notification-list",
+        ),
+        path("api/<uuid:api_uuid>/", notification_list, name="api-notification-list"),
     ]
 )

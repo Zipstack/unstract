@@ -7,9 +7,16 @@ from utils.models.base_model import BaseModel
 
 from .enums import AuthorizationType, NotificationType, PlatformType
 
+NOTIFICATION_NAME_MAX_LENGTH = 255
+
 
 class Notification(BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(
+        max_length=NOTIFICATION_NAME_MAX_LENGTH,
+        db_comment="Name of the notification.",
+        default="Notification",
+    )
     url = models.URLField(null=True)  # URL for webhook or other endpoints
     authorization_key = models.CharField(
         max_length=255, blank=True, null=True
