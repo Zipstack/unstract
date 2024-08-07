@@ -7,7 +7,7 @@ import yaml
 from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.tool_registry.constants import AdapterPropertyKey, Tools
 from unstract.tool_registry.dto import AdapterProperties, Spec, Tool, ToolMeta
-from unstract.tool_registry.exceptions import InvalidToolURLException
+from unstract.tool_registry.exceptions import InvalidToolURLException, RegistryNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +65,8 @@ class ToolUtils:
             with open(file_path) as json_file:
                 data: dict[str, Any] = json.load(json_file)
             return data
-        except json.JSONDecodeError:
-            logger.error("Tools from Disk: JSON decode error")
+        except json.JSONDecodeError as e:
+            logger.warning(f"Error loading tools from {file_path}: {e}")
             return {}
 
     @staticmethod
@@ -75,7 +75,7 @@ class ToolUtils:
             yaml.dump(data, file, default_flow_style=False)
 
     @staticmethod
-    def get_registry(file_path: str) -> dict[str, Any]:
+    def get_registry(file_path: str, raise_exc: bool = False) -> dict[str, Any]:
         """Get Registry File.
 
         Args:
@@ -89,9 +89,14 @@ class ToolUtils:
             with open(file_path) as file:
                 yml_data = yaml.safe_load(file)
         except FileNotFoundError:
+            logger.warning(f"Could not find tool registry YAML: {str(file_path)}")
+            if raise_exc:
+                raise RegistryNotFound()
             pass
         except Exception as error:
-            logger.error(f"Error While loading {str(file_path)} Error: {error}")
+            logger.error(f"Error while loading {str(file_path)}: {error}")
+            if raise_exc:
+                raise error
         return yml_data
 
     @staticmethod

@@ -7,9 +7,9 @@ from adapter_processor.constants import AdapterKeys
 from adapter_processor.exceptions import (
     CannotDeleteDefaultAdapter,
     DeleteAdapterInUseError,
+    DuplicateAdapterNameError,
     IdIsMandatory,
     InValidType,
-    UniqueConstraintViolation,
 )
 from adapter_processor.serializers import (
     AdapterInfoSerializer,
@@ -40,7 +40,6 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from utils.filtering import FilterHelper
 
 from .constants import AdapterKeys as constant
-from .exceptions import InternalServiceError
 from .models import AdapterInstance, UserDefaultAdapter
 
 logger = logging.getLogger(__name__)
@@ -197,10 +196,9 @@ class AdapterInstanceViewSet(ModelViewSet):
             user_default_adapter.save()
 
         except IntegrityError:
-            raise UniqueConstraintViolation(f"{AdapterKeys.ADAPTER_NAME_EXISTS}")
-        except Exception as e:
-            logger.error(f"Error saving adapter to DB: {e}")
-            raise InternalServiceError
+            raise DuplicateAdapterNameError(
+                name=serializer.validated_data.get(AdapterKeys.ADAPTER_NAME)
+            )
         headers = self.get_success_headers(serializer.data)
         return Response(
             serializer.data, status=status.HTTP_201_CREATED, headers=headers
