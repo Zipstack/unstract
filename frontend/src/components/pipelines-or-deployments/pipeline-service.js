@@ -54,10 +54,19 @@ function pipelineService() {
       };
       return axiosPrivate(requestOptions);
     },
-    getNotifications: () => {
+    getNotifications: (path, id) => {
       const requestOptions = {
         method: "GET",
+        url: `${path}/notifications/${path}/${id}/`,
+      };
+      return axiosPrivate(requestOptions);
+    },
+    createNotification: (body) => {
+      const requestOptions = {
+        method: "POST",
         url: `${path}/notifications/`,
+        headers: requestHeaders,
+        data: body,
       };
       return axiosPrivate(requestOptions);
     },

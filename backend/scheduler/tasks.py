@@ -14,14 +14,12 @@ if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
     from pipeline_v2.models import Pipeline
     from pipeline_v2.pipeline_processor import PipelineProcessor
     from utils.user_context import UserContext
-    from workflow_manager.workflow_v2.models.workflow import Workflow
     from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
 else:
     from account.models import Organization
     from account.subscription_loader import load_plugins, validate_etl_run
     from pipeline.models import Pipeline
     from pipeline.pipeline_processor import PipelineProcessor
-    from workflow_manager.workflow.models.workflow import Workflow
     from workflow_manager.workflow.workflow_helper import WorkflowHelper
 
 
@@ -82,11 +80,15 @@ def execute_pipeline_task(
         return
     logger.info(f"Executing pipeline name: {name}")
     try:
-        logger.info(f"Executing workflow id: {workflow_id}")
         tenant: Organization = (
             get_tenant_model().objects.filter(schema_name=org_schema).first()
         )
         with tenant_context(tenant):
+            pipeline = PipelineProcessor.fetch_pipeline(
+                pipeline_id=pipepline_id, check_active=True
+            )
+            workflow = pipeline.workflow
+            logger.info(f"Executing workflow: {workflow} by pipeline {pipeline}")
             if (
                 subscription_loader
                 and subscription_loader[0]
@@ -100,7 +102,6 @@ def execute_pipeline_task(
                         f"Failed to disable task: {pipepline_id}. Error: {e}"
                     )
                 return
-            workflow = Workflow.objects.get(id=workflow_id)
             logger.info(f"Executing workflow: {workflow}")
             PipelineProcessor.initialize_pipeline_sync(pipeline_id=pipepline_id)
             PipelineProcessor.update_pipeline(

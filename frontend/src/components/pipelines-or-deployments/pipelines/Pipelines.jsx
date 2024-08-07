@@ -8,13 +8,28 @@ import {
   ReloadOutlined,
   NotificationOutlined,
   EditOutlined,
+  KeyOutlined,
+  CloudDownloadOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
-import { Button, Dropdown, Image, Space, Switch, Typography } from "antd";
+import {
+  Button,
+  Dropdown,
+  Image,
+  Space,
+  Switch,
+  Tooltip,
+  Typography,
+} from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import cronstrue from "cronstrue";
 
-import { deploymentsStaticContent } from "../../../helpers/GetStaticData";
+import {
+  deploymentApiTypes,
+  deploymentsStaticContent,
+  displayURL,
+} from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { useSessionStore } from "../../../store/session-store.js";
@@ -25,6 +40,9 @@ import { LogsModal } from "../log-modal/LogsModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import "./Pipelines.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { pipelineService } from "../pipeline-service.js";
+import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
+import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
 
 function Pipelines({ type }) {
@@ -42,6 +60,11 @@ function Pipelines({ type }) {
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
   const { fetchExecutionLogs } = require("../log-modal/fetchExecutionLogs.js");
+  const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
+  const [apiKeys, setApiKeys] = useState([]);
+  const pipelineApiService = pipelineService();
+  const { getApiKeys, downloadPostmanCollection, copyUrl } =
+    usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
 
   const handleFetchLogs = (page, pageSize) => {
@@ -318,6 +341,49 @@ function Pipelines({ type }) {
         <Space
           direction="horizontal"
           className="action-items"
+          onClick={() =>
+            getApiKeys(
+              pipelineApiService,
+              selectedPorD?.id,
+              setApiKeys,
+              setOpenManageKeysModal
+            )
+          }
+        >
+          <div>
+            <KeyOutlined />
+          </div>
+          <div>
+            <Typography.Text>Manage Keys</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "4",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() =>
+            downloadPostmanCollection(pipelineApiService, selectedPorD?.id)
+          }
+        >
+          <div>
+            <CloudDownloadOutlined />
+          </div>
+          <div>
+            <Typography.Text>Download Postman Collection</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "5",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
           onClick={() => {
             setOpenLogsModal(true);
             fetchExecutionLogs(
@@ -341,7 +407,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "4",
+      key: "6",
       label: (
         <Space
           direction="horizontal"
@@ -358,7 +424,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "5",
+      key: "7",
       label: (
         <Space
           direction="horizontal"
@@ -375,7 +441,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "6",
+      key: "8",
       label: (
         <Space
           direction="horizontal"
@@ -396,7 +462,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "7",
+      key: "9",
       label: (
         <Space
           direction="horizontal"
@@ -458,6 +524,30 @@ function Pipelines({ type }) {
       ),
       key: "destination",
       align: "center",
+    },
+    {
+      title: "API Endpoint",
+      key: "api_endpoint",
+      render: (_, record) => (
+        <Space direction="horizontal" className="display-flex-space-between">
+          <div>
+            <Typography.Text>
+              {displayURL(record?.api_endpoint)}
+            </Typography.Text>
+          </div>
+          <div>
+            <Tooltip title="click to copy">
+              <Button
+                size="small"
+                onClick={() => copyUrl(record?.api_endpoint)}
+              >
+                <CopyOutlined />
+              </Button>
+            </Tooltip>
+          </div>
+        </Space>
+      ),
+      align: "left",
     },
     {
       title: "Status of Previous Run",
@@ -534,7 +624,7 @@ function Pipelines({ type }) {
           placement="bottomLeft"
           onOpenChange={() => setSelectedPorD(record)}
         >
-          <EllipsisOutlined rotate={90} className="p-or-d-actions" />
+          <EllipsisOutlined className="p-or-d-actions cur-pointer" />
         </Dropdown>
       ),
     },
@@ -572,6 +662,15 @@ function Pipelines({ type }) {
         open={openDeleteModal}
         setOpen={setOpenDeleteModal}
         deleteRecord={deletePipeline}
+      />
+      <ManageKeys
+        isDialogOpen={openManageKeysModal}
+        setDialogOpen={setOpenManageKeysModal}
+        apiKeys={apiKeys}
+        setApiKeys={setApiKeys}
+        selectedApiRow={selectedPorD}
+        apiService={pipelineApiService}
+        type={deploymentApiTypes.pipeline}
       />
       <NotificationModal
         open={openNotificationModal}
