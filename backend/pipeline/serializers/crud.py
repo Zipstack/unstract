@@ -6,10 +6,12 @@ from connector.connector_instance_helper import ConnectorInstanceHelper
 from connector.models import ConnectorInstance
 from connector_processor.connector_processor import ConnectorProcessor
 from croniter import croniter
+from django.conf import settings
 from pipeline.constants import PipelineConstants as PC
 from pipeline.constants import PipelineKey as PK
 from pipeline.models import Pipeline
 from rest_framework import serializers
+from rest_framework.serializers import SerializerMethodField
 from scheduler.helper import SchedulerHelper
 from utils.serializer_utils import SerializerUtils
 from workflow_manager.endpoint.models import WorkflowEndpoint
@@ -18,9 +20,12 @@ from backend.serializers import AuditSerializer
 from unstract.connectors.connectorkit import Connectorkit
 
 logger = logging.getLogger(__name__)
+DEPLOYMENT_ENDPOINT = settings.API_DEPLOYMENT_PATH_PREFIX + "/pipeline"
 
 
 class PipelineSerializer(AuditSerializer):
+
+    api_endpoint = SerializerMethodField()
 
     class Meta:
         model = Pipeline
@@ -62,6 +67,21 @@ class PipelineSerializer(AuditSerializer):
             raise serializers.ValidationError("Invalid cron string format.")
 
         return cron_string
+
+    def get_api_endpoint(self, instance: Pipeline):
+        """Retrieve the API endpoint URL for a given Pipeline instance.
+
+        This method is an internal serializer call that fetches the
+        `api_endpoint` property from the provided Pipeline instance.
+
+        Args:
+            instance (Pipeline): The Pipeline instance for which the API
+                                 endpoint URL is being retrieved.
+
+        Returns:
+            str: The API endpoint URL associated with the Pipeline instance.
+        """
+        return instance.api_endpoint
 
     def create(self, validated_data: dict[str, Any]) -> Any:
         # TODO: Deduce pipeline type based on WF?

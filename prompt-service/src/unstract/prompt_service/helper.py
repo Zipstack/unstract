@@ -7,6 +7,10 @@ from typing import Any
 from dotenv import load_dotenv
 from flask import Flask, current_app
 from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
+from unstract.prompt_service.constants import PromptServiceContants as PSKeys
+from unstract.prompt_service.exceptions import APIError, RateLimitError
+from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
+from unstract.sdk.llm import LLM
 
 load_dotenv()
 
@@ -152,3 +156,115 @@ def _get_key_and_item(row: tuple) -> tuple[str, dict[str, Any]]:
 def _format_float_positional(value: float, precision: int = 10) -> str:
     formatted: str = f"{value:.{precision}f}"
     return formatted.rstrip("0").rstrip(".") if "." in formatted else formatted
+
+
+def extract_variable(
+    structured_output: dict[str, Any],
+    variable_names: list[Any],
+    output: dict[str, Any],
+    promptx: str,
+) -> str:
+    logger: Logger = current_app.logger
+    for variable_name in variable_names:
+        if promptx.find(f"%{variable_name}%") >= 0:
+            if variable_name in structured_output:
+                promptx = promptx.replace(
+                    f"%{variable_name}%",
+                    str(structured_output[variable_name]),
+                )
+            else:
+                raise ValueError(
+                    f"Variable {variable_name} not found " "in structured output"
+                )
+
+    if promptx != output[PSKeys.PROMPT]:
+        logger.info(f"Prompt after variable replacement: {promptx}")
+    return promptx
+
+
+def construct_and_run_prompt(
+    tool_settings: dict[str, Any],
+    output: dict[str, Any],
+    llm: LLM,
+    context: str,
+    prompt: str,
+) -> tuple[str, dict[str, Any]]:
+    prompt = construct_prompt(
+        preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
+        prompt=output[prompt],
+        postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
+        grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
+        context=context,
+    )
+    return run_completion(
+        llm=llm,
+        prompt=prompt,
+    )
+
+
+def construct_prompt(
+    preamble: str,
+    prompt: str,
+    postamble: str,
+    grammar_list: list[dict[str, Any]],
+    context: str,
+) -> str:
+    logger: Logger = current_app.logger
+    # Let's cleanup the context. Remove if 3 consecutive newlines are found
+    context_lines = context.split("\n")
+    new_context_lines = []
+    empty_line_count = 0
+    for line in context_lines:
+        if line.strip() == "":
+            empty_line_count += 1
+        else:
+            if empty_line_count >= 3:
+                empty_line_count = 3
+            for i in range(empty_line_count):
+                new_context_lines.append("")
+            empty_line_count = 0
+            new_context_lines.append(line.rstrip())
+    context = "\n".join(new_context_lines)
+    logger.info(
+        f"Old context length: {len(context_lines)}, "
+        f"New context length: {len(new_context_lines)}"
+    )
+
+    prompt = (
+        f"{preamble}\n\nContext:\n---------------{context}\n"
+        f"-----------------\n\nQuestion or Instruction: {prompt}\n"
+    )
+    if grammar_list is not None and len(grammar_list) > 0:
+        prompt += "\n"
+        for grammar in grammar_list:
+            word = ""
+            synonyms = []
+            if PSKeys.WORD in grammar:
+                word = grammar[PSKeys.WORD]
+                if PSKeys.SYNONYMS in grammar:
+                    synonyms = grammar[PSKeys.SYNONYMS]
+            if len(synonyms) > 0 and word != "":
+                prompt += f'\nNote: You can consider that the word {word} is same as \
+                    {", ".join(synonyms)} in both the quesiton and the context.'  # noqa
+    prompt += f"\n\n{postamble}"
+    prompt += "\n\nAnswer:"
+    return prompt
+
+
+def run_completion(
+    llm: LLM,
+    prompt: str,
+) -> tuple[str, dict[str, Any]]:
+    logger: Logger = current_app.logger
+    try:
+        completion = llm.complete(prompt)
+
+        answer: str = completion[PSKeys.RESPONSE].text
+        return answer
+    # TODO: Catch and handle specific exception here
+    except SdkRateLimitError as e:
+        raise RateLimitError(f"Rate limit error. {str(e)}") from e
+    except Exception as e:
+        logger.error(f"Error fetching response for prompt: {e}.")
+        # TODO: Publish this error as a FE update
+        raise APIError(str(e)) from e
