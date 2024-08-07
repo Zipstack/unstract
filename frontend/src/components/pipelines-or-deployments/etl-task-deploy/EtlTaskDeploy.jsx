@@ -155,6 +155,18 @@ const EtlTaskDeploy = ({
     });
   };
 
+  const updatePipelineTable = (pipeline) => {
+    setTableData((prev) => {
+      const index = prev.findIndex((item) => item?.id === pipeline?.id);
+      if (index !== -1) {
+        const newData = [...prev];
+        newData[index] = pipeline;
+        return newData;
+      }
+      return prev;
+    });
+  };
+
   const updatePipeline = () => {
     const body = formDetails;
     body["pipeline_type"] = type.toUpperCase();
@@ -171,7 +183,7 @@ const EtlTaskDeploy = ({
     setLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        addPipeline(res?.data);
+        updatePipelineTable(res?.data);
         setOpen(false);
         clearFormDetails();
         setAlertDetails({

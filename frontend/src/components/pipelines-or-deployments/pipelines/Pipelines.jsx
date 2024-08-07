@@ -7,6 +7,7 @@ import {
   FileSearchOutlined,
   ReloadOutlined,
   NotificationOutlined,
+  EditOutlined,
 } from "@ant-design/icons";
 import { Button, Dropdown, Image, Space, Switch, Typography } from "antd";
 import PropTypes from "prop-types";
@@ -283,6 +284,23 @@ function Pipelines({ type }) {
         <Space
           direction="horizontal"
           className="action-items"
+          onClick={() => openAddModal(true)}
+        >
+          <div>
+            <EditOutlined />
+          </div>
+          <div>
+            <Typography.Text>Edit</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "2",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
           onClick={() => setOpenDeleteModal(true)}
         >
           <div>
@@ -295,7 +313,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "2",
+      key: "3",
       label: (
         <Space
           direction="horizontal"
@@ -323,7 +341,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "3",
+      key: "4",
       label: (
         <Space
           direction="horizontal"
@@ -340,7 +358,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "4",
+      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -357,7 +375,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "5",
+      key: "6",
       label: (
         <Space
           direction="horizontal"
@@ -378,7 +396,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "6",
+      key: "7",
       label: (
         <Space
           direction="horizontal"
