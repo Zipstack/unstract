@@ -144,22 +144,24 @@ function PromptCard({
     const promptId = promptDetails?.prompt_id;
     const isIncluded = listOfIds.includes(promptId);
 
-    if (
-      (isIncluded && isCoverageLoading) ||
-      (!isIncluded && !isCoverageLoading)
-    ) {
+    const isDocLoading = docOutputs?.some(
+      (doc) => doc?.key?.startsWith(`${promptId}__`) && doc?.isLoading
+    );
+
+    if ((isIncluded && isDocLoading) || (!isIncluded && !isDocLoading)) {
       return;
     }
 
-    if (isIncluded && !isCoverageLoading) {
+    if (isIncluded && !isDocLoading) {
       listOfIds = listOfIds.filter((item) => item !== promptId);
     }
 
-    if (!isIncluded && isCoverageLoading) {
+    if (!isIncluded && isDocLoading) {
       listOfIds.push(promptId);
     }
+
     updateCustomTool({ disableLlmOrDocChange: listOfIds });
-  }, [isCoverageLoading]);
+  }, [docOutputs, promptDetails, updateCustomTool]);
 
   useEffect(() => {
     if (isCoverageLoading && coverageTotal === listOfDocs?.length) {
