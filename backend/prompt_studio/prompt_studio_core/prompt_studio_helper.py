@@ -431,9 +431,8 @@ class PromptStudioHelper:
     ):
         prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
 
-        if prompt_instance.enforce_type == TSPKeys.TABLE:
-            if not modifier_loader:
-                raise OperationNotSupported()
+        if prompt_instance.enforce_type == TSPKeys.TABLE and not modifier_loader:
+            raise OperationNotSupported()
 
         prompt_name = prompt_instance.prompt_key
         PromptStudioHelper._publish_log(
@@ -724,23 +723,9 @@ class PromptStudioHelper:
                 attr_val = getattr(prompt, attr)
                 output[TSPKeys.EVAL_SETTINGS][attr] = attr_val
 
-        if prompt.enforce_type == TSPKeys.TABLE:
-            extract_doc_path: str = (
-                PromptStudioHelper._get_extract_or_summary_document_path(
-                    org_id, user_id, tool_id, doc_name, TSPKeys.EXTRACT
-                )
-            )
-            for modifier_plugin in modifier_loader:
-                cls = modifier_plugin[ModifierConfig.METADATA][
-                    ModifierConfig.METADATA_SERVICE_CLASS
-                ]
-                output = cls.update(
-                    output=output,
-                    tool_id=tool_id,
-                    prompt_id=str(prompt.prompt_id),
-                    prompt=prompt.prompt,
-                    input_file=extract_doc_path,
-                )
+        output = PromptStudioHelper.fetch_table_settings_if_enabled(
+            doc_name, prompt, org_id, user_id, tool_id
+        )
 
         outputs.append(output)
 
@@ -786,6 +771,36 @@ class PromptStudioHelper:
             )
         output_response = json.loads(answer["structure_output"])
         return output_response
+
+    @staticmethod
+    def fetch_table_settings_if_enabled(
+        doc_name: str,
+        prompt: ToolStudioPrompt,
+        org_id: str,
+        user_id: str,
+        tool_id: str,
+        output: dict[str, Any],
+    ) -> dict[str, Any]:
+
+        if prompt.enforce_type == TSPKeys.TABLE:
+            extract_doc_path: str = (
+                PromptStudioHelper._get_extract_or_summary_document_path(
+                    org_id, user_id, tool_id, doc_name, TSPKeys.EXTRACT
+                )
+            )
+            for modifier_plugin in modifier_loader:
+                cls = modifier_plugin[ModifierConfig.METADATA][
+                    ModifierConfig.METADATA_SERVICE_CLASS
+                ]
+                output = cls.update(
+                    output=output,
+                    tool_id=tool_id,
+                    prompt_id=str(prompt.prompt_id),
+                    prompt=prompt.prompt,
+                    input_file=extract_doc_path,
+                )
+
+        return output
 
     @staticmethod
     def dynamic_indexer(
