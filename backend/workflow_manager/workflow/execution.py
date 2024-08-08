@@ -290,7 +290,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         file_name: str,
         single_step: bool,
         file_history: Optional[FileHistory] = None,
-    ) -> bool:
+    ) -> tuple[bool, bool]:
         """Executes the input file.
 
         Args:
@@ -300,10 +300,12 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             file_history (Optional[FileHistory], optional):
             The file history object. Defaults to None.
         Returns:
-            bool: Flag indicating whether the file was executed.
+            tuple[bool, bool]: Flag indicating whether the file was executed
+            and skipped.
         """
         execution_type = ExecutionType.COMPLETE
         is_executed = False
+        is_skipped = False
         if single_step:
             execution_type = ExecutionType.STEP
         if not (file_history and file_history.is_completed()):
@@ -315,8 +317,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                 f"Skipping file {file_name} as it is already processed."
                 "Clear the cache to process it again"
             )
+            is_skipped = True
         self._handle_execution_type(execution_type)
-        return is_executed
+        return is_executed, is_skipped
 
     def execute_uncached_input(self, file_name: str, single_step: bool) -> None:
         """Executes the uncached input file.

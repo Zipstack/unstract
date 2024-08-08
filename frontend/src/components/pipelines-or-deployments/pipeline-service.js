@@ -54,6 +54,39 @@ function pipelineService() {
       };
       return axiosPrivate(requestOptions);
     },
+    getNotifications: (type, id) => {
+      const requestOptions = {
+        method: "GET",
+        url: `${path}/notifications/${type}/${id}/`,
+      };
+      return axiosPrivate(requestOptions);
+    },
+    createNotification: (body) => {
+      const requestOptions = {
+        method: "POST",
+        url: `${path}/notifications/`,
+        headers: requestHeaders,
+        data: body,
+      };
+      return axiosPrivate(requestOptions);
+    },
+    updateNotification: (body, id) => {
+      const requestOptions = {
+        method: "PUT",
+        url: `${path}/notifications/${id}/`,
+        headers: requestHeaders,
+        data: body,
+      };
+      return axiosPrivate(requestOptions);
+    },
+    deleteNotification: (id) => {
+      const requestOptions = {
+        method: "DELETE",
+        url: `${path}/notifications/${id}/`,
+        headers: requestHeaders,
+      };
+      return axiosPrivate(requestOptions);
+    },
   };
 }
 

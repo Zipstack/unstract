@@ -7,6 +7,7 @@ import {
   KeyOutlined,
   CloudDownloadOutlined,
   FileSearchOutlined,
+  NotificationOutlined,
 } from "@ant-design/icons";
 import { Button, Dropdown, Space, Switch, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
@@ -27,6 +28,7 @@ import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.js
 import { fetchExecutionLogs } from "../../pipelines-or-deployments/log-modal/fetchExecutionLogs";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
+import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
 
 function ApiDeployment() {
   const { sessionDetails } = useSessionStore();
@@ -51,6 +53,7 @@ function ApiDeployment() {
   const axiosPrivate = useAxiosPrivate();
   const { getApiKeys, downloadPostmanCollection, copyUrl } =
     usePipelineHelper();
+  const [openNotificationModal, setOpenNotificationModal] = useState(false);
 
   const handleFetchLogs = (page, pageSize) => {
     fetchExecutionLogs(
@@ -352,6 +355,23 @@ function ApiDeployment() {
         </Space>
       ),
     },
+    {
+      key: "7",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() => setOpenNotificationModal(true)}
+        >
+          <div>
+            <NotificationOutlined />
+          </div>
+          <div>
+            <Typography.Text>Setup Notifications</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
   ];
 
   return (
@@ -400,6 +420,12 @@ function ApiDeployment() {
         logRecord={executionLogs}
         totalLogs={executionLogsTotalCount}
         fetchExecutionLogs={handleFetchLogs}
+      />
+      <NotificationModal
+        open={openNotificationModal}
+        setOpen={setOpenNotificationModal}
+        type={deploymentApiTypes.api}
+        id={selectedRow?.id}
       />
     </>
   );

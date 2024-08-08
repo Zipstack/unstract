@@ -13,6 +13,7 @@ from api.exceptions import (
 )
 from api.key_helper import KeyHelper
 from api.models import APIDeployment, APIKey
+from api.notification import APINotification
 from api.serializers import APIExecutionResponseSerializer
 from django.core.files.uploadedfile import UploadedFile
 from django.db import connection
@@ -22,6 +23,7 @@ from rest_framework.utils.serializer_helpers import ReturnDict
 from workflow_manager.endpoint.destination import DestinationConnector
 from workflow_manager.endpoint.source import SourceConnector
 from workflow_manager.workflow.dto import ExecutionResponse
+from workflow_manager.workflow.enums import ExecutionStatus
 from workflow_manager.workflow.models.workflow import Workflow
 from workflow_manager.workflow.workflow_helper import WorkflowHelper
 
@@ -141,8 +143,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
             logger.info("Deleted the deployment instance")
             raise ApiKeyCreateException()
 
-    @staticmethod
+    @classmethod
     def execute_workflow(
+        cls,
         organization_name: str,
         api: APIDeployment,
         file_objs: list[UploadedFile],
@@ -180,11 +183,18 @@ class DeploymentHelper(BaseAPIKeyValidator):
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id
             )
-        except Exception:
+            cls._send_notification(api=api, result=result)
+        except Exception as error:
             DestinationConnector.delete_api_storage_dir(
                 workflow_id=workflow_id, execution_id=execution_id
             )
-            raise
+            result = ExecutionResponse(
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                execution_status=ExecutionStatus.ERROR.value,
+                error=str(error),
+            )
+            cls._send_notification(api=api, result=result)
         return APIExecutionResponseSerializer(result).data
 
     @staticmethod
@@ -201,3 +211,15 @@ class DeploymentHelper(BaseAPIKeyValidator):
             execution_id=execution_id
         )
         return execution_response
+
+    @staticmethod
+    def _send_notification(api: APIDeployment, result: ExecutionResponse) -> None:
+        """Sends a notification for the pipeline.
+        Args:
+            api (APIDeployment): APIDeployment to send notification for
+
+        Returns:
+            None
+        """
+        api_notification = APINotification(api=api, result=result)
+        api_notification.send()

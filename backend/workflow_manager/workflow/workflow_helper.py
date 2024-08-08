@@ -116,6 +116,7 @@ class WorkflowHelper:
     ) -> WorkflowExecution:
         input_files = source.list_files_from_source()
         total_files = len(input_files)
+        error_message = None
         processed_files = 0
         error_raised = 0
         execution_service.publish_initial_workflow_logs(total_files)
@@ -145,8 +146,13 @@ class WorkflowHelper:
                     ExecutionStatus.STOPPED, error=str(exception)
                 )
                 break
-        if error_raised and error_raised == total_files:
-            execution_service.update_execution(ExecutionStatus.ERROR)
+            except Exception as error:
+                error_message = str(error)
+                error_raised += 1
+        if error_raised and error_raised >= processed_files:
+            execution_service.update_execution(
+                ExecutionStatus.ERROR, error=error_message
+            )
         else:
             execution_service.update_execution(ExecutionStatus.COMPLETED)
 
@@ -290,6 +296,19 @@ class WorkflowHelper:
                 mode=workflow_execution.execution_mode,
                 result=destination.api_results,
             )
+        except Exception as e:
+            logger.error(f"Error executing workflow {workflow}: {e}")
+            WorkflowHelper._update_pipeline_status(
+                pipeline_id=pipeline_id, workflow_execution=workflow_execution
+            )
+            return ExecutionResponse(
+                str(workflow.id),
+                str(workflow_execution.id),
+                workflow_execution.status,
+                log_id=str(execution_service.execution_log_id),
+                error=workflow_execution.error_message,
+                mode=workflow_execution.execution_mode,
+            )
         finally:
             destination.delete_execution_directory()
 
@@ -302,11 +321,16 @@ class WorkflowHelper:
                 # Update pipeline status
                 if workflow_execution.status != ExecutionStatus.ERROR.value:
                     PipelineProcessor.update_pipeline(
-                        pipeline_id, Pipeline.PipelineStatus.SUCCESS
+                        pipeline_id,
+                        Pipeline.PipelineStatus.SUCCESS,
+                        execution_id=workflow_execution.id,
                     )
                 else:
                     PipelineProcessor.update_pipeline(
-                        pipeline_id, Pipeline.PipelineStatus.FAILURE
+                        pipeline_id,
+                        Pipeline.PipelineStatus.FAILURE,
+                        execution_id=workflow_execution.id,
+                        error_message=workflow_execution.error_message,
                     )
         # Expected exception since API deployments are not tracked in Pipeline
         except Pipeline.DoesNotExist:
