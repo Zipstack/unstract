@@ -222,12 +222,41 @@ def prompt_processor() -> Any:
                     "Unable to extract table details. "
                     "Please contact admin to resolve this issue."
                 )
-            answer = table_extractor["entrypoint_cls"].extract_large_table(
-                llm=llm, table_settings=table_settings
-            )
-            structured_output[output[PSKeys.NAME]] = answer
-            # We do not support summary and eval for table. Hence returning the result
-            return structured_output[output[PSKeys.NAME]]
+            try:
+                answer = table_extractor["entrypoint_cls"].extract_large_table(
+                    llm=llm, table_settings=table_settings
+                )
+                structured_output[output[PSKeys.NAME]] = answer
+                # We do not support summary and eval for table.
+                # Hence returning the result
+                if include_metadata:
+                    metadata = query_usage_metadata(
+                        db=be_db, token=platform_key, metadata=metadata
+                    )
+                    response = {
+                        PSKeys.METADATA: metadata,
+                        PSKeys.OUTPUT: structured_output,
+                    }
+                else:
+                    response = {PSKeys.OUTPUT: structured_output}
+                return response
+            except table_extractor["exception_cls"] as e:
+                app.logger.error(
+                    "Failed to extract table for the prompt %s: %s",
+                    output[PSKeys.NAME],
+                    str(e),
+                )
+                _publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.ERROR,
+                    RunLevel.TABLE_EXTRACTION,
+                    "Error while extract table for the prompt.",
+                )
 
         try:
             vector_index = vector_db.get_vector_store_index()

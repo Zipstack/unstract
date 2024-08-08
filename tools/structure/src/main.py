@@ -158,12 +158,13 @@ class StructureTool(BaseTool):
 
             for output in outputs:
                 try:
-                    table_settings = output["table_settings"]
+                    table_settings = output[SettingsKeys.TABLE_SETTINGS]
                     extracted_input_file = tool_data_dir / SettingsKeys.EXTRACT
-                    table_settings["input_file"] = extracted_input_file
-                    output.update({"table_settings": table_settings})
+                    table_settings[SettingsKeys.INPUT_FILE] = extracted_input_file
+                    output.update({SettingsKeys.TABLE_SETTINGS: table_settings})
 
                 except KeyError:
+                    # To check if the prompt has table enforce type selected.
                     pass
 
             self.stream_log("Fetching responses for prompts...")

@@ -79,6 +79,7 @@ class RunLevel(Enum):
     RUN = "RUN"
     EVAL = "EVAL"
     CHALLENGE = "CHALLENGE"
+    TABLE_EXTRACTION = "TABLE_EXTRACTION"
 
 
 class FeatureFlag:

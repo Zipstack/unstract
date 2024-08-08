@@ -431,7 +431,7 @@ class PromptStudioHelper:
     ):
         prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
 
-        if prompt_instance.enforce_type == "table":
+        if prompt_instance.enforce_type == TSPKeys.TABLE:
             if not modifier_loader:
                 raise OperationNotSupported()
 
@@ -724,10 +724,10 @@ class PromptStudioHelper:
                 attr_val = getattr(prompt, attr)
                 output[TSPKeys.EVAL_SETTINGS][attr] = attr_val
 
-        if prompt.enforce_type == "table":
+        if prompt.enforce_type == TSPKeys.TABLE:
             extract_doc_path: str = (
                 PromptStudioHelper._get_extract_or_summary_document_path(
-                    org_id, user_id, tool_id, doc_name, "extract"
+                    org_id, user_id, tool_id, doc_name, TSPKeys.EXTRACT
                 )
             )
             for modifier_plugin in modifier_loader:
@@ -737,7 +737,7 @@ class PromptStudioHelper:
                 output = cls.update(
                     output=output,
                     tool_id=tool_id,
-                    prompt_id=prompt.prompt_id,
+                    prompt_id=str(prompt.prompt_id),
                     prompt=prompt.prompt,
                     input_file=extract_doc_path,
                 )

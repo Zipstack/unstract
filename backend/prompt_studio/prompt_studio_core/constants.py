@@ -90,6 +90,8 @@ class ToolStudioPromptKeys:
     METADATA = "metadata"
     INCLUDE_METADATA = "include_metadata"
     TXT_EXTENTION = ".txt"
+    TABLE = "table"
+    EXTRACT = "extract"
 
 
 class FileViewTypes:

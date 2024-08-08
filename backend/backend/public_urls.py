@@ -107,12 +107,3 @@ try:
     ]
 except ImportError:
     pass
-
-try:
-    import pluggable_apps.apps.table_settings  # noqa # pylint: disable=unused-import
-
-    urlpatterns += [
-        path(f"{path_prefix}/", include("pluggable_apps.apps.table_settings.urls")),
-    ]
-except ImportError:
-    pass
