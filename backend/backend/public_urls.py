@@ -108,3 +108,16 @@ try:
     ]
 except ImportError:
     pass
+
+
+try:
+    import pluggable_apps.subscription.public_urls  # noqa # pylint: disable=unused-import
+
+    urlpatterns += [
+        path(
+            f"{path_prefix}/subscription/",
+            include("pluggable_apps.subscription.public_urls"),
+        ),
+    ]
+except ImportError:
+    pass

@@ -30,6 +30,7 @@ import { UsersPage } from "../pages/UsersPage.jsx";
 import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
 
 let TrialRoutes;
+let PaidPlans;
 let RequirePlatformAdmin;
 let PlatformAdminPage;
 let AppDeployments;
@@ -43,6 +44,10 @@ let ManualReviewSettings;
 try {
   TrialRoutes =
     require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
+
+  PaidPlans =
+    require("../plugins/subscription/paid-plans/PaidPlans.jsx").PaidPlans;
+
   RequirePlatformAdmin =
     require("../plugins/frictionless-onboard/RequirePlatformAdmin.jsx").RequirePlatformAdmin;
   PlatformAdminPage =
@@ -235,6 +240,7 @@ function Router() {
         {TrialRoutes && (
           <Route path="/trial-expired" element={<TrialRoutes />} />
         )}
+        {PaidPlans && <Route path="/plans" element={<PaidPlans />} />}
         <Route path="*" element={<NotFound />} />
       </Route>
       <Route path="oauth-status" element={<OAuthStatus />} />
