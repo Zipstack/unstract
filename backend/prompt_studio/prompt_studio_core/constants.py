@@ -89,6 +89,7 @@ class ToolStudioPromptKeys:
     CONTEXT = "context"
     METADATA = "metadata"
     INCLUDE_METADATA = "include_metadata"
+    TXT_EXTENTION = ".txt"
 
 
 class FileViewTypes:

@@ -5,6 +5,7 @@ from account.models import User
 from adapter_processor.models import AdapterInstance
 from django.conf import settings
 from django.db import IntegrityError
+from prompt_studio.modifier_loader import ModifierConfig, load_plugins
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.models import CustomTool
@@ -23,6 +24,7 @@ from .models import PromptStudioRegistry
 from .serializers import PromptStudioRegistrySerializer
 
 logger = logging.getLogger(__name__)
+modifier_loader = load_plugins()
 
 
 class PromptStudioRegistryHelper:
@@ -317,6 +319,19 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.SECTION] = prompt.profile_manager.section
             output[JsonSchemaKey.REINDEX] = prompt.profile_manager.reindex
             output[JsonSchemaKey.EMBEDDING_SUFFIX] = embedding_suffix
+
+            if prompt.enforce_type == "table":
+                for modifier_plugin in modifier_loader:
+                    cls = modifier_plugin[ModifierConfig.METADATA][
+                        ModifierConfig.METADATA_SERVICE_CLASS
+                    ]
+                    output = cls.update(
+                        output=output,
+                        tool_id=tool.tool_id,
+                        prompt_id=prompt.prompt_id,
+                        prompt=prompt.prompt,
+                    )
+
             outputs.append(output)
             output = {}
             vector_db = ""

@@ -213,6 +213,22 @@ def prompt_processor() -> Any:
                 "Unable to obtain LLM / embedding / vectorDB",
             )
             return APIError(message=msg)
+
+        if output[PSKeys.TYPE] == PSKeys.TABLE:
+            table_settings = output[PSKeys.TABLE_SETTINGS]
+            table_extractor: dict[str, Any] = plugins.get("table-extractor", {})
+            if not table_extractor:
+                raise APIError(
+                    "Unable to extract table details. "
+                    "Please contact admin to resolve this issue."
+                )
+            answer = table_extractor["entrypoint_cls"].extract_large_table(
+                llm=llm, table_settings=table_settings
+            )
+            structured_output[output[PSKeys.NAME]] = answer
+            # We do not support summary and eval for table. Hence returning the result
+            return structured_output[output[PSKeys.NAME]]
+
         try:
             vector_index = vector_db.get_vector_store_index()
 

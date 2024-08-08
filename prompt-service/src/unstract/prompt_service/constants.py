@@ -58,6 +58,8 @@ class PromptServiceContants:
     OUTPUT = "output"
     CONTEXT = "context"
     INCLUDE_METADATA = "include_metadata"
+    TABLE = "table"
+    TABLE_SETTINGS = "table_settings"
 
 
 class LogLevel(Enum):

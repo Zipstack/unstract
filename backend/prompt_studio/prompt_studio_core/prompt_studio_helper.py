@@ -12,6 +12,7 @@ from adapter_processor.models import AdapterInstance
 from django.conf import settings
 from django.db.models.manager import BaseManager
 from file_management.file_management_helper import FileManagerHelper
+from prompt_studio.modifier_loader import ModifierConfig, load_plugins
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_profile_manager.profile_manager_helper import (
     ProfileManagerHelper,
@@ -28,6 +29,7 @@ from prompt_studio.prompt_studio_core.exceptions import (
     EmptyPromptError,
     IndexingAPIError,
     NoPromptsFound,
+    OperationNotSupported,
     PermissionError,
     ToolNotValid,
 )
@@ -53,6 +55,8 @@ CHOICES_JSON = "/static/select_choices.json"
 ERROR_MSG = "User %s doesn't have access to adapter %s"
 
 logger = logging.getLogger(__name__)
+
+modifier_loader = load_plugins()
 
 
 class PromptStudioHelper:
@@ -426,6 +430,11 @@ class PromptStudioHelper:
         profile_manager_id,
     ):
         prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
+
+        if prompt_instance.enforce_type == "table":
+            if not modifier_loader:
+                raise OperationNotSupported()
+
         prompt_name = prompt_instance.prompt_key
         PromptStudioHelper._publish_log(
             {
@@ -555,6 +564,19 @@ class PromptStudioHelper:
         return str(Path(doc_path) / doc_name)
 
     @staticmethod
+    def _get_extract_or_summary_document_path(
+        org_id, user_id, tool_id, doc_name, doc_type
+    ) -> str:
+        doc_path = FileManagerHelper.handle_sub_directory_for_tenants(
+            org_id=org_id,
+            user_id=user_id,
+            tool_id=tool_id,
+            is_create=False,
+        )
+        extracted_doc_name = Path(doc_name).stem + TSPKeys.TXT_EXTENTION
+        return str(Path(doc_path) / doc_type / extracted_doc_name)
+
+    @staticmethod
     def _handle_response(
         response, run_id, prompts, document_id, is_single_pass, profile_manager_id=None
     ):
@@ -662,7 +684,7 @@ class PromptStudioHelper:
                 "status": IndexingStatus.PENDING_STATUS.value,
                 "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
             }
-
+        tool_id = str(tool.tool_id)
         output: dict[str, Any] = {}
         outputs: list[dict[str, Any]] = []
         grammer_dict = {}
@@ -702,6 +724,24 @@ class PromptStudioHelper:
                 attr_val = getattr(prompt, attr)
                 output[TSPKeys.EVAL_SETTINGS][attr] = attr_val
 
+        if prompt.enforce_type == "table":
+            extract_doc_path: str = (
+                PromptStudioHelper._get_extract_or_summary_document_path(
+                    org_id, user_id, tool_id, doc_name, "extract"
+                )
+            )
+            for modifier_plugin in modifier_loader:
+                cls = modifier_plugin[ModifierConfig.METADATA][
+                    ModifierConfig.METADATA_SERVICE_CLASS
+                ]
+                output = cls.update(
+                    output=output,
+                    tool_id=tool_id,
+                    prompt_id=prompt.prompt_id,
+                    prompt=prompt.prompt,
+                    input_file=extract_doc_path,
+                )
+
         outputs.append(output)
 
         tool_settings = {}
@@ -713,8 +753,6 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.PREAMBLE] = tool.preamble
         tool_settings[TSPKeys.POSTAMBLE] = tool.postamble
         tool_settings[TSPKeys.GRAMMAR] = grammar_list
-
-        tool_id = str(tool.tool_id)
 
         file_hash = ToolUtils.get_hash_from_file(file_path=doc_path)
 

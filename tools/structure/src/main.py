@@ -64,7 +64,6 @@ class StructureTool(BaseTool):
         tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION] = (
             single_pass_extraction_mode
         )
-
         prompt_service_resp = None
         _, file_name = os.path.split(input_file)
         if summarize_as_source:
@@ -156,6 +155,17 @@ class StructureTool(BaseTool):
                     reindex = False
             except Exception as e:
                 self.stream_error_and_exit(f"Error fetching data and indexing: {e}")
+
+            for output in outputs:
+                try:
+                    table_settings = output["table_settings"]
+                    extracted_input_file = tool_data_dir / SettingsKeys.EXTRACT
+                    table_settings["input_file"] = extracted_input_file
+                    output.update({"table_settings": table_settings})
+
+                except KeyError:
+                    pass
+
             self.stream_log("Fetching responses for prompts...")
             prompt_service_resp = responder.answer_prompt(
                 payload=payload,
