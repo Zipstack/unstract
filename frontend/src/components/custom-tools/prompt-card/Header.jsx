@@ -53,6 +53,7 @@ function Header({
     indexDocs,
     isPublicSource,
     isSimplePromptStudio,
+    details,
   } = useCustomToolStore();
   const [items, setItems] = useState([]);
 
@@ -105,7 +106,7 @@ function Header({
     }
 
     setItems(dropdownItems);
-  }, [promptDetails]);
+  }, [promptDetails, details]);
 
   return (
     <Row>
