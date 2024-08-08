@@ -28,6 +28,9 @@ import "./Actions.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
+// Remove this variable and its usages from the code after the fix for step execution is implemented.
+const DISABLE_STEP_EXECUTION = true;
+
 function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   const [executionId, setExecutionId] = useState("");
   const [execType, setExecType] = useState("");
@@ -436,7 +439,9 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
                   ? getInputFile(true, true, 0)
                   : handleWfExecution(true, true, 0)
               }
-              disabled={disableAction() || handleDisable(0)}
+              disabled={
+                disableAction() || handleDisable(0) || DISABLE_STEP_EXECUTION
+              }
               loading={execType === "STEP"}
             >
               <StepIcon className="step-icon" />
@@ -445,7 +450,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           <Tooltip title="Next step">
             <Button
               onClick={() => handleWfExecution(false, true, 1)}
-              disabled={handleDisable(1)}
+              disabled={handleDisable(1) || DISABLE_STEP_EXECUTION}
               loading={stepExecType === wfExecutionTypes[1]}
             >
               <StepForwardOutlined />
@@ -454,7 +459,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           <Tooltip title="Execute remaining steps">
             <Button
               onClick={() => handleWfExecution(false, true, 3)}
-              disabled={handleDisable(3)}
+              disabled={handleDisable(3) || DISABLE_STEP_EXECUTION}
               loading={stepExecType === wfExecutionTypes[3]}
             >
               <FastForwardOutlined />
@@ -463,7 +468,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           <Tooltip title="Stop execution">
             <Button
               onClick={() => handleWfExecution(false, true, 2)}
-              disabled={handleDisable(2)}
+              disabled={handleDisable(2) || DISABLE_STEP_EXECUTION}
               loading={stepExecType === wfExecutionTypes[2]}
             >
               <StopOutlined />
