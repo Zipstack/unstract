@@ -331,7 +331,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
           Modal.warning({
             title: "Warning",
             content:
-              "Please ensure that the tool in use exported with Highlighting enabled.",
+              "Please ensure that the tool in use is exported with Highlighting enabled.",
           });
         }
         // Warning message section.
