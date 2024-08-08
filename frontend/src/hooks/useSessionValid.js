@@ -7,6 +7,7 @@ import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
 import { useSessionStore } from "../store/session-store";
 import { useUserSession } from "./useUserSession.js";
 import { listFlags } from "../helpers/FeatureFlagsData.js";
+import { useAlertStore } from "../store/alert-store";
 
 let getTrialDetails;
 let isPlatformAdmin;
@@ -30,6 +31,7 @@ try {
 function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
   const handleException = useExceptionHandler();
+  const { setAlertDetails } = useAlertStore();
   const navigate = useNavigate();
   const userSession = useUserSession();
 
@@ -133,11 +135,6 @@ function useSessionValid() {
       // Set the session details
       setSessionDetails(getSessionData(userAndOrgDetails));
     } catch (err) {
-      // TODO: Throw popup error message
-      if (err.response?.status === 402) {
-        handleException(err);
-      }
-
       if (err.request?.status === 412) {
         const response = JSON.parse(err.request.response);
         const domainName = response.domain;
@@ -145,6 +142,7 @@ function useSessionValid() {
         window.location.href = `/error?code=${code}&domain=${domainName}`;
         // May be need a logout button there or auto logout
       }
+      setAlertDetails(handleException(err));
     }
   };
 }
