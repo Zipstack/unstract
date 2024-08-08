@@ -31,6 +31,7 @@ urlpatterns = [
     path(f"{path_prefix}/", include("docs.urls")),
     # API deployment
     path(f"{api_path_prefix}/", include("api.urls")),
+    path(f"{api_path_prefix}/pipeline/", include("pipeline.public_api_urls")),
     # Feature flags
     path(f"{path_prefix}/flags/", include("feature_flag.urls")),
 ]
