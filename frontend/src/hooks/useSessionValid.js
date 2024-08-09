@@ -135,6 +135,12 @@ function useSessionValid() {
       // Set the session details
       setSessionDetails(getSessionData(userAndOrgDetails));
     } catch (err) {
+      // TODO: Throw popup error message
+      // REVIEW: Add condition to check for trial period status
+      if (err.response?.status === 402) {
+        handleException(err);
+      }
+
       if (err.request?.status === 412) {
         const response = JSON.parse(err.request.response);
         const domainName = response.domain;
