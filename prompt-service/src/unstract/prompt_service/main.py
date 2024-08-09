@@ -323,9 +323,9 @@ def prompt_processor() -> Any:
                     prompt="promptx",
                     metadata=metadata,
                 )
-                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = clean_context_plugin["entrypoint_cls"].run(
-                    context=context
-                )
+                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = clean_context_plugin[
+                    "entrypoint_cls"
+                ].run(context=context)
             else:
                 answer = "NA"
                 _publish_log(
