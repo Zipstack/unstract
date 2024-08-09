@@ -11,7 +11,7 @@ import redis
 from cryptography.fernet import Fernet, InvalidToken
 from dotenv import load_dotenv
 from flask import Flask, Request, Response, jsonify, make_response, request
-from unstract.platform_service.constants import DBTableV2, FeatureFlag
+from unstract.platform_service.constants import DBTable, DBTableV2, FeatureFlag
 from unstract.platform_service.exceptions import APIError, ErrorResponse
 from unstract.platform_service.helper import (
     AdapterInstanceRequestHelper,
@@ -174,7 +174,9 @@ def validate_bearer_token(token: Optional[str]) -> bool:
 
     except Exception as e:
         app.logger.error(
-            f"Error while validating bearer token: {e}", stack_info=True, exc_info=True
+            f"Error while validating bearer token: {e}",
+            stack_info=True,
+            exc_info=True,
         )
         return False
     return True
@@ -183,6 +185,61 @@ def validate_bearer_token(token: Optional[str]) -> bool:
 @app.route("/health", methods=["GET"], endpoint="health_check")
 def health_check() -> str:
     return "OK"
+
+
+@app.route("/page-usage", methods=["POST"], endpoint="page_usage")
+@authentication_middleware
+def page_usage() -> Any:
+    """Usage endpoint."""
+    result: dict[str, Any] = {
+        "status": "ERROR",
+        "error": "",
+        "unique_id": "",
+    }
+    payload: Optional[dict[Any, Any]] = request.json
+    if not payload:
+        result["error"] = INVALID_PAYLOAD
+        return make_response(result, 400)
+
+    bearer_token = get_token_from_auth_header(request)
+    _, org_id = get_organization_from_bearer_token(bearer_token)
+
+    page_count = payload.get("page_count", "")
+    file_name = payload.get("file_name", "")
+    file_size = payload.get("file_size", "")
+    file_type = payload.get("file_type", "")
+    run_id = payload.get("run_id", "")
+
+    query = f"""
+            INSERT INTO {DBTable.PAGE_USAGE} (id, organization_id, pages_processed,
+            file_name, file_size, file_type, run_id, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+    usage_id = uuid.uuid4()
+    current_time = datetime.now()
+    params = (
+        usage_id,
+        org_id,
+        page_count,
+        file_name,
+        file_size,
+        file_type,
+        run_id,
+        current_time,
+    )
+
+    try:
+        with be_db.atomic() as transaction:
+            be_db.execute_sql(query, params)
+            transaction.commit()
+            app.logger.info("Entry created with id %s for %s", usage_id, org_id)
+            result["status"] = "OK"
+            result["unique_id"] = usage_id
+            return make_response(result, 200)
+    except Exception as e:
+        app.logger.error(f"Error while creating page usage entry: {e}")
+        result["error"] = "Internal Server Error"
+        return make_response(result, 500)
 
 
 @app.route("/usage", methods=["POST"])
