@@ -11,7 +11,7 @@ authors = [
 ]
 dependencies = [
     "Authlib==1.2.1", # For Auth plugins
-    "boto3~=1.28.17", # For Unstract-cloud-storage
+    "boto3~=1.34.0", # For Unstract-cloud-storage
     "celery>=5.3.4", # For Celery
     "flower>=2.0.1", # Celery Monitoring
     "cron-descriptor==1.4.0", # For cron string description
