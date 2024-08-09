@@ -25,6 +25,7 @@ from unstract.workflow_execution.exceptions import StopExecution
 from utils.cache_service import CacheService
 from utils.local_context import StateStore
 from workflow_manager.endpoint.destination import DestinationConnector
+from workflow_manager.endpoint.dto import FileHash
 from workflow_manager.endpoint.source import SourceConnector
 from workflow_manager.workflow.constants import (
     CeleryConfigurations,
@@ -112,10 +113,9 @@ class WorkflowHelper:
         destination: DestinationConnector,
         execution_service: WorkflowExecutionServiceHelper,
         single_step: bool,
-        hash_values_of_files: dict[str, str] = {},
+        hash_values_of_files: dict[str, FileHash] = {},
     ) -> WorkflowExecution:
-        input_files = source.list_files_from_source()
-        total_files = len(input_files)
+        input_files, total_files = source.list_files_from_source(hash_values_of_files)
         error_message = None
         processed_files = 0
         error_raised = 0
@@ -123,19 +123,19 @@ class WorkflowHelper:
         execution_service.update_execution(
             ExecutionStatus.EXECUTING, increment_attempt=True
         )
-        for index, input_file in enumerate(input_files):
+        for index, (file_path, file_hash) in enumerate(input_files.items()):
             file_number = index + 1
             try:
                 is_executed, error = WorkflowHelper.process_file(
                     current_file_idx=file_number,
                     total_files=total_files,
-                    input_file=input_file,
+                    input_file=file_hash.file_path,
                     workflow=workflow,
                     source=source,
                     destination=destination,
                     execution_service=execution_service,
                     single_step=single_step,
-                    hash_values_of_files=hash_values_of_files,
+                    file_hash=file_hash,
                 )
                 if is_executed:
                     processed_files += 1
@@ -149,6 +149,8 @@ class WorkflowHelper:
             except Exception as error:
                 error_message = str(error)
                 error_raised += 1
+                log_message = f"Error processing file {file_path}: {error_message}"
+                execution_service.publish_log(message=log_message, level=LogLevel.ERROR)
         if error_raised and error_raised >= processed_files:
             execution_service.update_execution(
                 ExecutionStatus.ERROR, error=error_message
@@ -171,27 +173,22 @@ class WorkflowHelper:
         destination: DestinationConnector,
         execution_service: WorkflowExecutionServiceHelper,
         single_step: bool,
-        hash_values_of_files: dict[str, str],
+        file_hash: FileHash,
     ) -> tuple[bool, Optional[str]]:
-        file_history = None
         error = None
         is_executed = False
-        file_name, file_hash = source.add_file_to_volume(
-            input_file_path=input_file,
-            hash_values_of_files=hash_values_of_files,
+        file_name = source.add_file_to_volume(
+            input_file_path=input_file, file_hash=file_hash
         )
         try:
             execution_service.initiate_tool_execution(
                 current_file_idx, total_files, file_name, single_step
             )
-            file_history = FileHistoryHelper.get_file_history(
-                workflow=workflow, cache_key=file_hash
-            )
-            is_executed = execution_service.execute_input_file(
-                file_name=file_name,
-                single_step=single_step,
-                file_history=file_history,
-            )
+            if not file_hash.is_executed:
+                execution_service.execute_input_file(
+                    file_name=file_name,
+                    single_step=single_step,
+                )
         except StopExecution:
             raise
         except Exception as e:
@@ -209,7 +206,6 @@ class WorkflowHelper:
             file_name=file_name,
             file_hash=file_hash,
             workflow=workflow,
-            file_history=file_history,
             error=error,
             input_file_path=input_file,
         )
@@ -234,7 +230,7 @@ class WorkflowHelper:
     @staticmethod
     def run_workflow(
         workflow: Workflow,
-        hash_values_of_files: dict[str, str] = {},
+        hash_values_of_files: dict[str, FileHash] = {},
         organization_id: Optional[str] = None,
         pipeline_id: Optional[str] = None,
         scheduled: bool = False,
@@ -269,7 +265,11 @@ class WorkflowHelper:
             execution_id=execution_id,
             execution_service=execution_service,
         )
-        destination = DestinationConnector(workflow=workflow, execution_id=execution_id)
+        destination = DestinationConnector(
+            workflow=workflow,
+            execution_id=execution_id,
+            execution_service=execution_service,
+        )
         # Validating endpoints
         source.validate()
         destination.validate()
@@ -283,7 +283,7 @@ class WorkflowHelper:
                 single_step=single_step,
                 hash_values_of_files=hash_values_of_files,
             )
-            # TODO: Update through signals
+
             WorkflowHelper._update_pipeline_status(
                 pipeline_id=pipeline_id, workflow_execution=workflow_execution
             )
@@ -375,7 +375,7 @@ class WorkflowHelper:
     def execute_workflow_async(
         workflow_id: str,
         execution_id: str,
-        hash_values_of_files: dict[str, str],
+        hash_values_of_files: dict[str, FileHash],
         timeout: int = -1,
         pipeline_id: Optional[str] = None,
         include_metadata: bool = False,
@@ -393,12 +393,15 @@ class WorkflowHelper:
             ExecutionResponse: Existing status of execution
         """
         try:
+            file_hash_in_str = {
+                key: value.to_json() for key, value in hash_values_of_files.items()
+            }
             org_schema = connection.tenant.schema_name
             log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
             async_execution = WorkflowHelper.execute_bin.delay(
                 org_schema,
                 workflow_id,
-                hash_values_of_files=hash_values_of_files,
+                hash_values_of_files=file_hash_in_str,
                 execution_id=execution_id,
                 pipeline_id=pipeline_id,
                 log_events_id=log_events_id,
@@ -453,7 +456,7 @@ class WorkflowHelper:
         schema_name: str,
         workflow_id: str,
         execution_id: str,
-        hash_values_of_files: dict[str, str],
+        hash_values_of_files: dict[str, dict[str, Any]],
         scheduled: bool = False,
         execution_mode: Optional[tuple[str, str]] = None,
         pipeline_id: Optional[str] = None,
@@ -480,6 +483,10 @@ class WorkflowHelper:
         Returns:
             dict[str, list[Any]]: Returns a dict with result from workflow execution
         """
+        hash_values = {
+            key: FileHash.from_json(value)
+            for key, value in hash_values_of_files.items()
+        }
         task_id = current_task.request.id
         tenant: Organization = (
             get_tenant_model().objects.filter(schema_name=schema_name).first()
@@ -510,7 +517,7 @@ class WorkflowHelper:
                 scheduled=scheduled,
                 workflow_execution=workflow_execution,
                 execution_mode=execution_mode,
-                hash_values_of_files=hash_values_of_files,
+                hash_values_of_files=hash_values,
                 include_metadata=include_metadata,
             ).result
             return result
@@ -520,7 +527,7 @@ class WorkflowHelper:
         workflow: Workflow,
         execution_id: Optional[str] = None,
         pipeline_id: Optional[str] = None,
-        hash_values_of_files: dict[str, str] = {},
+        hash_values_of_files: dict[str, FileHash] = {},
         include_metadata: bool = False,
     ) -> ExecutionResponse:
         if pipeline_id:
@@ -576,7 +583,7 @@ class WorkflowHelper:
         workflow: Workflow,
         execution_action: str,
         execution_id: Optional[str] = None,
-        hash_values_of_files: dict[str, str] = {},
+        hash_values_of_files: dict[str, FileHash] = {},
         include_metadata: bool = False,
     ) -> ExecutionResponse:
         if execution_action is Workflow.ExecutionAction.START.value:  # type: ignore
