@@ -4,7 +4,7 @@ import os
 import traceback
 import uuid
 from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 
 import peewee
 import redis
@@ -598,7 +598,7 @@ def log_exceptions(e: HTTPException) -> None:
 
 
 @app.errorhandler(HTTPException)
-def handle_http_exception(e: HTTPException) -> Response:
+def handle_http_exception(e: HTTPException) -> Union[Response, tuple[Response, int]]:
     """Return JSON instead of HTML for HTTP errors."""
     log_exceptions(e)
     if isinstance(e, APIError):
@@ -613,7 +613,7 @@ def handle_http_exception(e: HTTPException) -> Response:
 
 
 @app.errorhandler(Exception)
-def handle_uncaught_exception(e) -> Response:
+def handle_uncaught_exception(e: Exception) -> Union[Response, tuple[Response, int]]:
     """Handler for uncaught exceptions.
 
     Args:
