@@ -29,7 +29,12 @@ class JobKwargsSerializer(serializers.Serializer):
 
 class AddJobSerializer(serializers.Serializer):
     id = serializers.CharField(max_length=FieldLength.UUID_LENGTH)
-    cron_string = serializers.CharField(max_length=FieldLength.CRON_LENGTH)
+    cron_string = serializers.CharField(
+        max_length=FieldLength.CRON_LENGTH,
+        allow_null=True,
+        required=False,
+        allow_blank=True,
+    )
     name = serializers.CharField(
         max_length=JOB_NAME_LENGTH, required=False, allow_blank=True
     )
