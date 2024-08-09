@@ -108,9 +108,6 @@ def prompt_processor() -> Any:
     file_hash = payload.get(PSKeys.FILE_HASH)
     doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
-    include_metadata = (
-        request.args.get(PSKeys.INCLUDE_METADATA, "false").lower() == "true"
-    )
     structured_output: dict[str, Any] = {}
     metadata: Optional[dict[str, Any]] = {
         PSKeys.RUN_ID: run_id,
@@ -217,6 +214,7 @@ def prompt_processor() -> Any:
             vector_index = vector_db.get_vector_store_index()
 
             context = ""
+            clean_context_plugin: dict[str, Any] = plugins.get(PSKeys.CLEAN_CONTEXT, {})
             if output[PSKeys.CHUNK_SIZE] == 0:
                 # We can do this only for chunkless indexes
                 context: Optional[str] = index.query_index(
@@ -290,8 +288,11 @@ def prompt_processor() -> Any:
                     llm=llm,
                     context=context,
                     prompt="promptx",
+                    metadata=metadata,
                 )
-                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
+                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = clean_context_plugin[
+                    "entrypoint_cls"
+                ].run(context=context)
             else:
                 answer = "NA"
                 _publish_log(
@@ -316,6 +317,7 @@ def prompt_processor() -> Any:
                         llm=llm,
                         vector_index=vector_index,
                         retrieval_type=retrieval_strategy,
+                        metadata=metadata,
                     )
                     metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
                 else:
@@ -611,11 +613,8 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         "Execution complete",
     )
-    if include_metadata:
-        metadata = query_usage_metadata(db=be_db, token=platform_key, metadata=metadata)
-        response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
-    else:
-        response = {PSKeys.OUTPUT: structured_output}
+    metadata = query_usage_metadata(db=be_db, token=platform_key, metadata=metadata)
+    response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
     return response
 
 
@@ -626,6 +625,7 @@ def run_retrieval(  # type:ignore
     llm: LLM,
     vector_index,
     retrieval_type: str,
+    metadata: dict[str, Any],
 ) -> tuple[str, str]:
     prompt = output[PSKeys.PROMPTX]
     if retrieval_type == PSKeys.SUBQUESTION:
@@ -656,6 +656,7 @@ def run_retrieval(  # type:ignore
         llm=llm,
         context=context,
         prompt="promptx",
+        metadata=metadata,
     )
 
     return (answer, context)

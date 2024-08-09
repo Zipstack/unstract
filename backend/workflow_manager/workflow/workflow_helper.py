@@ -413,12 +413,14 @@ class WorkflowHelper:
             logger.info(f"Job {async_execution} enqueued.")
             celery_result = task.to_dict()
             task_result = celery_result.get("result")
-            return ExecutionResponse(
+            execution_response = ExecutionResponse(
                 workflow_id,
                 execution_id,
                 task.status,
                 result=task_result,
             )
+            execution_response.remove_result_metadata_keys()
+            return execution_response
         except celery_exceptions.TimeoutError:
             return ExecutionResponse(
                 workflow_id,

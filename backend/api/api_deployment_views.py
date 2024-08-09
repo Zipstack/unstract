@@ -87,6 +87,8 @@ class DeploymentExecution(views.APIView):
                 },
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
+        if response.execution_status == CeleryTaskState.SUCCESS.value:
+            response.remove_result_metadata_keys()
         return Response(
             {"status": response.execution_status, "message": response.result},
             status=status.HTTP_200_OK,
