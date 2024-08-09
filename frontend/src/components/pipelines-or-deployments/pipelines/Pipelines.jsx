@@ -495,6 +495,7 @@ function Pipelines({ type }) {
           menu={{ items: actionItems }}
           placement="bottomLeft"
           onOpenChange={() => setSelectedPorD(record)}
+          trigger={["click"]}
         >
           <EllipsisOutlined rotate={90} className="p-or-d-actions" />
         </Dropdown>
