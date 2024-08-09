@@ -61,6 +61,7 @@ class PromptServiceContants:
     EPILOGUE = "epilogue"
     PLATFORM_POSTAMBLE = "platform_postamble"
     EXTRACT_EPILOGUE = "extract-epilogue"
+    CLEAN_CONTEXT = "clean-context"
 
 
 class LogLevel(Enum):

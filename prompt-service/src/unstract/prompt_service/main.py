@@ -89,26 +89,6 @@ def construct_prompt(
     context: str,
     platform_postamble: str,
 ) -> str:
-    # Let's cleanup the context. Remove if 3 consecutive newlines are found
-    context_lines = context.split("\n")
-    new_context_lines = []
-    empty_line_count = 0
-    for line in context_lines:
-        if line.strip() == "":
-            empty_line_count += 1
-        else:
-            if empty_line_count >= 3:
-                empty_line_count = 3
-            for i in range(empty_line_count):
-                new_context_lines.append("")
-            empty_line_count = 0
-            new_context_lines.append(line.rstrip())
-    context = "\n".join(new_context_lines)
-    app.logger.info(
-        f"Old context length: {len(context_lines)}, "
-        f"New context length: {len(new_context_lines)}"
-    )
-
     prompt = (
         f"{preamble}\n\nContext:\n---------------\n{context}\n"
         f"-----------------\n\nQuestion or Instruction: {prompt}\n"
@@ -161,9 +141,6 @@ def prompt_processor() -> Any:
     file_hash = payload.get(PSKeys.FILE_HASH)
     doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
-    include_metadata = (
-        request.args.get(PSKeys.INCLUDE_METADATA, "false").lower() == "true"
-    )
     structured_output: dict[str, Any] = {}
     metadata: Optional[dict[str, Any]] = {
         PSKeys.RUN_ID: run_id,
@@ -270,6 +247,7 @@ def prompt_processor() -> Any:
             vector_index = vector_db.get_vector_store_index()
 
             context = ""
+            clean_context_plugin: dict[str, Any] = plugins.get(PSKeys.CLEAN_CONTEXT, {})
             if output[PSKeys.CHUNK_SIZE] == 0:
                 # We can do this only for chunkless indexes
                 context: Optional[str] = index.query_index(
@@ -345,7 +323,9 @@ def prompt_processor() -> Any:
                     prompt="promptx",
                     metadata=metadata,
                 )
-                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
+                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = clean_context_plugin["entrypoint_cls"].run(
+                    context=context
+                )
             else:
                 answer = "NA"
                 _publish_log(
@@ -666,11 +646,8 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         "Execution complete",
     )
-    if include_metadata:
-        metadata = query_usage_metadata(db=be_db, token=platform_key, metadata=metadata)
-        response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
-    else:
-        response = {PSKeys.OUTPUT: structured_output}
+    metadata = query_usage_metadata(db=be_db, token=platform_key, metadata=metadata)
+    response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
     return response
 
 
