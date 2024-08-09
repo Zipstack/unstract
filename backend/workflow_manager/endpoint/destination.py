@@ -535,6 +535,8 @@ class DestinationConnector(BaseConnector):
             q_name = f"review_queue_{self.organization_id}_{workflow.id}"
             if meta_data:
                 whisper_hash = meta_data.get("whisper-hash")
+            else:
+                whisper_hash = None
             queue_result = QueueResult(
                 file=file_name,
                 status=QueueResultStatus.SUCCESS,
