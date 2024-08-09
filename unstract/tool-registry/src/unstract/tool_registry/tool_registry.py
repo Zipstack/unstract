@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class ToolRegistry:
-    REGISTRY_FILE = "config/registry.yaml"
+    REGISTRY_FILE = "registry.yaml"
     PRIVATE_TOOL_CONFIG_FILE = "private_tools.json"
     PUBLIC_TOOL_CONFIG_FILE = "public_tools.json"
 
@@ -39,7 +39,12 @@ class ToolRegistry:
             - get_tool_properties_by_tool_id(): Get properties of a tool.
             - get_tool_icon__by_tool_id(): Get icon of a tool.
         """
-        directory = os.path.dirname(os.path.abspath(__file__))
+        directory = os.getenv("TOOL_REGISTRY_CONFIG_PATH")
+        if not directory:
+            raise ValueError(
+                "Env 'TOOL_REGISTRY_CONFIG_PATH' is not set, please add the tool "
+                "registry JSONs and YAML to a directory and set the env."
+            )
         self.helper = ToolRegistryHelper(
             registry=os.path.join(directory, registry_file),
             private_tools_file=os.path.join(directory, private_tools),

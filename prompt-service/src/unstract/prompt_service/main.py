@@ -11,21 +11,18 @@ from unstract.prompt_service.authentication_middleware import AuthenticationMidd
 from unstract.prompt_service.config import create_app
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.constants import RunLevel
-from unstract.prompt_service.exceptions import (
-    APIError,
-    ErrorResponse,
-    NoPayloadError,
-    RateLimitError,
-)
+from unstract.prompt_service.exceptions import APIError, ErrorResponse, NoPayloadError
 from unstract.prompt_service.helper import (
     EnvLoader,
+    construct_and_run_prompt,
+    extract_variable,
     plugin_loader,
     query_usage_metadata,
+    run_completion,
 )
 from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import Embedding
-from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
 from unstract.sdk.exceptions import SdkError
 from unstract.sdk.index import Index
 from unstract.sdk.llm import LLM
@@ -79,36 +76,6 @@ def _publish_log(
         log_events_id,
         LogPublisher.log_prompt(component, level.value, state.value, message),
     )
-
-
-def construct_prompt(
-    preamble: str,
-    prompt: str,
-    postamble: str,
-    grammar_list: list[dict[str, Any]],
-    context: str,
-    platform_postamble: str,
-) -> str:
-    prompt = (
-        f"{preamble}\n\nContext:\n---------------\n{context}\n"
-        f"-----------------\n\nQuestion or Instruction: {prompt}\n"
-    )
-    if grammar_list is not None and len(grammar_list) > 0:
-        prompt += "\n"
-        for grammar in grammar_list:
-            word = ""
-            synonyms = []
-            if PSKeys.WORD in grammar:
-                word = grammar[PSKeys.WORD]
-                if PSKeys.SYNONYMS in grammar:
-                    synonyms = grammar[PSKeys.SYNONYMS]
-            if len(synonyms) > 0 and word != "":
-                prompt += f'\nNote: You can consider that the word {word} is same as \
-                    {", ".join(synonyms)} in both the quesiton and the context.'  # noqa
-    if platform_postamble:
-        platform_postamble += "\n\n"
-    prompt += f"\n\n{postamble}\n\n{platform_postamble}Answer:"
-    return prompt
 
 
 def authentication_middleware(func: Any) -> Any:
@@ -717,89 +684,6 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
         else:
             app.logger.info("Node score is less than 0. " f"Ignored: {node.score}")
     return text
-
-
-def construct_and_run_prompt(
-    tool_settings: dict[str, Any],
-    output: dict[str, Any],
-    llm: LLM,
-    context: str,
-    prompt: str,
-    metadata: dict[str, Any],
-) -> str:
-    prompt = construct_prompt(
-        preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
-        prompt=output[prompt],
-        postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
-        grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
-        context=context,
-        platform_postamble=tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, ""),
-    )
-    return run_completion(
-        llm=llm,
-        prompt=prompt,
-        metadata=metadata,
-        prompt_key=output[PSKeys.NAME],
-    )
-
-
-def run_completion(
-    llm: LLM,
-    prompt: str,
-    metadata: Optional[dict[str, str]] = None,
-    prompt_key: Optional[str] = None,
-) -> str:
-    try:
-        extract_epilogue_plugin: dict[str, Any] = plugins.get(
-            PSKeys.EXTRACT_EPILOGUE, {}
-        )
-        extract_epilogue = None
-        if extract_epilogue_plugin:
-            extract_epilogue = extract_epilogue_plugin["entrypoint_cls"].run
-        completion = llm.complete(
-            prompt=prompt,
-            process_text=extract_epilogue,
-        )
-        answer: str = completion[PSKeys.RESPONSE].text
-        epilogue = completion.get(PSKeys.EPILOGUE)
-        if all([metadata, epilogue, prompt_key]):
-            try:
-                app.logger.info(f"Epilogue extracted from LLM: {epilogue}")
-                epilogue = json.loads(epilogue)
-            except JSONDecodeError:
-                app.logger.error(f"Failed to convert epilogue to JSON: {epilogue}")
-            metadata.setdefault(PSKeys.EPILOGUE, {})[prompt_key] = epilogue
-        return answer
-    # TODO: Catch and handle specific exception here
-    except SdkRateLimitError as e:
-        raise RateLimitError(f"Rate limit error. {str(e)}") from e
-    except Exception as e:
-        app.logger.error(f"Error fetching response for prompt: {e}.")
-        # TODO: Publish this error as a FE update
-        raise APIError(str(e)) from e
-
-
-def extract_variable(
-    structured_output: dict[str, Any],
-    variable_names: list[Any],
-    output: dict[str, Any],
-    promptx: str,
-) -> str:
-    for variable_name in variable_names:
-        if promptx.find(f"%{variable_name}%") >= 0:
-            if variable_name in structured_output:
-                promptx = promptx.replace(
-                    f"%{variable_name}%",
-                    str(structured_output[variable_name]),
-                )
-            else:
-                raise ValueError(
-                    f"Variable {variable_name} not found " "in structured output"
-                )
-
-    if promptx != output[PSKeys.PROMPT]:
-        app.logger.info(f"Prompt after variable replacement: {promptx}")
-    return promptx
 
 
 def enable_plugins() -> None:

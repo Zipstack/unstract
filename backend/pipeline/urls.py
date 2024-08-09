@@ -24,6 +24,12 @@ pipeline_detail = PipelineViewSet.as_view(
     }
 )
 
+download_postman_collection = PipelineViewSet.as_view(
+    {
+        "get": PipelineViewSet.download_postman_collection.__name__,
+    }
+)
+
 pipeline_execute = PipelineViewSet.as_view({"post": "execute"})
 
 
@@ -37,5 +43,10 @@ urlpatterns = format_suffix_patterns(
             name=PipelineURL.EXECUTIONS,
         ),
         path("pipeline/execute/", pipeline_execute, name=PipelineURL.EXECUTE),
+        path(
+            "pipeline/api/postman_collection/<uuid:pk>/",
+            download_postman_collection,
+            name="download_pipeline_postman_collection",
+        ),
     ]
 )
