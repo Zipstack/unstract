@@ -117,7 +117,6 @@ except ImportError:
 
 # Clone urls
 try:
-    import pluggable_apps.clone.urls  # pylint: disable=unused-import
 
     urlpatterns += [
         path("", include("pluggable_apps.clone.urls")),
