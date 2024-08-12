@@ -21,7 +21,6 @@ class UnstractFSConnectorException(ConnectorBaseException):
 class GoogleDriveAccessDeniedException(UnstractFSConnectorException):
 
     def __init__(self, detail: Any) -> None:
-        print("*** details ** ", detail)
         default_detail = (
             "Access denied for Google Drive. Please check if the env variables are "
             "correctly configured for your app and they include all the necessary "
