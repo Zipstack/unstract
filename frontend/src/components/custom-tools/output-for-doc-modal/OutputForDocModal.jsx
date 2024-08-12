@@ -26,9 +26,12 @@ import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 
 let publicOutputsApi;
+let publicAdapterApi;
 try {
   publicOutputsApi =
     require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
+  publicAdapterApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicAdapterApi;
 } catch {
   // The component will remain null of it is not available
 }
@@ -172,12 +175,14 @@ function OutputForDocModal({
   };
 
   const getAdapterInfo = () => {
-    axiosPrivate
-      .get(`/api/v1/unstract/${sessionDetails.orgId}/adapter/?adapter_type=LLM`)
-      .then((res) => {
-        const adapterList = res.data;
-        setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
-      });
+    let url = `/api/v1/unstract/${sessionDetails.orgId}/adapter/?adapter_type=LLM`;
+    if (isPublicSource) {
+      url = publicAdapterApi(id, "LLM");
+    }
+    axiosPrivate.get(url).then((res) => {
+      const adapterList = res.data;
+      setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
+    });
   };
 
   const handleGetOutputForDocs = (profile = profileManagerId) => {
