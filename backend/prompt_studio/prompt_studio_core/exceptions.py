@@ -74,6 +74,6 @@ class OperationNotSupported(APIException):
     default_detail = (
         "This feature is not supported "
         "in the open-source version. "
-        "Please check out our premium options "
-        "for access to this functionality "
+        "Please check our cloud or enterprise on-premise offering  "
+        "for access to this functionality."
     )
