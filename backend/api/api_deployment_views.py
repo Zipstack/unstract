@@ -74,6 +74,7 @@ class DeploymentExecution(views.APIView):
         self, request: Request, org_name: str, api_name: str, api: APIDeployment
     ) -> Response:
         execution_id = request.query_params.get("execution_id")
+        include_metadata = request.query_params.get("include_metadata", False)
         if not execution_id:
             raise InvalidAPIRequest("execution_id shouldn't be empty")
         response: ExecutionResponse = DeploymentHelper.get_execution_status(
@@ -87,7 +88,10 @@ class DeploymentExecution(views.APIView):
                 },
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
-        if response.execution_status == CeleryTaskState.SUCCESS.value:
+        if (
+            response.execution_status == CeleryTaskState.SUCCESS.value
+            and not include_metadata
+        ):
             response.remove_result_metadata_keys()
         return Response(
             {"status": response.execution_status, "message": response.result},
