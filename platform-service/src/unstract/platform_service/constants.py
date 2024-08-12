@@ -4,6 +4,12 @@ class FeatureFlag:
     MULTI_TENANCY_V2 = "multi_tenancy_v2"
 
 
+class DBTable:
+    """Database tables."""
+
+    PAGE_USAGE = "page_usage"
+
+
 class DBTableV2:
     """Database tables."""
 
