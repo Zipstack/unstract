@@ -24,7 +24,7 @@ class GoogleDriveAccessDeniedException(UnstractFSConnectorException):
         print("*** details ** ", detail)
         default_detail = (
             "Access denied for Google Drive. Please check if the env variables are "
-            "correctly configured for your app and they include all the necessary"
+            "correctly configured for your app and they include all the necessary "
             "permissions."
         )
         super().__init__(detail=default_detail)

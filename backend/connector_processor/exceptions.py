@@ -55,5 +55,5 @@ class UnstractFSException(APIException):
     default_detail = "Error testing connection. "
 
     def __init__(self, detail: str = default_detail) -> None:
-        status_code = 500
+        status_code = 403
         super().__init__(detail=detail, code=status_code)
