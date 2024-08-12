@@ -4,7 +4,6 @@ from enum import Enum
 from json import JSONDecodeError
 from typing import Any, Optional
 
-import peewee
 from flask import json, jsonify, request
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
@@ -13,10 +12,11 @@ from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.exceptions import APIError, ErrorResponse, NoPayloadError
 from unstract.prompt_service.helper import (
-    EnvLoader,
     construct_and_run_prompt,
     extract_variable,
+    get_cleaned_context,
     plugin_loader,
+    plugins,
     query_usage_metadata,
     run_completion,
 )
@@ -31,9 +31,6 @@ from werkzeug.exceptions import HTTPException
 
 from unstract.core.pubsub_helper import LogPublisher
 
-POS_TEXT_PATH = "/tmp/pos.txt"
-USE_UNSTRACT_PROMPT = True
-MAX_RETRIES = 3
 NO_CONTEXT_ERROR = (
     "Couldn't fetch context from vector DB. "
     "This happens usually due to a delay by the Vector DB "
@@ -41,28 +38,9 @@ NO_CONTEXT_ERROR = (
     "Please try again after some time"
 )
 
-PG_BE_HOST = EnvLoader.get_env_or_die("PG_BE_HOST")
-PG_BE_PORT = EnvLoader.get_env_or_die("PG_BE_PORT")
-PG_BE_USERNAME = EnvLoader.get_env_or_die("PG_BE_USERNAME")
-PG_BE_PASSWORD = EnvLoader.get_env_or_die("PG_BE_PASSWORD")
-PG_BE_DATABASE = EnvLoader.get_env_or_die("PG_BE_DATABASE")
-
-be_db = peewee.PostgresqlDatabase(
-    PG_BE_DATABASE,
-    user=PG_BE_USERNAME,
-    password=PG_BE_PASSWORD,
-    host=PG_BE_HOST,
-    port=PG_BE_PORT,
-)
-be_db.init(PG_BE_DATABASE)
-be_db.connect()
-
-AuthenticationMiddleware.be_db = be_db
-
 app = create_app()
-
-
-plugins: dict[str, dict[str, Any]] = plugin_loader(app)
+# Load plugins
+plugin_loader(app)
 
 
 def _publish_log(
@@ -214,7 +192,6 @@ def prompt_processor() -> Any:
             vector_index = vector_db.get_vector_store_index()
 
             context = ""
-            clean_context_plugin: dict[str, Any] = plugins.get(PSKeys.CLEAN_CONTEXT, {})
             if output[PSKeys.CHUNK_SIZE] == 0:
                 # We can do this only for chunkless indexes
                 context: Optional[str] = index.query_index(
@@ -290,9 +267,9 @@ def prompt_processor() -> Any:
                     prompt="promptx",
                     metadata=metadata,
                 )
-                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = clean_context_plugin[
-                    "entrypoint_cls"
-                ].run(context=context)
+                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = get_cleaned_context(
+                    context
+                )
             else:
                 answer = "NA"
                 _publish_log(
@@ -319,7 +296,9 @@ def prompt_processor() -> Any:
                         retrieval_type=retrieval_strategy,
                         metadata=metadata,
                     )
-                    metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
+                    metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = get_cleaned_context(
+                        context
+                    )
                 else:
                     app.logger.info(
                         "Invalid retrieval strategy passed: %s",
@@ -613,7 +592,7 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         "Execution complete",
     )
-    metadata = query_usage_metadata(db=be_db, token=platform_key, metadata=metadata)
+    metadata = query_usage_metadata(token=platform_key, metadata=metadata)
     response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
     return response
 
@@ -684,30 +663,6 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
         else:
             app.logger.info("Node score is less than 0. " f"Ignored: {node.score}")
     return text
-
-
-def enable_plugins() -> None:
-    """Enables plugins if available."""
-    single_pass_extration_plugin: dict[str, Any] = plugins.get(
-        PSKeys.SINGLE_PASS_EXTRACTION, {}
-    )
-    summarize_plugin: dict[str, Any] = plugins.get(PSKeys.SUMMARIZE, {})
-    simple_prompt_studio: dict[str, Any] = plugins.get(PSKeys.SIMPLE_PROMPT_STUDIO, {})
-    if single_pass_extration_plugin:
-        single_pass_extration_plugin["entrypoint_cls"](
-            app=app, challenge_plugin=plugins.get(PSKeys.CHALLENGE, {})
-        )
-    if summarize_plugin:
-        summarize_plugin["entrypoint_cls"](
-            app=app,
-        )
-    if simple_prompt_studio:
-        simple_prompt_studio["entrypoint_cls"](
-            app=app,
-        )
-
-
-enable_plugins()
 
 
 def log_exceptions(e: HTTPException):
