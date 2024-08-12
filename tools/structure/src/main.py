@@ -86,7 +86,7 @@ class StructureTool(BaseTool):
         usage_kwargs[SettingsKeys.RUN_ID] = run_id
         process_text = None
         try:
-            from .helper import process_text
+            from helper import process_text  # type: ignore [attr-defined]
         except ImportError:
             self.stream_log("Function 'process_text' is not found")
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
