@@ -15,6 +15,7 @@ from unstract.prompt_service.exceptions import APIError, ErrorResponse, NoPayloa
 from unstract.prompt_service.helper import (
     EnvLoader,
     construct_and_run_prompt,
+    extract_table,
     extract_variable,
     plugin_loader,
     query_usage_metadata,
@@ -215,20 +216,13 @@ def prompt_processor() -> Any:
             return APIError(message=msg)
 
         if output[PSKeys.TYPE] == PSKeys.TABLE:
-            table_settings = output[PSKeys.TABLE_SETTINGS]
-            table_extractor: dict[str, Any] = plugins.get("table-extractor", {})
-            if not table_extractor:
-                raise APIError(
-                    "Unable to extract table details. "
-                    "Please contact admin to resolve this issue."
-                )
             try:
-                answer = table_extractor["entrypoint_cls"].extract_large_table(
-                    llm=llm, table_settings=table_settings
+                structured_output = extract_table(
+                    output=output,
+                    plugins=plugins,
+                    structured_output=structured_output,
+                    llm=llm,
                 )
-                structured_output[output[PSKeys.NAME]] = answer
-                # We do not support summary and eval for table.
-                # Hence returning the result
                 if include_metadata:
                     metadata = query_usage_metadata(
                         db=be_db, token=platform_key, metadata=metadata
@@ -240,11 +234,11 @@ def prompt_processor() -> Any:
                 else:
                     response = {PSKeys.OUTPUT: structured_output}
                 return response
-            except table_extractor["exception_cls"] as e:
+            except APIError as api_error:
                 app.logger.error(
                     "Failed to extract table for the prompt %s: %s",
                     output[PSKeys.NAME],
-                    str(e),
+                    str(api_error),
                 )
                 _publish_log(
                     log_events_id,
