@@ -49,3 +49,11 @@ class TestConnectorInputError(UnstractBaseException):
         super().__init__(detail=core_err.message, core_err=core_err)
         self.default_detail = core_err.message
         self.status_code = 400
+
+
+class UnstractFSException(APIException):
+    default_detail = "Error testing connection. "
+
+    def __init__(self, detail: str = default_detail) -> None:
+        status_code = 500
+        super().__init__(detail=detail, code=status_code)
