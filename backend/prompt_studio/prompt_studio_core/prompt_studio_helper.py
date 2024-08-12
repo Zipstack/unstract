@@ -509,7 +509,9 @@ class PromptStudioHelper:
         prompts = [
             prompt
             for prompt in prompts
-            if prompt.prompt_type != TSPKeys.NOTES and prompt.active
+            if prompt.prompt_type != TSPKeys.NOTES
+            and prompt.active
+            and prompt.enforce_type != TSPKeys.TABLE
         ]
         if not prompts:
             logger.error(f"[{tool_id or 'NA'}] No prompts found for id: {id}")
