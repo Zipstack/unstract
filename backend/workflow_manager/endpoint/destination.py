@@ -251,6 +251,11 @@ class DestinationConnector(BaseConnector):
         )
 
         data = self.get_result(file_history)
+        # If data is None, don't execute CREATE or INSERT query
+        if not data:
+            return
+        # Remove metadata from result
+        data.pop("metadata", None)
         values = DatabaseUtils.get_columns_and_values(
             column_mode_str=column_mode,
             data=data,
@@ -268,9 +273,6 @@ class DestinationConnector(BaseConnector):
             connector_settings=connector_settings,
         )
         engine = db_class.get_engine()
-        # If data is None, don't execute CREATE or INSERT query
-        if data is None:
-            return
         DatabaseUtils.create_table_if_not_exists(
             db_class=db_class,
             engine=engine,
