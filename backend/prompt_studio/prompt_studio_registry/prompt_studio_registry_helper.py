@@ -14,7 +14,7 @@ from prompt_studio.prompt_studio_core.prompt_studio_helper import PromptStudioHe
 from prompt_studio.prompt_studio_output_manager.models import PromptStudioOutputManager
 from unstract.tool_registry.dto import Properties, Spec, Tool
 
-from .constants import JsonSchemaKey
+from .constants import JsonSchemaKey, PromptStudioRegistryKeys
 from .exceptions import (
     EmptyToolExportError,
     InternalError,
@@ -321,7 +321,7 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.REINDEX] = prompt.profile_manager.reindex
             output[JsonSchemaKey.EMBEDDING_SUFFIX] = embedding_suffix
 
-            if prompt.enforce_type == "table":
+            if prompt.enforce_type == PromptStudioRegistryKeys.TABLE:
                 for modifier_plugin in modifier_loader:
                     cls = modifier_plugin[ModifierConfig.METADATA][
                         ModifierConfig.METADATA_SERVICE_CLASS
