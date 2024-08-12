@@ -12,7 +12,8 @@ from adapter_processor.models import AdapterInstance
 from django.conf import settings
 from django.db.models.manager import BaseManager
 from file_management.file_management_helper import FileManagerHelper
-from prompt_studio.modifier_loader import ModifierConfig, load_plugins
+from prompt_studio.modifier_loader import ModifierConfig
+from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_profile_manager.profile_manager_helper import (
     ProfileManagerHelper,
@@ -56,7 +57,7 @@ ERROR_MSG = "User %s doesn't have access to adapter %s"
 
 logger = logging.getLogger(__name__)
 
-modifier_loader = load_plugins()
+modifier_loader = load_modifier_plugins()
 
 
 class PromptStudioHelper:

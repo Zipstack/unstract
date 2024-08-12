@@ -5,7 +5,8 @@ from account.models import User
 from adapter_processor.models import AdapterInstance
 from django.conf import settings
 from django.db import IntegrityError
-from prompt_studio.modifier_loader import ModifierConfig, load_plugins
+from prompt_studio.modifier_loader import ModifierConfig
+from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.models import CustomTool
@@ -24,7 +25,7 @@ from .models import PromptStudioRegistry
 from .serializers import PromptStudioRegistrySerializer
 
 logger = logging.getLogger(__name__)
-modifier_loader = load_plugins()
+modifier_loader = load_modifier_plugins()
 
 
 class PromptStudioRegistryHelper:
