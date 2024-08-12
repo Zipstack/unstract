@@ -63,7 +63,7 @@ def load_plugins() -> list[Any]:
                     "modifier plugin %s is not active.",
                     modifier_module_name,
                 )
-        except ModuleNotFoundError as exception:
+        except ModuleNotFoundError:
             logger.warning("No prompt modifier plugins loaded")
 
     if len(modifier_plugins) == 0:
