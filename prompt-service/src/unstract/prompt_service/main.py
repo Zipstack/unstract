@@ -255,7 +255,7 @@ def prompt_processor() -> Any:
                     },
                     LogLevel.ERROR,
                     RunLevel.TABLE_EXTRACTION,
-                    "Error while extract table for the prompt.",
+                    "Error while extracting table for the prompt",
                 )
 
         try:
