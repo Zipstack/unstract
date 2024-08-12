@@ -335,7 +335,7 @@ class WorkflowHelper:
         except Pipeline.DoesNotExist:
             api = APIDeploymentUtils.get_api_by_id(api_id=pipeline_id)
             if api:
-                APIDeploymentUtils._send_notification(
+                APIDeploymentUtils.send_notification(
                     api=api, workflow_execution=workflow_execution
                 )
         except Exception as e:

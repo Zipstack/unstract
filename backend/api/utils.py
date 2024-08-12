@@ -24,7 +24,7 @@ class APIDeploymentUtils:
             return None
 
     @staticmethod
-    def _send_notification(
+    def send_notification(
         api: APIDeployment, workflow_execution: WorkflowExecution
     ) -> None:
         """Sends a notification for the specified API deployment and workflow
