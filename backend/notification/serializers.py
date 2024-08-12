@@ -39,10 +39,19 @@ class NotificationSerializer(serializers.ModelSerializer):
 
     def _validate_authorization(self, data):
         """Ensure required authorization fields are provided based on the
-        authorization type."""
-        authorization_type = data.get("authorization_type")
-        authorization_key = data.get("authorization_key")
-        authorization_header = data.get("authorization_header")
+        authorization type.
+
+        Getting existing data in the case of PATCH request
+        """
+        authorization_type = data.get(
+            "authorization_type", getattr(self.instance, "authorization_type", None)
+        )
+        authorization_key = data.get(
+            "authorization_key", getattr(self.instance, "authorization_key", None)
+        )
+        authorization_header = data.get(
+            "authorization_header", getattr(self.instance, "authorization_header", None)
+        )
 
         try:
             authorization_type_enum = AuthorizationType(authorization_type)
@@ -75,27 +84,6 @@ class NotificationSerializer(serializers.ModelSerializer):
                         "authorization_header": (
                             "Authorization header is required when using "
                             "CUSTOM_HEADER authorization type."
-                        )
-                    }
-                )
-
-        elif authorization_type_enum == AuthorizationType.NONE:
-            if authorization_key:
-                raise serializers.ValidationError(
-                    {
-                        "authorization_key": (
-                            "Authorization key should not be provided for NONE "
-                            "authorization type."
-                        )
-                    }
-                )
-
-            if authorization_header:
-                raise serializers.ValidationError(
-                    {
-                        "authorization_header": (
-                            "Authorization header should not be provided for NONE "
-                            "authorization type."
                         )
                     }
                 )
