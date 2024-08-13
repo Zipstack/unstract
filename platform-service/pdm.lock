@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:a650076acef87a75ba22e8a034cb07502e3592e76fff246f3d70673ff15bc457"
+content_hash = "sha256:71b920097d60b99f8e0ed0a2eeb792bf535731d29c0574621fe3acc7f53c77e5"
 
 [[package]]
 name = "async-timeout"
@@ -451,11 +451,11 @@ files = [
 
 [[package]]
 name = "peewee"
-version = "3.17.6"
+version = "3.14.0"
 summary = "a little orm"
 groups = ["default"]
 files = [
-    {file = "peewee-3.17.6.tar.gz", hash = "sha256:cea5592c6f4da1592b7cff8eaf655be6648a1f5857469e30037bf920c03fb8fb"},
+    {file = "peewee-3.14.0.tar.gz", hash = "sha256:59c5ef43877029b9133d87001dcc425525de231d1f983cece8828197fb4b84fa"},
 ]
 
 [[package]]
