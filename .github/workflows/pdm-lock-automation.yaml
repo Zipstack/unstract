@@ -96,12 +96,20 @@ jobs:
           else
             echo "** github branch name: ${{ github.head_ref }} ** ";
             git stash
+            echo "** 1 ** ";
             git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
+            echo "** 2 ** ";
             echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
+            echo "** 3 ** ";
             git add pdm.lock
+            echo "** 4 ** ";
             pip install pre-commit~=3.6.2
+            echo "** 5 ** ";
             pre-commit run pdm-lock-check
+            echo "** 6 ** ";
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
+            echo "** 7 ** ";
             git push origin HEAD:${{ github.head_ref }}
+            echo "** 8 ** ";
             git stash pop
           fi
