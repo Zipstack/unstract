@@ -12,7 +12,7 @@ class UnstractFSConnectorException(ConnectorBaseException):
         *args: Any,
         **kwargs: Any,
     ) -> None:
-        default_detail = "Error creating/inserting to database. "
+        default_detail = "Error testing FS connector. "
         user_message = default_detail if not detail else detail
         super().__init__(*args, user_message=user_message, **kwargs)
         self.detail = user_message
