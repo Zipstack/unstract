@@ -76,7 +76,7 @@ jobs:
         if: steps.check.outputs.changed == 'true'
         run: python -m pip install pdm==2.16.1
 
-      - name: Update and Add pdm.lock
+      - name: Update and Push pdm.lock
         if: steps.check.outputs.changed == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -100,18 +100,15 @@ jobs:
           echo "Updating pdm.lock..."
           pdm lock -G :all -v
 
-      - name: Commit and Push Changes
-        if: steps.check.outputs.changed == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          source .venv/bin/activate
           if git diff --quiet; then
             echo "No changes between the current branch and the ${{ github.head_ref }} branch."
             echo "Nothing to commit"
           else
             echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
+
+            echo "Checking git status 1..."
             git status
+
             git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
             if git stash list | grep -q 'stash@{0}'; then
               echo "Popping stash..."
@@ -129,7 +126,7 @@ jobs:
             echo "Running pre-commit checks..."
             pre-commit run pdm-lock-check
 
-            echo "Checking git status ..."
+            echo "Checking git status 2..."
             git status
 
             echo "Committing and pushing changes..."
