@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:268dde4a1ce7070881cc03b5c13804261462635455d7a8c0a40340d71db27de8"
+content_hash = "sha256:00e0cde5d7b98e51171b22f703249f26104a820e4d5fd367d08296706e4600d9"
 
 [[package]]
 name = "adlfs"
@@ -1164,7 +1164,7 @@ files = [
 
 [[package]]
 name = "flower"
-version = "2.0.0"
+version = "2.0.1"
 requires_python = ">=3.7"
 summary = "Celery Flower"
 groups = ["default"]
@@ -1176,8 +1176,8 @@ dependencies = [
     "tornado<7.0.0,>=5.0.0",
 ]
 files = [
-    {file = "flower-2.0.0-py2.py3-none-any.whl", hash = "sha256:571f9ed1c57a622e862de35eceb8a4244f023fbcfb7175f53e45ebe679f46d90"},
-    {file = "flower-2.0.0.tar.gz", hash = "sha256:5657785d728a54914256c34fd0551fe2d7152aab08062ebc645bf86b97b8aec5"},
+    {file = "flower-2.0.1-py2.py3-none-any.whl", hash = "sha256:9db2c621eeefbc844c8dd88be64aef61e84e2deb29b271e02ab2b5b9f01068e2"},
+    {file = "flower-2.0.1.tar.gz", hash = "sha256:5ab717b979530770c16afb48b50d2a98d23c3e9fe39851dcf6bc4d01845a02a0"},
 ]
 
 [[package]]
@@ -2663,7 +2663,7 @@ files = [
 
 [[package]]
 name = "milvus-lite"
-version = "2.4.9"
+version = "2.4.8"
 requires_python = ">=3.7"
 summary = "A lightweight version of Milvus wrapped with Python."
 groups = ["default", "dev"]
@@ -2672,9 +2672,10 @@ dependencies = [
     "tqdm",
 ]
 files = [
-    {file = "milvus_lite-2.4.9-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:d3e617b3d68c09ad656d54bc3d8cc4ef6ef56c54015e1563d4fe4bcec6b7c90a"},
-    {file = "milvus_lite-2.4.9-py3-none-macosx_11_0_arm64.whl", hash = "sha256:6e7029282d6829b277ebb92f64e2370be72b938e34770e1eb649346bda5d1d7f"},
-    {file = "milvus_lite-2.4.9-py3-none-manylinux2014_x86_64.whl", hash = "sha256:7f53e674602101cfbcf0a4a59d19eaa139dfd5580639f3040ad73d901f24fc0b"},
+    {file = "milvus_lite-2.4.8-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:b7e90b34b214884cd44cdc112ab243d4cb197b775498355e2437b6cafea025fe"},
+    {file = "milvus_lite-2.4.8-py3-none-macosx_11_0_arm64.whl", hash = "sha256:519dfc62709d8f642d98a1c5b1dcde7080d107e6e312d677fef5a3412a40ac08"},
+    {file = "milvus_lite-2.4.8-py3-none-manylinux2014_aarch64.whl", hash = "sha256:b21f36d24cbb0e920b4faad607019bb28c1b2c88b4d04680ac8c7697a4ae8a4d"},
+    {file = "milvus_lite-2.4.8-py3-none-manylinux2014_x86_64.whl", hash = "sha256:08332a2b9abfe7c4e1d7926068937e46f8fb81f2707928b7bc02c9dc99cebe41"},
 ]
 
 [[package]]
