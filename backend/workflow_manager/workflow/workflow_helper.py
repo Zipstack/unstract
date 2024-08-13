@@ -45,6 +45,7 @@ from workflow_manager.workflow.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow.models.execution import WorkflowExecution
 from workflow_manager.workflow.models.workflow import Workflow
+from workflow_manager.workflow.utils import WorkflowUtil
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +124,16 @@ class WorkflowHelper:
         execution_service.update_execution(
             ExecutionStatus.EXECUTING, increment_attempt=True
         )
+        if total_files > 0:
+            q_file_no_list = WorkflowUtil.get_q_no_list(workflow, total_files)
+
         for index, (file_path, file_hash) in enumerate(input_files.items()):
             file_number = index + 1
+            file_hash = WorkflowUtil.add_file_destination_filehash(
+                file_number,
+                q_file_no_list,
+                file_hash,
+            )
             try:
                 is_executed, error = WorkflowHelper.process_file(
                     current_file_idx=file_number,

@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 
 @dataclass
@@ -9,14 +9,18 @@ class FileHash:
     file_hash: str
     file_name: str
     source_connection_type: str
+    file_destination: Optional[tuple[str, str]] = (
+        None  # To which destination this file wants to go for MRQ percentage
+    )
     is_executed: bool = False
 
-    def to_json(self):
+    def to_json(self) -> dict[str, Any]:
         return {
             "file_path": self.file_path,
             "file_hash": self.file_hash,
             "file_name": self.file_name,
             "source_connection_type": self.source_connection_type,
+            "file_destination": self.file_destination,
             "is_executed": self.is_executed,
         }
 

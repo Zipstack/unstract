@@ -131,6 +131,23 @@ class DestinationConnector(BaseConnector):
         ):
             raise DestinationConnectorNotConfigured()
 
+    def _push_data_to_queue(
+        self,
+        file_history: Optional[FileHistory],
+        file_name: str,
+        workflow: Workflow,
+        input_file_path: str,
+    ) -> None:
+        result = self.get_result(file_history)
+        meta_data = self.get_metadata(file_history)
+        self._push_to_queue(
+            file_name=file_name,
+            workflow=workflow,
+            result=result,
+            input_file_path=input_file_path,
+            meta_data=meta_data,
+        )
+
     def handle_output(
         self,
         file_name: str,
@@ -153,7 +170,15 @@ class DestinationConnector(BaseConnector):
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
-            self.insert_into_db(input_file_path=input_file_path)
+            if (
+                file_hash.file_destination
+                == WorkflowEndpoint.ConnectionType.MANUALREVIEW
+            ):
+                self._push_data_to_queue(
+                    file_history, file_name, workflow, input_file_path
+                )
+            else:
+                self.insert_into_db(input_file_path=input_file_path)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
             meta_data = self.get_metadata(file_history)
@@ -161,15 +186,7 @@ class DestinationConnector(BaseConnector):
                 file_name=file_name, error=error, result=result, meta_data=meta_data
             )
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
-            result = self.get_result(file_history)
-            meta_data = self.get_metadata(file_history)
-            self._push_to_queue(
-                file_name=file_name,
-                workflow=workflow,
-                result=result,
-                input_file_path=input_file_path,
-                meta_data=meta_data,
-            )
+            self._push_data_to_queue(file_history, file_name, workflow, input_file_path)
         if self.execution_service:
             self.execution_service.publish_log(
                 message=f"File {file_name} processed successfully"
