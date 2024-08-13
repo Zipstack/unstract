@@ -76,7 +76,7 @@ jobs:
         if: steps.check.outputs.changed == 'true'
         run: python -m pip install pdm==2.16.1
 
-      - name: Update and Push pdm.lock
+      - name: Update and Add pdm.lock
         if: steps.check.outputs.changed == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -91,34 +91,48 @@ jobs:
           else
             echo "Virtual environment already exists."
           fi
+
           source .venv/bin/activate
-          echo "Stashing changes..."
-          git stash
+
+          echo "Stashing changes if there are any..."
+          git stash || echo "No stash entries found, continuing..."
+
           echo "Updating pdm.lock..."
           pdm lock -G :all -v
+
+      - name: Commit and Push Changes
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          source .venv/bin/activate
           if git diff --quiet; then
             echo "No changes between the current branch and the ${{ github.head_ref }} branch."
             echo "Nothing to commit"
           else
-            echo "** github branch name: ${{ github.head_ref }} ** ";
-            echo "Checking Git status 1..."
-            git status
-            echo "** 1 ** ";
-            git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
-            git stash pop
-            echo "** 2 ** ";
             echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
-            echo "** 3 ** ";
-            git add pdm.lock
-            echo "** 4 ** ";
-            pip install pre-commit~=3.6.2
-            echo "** 5 ** ";
-            pre-commit run pdm-lock-check
-            echo "** 6 ** ";
-            echo "Checking Git status..."
             git status
+            git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
+            if git stash list | grep -q 'stash@{0}'; then
+              echo "Popping stash..."
+              git stash pop || echo "Failed to pop stash. Continue with other changes."
+            else
+              echo "No stash found, skipping pop."
+            fi
+
+            echo "Adding pdm.lock changes..."
+            git add pdm.lock
+
+            echo "Installing pre-commit..."
+            pip install pre-commit~=3.6.2
+
+            echo "Running pre-commit checks..."
+            pre-commit run pdm-lock-check
+
+            echo "Checking git status ..."
+            git status
+
+            echo "Committing and pushing changes..."
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
-            echo "** 7 ** ";
             git push origin HEAD:${{ github.head_ref }}
-            echo "** 8 ** ";
           fi
