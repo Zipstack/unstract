@@ -92,7 +92,7 @@ jobs:
             echo "Virtual environment already exists."
           fi
           source .venv/bin/activate
-           echo "Stashing changes..."
+          echo "Stashing changes..."
           git stash
           echo "Updating pdm.lock..."
           pdm lock -G :all -v
