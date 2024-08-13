@@ -421,3 +421,10 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         workflow: Workflow,
     ) -> WorkflowDto:
         return WorkflowDto(id=workflow.id)
+
+    @staticmethod
+    def get_execution_by_id(execution_id: str) -> Optional[WorkflowExecution]:
+        try:
+            return WorkflowExecution.objects.get(id=execution_id)
+        except WorkflowExecution.DoesNotExist:
+            return None
