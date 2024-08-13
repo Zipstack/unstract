@@ -32,8 +32,3 @@ class TaskRegistry:
             f"[{os.getpid()}] Log message received: {log_message} for the room {room}"
         )
         handle_user_logs(room=room, event=event, message=log_message)
-
-    @shared_task(name="hellowold111111")
-    def my_periodic_task():
-        print("This task runs periodically!------------")
-        return
