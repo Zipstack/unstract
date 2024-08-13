@@ -133,13 +133,12 @@ class DestinationConnector(BaseConnector):
 
     def _push_data_to_queue(
         self,
-        file_history: Optional[FileHistory],
         file_name: str,
         workflow: Workflow,
         input_file_path: str,
     ) -> None:
-        result = self.get_result(file_history)
-        meta_data = self.get_metadata(file_history)
+        result = self.get_result()
+        meta_data = self.get_metadata()
         self._push_to_queue(
             file_name=file_name,
             workflow=workflow,
@@ -174,9 +173,7 @@ class DestinationConnector(BaseConnector):
                 file_hash.file_destination
                 == WorkflowEndpoint.ConnectionType.MANUALREVIEW
             ):
-                self._push_data_to_queue(
-                    file_history, file_name, workflow, input_file_path
-                )
+                self._push_data_to_queue(file_name, workflow, input_file_path)
             else:
                 self.insert_into_db(input_file_path=input_file_path)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
@@ -186,7 +183,7 @@ class DestinationConnector(BaseConnector):
                 file_name=file_name, error=error, result=result, meta_data=meta_data
             )
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
-            self._push_data_to_queue(file_history, file_name, workflow, input_file_path)
+            self._push_data_to_queue(file_name, workflow, input_file_path)
         if self.execution_service:
             self.execution_service.publish_log(
                 message=f"File {file_name} processed successfully"
@@ -424,7 +421,7 @@ class DestinationConnector(BaseConnector):
         return result
 
     def get_metadata(
-        self, file_history: Optional[FileHistory]
+        self, file_history: Optional[FileHistory] = None
     ) -> Optional[dict[str, Any]]:
         """Get meta_data from the output file.
 
