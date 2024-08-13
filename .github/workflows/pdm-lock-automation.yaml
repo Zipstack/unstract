@@ -94,6 +94,7 @@ jobs:
             echo "No changes between the current branch and the ${{ github.head_ref }} branch."
             echo "Nothing to commit"
           else
+            git stash
             git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
             echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
             git add pdm.lock
@@ -101,4 +102,5 @@ jobs:
             pre-commit run pdm-lock-check
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
             git push origin HEAD:${{ github.head_ref }}
+            git stash pop
           fi
