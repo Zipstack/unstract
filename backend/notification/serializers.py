@@ -20,6 +20,7 @@ class NotificationSerializer(serializers.ModelSerializer):
         """Validate the data for the NotificationSerializer."""
         # General validation for the relationship between api and pipeline
         self._validate_api_or_pipeline(data)
+        self._validate_authorization(data)
         return data
 
     def _validate_api_or_pipeline(self, data):
@@ -35,6 +36,57 @@ class NotificationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Either 'api' or 'pipeline' must be provided."
             )
+
+    def _validate_authorization(self, data):
+        """Ensure required authorization fields are provided based on the
+        authorization type.
+
+        Getting existing data in the case of PATCH request
+        """
+        authorization_type = data.get(
+            "authorization_type", getattr(self.instance, "authorization_type", None)
+        )
+        authorization_key = data.get(
+            "authorization_key", getattr(self.instance, "authorization_key", None)
+        )
+        authorization_header = data.get(
+            "authorization_header", getattr(self.instance, "authorization_header", None)
+        )
+
+        try:
+            authorization_type_enum = AuthorizationType(authorization_type)
+        except ValueError:
+            raise serializers.ValidationError(
+                f"Invalid authorization type '{authorization_type}'."
+            )
+
+        if authorization_type_enum in [
+            AuthorizationType.BEARER,
+            AuthorizationType.API_KEY,
+            AuthorizationType.CUSTOM_HEADER,
+        ]:
+            if not authorization_key:
+                raise serializers.ValidationError(
+                    {
+                        "authorization_key": (
+                            "Authorization key is required for authorization "
+                            f"type '{authorization_type_enum.value}'."
+                        )
+                    }
+                )
+
+            if (
+                authorization_type_enum == AuthorizationType.CUSTOM_HEADER
+                and not authorization_header
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "authorization_header": (
+                            "Authorization header is required when using "
+                            "CUSTOM_HEADER authorization type."
+                        )
+                    }
+                )
 
     def validate_platform(self, value):
         """Validate the platform field based on the notification_type."""
