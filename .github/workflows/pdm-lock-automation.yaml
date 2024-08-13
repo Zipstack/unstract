@@ -94,6 +94,7 @@ jobs:
             echo "No changes between the current branch and the ${{ github.head_ref }} branch."
             echo "Nothing to commit"
           else
+            echo "** github branch name: ${{ github.head_ref }} ** ";
             git stash
             git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
             echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
