@@ -89,13 +89,14 @@ jobs:
             echo "Virtual environment already exists."
           fi
           source .venv/bin/activate
+          git stash
           pdm lock -G :all -v
           if git diff --quiet; then
             echo "No changes between the current branch and the ${{ github.head_ref }} branch."
             echo "Nothing to commit"
           else
             echo "** github branch name: ${{ github.head_ref }} ** ";
-            git stash
+            git status
             echo "** 1 ** ";
             git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
             echo "** 2 ** ";
@@ -107,6 +108,7 @@ jobs:
             echo "** 5 ** ";
             pre-commit run pdm-lock-check
             echo "** 6 ** ";
+            git status
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
             echo "** 7 ** ";
             git push origin HEAD:${{ github.head_ref }}
