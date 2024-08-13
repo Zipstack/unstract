@@ -101,7 +101,7 @@ jobs:
             echo "Nothing to commit"
           else
             echo "** github branch name: ${{ github.head_ref }} ** ";
-            echo "Checking Git status..."
+            echo "Checking Git status 1..."
             git status
             echo "** 1 ** ";
             git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
