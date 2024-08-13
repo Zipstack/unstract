@@ -41,6 +41,14 @@ class FileHashNotFound(APIException):
     default_detail = "Internal server error: File hash not found."
 
 
+class FileHashMismatched(APIException):
+    status_code = 400
+    default_detail = (
+        "The file's hash does not match the expected value. "
+        "The file may have been altered."
+    )
+
+
 class ToolMetadataNotFound(APIException):
     status_code = 500
     default_detail = "Internal server error: Tool metadata not found."
