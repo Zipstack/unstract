@@ -106,9 +106,6 @@ jobs:
           else
             echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
 
-            echo "Checking git status 1..."
-            git status
-
             git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
             if git stash list | grep -q 'stash@{0}'; then
               echo "Popping stash..."
@@ -125,9 +122,6 @@ jobs:
 
             echo "Running pre-commit checks..."
             pre-commit run pdm-lock-check
-
-            echo "Checking git status 2..."
-            git status
 
             echo "Committing and pushing changes..."
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
