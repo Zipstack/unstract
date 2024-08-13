@@ -795,6 +795,7 @@ class PromptStudioHelper:
         try:
 
             usage_kwargs = {"run_id": run_id}
+            usage_kwargs["file_name"] = filename
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = Index(tool=util)
             doc_id_key = tool_index.generate_file_id(
