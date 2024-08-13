@@ -105,6 +105,7 @@ jobs:
             git status
             echo "** 1 ** ";
             git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
+            git stash pop
             echo "** 2 ** ";
             echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
             echo "** 3 ** ";
@@ -120,5 +121,4 @@ jobs:
             echo "** 7 ** ";
             git push origin HEAD:${{ github.head_ref }}
             echo "** 8 ** ";
-            git stash pop
           fi
