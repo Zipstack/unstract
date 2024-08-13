@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:9b386ec789b467b5ba78ffb2e01f84de9757b7eee3275d49828f6e4ef7b4de2a"
+content_hash = "sha256:1014feed12deba4d5f163f013b79599187a7f6d54b7bd3df590e27b9265675c7"
 
 [[package]]
 name = "adlfs"
@@ -1164,7 +1164,7 @@ files = [
 
 [[package]]
 name = "flower"
-version = "2.0.0"
+version = "2.0.1"
 requires_python = ">=3.7"
 summary = "Celery Flower"
 groups = ["default"]
@@ -1176,8 +1176,8 @@ dependencies = [
     "tornado<7.0.0,>=5.0.0",
 ]
 files = [
-    {file = "flower-2.0.0-py2.py3-none-any.whl", hash = "sha256:571f9ed1c57a622e862de35eceb8a4244f023fbcfb7175f53e45ebe679f46d90"},
-    {file = "flower-2.0.0.tar.gz", hash = "sha256:5657785d728a54914256c34fd0551fe2d7152aab08062ebc645bf86b97b8aec5"},
+    {file = "flower-2.0.1-py2.py3-none-any.whl", hash = "sha256:9db2c621eeefbc844c8dd88be64aef61e84e2deb29b271e02ab2b5b9f01068e2"},
+    {file = "flower-2.0.1.tar.gz", hash = "sha256:5ab717b979530770c16afb48b50d2a98d23c3e9fe39851dcf6bc4d01845a02a0"},
 ]
 
 [[package]]
@@ -2294,8 +2294,8 @@ files = [
 
 [[package]]
 name = "llama-index-legacy"
-version = "0.9.48.post1"
-requires_python = "<4.0,>=3.8.1"
+version = "0.9.48"
+requires_python = ">=3.8.1,<4.0"
 summary = "Interface between LLMs and your data"
 groups = ["default", "dev"]
 dependencies = [
@@ -2308,7 +2308,7 @@ dependencies = [
     "httpx",
     "nest-asyncio<2.0.0,>=1.5.8",
     "networkx>=3.0",
-    "nltk>=3.8.2",
+    "nltk<4.0.0,>=3.8.1",
     "numpy",
     "openai>=1.1.0",
     "pandas",
@@ -2319,8 +2319,8 @@ dependencies = [
     "typing-inspect>=0.8.0",
 ]
 files = [
-    {file = "llama_index_legacy-0.9.48.post1-py3-none-any.whl", hash = "sha256:583296162385010ebf92d2a612dd0a504575c04dc1638323bb455b1521aabe57"},
-    {file = "llama_index_legacy-0.9.48.post1.tar.gz", hash = "sha256:e8b1603929433fd0cf3287ed700714078534dd202c97bcdbcc83ec3741bb0868"},
+    {file = "llama_index_legacy-0.9.48-py3-none-any.whl", hash = "sha256:714ada95beac179b4acefa4d2deff74bb7b2f22b0f699ac247d4cb67738d16d4"},
+    {file = "llama_index_legacy-0.9.48.tar.gz", hash = "sha256:82ddc4691edbf49533d65582c249ba22c03fe96fbd3e92f7758dccef28e43834"},
 ]
 
 [[package]]
@@ -2930,7 +2930,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.40.6"
+version = "1.40.3"
 requires_python = ">=3.7.1"
 summary = "The official Python library for the openai API"
 groups = ["default", "dev"]
@@ -2945,8 +2945,8 @@ dependencies = [
     "typing-extensions<5,>=4.11",
 ]
 files = [
-    {file = "openai-1.40.6-py3-none-any.whl", hash = "sha256:b36372124a779381a420a34dd96f762baa748b6bdfaf83a6b9f2745f72ccc1c5"},
-    {file = "openai-1.40.6.tar.gz", hash = "sha256:2239232bcb7f4bd4ce8e02544b5769618582411cf399816d96686d1b6c1e5c8d"},
+    {file = "openai-1.40.3-py3-none-any.whl", hash = "sha256:09396cb6e2e15c921a5d872bf92841a60a9425da10dcd962b45fe7c4f48f8395"},
+    {file = "openai-1.40.3.tar.gz", hash = "sha256:f2ffe907618240938c59d7ccc67dd01dc8c50be203c0077240db6758d2f02480"},
 ]
 
 [[package]]
@@ -3769,7 +3769,7 @@ files = [
 
 [[package]]
 name = "qdrant-client"
-version = "1.11.0"
+version = "1.10.1"
 requires_python = ">=3.8"
 summary = "Client library for the Qdrant vector search engine"
 groups = ["default", "dev"]
@@ -3783,8 +3783,8 @@ dependencies = [
     "urllib3<3,>=1.26.14",
 ]
 files = [
-    {file = "qdrant_client-1.11.0-py3-none-any.whl", hash = "sha256:1f574ccebb91c0bc8a620c9a41a5a010084fbc4d8c6f1cd0ab7b2eeb97336fc0"},
-    {file = "qdrant_client-1.11.0.tar.gz", hash = "sha256:7c1d4d7a96cfd1ee0cde2a21c607e9df86bcca795ad8d1fd274d295ab64b8458"},
+    {file = "qdrant_client-1.10.1-py3-none-any.whl", hash = "sha256:b9fb8fe50dd168d92b2998be7c6135d5a229b3a3258ad158cc69c8adf9ff1810"},
+    {file = "qdrant_client-1.10.1.tar.gz", hash = "sha256:2284c8c5bb1defb0d9dbacb07d16f344972f395f4f2ed062318476a7951fd84c"},
 ]
 
 [[package]]
