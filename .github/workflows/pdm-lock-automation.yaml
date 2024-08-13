@@ -89,13 +89,16 @@ jobs:
             echo "Virtual environment already exists."
           fi
           source .venv/bin/activate
+           echo "Stashing changes..."
           git stash
+          echo "Updating pdm.lock..."
           pdm lock -G :all -v
           if git diff --quiet; then
             echo "No changes between the current branch and the ${{ github.head_ref }} branch."
             echo "Nothing to commit"
           else
             echo "** github branch name: ${{ github.head_ref }} ** ";
+            echo "Checking Git status..."
             git status
             echo "** 1 ** ";
             git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
