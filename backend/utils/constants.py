@@ -13,6 +13,7 @@ class Account:
     CREATED_BY = "created_by"
     MODIFIED_BY = "modified_by"
     ORGANIZATION_ID = "organization_id"
+    NAME = "kirti"
 
 
 class FeatureFlag:
