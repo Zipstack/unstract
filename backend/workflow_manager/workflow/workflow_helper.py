@@ -2,12 +2,12 @@ import json
 import logging
 import os
 import traceback
-import uuid
 from typing import Any, Optional
 
 from account.constants import Common
 from account.models import Organization
 from api.models import APIDeployment
+from api.utils import APIDeploymentUtils
 from celery import current_task
 from celery import exceptions as celery_exceptions
 from celery import shared_task
@@ -160,7 +160,7 @@ class WorkflowHelper:
                 error_raised += 1
                 log_message = f"Error processing file {file_path}: {error_message}"
                 execution_service.publish_log(message=log_message, level=LogLevel.ERROR)
-        if error_raised and error_raised >= processed_files:
+        if error_raised and error_raised >= total_files:
             execution_service.update_execution(
                 ExecutionStatus.ERROR, error=error_message
             )
@@ -292,7 +292,6 @@ class WorkflowHelper:
                 single_step=single_step,
                 hash_values_of_files=hash_values_of_files,
             )
-
             WorkflowHelper._update_pipeline_status(
                 pipeline_id=pipeline_id, workflow_execution=workflow_execution
             )
@@ -343,7 +342,11 @@ class WorkflowHelper:
                     )
         # Expected exception since API deployments are not tracked in Pipeline
         except Pipeline.DoesNotExist:
-            pass
+            api = APIDeploymentUtils.get_api_by_id(api_id=pipeline_id)
+            if api:
+                APIDeploymentUtils.send_notification(
+                    api=api, workflow_execution=workflow_execution
+                )
         except Exception as e:
             logger.warning(
                 f"Error updating pipeline {pipeline_id} status: {e}, "
@@ -376,7 +379,7 @@ class WorkflowHelper:
         return ExecutionResponse(
             execution.workflow_id,
             execution_id,
-            task.status,
+            execution.status,
             result=task.result,
         )
 
@@ -425,10 +428,13 @@ class WorkflowHelper:
             logger.info(f"Job {async_execution} enqueued.")
             celery_result = task.to_dict()
             task_result = celery_result.get("result")
+            workflow_execution = WorkflowExecutionServiceHelper.get_execution_by_id(
+                execution_id=execution_id
+            )
             return ExecutionResponse(
                 workflow_id,
                 execution_id,
-                task.status,
+                workflow_execution.status,
                 result=task_result,
             )
         except celery_exceptions.TimeoutError:
@@ -541,10 +547,21 @@ class WorkflowHelper:
     ) -> ExecutionResponse:
         if pipeline_id:
             logger.info(f"Executing pipeline: {pipeline_id}")
+            if not execution_id:
+                workflow_execution = (
+                    WorkflowExecutionServiceHelper.create_workflow_execution(
+                        workflow_id=workflow.id,
+                        single_step=False,
+                        pipeline_id=pipeline_id,
+                        mode=WorkflowExecution.Mode.QUEUE,
+                        execution_id=execution_id,
+                    )
+                )
+                execution_id = workflow_execution.id
             response: ExecutionResponse = WorkflowHelper.execute_workflow_async(
                 workflow_id=workflow.id,
                 pipeline_id=pipeline_id,
-                execution_id=str(uuid.uuid4()),
+                execution_id=execution_id,
                 hash_values_of_files=hash_values_of_files,
             )
             return response
