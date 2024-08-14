@@ -31,6 +31,7 @@ urlpatterns = [
     path(f"{path_prefix}/", include("docs.urls")),
     # API deployment
     path(f"{api_path_prefix}/", include("api.urls")),
+    path(f"{api_path_prefix}/pipeline/", include("pipeline.public_api_urls")),
     # Feature flags
     path(f"{path_prefix}/flags/", include("feature_flag.urls")),
 ]
@@ -45,12 +46,39 @@ if settings.ADMIN_ENABLED:
     ]
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
-
 try:
     import pluggable_apps.platform_admin.urls  # noqa # pylint: disable=unused-import
 
     urlpatterns += [
         path(f"{path_prefix}/", include("pluggable_apps.platform_admin.urls")),
+    ]
+except ImportError:
+    pass
+
+try:
+    import pluggable_apps.simple_prompt_studio.sps_document.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.simple_prompt_studio.sps_project.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.simple_prompt_studio.sps_prompt.urls  # noqa # pylint: disable=unused-import
+    import pluggable_apps.simple_prompt_studio.sps_prompt_output.urls  # noqa # pylint: disable=unused-import
+
+    simple_prompt_studio_path_prefix = settings.SIMPLE_PROMPT_STUDIO_PATH_PREFIX
+    urlpatterns += [
+        path(
+            f"{path_prefix}/{simple_prompt_studio_path_prefix}/",
+            include("pluggable_apps.simple_prompt_studio.sps_project.urls"),
+        ),
+        path(
+            f"{path_prefix}/{simple_prompt_studio_path_prefix}/",
+            include("pluggable_apps.simple_prompt_studio.sps_document.urls"),
+        ),
+        path(
+            f"{path_prefix}/{simple_prompt_studio_path_prefix}/",
+            include("pluggable_apps.simple_prompt_studio.sps_prompt.urls"),
+        ),
+        path(
+            f"{path_prefix}/{simple_prompt_studio_path_prefix}/",
+            include("pluggable_apps.simple_prompt_studio.sps_prompt_output.urls"),
+        ),
     ]
 except ImportError:
     pass
@@ -66,6 +94,17 @@ try:
             f"{share_path_prefix}/",
             include("pluggable_apps.public_shares.share_controller.urls"),
         ),
+    ]
+except ImportError:
+    pass
+
+try:
+    import pluggable_apps.manual_review.public_urls  # noqa # pylint: disable=unused-import
+
+    mr_path_prefix = settings.MANUAL_REVEIEW_QUEUE_PATH_PREFIX
+
+    urlpatterns += [
+        path(f"{mr_path_prefix}/", include("pluggable_apps.manual_review.public_urls")),
     ]
 except ImportError:
     pass

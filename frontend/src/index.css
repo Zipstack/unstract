@@ -123,6 +123,14 @@ body {
   height: 100%;
 }
 
+.pad-right-6 {
+  padding-right: 6px;
+}
+
+.pad-left-6 {
+  padding-left: 6px;
+}
+
 .cur-pointer {
   cursor: pointer;
 }

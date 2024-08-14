@@ -44,11 +44,6 @@ try {
   // The component will remain null of it is not available
 }
 function CombinedOutput({ docId, setFilledFields }) {
-  const [combinedOutput, setCombinedOutput] = useState({});
-  const [isOutputLoading, setIsOutputLoading] = useState(false);
-  const [adapterData, setAdapterData] = useState([]);
-  const [activeKey, setActiveKey] = useState("0");
-  const { id } = useParams();
   const {
     details,
     defaultLlmProfile,
@@ -58,6 +53,13 @@ function CombinedOutput({ docId, setFilledFields }) {
     isSimplePromptStudio,
     isPublicSource,
   } = useCustomToolStore();
+  const [combinedOutput, setCombinedOutput] = useState({});
+  const [isOutputLoading, setIsOutputLoading] = useState(false);
+  const [adapterData, setAdapterData] = useState([]);
+  const [activeKey, setActiveKey] = useState(
+    singlePassExtractMode ? defaultLlmProfile : "0"
+  );
+  const { id } = useParams();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -67,14 +69,16 @@ function CombinedOutput({ docId, setFilledFields }) {
   useEffect(() => {
     getAdapterInfo();
   }, []);
+
+  useEffect(() => {
+    setActiveKey(singlePassExtractMode ? defaultLlmProfile : "0");
+    setSelectedProfile(singlePassExtractMode ? defaultLlmProfile : null);
+  }, [singlePassExtractMode]);
+
   useEffect(() => {
     if (!docId || isSinglePassExtractLoading) {
       return;
     }
-    if (singlePassExtractMode && activeKey === "0") {
-      setActiveKey("1");
-    }
-
     let filledFields = 0;
     setIsOutputLoading(true);
     setCombinedOutput({});
@@ -82,7 +86,7 @@ function CombinedOutput({ docId, setFilledFields }) {
       .then((res) => {
         const data = res?.data || [];
         const prompts = details?.prompts;
-        if (activeKey === "0") {
+        if (activeKey === "0" && !isSimplePromptStudio) {
           const output = {};
           for (const key in data) {
             if (Object.hasOwn(data, key)) {
@@ -134,12 +138,7 @@ function CombinedOutput({ docId, setFilledFields }) {
       .finally(() => {
         setIsOutputLoading(false);
       });
-  }, [
-    docId,
-    singlePassExtractMode,
-    isSinglePassExtractLoading,
-    selectedProfile,
-  ]);
+  }, [docId, isSinglePassExtractLoading, activeKey]);
 
   const handleOutputApiRequest = async () => {
     let url;
@@ -182,6 +181,7 @@ function CombinedOutput({ docId, setFilledFields }) {
   };
 
   const getAdapterInfo = () => {
+    if (isSimplePromptStudio) return;
     let url = `/api/v1/unstract/${sessionDetails?.orgId}/adapter/?adapter_type=LLM`;
     if (isPublicSource) {
       url = publicAdapterApi(id, "LLM");
@@ -200,7 +200,7 @@ function CombinedOutput({ docId, setFilledFields }) {
     if (key === "0") {
       setSelectedProfile(defaultLlmProfile);
     } else {
-      setSelectedProfile(adapterData[key - 1]?.profile_id);
+      setSelectedProfile(key);
     }
     setActiveKey(key);
   };

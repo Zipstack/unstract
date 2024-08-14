@@ -67,6 +67,9 @@ function PromptCardItems({
   selectedLlmProfileId,
   handleSelectDefaultLLM,
   timers,
+  spsLoading,
+  handleSpsLoading,
+  handleGetOutput,
 }) {
   const {
     llmProfiles,
@@ -121,6 +124,11 @@ function PromptCardItems({
   };
 
   const getAdapterInfo = async (adapterData) => {
+    // If simple prompt studio, return early
+    if (isSimplePromptStudio) {
+      return;
+    }
+
     // Update llmProfiles with additional fields
     const updatedProfiles = llmProfiles?.map((profile) => {
       return { ...getModelOrAdapterId(profile, adapterData), ...profile };
@@ -174,19 +182,22 @@ function PromptCardItems({
   const renderSinglePassResult = () => {
     const [firstResult] = result || [];
     if (
-      promptDetails.active &&
-      (firstResult?.output || firstResult?.output === 0)
+      (promptDetails.active || isSimplePromptStudio) &&
+      (firstResult?.output ||
+        firstResult?.output === 0 ||
+        spsLoading[selectedDoc?.document_id])
     ) {
       return (
         <>
           <Divider className="prompt-card-divider" />
           <div
             className={`prompt-card-result prompt-card-div ${
-              expandedProfiles.includes(firstResult.profileManager) &&
+              expandedProfiles.includes(firstResult?.profileManager) &&
               "prompt-profile-run-expanded"
             }`}
           >
-            {isSinglePassExtractLoading ? (
+            {isSinglePassExtractLoading ||
+            spsLoading[selectedDoc?.document_id] ? (
               <Spin indicator={<SpinnerLoader size="small" />} />
             ) : (
               <Typography.Paragraph className="prompt-card-res font-size-12">
@@ -246,6 +257,7 @@ function PromptCardItems({
   useEffect(() => {
     getAdapterInfo(adapters);
   }, [llmProfiles, selectedLlmProfileId, enabledProfiles]);
+
   return (
     <Card className="prompt-card">
       <div className="prompt-card-div prompt-card-bg-col1 prompt-card-rad">
@@ -266,6 +278,9 @@ function PromptCardItems({
             expandCard={expandCard}
             setExpandCard={setExpandCard}
             enabledProfiles={enabledProfiles}
+            spsLoading={spsLoading}
+            handleSpsLoading={handleSpsLoading}
+            handleGetOutput={handleGetOutput}
           />
         </Space>
       </div>
@@ -355,6 +370,7 @@ function PromptCardItems({
           <Row>
             <AnimatePresence>
               {!singlePassExtractMode &&
+                !isSimplePromptStudio &&
                 llmProfileDetails.map((profile, index) => {
                   const profileId = profile?.profile_id;
                   const isChecked = enabledProfiles.includes(profileId);
@@ -451,7 +467,7 @@ function PromptCardItems({
                               <Tooltip title={tooltipContent(profile?.conf)}>
                                 <InfoCircleOutlined />
                               </Tooltip>
-                              <Tooltip title="Chunck used">
+                              <Tooltip title="Chunk used">
                                 <DatabaseOutlined
                                   onClick={() => {
                                     setIsIndexOpen(true);
@@ -578,7 +594,8 @@ function PromptCardItems({
                   );
                 })}
             </AnimatePresence>
-            {singlePassExtractMode && renderSinglePassResult()}
+            {(singlePassExtractMode || isSimplePromptStudio) &&
+              renderSinglePassResult()}
           </Row>
         </Collapse.Panel>
       </Collapse>
@@ -614,6 +631,9 @@ PromptCardItems.propTypes = {
   setOpenOutputForDoc: PropTypes.func.isRequired,
   selectedLlmProfileId: PropTypes.string,
   timers: PropTypes.object.isRequired,
+  spsLoading: PropTypes.object,
+  handleSpsLoading: PropTypes.func.isRequired,
+  handleGetOutput: PropTypes.func.isRequired,
 };
 
 export { PromptCardItems };

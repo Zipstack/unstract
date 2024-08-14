@@ -1,18 +1,79 @@
+import re
+import shutil
+from pathlib import Path
 from typing import Any, Optional
 
 from unstract.sdk.cache import ToolCache
-from unstract.sdk.constants import ToolEnv
+from unstract.sdk.constants import LogLevel, MetadataKey, ToolEnv
 from unstract.sdk.llm import LLM
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.utils import ToolUtils
 from unstract.sdk.x2txt import TextExtractionResult, X2Text
 
 
+class ReservedBins:
+    UNKNOWN = "unknown"
+    FAILED = "__unstract_failed"
+
+
 class ClassifierHelper:
     """Helper functions for Classifier."""
 
-    def __init__(self, tool: BaseTool) -> None:
+    def __init__(self, tool: BaseTool, output_dir: str) -> None:
+        """Creates a helper class for the Classifier tool.
+
+        Args:
+            tool (BaseTool): Base tool instance
+            output_dir (str): Output directory in TOOL_DATA_DIR
+        """
         self.tool = tool
+        self.output_dir = output_dir
+
+    def stream_error_and_exit(
+        self, message: str, bin_to_copy_to: str = ReservedBins.FAILED
+    ) -> None:
+        """Streams error logs and performs required cleanup.
+
+        Helper which copies files to a reserved bin in case of an error.
+        Args:
+            message (str): Error message to log
+            bin_to_copy_to (str): The folder to copy the failed source file to.
+                Defaults to `__unstract_failed`.
+            input_file (Optional[str], optional): Input file to copy. Defaults to None.
+            output_dir (Optional[str], optional): Output directory to copy to.
+                Defaults to None.
+        """
+        source_name = self.tool.get_exec_metadata.get(MetadataKey.SOURCE_NAME)
+        self.copy_source_to_output_bin(
+            classification=bin_to_copy_to,
+            source_file=self.tool.get_source_file(),
+            source_name=source_name,
+        )
+
+        self.tool.stream_error_and_exit(message=message)
+
+    def copy_source_to_output_bin(
+        self,
+        classification: str,
+        source_file: str,
+        source_name: str,
+    ) -> None:
+        """Method to save result in output folder and the data directory.
+
+        Args:
+            classification (str): classification result
+            source_file (str): Path to source file used in the workflow
+            source_name (str): Name of the actual input from the source
+        """
+        try:
+            output_folder_bin = Path(self.output_dir) / classification
+            if not output_folder_bin.is_dir():
+                output_folder_bin.mkdir(parents=True, exist_ok=True)
+
+            output_file = output_folder_bin / source_name
+            shutil.copyfile(source_file, output_file)
+        except Exception as e:
+            self.tool.stream_error_and_exit(f"Error creating output file: {e}")
 
     def extract_text(
         self, file: str, text_extraction_adapter_id: Optional[str]
@@ -106,22 +167,20 @@ class ClassifierHelper:
                 f"{ToolUtils.hash_str(settings_string)}:"
                 f"{ToolUtils.hash_str(prompt)}"
             )
+            self.tool.stream_log("Trying to fetch result from cache.")
             classification = self.get_result_from_cache(cache_key=cache_key)
+            if classification is not None:
+                return classification
 
-        if classification is None:
-            self.tool.stream_log("No classification found in cache, calling LLM.")
-            classification = self.call_llm(prompt=prompt, llm=llm)
-        if not classification:
-            classification = "unknown"
-        classification = classification.strip().lower()
-        bins = [bin.lower() for bin in bins]
-        if classification not in bins:
-            self.tool.stream_error_and_exit(
-                f"Invalid classification done: {classification}"
-            )
+        self.tool.stream_log("No classification found in cache, calling LLM.")
+        llm_response = self.call_llm(prompt=prompt, llm=llm)
+        classification = self.clean_llm_response(llm_response=llm_response, bins=bins)
+        if use_cache and cache_key:
+            self.tool.stream_log("Saving result to cache.")
+            self.save_result_to_cache(cache_key=cache_key, result=classification)
         return classification
 
-    def call_llm(self, prompt: str, llm: LLM) -> Optional[str]:
+    def call_llm(self, prompt: str, llm: LLM) -> str:
         """Call LLM.
 
         Args:
@@ -134,11 +193,54 @@ class ClassifierHelper:
         try:
             completion = llm.complete(prompt)[LLM.RESPONSE]
             classification: str = completion.text.strip()
-            self.tool.stream_log(f"LLM response: {completion}")
+            self.tool.stream_log(f"LLM response: {completion}", level=LogLevel.DEBUG)
             return classification
         except Exception as e:
-            self.tool.stream_error_and_exit(f"Error calling LLM {e}")
-            return None
+            self.stream_error_and_exit(f"Error calling LLM: {e}")
+            raise e
+
+    def clean_llm_response(self, llm_response: str, bins: list[str]) -> str:
+        """Cleans the response from the LLM.
+
+        Performs a substring search to find the returned classification.
+        Treats it as `unknown` if the classification is not clear
+        from the output.
+
+        Args:
+            llm_response (str): Response from LLM to clean
+            bins (list(str)): List of bins to classify the file into.
+
+        Returns:
+            str: Cleaned classification that matches one of the bins.
+        """
+        classification = ReservedBins.UNKNOWN
+        cleaned_response = llm_response.strip().lower()
+        bins = [bin.lower() for bin in bins]
+
+        # Truncate llm_response to the first 100 words
+        words = cleaned_response.split()
+        truncated_response = " ".join(words[:100])
+
+        # Count occurrences of each bin in the truncated text
+        bin_counts = {
+            bin: len(re.findall(r"\b" + re.escape(bin) + r"\b", truncated_response))
+            for bin in bins
+        }
+
+        # Filter bins that have a count greater than 0
+        matching_bins = [bin for bin, count in bin_counts.items() if count > 0]
+
+        # Determine classification based on the number of matching bins
+        if len(matching_bins) == 1:
+            classification = matching_bins[0]
+        else:
+            self.stream_error_and_exit(
+                f"Unable to deduce classified bin from possible values of "
+                f"'{matching_bins}', moving file to '{ReservedBins.UNKNOWN}' "
+                "folder instead.",
+                bin_to_copy_to=ReservedBins.UNKNOWN,
+            )
+        return classification
 
     def get_result_from_cache(self, cache_key: str) -> Optional[str]:
         """Get result from cache.

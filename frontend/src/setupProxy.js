@@ -9,13 +9,6 @@ module.exports = (app) => {
     })
   );
   app.use(
-    "/public",
-    createProxyMiddleware({
-      target: process.env.REACT_APP_BACKEND_URL,
-      changeOrigin: true,
-    })
-  );
-  app.use(
     "/llmwhisperer",
     createProxyMiddleware({
       target: process.env.REACT_APP_WHISPERER_BACKEND_URL,

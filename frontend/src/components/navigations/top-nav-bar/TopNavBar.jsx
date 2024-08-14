@@ -54,7 +54,7 @@ try {
 function TopNavBar() {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { orgName, remainingTrialDays, allOrganization, orgId, flags } =
+  const { orgName, remainingTrialDays, allOrganization, orgId } =
     sessionDetails;
   const baseUrl = getBaseUrl();
   const onBoardUrl = baseUrl + `/${orgName}/onboard`;
@@ -84,27 +84,23 @@ function TopNavBar() {
         !isUnstractSupervisor
     );
 
-    setApproverStatus(
-      (isUnstractAdmin || isUnstractSupervisor) && flags.manual_review
-    );
-    setReviewerStatus(isUnstractReviewer && flags.manual_review);
+    setApproverStatus(isUnstractAdmin || isUnstractSupervisor);
+    setReviewerStatus(isUnstractReviewer);
   }, [sessionDetails]);
 
   useEffect(() => {
-    if (flags.manual_review) {
-      const checkReviewPage = location.pathname.split("review");
+    const checkReviewPage = location.pathname.split("review");
 
-      if (checkReviewPage.length > 1) {
-        if (checkReviewPage[1].includes("/approve")) {
-          setReviewPageHeader("Approve");
-        } else if (checkReviewPage[1].includes("/download_and_sync")) {
-          setReviewPageHeader("Download and syncmanager");
-        } else {
-          setReviewPageHeader("Review");
-        }
+    if (checkReviewPage.length > 1) {
+      if (checkReviewPage[1].includes("/approve")) {
+        setReviewPageHeader("Approve");
+      } else if (checkReviewPage[1].includes("/download_and_sync")) {
+        setReviewPageHeader("Download and syncmanager");
       } else {
-        setReviewPageHeader(null);
+        setReviewPageHeader("Review");
       }
+    } else {
+      setReviewPageHeader(null);
     }
   }, [location]);
 

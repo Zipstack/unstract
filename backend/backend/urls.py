@@ -59,6 +59,7 @@ urlpatterns = [
         UrlPathConstants.PROMPT_STUDIO,
         include("prompt_studio.prompt_studio_index_manager.urls"),
     ),
+    path("notifications/", include("notification.urls")),
 ]
 
 
@@ -93,10 +94,12 @@ except ImportError:
     pass
 
 try:
+    import pluggable_apps.manual_review.api_urls  # noqa # pylint: disable=unused-import
     import pluggable_apps.manual_review.urls  # noqa # pylint: disable=unused-import
 
     urlpatterns += [
         path("manual_review/", include("pluggable_apps.manual_review.urls")),
+        path("manual_review/", include("pluggable_apps.manual_review.api_urls")),
     ]
 except ImportError:
     pass

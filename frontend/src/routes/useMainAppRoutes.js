@@ -27,6 +27,7 @@ let PlatformAdminPage;
 let AppDeployments;
 let ChatAppPage;
 let ChatAppLayout;
+let ManualReviewSettings;
 
 try {
   RequirePlatformAdmin =
@@ -44,6 +45,13 @@ try {
     require("../plugins/app-deployment/chat-app/ChatAppPage.jsx").ChatAppPage;
   ChatAppLayout =
     require("../plugins/app-deployment/chat-app/ChatAppLayout.jsx").ChatAppLayout;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+
+try {
+  ManualReviewSettings =
+    require("../plugins/manual-review/settings/Settings.jsx").ManualReviewSettings;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
@@ -110,6 +118,9 @@ function useMainAppRoutes() {
             element={<ToolsSettingsPage type="ocr" />}
           />
           <Route path="settings" element={<SettingsPage />} />
+          {ManualReviewSettings && (
+            <Route path="settings/review" element={<ManualReviewSettings />} />
+          )}
           <Route path="settings/platform" element={<PlatformSettings />} />
           <Route element={<RequireAdmin />}>
             <Route path="users" element={<UsersPage />} />

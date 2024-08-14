@@ -11,7 +11,7 @@ authors = [
 ]
 dependencies = [
     "Authlib==1.2.1", # For Auth plugins
-    "boto3~=1.28.17", # For Unstract-cloud-storage
+    "boto3~=1.34.0", # For Unstract-cloud-storage
     "celery>=5.3.4", # For Celery
     "flower>=2.0.1", # Celery Monitoring
     "cron-descriptor==1.4.0", # For cron string description
@@ -19,7 +19,8 @@ dependencies = [
     "django==4.2.1",
     "djangorestframework==3.14.0",
     "django-cors-headers==4.3.1",
-    "django-celery-beat>=2.5.0",
+    # Pinning django-celery-beat to avoid build issues
+    "django-celery-beat==2.5.0",
     "django-log-request-id>=2.1.0",
     "django-redis==5.4.0",
     "django-tenants==3.5.0",
@@ -31,8 +32,7 @@ dependencies = [
     "python-socketio==5.9.0", # For log_events
     "social-auth-app-django==5.3.0", # For OAuth
     "social-auth-core==4.4.2", # For OAuth
-    "unstract-sdk~=0.38.0",
-    "unstract-adapters~=0.22.0",
+    "unstract-sdk~=0.44.0",
     # ! IMPORTANT!
     # Indirect local dependencies usually need to be added in their own projects
     # as: https://pdm-project.org/latest/usage/dependency/#local-dependencies.
@@ -50,6 +50,7 @@ dependencies = [
     "unstract-workflow-execution @ file:///${PROJECT_ROOT}/../unstract/workflow-execution",
     "azure-identity==1.16.0",
     "azure-mgmt-apimanagement==3.0.0",
+    "croniter>=3.0.3",
 ]
 # <3.11.1 due to resolution error from Unstract SDK
 requires-python = ">=3.9,<3.11.1"

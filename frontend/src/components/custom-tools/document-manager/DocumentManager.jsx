@@ -21,9 +21,8 @@ import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
-import { useParams } from "react-router-dom";
 
-const items = [
+let items = [
   {
     key: "1",
     label: "PDF View",
@@ -84,6 +83,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [currDocIndexStatus, setCurrDocIndexStatus] = useState(
     docIndexStatus.yet_to_start
   );
+  const [hasMounted, setHasMounted] = useState(false);
   const {
     selectedDoc,
     listOfDocs,
@@ -93,32 +93,43 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     isSinglePassExtractLoading,
     isSimplePromptStudio,
     isPublicSource,
+    refreshRawView,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const { setPostHogCustomEvent } = usePostHogEvents();
-  const { id } = useParams();
 
   useEffect(() => {
     if (isSimplePromptStudio) {
-      items[0] = {
-        key: "1",
-        label: (
-          <Tooltip title="PDF View">
-            <FilePdfOutlined />
-          </Tooltip>
-        ),
-      };
-      items[1] = {
-        key: "2",
-        label: (
-          <Tooltip title="Raw View">
-            <FileTextOutlined />
-          </Tooltip>
-        ),
-      };
+      items = [
+        {
+          key: "1",
+          label: (
+            <Tooltip title="PDF View">
+              <FilePdfOutlined />
+            </Tooltip>
+          ),
+        },
+        {
+          key: "2",
+          label: (
+            <Tooltip title="Raw View">
+              <FileTextOutlined />
+            </Tooltip>
+          ),
+        },
+      ];
     }
   }, []);
+
+  useEffect(() => {
+    if (!hasMounted) {
+      setHasMounted(true);
+      return;
+    }
+    setExtractTxt("");
+    handleFetchContent(viewTypes.extract);
+  }, [refreshRawView]);
 
   useEffect(() => {
     setFileUrl("");
@@ -181,7 +192,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   };
 
   const handleGetDocumentsReq = (getDocsFunc, viewType) => {
-    getDocsFunc(viewType)
+    getDocsFunc(details?.tool_id, selectedDoc?.document_id, viewType)
       .then((res) => {
         const data = res?.data?.data || "";
         processGetDocsResponse(data, viewType);
@@ -194,11 +205,12 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       });
   };
 
-  const getDocuments = async (viewType) => {
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}?document_id=${selectedDoc?.document_id}&view_type=${viewType}`;
+  const getDocuments = async (toolId, docId, viewType) => {
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${toolId}?document_id=${docId}&view_type=${viewType}`;
     if (isPublicSource) {
-      url = publicDocumentApi(id, selectedDoc?.document_id, viewType);
+      url = publicDocumentApi(toolId, docId, viewType);
     }
+
     const requestOptions = {
       url,
       method: "GET",

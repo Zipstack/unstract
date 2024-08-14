@@ -1,4 +1,3 @@
-version: '3.7'
 include:
   - docker-compose-dev-essentials.yaml
 
@@ -24,6 +23,7 @@ services:
     volumes:
       - prompt_studio_data:/app/prompt-studio-data
       - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
     environment:
       - ENVIRONMENT=development
     labels:
@@ -50,6 +50,7 @@ services:
       - traefik.enable=false
     volumes:
       - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   # Celery Flower
   celery-flower:
