@@ -472,10 +472,8 @@ class PromptStudioHelper:
             "Invoking prompt service",
         )
         process_text = None
-        clean_text = None
         if text_processor:
             process_text = text_processor.process
-            clean_text = text_processor.clean
         try:
             response = PromptStudioHelper._fetch_response(
                 doc_path=doc_path,
@@ -496,7 +494,6 @@ class PromptStudioHelper:
                 document_id=document_id,
                 is_single_pass=False,
                 profile_manager_id=profile_manager_id,
-                clean_text=clean_text,
             )
         except Exception as e:
             logger.error(
@@ -544,10 +541,8 @@ class PromptStudioHelper:
             "Executing prompts in single pass",
         )
         process_text = None
-        clean_text = None
         if text_processor:
             process_text = text_processor.process
-            clean_text = text_processor.clean
         try:
             tool = prompts[0].tool_id
             response = PromptStudioHelper._fetch_single_pass_response(
@@ -566,7 +561,6 @@ class PromptStudioHelper:
                 prompts=prompts,
                 document_id=document_id,
                 is_single_pass=True,
-                clean_text=clean_text,
             )
         except Exception as e:
             logger.error(
@@ -602,7 +596,6 @@ class PromptStudioHelper:
         document_id,
         is_single_pass,
         profile_manager_id=None,
-        clean_text: Optional[Callable[[str], str]] = None,
     ):
         if response.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
@@ -613,11 +606,11 @@ class PromptStudioHelper:
         OutputManagerHelper.handle_prompt_output_update(
             run_id=run_id,
             prompts=prompts,
+            outputs=response["output"],
             document_id=document_id,
             is_single_pass_extract=is_single_pass,
             profile_manager_id=profile_manager_id,
-            response=response,
-            clean_text=clean_text,
+            context=response["metadata"].get("context"),
         )
         return response
 

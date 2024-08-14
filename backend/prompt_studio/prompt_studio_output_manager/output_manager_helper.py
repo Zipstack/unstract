@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from django.core.exceptions import ObjectDoesNotExist
 from prompt_studio.prompt_profile_manager.models import ProfileManager
@@ -23,11 +23,11 @@ class OutputManagerHelper:
     def handle_prompt_output_update(
         run_id: str,
         prompts: list[ToolStudioPrompt],
-        response: Any,
+        outputs: Any,
+        context: Any,
         document_id: str,
         is_single_pass_extract: bool,
         profile_manager_id: Optional[str] = None,
-        clean_text: Optional[Callable[[str], str]] = None,
     ) -> None:
         """Handles updating prompt outputs in the database.
 
@@ -99,20 +99,13 @@ class OutputManagerHelper:
             profile_manager_id, tool
         )
         document_manager = DocumentManager.objects.get(pk=document_id)
-        outputs = response["output"]
-        context = response["metadata"].get("context")
-        if is_single_pass_extract and clean_text:
-            context = clean_text(context)
-            response["metadata"]["context"] = context
+
         for prompt in prompts:
             if prompt.prompt_type == PSOMKeys.NOTES:
                 continue
 
             if not is_single_pass_extract:
                 context = context.get(prompt.prompt_key)
-                if clean_text:
-                    context = clean_text(context)
-                    response["metadata"]["context"][prompt.prompt_key] = context
 
             output = outputs.get(prompt.prompt_key)
             profile_manager = default_profile
