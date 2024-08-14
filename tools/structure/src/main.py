@@ -84,11 +84,16 @@ class StructureTool(BaseTool):
         self.stream_log("Indexing document")
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[SettingsKeys.RUN_ID] = run_id
+        usage_kwargs[SettingsKeys.FILE_NAME] = (
+            self.get_exec_metadata.get(MetadataKey.SOURCE_NAME),
+        )
+
         process_text = None
         try:
             from helper import process_text  # type: ignore [attr-defined]
         except ImportError:
             self.stream_log("Function 'process_text' is not found")
+
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             index.index(
                 tool_id=tool_id,

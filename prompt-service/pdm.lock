@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:18f97dbbc4235c1c520879186ef9746e78c0951068846d2ab37b025722d2cc63"
+content_hash = "sha256:42289642033b05e0330d12a9f44ad5a785bdf2cc5ccace9572996ee05a650bc1"
 
 [[package]]
 name = "aiohappyeyeballs"
@@ -2380,6 +2380,37 @@ files = [
 ]
 
 [[package]]
+name = "pdfminer-six"
+version = "20231228"
+requires_python = ">=3.6"
+summary = "PDF parser and analyzer"
+groups = ["default"]
+dependencies = [
+    "charset-normalizer>=2.0.0",
+    "cryptography>=36.0.0",
+]
+files = [
+    {file = "pdfminer.six-20231228-py3-none-any.whl", hash = "sha256:e8d3c3310e6fbc1fe414090123ab01351634b4ecb021232206c4c9a8ca3e3b8f"},
+    {file = "pdfminer.six-20231228.tar.gz", hash = "sha256:6004da3ad1a7a4d45930cb950393df89b068e73be365a6ff64a838d37bcb08c4"},
+]
+
+[[package]]
+name = "pdfplumber"
+version = "0.11.3"
+requires_python = ">=3.8"
+summary = "Plumb a PDF for detailed information about each char, rectangle, and line."
+groups = ["default"]
+dependencies = [
+    "Pillow>=9.1",
+    "pdfminer-six==20231228",
+    "pypdfium2>=4.18.0",
+]
+files = [
+    {file = "pdfplumber-0.11.3-py3-none-any.whl", hash = "sha256:4f3e13795d18b2e53dfc4cd667a3bc2478cd6975fc9a188881376265d599c5a6"},
+    {file = "pdfplumber-0.11.3.tar.gz", hash = "sha256:43a3cac33d2135ce00ac59ad5bc3813a33afe0f513d9284c0e8cb6e447ed6e53"},
+]
+
+[[package]]
 name = "peewee"
 version = "3.17.6"
 summary = "a little orm"
@@ -2778,6 +2809,28 @@ dependencies = [
 files = [
     {file = "pypdf-4.3.1-py3-none-any.whl", hash = "sha256:64b31da97eda0771ef22edb1bfecd5deee4b72c3d1736b7df2689805076d6418"},
     {file = "pypdf-4.3.1.tar.gz", hash = "sha256:b2f37fe9a3030aa97ca86067a56ba3f9d3565f9a791b305c7355d8392c30d91b"},
+]
+
+[[package]]
+name = "pypdfium2"
+version = "4.30.0"
+requires_python = ">=3.6"
+summary = "Python bindings to PDFium"
+groups = ["default"]
+files = [
+    {file = "pypdfium2-4.30.0-py3-none-macosx_10_13_x86_64.whl", hash = "sha256:b33ceded0b6ff5b2b93bc1fe0ad4b71aa6b7e7bd5875f1ca0cdfb6ba6ac01aab"},
+    {file = "pypdfium2-4.30.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:4e55689f4b06e2d2406203e771f78789bd4f190731b5d57383d05cf611d829de"},
+    {file = "pypdfium2-4.30.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:4e6e50f5ce7f65a40a33d7c9edc39f23140c57e37144c2d6d9e9262a2a854854"},
+    {file = "pypdfium2-4.30.0-py3-none-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:3d0dd3ecaffd0b6dbda3da663220e705cb563918249bda26058c6036752ba3a2"},
+    {file = "pypdfium2-4.30.0-py3-none-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:cc3bf29b0db8c76cdfaac1ec1cde8edf211a7de7390fbf8934ad2aa9b4d6dfad"},
+    {file = "pypdfium2-4.30.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f1f78d2189e0ddf9ac2b7a9b9bd4f0c66f54d1389ff6c17e9fd9dc034d06eb3f"},
+    {file = "pypdfium2-4.30.0-py3-none-musllinux_1_1_aarch64.whl", hash = "sha256:5eda3641a2da7a7a0b2f4dbd71d706401a656fea521b6b6faa0675b15d31a163"},
+    {file = "pypdfium2-4.30.0-py3-none-musllinux_1_1_i686.whl", hash = "sha256:0dfa61421b5eb68e1188b0b2231e7ba35735aef2d867d86e48ee6cab6975195e"},
+    {file = "pypdfium2-4.30.0-py3-none-musllinux_1_1_x86_64.whl", hash = "sha256:f33bd79e7a09d5f7acca3b0b69ff6c8a488869a7fab48fdf400fec6e20b9c8be"},
+    {file = "pypdfium2-4.30.0-py3-none-win32.whl", hash = "sha256:ee2410f15d576d976c2ab2558c93d392a25fb9f6635e8dd0a8a3a5241b275e0e"},
+    {file = "pypdfium2-4.30.0-py3-none-win_amd64.whl", hash = "sha256:90dbb2ac07be53219f56be09961eb95cf2473f834d01a42d901d13ccfad64b4c"},
+    {file = "pypdfium2-4.30.0-py3-none-win_arm64.whl", hash = "sha256:119b2969a6d6b1e8d55e99caaf05290294f2d0fe49c12a3f17102d01c441bd29"},
+    {file = "pypdfium2-4.30.0.tar.gz", hash = "sha256:48b5b7e5566665bc1015b9d69c1ebabe21f6aee468b509531c3c8318eeee2e16"},
 ]
 
 [[package]]
@@ -3632,7 +3685,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.43.0"
+version = "0.44.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3663,6 +3716,7 @@ dependencies = [
     "llama-index==0.10.58",
     "llama-parse==0.4.9",
     "mistralai==0.4.2",
+    "pdfplumber>=0.11.2",
     "python-dotenv==1.0.0",
     "python-magic~=0.4.27",
     "singleton-decorator~=1.0.0",
@@ -3670,8 +3724,8 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.43.0-py3-none-any.whl", hash = "sha256:3ecb47db8b3929ccc4c58c808ff00751050c6af390cdbdb9966f6664538abfe0"},
-    {file = "unstract_sdk-0.43.0.tar.gz", hash = "sha256:96dd356c0a1a836afde36ed1a57e1278db493e838cc031b08230f02c2efa916c"},
+    {file = "unstract_sdk-0.44.0-py3-none-any.whl", hash = "sha256:fb72087261a855750282f2d47381ed802d954a23ef6b63cffa4a2bfe6ba6d63f"},
+    {file = "unstract_sdk-0.44.0.tar.gz", hash = "sha256:d4cb9ac3a76d3d67e6d5371c848f5b41217e76a7bbc82b213d0913c60a15419b"},
 ]
 
 [[package]]
