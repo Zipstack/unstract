@@ -37,7 +37,6 @@ const RequireAuth = () => {
   if (useSelectedProductStore) {
     selectedProduct = useSelectedProductStore((state) => state.selectedProduct);
   }
-  console.log(selectedProduct);
   const isLlmWhisperer = selectedProduct && selectedProduct === "llm-whisperer";
 
   useEffect(() => {
