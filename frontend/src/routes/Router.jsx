@@ -17,10 +17,18 @@ let TrialRoutes;
 let ManualReviewPage;
 let ReviewLayout;
 let PublicPromptStudioHelper;
+let PaymentSuccessful;
 
 try {
   TrialRoutes =
     require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+
+try {
+  PaymentSuccessful =
+    require("../plugins/payment-successful/PaymentSuccessful.jsx").PaymentSuccessful;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
@@ -136,6 +144,9 @@ function Router() {
       </Route>
       <Route path="oauth-status" element={<OAuthStatus />} />
       <Route path="selectProduct" element={<SelectProduct />} />
+      {PaymentSuccessful && (
+        <Route path="/payment/success" element={<PaymentSuccessful />} />
+      )}
     </Routes>
   );
 }
