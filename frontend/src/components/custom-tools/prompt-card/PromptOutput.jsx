@@ -365,7 +365,14 @@ function PromptOutput({
                       </Tooltip>
                     </div>
                   </div>
-                  {enforceType === TABLE_ENFORCE_TYPE && <TableOutput />}
+                  {enforceType === TABLE_ENFORCE_TYPE && (
+                    <TableOutput
+                      output={
+                        result.find((r) => r?.profileManager === profileId)
+                          ?.output
+                      }
+                    />
+                  )}
                 </>
               </Col>
             </motion.div>
