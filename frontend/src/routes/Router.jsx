@@ -66,7 +66,6 @@ try {
 }
 function Router() {
   const MainAppRoute = useMainAppRoutes();
-  console.log(llmWhispererRouter);
   return (
     <Routes>
       <Route path="error" element={<GenericError />} />
