@@ -135,7 +135,7 @@ class DestinationConnector(BaseConnector):
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
         result: Optional[str] = None
-        meta_data: Optional[str] = None
+        metadata: Optional[str] = None
         if error:
             if connection_type == WorkflowEndpoint.ConnectionType.API:
                 self._handle_api_result(file_name=file_name, error=error, result=result)
@@ -146,19 +146,19 @@ class DestinationConnector(BaseConnector):
             self.insert_into_db(file_history)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
-            meta_data = self.get_metadata(file_history)
+            metadata = self.get_metadata(file_history)
             self._handle_api_result(
-                file_name=file_name, error=error, result=result, meta_data=meta_data
+                file_name=file_name, error=error, result=result, metadata=metadata
             )
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
             result = self.get_result(file_history)
-            meta_data = self.get_metadata(file_history)
+            metadata = self.get_metadata(file_history)
             self._push_to_queue(
                 file_name=file_name,
                 workflow=workflow,
                 result=result,
                 input_file_path=input_file_path,
-                meta_data=meta_data,
+                metadata=metadata,
             )
         if not file_history:
             FileHistoryHelper.create_file_history(
@@ -166,7 +166,7 @@ class DestinationConnector(BaseConnector):
                 workflow=workflow,
                 status=ExecutionStatus.COMPLETED,
                 result=result,
-                metadata=meta_data,
+                metadata=metadata,
                 file_name=file_name,
             )
 
@@ -278,7 +278,7 @@ class DestinationConnector(BaseConnector):
         file_name: str,
         error: Optional[str] = None,
         result: Optional[str] = None,
-        meta_data: Optional[dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         """Handle the API result.
 
@@ -304,7 +304,7 @@ class DestinationConnector(BaseConnector):
                     {
                         "status": ApiDeploymentResultStatus.SUCCESS,
                         "result": result,
-                        "metadata": meta_data,
+                        "metadata": metadata,
                     }
                 )
             else:
@@ -385,13 +385,13 @@ class DestinationConnector(BaseConnector):
     def get_metadata(
         self, file_history: Optional[FileHistory]
     ) -> Optional[dict[str, Any]]:
-        """Get meta_data from the output file.
+        """Get metadata from the output file.
 
         Returns:
             Union[dict[str, Any], str]: Meta data.
         """
-        if file_history and file_history.meta_data:
-            return self.parse_string(file_history.meta_data)
+        if file_history and file_history.metadata:
+            return self.parse_string(file_history.metadata)
         metadata: dict[str, Any] = self.get_workflow_metadata()
 
         return metadata
@@ -477,7 +477,7 @@ class DestinationConnector(BaseConnector):
         workflow: Workflow,
         result: Optional[str] = None,
         input_file_path: Optional[str] = None,
-        meta_data: Optional[dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         """Handle the Manual Review QUEUE result.
 
@@ -492,7 +492,7 @@ class DestinationConnector(BaseConnector):
             input_file_path (Optional[str], optional):
             The path to the input file.
                 Defaults to None.
-            meta_data (Optional[dict[str, Any]], optional):
+            metadata (Optional[dict[str, Any]], optional):
                 A dictionary containing additional
                 metadata related to the file. Defaults to None.
 
@@ -514,7 +514,7 @@ class DestinationConnector(BaseConnector):
             q_name = f"review_queue_{self.organization_id}_{workflow.workflow_name}"
             queue_result = QueueResult(
                 file=file_name,
-                whisper_hash=meta_data["whisper-hash"],
+                whisper_hash=metadata["whisper-hash"],
                 status=QueueResultStatus.SUCCESS,
                 result=result,
                 workflow_id=str(self.workflow_id),

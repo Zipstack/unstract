@@ -76,7 +76,7 @@ class Usage(DefaultOrganizationMixin, BaseModel):
         return str(self.id)
 
     class Meta:
-        db_table = "token_usage"
+        db_table = "usage"
         indexes = [
             models.Index(fields=["run_id"]),
         ]

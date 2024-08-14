@@ -39,7 +39,7 @@ class FileHistory(BaseModel):
         db_comment="Error message",
     )
     result = models.TextField(blank=True, db_comment="Result from execution")
-    meta_data = models.TextField(blank=True, db_comment="MetaData from execution")
+    metadata = models.TextField(blank=True, db_comment="MetaData from execution")
 
     class Meta:
         verbose_name = "File History"

@@ -133,7 +133,7 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={
-                "db_table": "token_usage",
+                "db_table": "usage",
                 "indexes": [
                     models.Index(
                         fields=["run_id"], name="token_usage_run_id_cd3578_idx"

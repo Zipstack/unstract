@@ -296,7 +296,7 @@ class Migration(migrations.Migration):
                     models.TextField(blank=True, db_comment="Result from execution"),
                 ),
                 (
-                    "meta_data",
+                    "metadata",
                     models.TextField(blank=True, db_comment="MetaData from execution"),
                 ),
                 (

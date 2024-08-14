@@ -61,7 +61,7 @@ class FileHistoryHelper:
                 cache_key=cache_key,
                 status=status.value,
                 result=str(result),
-                meta_data=str(metadata),
+                metadata=str(metadata),
                 error=str(error) if error else "",
             )
         except IntegrityError:
