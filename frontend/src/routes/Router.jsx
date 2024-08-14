@@ -8,7 +8,6 @@ import { OAuthStatus } from "../components/oauth-ds/oauth-status/OAuthStatus.jsx
 import { LandingPage } from "../pages/LandingPage.jsx";
 import { SetOrgPage } from "../pages/SetOrgPage.jsx";
 import { useMainAppRoutes } from "./useMainAppRoutes.js";
-import { useLlmWhispererRoutes } from "../plugins/routes/useLlmWhispererRoutes.js";
 import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
 import { SelectProduct } from "../plugins/select-product/SelectProduct.jsx";
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
@@ -57,9 +56,17 @@ try {
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
+
+let llmWhispererRouter;
+try {
+  llmWhispererRouter =
+    require("../plugins/routes/useLlmWhispererRoutes.js").useLlmWhispererRoutes;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
 function Router() {
   const MainAppRoute = useMainAppRoutes();
-  const LlmWhispererRoutes = useLlmWhispererRoutes();
+  console.log(llmWhispererRouter);
   return (
     <Routes>
       <Route path="error" element={<GenericError />} />
@@ -102,7 +109,9 @@ function Router() {
         {/* protected routes */}
         <Route path="setOrg" element={<SetOrgPage />} />
         <Route path="">{MainAppRoute}</Route>
-        <Route path="llm-whisperer">{LlmWhispererRoutes}</Route>
+        {llmWhispererRouter && (
+          <Route path="llm-whisperer">{llmWhispererRouter()}</Route>
+        )}
         <Route path="" element={<RequireAuth />}>
           {ReviewLayout && ManualReviewPage && (
             <Route path=":orgName" element={<ReviewLayout />}>
