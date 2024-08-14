@@ -17,6 +17,7 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { Header } from "./Header";
 import { OutputForIndex } from "./OutputForIndex";
 import { PromptOutput } from "./PromptOutput";
+import { TABLE_ENFORCE_TYPE } from "./constants";
 
 const EvalBtn = null;
 const EvalMetrics = null;
@@ -250,7 +251,7 @@ function PromptCardItems({
                       </Button>
                     </Space>
                     <Space>
-                      {enforceType === "table" &&
+                      {enforceType === TABLE_ENFORCE_TYPE &&
                         TableExtractionSettingsBtn && (
                           <TableExtractionSettingsBtn
                             promptId={promptDetails?.prompt_id}

@@ -31,8 +31,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
-
-const TABLE_ENFORCE_TYPE = "table";
+import { TABLE_ENFORCE_TYPE } from "./constants";
 
 let TableOutput;
 try {
@@ -281,7 +280,7 @@ function PromptOutput({
                     }`}
                   >
                     {enforceType === TABLE_ENFORCE_TYPE ? (
-                      <Typography.Text>Table Output:</Typography.Text>
+                      <div />
                     ) : (
                       <>
                         {isRunLoading[
