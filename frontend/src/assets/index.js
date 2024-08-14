@@ -39,6 +39,7 @@ import { ReactComponent as ProfileSettingsIcon } from "./llmWhisperer/profile-se
 import { ReactComponent as DashboardIcon } from "./llmWhisperer/dashboard-icon.svg";
 import { ReactComponent as LlmWhispererSelect } from "./llmWhisperer/llm-whisperer-select.svg";
 import { ReactComponent as UnstractSelect } from "./llmWhisperer/unstract-select.svg";
+import { ReactComponent as WhispererLogo } from "./LLM_White.svg";
 
 export {
   SunIcon,
@@ -82,4 +83,5 @@ export {
   DashboardIcon,
   LlmWhispererSelect,
   UnstractSelect,
+  WhispererLogo,
 };

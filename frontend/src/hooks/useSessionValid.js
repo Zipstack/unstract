@@ -28,7 +28,13 @@ try {
 }
 
 let selectedProduct;
-const selectedProductStore = require("../plugins/llm-whisperer/store/select-produc-store.js");
+let selectedProductStore;
+
+try {
+  selectedProductStore = require("../plugins/llm-whisperer/store/select-produc-store.js");
+} catch {
+  // Ignore if hook not available
+}
 function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
   const handleException = useExceptionHandler();

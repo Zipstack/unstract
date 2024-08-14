@@ -33,6 +33,7 @@ import { useAlertStore } from "../../../store/alert-store.js";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { PlatformDropdown } from "../../../plugins/platform-dropdown/PlatformDropDown.jsx";
+import { WhispererLogo } from "../../../assets/index.js";
 
 let TrialDaysInfo;
 try {
@@ -40,6 +41,14 @@ try {
     require("../../../plugins/subscription/trial-helper/TrialDaysInfo.jsx").default;
 } catch (err) {
   // Plugin not found
+}
+let selectedProduct;
+let selectedProductStore;
+
+try {
+  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-produc-store.js");
+} catch {
+  // Ignore if hook not available
 }
 
 function TopNavBar() {
@@ -57,6 +66,12 @@ function TopNavBar() {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const location = useLocation();
+
+  if (selectedProductStore) {
+    selectedProduct = selectedProductStore.useSelectedProductStore(
+      (state) => state?.selectedProduct
+    );
+  }
 
   useEffect(() => {
     const isUnstractReviewer = sessionDetails.role === "unstract_reviewer";
@@ -224,8 +239,12 @@ function TopNavBar() {
 
   return (
     <Row align="middle" className="topNav">
-      <Col span={6}>
-        <UnstractLogo className="topbar-logo" />
+      <Col span={6} className="platform-switch-container">
+        {selectedProduct === "unstract" ? (
+          <UnstractLogo className="topbar-logo" />
+        ) : (
+          <WhispererLogo className="topbar-logo" />
+        )}
         {reviewPageHeader && (
           <span className="page-identifier">
             <span className="custom-tools-header-v-divider" />

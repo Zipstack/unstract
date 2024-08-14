@@ -1,4 +1,5 @@
 import { Route } from "react-router-dom";
+
 import { OnBoardPage } from "../pages/OnBoardPage.jsx";
 import { FullPageLayout } from "../layouts/fullpage-payout/FullPageLayout.jsx";
 import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
