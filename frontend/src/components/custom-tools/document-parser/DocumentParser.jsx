@@ -17,9 +17,15 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { PromptDnd } from "../prompt-card/PrompDnd";
 
 let promptPatchApiSps;
+let promptReorderApiSps;
+let SpsPromptsEmptyState;
 try {
   promptPatchApiSps =
     require("../../../plugins/simple-prompt-studio/helper").promptPatchApiSps;
+  promptReorderApiSps =
+    require("../../../plugins/simple-prompt-studio/helper").promptReorderApiSps;
+  SpsPromptsEmptyState =
+    require("../../../plugins/simple-prompt-studio/SpsPromptsEmptyState").SpsPromptsEmptyState;
 } catch {
   // The component will remain null of it is not available
 }
@@ -193,9 +199,13 @@ function DocumentParser({
   };
 
   const handleDelete = (promptId) => {
+    let url = promptUrl(promptId + "/");
+    if (isSimplePromptStudio) {
+      url = promptPatchApiSps(promptId);
+    }
     const requestOptions = {
       method: "DELETE",
-      url: promptUrl(promptId + "/"),
+      url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -242,9 +252,14 @@ function DocumentParser({
       prompt_id: details.prompts[startIndex]?.prompt_id,
     };
 
+    let url = promptUrl("reorder/");
+    if (isSimplePromptStudio) {
+      url = promptReorderApiSps;
+    }
+
     const requestOptions = {
       method: "POST",
-      url: promptUrl("reorder"),
+      url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
@@ -288,6 +303,10 @@ function DocumentParser({
   };
 
   if (!details?.prompts?.length) {
+    if (isSimplePromptStudio && SpsPromptsEmptyState) {
+      return <SpsPromptsEmptyState />;
+    }
+
     return (
       <EmptyState
         text="Add prompt or a note and choose the LLM profile"

@@ -616,17 +616,17 @@ backend/plugins/processor/*
 frontend/src/plugins/*
 
 # Tool registry
-unstract/tool-registry/src/unstract/tool_registry/*.json
+unstract/tool-registry/tool_registry_config/*.json
 unstract/tool-registry/tests/*.yaml
-!unstract/tool-registry/src/unstract/tool_registry/public_tools.json
-unstract/tool-registry/src/unstract/tool_registry/config/registry.yaml
+!unstract/tool-registry/tool_registry_config/public_tools.json
+unstract/tool-registry/tool_registry_config/registry.yaml
 
 # Docker related
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,linux,pycharm,pycharm+all,pycharm+iml,python,visualstudiocode,react,django
 docker/temp/*
 docker/init.sql/*
 docker/*.env
-!docker/sample.*.env
+!docker/sample*.env
 docker/public_tools.json
 docker/proxy_overrides.yaml
 docker/workflow_data/
@@ -643,7 +643,6 @@ backend/backend/settings/*
 !backend/backend/settings/test.py
 
 # Local Dependencies for docker testing
-unstract/unstract-adapters/
 unstract/unstract-sdk/
 
 # BE pluggable-apps

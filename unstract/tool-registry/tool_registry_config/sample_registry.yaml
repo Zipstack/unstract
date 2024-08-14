@@ -9,7 +9,6 @@ auth:
   username: <username>
 document: unstract-tool-registry
 tools:
-  # - docker:unstract/tool-resume-parser
-  - local:fileops
+  # - docker:unstract/tool-classifier
   - local:classifier
 version: 1.0.0

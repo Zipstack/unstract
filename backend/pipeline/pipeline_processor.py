@@ -4,6 +4,7 @@ from typing import Optional
 from django.utils import timezone
 from pipeline.exceptions import InactivePipelineError
 from pipeline.models import Pipeline
+from pipeline.notification import PipelineNotification
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,14 @@ class PipelineProcessor:
             raise InactivePipelineError(pipeline_name=pipeline.pipeline_name)
         return pipeline
 
+    @classmethod
+    def get_active_pipeline(cls, pipeline_id: str) -> Optional[Pipeline]:
+        """Retrieves a list of active pipelines."""
+        try:
+            return cls.fetch_pipeline(pipeline_id, check_active=True)
+        except Pipeline.DoesNotExist:
+            return None
+
     @staticmethod
     def _update_pipeline_status(
         pipeline: Pipeline,
@@ -63,10 +72,30 @@ class PipelineProcessor:
         return pipeline
 
     @staticmethod
+    def _send_notification(
+        pipeline: Pipeline,
+        execution_id: Optional[str] = None,
+        error_message: Optional[str] = None,
+    ) -> None:
+        """Sends a notification for the pipeline.
+        Args:
+            pipeline (Pipeline): Pipeline to send notification for
+
+        Returns:
+            None
+        """
+        pipeline_notification = PipelineNotification(
+            pipeline=pipeline, execution_id=execution_id, error_message=error_message
+        )
+        pipeline_notification.send()
+
+    @staticmethod
     def update_pipeline(
         pipeline_guid: Optional[str],
         status: tuple[str, str],
         is_active: Optional[bool] = None,
+        execution_id: Optional[str] = None,
+        error_message: Optional[str] = None,
     ) -> None:
         if not pipeline_guid:
             return
@@ -75,7 +104,10 @@ class PipelineProcessor:
         pipeline: Pipeline = PipelineProcessor.fetch_pipeline(
             pipeline_id=pipeline_guid, check_active=check_active
         )
-        PipelineProcessor._update_pipeline_status(
+        pipeline = PipelineProcessor._update_pipeline_status(
             pipeline=pipeline, is_end=True, status=status, is_active=is_active
+        )
+        PipelineProcessor._send_notification(
+            pipeline=pipeline, execution_id=execution_id, error_message=error_message
         )
         logger.info(f"Updated pipeline {pipeline_guid} status: {status}")

@@ -25,7 +25,6 @@ function InviteEditUser() {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [initialRole, setInitialRole] = useState();
   const { setPostHogCustomEvent } = usePostHogEvents();
-  const { flags } = sessionDetails;
 
   const isInvite = location.pathname.split("/").slice(-1)[0] === "invite";
   const validateMessages = {
@@ -64,11 +63,11 @@ function InviteEditUser() {
         setLoading(false);
       });
   };
-  const inviteUserToOrg = async (email) => {
+  const inviteUserToOrg = async (value) => {
     const requestOptions = {
       method: "POST",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/users/invite/`,
-      data: { users: [{ email: email }] },
+      data: { users: [value] },
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
@@ -122,7 +121,10 @@ function InviteEditUser() {
   const onSubmit = (values) => {
     setSubmitLoading(true);
     if (isInvite) {
-      inviteUserToOrg(values.email);
+      const roleName = userRoles?.filter((val) => val.id === values.role)[0]
+        ?.name;
+      values.role = roleName;
+      inviteUserToOrg(values);
     } else {
       updateUserRole(values);
     }
@@ -187,7 +189,6 @@ function InviteEditUser() {
                           label: formatOptionLabel(role.name),
                         };
                       })}
-                      disabled={!flags.manual_review}
                     />
                   </Form.Item>
                 </div>

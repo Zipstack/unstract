@@ -124,6 +124,7 @@ SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", True)
 CSRF_COOKIE_SECURE = os.environ.get("CSRF_COOKIE_SECURE", True)
 
 PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
+# Resetting the path prefix will require reconfiguring all existing deployed APIs
 API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
     "API_DEPLOYMENT_PATH_PREFIX", "deployment"
 ).strip("/")
@@ -169,6 +170,7 @@ CELERY_BROKER_URL = get_required_setting(
 )
 
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
+NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))
 # Flag to Enable django admin
 ADMIN_ENABLED = False
 
@@ -193,6 +195,7 @@ if not check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
         "corsheaders",
         # For the organization model
         "account",
+        "account_usage",
         # Django apps should go below this line
         "django.contrib.admin",
         "django.contrib.auth",
@@ -241,6 +244,7 @@ if not check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
         "prompt_studio.prompt_studio_document_manager",
         "prompt_studio.prompt_studio_index_manager",
         "usage",
+        "notification"
     )
 else:
     SHARED_APPS = (

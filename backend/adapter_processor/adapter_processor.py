@@ -33,13 +33,9 @@ class AdapterProcessor:
             AdapterKeys.ID, adapter_id
         )
         if len(updated_adapters) != 0:
-            try:
-                schema_details[AdapterKeys.JSON_SCHEMA] = json.loads(
-                    updated_adapters[0].get(AdapterKeys.JSON_SCHEMA)
-                )
-            except Exception as exc:
-                logger.error(f"Error occured while parsing JSON Schema : {exc}")
-                raise InternalServiceError()
+            schema_details[AdapterKeys.JSON_SCHEMA] = json.loads(
+                updated_adapters[0].get(AdapterKeys.JSON_SCHEMA)
+            )
         else:
             logger.error(
                 f"Invalid adapter Id : {adapter_id} while fetching JSON Schema"
@@ -257,8 +253,5 @@ class AdapterProcessor:
         except ObjectDoesNotExist as e:
             logger.error(f"No default adapters found: {e}")
             raise InternalServiceError(
-                "No default adapters found, " "configure them through Platform Settings"
+                "No default adapters found, configure them through Platform Settings"
             )
-        except Exception as e:
-            logger.error(f"Error occurred while fetching default adapters: {e}")
-            raise InternalServiceError("Error fetching default adapters")

@@ -360,6 +360,18 @@ class ToolInstanceHelper:
                     required_prop = e.schema.get("properties").get(validator_val)
                     required_display_name = required_prop.get("title")
                     err_msg = err_msg.replace(validator_val, required_display_name)
+            elif e.validator == "minItems":
+                validated_entity_display_name = e.schema.get("title")
+                err_msg = (
+                    f"'{validated_entity_display_name}' requires atleast"
+                    f" {e.validator_value} values."
+                )
+            elif e.validator == "maxItems":
+                validated_entity_display_name = e.schema.get("title")
+                err_msg = (
+                    f"'{validated_entity_display_name}' requires atmost"
+                    f" {e.validator_value} values."
+                )
             else:
                 logger.warning(f"Unformatted exception sent to user: {err_msg}")
             raise ToolSettingValidationError(
