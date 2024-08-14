@@ -244,7 +244,7 @@ if not check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
         "prompt_studio.prompt_studio_document_manager",
         "prompt_studio.prompt_studio_index_manager",
         "usage",
-        "notification"
+        "notification",
     )
 else:
     SHARED_APPS = (
