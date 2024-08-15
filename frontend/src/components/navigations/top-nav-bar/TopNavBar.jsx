@@ -73,6 +73,8 @@ function TopNavBar() {
     );
   }
 
+  const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
+
   useEffect(() => {
     const isUnstractReviewer = sessionDetails.role === "unstract_reviewer";
     const isUnstractSupervisor = sessionDetails.role === "unstract_supervisor";
@@ -236,10 +238,10 @@ function TopNavBar() {
   return (
     <Row align="middle" className="topNav">
       <Col span={6} className="platform-switch-container">
-        {selectedProduct === "unstract" ? (
-          <UnstractLogo className="topbar-logo" />
-        ) : (
+        {selectedProduct !== "unstract" ? (
           <WhispererLogo className="topbar-logo" />
+        ) : (
+          <UnstractLogo className="topbar-logo" />
         )}
         {reviewPageHeader && (
           <span className="page-identifier">
@@ -250,7 +252,7 @@ function TopNavBar() {
         <PlatformDropdown />
       </Col>
       <Col span={14} className="top-nav-alert-col">
-        {showOnboardBanner && (
+        {isUnstract && showOnboardBanner && (
           <Alert
             type="error"
             message={
@@ -275,7 +277,7 @@ function TopNavBar() {
       <Col span={4}>
         <Row justify="end" align="middle">
           <Space>
-            {TrialDaysInfo && (
+            {isUnstract && TrialDaysInfo && (
               <TrialDaysInfo remainingTrialDays={remainingTrialDays} />
             )}
             <Dropdown menu={{ items }} placement="bottomLeft" arrow>
