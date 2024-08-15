@@ -58,84 +58,79 @@ try {
 
 function useMainAppRoutes() {
   return (
-    <>
-      <Route path="" element={<RequireAuth />}>
-        <Route path=":orgName" element={<FullPageLayout />}>
-          <Route path="onboard" element={<OnBoardPage />} />
+    <Route path="" element={<RequireAuth />}>
+      <Route path=":orgName" element={<FullPageLayout />}>
+        <Route path="onboard" element={<OnBoardPage />} />
+      </Route>
+      {ChatAppLayout && ChatAppPage && (
+        <Route path=":orgName" element={<ChatAppLayout />}>
+          <Route path="app/:id" element={<ChatAppPage />} />
         </Route>
-        {ChatAppLayout && ChatAppPage && (
-          <Route path=":orgName" element={<ChatAppLayout />}>
-            <Route path="app/:id" element={<ChatAppPage />} />
+      )}
+      <Route path=":orgName" element={<PageLayout />}>
+        <Route path="profile" element={<ProfilePage />} />
+        <Route
+          path="api"
+          element={<DeploymentsPage type={deploymentTypes.api} />}
+        />
+        <Route
+          path="etl"
+          element={<DeploymentsPage type={deploymentTypes.etl} />}
+        />
+        <Route
+          path="task"
+          element={<DeploymentsPage type={deploymentTypes.task} />}
+        />
+        {AppDeployments && (
+          <Route path="app" element={<AppDeployments type="app" />} />
+        )}
+        <Route path="workflows" element={<WorkflowsPage />} />
+        <Route path="workflows/:id" element={<ProjectHelper />}>
+          <Route path="" element={<AgencyPage />} />
+        </Route>
+        <Route path="tools" element={<CustomTools />} />
+        <Route path="" element={<CustomToolsHelper />}>
+          <Route path="tools/:id" element={<ToolIdePage />} />
+          <Route
+            path="tools/:id/outputAnalyzer"
+            element={<OutputAnalyzerPage />}
+          />
+        </Route>
+        <Route
+          path="settings/llms"
+          element={<ToolsSettingsPage type="llm" />}
+        />
+        <Route
+          path="settings/vectorDbs"
+          element={<ToolsSettingsPage type="vector_db" />}
+        />
+        <Route
+          path="settings/embedding"
+          element={<ToolsSettingsPage type="embedding" />}
+        />
+        <Route
+          path="settings/textExtractor"
+          element={<ToolsSettingsPage type="x2text" />}
+        />
+        <Route path="settings/ocr" element={<ToolsSettingsPage type="ocr" />} />
+        <Route path="settings" element={<SettingsPage />} />
+        {ManualReviewSettings && (
+          <Route path="settings/review" element={<ManualReviewSettings />} />
+        )}
+        <Route path="settings/platform" element={<PlatformSettings />} />
+        <Route element={<RequireAdmin />}>
+          <Route path="users" element={<UsersPage />} />
+          <Route path="users/invite" element={<InviteEditUserPage />} />
+          <Route path="users/edit" element={<InviteEditUserPage />} />
+        </Route>
+        <Route path="settings/triad" element={<DefaultTriad />} />
+        {RequirePlatformAdmin && PlatformAdminPage && (
+          <Route element={<RequirePlatformAdmin />}>
+            <Route path="settings/admin" element={<PlatformAdminPage />} />
           </Route>
         )}
-        <Route path=":orgName" element={<PageLayout />}>
-          <Route path="profile" element={<ProfilePage />} />
-          <Route
-            path="api"
-            element={<DeploymentsPage type={deploymentTypes.api} />}
-          />
-          <Route
-            path="etl"
-            element={<DeploymentsPage type={deploymentTypes.etl} />}
-          />
-          <Route
-            path="task"
-            element={<DeploymentsPage type={deploymentTypes.task} />}
-          />
-          {AppDeployments && (
-            <Route path="app" element={<AppDeployments type="app" />} />
-          )}
-          <Route path="workflows" element={<WorkflowsPage />} />
-          <Route path="workflows/:id" element={<ProjectHelper />}>
-            <Route path="" element={<AgencyPage />} />
-          </Route>
-          <Route path="tools" element={<CustomTools />} />
-          <Route path="" element={<CustomToolsHelper />}>
-            <Route path="tools/:id" element={<ToolIdePage />} />
-            <Route
-              path="tools/:id/outputAnalyzer"
-              element={<OutputAnalyzerPage />}
-            />
-          </Route>
-          <Route
-            path="settings/llms"
-            element={<ToolsSettingsPage type="llm" />}
-          />
-          <Route
-            path="settings/vectorDbs"
-            element={<ToolsSettingsPage type="vector_db" />}
-          />
-          <Route
-            path="settings/embedding"
-            element={<ToolsSettingsPage type="embedding" />}
-          />
-          <Route
-            path="settings/textExtractor"
-            element={<ToolsSettingsPage type="x2text" />}
-          />
-          <Route
-            path="settings/ocr"
-            element={<ToolsSettingsPage type="ocr" />}
-          />
-          <Route path="settings" element={<SettingsPage />} />
-          {ManualReviewSettings && (
-            <Route path="settings/review" element={<ManualReviewSettings />} />
-          )}
-          <Route path="settings/platform" element={<PlatformSettings />} />
-          <Route element={<RequireAdmin />}>
-            <Route path="users" element={<UsersPage />} />
-            <Route path="users/invite" element={<InviteEditUserPage />} />
-            <Route path="users/edit" element={<InviteEditUserPage />} />
-          </Route>
-          <Route path="settings/triad" element={<DefaultTriad />} />
-          {RequirePlatformAdmin && PlatformAdminPage && (
-            <Route element={<RequirePlatformAdmin />}>
-              <Route path="settings/admin" element={<PlatformAdminPage />} />
-            </Route>
-          )}
-        </Route>
       </Route>
-    </>
+    </Route>
   );
 }
 

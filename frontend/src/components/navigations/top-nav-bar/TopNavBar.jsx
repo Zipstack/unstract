@@ -20,7 +20,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 
-import { UnstractLogo } from "../../../assets/index.js";
+import { UnstractLogo, WhispererLogo } from "../../../assets/index.js";
 import {
   getBaseUrl,
   onboardCompleted,
@@ -33,7 +33,6 @@ import { useAlertStore } from "../../../store/alert-store.js";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { PlatformDropdown } from "../../../plugins/platform-dropdown/PlatformDropDown.jsx";
-import { WhispererLogo } from "../../../assets/index.js";
 
 let TrialDaysInfo;
 try {

@@ -41,19 +41,34 @@ function useSessionValid() {
   const navigate = useNavigate();
   const userSession = useUserSession();
 
-  if (selectedProductStore) {
-    selectedProduct = selectedProductStore.useSelectedProductStore(
-      (state) => state.selectedProduct
-    );
+  try {
+    if (selectedProductStore?.useSelectedProductStore) {
+      selectedProduct = selectedProductStore.useSelectedProductStore(
+        (state) => state.selectedProduct
+      );
+    }
+  } catch (error) {
+    // Do nothing
   }
+  const navToSelectProduct = (
+    userSessionData,
+    selectedProductStore,
+    selectedProduct
+  ) => {
+    if (userSessionData && selectedProductStore && !selectedProduct) {
+      navigate("/selectProduct");
+      return;
+    }
+  };
   return async () => {
     try {
       const userSessionData = await userSession();
       const signedInOrgId = userSessionData?.organization_id;
-      if (userSessionData && selectedProductStore && !selectedProduct) {
-        navigate("/selectProduct");
-        return;
-      }
+      navToSelectProduct(
+        userSessionData,
+        selectedProductStore,
+        selectedProduct
+      );
       // API to get the list of organizations
       const requestOptions = {
         method: "GET",
