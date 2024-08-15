@@ -57,7 +57,6 @@ function useSessionValid() {
   ) => {
     if (userSessionData && selectedProductStore && !selectedProduct) {
       navigate("/selectProduct");
-      return;
     }
   };
   return async () => {

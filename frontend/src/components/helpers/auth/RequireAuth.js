@@ -33,8 +33,14 @@ const RequireAuth = () => {
   const pathname = location?.pathname;
   const adapters = sessionDetails?.adapters;
   const currOrgName = getOrgNameFromPathname(pathname);
-  if (useSelectedProductStore) {
-    selectedProduct = useSelectedProductStore((state) => state.selectedProduct);
+  try {
+    if (useSelectedProductStore) {
+      selectedProduct = useSelectedProductStore(
+        (state) => state.selectedProduct
+      );
+    }
+  } catch (error) {
+    // Do nothing
   }
   const isLlmWhisperer = selectedProduct && selectedProduct === "llm-whisperer";
 
