@@ -18,7 +18,7 @@ Contains the backend services for Unstract written with Django and DRF.
 - Copy `sample.env` into `.env` and update the necessary variables. For eg:
 
 ```
-DJANGO_SETTINGS_MODULE='backend.settings.dev'
+DJANGO_SETTINGS_MODULE='backend.settings.platform'
 DB_HOST='localhost'
 DB_USER='unstract_dev'
 DB_PASSWORD='unstract_pass'

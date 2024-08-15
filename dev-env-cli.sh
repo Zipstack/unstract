@@ -167,6 +167,14 @@ parse_args() {
   debug "OPTION verbose: $opt_verbose"
 }
 
+check_for_active_venv() {
+  if [[ -v VIRTUAL_ENV ]] && [[ -n "$VIRTUAL_ENV" ]]; then
+    echo -e "$red_text""Detected active virtual env from: $VIRTUAL_ENV.""$default_text"
+    echo -e "$red_text""Please run 'deactivate' first. Exiting.""$default_text"
+    exit 1
+  fi
+}
+
 setup_venv() {
   if [ "$opt_setup_venv" = false ]; then
     return
@@ -288,6 +296,7 @@ run_pre_commit_hook() {
 # Run Unstract platform - BEGIN
 #
 check_dependencies
+check_for_active_venv
 
 opt_setup_venv=false
 opt_activate_venv=false

@@ -8,17 +8,18 @@ https://docs.djangoproject.com/en/4.2/howto/deployment/wsgi/
 
 import os
 
-from django.conf import settings
-from django.core.wsgi import get_wsgi_application
-from dotenv import load_dotenv
-from utils.log_events import start_server
+from dotenv import find_dotenv, load_dotenv
 
-load_dotenv()
+load_dotenv(find_dotenv() or "")
 
 os.environ.setdefault(
     "DJANGO_SETTINGS_MODULE",
-    os.environ.get("DJANGO_SETTINGS_MODULE", "backend.settings.dev"),
+    os.environ.get("DJANGO_SETTINGS_MODULE", "backend.settings.platform"),
 )
+
+from django.conf import settings  # noqa: E402
+from django.core.wsgi import get_wsgi_application  # noqa: E402
+from utils.log_events import start_server  # noqa: E402
 
 django_app = get_wsgi_application()
 
