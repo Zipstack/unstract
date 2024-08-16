@@ -101,7 +101,7 @@ function PromptOutput({
 
   if (
     (singlePassExtractMode || isSimplePromptStudio) &&
-    (promptDetails.active || isSimplePromptStudio) &&
+    (promptDetails?.active || isSimplePromptStudio) &&
     (firstResult?.output ||
       firstResult?.output === 0 ||
       spsLoading[selectedDoc?.document_id])
@@ -122,12 +122,12 @@ function PromptOutput({
             <Typography.Paragraph className="prompt-card-res font-size-12">
               <div
                 className={
-                  expandedProfiles.includes(firstResult.profileManager)
+                  expandedProfiles.includes(firstResult?.profileManager)
                     ? "expanded-output"
                     : "collapsed-output"
                 }
               >
-                {displayPromptResult(firstResult.output, true)}
+                {displayPromptResult(firstResult?.output, true)}
               </div>
             </Typography.Paragraph>
           )}
@@ -139,7 +139,7 @@ function PromptOutput({
                 className="prompt-card-action-button"
                 onClick={() =>
                   handleExpandClick({
-                    profile_id: firstResult.profileManager,
+                    profile_id: firstResult?.profileManager,
                   })
                 }
               >
