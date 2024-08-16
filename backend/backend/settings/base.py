@@ -9,15 +9,20 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
-import os
-from pathlib import Path
-from typing import Optional
-from urllib.parse import quote_plus
-
 from dotenv import find_dotenv, load_dotenv
 
-from backend.constants import FeatureFlag
-from unstract.flags.feature_flag import check_feature_flag_status
+# Load environment variables.
+load_dotenv(find_dotenv() or "")
+
+import os  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Optional  # noqa: E402
+
+from backend.constants import FeatureFlag  # noqa: E402
+
+# Requires PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python env setting
+# to be loaded prior.
+from unstract.flags.feature_flag import check_feature_flag_status  # noqa: E402
 
 missing_settings = []
 
@@ -84,13 +89,6 @@ LOGGING = {
         # Set the desired logging level here as well
     },
 }
-
-
-ENV_FILE = find_dotenv()
-if ENV_FILE:
-    load_dotenv(ENV_FILE)
-
-# Loading environment variables
 
 WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND", 10800
@@ -162,10 +160,6 @@ SESSION_COOKIE_AGE = int(get_required_setting("SESSION_COOKIE_AGE", "86400"))
 ENABLE_LOG_HISTORY = get_required_setting("ENABLE_LOG_HISTORY")
 LOG_HISTORY_CONSUMER_INTERVAL = int(
     get_required_setting("LOG_HISTORY_CONSUMER_INTERVAL", "60")
-)
-LOGS_BATCH_LIMIT = int(get_required_setting("LOGS_BATCH_LIMIT", "30"))
-CELERY_BROKER_URL = get_required_setting(
-    "CELERY_BROKER_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}"
 )
 
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
@@ -401,21 +395,9 @@ RQ_QUEUES = {
 }
 
 
-# CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/1"
-# Postgres as result backend
-CELERY_RESULT_BACKEND = (
-    f"db+postgresql://{DB_USER}:{quote_plus(DB_PASSWORD)}"
-    f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-)
-CELERY_ACCEPT_CONTENT = ["json"]
-CELERY_TASK_SERIALIZER = "json"
-CELERY_RESULT_SERIALIZER = "json"
-CELERY_TIMEZONE = "UTC"
-CELERY_TASK_MAX_RETRIES = 3
-CELERY_TASK_RETRY_BACKOFF = 60  # Time in seconds before retrying the task
-
 # Feature Flag
 FEATURE_FLAG_SERVICE_URL = {"evaluate": f"{FLIPT_BASE_URL}/api/v1/flags/evaluate/"}
+
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
