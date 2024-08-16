@@ -321,38 +321,36 @@ function PromptOutput({
                       </>
                     )}
                     <div className="prompt-profile-run">
-                      <>
-                        <Tooltip title="Run">
-                          <Button
-                            size="small"
-                            type="text"
-                            className="prompt-card-action-button"
-                            onClick={() => handleRun(profileId, false)}
-                            disabled={
-                              isRunLoading[
-                                `${selectedDoc?.document_id}_${profileId}`
-                              ] || isPublicSource
-                            }
-                          >
-                            <PlayCircleOutlined className="prompt-card-actions-head" />
-                          </Button>
-                        </Tooltip>
-                        <Tooltip title="Run All">
-                          <Button
-                            size="small"
-                            type="text"
-                            className="prompt-card-action-button"
-                            onClick={() => handleRun(profileId, true)}
-                            disabled={
-                              isRunLoading[
-                                `${selectedDoc?.document_id}_${profileId}`
-                              ] || isPublicSource
-                            }
-                          >
-                            <PlayCircleFilled className="prompt-card-actions-head" />
-                          </Button>
-                        </Tooltip>
-                      </>
+                      <Tooltip title="Run">
+                        <Button
+                          size="small"
+                          type="text"
+                          className="prompt-card-action-button"
+                          onClick={() => handleRun(profileId, false)}
+                          disabled={
+                            isRunLoading[
+                              `${selectedDoc?.document_id}_${profileId}`
+                            ] || isPublicSource
+                          }
+                        >
+                          <PlayCircleOutlined className="prompt-card-actions-head" />
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title="Run All">
+                        <Button
+                          size="small"
+                          type="text"
+                          className="prompt-card-action-button"
+                          onClick={() => handleRun(profileId, true)}
+                          disabled={
+                            isRunLoading[
+                              `${selectedDoc?.document_id}_${profileId}`
+                            ] || isPublicSource
+                          }
+                        >
+                          <PlayCircleFilled className="prompt-card-actions-head" />
+                        </Button>
+                      </Tooltip>
                       <Tooltip title="Expand">
                         <Button
                           size="small"
@@ -365,7 +363,7 @@ function PromptOutput({
                       </Tooltip>
                     </div>
                   </div>
-                  {enforceType === TABLE_ENFORCE_TYPE && (
+                  {enforceType === TABLE_ENFORCE_TYPE && TableOutput && (
                     <TableOutput
                       output={
                         result.find((r) => r?.profileManager === profileId)
