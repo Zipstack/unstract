@@ -135,6 +135,7 @@ celerybeat.pid
 # Environments
 test*.env
 .env
+.*.env
 .env.export
 .venv*
 env/
