@@ -62,7 +62,6 @@ class ToolStudioPromptKeys:
     WORD = "word"
     SYNONYMS = "synonyms"
     OUTPUTS = "outputs"
-    ASSERT_PROMPT = "assert_prompt"
     SECTION = "section"
     DEFAULT = "default"
     REINDEX = "reindex"
@@ -89,6 +88,7 @@ class ToolStudioPromptKeys:
     CONTEXT = "context"
     METADATA = "metadata"
     INCLUDE_METADATA = "include_metadata"
+    PLATFORM_POSTAMBLE = "platform_postamble"
 
 
 class FileViewTypes:
