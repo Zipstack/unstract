@@ -141,42 +141,45 @@ do_git_pull() {
 
   if [[ "$opt_version" == "latest" ]]; then
     branch=`git describe --tags --abbrev=0`
-  elif [[ "$opt_version" == "main" ]]; then
-    branch="main"
-    opt_build_local=true
-    echo -e "Choosing ""$blue_text""local build""$default_text"" of Docker images from ""$blue_text""main""$default_text"" branch."
-  elif [ -z $(git tag -l "$opt_version") ]; then
-    echo -e "$red_text""Version not found.""$default_text"
-    if [[ ! $opt_version == v* ]]; then
-      echo -e "$red_text""Version must be provided with a 'v' prefix (e.g. v0.47.0).""$default_text"
+  elif [[ $opt_version == v* ]]; then
+    if [ -z $(git tag -l "$opt_version") ]; then
+      echo -e "$red_text""Version not found.""$default_text"
+      exit 1
     fi
-    exit 1
-  else
     branch="$opt_version"
+  elif [[ "$opt_version" == "current" ]]; then
+    branch=`git branch --show-current`
+    opt_build_local=true
+    echo -e "Opting ""$blue_text""local build""$default_text"" of Docker images from ""$blue_text""$branch""$default_text"" branch."
+  else
+    echo -e "$red_text""Version must be one of {latest, vX.Y.Z (e.g. v0.47.0), current}.""$default_text"
+    exit 1
   fi
 
-  echo -e "Performing ""$blue_text""git checkout""$default_text"" to ""$blue_text""$branch""$default_text""."
-  git checkout --quiet $branch
+  if [[ "$opt_version" == "latest" ]] || [[ $opt_version == v* ]]; then
+    echo -e "Performing ""$blue_text""git checkout""$default_text"" to ""$blue_text""$branch""$default_text""."
+    git checkout --quiet $branch
 
-  echo -e "Performing ""$blue_text""git pull""$default_text"" on ""$blue_text""$branch""$default_text""."
-  git pull --quiet $(git remote) $branch
+    echo -e "Performing ""$blue_text""git pull""$default_text"" on ""$blue_text""$branch""$default_text""."
+    git pull --quiet $(git remote) $branch
+  fi
 }
 
-copy_or_merge_envs() {
+_copy_or_merge_envs() {
+  local src_file_path="$1"
+  local dest_file_path="$2"
+  local service="$3"
 
-  local src_file="$1"
-  local dest_file="$2"
-  local displayed_reason="$3"
-
-  if [ ! -e "$dest_file" ]; then
-    cp "$src_file" "$dest_file"
-    echo -e "Created env for ""$blue_text""$displayed_reason""$default_text"" at ""$blue_text""$dest_file""$default_text""."
+  if [ -e "$src_file_path" ] && [ ! -e "$dest_file_path" ]; then
+    first_setup=true
+    cp "$src_file_path" "$dest_file_path"
+    echo -e "Created env for ""$blue_text""$service""$default_text"" at ""$blue_text""$dest_file_path""$default_text""."
   elif [ "$opt_only_env" = true ] || [ "$opt_update" = true ]; then
-    python3 $script_dir/docker/scripts/merge_env.py "$src_file" "$dest_file"
+    python3 $script_dir/docker/scripts/merge_env.py "$src_file_path" "$dest_file_path"
     if [ $? -ne 0 ]; then
       exit 1
     fi
-    echo -e "Merged env for ""$blue_text""$displayed_reason""$default_text"" at ""$blue_text""$dest_file""$default_text""."
+    echo -e "Merged env for ""$blue_text""$service""$default_text"" at ""$blue_text""$dest_file_path""$default_text""."
   fi
 }
 
@@ -189,10 +192,9 @@ setup_env() {
     sample_env_path="$script_dir/$service/sample.env"
     env_path="$script_dir/$service/.env"
 
-    if [ -e "$sample_env_path" ] && [ ! -e "$env_path" ]; then
-      first_setup=true
-      cp "$sample_env_path" "$env_path"
+    _copy_or_merge_envs $sample_env_path $env_path $service
 
+    if [ "$first_setup" = true ]; then
       # Add encryption secret for backend and platform-service.
       if [[ "$service" == "backend" || "$service" == "platform-service" ]]; then
         echo -e "$blue_text""Adding encryption secret to $service""$default_text"
@@ -217,19 +219,11 @@ setup_env() {
           # sed -i "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
         fi
       fi
-      echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
-    elif [ "$opt_only_env" = true ] || [ "$opt_update" = true ]; then
-      python3 $script_dir/docker/scripts/merge_env.py $sample_env_path $env_path
-      if [ $? -ne 0 ]; then
-        exit 1
-      fi
-      echo -e "Merged env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
     fi
   done
 
-  copy_or_merge_envs "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env" "essential services"
-  copy_or_merge_envs "$script_dir/docker/sample.env" "$script_dir/docker/.env" "docker compose"
-
+  _copy_or_merge_envs "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env" "essential services"
+  _copy_or_merge_envs "$script_dir/docker/sample.env" "$script_dir/docker/.env" "docker compose"
 
   if [ "$opt_only_env" = true ]; then
     echo -e "$green_text""Done.""$default_text" && exit 0
@@ -240,7 +234,7 @@ build_services() {
   pushd ${script_dir}/docker 1>/dev/null
 
   if [ "$opt_build_local" = true ]; then
-    echo -e "$blue_text""Building""$default_text"" docker images ""$blue_text""$opt_version""$default_text"" locally."
+    echo -e "$blue_text""Building""$default_text"" docker images tag ""$blue_text""$opt_version""$default_text"" locally."
     VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.build.yaml build || {
       echo -e "$red_text""Failed to build docker images.""$default_text"
       exit 1
