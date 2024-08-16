@@ -85,6 +85,10 @@ class StructureTool(BaseTool):
         self.stream_log("Indexing document")
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[SettingsKeys.RUN_ID] = run_id
+        usage_kwargs[SettingsKeys.FILE_NAME] = (
+            self.get_exec_metadata.get(MetadataKey.SOURCE_NAME),
+        )
+
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             index.index(
                 tool_id=tool_id,
