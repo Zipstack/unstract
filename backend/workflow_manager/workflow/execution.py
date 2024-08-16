@@ -21,7 +21,6 @@ from workflow_manager.workflow.enums import ExecutionStatus
 from workflow_manager.workflow.exceptions import WorkflowExecutionError
 from workflow_manager.workflow.models import Workflow, WorkflowExecution
 from workflow_manager.workflow.models.execution import EXECUTION_ERROR_LENGTH
-from workflow_manager.workflow.models.file_history import FileHistory
 
 logger = logging.getLogger(__name__)
 
@@ -289,34 +288,23 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self,
         file_name: str,
         single_step: bool,
-        file_history: Optional[FileHistory] = None,
-    ) -> bool:
+    ) -> tuple[bool, bool]:
         """Executes the input file.
 
         Args:
             file_name (str): The name of the file to be executed.
             single_step (bool): Flag indicating whether to execute in
             single step mode.
-            file_history (Optional[FileHistory], optional):
-            The file history object. Defaults to None.
         Returns:
-            bool: Flag indicating whether the file was executed.
+            tuple[bool, bool]: Flag indicating whether the file was executed
+            and skipped.
         """
         execution_type = ExecutionType.COMPLETE
-        is_executed = False
         if single_step:
             execution_type = ExecutionType.STEP
-        if not (file_history and file_history.is_completed()):
-            self.execute_uncached_input(file_name=file_name, single_step=single_step)
-            self.publish_log(f"Tool executed successfully for {file_name}")
-            is_executed = True
-        else:
-            self.publish_log(
-                f"Skipping file {file_name} as it is already processed."
-                "Clear the cache to process it again"
-            )
+        self.execute_uncached_input(file_name=file_name, single_step=single_step)
+        self.publish_log(f"Tool executed successfully for {file_name}")
         self._handle_execution_type(execution_type)
-        return is_executed
 
     def execute_uncached_input(self, file_name: str, single_step: bool) -> None:
         """Executes the uncached input file.
@@ -418,3 +406,10 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         workflow: Workflow,
     ) -> WorkflowDto:
         return WorkflowDto(id=workflow.id)
+
+    @staticmethod
+    def get_execution_by_id(execution_id: str) -> Optional[WorkflowExecution]:
+        try:
+            return WorkflowExecution.objects.get(id=execution_id)
+        except WorkflowExecution.DoesNotExist:
+            return None

@@ -60,6 +60,7 @@ urlpatterns = [
         UrlPathConstants.PROMPT_STUDIO,
         include("prompt_studio.prompt_studio_index_manager.urls"),
     ),
+    path("notifications/", include("notification.urls")),
 ]
 
 

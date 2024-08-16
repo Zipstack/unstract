@@ -8,6 +8,14 @@ import { ConfigureFormsLayout } from "../configure-forms-layout/ConfigureFormsLa
 import { ManageFiles } from "../../input-output/manage-files/ManageFiles";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
+let DBRules;
+
+try {
+  DBRules =
+    require("../../../plugins/manual-review/db-rules/DBRules.jsx").DBRules;
+} catch {
+  // The component will remain null of it is not available
+}
 function ConfigureConnectorModal({
   open,
   setOpen,
@@ -29,7 +37,7 @@ function ConfigureConnectorModal({
 }) {
   const [activeKey, setActiveKey] = useState("1");
   useEffect(() => {
-    if (connectorMetadata) {
+    if (connectorMetadata && connType === "FILESYSTEM") {
       setActiveKey("2"); // If connector is already configured
     } else {
       setActiveKey("1"); // default value
@@ -37,10 +45,12 @@ function ConfigureConnectorModal({
   }, [open, connectorMetadata]);
   const { setPostHogCustomEvent, posthogConnectorEventText } =
     usePostHogEvents();
-  const tabItems = [
+
+  const [tabItems, setTabItems] = useState([
     {
       key: "1",
       label: "Settings",
+      visible: true,
     },
     {
       key: "2",
@@ -48,11 +58,64 @@ function ConfigureConnectorModal({
       disabled:
         !connectorId ||
         connDetails?.connector_id !== selectedId ||
-        connType === "DATABASE" ||
-        connType === "MANUALREVIEW",
+        connType === "DATABASE",
+      visible: false,
     },
-  ];
+  ]);
+  const setUpdatedTabOptions = (tabOption) => {
+    setTabItems((prevTabOptions) => {
+      // Check if inputOption already exists in prevTabOptions
+      if (prevTabOptions.some((opt) => opt.key === tabOption.key)) {
+        return prevTabOptions; // Return previous state unchanged
+      } else {
+        // Create a new array with the existing options and the new option
+        const updatedTabOptions = [...prevTabOptions, tabOption];
+        return updatedTabOptions;
+      }
+    });
+  };
 
+  useEffect(() => {
+    const updatedTabItems = tabItems.map((item) => {
+      if (item.key === "2") {
+        item.visible = connType === "FILESYSTEM";
+      } else if (item.key === "MANUALREVIEW") {
+        item.disabled =
+          !connectorId || connDetails?.connector_id !== selectedId;
+        item.visible = connType === "DATABASE" || connType === "MANUALREVIEW";
+      } else {
+        item.visible = true;
+      }
+      return item;
+    });
+    setTabItems(updatedTabItems);
+  }, [open]);
+
+  useEffect(() => {
+    const updatedTabItems = tabItems.map((item) => {
+      if (item.key === "MANUALREVIEW") {
+        item.disabled =
+          !connectorId || connDetails?.connector_id !== selectedId;
+      }
+      return item;
+    });
+    setTabItems(updatedTabItems);
+  }, [connectorMetadata]);
+
+  useEffect(() => {
+    try {
+      const tabOption =
+        require("../../../plugins/manual-review/connector-config-tab-mrq/ConnectorConfigTabMRQ").mrqTabs;
+      if (tabOption) {
+        tabOption["disabled"] =
+          !connectorId || connDetails?.connector_id !== selectedId;
+        tabOption["visible"] = false;
+        setUpdatedTabOptions(tabOption);
+      }
+    } catch {
+      // The component will remain null of it is not available
+    }
+  }, []);
   const handleSelectItem = (e) => {
     const id = e.key;
     setSelectedId(id?.toString());
@@ -103,7 +166,7 @@ function ConfigureConnectorModal({
           <Col span={20} className="conn-modal-col conn-modal-form-pad-left">
             <Tabs
               activeKey={activeKey}
-              items={tabItems}
+              items={tabItems.filter((item) => item?.visible !== false)}
               onChange={onTabChange}
               moreIcon={<></>}
             />
@@ -124,7 +187,12 @@ function ConfigureConnectorModal({
                 selectedItemName={selectedItemName}
               />
             )}
-            {activeKey === "2" && <ManageFiles selectedItem={connectorId} />}
+            {activeKey === "2" && connType === "FILESYSTEM" && (
+              <ManageFiles selectedItem={connectorId} />
+            )}
+            {activeKey === "MANUALREVIEW" && (
+              <DBRules connDetails={connDetails} />
+            )}
           </Col>
         </Row>
       </div>

@@ -63,6 +63,7 @@ function PromptCard({
   const [progressMsg, setProgressMsg] = useState({});
   const [docOutputs, setDocOutputs] = useState([]);
   const [timers, setTimers] = useState({});
+  const [spsLoading, setSpsLoading] = useState({});
   const {
     getDropdownItems,
     llmProfiles,
@@ -129,9 +130,6 @@ function PromptCard({
     resetInfoMsgs();
     handleGetOutput();
     handleGetCoverage();
-    if (isSinglePassExtractLoading) {
-      return;
-    }
   }, [
     selectedLlmProfileId,
     selectedDoc,
@@ -146,22 +144,24 @@ function PromptCard({
     const promptId = promptDetails?.prompt_id;
     const isIncluded = listOfIds.includes(promptId);
 
-    if (
-      (isIncluded && isCoverageLoading) ||
-      (!isIncluded && !isCoverageLoading)
-    ) {
+    const isDocLoading = docOutputs?.some(
+      (doc) => doc?.key?.startsWith(`${promptId}__`) && doc?.isLoading
+    );
+
+    if ((isIncluded && isDocLoading) || (!isIncluded && !isDocLoading)) {
       return;
     }
 
-    if (isIncluded && !isCoverageLoading) {
+    if (isIncluded && !isDocLoading) {
       listOfIds = listOfIds.filter((item) => item !== promptId);
     }
 
-    if (!isIncluded && isCoverageLoading) {
+    if (!isIncluded && isDocLoading) {
       listOfIds.push(promptId);
     }
+
     updateCustomTool({ disableLlmOrDocChange: listOfIds });
-  }, [isCoverageLoading]);
+  }, [docOutputs, promptDetails, updateCustomTool]);
 
   useEffect(() => {
     if (isCoverageLoading && coverageTotal === listOfDocs?.length) {
@@ -226,6 +226,13 @@ function PromptCard({
       }
       return updatedDocOutputs;
     });
+  };
+
+  const handleSpsLoading = (docId, isLoadingStatus) => {
+    setSpsLoading((prev) => ({
+      ...prev,
+      [docId]: isLoadingStatus,
+    }));
   };
 
   // Generate the result for the currently selected document
@@ -618,7 +625,11 @@ function PromptCard({
       return;
     }
 
-    if (!singlePassExtractMode && !selectedLlmProfileId) {
+    if (
+      !singlePassExtractMode &&
+      !isSimplePromptStudio &&
+      !selectedLlmProfileId
+    ) {
       setResult([]);
       return;
     }
@@ -807,6 +818,9 @@ function PromptCard({
         selectedLlmProfileId={selectedLlmProfileId}
         handleSelectDefaultLLM={handleSelectDefaultLLM}
         timers={timers}
+        spsLoading={spsLoading}
+        handleSpsLoading={handleSpsLoading}
+        handleGetOutput={handleGetOutput}
       />
       {EvalModal && !singlePassExtractMode && (
         <EvalModal

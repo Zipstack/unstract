@@ -205,6 +205,11 @@ const deploymentTypes = {
   app: "app",
 };
 
+const deploymentApiTypes = {
+  api: "api",
+  pipeline: "pipeline",
+};
+
 const deploymentsStaticContent = {
   etl: {
     title: "Unstructured to Structured ETL Pipelines",
@@ -512,12 +517,17 @@ function getDocIdFromKey(key) {
   }
 }
 
+const displayURL = (text) => {
+  return getBaseUrl() + "/" + text;
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
   THEME,
   calculateDivHeight,
   deploymentTypes,
+  deploymentApiTypes,
   deploymentsStaticContent,
   endpointType,
   formatBytes,
@@ -556,4 +566,5 @@ export {
   getFormattedTotalCost,
   pollForCompletion,
   getDocIdFromKey,
+  displayURL,
 };
