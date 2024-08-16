@@ -18,7 +18,6 @@ class GCSHelperEnvNotSetException(Exception):
 logger = logging.getLogger(__name__)
 
 
-# TODO: Rename to GDriveHelper
 class GCSHelper:
     def __init__(self) -> None:
         self.google_service_json = os.environ.get("GDRIVE_GOOGLE_SERVICE_ACCOUNT")
