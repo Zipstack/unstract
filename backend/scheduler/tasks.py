@@ -117,6 +117,7 @@ def execute_pipeline_task(
             execution_response = WorkflowHelper.complete_execution(
                 workflow, execution_id, pipepline_id
             )
+            execution_response.remove_result_metadata_keys()
             logger.info(f"Execution response: {execution_response}")
         logger.info(f"Execution completed for pipeline: {name}")
     except Exception as e:
@@ -166,6 +167,7 @@ def execute_pipeline_task_v2(
         execution_response = WorkflowHelper.complete_execution(
             workflow, execution_id, pipeline_id
         )
+        execution_response.remove_result_metadata_keys()
         logger.info(
             f"Execution response for pipeline {pipeline_name} of organization "
             f"{organization_id}: {execution_response}"

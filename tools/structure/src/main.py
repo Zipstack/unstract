@@ -27,7 +27,6 @@ class StructureTool(BaseTool):
         prompt_registry_id: str = settings[SettingsKeys.PROMPT_REGISTRY_ID]
         challenge_llm: str = settings[SettingsKeys.CHALLENGE_LLM_ADAPTER_ID]
         enable_challenge: bool = settings[SettingsKeys.ENABLE_CHALLENGE]
-        include_metadata: bool = settings.get(SettingsKeys.INCLUDE_METADATA, False)
         summarize_as_source: bool = settings[SettingsKeys.SUMMARIZE_AS_SOURCE]
         single_pass_extraction_mode: bool = settings[
             SettingsKeys.SINGLE_PASS_EXTRACTION_MODE
@@ -80,7 +79,6 @@ class StructureTool(BaseTool):
             SettingsKeys.FILE_HASH: file_hash,
             SettingsKeys.FILE_NAME: file_name,
         }
-        params = {SettingsKeys.INCLUDE_METADATA: include_metadata}
         # TODO: Need to split extraction and indexing
         # to avoid unwanted indexing
         self.stream_log("Indexing document")
@@ -89,6 +87,12 @@ class StructureTool(BaseTool):
         usage_kwargs[SettingsKeys.FILE_NAME] = (
             self.get_exec_metadata.get(MetadataKey.SOURCE_NAME),
         )
+
+        process_text = None
+        try:
+            from helper import process_text  # type: ignore [attr-defined]
+        except ImportError:
+            self.stream_log("Function 'process_text' is not found")
 
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             index.index(
@@ -104,6 +108,7 @@ class StructureTool(BaseTool):
                 reindex=True,
                 usage_kwargs=usage_kwargs,
                 enable_highlight=enable_highlight,
+                process_text=process_text,
             )
             if summarize_as_source:
                 summarize_file_hash = self._summarize_and_index(
@@ -120,7 +125,6 @@ class StructureTool(BaseTool):
             self.stream_log("Fetching response for single pass extraction")
             prompt_service_resp = responder.single_pass_extraction(
                 payload=payload,
-                params=params,
             )
         else:
             try:
@@ -142,6 +146,7 @@ class StructureTool(BaseTool):
                             reindex=reindex,
                             usage_kwargs=usage_kwargs,
                             enable_highlight=enable_highlight,
+                            process_text=process_text,
                         )
 
                     if summarize_as_source:
@@ -163,7 +168,6 @@ class StructureTool(BaseTool):
             self.stream_log("Fetching responses for prompts...")
             prompt_service_resp = responder.answer_prompt(
                 payload=payload,
-                params=params,
             )
 
         # TODO: Make use of dataclasses
@@ -174,6 +178,22 @@ class StructureTool(BaseTool):
             )
 
         structured_output = prompt_service_resp[SettingsKeys.STRUCTURE_OUTPUT]
+        structured_output_dict = json.loads(structured_output)
+
+        if not summarize_as_source:
+            metadata = structured_output_dict[SettingsKeys.METADATA]
+            epilogue = metadata.pop(SettingsKeys.EPILOGUE, None)
+            if epilogue:
+                try:
+                    from helper import transform_dict  # type: ignore [attr-defined]
+
+                    highlight_data = transform_dict(epilogue, tool_data_dir)
+                    metadata[SettingsKeys.HIGHLIGHT_DATA] = highlight_data
+                except ImportError:
+                    self.stream_log("Function 'transform_dict' is not found")
+            # Update the dictionary with modified metadata
+            structured_output_dict[SettingsKeys.METADATA] = metadata
+            structured_output = json.dumps(structured_output_dict)
 
         # Update GUI
         input_log = (
@@ -191,11 +211,11 @@ class StructureTool(BaseTool):
             output_path = Path(output_dir) / f"{Path(source_name).stem}.json"
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(structured_output)
-        except (FileNotFoundError, PermissionError, OSError) as e:
+        except OSError as e:
             self.stream_error_and_exit(f"Error creating output file: {e}")
         except json.JSONDecodeError as e:
             self.stream_error_and_exit(f"Error encoding JSON: {e}")
-        self.write_tool_result(data=json.loads(structured_output))
+        self.write_tool_result(data=structured_output_dict)
 
     def _summarize_and_index(
         self,
