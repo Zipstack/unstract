@@ -829,8 +829,8 @@ class PromptStudioHelper:
         x2text_adapter = str(profile_manager.x2text.id)
         extract_file_path: Optional[str] = None
 
+        directory, filename = os.path.split(file_path)
         if not is_summary:
-            directory, filename = os.path.split(file_path)
             extract_file_path = os.path.join(
                 directory, "extract", os.path.splitext(filename)[0] + ".txt"
             )
