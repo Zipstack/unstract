@@ -51,7 +51,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
         files=[('files',('file',open(filepath,'rb'),'application/octet-stream'))]
         response = requests.request("POST", api_url, headers=headers, data=payload, files=files)
       {{else}}
-        api_url = '{{url}}?execution_id=REPLACE_WITH_EXECUTION_ID'
+        api_url = '{{url}}?execution_id=REPLACE_WITH_EXECUTION_ID&include_metadata=False'
         headers = {
           'Authorization': 'Bearer REPLACE_WITH_API_KEY'
         }
@@ -74,7 +74,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
     --form 'timeout=300' \\
     --form 'include_metadata=false'
     {{else}}
-    curl --location '{{url}}?execution_id=REPLACE_WITH_EXECUTION_ID' \\
+    curl --location '{{url}}?execution_id=REPLACE_WITH_EXECUTION_ID&include_metadata=False' \\
     --header 'Authorization: Bearer REPLACE_WITH_API_KEY'
     {{/if}}
   `;
@@ -100,7 +100,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
     fetch("{{url}}", requestOptions)
     {{else}}
     var requestOptions = { method: 'GET', redirect: 'follow', headers: myHeaders};
-    fetch("{{url}}?execution_id=REPLACE_WITH_EXECUTION_ID", requestOptions)
+    fetch("{{url}}?execution_id=REPLACE_WITH_EXECUTION_ID&include_metadata=False", requestOptions)
     {{/if}}
     .then(response => response.text())
     .then(result => console.log(result))
