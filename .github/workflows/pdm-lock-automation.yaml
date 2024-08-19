@@ -121,10 +121,10 @@ jobs:
             echo "Checking pdm lock..."
             pdm lock --check
 
-            echo "Adding pdm.lock changes..."
+            echo "Adding pdm lock changes..."
             git add pdm.lock
 
-            echo "Committing and pushing pdm.lock ..."
+            echo "Committing and pushing pdm lock ..."
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
             git push origin HEAD:${{ github.head_ref }}
           fi
