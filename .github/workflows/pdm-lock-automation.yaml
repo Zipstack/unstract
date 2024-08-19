@@ -94,11 +94,11 @@ jobs:
 
           source .venv/bin/activate
 
+          echo "Generating/Updating pdm.lock..."
+          pdm lock -G :all -v
+
           echo "Stashing changes if there are any..."
           git stash || echo "No stash entries found, continuing..."
-
-          echo "Updating pdm.lock..."
-          pdm lock -G :all -v
 
           if git diff --quiet; then
             echo "No changes between the current branch and the ${{ github.head_ref }} branch."
