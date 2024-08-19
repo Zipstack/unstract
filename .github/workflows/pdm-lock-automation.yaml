@@ -118,7 +118,7 @@ jobs:
           else
             echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
 
-            echo "Running pre-commit pdm hook..."
+            echo "Checking pdm lock..."
             pdm lock --check
 
             echo "Adding pdm.lock changes..."
