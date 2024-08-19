@@ -25,6 +25,7 @@ class Common:
     METADATA = "metadata"
     MODULE = "module"
     CONNECTOR = "connector"
+    NAME = "Kirti"
 
 
 class Pagination:
