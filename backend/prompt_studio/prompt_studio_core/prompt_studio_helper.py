@@ -727,7 +727,7 @@ class PromptStudioHelper:
                 output[TSPKeys.EVAL_SETTINGS][attr] = attr_val
 
         output = PromptStudioHelper.fetch_table_settings_if_enabled(
-            doc_name, prompt, org_id, user_id, tool_id
+            doc_name, prompt, org_id, user_id, tool_id, output
         )
 
         outputs.append(output)
