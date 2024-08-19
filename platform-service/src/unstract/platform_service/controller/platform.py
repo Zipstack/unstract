@@ -1,24 +1,22 @@
 import json
-import traceback
 import uuid
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import peewee
 import redis
 from cryptography.fernet import Fernet, InvalidToken
-from flask import Blueprint, Request, Response
+from flask import Blueprint, Request
 from flask import current_app as app
 from flask import jsonify, make_response, request
 from unstract.platform_service.constants import DBTable, DBTableV2, FeatureFlag
 from unstract.platform_service.env import Env
-from unstract.platform_service.exceptions import APIError, ErrorResponse
+from unstract.platform_service.exceptions import APIError
 from unstract.platform_service.helper.adapter_instance import (
     AdapterInstanceRequestHelper,
 )
 from unstract.platform_service.helper.cost_calculation import CostCalculationHelper
 from unstract.platform_service.helper.prompt_studio import PromptStudioRequestHelper
-from werkzeug.exceptions import HTTPException
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
@@ -512,64 +510,6 @@ def custom_tool_instance() -> Any:
             )
             return "Internal Server Error", 500
     return "Method Not Allowed", 405
-
-
-def log_exceptions(e: HTTPException) -> None:
-    """Helper method to log exceptions.
-
-    Args:
-        e (HTTPException): Exception to log
-    """
-    code = 500
-    if hasattr(e, "code"):
-        code = e.code or code
-
-    if code >= 500:
-        message = "{method} {url} {status}\n\n{error}\n\n````{tb}````".format(
-            method=request.method,
-            url=request.url,
-            status=code,
-            error=str(e),
-            tb=traceback.format_exc(),
-        )
-    else:
-        message = "{method} {url} {status} {error}".format(
-            method=request.method,
-            url=request.url,
-            status=code,
-            error=str(e),
-        )
-    app.logger.error(message)
-
-
-@app.errorhandler(HTTPException)
-def handle_http_exception(e: HTTPException) -> Union[Response, tuple[Response, int]]:
-    """Return JSON instead of HTML for HTTP errors."""
-    log_exceptions(e)
-    if isinstance(e, APIError):
-        return jsonify(e.to_dict()), e.code
-    else:
-        response = e.get_response()
-        response.data = json.dumps(
-            ErrorResponse(error=e.description, name=e.name, code=e.code)
-        )
-        response.content_type = "application/json"
-        return response
-
-
-@app.errorhandler(Exception)
-def handle_uncaught_exception(e: Exception) -> Union[Response, tuple[Response, int]]:
-    """Handler for uncaught exceptions.
-
-    Args:
-        e (Exception): Any uncaught exception
-    """
-    # pass through HTTP errors
-    if isinstance(e, HTTPException):
-        return handle_http_exception(e)
-
-    log_exceptions(e)
-    return handle_http_exception(APIError())
 
 
 if __name__ == "__main__":
