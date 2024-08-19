@@ -32,7 +32,6 @@ from werkzeug.exceptions import HTTPException
 
 from unstract.core.pubsub_helper import LogPublisher
 
-POS_TEXT_PATH = "/tmp/pos.txt"
 USE_UNSTRACT_PROMPT = True
 MAX_RETRIES = 3
 NO_CONTEXT_ERROR = (
