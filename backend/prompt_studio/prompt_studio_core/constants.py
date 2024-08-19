@@ -89,6 +89,7 @@ class ToolStudioPromptKeys:
     METADATA = "metadata"
     INCLUDE_METADATA = "include_metadata"
     PLATFORM_POSTAMBLE = "platform_postamble"
+    SUMMARIZE_AS_SOURCE = "summarize_as_source"
 
 
 class FileViewTypes:
