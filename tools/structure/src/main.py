@@ -165,6 +165,7 @@ class StructureTool(BaseTool):
             except Exception as e:
                 self.stream_error_and_exit(f"Error fetching data and indexing: {e}")
 
+            # TODO : Make this snippet pluggable and introduce pluggablity for tools.
             for output in outputs:
                 try:
                     table_settings = output[SettingsKeys.TABLE_SETTINGS]
