@@ -201,16 +201,11 @@ def prompt_processor() -> Any:
                     structured_output=structured_output,
                     llm=llm,
                 )
-                if include_metadata:
-                    metadata = query_usage_metadata(
-                        db=be_db, token=platform_key, metadata=metadata
-                    )
-                    response = {
-                        PSKeys.METADATA: metadata,
-                        PSKeys.OUTPUT: structured_output,
-                    }
-                else:
-                    response = {PSKeys.OUTPUT: structured_output}
+                metadata = query_usage_metadata(token=platform_key, metadata=metadata)
+                response = {
+                    PSKeys.METADATA: metadata,
+                    PSKeys.OUTPUT: structured_output,
+                }
                 return response
             except APIError as api_error:
                 app.logger.error(
