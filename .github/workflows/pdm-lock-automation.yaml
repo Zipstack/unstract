@@ -118,11 +118,11 @@ jobs:
           else
             echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
 
-            echo "Adding pdm.lock changes..."
-            git add pdm.lock
-
             echo "Running pre-commit pdm hook..."
             pdm lock --check
+
+            echo "Adding pdm.lock changes..."
+            git add pdm.lock
 
             echo "Committing and pushing changes..."
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
