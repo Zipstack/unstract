@@ -202,7 +202,7 @@ class StructureTool(BaseTool):
             output_path = Path(output_dir) / f"{Path(source_name).stem}.json"
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(structured_output)
-        except (FileNotFoundError, PermissionError, OSError) as e:
+        except OSError as e:
             self.stream_error_and_exit(f"Error creating output file: {e}")
         except json.JSONDecodeError as e:
             self.stream_error_and_exit(f"Error encoding JSON: {e}")
