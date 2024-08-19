@@ -101,20 +101,22 @@ jobs:
           echo "Stashing changes if there are any..."
           git stash || echo "No stash entries found, continuing..."
 
+          echo "Pulling remote ${{ github.head_ref }} branch..."
+          git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
+
+          echo "Trying to pop stash if any..."
+          if git stash list | grep -q 'stash@{0}'; then
+            echo "Popping stash..."
+            git stash pop || echo "Failed to pop stash. Continue with other changes."
+          else
+            echo "No stash found, skipping pop."
+          fi
+
           if git diff --quiet; then
             echo "No changes between the current branch and the ${{ github.head_ref }} branch."
             echo "Nothing to commit"
           else
             echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
-
-            git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
-            if git stash list | grep -q 'stash@{0}'; then
-              echo "Popping stash..."
-              git stash pop || echo "Failed to pop stash. Continue with other changes."
-            else
-              echo "No stash found, skipping pop."
-            fi
-
             echo "Adding pdm.lock changes..."
             git add pdm.lock
 
