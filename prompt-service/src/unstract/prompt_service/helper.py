@@ -296,3 +296,29 @@ def run_completion(
         logger.error(f"Error fetching response for prompt: {e}.")
         # TODO: Publish this error as a FE update
         raise APIError(str(e)) from e
+
+
+def extract_table(
+    output: dict[str, Any],
+    plugins: dict[str, dict[str, Any]],
+    structured_output: dict[str, Any],
+    llm: LLM,
+) -> dict[str, Any]:
+    table_settings = output[PSKeys.TABLE_SETTINGS]
+    table_extractor: dict[str, Any] = plugins.get("table-extractor", {})
+    if not table_extractor:
+        raise APIError(
+            "Unable to extract table details. "
+            "Please contact admin to resolve this issue."
+        )
+    try:
+        answer = table_extractor["entrypoint_cls"].extract_large_table(
+            llm=llm, table_settings=table_settings
+        )
+        structured_output[output[PSKeys.NAME]] = answer
+        # We do not support summary and eval for table.
+        # Hence returning the result
+        return structured_output
+    except table_extractor["exception_cls"] as e:
+        msg = f"Couldn't extract table. {e}"
+        raise APIError(message=msg)

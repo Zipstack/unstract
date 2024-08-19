@@ -13,6 +13,7 @@ from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.exceptions import APIError, ErrorResponse, NoPayloadError
 from unstract.prompt_service.helper import (
     construct_and_run_prompt,
+    extract_table,
     extract_variable,
     get_cleaned_context,
     plugin_loader,
@@ -30,6 +31,9 @@ from unstract.sdk.vector_db import VectorDB
 from werkzeug.exceptions import HTTPException
 
 from unstract.core.pubsub_helper import LogPublisher
+
+USE_UNSTRACT_PROMPT = True
+MAX_RETRIES = 3
 
 NO_CONTEXT_ERROR = (
     "Couldn't fetch context from vector DB. "
@@ -188,6 +192,39 @@ def prompt_processor() -> Any:
                 "Unable to obtain LLM / embedding / vectorDB",
             )
             return APIError(message=msg)
+
+        if output[PSKeys.TYPE] == PSKeys.TABLE:
+            try:
+                structured_output = extract_table(
+                    output=output,
+                    plugins=plugins,
+                    structured_output=structured_output,
+                    llm=llm,
+                )
+                metadata = query_usage_metadata(token=platform_key, metadata=metadata)
+                response = {
+                    PSKeys.METADATA: metadata,
+                    PSKeys.OUTPUT: structured_output,
+                }
+                return response
+            except APIError as api_error:
+                app.logger.error(
+                    "Failed to extract table for the prompt %s: %s",
+                    output[PSKeys.NAME],
+                    str(api_error),
+                )
+                _publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.ERROR,
+                    RunLevel.TABLE_EXTRACTION,
+                    "Error while extracting table for the prompt",
+                )
+
         try:
             vector_index = vector_db.get_vector_store_index()
 
