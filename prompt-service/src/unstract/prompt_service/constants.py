@@ -58,6 +58,8 @@ class PromptServiceContants:
     OUTPUT = "output"
     CONTEXT = "context"
     INCLUDE_METADATA = "include_metadata"
+    TABLE = "table"
+    TABLE_SETTINGS = "table_settings"
     EPILOGUE = "epilogue"
     PLATFORM_POSTAMBLE = "platform_postamble"
     EXTRACT_EPILOGUE = "extract-epilogue"
@@ -82,6 +84,7 @@ class RunLevel(Enum):
     RUN = "RUN"
     EVAL = "EVAL"
     CHALLENGE = "CHALLENGE"
+    TABLE_EXTRACTION = "TABLE_EXTRACTION"
 
 
 class FeatureFlag:
