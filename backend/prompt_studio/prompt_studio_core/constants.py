@@ -92,6 +92,7 @@ class ToolStudioPromptKeys:
     TABLE = "table"
     EXTRACT = "extract"
     PLATFORM_POSTAMBLE = "platform_postamble"
+    SUMMARIZE_AS_SOURCE = "summarize_as_source"
 
 
 class FileViewTypes:

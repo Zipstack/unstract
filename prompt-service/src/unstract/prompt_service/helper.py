@@ -212,13 +212,16 @@ def construct_and_run_prompt(
     prompt: str,
     metadata: dict[str, Any],
 ) -> str:
+    platform_postamble = tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, "")
+    if tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE):
+        platform_postamble = ""
     prompt = construct_prompt(
         preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
         prompt=output[prompt],
         postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
         grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
         context=context,
-        platform_postamble=tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, ""),
+        platform_postamble=platform_postamble,
     )
     return run_completion(
         llm=llm,

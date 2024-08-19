@@ -32,7 +32,6 @@ from prompt_studio.prompt_studio_core.exceptions import (
     NoPromptsFound,
     OperationNotSupported,
     PermissionError,
-    ToolNotValid,
 )
 from prompt_studio.prompt_studio_core.models import CustomTool
 from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
@@ -328,10 +327,6 @@ class PromptStudioHelper:
                 tool_id=tool_id,
             )
             file_path = str(Path(file_path) / file_name)
-
-        if not tool:
-            logger.error(f"No tool instance found for the ID {tool_id}")
-            raise ToolNotValid()
 
         logger.info(f"[{tool_id}] Indexing started for doc: {file_name}")
         PromptStudioHelper._publish_log(
@@ -779,6 +774,7 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.SINGLE_PASS_EXTRACTION_MODE] = (
             tool.single_pass_extraction_mode
         )
+        tool_settings[TSPKeys.SUMMARIZE_AS_SOURCE] = tool.summarize_as_source
         tool_settings[TSPKeys.PREAMBLE] = tool.preamble
         tool_settings[TSPKeys.POSTAMBLE] = tool.postamble
         tool_settings[TSPKeys.GRAMMAR] = grammar_list
