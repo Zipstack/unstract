@@ -12,6 +12,8 @@ from adapter_processor.models import AdapterInstance
 from django.conf import settings
 from django.db.models.manager import BaseManager
 from file_management.file_management_helper import FileManagerHelper
+from prompt_studio.modifier_loader import ModifierConfig
+from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_profile_manager.profile_manager_helper import (
     ProfileManagerHelper,
@@ -28,8 +30,8 @@ from prompt_studio.prompt_studio_core.exceptions import (
     EmptyPromptError,
     IndexingAPIError,
     NoPromptsFound,
+    OperationNotSupported,
     PermissionError,
-    ToolNotValid,
 )
 from prompt_studio.prompt_studio_core.models import CustomTool
 from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
@@ -53,6 +55,8 @@ CHOICES_JSON = "/static/select_choices.json"
 ERROR_MSG = "User %s doesn't have access to adapter %s"
 
 logger = logging.getLogger(__name__)
+
+modifier_loader = load_modifier_plugins()
 
 
 class PromptStudioHelper:
@@ -324,10 +328,6 @@ class PromptStudioHelper:
             )
             file_path = str(Path(file_path) / file_name)
 
-        if not tool:
-            logger.error(f"No tool instance found for the ID {tool_id}")
-            raise ToolNotValid()
-
         logger.info(f"[{tool_id}] Indexing started for doc: {file_name}")
         PromptStudioHelper._publish_log(
             {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
@@ -439,6 +439,10 @@ class PromptStudioHelper:
         text_processor: Optional[type[Any]] = None,
     ):
         prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
+
+        if prompt_instance.enforce_type == TSPKeys.TABLE and not modifier_loader:
+            raise OperationNotSupported()
+
         prompt_name = prompt_instance.prompt_key
         PromptStudioHelper._publish_log(
             {
@@ -528,7 +532,9 @@ class PromptStudioHelper:
         prompts = [
             prompt
             for prompt in prompts
-            if prompt.prompt_type != TSPKeys.NOTES and prompt.active
+            if prompt.prompt_type != TSPKeys.NOTES
+            and prompt.active
+            and prompt.enforce_type != TSPKeys.TABLE
         ]
         if not prompts:
             logger.error(f"[{tool_id or 'NA'}] No prompts found for id: {id}")
@@ -587,6 +593,19 @@ class PromptStudioHelper:
             is_create=False,
         )
         return str(Path(doc_path) / doc_name)
+
+    @staticmethod
+    def _get_extract_or_summary_document_path(
+        org_id, user_id, tool_id, doc_name, doc_type
+    ) -> str:
+        doc_path = FileManagerHelper.handle_sub_directory_for_tenants(
+            org_id=org_id,
+            user_id=user_id,
+            tool_id=tool_id,
+            is_create=False,
+        )
+        extracted_doc_name = Path(doc_name).stem + TSPKeys.TXT_EXTENTION
+        return str(Path(doc_path) / doc_type / extracted_doc_name)
 
     @staticmethod
     def _handle_response(
@@ -703,7 +722,7 @@ class PromptStudioHelper:
                 "status": IndexingStatus.PENDING_STATUS.value,
                 "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
             }
-
+        tool_id = str(tool.tool_id)
         output: dict[str, Any] = {}
         outputs: list[dict[str, Any]] = []
         grammer_dict = {}
@@ -743,6 +762,10 @@ class PromptStudioHelper:
                 attr_val = getattr(prompt, attr)
                 output[TSPKeys.EVAL_SETTINGS][attr] = attr_val
 
+        output = PromptStudioHelper.fetch_table_settings_if_enabled(
+            doc_name, prompt, org_id, user_id, tool_id, output
+        )
+
         outputs.append(output)
 
         tool_settings = {}
@@ -751,14 +774,13 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.SINGLE_PASS_EXTRACTION_MODE] = (
             tool.single_pass_extraction_mode
         )
+        tool_settings[TSPKeys.SUMMARIZE_AS_SOURCE] = tool.summarize_as_source
         tool_settings[TSPKeys.PREAMBLE] = tool.preamble
         tool_settings[TSPKeys.POSTAMBLE] = tool.postamble
         tool_settings[TSPKeys.GRAMMAR] = grammar_list
         tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
             settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
         )
-
-        tool_id = str(tool.tool_id)
 
         file_hash = ToolUtils.get_hash_from_file(file_path=doc_path)
 
@@ -792,6 +814,36 @@ class PromptStudioHelper:
             )
         output_response = json.loads(answer["structure_output"])
         return output_response
+
+    @staticmethod
+    def fetch_table_settings_if_enabled(
+        doc_name: str,
+        prompt: ToolStudioPrompt,
+        org_id: str,
+        user_id: str,
+        tool_id: str,
+        output: dict[str, Any],
+    ) -> dict[str, Any]:
+
+        if prompt.enforce_type == TSPKeys.TABLE:
+            extract_doc_path: str = (
+                PromptStudioHelper._get_extract_or_summary_document_path(
+                    org_id, user_id, tool_id, doc_name, TSPKeys.EXTRACT
+                )
+            )
+            for modifier_plugin in modifier_loader:
+                cls = modifier_plugin[ModifierConfig.METADATA][
+                    ModifierConfig.METADATA_SERVICE_CLASS
+                ]
+                output = cls.update(
+                    output=output,
+                    tool_id=tool_id,
+                    prompt_id=str(prompt.prompt_id),
+                    prompt=prompt.prompt,
+                    input_file=extract_doc_path,
+                )
+
+        return output
 
     @staticmethod
     def dynamic_indexer(
