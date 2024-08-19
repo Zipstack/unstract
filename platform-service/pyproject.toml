@@ -7,7 +7,7 @@ authors = [
 ]
 dependencies = [
     "flask~=3.0.0",
-    "peewee==3.14",
+    "peewee~=3.16",
     "psycopg2-binary~=2.9",
     "python-dotenv~=1.0",
     "redis~=5.0.1",
