@@ -63,6 +63,7 @@ class StructureTool(BaseTool):
         tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION] = (
             single_pass_extraction_mode
         )
+        tool_settings[SettingsKeys.SUMMARIZE_AS_SOURCE] = summarize_as_source
 
         prompt_service_resp = None
         _, file_name = os.path.split(input_file)
