@@ -60,6 +60,10 @@ class PromptServiceContants:
     INCLUDE_METADATA = "include_metadata"
     TABLE = "table"
     TABLE_SETTINGS = "table_settings"
+    EPILOGUE = "epilogue"
+    PLATFORM_POSTAMBLE = "platform_postamble"
+    EXTRACT_EPILOGUE = "extract-epilogue"
+    CLEAN_CONTEXT = "clean-context"
 
 
 class LogLevel(Enum):
