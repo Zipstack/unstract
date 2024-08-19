@@ -32,6 +32,8 @@ import { TokenUsage } from "../token-usage/TokenUsage";
 import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { TABLE_ENFORCE_TYPE } from "./constants";
+import { CopyPromptOutputBtn } from "./CopyPromptOutputBtn";
+import { useAlertStore } from "../../../store/alert-store";
 
 let TableOutput;
 try {
@@ -69,6 +71,7 @@ function PromptOutput({
     isSimplePromptStudio,
     isPublicSource,
   } = useCustomToolStore();
+  const { setAlertDetails } = useAlertStore();
 
   const tooltipContent = (adapterConf) => (
     <div>
@@ -99,6 +102,27 @@ function PromptOutput({
 
   const getColSpan = () => (componentWidth < 1200 ? 24 : 6);
 
+  const copyOutputToClipboard = (text) => {
+    if (!text || text === "undefined" || enforceType === TABLE_ENFORCE_TYPE) {
+      return;
+    }
+
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setAlertDetails({
+          type: "success",
+          content: "Prompt output copied successfully",
+        });
+      })
+      .catch(() => {
+        setAlertDetails({
+          type: "error",
+          content: "Failed to copy prompt output",
+        });
+      });
+  };
+
   if (
     (singlePassExtractMode || isSimplePromptStudio) &&
     (promptDetails?.active || isSimplePromptStudio) &&
@@ -106,6 +130,7 @@ function PromptOutput({
       firstResult?.output === 0 ||
       spsLoading[selectedDoc?.document_id])
   ) {
+    const promptOutput = displayPromptResult(firstResult?.output, true);
     return (
       <>
         <Divider className="prompt-card-divider" />
@@ -127,11 +152,15 @@ function PromptOutput({
                     : "collapsed-output"
                 }
               >
-                {displayPromptResult(firstResult?.output, true)}
+                {promptOutput}
               </div>
             </Typography.Paragraph>
           )}
           <div className="prompt-profile-run">
+            <CopyPromptOutputBtn
+              isDisabled={enforceType === TABLE_ENFORCE_TYPE}
+              copyToClipboard={() => copyOutputToClipboard(promptOutput)}
+            />
             <Tooltip title="Expand">
               <Button
                 size="small"
@@ -351,6 +380,19 @@ function PromptOutput({
                           <PlayCircleFilled className="prompt-card-actions-head" />
                         </Button>
                       </Tooltip>
+                      <CopyPromptOutputBtn
+                        isDisabled={enforceType === TABLE_ENFORCE_TYPE}
+                        copyToClipboard={() =>
+                          copyOutputToClipboard(
+                            displayPromptResult(
+                              result.find(
+                                (r) => r?.profileManager === profileId
+                              )?.output,
+                              true
+                            )
+                          )
+                        }
+                      />
                       <Tooltip title="Expand">
                         <Button
                           size="small"
