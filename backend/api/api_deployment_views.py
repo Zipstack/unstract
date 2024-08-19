@@ -83,14 +83,13 @@ class DeploymentExecution(views.APIView):
         response: ExecutionResponse = DeploymentHelper.get_execution_status(
             execution_id=execution_id
         )
-        response_status = status.HTTP_200_OK
+        response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
         if response.execution_status == CeleryTaskState.COMPLETED.value:
+            response_status = status.HTTP_200_OK
             if include_metadata:
                 response.remove_result_metadata_keys(keys_to_remove=["highlight_data"])
             else:
                 response.remove_result_metadata_keys()
-        else:
-            response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
         return Response(
             data={
                 "status": response.execution_status,
