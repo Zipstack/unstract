@@ -17,6 +17,7 @@ on:
       # - 'unstract/tool-registry' # commenting due to transitive dependency on local libraries/pyproject.toml
       - 'unstract/tool-sandbox/pyproject.toml'
       # - 'unstract/workflow-execution/pyproject.toml' # commenting due to transitive dependency on local libraries
+  workflow_dispatch:
 
 jobs:
   check_pyproject_changes:

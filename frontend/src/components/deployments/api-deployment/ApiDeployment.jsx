@@ -150,6 +150,7 @@ function ApiDeployment() {
         <Dropdown
           menu={{ items: actionItems }}
           placement="bottomLeft"
+          trigger={["click"]}
           onOpenChange={() => setSelectedRow(record)}
         >
           <EllipsisOutlined className="cur-pointer" />
