@@ -68,3 +68,8 @@ class SettingsKeys:
     ENABLE_HIGHLIGHT = "enable_highlight"
     NAME = "name"
     INCLUDE_METADATA = "include_metadata"
+    TABLE_SETTINGS = "table_settings"
+    INPUT_FILE = "input_file"
+    METADATA = "metadata"
+    EPILOGUE = "epilogue"
+    HIGHLIGHT_DATA = "highlight_data"

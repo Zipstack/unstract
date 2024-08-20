@@ -72,3 +72,13 @@ def load_plugins() -> list[Any]:
         logger.info("No processor plugins found.")
 
     return processor_plugins
+
+
+def get_plugin_class_by_name(name: str, plugins: list[Any]) -> Any:
+    """Retrieve a specific plugin class by name."""
+    for plugin in plugins:
+        metadata = plugin[ProcessorConfig.METADATA]
+        if metadata.get(ProcessorConfig.METADATA_NAME) == name:
+            return metadata.get(ProcessorConfig.METADATA_SERVICE_CLASS)
+    logger.warning("Plugin with name '%s' not found.", name)
+    return None
