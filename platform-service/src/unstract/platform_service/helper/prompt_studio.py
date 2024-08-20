@@ -2,7 +2,7 @@ from typing import Any
 
 import peewee
 from unstract.platform_service.constants import DBTableV2, FeatureFlag
-from unstract.platform_service.exceptions import CustomException
+from unstract.platform_service.exceptions import APIError
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
@@ -41,7 +41,7 @@ class PromptStudioRequestHelper:
         cursor = db_instance.execute_sql(query)
         result_row = cursor.fetchone()
         if not result_row:
-            raise CustomException(message="Custom Tool not found", code=404)
+            raise APIError(message="Custom Tool not found", code=404)
         columns = [desc[0] for desc in cursor.description]
         data_dict: dict[str, Any] = dict(zip(columns, result_row))
         cursor.close()
