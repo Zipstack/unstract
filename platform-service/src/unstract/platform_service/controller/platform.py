@@ -1,15 +1,17 @@
+import json
 import uuid
 from datetime import datetime
 from typing import Any, Optional
 
 import peewee
 import redis
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from flask import Blueprint, Request
 from flask import current_app as app
-from flask import json, jsonify, make_response, request
+from flask import jsonify, make_response, request
 from unstract.platform_service.constants import DBTable, DBTableV2, FeatureFlag
 from unstract.platform_service.env import Env
+from unstract.platform_service.exceptions import APIError
 from unstract.platform_service.helper.adapter_instance import (
     AdapterInstanceRequestHelper,
 )
@@ -452,11 +454,21 @@ def adapter_instance() -> Any:
             )
 
             return jsonify(data_dict)
-        except Exception as e:
-            print(e)
+        except InvalidToken:
+            msg = (
+                "Platform encryption key for storing adapter credentials has "
+                "changed! All adapters are inaccessible. Please inform "
+                "the platform admin immediately."
+            )
             app.logger.error(
                 f"Error while getting db adapter settings for: "
-                f"{adapter_instance_id} Error: {str(e)}"
+                f"{adapter_instance_id}, Error: {msg}"
+            )
+            raise APIError(message=msg, code=403)
+        except Exception as e:
+            app.logger.error(
+                f"Error while getting db adapter settings for: "
+                f"{adapter_instance_id}, Error: {str(e)}"
             )
             return "Internal Server Error", 500
     return "Method Not Allowed", 405
@@ -492,10 +504,14 @@ def custom_tool_instance() -> Any:
             )
             return jsonify(data_dict)
         except Exception as e:
-            print(e)
             app.logger.error(
                 f"Error while getting db adapter settings for: "
                 f"{prompt_registry_id} Error: {str(e)}"
             )
             return "Internal Server Error", 500
     return "Method Not Allowed", 405
+
+
+if __name__ == "__main__":
+    # Start the server
+    app.run(host="0.0.0.0", port="3001")
