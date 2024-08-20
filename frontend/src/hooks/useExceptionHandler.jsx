@@ -40,7 +40,7 @@ const useExceptionHandler = () => {
           return {
             title: title,
             type: "error",
-            content: errors?.[0]?.detail ? errors[0].detail : errMessage,
+            content: errors,
             duration: duration,
           };
         case "client_error":

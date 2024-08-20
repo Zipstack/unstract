@@ -12,6 +12,7 @@ from unstract.prompt_service.config import db
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.exceptions import APIError, RateLimitError
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
+from unstract.sdk.exceptions import SdkError
 from unstract.sdk.llm import LLM
 
 load_dotenv()
@@ -292,7 +293,7 @@ def run_completion(
     # TODO: Catch and handle specific exception here
     except SdkRateLimitError as e:
         raise RateLimitError(f"Rate limit error. {str(e)}") from e
-    except Exception as e:
+    except SdkError as e:
         logger.error(f"Error fetching response for prompt: {e}.")
         # TODO: Publish this error as a FE update
         raise APIError(str(e)) from e
