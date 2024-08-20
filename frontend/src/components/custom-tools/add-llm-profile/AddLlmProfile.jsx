@@ -83,9 +83,9 @@ function AddLlmProfile({
     setFormDetails({
       profile_name: "",
       llm: "",
-      chunk_size: 1024,
+      chunk_size: 0,
       vector_store: "",
-      chunk_overlap: 128,
+      chunk_overlap: 0,
       embedding_model: "",
       x2text: "",
       retrieval_strategy: "simple",
