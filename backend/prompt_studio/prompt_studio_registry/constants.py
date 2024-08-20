@@ -9,6 +9,7 @@ class PromptStudioRegistryKeys:
     PROMPT_REGISTRY_ID = "prompt_registry_id"
     FILE_NAME = "file_name"
     UNDEFINED = "undefined"
+    TABLE = "table"
 
 
 class PromptStudioRegistryErrors:
@@ -92,6 +93,7 @@ class JsonSchemaKey:
     SUMMARIZE_PROMPT = "summarize_prompt"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
     ENABLE_HIGHLIGHT = "enable_highlight"
+    PLATFORM_POSTAMBLE = "platform_postamble"
 
 
 class SpecKey:

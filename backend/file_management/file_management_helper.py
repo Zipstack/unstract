@@ -223,14 +223,21 @@ class FileManagerHelper:
     ) -> bool:
         fs = file_system.get_fsspec_fs()
         base_path = FileManagerHelper._get_base_path(file_system, path)
-
         base_file_name, _ = os.path.splitext(file_name)
-        file_name_txt = base_file_name + ".txt"
-
-        for directory in directories:
-            file_path = str(Path(base_path) / directory / file_name_txt)
+        pattern = f"{base_file_name}.*"
+        file_paths = FileManagerHelper._find_files(fs, base_path, directories, pattern)
+        for file_path in file_paths:
             FileManagerHelper._delete_file(fs, file_path)
         return True
+
+    @staticmethod
+    def _find_files(fs, base_path: str, directories: list[str], pattern: str):
+        file_paths = []
+        for directory in directories:
+            directory_path = str(Path(base_path) / directory)
+            for file in fs.glob(f"{directory_path}/{pattern}"):
+                file_paths.append(file)
+        return file_paths
 
     @staticmethod
     def handle_sub_directory_for_tenants(
