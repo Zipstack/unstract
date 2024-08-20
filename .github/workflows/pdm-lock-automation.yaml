@@ -99,7 +99,7 @@ jobs:
           pdm lock -G :all -v
 
           echo "Stashing changes if there are any..."
-          git stash || echo "No stash entries found, continuing..."
+          git stash || echo "No changes to stash, continuing..."
 
           echo "Pulling remote ${{ github.head_ref }} branch..."
           git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
