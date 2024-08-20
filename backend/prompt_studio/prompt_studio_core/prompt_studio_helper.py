@@ -35,6 +35,9 @@ from prompt_studio.prompt_studio_core.exceptions import (
 )
 from prompt_studio.prompt_studio_core.models import CustomTool
 from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
+from prompt_studio.prompt_studio_core.prompt_variable_service import (
+    PromptStudioVariableService,
+)
 from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import (  # noqa: E501
     PromptStudioIndexHelper,
@@ -765,7 +768,11 @@ class PromptStudioHelper:
         output = PromptStudioHelper.fetch_table_settings_if_enabled(
             doc_name, prompt, org_id, user_id, tool_id, output
         )
-
+        variable_map = PromptStudioVariableService.frame_variable_replacement_map(
+            doc_id=document_id, prompt_object=prompt
+        )
+        if variable_map:
+            output[TSPKeys.VARIABLE_MAP] = variable_map
         outputs.append(output)
 
         tool_settings = {}
