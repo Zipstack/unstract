@@ -9,7 +9,6 @@ import { LandingPage } from "../pages/LandingPage.jsx";
 import { SetOrgPage } from "../pages/SetOrgPage.jsx";
 import { useMainAppRoutes } from "./useMainAppRoutes.js";
 import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
-import { SelectProduct } from "../plugins/select-product/SelectProduct.jsx";
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 
@@ -18,6 +17,7 @@ let ManualReviewPage;
 let ReviewLayout;
 let PublicPromptStudioHelper;
 let PaymentSuccessful;
+let SelectProduct;
 
 try {
   TrialRoutes =
@@ -69,6 +69,13 @@ let llmWhispererRouter;
 try {
   llmWhispererRouter =
     require("../plugins/routes/useLlmWhispererRoutes.js").useLlmWhispererRoutes;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+
+try {
+  SelectProduct =
+    require("../plugins/select-product/SelectProduct.jsx").SelectProduct;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
@@ -143,7 +150,9 @@ function Router() {
         <Route path="*" element={<NotFound />} />
       </Route>
       <Route path="oauth-status" element={<OAuthStatus />} />
-      <Route path="selectProduct" element={<SelectProduct />} />
+      {SelectProduct && (
+        <Route path="selectProduct" element={<SelectProduct />} />
+      )}
       {PaymentSuccessful && (
         <Route path="/payment/success" element={<PaymentSuccessful />} />
       )}
