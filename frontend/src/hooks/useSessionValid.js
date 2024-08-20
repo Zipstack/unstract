@@ -43,8 +43,8 @@ function useSessionValid() {
 
   try {
     if (selectedProductStore?.useSelectedProductStore) {
-      selectedProduct = selectedProductStore.useSelectedProductStore(
-        (state) => state.selectedProduct
+      selectedProduct = selectedProductStore?.useSelectedProductStore(
+        (state) => state?.selectedProduct
       );
     }
   } catch (error) {

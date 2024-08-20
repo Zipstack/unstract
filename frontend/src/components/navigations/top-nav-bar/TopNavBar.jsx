@@ -237,10 +237,10 @@ function TopNavBar() {
   return (
     <Row align="middle" className="topNav">
       <Col span={6} className="platform-switch-container">
-        {selectedProduct !== "unstract" ? (
-          <WhispererLogo className="topbar-logo" />
-        ) : (
+        {isUnstract ? (
           <UnstractLogo className="topbar-logo" />
+        ) : (
+          <WhispererLogo className="topbar-logo" />
         )}
         {reviewPageHeader && (
           <span className="page-identifier">

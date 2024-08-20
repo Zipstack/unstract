@@ -36,7 +36,7 @@ const RequireAuth = () => {
   try {
     if (useSelectedProductStore) {
       selectedProduct = useSelectedProductStore(
-        (state) => state.selectedProduct
+        (state) => state?.selectedProduct
       );
     }
   } catch (error) {
