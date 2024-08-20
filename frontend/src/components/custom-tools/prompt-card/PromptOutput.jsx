@@ -25,6 +25,7 @@ import CheckableTag from "antd/es/tag/CheckableTag";
 
 import {
   displayPromptResult,
+  formatNumberWithCommas,
   getFormattedTotalCost,
 } from "../../../helpers/GetStaticData";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
@@ -234,10 +235,14 @@ function PromptOutput({
                       )}
                     </Typography.Text>
                     <Typography.Text className="prompt-cost-item">
-                      Time: {timers[tokenUsageId] || 0}s
+                      Time:
+                      {timers[tokenUsageId] || 0}s
                     </Typography.Text>
                     <Typography.Text className="prompt-cost-item">
-                      Cost: ${getFormattedTotalCost(result, profile)}
+                      Cost: $
+                      {formatNumberWithCommas(
+                        getFormattedTotalCost(result, profile)
+                      )}
                     </Typography.Text>
                   </div>
                   <div className="prompt-info">
@@ -350,7 +355,7 @@ function PromptOutput({
                       </>
                     )}
                     <div className="prompt-profile-run">
-                      <Tooltip title="Run">
+                      <Tooltip title="Run LLM for current document">
                         <Button
                           size="small"
                           type="text"
@@ -365,7 +370,7 @@ function PromptOutput({
                           <PlayCircleOutlined className="prompt-card-actions-head" />
                         </Button>
                       </Tooltip>
-                      <Tooltip title="Run All">
+                      <Tooltip title="Run LLM for all documents">
                         <Button
                           size="small"
                           type="text"

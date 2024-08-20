@@ -170,7 +170,7 @@ function Header({
         )}
         {!singlePassExtractMode && !isSimplePromptStudio && (
           <>
-            <Tooltip title="Run">
+            <Tooltip title="Run all LLMs for current document">
               <Button
                 size="small"
                 type="text"
@@ -191,7 +191,7 @@ function Header({
                 <PlayCircleOutlined className="prompt-card-actions-head" />
               </Button>
             </Tooltip>
-            <Tooltip title="Run All">
+            <Tooltip title="Run all LLMs for all documents">
               <Button
                 size="small"
                 type="text"
