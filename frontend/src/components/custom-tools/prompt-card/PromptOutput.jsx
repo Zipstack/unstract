@@ -1,5 +1,4 @@
 import {
-  ArrowsAltOutlined,
   CheckCircleOutlined,
   DatabaseOutlined,
   ExclamationCircleFilled,
@@ -35,6 +34,8 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { TABLE_ENFORCE_TYPE } from "./constants";
 import { CopyPromptOutputBtn } from "./CopyPromptOutputBtn";
 import { useAlertStore } from "../../../store/alert-store";
+import { PromptOutputExpandBtn } from "./PromptOutputExpandBtn";
+import { DisplayPromptResult } from "./DisplayPromptResult";
 
 let TableOutput;
 try {
@@ -56,8 +57,6 @@ function PromptOutput({
   setOpenIndexProfile,
   enabledProfiles,
   setEnabledProfiles,
-  expandedProfiles,
-  setExpandedProfiles,
   isNotSingleLlmProfile,
   setIsIndexOpen,
   enforceType,
@@ -83,15 +82,6 @@ function PromptOutput({
       ))}
     </div>
   );
-
-  const handleExpandClick = (profile) => {
-    const profileId = profile?.profile_id;
-    setExpandedProfiles((prevState) =>
-      prevState.includes(profileId)
-        ? prevState.filter((id) => id !== profileId)
-        : [...prevState, profileId]
-    );
-  };
 
   const handleTagChange = (checked, profileId) => {
     setEnabledProfiles((prevState) =>
@@ -135,26 +125,13 @@ function PromptOutput({
     return (
       <>
         <Divider className="prompt-card-divider" />
-        <div
-          className={`prompt-card-result prompt-card-div ${
-            expandedProfiles.includes(firstResult?.profileManager) &&
-            "prompt-profile-run-expanded"
-          }`}
-        >
+        <div className="prompt-card-result prompt-card-div">
           {isSinglePassExtractLoading ||
           spsLoading[selectedDoc?.document_id] ? (
             <Spin indicator={<SpinnerLoader size="small" />} />
           ) : (
             <Typography.Paragraph className="prompt-card-res font-size-12">
-              <div
-                className={
-                  expandedProfiles.includes(firstResult?.profileManager)
-                    ? "expanded-output"
-                    : "collapsed-output"
-                }
-              >
-                {promptOutput}
-              </div>
+              <div className="expanded-output">{promptOutput}</div>
             </Typography.Paragraph>
           )}
           <div className="prompt-profile-run">
@@ -162,20 +139,12 @@ function PromptOutput({
               isDisabled={enforceType === TABLE_ENFORCE_TYPE}
               copyToClipboard={() => copyOutputToClipboard(promptOutput)}
             />
-            <Tooltip title="Expand">
-              <Button
-                size="small"
-                type="text"
-                className="prompt-card-action-button"
-                onClick={() =>
-                  handleExpandClick({
-                    profile_id: firstResult?.profileManager,
-                  })
-                }
-              >
-                <ArrowsAltOutlined className="prompt-card-actions-head" />
-              </Button>
-            </Tooltip>
+            <PromptOutputExpandBtn
+              llmProfiles={llmProfileDetails}
+              result={result}
+              enforceType={enforceType}
+              displayLlmProfile={false}
+            />
           </div>
         </div>
       </>
@@ -220,12 +189,9 @@ function PromptOutput({
                       preview={false}
                       className="prompt-card-llm-icon"
                     />
-                    <Typography.Title
-                      className="prompt-card-llm-title"
-                      level={5}
-                    >
+                    <Typography.Text className="prompt-card-llm-title">
                       {profile?.conf?.LLM}
-                    </Typography.Title>
+                    </Typography.Text>
                   </div>
                   <div className="prompt-cost">
                     <Typography.Text className="prompt-cost-item">
@@ -307,12 +273,7 @@ function PromptOutput({
                 </Space>
                 <>
                   <Divider className="prompt-card-divider" />
-                  <div
-                    className={`prompt-card-result prompt-card-div ${
-                      expandedProfiles.includes(profileId) &&
-                      "prompt-profile-run-expanded"
-                    }`}
-                  >
+                  <div className={"prompt-card-result prompt-card-div"}>
                     {enforceType === TABLE_ENFORCE_TYPE ? (
                       <div />
                     ) : (
@@ -323,13 +284,7 @@ function PromptOutput({
                           <Spin indicator={<SpinnerLoader size="small" />} />
                         ) : (
                           <Typography.Paragraph className="prompt-card-res font-size-12">
-                            <div
-                              className={
-                                expandedProfiles.includes(profileId)
-                                  ? "expanded-output"
-                                  : "collapsed-output"
-                              }
-                            >
+                            <div className="expanded-output">
                               {!result.find(
                                 (r) => r?.profileManager === profileId
                               )?.output ? (
@@ -342,12 +297,13 @@ function PromptOutput({
                                   Yet to run
                                 </Typography.Text>
                               ) : (
-                                displayPromptResult(
-                                  result.find(
-                                    (r) => r?.profileManager === profileId
-                                  )?.output,
-                                  true
-                                )
+                                <DisplayPromptResult
+                                  output={
+                                    result.find(
+                                      (r) => r?.profileManager === profileId
+                                    )?.output
+                                  }
+                                />
                               )}
                             </div>
                           </Typography.Paragraph>
@@ -398,16 +354,12 @@ function PromptOutput({
                           )
                         }
                       />
-                      <Tooltip title="Expand">
-                        <Button
-                          size="small"
-                          type="text"
-                          className="prompt-card-action-button"
-                          onClick={() => handleExpandClick(profile)}
-                        >
-                          <ArrowsAltOutlined className="prompt-card-actions-head" />
-                        </Button>
-                      </Tooltip>
+                      <PromptOutputExpandBtn
+                        llmProfiles={llmProfileDetails}
+                        result={result}
+                        enforceType={enforceType}
+                        displayLlmProfile={true}
+                      />
                     </div>
                   </div>
                   {enforceType === TABLE_ENFORCE_TYPE && TableOutput && (
@@ -440,8 +392,6 @@ PromptOutput.propTypes = {
   setOpenIndexProfile: PropTypes.func.isRequired,
   enabledProfiles: PropTypes.array.isRequired,
   setEnabledProfiles: PropTypes.func.isRequired,
-  expandedProfiles: PropTypes.array.isRequired,
-  setExpandedProfiles: PropTypes.func.isRequired,
   isNotSingleLlmProfile: PropTypes.bool.isRequired,
   setIsIndexOpen: PropTypes.func.isRequired,
   enforceType: PropTypes.string.isRequired,
