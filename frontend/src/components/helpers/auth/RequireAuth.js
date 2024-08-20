@@ -15,11 +15,10 @@ try {
 } catch {
   // The component will remain null of it is not available
 }
-let useSelectedProductStore;
+let selectedProductStore;
 let selectedProduct;
 try {
-  useSelectedProductStore =
-    require("../../../plugins/llm-whisperer/store/select-produc-store").useSelectedProductStore;
+  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-produc-store.js");
 } catch {
   // do nothing
 }
@@ -34,7 +33,7 @@ const RequireAuth = () => {
   const adapters = sessionDetails?.adapters;
   const currOrgName = getOrgNameFromPathname(pathname);
   try {
-    selectedProduct = useSelectedProductStore(
+    selectedProduct = selectedProductStore.useSelectedProductStore(
       (state) => state?.selectedProduct
     );
   } catch (error) {

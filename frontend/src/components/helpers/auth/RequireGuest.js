@@ -2,11 +2,10 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import { publicRoutes, onboardCompleted } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
-let useSelectedProductStore;
+let selectedProductStore;
 let selectedProduct;
 try {
-  useSelectedProductStore =
-    require("../../../plugins/llm-whisperer/store/select-produc-store").useSelectedProductStore;
+  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-produc-store.js");
 } catch {
   // do nothing
 }
@@ -17,7 +16,7 @@ const RequireGuest = () => {
   const location = useLocation();
   const pathname = location.pathname;
   try {
-    selectedProduct = useSelectedProductStore(
+    selectedProduct = selectedProductStore.useSelectedProductStore(
       (state) => state?.selectedProduct
     );
   } catch (error) {

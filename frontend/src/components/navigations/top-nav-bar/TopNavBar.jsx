@@ -32,7 +32,6 @@ import "./TopNavBar.css";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import { PlatformDropdown } from "../../../plugins/platform-dropdown/PlatformDropDown.jsx";
 
 let TrialDaysInfo;
 try {
@@ -43,6 +42,21 @@ try {
 }
 let selectedProduct;
 let selectedProductStore;
+
+try {
+  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-produc-store.js");
+} catch {
+  // Ignore if hook not available
+}
+
+let PlatformDropdown;
+
+try {
+  PlatformDropdown =
+    require("../../../plugins/platform-dropdown/PlatformDropDown.jsx").PlatformDropdown;
+} catch (err) {
+  // Plugin not found
+}
 
 try {
   selectedProductStore = require("../../../plugins/llm-whisperer/store/select-produc-store.js");
@@ -248,7 +262,7 @@ function TopNavBar() {
             <span className="page-heading">{reviewPageHeader}</span>
           </span>
         )}
-        <PlatformDropdown />
+        {PlatformDropdown && <PlatformDropdown />}
       </Col>
       <Col span={14} className="top-nav-alert-col">
         {isUnstract && showOnboardBanner && (
