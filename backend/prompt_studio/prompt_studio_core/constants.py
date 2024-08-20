@@ -88,6 +88,9 @@ class ToolStudioPromptKeys:
     CONTEXT = "context"
     METADATA = "metadata"
     INCLUDE_METADATA = "include_metadata"
+    TXT_EXTENTION = ".txt"
+    TABLE = "table"
+    EXTRACT = "extract"
     PLATFORM_POSTAMBLE = "platform_postamble"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
 
