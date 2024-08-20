@@ -5,6 +5,8 @@ from account.models import User
 from adapter_processor.models import AdapterInstance
 from django.conf import settings
 from django.db import IntegrityError
+from prompt_studio.modifier_loader import ModifierConfig
+from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
 from prompt_studio.prompt_profile_manager.models import ProfileManager
 from prompt_studio.prompt_studio.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_core.models import CustomTool
@@ -12,7 +14,7 @@ from prompt_studio.prompt_studio_core.prompt_studio_helper import PromptStudioHe
 from prompt_studio.prompt_studio_output_manager.models import PromptStudioOutputManager
 from unstract.tool_registry.dto import Properties, Spec, Tool
 
-from .constants import JsonSchemaKey
+from .constants import JsonSchemaKey, PromptStudioRegistryKeys
 from .exceptions import (
     EmptyToolExportError,
     InternalError,
@@ -23,6 +25,7 @@ from .models import PromptStudioRegistry
 from .serializers import PromptStudioRegistrySerializer
 
 logger = logging.getLogger(__name__)
+modifier_loader = load_modifier_plugins()
 
 
 class PromptStudioRegistryHelper:
@@ -266,6 +269,9 @@ class PromptStudioRegistryHelper:
             tool.single_pass_extraction_mode
         )
         tool_settings[JsonSchemaKey.ENABLE_HIGHLIGHT] = tool.enable_highlight
+        tool_settings[JsonSchemaKey.PLATFORM_POSTAMBLE] = getattr(
+            settings, JsonSchemaKey.PLATFORM_POSTAMBLE.upper(), ""
+        )
 
         for prompt in prompts:
             if prompt.prompt_type == JsonSchemaKey.NOTES or not prompt.active:
@@ -317,6 +323,19 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.SECTION] = prompt.profile_manager.section
             output[JsonSchemaKey.REINDEX] = prompt.profile_manager.reindex
             output[JsonSchemaKey.EMBEDDING_SUFFIX] = embedding_suffix
+
+            if prompt.enforce_type == PromptStudioRegistryKeys.TABLE:
+                for modifier_plugin in modifier_loader:
+                    cls = modifier_plugin[ModifierConfig.METADATA][
+                        ModifierConfig.METADATA_SERVICE_CLASS
+                    ]
+                    output = cls.update(
+                        output=output,
+                        tool_id=tool.tool_id,
+                        prompt_id=prompt.prompt_id,
+                        prompt=prompt.prompt,
+                    )
+
             outputs.append(output)
             output = {}
             vector_db = ""

@@ -4,16 +4,18 @@ from api.models import APIDeployment
 from notification.helper import NotificationHelper
 from notification.models import Notification
 from pipeline.dto import PipelineStatusPayload
-from workflow_manager.workflow.dto import ExecutionResponse
+from workflow_manager.workflow.models.execution import WorkflowExecution
 
 logger = logging.getLogger(__name__)
 
 
 class APINotification:
-    def __init__(self, api: APIDeployment, result: ExecutionResponse) -> None:
+    def __init__(
+        self, api: APIDeployment, workflow_execution: WorkflowExecution
+    ) -> None:
         self.notifications = Notification.objects.filter(api=api, is_active=True)
         self.api = api
-        self.result = result
+        self.workflow_execution = workflow_execution
 
     def send(self):
         if not self.notifications.count():
@@ -25,9 +27,9 @@ class APINotification:
             type="API",
             pipeline_id=self.api.id,
             pipeline_name=self.api.api_name,
-            status=self.result.execution_status,
-            execution_id=self.result.execution_id,
-            error_message=self.result.error,
+            status=self.workflow_execution.status,
+            execution_id=self.workflow_execution.id,
+            error_message=self.workflow_execution.error_message,
         )
 
         NotificationHelper.send_notification(
