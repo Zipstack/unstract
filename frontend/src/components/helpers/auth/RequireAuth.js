@@ -34,11 +34,9 @@ const RequireAuth = () => {
   const adapters = sessionDetails?.adapters;
   const currOrgName = getOrgNameFromPathname(pathname);
   try {
-    if (useSelectedProductStore) {
-      selectedProduct = useSelectedProductStore(
-        (state) => state?.selectedProduct
-      );
-    }
+    selectedProduct = useSelectedProductStore(
+      (state) => state?.selectedProduct
+    );
   } catch (error) {
     // Do nothing
   }

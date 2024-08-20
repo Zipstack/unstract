@@ -17,11 +17,9 @@ const RequireGuest = () => {
   const location = useLocation();
   const pathname = location.pathname;
   try {
-    if (useSelectedProductStore) {
-      selectedProduct = useSelectedProductStore(
-        (state) => state?.selectedProduct
-      );
-    }
+    selectedProduct = useSelectedProductStore(
+      (state) => state?.selectedProduct
+    );
   } catch (error) {
     // Do nothing
   }
