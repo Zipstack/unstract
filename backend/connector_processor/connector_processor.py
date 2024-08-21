@@ -135,7 +135,7 @@ class ConnectorProcessor:
             logger.info(f"{connector_id} test result: {test_result}")
             return test_result
         except UnstractFSConnectorException as e:
-            raise UnstractFSException(detail=e.detail) from e
+            raise UnstractFSException(detail=e.detail, status_code=e.status_code) from e
         except ConnectorError as e:
             raise TestConnectorInputError(core_err=e)
 

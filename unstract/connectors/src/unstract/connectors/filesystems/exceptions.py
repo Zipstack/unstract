@@ -1,29 +1,18 @@
 from typing import Any
 
-from unstract.connectors.exceptions import ConnectorBaseException
 
-
-class UnstractFSConnectorException(ConnectorBaseException):
+class UnstractFSConnectorException(Exception):
     """Base class for database-related exceptions from Unstract connectors."""
 
-    def __init__(
-        self,
-        detail: Any,
-        *args: Any,
-        **kwargs: Any,
-    ) -> None:
-        default_detail = "Error testing FS connector. "
-        user_message = default_detail if not detail else detail
-        super().__init__(*args, user_message=user_message, **kwargs)
-        self.detail = user_message
+    def __init__(self, *args: object, detail: Any, status_code: Any = 500) -> None:
+        super().__init__(*args)
+        self.detail = detail
+        self.status_code = status_code
 
 
-class GoogleDriveAccessDeniedException(UnstractFSConnectorException):
+class AccessDeniedException(UnstractFSConnectorException):
 
     def __init__(self, detail: Any) -> None:
-        default_detail = (
-            "Access denied for Google Drive. Please check if the env variables are "
-            "correctly configured for your app and they include all the necessary "
-            "permissions."
-        )
-        super().__init__(detail=default_detail)
+        default_detail = "Permission denied. Please check your credentials. "
+        status_code = 403
+        super().__init__(detail=default_detail, status_code=status_code)
