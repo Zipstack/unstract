@@ -421,9 +421,7 @@ class WorkflowHelper:
             logger.info(f"Job {async_execution} enqueued.")
             celery_result = task.to_dict()
             task_result = celery_result.get("result")
-            workflow_execution = WorkflowExecutionServiceHelper.get_execution_by_id(
-                execution_id=execution_id
-            )
+            workflow_execution = WorkflowExecution.objects.get(id=execution_id)
             execution_response = ExecutionResponse(
                 workflow_id,
                 execution_id,
@@ -439,8 +437,8 @@ class WorkflowHelper:
                 message=WorkflowMessages.CELERY_TIMEOUT_MESSAGE,
             )
         except Exception as error:
-            WorkflowExecutionServiceHelper.update_execution_status(
-                execution_id, ExecutionStatus.ERROR
+            WorkflowExecutionServiceHelper.update_execution_err(
+                execution_id, str(error)
             )
             logger.error(f"Errors while job enqueueing {str(error)}")
             logger.error(f"Error {traceback.format_exc()}")
