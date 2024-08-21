@@ -10,14 +10,10 @@ class TestMinoFS(unittest.TestCase):
         self.assertEqual(MinioFS.requires_oauth(), False)
         access_key = os.environ.get("AWS_ACCESS_KEY_ID")
         secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
-        bucket_name = os.environ.get(
-            "FREE_STORAGE_AWS_BUCKET_NAME", "pandora-user-storage"
-        )
         s3 = MinioFS(
             {
                 "key": access_key,
                 "secret": secret_key,
-                "bucket": bucket_name,
                 "path": "/",
                 "endpoint_url": "https://s3.amazonaws.com",
             }
@@ -31,12 +27,10 @@ class TestMinoFS(unittest.TestCase):
         access_key = os.environ.get("MINIO_ACCESS_KEY_ID")
         secret_key = os.environ.get("MINIO_SECRET_ACCESS_KEY")
         print(access_key, secret_key)
-        bucket_name = os.environ.get("FREE_STORAGE_AWS_BUCKET_NAME", "minio-test")
         s3 = MinioFS(
             {
                 "key": access_key,
                 "secret": secret_key,
-                "bucket": bucket_name,
                 "endpoint_url": "http://localhost:9000",
                 "path": "/minio-test",
             }
