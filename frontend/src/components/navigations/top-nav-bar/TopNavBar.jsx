@@ -203,39 +203,42 @@ function TopNavBar() {
         </Dropdown>
       ),
     },
-    (reviewerStatus || approverStatus) && {
-      key: "4",
-      label: (
-        <Button
-          onClick={() => navigate(`/${orgName}/review`)}
-          className="logout-button"
-        >
-          <FileProtectOutlined /> Review
-        </Button>
-      ),
-    },
-    approverStatus && {
-      key: "5",
-      label: (
-        <Button
-          onClick={() => navigate(`/${orgName}/review/approve`)}
-          className="logout-button"
-        >
-          <LikeOutlined /> Approve
-        </Button>
-      ),
-    },
-    approverStatus && {
-      key: "6",
-      label: (
-        <Button
-          onClick={() => navigate(`/${orgName}/review/download_and_sync`)}
-          className="logout-button"
-        >
-          <DownloadOutlined /> Download and Sync Manager
-        </Button>
-      ),
-    },
+    isUnstract &&
+      (reviewerStatus || approverStatus) && {
+        key: "4",
+        label: (
+          <Button
+            onClick={() => navigate(`/${orgName}/review`)}
+            className="logout-button"
+          >
+            <FileProtectOutlined /> Review
+          </Button>
+        ),
+      },
+    isUnstract &&
+      approverStatus && {
+        key: "5",
+        label: (
+          <Button
+            onClick={() => navigate(`/${orgName}/review/approve`)}
+            className="logout-button"
+          >
+            <LikeOutlined /> Approve
+          </Button>
+        ),
+      },
+    isUnstract &&
+      approverStatus && {
+        key: "6",
+        label: (
+          <Button
+            onClick={() => navigate(`/${orgName}/review/download_and_sync`)}
+            className="logout-button"
+          >
+            <DownloadOutlined /> Download and Sync Manager
+          </Button>
+        ),
+      },
     {
       key: "2",
       label: (
