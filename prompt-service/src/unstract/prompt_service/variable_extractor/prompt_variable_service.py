@@ -48,7 +48,7 @@ class VariableService:
         return replaced_prompt
 
     @staticmethod
-    def identify_and_fetch_variable_type(variable: str) -> VariableType:
+    def identify_variable_type(variable: str) -> VariableType:
         variable_type: VariableType
         pattern = re.compile(VariableConstants.DYNAMIC_VARIABLE_URL_REGEX)
         if re.findall(pattern, variable):
