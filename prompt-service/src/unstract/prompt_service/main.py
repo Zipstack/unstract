@@ -137,6 +137,8 @@ def prompt_processor() -> Any:
             VariableExtractor.execute_variable_replacement(
                 prompt=promptx, variable_map=structured_output
             )
+        except APIError as api_error:
+            raise api_error
 
         app.logger.info(f"[{tool_id}] Executing prompt: {prompt_name}")
         _publish_log(
