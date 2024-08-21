@@ -133,8 +133,7 @@ def prompt_processor() -> Any:
             structured_output, variable_names, output, promptx
         )
 
-        doc_id = index.generate_file_id(
-            tool_id=tool_id,
+        doc_id = index.generate_index_key(
             file_hash=file_hash,
             vector_db=output[PSKeys.VECTOR_DB],
             embedding=output[PSKeys.EMBEDDING],
