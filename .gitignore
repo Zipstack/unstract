@@ -612,6 +612,12 @@ backend/plugins/authentication/*
 # Processor Plugins
 backend/plugins/processor/*
 
+# Subscription Plugins
+backend/plugins/subscription/*
+
+# BE pluggable-apps
+backend/pluggable_apps/*
+
 # FE Plugins
 frontend/src/plugins/*
 
@@ -644,9 +650,6 @@ backend/backend/settings/*
 
 # Local Dependencies for docker testing
 unstract/unstract-sdk/
-
-# BE pluggable-apps
-backend/pluggable_apps/*
 
 # Backend requirements.txt
 backend/requirements.txt

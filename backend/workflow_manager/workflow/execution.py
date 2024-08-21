@@ -365,10 +365,11 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.publish_log("Trying to fetch results from cache")
 
     @staticmethod
-    def update_execution_status(execution_id: str, status: ExecutionStatus) -> None:
+    def update_execution_err(execution_id: str, err_msg: str = "") -> None:
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
-            execution.status = status.value
+            execution.status = ExecutionStatus.ERROR.value
+            execution.error_message = err_msg
             execution.save()
         except WorkflowExecution.DoesNotExist:
             logger.error(f"execution doesn't exist {execution_id}")
@@ -404,10 +405,3 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         workflow: Workflow,
     ) -> WorkflowDto:
         return WorkflowDto(id=workflow.id)
-
-    @staticmethod
-    def get_execution_by_id(execution_id: str) -> Optional[WorkflowExecution]:
-        try:
-            return WorkflowExecution.objects.get(id=execution_id)
-        except WorkflowExecution.DoesNotExist:
-            return None
