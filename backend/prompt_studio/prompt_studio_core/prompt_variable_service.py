@@ -34,7 +34,7 @@ class PromptStudioVariableService:
         )
         if not output:
             raise PromptNotRun()
-        return output
+        return output.output
 
     @staticmethod
     def identify_and_fetch_variable_type(variable: str) -> VariableType:
