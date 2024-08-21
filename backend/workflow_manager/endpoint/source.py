@@ -143,7 +143,9 @@ class SourceConnector(BaseConnector):
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
         source_configurations: dict[str, Any] = self.endpoint.configuration
-        required_patterns = source_configurations.get(SourceKey.FILE_EXTENSIONS, [])
+        required_patterns = list(
+            source_configurations.get(SourceKey.FILE_EXTENSIONS, [])
+        )
         recursive = bool(
             source_configurations.get(SourceKey.PROCESS_SUB_DIRECTORIES, False)
         )
@@ -154,36 +156,46 @@ class SourceConnector(BaseConnector):
         )
         root_dir_path = connector_settings.get(ConnectorKeys.PATH, "")
 
-        input_directory = str(source_configurations.get(SourceKey.ROOT_FOLDER, ""))
-
         source_fs = self.get_fs_connector(
             settings=connector_settings, connector_id=connector.connector_id
         )
-        input_directory = source_fs.get_connector_root_dir(
-            input_dir=input_directory, root_path=root_dir_path
-        )
-        logger.debug(f"source input directory {input_directory}")
-        if not isinstance(required_patterns, list):
-            required_patterns = [required_patterns]
-
         source_fs_fsspec = source_fs.get_fsspec_fs()
-
         patterns = self.valid_file_patterns(required_patterns=required_patterns)
-        is_directory = source_fs_fsspec.isdir(input_directory)
-        if not is_directory:
-            raise InvalidInputDirectory()
-        matched_files, count = self._get_matched_files(
-            source_fs_fsspec, input_directory, patterns, recursive, limit
+
+        folders_to_process = list(source_configurations.get(SourceKey.FOLDERS, ["/"]))
+        # Process from root in case its user provided list is empty
+        if not folders_to_process:
+            folders_to_process = ["/"]
+        logger.info(f"Folders to process: {folders_to_process}")
+        total_files_to_process = 0
+        total_matched_files = {}
+        for input_directory in folders_to_process:
+            input_directory = source_fs.get_connector_root_dir(
+                input_dir=input_directory, root_path=root_dir_path
+            )
+            logger.debug(f"Listing files from:  {input_directory}")
+            is_directory = source_fs_fsspec.isdir(input_directory)
+            if not is_directory:
+                raise InvalidInputDirectory(dir=input_directory)
+            matched_files, count = self._get_matched_files(
+                source_fs_fsspec, input_directory, patterns, recursive, limit
+            )
+            logger.info(f"Matched '{count}' files from '{input_directory}'")
+            total_matched_files.update(matched_files)
+            total_files_to_process += count
+        self.publish_input_output_list_file_logs(
+            folders_to_process, total_matched_files, total_files_to_process
         )
-        self.publish_input_output_list_file_logs(input_directory, matched_files, count)
-        return matched_files, count
+        return total_matched_files, total_files_to_process
 
     def publish_input_output_list_file_logs(
-        self, input_directory: str, matched_files: dict[str, FileHash], count: int
+        self, folders: list[str], matched_files: dict[str, FileHash], count: int
     ) -> None:
         if not self.execution_service:
             return None
-        input_log = f"##Input folder:\n\n `{os.path.basename(input_directory)}`\n\n"
+
+        folders_list = "\n".join(f"- `{folder.strip()}`" for folder in folders)
+        input_log = f"##Folders to process:\n\n{folders_list}\n\n"
         self.execution_service.publish_update_log(
             state=LogState.INPUT_UPDATE, message=input_log
         )
