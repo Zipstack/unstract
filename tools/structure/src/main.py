@@ -64,7 +64,6 @@ class StructureTool(BaseTool):
             single_pass_extraction_mode
         )
         tool_settings[SettingsKeys.SUMMARIZE_AS_SOURCE] = summarize_as_source
-
         prompt_service_resp = None
         _, file_name = os.path.split(input_file)
         if summarize_as_source:
@@ -166,6 +165,19 @@ class StructureTool(BaseTool):
                     reindex = False
             except Exception as e:
                 self.stream_error_and_exit(f"Error fetching data and indexing: {e}")
+
+            # TODO : Make this snippet pluggable and introduce pluggablity for tools.
+            for output in outputs:
+                try:
+                    table_settings = output[SettingsKeys.TABLE_SETTINGS]
+                    extracted_input_file = tool_data_dir / SettingsKeys.EXTRACT
+                    table_settings[SettingsKeys.INPUT_FILE] = extracted_input_file
+                    output.update({SettingsKeys.TABLE_SETTINGS: table_settings})
+
+                except KeyError:
+                    # To check if the prompt has table enforce type selected.
+                    pass
+
             self.stream_log("Fetching responses for prompts...")
             prompt_service_resp = responder.answer_prompt(
                 payload=payload,

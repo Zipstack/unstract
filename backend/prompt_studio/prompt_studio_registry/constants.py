@@ -9,6 +9,7 @@ class PromptStudioRegistryKeys:
     PROMPT_REGISTRY_ID = "prompt_registry_id"
     FILE_NAME = "file_name"
     UNDEFINED = "undefined"
+    TABLE = "table"
 
 
 class PromptStudioRegistryErrors:
