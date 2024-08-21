@@ -77,3 +77,12 @@ class OperationNotSupported(APIException):
         "Please check our cloud or enterprise on-premise offering  "
         "for access to this functionality."
     )
+
+
+class PromptNotRun(APIException):
+    status_code = 403
+    default_detail = (
+        "The prompt must be executed before "
+        "it can be used as a variable in another prompt. "
+        "Please execute the prompt first and try again."
+    )
