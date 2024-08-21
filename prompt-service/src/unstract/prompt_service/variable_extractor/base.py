@@ -12,9 +12,7 @@ class VariableExtractor:
             prompt=prompt
         )
         for variable in variables:
-            variable_type = VariableService.identify_and_fetch_variable_type(
-                variable=variable
-            )
+            variable_type = VariableService.identify_variable_type(variable=variable)
             if variable_type == VariableType.STATIC:
                 prompt = VariableService.replace_static_variable(
                     prompt=prompt, structured_output=variable_map, variable=variable

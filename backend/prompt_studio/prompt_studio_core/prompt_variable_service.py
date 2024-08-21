@@ -37,7 +37,7 @@ class PromptStudioVariableService:
         return output.output
 
     @staticmethod
-    def identify_and_fetch_variable_type(variable: str) -> VariableType:
+    def identify_variable_type(variable: str) -> VariableType:
         variable_type: VariableType
         pattern = re.compile(VariableConstants.DYNAMIC_VARIABLE_URL_REGEX)
         if re.findall(pattern, variable):
@@ -63,9 +63,7 @@ class PromptStudioVariableService:
         )
         for variable in variables:
             variable_type: VariableType = (
-                PromptStudioVariableService.identify_and_fetch_variable_type(
-                    variable=variable
-                )
+                PromptStudioVariableService.identify_variable_type(variable=variable)
             )
             if variable_type == VariableType.STATIC:
                 variable_output_map[variable] = (
