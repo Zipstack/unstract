@@ -2,6 +2,7 @@ import os
 from typing import Any
 
 import oracledb
+from oracledb.connection import Connection
 
 from unstract.connectors.databases.unstract_db import UnstractDB
 
@@ -10,12 +11,12 @@ class OracleDB(UnstractDB):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("OracleDB")
 
-        self.config_dir = settings.get("config_dir")
-        self.user = settings.get("user")
-        self.password = settings.get("password")
-        self.dsn = settings.get("dsn")
-        self.wallet_location = settings.get("wallet_location")
-        self.wallet_password = settings.get("wallet_password")
+        self.config_dir = settings["config_dir"]
+        self.user = settings["user"]
+        self.password = settings["password"]
+        self.dsn = settings["dsn"]
+        self.wallet_location = settings["wallet_location"]
+        self.wallet_password = settings["wallet_password"]
         if not (
             self.config_dir
             and self.user
@@ -57,7 +58,7 @@ class OracleDB(UnstractDB):
     def can_read() -> bool:
         return True
 
-    def get_engine(self) -> Any:
+    def get_engine(self) -> Connection:
         con = oracledb.connect(
             config_dir=self.config_dir,
             user=self.user,
