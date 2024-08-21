@@ -6,7 +6,6 @@
     "connectorName",
     "key",
     "secret",
-    "bucket",
     "endpoint_url"
   ],
   "properties": {
@@ -26,11 +25,6 @@
       "title": "Secret",
       "format": "password",
       "description": "Secret Access Key"
-    },
-    "bucket": {
-      "type": "string",
-      "title": "Bucket Name",
-      "description": "Name of the bucket to be restricted to."
     },
     "endpoint_url": {
       "type": "string",
