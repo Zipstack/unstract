@@ -24,10 +24,21 @@ try {
   // Plugin unavailable.
 }
 
-const SideNavBar = ({ collapsed, menu }) => {
+let sideMenu;
+try {
+  sideMenu = require("../../../plugins/hooks/useSideMenu");
+} catch (err) {
+  // Plugin unavailable.
+}
+
+const SideNavBar = ({ collapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const { orgName, flags } = sessionDetails;
+  let menu;
+  if (sideMenu) {
+    menu = sideMenu.useSideMenu();
+  }
 
   const data = menu || [
     {

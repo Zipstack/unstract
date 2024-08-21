@@ -20,7 +20,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 
-import { UnstractLogo, WhispererLogo } from "../../../assets/index.js";
+import { UnstractLogo } from "../../../assets/index.js";
 import {
   getBaseUrl,
   onboardCompleted,
@@ -60,6 +60,13 @@ try {
 
 try {
   selectedProductStore = require("../../../plugins/llm-whisperer/store/select-produc-store.js");
+} catch {
+  // Ignore if hook not available
+}
+
+let WhispererLogo;
+try {
+  WhispererLogo = require("../../../plugins/assets/index.js").WhispererLogo;
 } catch {
   // Ignore if hook not available
 }
@@ -155,6 +162,7 @@ function TopNavBar() {
     };
     await axios(requestOptions)
       .then(() => {
+        navigate("/");
         window.location.reload();
       })
       .catch((err) => {
@@ -254,7 +262,7 @@ function TopNavBar() {
         {isUnstract ? (
           <UnstractLogo className="topbar-logo" />
         ) : (
-          <WhispererLogo className="topbar-logo" />
+          WhispererLogo && <WhispererLogo className="topbar-logo" />
         )}
         {reviewPageHeader && (
           <span className="page-identifier">
