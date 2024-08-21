@@ -21,7 +21,7 @@ class VariableService:
         if not output_value:
             return prompt
         static_variable_marker_string = "".join(["{{", variable, "}}"])
-        
+
         replaced_prompt: str = VariableService.replace_generic_string_value(
             prompt=prompt, variable=static_variable_marker_string, value=output_value
         )
