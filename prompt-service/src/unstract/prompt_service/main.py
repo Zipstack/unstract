@@ -126,12 +126,12 @@ def prompt_processor() -> Any:
             RunLevel.RUN,
             "Replacing variables in prompt",
         )
-        try:
+       if PSKeys.VARIABLE_MAP in output:
             variable_map = output[PSKeys.VARIABLE_MAP]
             VariableExtractor.execute_variable_replacement(
                 prompt=promptx, variable_map=variable_map
             )
-        except KeyError:
+        else:
             # Executed incase of structured tool and
             # APIs where we do not set the variable map
             VariableExtractor.execute_variable_replacement(
