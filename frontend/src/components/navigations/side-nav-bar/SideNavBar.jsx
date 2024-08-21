@@ -225,7 +225,6 @@ const SideNavBar = ({ collapsed }) => {
 
 SideNavBar.propTypes = {
   collapsed: PropTypes.bool.isRequired,
-  menu: PropTypes.array,
 };
 
 export default SideNavBar;
