@@ -98,6 +98,9 @@ jobs:
           echo "Generating/Updating pdm.lock..."
           pdm lock -G :all -v
 
+          echo "Checking pdm lock..."
+          pdm lock --check
+
           echo "Stashing changes if there are any..."
           git stash || echo "No changes to stash, continuing..."
 
@@ -117,9 +120,6 @@ jobs:
             echo "Nothing to commit"
           else
             echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
-
-            echo "Checking pdm lock..."
-            pdm lock --check
 
             echo "Adding pdm lock changes..."
             git add pdm.lock
