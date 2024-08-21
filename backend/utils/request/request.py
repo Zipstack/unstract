@@ -4,7 +4,6 @@ from typing import Any, Optional
 
 import requests as pyrequests
 from requests.exceptions import RequestException
-from unstract.prompt_service.exceptions import APIError
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +43,7 @@ def make_http_request(
         return return_val
     except RequestException as e:
         logger.error(f"HTTP request error: {e}")
-        raise APIError(f"Error occured while invoking POST API Variable : {str(e)}")
+        raise e
     except Exception as e:
         logger.error(f"An unexpected error occurred: {e}")
         raise e

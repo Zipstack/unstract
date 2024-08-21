@@ -2,7 +2,7 @@ import logging
 import re
 from typing import Any
 
-from utils.request import HTTPMethod, make_http_request
+from unstract.prompt_service.utils.request import HTTPMethod, make_http_request
 
 from .constants import VariableConstants, VariableType
 
