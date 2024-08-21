@@ -25,7 +25,8 @@ dependencies = [
     "snowflake-connector-python[pandas]~=3.6.0", # For Snowflake
     "google-cloud-bigquery==3.11.4", # For Bigquery
     "pymssql==2.2.8", # For MSSQL
-    "PyMySQL==1.1.0" # For MySQL
+    "PyMySQL==1.1.0", # For MySQL
+    "oracledb==2.4.0", # For OracleDB
 ]
 readme = "README.md"
 urls = { Homepage = "https://unstract.com", Source = "https://github.com/Zipstack/unstract/tree/main/unstract/connectors" }
