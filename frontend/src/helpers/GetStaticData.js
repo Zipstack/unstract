@@ -510,7 +510,7 @@ const formatNumberWithCommas = (number) => {
   const [integerPart, decimalPart] = number.toString().split(".");
 
   // Add commas to the integer part.
-  const formattedIntegerPart = integerPart.replace(/\B(?=(\d{3})+$)/g, ",");
+  const formattedIntegerPart = Number(integerPart).toLocaleString();
 
   // Reassemble the formatted number, including the decimal part if it exists.
   return decimalPart
