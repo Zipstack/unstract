@@ -17,6 +17,7 @@ class APIDeploymentUtils:
             api_id (str): The unique identifier of the APIDeployment to retrieve.
             user (Optional[User]): The user who must have created the APIDeployment.
                 If provided, only return the deployment if it was created by this user.
+                else return the deployment with the given ID.
 
         Returns:
             Optional[APIDeployment]: The APIDeployment instance if found,
