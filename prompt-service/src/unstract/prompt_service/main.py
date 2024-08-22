@@ -22,6 +22,7 @@ from unstract.prompt_service.helper import (
     run_completion,
 )
 from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
+from unstract.prompt_service.variable_extractor.base import VariableExtractor
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import Embedding
 from unstract.sdk.exceptions import SdkError
@@ -113,6 +114,32 @@ def prompt_processor() -> Any:
         util = PromptServiceBaseTool(log_level=LogLevel.INFO, platform_key=platform_key)
         index = Index(tool=util)
 
+        app.logger.info(f"[{tool_id}] Replacing variables in prompt : {prompt_name}")
+        _publish_log(
+            log_events_id,
+            {
+                "tool_id": tool_id,
+                "prompt_key": prompt_name,
+                "doc_name": doc_name,
+            },
+            LogLevel.DEBUG,
+            RunLevel.RUN,
+            "Replacing variables in prompt",
+        )
+        try:
+            variable_map = output[PSKeys.VARIABLE_MAP]
+            VariableExtractor.execute_variable_replacement(
+                prompt=promptx, variable_map=variable_map
+            )
+        except KeyError:
+            # Executed incase of structured tool and
+            # APIs where we do not set the variable map
+            VariableExtractor.execute_variable_replacement(
+                prompt=promptx, variable_map=structured_output
+            )
+        except APIError as api_error:
+            raise api_error
+
         app.logger.info(f"[{tool_id}] Executing prompt: {prompt_name}")
         _publish_log(
             log_events_id,
@@ -133,8 +160,7 @@ def prompt_processor() -> Any:
             structured_output, variable_names, output, promptx
         )
 
-        doc_id = index.generate_file_id(
-            tool_id=tool_id,
+        doc_id = index.generate_index_key(
             file_hash=file_hash,
             vector_db=output[PSKeys.VECTOR_DB],
             embedding=output[PSKeys.EMBEDDING],

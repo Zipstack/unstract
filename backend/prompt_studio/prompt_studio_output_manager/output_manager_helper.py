@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any, Optional
 
@@ -108,6 +109,8 @@ class OutputManagerHelper:
                 context = context.get(prompt.prompt_key)
 
             output = outputs.get(prompt.prompt_key)
+            if prompt.enforce_type in {"json", "table"}:
+                output = json.dumps(output)
             profile_manager = default_profile
             eval_metrics = outputs.get(f"{prompt.prompt_key}__evaluation", [])
 
