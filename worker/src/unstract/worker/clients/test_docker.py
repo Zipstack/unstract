@@ -109,7 +109,7 @@ def test_get_image(docker_client, mocker):
 def test_get_container_run_config(docker_client, mocker):
     """Test the get_container_run_config method."""
     os.environ[Env.WORKFLOW_DATA_DIR] = "/source"
-    execution_data_folder_prefix = os.getenv(Env.EXECUTION_RUN_DATA_FOLDER_PREFIX)
+    os.environ[Env.EXECUTION_RUN_DATA_FOLDER_PREFIX] = "/app/workflow_data"
     command = ["echo", "hello"]
     organization_id = "org123"
     workflow_id = "wf123"
