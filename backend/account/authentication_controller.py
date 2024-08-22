@@ -47,6 +47,7 @@ from tenant_account.organization_member_service import OrganizationMemberService
 from utils.cache_service import CacheService
 from utils.local_context import StateStore
 from utils.user_session import UserSessionUtils
+from django.db import transaction
 
 Logger = logging.getLogger(__name__)
 
@@ -161,49 +162,52 @@ class AuthenticationController:
                 self.auth_service.get_organizations_by_user_id(user.user_id)
             )
             organization_ids = {org.id for org in z_organizations}
+        
         if organization_id and organization_id in organization_ids:
             organization = OrganizationService.get_organization_by_org_id(
                 organization_id
             )
-            if not organization:
-                try:
-                    organization_data: OrganizationData = (
-                        self.auth_service.get_organization_by_org_id(organization_id)
-                    )
-                except ValueError:
-                    raise OrganizationNotExist()
-                try:
-                    organization = OrganizationService.create_organization(
-                        organization_data.name,
-                        organization_data.display_name,
-                        organization_data.id,
-                    )
-                    new_organization = True
-                except IntegrityError:
-                    raise DuplicateData(
-                        f"{ErrorMessage.ORGANIZATION_EXIST}, \
-                            {ErrorMessage.DUPLICATE_API}"
-                    )
-            organization_member = self.create_tenant_user(
-                organization=organization, user=user
-            )
-
-            if new_organization:
-                try:
-                    self.auth_service.hubspot_signup_api(request=request)
-                except MethodNotImplemented:
-                    Logger.info("hubspot_signup_api not implemented")
-
-                try:
-                    self.auth_service.frictionless_onboarding(
-                        organization=organization, user=user
-                    )
-                except MethodNotImplemented:
-                    Logger.info("frictionless_onboarding not implemented")
-
-                self.authentication_helper.create_initial_platform_key(
-                    user=user, organization=organization
+            with transaction.atomic():
+                if not organization:
+                    try:
+                        organization_data: OrganizationData = (
+                            self.auth_service.get_organization_by_org_id(organization_id)
+                        )
+                    except ValueError:
+                        raise OrganizationNotExist()
+                    try:
+                        organization = OrganizationService.create_organization(
+                            organization_data.name,
+                            organization_data.display_name,
+                            organization_data.id,
+                        )
+                        new_organization = True
+                    except IntegrityError:
+                        raise DuplicateData(
+                            f"{ErrorMessage.ORGANIZATION_EXIST}, \
+                                {ErrorMessage.DUPLICATE_API}"
+                        )
+                organization_member = self.create_tenant_user(
+                    organization=organization, user=user
                 )
+
+            with transaction.atomic():
+                if new_organization:
+                    try:
+                        self.auth_service.hubspot_signup_api(request=request)
+                    except MethodNotImplemented:
+                        Logger.info("hubspot_signup_api not implemented")
+
+                    try:
+                        self.auth_service.frictionless_onboarding(
+                            organization=organization, user=user
+                        )
+                    except MethodNotImplemented:
+                        Logger.info("frictionless_onboarding not implemented")
+
+                    self.authentication_helper.create_initial_platform_key(
+                        user=user, organization=organization
+                    )
 
             user_info: Optional[UserInfo] = self.get_user_info(request)
             serialized_user_info = SetOrganizationsResponseSerializer(user_info).data
