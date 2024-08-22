@@ -127,12 +127,17 @@ def test_get_container_run_config(docker_client, mocker):
         envs={"KEY": "VALUE"},
         auto_remove=True,
     )
-
+    execution_data_folder_prefix = os.getenv(Env.EXECUTION_RUN_DATA_FOLDER_PREFIX)
     mocker_normalize.assert_called_once_with("test-image")
     assert config["name"] == "test-image"
     assert config["image"] == "test-image:latest"
     assert config["command"] == ["echo", "hello"]
-    assert config["environment"] == {"KEY": "VALUE"}
+    assert config["environment"] == {
+        "KEY": "VALUE",
+        "EXECUTION_RUN_DATA_FOLDER": (
+            f"{execution_data_folder_prefix}" "/org123/wf123/ex123"
+        ),
+    }
     assert config["mounts"] == [
         {
             "type": "bind",
