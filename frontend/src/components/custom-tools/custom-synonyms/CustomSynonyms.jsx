@@ -92,7 +92,7 @@ function CustomSynonyms() {
         synonyms: (
           <Select
             mode="tags"
-            placeholder="Please select"
+            placeholder="Please enter synonyms"
             value={listOfSynonyms}
             className="cus-syn-select"
             variant="borderless"
