@@ -132,7 +132,10 @@ def test_get_container_run_config(docker_client, mocker):
     assert config["name"] == "test-image"
     assert config["image"] == "test-image:latest"
     assert config["command"] == ["echo", "hello"]
-    assert config["environment"] == {"KEY": "VALUE"}
+    assert config["environment"] == {
+        "KEY": "VALUE",
+        "WORKFLOW_DATA_DIR": "/source/org123/wf123/ex123",
+    }
     assert config["mounts"] == [
         {
             "type": "bind",
