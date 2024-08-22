@@ -134,7 +134,7 @@ def test_get_container_run_config(docker_client, mocker):
     assert config["command"] == ["echo", "hello"]
     assert config["environment"] == {
         "KEY": "VALUE",
-        "WORKFLOW_DATA_DIR": "/source/org123/wf123/ex123",
+        "EXECUTION_RUN_DATA_FOLDER": "/source/org123/wf123/ex123",
     }
     assert config["mounts"] == [
         {

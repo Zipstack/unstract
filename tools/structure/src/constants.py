@@ -73,4 +73,4 @@ class SettingsKeys:
     METADATA = "metadata"
     EPILOGUE = "epilogue"
     HIGHLIGHT_DATA = "highlight_data"
-    WORKFLOW_DATA_DIR = "WORKFLOW_DATA_DIR"
+    EXECUTION_RUN_DATA_FOLDER = "EXECUTION_RUN_DATA_FOLDER"

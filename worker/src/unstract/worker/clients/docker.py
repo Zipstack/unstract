@@ -181,7 +181,7 @@ class Client(ContainerClientInterface):
                     "target": os.getenv(Env.TOOL_DATA_DIR, "/data"),
                 }
             )
-            envs[Env.WORKFLOW_DATA_DIR] = source_path
+            envs[Env.EXECUTION_RUN_DATA_FOLDER] = source_path
         return {
             "name": ContainerClientHelper.normalize_container_name(self.image_name),
             "image": self.get_image(),
