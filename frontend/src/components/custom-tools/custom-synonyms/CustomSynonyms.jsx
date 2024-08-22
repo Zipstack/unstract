@@ -33,7 +33,7 @@ const columns = [
 ];
 
 const PAGE_SIZE = 10;
-const SYNONYMS_LIMIT = 20;
+const SYNONYMS_LIMIT = 200;
 
 const actionTypes = {
   save: "SAVE",
