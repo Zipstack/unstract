@@ -181,7 +181,12 @@ class Client(ContainerClientInterface):
                     "target": os.getenv(Env.TOOL_DATA_DIR, "/data"),
                 }
             )
-            envs[Env.EXECUTION_RUN_DATA_FOLDER] = source_path
+            envs[Env.EXECUTION_RUN_DATA_FOLDER] = os.path.join(
+                os.getenv(Env.EXECUTION_RUN_DATA_FOLDER_PREFIX, ""),
+                organization_id,
+                workflow_id,
+                execution_id,
+            )
         return {
             "name": ContainerClientHelper.normalize_container_name(self.image_name),
             "image": self.get_image(),
