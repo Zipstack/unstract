@@ -50,13 +50,13 @@ class UserSessionUtils:
             bool: `True` if the path is authorized; `False` otherwise.
         """
 
-        organization_uid = connection.tenant.organization_id
+        requested_organization_uid = connection.tenant.organization_id
 
         # Always authorize if the organization is public
-        if organization_uid == settings.PUBLIC_ORG_ID:
+        if requested_organization_uid == settings.PUBLIC_ORG_ID:
             return True
 
         # Get the session organization UID
         session_organization_uid = cls.get_organization_id(request=request)
 
-        return organization_uid == session_organization_uid
+        return requested_organization_uid == session_organization_uid
