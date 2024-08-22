@@ -69,7 +69,9 @@ class StructureTool(BaseTool):
         if summarize_as_source:
             file_name = SettingsKeys.SUMMARIZE
         tool_data_dir = Path(self.get_env_or_die(SettingsKeys.TOOL_DATA_DIR))
-        execution_run_data_folder = Path(self.get_env_or_die(SettingsKeys.EXECUTION_RUN_DATA_FOLDER))
+        execution_run_data_folder = Path(
+            self.get_env_or_die(SettingsKeys.EXECUTION_RUN_DATA_FOLDER)
+        )
         run_id = CommonUtils.generate_uuid()
         # TODO : Resolve and pass log events ID
         payload = {
@@ -171,7 +173,9 @@ class StructureTool(BaseTool):
             for output in outputs:
                 try:
                     table_settings = output[SettingsKeys.TABLE_SETTINGS]
-                    extracted_input_file = execution_run_data_folder / SettingsKeys.EXTRACT
+                    extracted_input_file = (
+                        execution_run_data_folder / SettingsKeys.EXTRACT
+                    )
                     table_settings[SettingsKeys.INPUT_FILE] = str(extracted_input_file)
                     output.update({SettingsKeys.TABLE_SETTINGS: table_settings})
 
