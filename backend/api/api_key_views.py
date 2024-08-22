@@ -30,12 +30,14 @@ class APIKeyViewSet(viewsets.ModelViewSet):
     ) -> Response:
         """Custom action to fetch api keys of an api deployment."""
         if api_id:
-            api = DeploymentHelper.get_api_by_id(api_id=api_id)
+            api = DeploymentHelper.get_api_by_id(api_id=api_id, user=request.user)
             if not api:
                 raise APINotFound()
             keys = KeyHelper.list_api_keys_of_api(api_instance=api)
         elif pipeline_id:
-            pipeline = PipelineProcessor.get_active_pipeline(pipeline_id=pipeline_id)
+            pipeline = PipelineProcessor.get_active_pipeline(
+                pipeline_id=pipeline_id, user=request.user
+            )
             if not pipeline:
                 raise PipelineNotFound()
             keys = KeyHelper.list_api_keys_of_pipeline(pipeline_instance=pipeline)

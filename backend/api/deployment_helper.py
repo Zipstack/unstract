@@ -3,6 +3,7 @@ import uuid
 from typing import Any, Optional
 from urllib.parse import urlencode
 
+from account.models import User
 from api.api_key_validator import BaseAPIKeyValidator
 from api.constants import ApiExecution
 from api.exceptions import (
@@ -74,8 +75,10 @@ class DeploymentHelper(BaseAPIKeyValidator):
         return WorkflowHelper.get_workflow_by_id(workflow_id)
 
     @staticmethod
-    def get_api_by_id(api_id: str) -> Optional[APIDeployment]:
-        return APIDeploymentUtils.get_api_by_id(api_id=api_id)
+    def get_api_by_id(
+        api_id: str, user: Optional[User] = None
+    ) -> Optional[APIDeployment]:
+        return APIDeploymentUtils.get_api_by_id(api_id=api_id, user=user)
 
     @staticmethod
     def construct_complete_endpoint(api_name: str) -> str:
