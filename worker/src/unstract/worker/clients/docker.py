@@ -1,7 +1,6 @@
 import logging
 import os
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any, Optional
 
 from docker.errors import APIError, ImageNotFound
@@ -186,7 +185,7 @@ class Client(ContainerClientInterface):
                 os.getenv(Env.EXECUTION_RUN_DATA_FOLDER_PREFIX, ""),
                 organization_id,
                 workflow_id,
-                execution_id
+                execution_id,
             )
         return {
             "name": ContainerClientHelper.normalize_container_name(self.image_name),
