@@ -33,6 +33,7 @@ const columns = [
 ];
 
 const PAGE_SIZE = 10;
+const SYNONYMS_LIMIT = 20;
 
 const actionTypes = {
   save: "SAVE",
@@ -123,7 +124,11 @@ function CustomSynonyms() {
   };
 
   const handleAddRow = () => {
-    const length = synonyms.length || 0;
+    const length = synonyms?.length;
+    if (length >= SYNONYMS_LIMIT) {
+      return;
+    }
+
     const data = {
       key: length,
       word: "",
@@ -215,7 +220,7 @@ function CustomSynonyms() {
               type="primary"
               icon={<PlusOutlined />}
               onClick={handleAddRow}
-              disabled={isPublicSource}
+              disabled={isPublicSource || synonyms?.length >= SYNONYMS_LIMIT}
             >
               Rows
             </CustomButton>
