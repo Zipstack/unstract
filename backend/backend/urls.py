@@ -59,6 +59,7 @@ urlpatterns = [
         UrlPathConstants.PROMPT_STUDIO,
         include("prompt_studio.prompt_studio_index_manager.urls"),
     ),
+    path("notifications/", include("notification.urls")),
 ]
 
 
@@ -117,10 +118,17 @@ except ImportError:
 # Clone urls
 try:
 
-    import pluggable_apps.clone.urls  # noqa # pylint: disable=unused-import
-
     urlpatterns += [
         path("", include("pluggable_apps.clone.urls")),
+    ]
+except ImportError:
+    pass
+
+try:
+    import pluggable_apps.apps.table_settings  # noqa # pylint: disable=unused-import
+
+    urlpatterns += [
+        path("", include("pluggable_apps.apps.table_settings.urls")),
     ]
 except ImportError:
     pass

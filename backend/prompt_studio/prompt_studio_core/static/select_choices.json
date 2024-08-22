@@ -13,7 +13,8 @@
         "email":"email",
         "date":"date",
         "boolean":"boolean",
-        "json":"json"
+        "json":"json",
+        "table":"table"
     },
     "output_processing":{
         "DEFAULT":"Default"

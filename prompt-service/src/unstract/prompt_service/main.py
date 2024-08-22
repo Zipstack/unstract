@@ -4,28 +4,27 @@ from enum import Enum
 from json import JSONDecodeError
 from typing import Any, Optional
 
-import peewee
 from flask import json, jsonify, request
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
 from unstract.prompt_service.config import create_app
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.constants import RunLevel
-from unstract.prompt_service.exceptions import (
-    APIError,
-    ErrorResponse,
-    NoPayloadError,
-    RateLimitError,
-)
+from unstract.prompt_service.exceptions import APIError, ErrorResponse, NoPayloadError
 from unstract.prompt_service.helper import (
-    EnvLoader,
+    construct_and_run_prompt,
+    extract_table,
+    extract_variable,
+    get_cleaned_context,
     plugin_loader,
+    plugins,
     query_usage_metadata,
+    run_completion,
 )
 from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
+from unstract.prompt_service.variable_extractor.base import VariableExtractor
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import Embedding
-from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
 from unstract.sdk.exceptions import SdkError
 from unstract.sdk.index import Index
 from unstract.sdk.llm import LLM
@@ -34,9 +33,9 @@ from werkzeug.exceptions import HTTPException
 
 from unstract.core.pubsub_helper import LogPublisher
 
-POS_TEXT_PATH = "/tmp/pos.txt"
 USE_UNSTRACT_PROMPT = True
 MAX_RETRIES = 3
+
 NO_CONTEXT_ERROR = (
     "Couldn't fetch context from vector DB. "
     "This happens usually due to a delay by the Vector DB "
@@ -44,28 +43,9 @@ NO_CONTEXT_ERROR = (
     "Please try again after some time"
 )
 
-PG_BE_HOST = EnvLoader.get_env_or_die("PG_BE_HOST")
-PG_BE_PORT = EnvLoader.get_env_or_die("PG_BE_PORT")
-PG_BE_USERNAME = EnvLoader.get_env_or_die("PG_BE_USERNAME")
-PG_BE_PASSWORD = EnvLoader.get_env_or_die("PG_BE_PASSWORD")
-PG_BE_DATABASE = EnvLoader.get_env_or_die("PG_BE_DATABASE")
-
-be_db = peewee.PostgresqlDatabase(
-    PG_BE_DATABASE,
-    user=PG_BE_USERNAME,
-    password=PG_BE_PASSWORD,
-    host=PG_BE_HOST,
-    port=PG_BE_PORT,
-)
-be_db.init(PG_BE_DATABASE)
-be_db.connect()
-
-AuthenticationMiddleware.be_db = be_db
-
 app = create_app()
-
-
-plugins: dict[str, dict[str, Any]] = plugin_loader(app)
+# Load plugins
+plugin_loader(app)
 
 
 def _publish_log(
@@ -79,79 +59,6 @@ def _publish_log(
         log_events_id,
         LogPublisher.log_prompt(component, level.value, state.value, message),
     )
-
-
-def construct_prompt(
-    preamble: str,
-    prompt: str,
-    postamble: str,
-    grammar_list: list[dict[str, Any]],
-    context: str,
-) -> str:
-    # Let's cleanup the context. Remove if 3 consecutive newlines are found
-    context_lines = context.split("\n")
-    new_context_lines = []
-    empty_line_count = 0
-    for line in context_lines:
-        if line.strip() == "":
-            empty_line_count += 1
-        else:
-            if empty_line_count >= 3:
-                empty_line_count = 3
-            for i in range(empty_line_count):
-                new_context_lines.append("")
-            empty_line_count = 0
-            new_context_lines.append(line.rstrip())
-    context = "\n".join(new_context_lines)
-    app.logger.info(
-        f"Old context length: {len(context_lines)}, "
-        f"New context length: {len(new_context_lines)}"
-    )
-
-    prompt = (
-        f"{preamble}\n\nContext:\n---------------{context}\n"
-        f"-----------------\n\nQuestion or Instruction: {prompt}\n"
-    )
-    if grammar_list is not None and len(grammar_list) > 0:
-        prompt += "\n"
-        for grammar in grammar_list:
-            word = ""
-            synonyms = []
-            if PSKeys.WORD in grammar:
-                word = grammar[PSKeys.WORD]
-                if PSKeys.SYNONYMS in grammar:
-                    synonyms = grammar[PSKeys.SYNONYMS]
-            if len(synonyms) > 0 and word != "":
-                prompt += f'\nNote: You can consider that the word {word} is same as \
-                    {", ".join(synonyms)} in both the quesiton and the context.'  # noqa
-    prompt += f"\n\n{postamble}"
-    prompt += "\n\nAnswer:"
-    return prompt
-
-
-def construct_prompt_for_engine(
-    preamble: str,
-    prompt: str,
-    postamble: str,
-    grammar_list: list[dict[str, Any]],
-) -> str:
-    # Let's cleanup the context. Remove if 3 consecutive newlines are found
-    prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}\n"
-    if grammar_list is not None and len(grammar_list) > 0:
-        prompt += "\n"
-        for grammar in grammar_list:
-            word = ""
-            synonyms = []
-            if PSKeys.WORD in grammar:
-                word = grammar[PSKeys.WORD]
-                if PSKeys.SYNONYMS in grammar:
-                    synonyms = grammar[PSKeys.SYNONYMS]
-            if len(synonyms) > 0 and word != "":
-                prompt += f'\nNote: You can consider that the word {word} is same as \
-                    {", ".join(synonyms)} in both the quesiton and the context.'  # noqa
-    prompt += f"\n\n{postamble}"
-    prompt += "\n\n"
-    return prompt
 
 
 def authentication_middleware(func: Any) -> Any:
@@ -184,9 +91,6 @@ def prompt_processor() -> Any:
     file_hash = payload.get(PSKeys.FILE_HASH)
     doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
-    include_metadata = (
-        request.args.get(PSKeys.INCLUDE_METADATA, "false").lower() == "true"
-    )
     structured_output: dict[str, Any] = {}
     metadata: Optional[dict[str, Any]] = {
         PSKeys.RUN_ID: run_id,
@@ -210,6 +114,32 @@ def prompt_processor() -> Any:
         util = PromptServiceBaseTool(log_level=LogLevel.INFO, platform_key=platform_key)
         index = Index(tool=util)
 
+        app.logger.info(f"[{tool_id}] Replacing variables in prompt : {prompt_name}")
+        _publish_log(
+            log_events_id,
+            {
+                "tool_id": tool_id,
+                "prompt_key": prompt_name,
+                "doc_name": doc_name,
+            },
+            LogLevel.DEBUG,
+            RunLevel.RUN,
+            "Replacing variables in prompt",
+        )
+        try:
+            variable_map = output[PSKeys.VARIABLE_MAP]
+            VariableExtractor.execute_variable_replacement(
+                prompt=promptx, variable_map=variable_map
+            )
+        except KeyError:
+            # Executed incase of structured tool and
+            # APIs where we do not set the variable map
+            VariableExtractor.execute_variable_replacement(
+                prompt=promptx, variable_map=structured_output
+            )
+        except APIError as api_error:
+            raise api_error
+
         app.logger.info(f"[{tool_id}] Executing prompt: {prompt_name}")
         _publish_log(
             log_events_id,
@@ -230,8 +160,7 @@ def prompt_processor() -> Any:
             structured_output, variable_names, output, promptx
         )
 
-        doc_id = index.generate_file_id(
-            tool_id=tool_id,
+        doc_id = index.generate_index_key(
             file_hash=file_hash,
             vector_db=output[PSKeys.VECTOR_DB],
             embedding=output[PSKeys.EMBEDDING],
@@ -289,6 +218,39 @@ def prompt_processor() -> Any:
                 "Unable to obtain LLM / embedding / vectorDB",
             )
             return APIError(message=msg)
+
+        if output[PSKeys.TYPE] == PSKeys.TABLE:
+            try:
+                structured_output = extract_table(
+                    output=output,
+                    plugins=plugins,
+                    structured_output=structured_output,
+                    llm=llm,
+                )
+                metadata = query_usage_metadata(token=platform_key, metadata=metadata)
+                response = {
+                    PSKeys.METADATA: metadata,
+                    PSKeys.OUTPUT: structured_output,
+                }
+                return response
+            except APIError as api_error:
+                app.logger.error(
+                    "Failed to extract table for the prompt %s: %s",
+                    output[PSKeys.NAME],
+                    str(api_error),
+                )
+                _publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.ERROR,
+                    RunLevel.TABLE_EXTRACTION,
+                    "Error while extracting table for the prompt",
+                )
+
         try:
             vector_index = vector_db.get_vector_store_index()
 
@@ -366,8 +328,11 @@ def prompt_processor() -> Any:
                     llm=llm,
                     context=context,
                     prompt="promptx",
+                    metadata=metadata,
                 )
-                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
+                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = get_cleaned_context(
+                    context
+                )
             else:
                 answer = "NA"
                 _publish_log(
@@ -392,8 +357,11 @@ def prompt_processor() -> Any:
                         llm=llm,
                         vector_index=vector_index,
                         retrieval_type=retrieval_strategy,
+                        metadata=metadata,
                     )
-                    metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
+                    metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = get_cleaned_context(
+                        context
+                    )
                 else:
                     app.logger.info(
                         "Invalid retrieval strategy passed: %s",
@@ -687,11 +655,8 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         "Execution complete",
     )
-    if include_metadata:
-        metadata = query_usage_metadata(db=be_db, token=platform_key, metadata=metadata)
-        response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
-    else:
-        response = {PSKeys.OUTPUT: structured_output}
+    metadata = query_usage_metadata(token=platform_key, metadata=metadata)
+    response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
     return response
 
 
@@ -702,14 +667,10 @@ def run_retrieval(  # type:ignore
     llm: LLM,
     vector_index,
     retrieval_type: str,
+    metadata: dict[str, Any],
 ) -> tuple[str, str]:
-    prompt = construct_prompt_for_engine(
-        preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
-        prompt=output[PSKeys.PROMPTX],
-        postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
-        grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
-    )
-    if retrieval_type is PSKeys.SUBQUESTION:
+    prompt = output[PSKeys.PROMPTX]
+    if retrieval_type == PSKeys.SUBQUESTION:
         subq_prompt = (
             f"Generate a sub-question from the following verbose prompt that will"
             f" help extract relevant documents from a vector store:\n\n{prompt}"
@@ -737,6 +698,7 @@ def run_retrieval(  # type:ignore
         llm=llm,
         context=context,
         prompt="promptx",
+        metadata=metadata,
     )
 
     return (answer, context)
@@ -764,86 +726,6 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
         else:
             app.logger.info("Node score is less than 0. " f"Ignored: {node.score}")
     return text
-
-
-def construct_and_run_prompt(
-    tool_settings: dict[str, Any],
-    output: dict[str, Any],
-    llm: LLM,
-    context: str,
-    prompt: str,
-) -> tuple[str, dict[str, Any]]:
-    prompt = construct_prompt(
-        preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
-        prompt=output[prompt],
-        postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
-        grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
-        context=context,
-    )
-    return run_completion(
-        llm=llm,
-        prompt=prompt,
-    )
-
-
-def run_completion(
-    llm: LLM,
-    prompt: str,
-) -> tuple[str, dict[str, Any]]:
-    try:
-        completion = llm.complete(prompt)
-
-        answer: str = completion[PSKeys.RESPONSE].text
-        return answer
-    # TODO: Catch and handle specific exception here
-    except SdkRateLimitError as e:
-        raise RateLimitError(f"Rate limit error. {str(e)}") from e
-    except Exception as e:
-        app.logger.error(f"Error fetching response for prompt: {e}.")
-        # TODO: Publish this error as a FE update
-        raise APIError(str(e)) from e
-
-
-def extract_variable(
-    structured_output: dict[str, Any],
-    variable_names: list[Any],
-    output: dict[str, Any],
-    promptx: str,
-) -> str:
-    for variable_name in variable_names:
-        if promptx.find(f"%{variable_name}%") >= 0:
-            if variable_name in structured_output:
-                promptx = promptx.replace(
-                    f"%{variable_name}%",
-                    str(structured_output[variable_name]),
-                )
-            else:
-                raise ValueError(
-                    f"Variable {variable_name} not found " "in structured output"
-                )
-
-    if promptx != output[PSKeys.PROMPT]:
-        app.logger.info(f"Prompt after variable replacement: {promptx}")
-    return promptx
-
-
-def enable_plugins() -> None:
-    """Enables plugins if available."""
-    single_pass_extration_plugin: dict[str, Any] = plugins.get(
-        PSKeys.SINGLE_PASS_EXTRACTION, {}
-    )
-    summarize_plugin: dict[str, Any] = plugins.get(PSKeys.SUMMARIZE, {})
-    if single_pass_extration_plugin:
-        single_pass_extration_plugin["entrypoint_cls"](
-            app=app, challenge_plugin=plugins.get(PSKeys.CHALLENGE, {})
-        )
-    if summarize_plugin:
-        summarize_plugin["entrypoint_cls"](
-            app=app,
-        )
-
-
-enable_plugins()
 
 
 def log_exceptions(e: HTTPException):

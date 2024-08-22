@@ -7,7 +7,7 @@ import {
   PlayCircleOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Checkbox, Col, Dropdown, Row, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 
@@ -16,6 +16,14 @@ import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EditableText } from "../editable-text/EditableText";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { ExpandCardBtn } from "./ExpandCardBtn";
+
+let PromptRunBtnSps;
+try {
+  PromptRunBtnSps =
+    require("../../../plugins/simple-prompt-studio/PromptRunBtnSps").PromptRunBtnSps;
+} catch {
+  // The component will remain 'undefined' it is not available
+}
 
 function Header({
   promptDetails,
@@ -33,6 +41,9 @@ function Header({
   expandCard,
   setExpandCard,
   enabledProfiles,
+  spsLoading,
+  handleSpsLoading,
+  handleGetOutput,
 }) {
   const {
     selectedDoc,
@@ -41,7 +52,10 @@ function Header({
     isSinglePassExtractLoading,
     indexDocs,
     isPublicSource,
+    isSimplePromptStudio,
+    details,
   } = useCustomToolStore();
+  const [items, setItems] = useState([]);
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(promptDetails?.active);
 
@@ -60,32 +74,39 @@ function Header({
     );
   };
 
-  const items = [
-    {
-      label: (
-        <Checkbox checked={isDisablePrompt} onChange={handleDisablePrompt}>
-          {isDisablePrompt ? "Enabled" : "Disabled"}
-        </Checkbox>
-      ),
-      key: "enable",
-    },
-    {
-      label: (
-        <ConfirmModal
-          handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
-          content="The prompt will be permanently deleted."
-        >
-          <DeleteOutlined /> Delete
-        </ConfirmModal>
-      ),
-      key: "delete",
-      disabled:
-        disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
-        isSinglePassExtractLoading ||
-        indexDocs?.includes(selectedDoc?.document_id) ||
-        isPublicSource,
-    },
-  ];
+  useEffect(() => {
+    const dropdownItems = [
+      {
+        label: (
+          <Checkbox checked={isDisablePrompt} onChange={handleDisablePrompt}>
+            {isDisablePrompt ? "Enabled" : "Disabled"}
+          </Checkbox>
+        ),
+        key: "enable",
+      },
+      {
+        label: (
+          <ConfirmModal
+            handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
+            content="The prompt will be permanently deleted."
+          >
+            <DeleteOutlined /> Delete
+          </ConfirmModal>
+        ),
+        key: "delete",
+        disabled:
+          disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
+          isSinglePassExtractLoading ||
+          indexDocs?.includes(selectedDoc?.document_id) ||
+          isPublicSource,
+      },
+    ];
+    if (isSimplePromptStudio) {
+      dropdownItems.splice(0, 1);
+    }
+
+    setItems(dropdownItems);
+  }, [promptDetails, details]);
 
   return (
     <Row>
@@ -147,7 +168,7 @@ function Header({
             )}
           </>
         )}
-        {!singlePassExtractMode && (
+        {!singlePassExtractMode && !isSimplePromptStudio && (
           <>
             <Tooltip title="Run">
               <Button
@@ -163,7 +184,8 @@ function Header({
                       promptStudioUpdateStatus?.isUpdating) ||
                   disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
                   indexDocs?.includes(selectedDoc?.document_id) ||
-                  isPublicSource
+                  isPublicSource ||
+                  spsLoading[selectedDoc?.document_id]
                 }
               >
                 <PlayCircleOutlined className="prompt-card-actions-head" />
@@ -174,7 +196,7 @@ function Header({
                 size="small"
                 type="text"
                 className="prompt-card-action-button"
-                onClick={() => handleRunBtnClick()}
+                onClick={handleRunBtnClick}
                 disabled={
                   (updateStatus?.promptId === promptDetails?.prompt_id &&
                     updateStatus?.status ===
@@ -189,6 +211,15 @@ function Header({
             </Tooltip>
           </>
         )}
+        <ExpandCardBtn expandCard={expandCard} setExpandCard={setExpandCard} />
+        {isSimplePromptStudio && PromptRunBtnSps && (
+          <PromptRunBtnSps
+            spsLoading={spsLoading}
+            handleSpsLoading={handleSpsLoading}
+            handleGetOutput={handleGetOutput}
+            promptDetails={promptDetails}
+          />
+        )}
         <Dropdown menu={{ items }} trigger={["click"]} placement="bottomLeft">
           <Button
             size="small"
@@ -198,8 +229,6 @@ function Header({
             <MoreOutlined className="prompt-card-actions-head" />
           </Button>
         </Dropdown>
-
-        <ExpandCardBtn expandCard={expandCard} setExpandCard={setExpandCard} />
       </Col>
     </Row>
   );
@@ -221,6 +250,9 @@ Header.propTypes = {
   expandCard: PropTypes.bool.isRequired,
   setExpandCard: PropTypes.func.isRequired,
   enabledProfiles: PropTypes.array.isRequired,
+  spsLoading: PropTypes.object,
+  handleSpsLoading: PropTypes.func.isRequired,
+  handleGetOutput: PropTypes.func.isRequired,
 };
 
 export { Header };
