@@ -108,6 +108,16 @@ class UnstractDB(UnstractConnector, ABC):
         )
         return sql_query
 
+    @staticmethod
+    def get_sql_insert_query(table_name: str, sql_keys: list[str]) -> str:
+        keys_str = ",".join(sql_keys)
+        values_placeholder = ",".join(["%s" for _ in sql_keys])
+        return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
+
+    @staticmethod
+    def get_sql_insert_values(sql_values: list[Any], **kwargs: Any) -> Any:
+        return sql_values
+
     @abstractmethod
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any

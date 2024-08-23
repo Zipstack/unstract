@@ -45,7 +45,7 @@
     },
     "wallet_password": {
       "type": "string",
-      "title": "Specifies the password for the PEM file (ewallet.pem). You set this password when you download the wallet.zip file ",
+      "title": "Specifies the password for the PEM file",
       "format": "password",
       "default": ""
     }

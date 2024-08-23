@@ -97,6 +97,21 @@ class BigQuery(UnstractDB):
         )
         return sql_query
 
+    @staticmethod
+    def get_sql_insert_query(table_name: str, sql_keys: list[str]) -> str:
+        keys_str = ",".join(sql_keys)
+        values_placeholder = ",".join(["@" + key for key in sql_keys])
+        return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
+
+    @staticmethod
+    def get_sql_insert_values(sql_values: list[Any], **kwargs: Any) -> Any:
+        sql_keys = str(kwargs.get("sql_keys"))
+        query_parameters = [
+            bigquery.ScalarQueryParameter(key, "STRING", value)
+            for key, value in zip(sql_keys, sql_values)
+        ]
+        return bigquery.QueryJobConfig(query_parameters=query_parameters)
+
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:

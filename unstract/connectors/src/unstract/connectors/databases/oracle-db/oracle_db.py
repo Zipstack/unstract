@@ -1,3 +1,4 @@
+import datetime
 import os
 from typing import Any
 
@@ -69,7 +70,48 @@ class OracleDB(UnstractDB):
         )
         return con
 
+    @staticmethod
+    def sql_to_db_mapping(value: str) -> str:
+        python_type = type(value)
+        mapping = {
+            str: "CLOB",
+            int: "NUMBER",
+            float: "LONG",
+            datetime.datetime: "TIMESTAMP",
+        }
+        return mapping.get(python_type, "CLOB")
+
+    @staticmethod
+    def get_create_table_query(table: str) -> str:
+        sql_query = (
+            f"CREATE TABLE IF NOT EXISTS {table} "
+            f"(id VARCHAR2(32767) , "
+            f"created_by VARCHAR2(32767), created_at TIMESTAMP, "
+        )
+        return sql_query
+
+    @staticmethod
+    def get_sql_insert_query(table_name: str, sql_keys: list[str]) -> str:
+        columns = ", ".join(sql_keys)
+        values = []
+        for key in sql_keys:
+            if key == "created_at":
+                values.append("TO_TIMESTAMP(:created_at, 'YYYY-MM-DD HH24:MI:SS.FF')")
+            else:
+                values.append(f":{key}")
+        return f"INSERT INTO {table_name} ({columns}) VALUES ({', '.join(values)})"
+
+    @staticmethod
+    def get_sql_insert_values(sql_values: list[Any], **kwargs: Any) -> Any:
+        sql_keys = str(kwargs.get("sql_keys"))
+        return dict(zip(sql_keys, sql_values))
+
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
-        pass
+        with engine.cursor() as cursor:
+            if sql_values:
+                cursor.execute(sql_query, sql_values)
+            else:
+                cursor.execute(sql_query)
+        engine.commit()
