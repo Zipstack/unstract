@@ -39,6 +39,7 @@ let ManualReviewPage;
 let ReviewLayout;
 let PublicPromptStudioHelper;
 let ManualReviewSettings;
+let ManualReviewDeployment;
 
 try {
   TrialRoutes =
@@ -69,6 +70,8 @@ try {
     require("../plugins/manual-review/review-layout/ReviewLayout.jsx").ReviewLayout;
   ManualReviewSettings =
     require("../plugins/manual-review/settings/Settings.jsx").ManualReviewSettings;
+  ManualReviewDeployment =
+    require("../plugins/manual-review/components/deployment/ManualReviewDeployment.jsx").ManualReviewDeployment;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
@@ -162,6 +165,12 @@ function Router() {
             />
             {AppDeployments && (
               <Route path="app" element={<AppDeployments type="app" />} />
+            )}
+            {ManualReviewDeployment && (
+              <Route
+                path="mrq"
+                element={<ManualReviewDeployment type="mrq" />}
+              />
             )}
             <Route path="workflows" element={<WorkflowsPage />} />
             <Route path="workflows/:id" element={<ProjectHelper />}>

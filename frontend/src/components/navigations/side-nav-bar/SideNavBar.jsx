@@ -18,8 +18,15 @@ import TextExtractorIcon from "../../../assets/text-extractor.svg";
 import { useSessionStore } from "../../../store/session-store";
 
 let getMenuItem;
+let getMRQMenuItem;
 try {
   getMenuItem = require("../../../plugins/app-deployment/getMenuItem");
+} catch (err) {
+  // Plugin unavailable.
+}
+
+try {
+  getMRQMenuItem = require("../../../plugins/manual-review/getMenuItem");
 } catch (err) {
   // Plugin unavailable.
 }
@@ -147,7 +154,9 @@ const SideNavBar = ({ collapsed }) => {
   if (getMenuItem && flags.app_deployment) {
     data[0].subMenu.splice(1, 0, getMenuItem.default(orgName));
   }
-
+  if (getMRQMenuItem) {
+    data[0].subMenu.splice(3, 0, getMRQMenuItem.default(orgName));
+  }
   return (
     <Sider
       trigger={null}

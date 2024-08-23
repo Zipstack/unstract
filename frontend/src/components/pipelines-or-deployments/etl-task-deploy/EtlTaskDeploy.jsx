@@ -108,17 +108,11 @@ const EtlTaskDeploy = ({
         return [];
       });
   const getWorkflows = () => {
-    const connectorType = type === "task" ? "FILESYSTEM" : "DATABASE";
+    let connectorType = type === "task" ? "FILESYSTEM" : "DATABASE";
+    connectorType = type === "mrq" ? "MANUALREVIEW" : connectorType;
     setWorkflowList([]);
     fetchWorkflows(connectorType).then((data) => {
-      if (connectorType === "DATABASE") {
-        fetchWorkflows("MANUALREVIEW").then((manualReviewData) => {
-          const combinedData = [...data, ...manualReviewData];
-          setWorkflowList(combinedData);
-        });
-      } else {
-        setWorkflowList(data);
-      }
+      setWorkflowList(data);
     });
   };
 
