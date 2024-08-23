@@ -1,3 +1,5 @@
+from typing import Optional
+
 from prompt_studio.prompt_profile_manager.constants import ProfileManagerKeys
 from prompt_studio.prompt_studio_core.constants import ToolStudioErrors
 from rest_framework.exceptions import APIException
@@ -86,3 +88,10 @@ class PromptNotRun(APIException):
         "it can be used as a variable in another prompt. "
         "Please execute the prompt first and try again."
     )
+
+    def __init__(self, detail: Optional[str] = None, code: Optional[int] = None):
+        if detail is not None:
+            self.detail = detail
+        if code is not None:
+            self.code = code
+        super().__init__(detail, code)
