@@ -1,7 +1,6 @@
 import logging
 from typing import Optional
 
-from account.models import User
 from django.utils import timezone
 from pipeline.exceptions import InactivePipelineError
 from pipeline.models import Pipeline
@@ -27,36 +26,26 @@ class PipelineProcessor:
         )
 
     @staticmethod
-    def fetch_pipeline(
-        pipeline_id: str, check_active: bool = True, created_user: Optional[User] = None
-    ) -> Pipeline:
+    def fetch_pipeline(pipeline_id: str, check_active: bool = True) -> Pipeline:
         """Retrieves and checks for an active pipeline.
         Args:
             pipeline_id (str): UUID of the pipeline
             check_active (bool): Whether to check if the pipeline is active
-            created_user (Optional[User]): User who created the pipeline
 
         Raises:
             InactivePipelineError: If an active pipeline is not found
         """
-        if created_user:
-            pipeline: Pipeline = Pipeline.objects.get(
-                pk=pipeline_id, created_by=created_user
-            )
-        else:
-            pipeline: Pipeline = Pipeline.objects.get(pk=pipeline_id)
+        pipeline: Pipeline = Pipeline.objects.get(pk=pipeline_id)
         if check_active and not pipeline.is_active():
             logger.error(f"Inactive pipeline fetched: {pipeline_id}")
             raise InactivePipelineError(pipeline_name=pipeline.pipeline_name)
         return pipeline
 
     @classmethod
-    def get_active_pipeline(
-        cls, pipeline_id: str, user: Optional[User] = None
-    ) -> Optional[Pipeline]:
+    def get_active_pipeline(cls, pipeline_id: str) -> Optional[Pipeline]:
         """Retrieves a list of active pipelines."""
         try:
-            return cls.fetch_pipeline(pipeline_id, check_active=True, created_user=user)
+            return cls.fetch_pipeline(pipeline_id, check_active=True)
         except Pipeline.DoesNotExist:
             return None
 
