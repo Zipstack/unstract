@@ -72,3 +72,4 @@ class SettingsKeys:
     METADATA = "metadata"
     EPILOGUE = "epilogue"
     HIGHLIGHT_DATA = "highlight_data"
+    EXECUTION_RUN_DATA_FOLDER = "EXECUTION_RUN_DATA_FOLDER"
