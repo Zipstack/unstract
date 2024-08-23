@@ -52,7 +52,7 @@ class ToolSandboxHelper:
         """
         url = f"{self.base_url}{endpoint}"
         params = {"image_name": image_name, "image_tag": image_tag}
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=60)
         result: Optional[dict[str, Any]] = None
         if response.status_code == 200:
             result = response.json()
@@ -91,7 +91,7 @@ class ToolSandboxHelper:
             settings,
         )
 
-        response = requests.post(url, json=data)
+        response = requests.post(url, json=data, timeout=60)
         result: Optional[dict[str, Any]] = None
         if response.status_code == 200:
             result = response.json()
