@@ -8,7 +8,10 @@ class InvalidInputDirectory(APIException):
     default_detail = "The provided path is not a valid directory."
 
     def __init__(
-        self, dir: str, detail: Optional[str] = None, code: Optional[str] = None
+        self,
+        dir: Optional[str] = None,
+        detail: Optional[str] = None,
+        code: Optional[str] = None,
     ):
         if dir:
             detail = self.default_detail.replace("path", f"path '{dir}'")

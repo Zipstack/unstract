@@ -7,7 +7,7 @@
         "folders": {
             "type": "array",
             "title": "Folders to process",
-            "description": "Folders in the connected filesystem to start processing files from. Leave it empty or pass '/' to specify the root folder.",
+            "description": "Folders in the connected filesystem to start processing files from. Leave it empty or pass '/' to specify the root folder. Separate inputs with ⏎ Enter.",
             "items": {
                 "type": "string",
                 "title": "Folder Path"

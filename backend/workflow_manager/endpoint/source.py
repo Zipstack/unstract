@@ -155,28 +155,37 @@ class SourceConnector(BaseConnector):
             )
         )
         root_dir_path = connector_settings.get(ConnectorKeys.PATH, "")
-
-        source_fs = self.get_fs_connector(
-            settings=connector_settings, connector_id=connector.connector_id
-        )
-        source_fs_fsspec = source_fs.get_fsspec_fs()
-        patterns = self.valid_file_patterns(required_patterns=required_patterns)
-
         folders_to_process = list(source_configurations.get(SourceKey.FOLDERS, ["/"]))
         # Process from root in case its user provided list is empty
         if not folders_to_process:
             folders_to_process = ["/"]
         logger.info(f"Folders to process: {folders_to_process}")
+
+        source_fs = self.get_fs_connector(
+            settings=connector_settings, connector_id=connector.connector_id
+        )
+        source_fs_fsspec = source_fs.get_fsspec_fs()
+        # Checking if folders exist at source before processing
+        # TODO: Validate while receiving this input configuration as well
+        for input_directory in folders_to_process:
+            # TODO: Move to connector class for better error handling
+            try:
+                is_directory = source_fs_fsspec.isdir(input_directory)
+            except Exception as e:
+                raise InvalidInputDirectory(
+                    detail=f"Error while validating path '{input_directory}': {str(e)}"
+                )
+            if not is_directory:
+                raise InvalidInputDirectory(dir=input_directory)
+
         total_files_to_process = 0
         total_matched_files = {}
+        patterns = self.valid_file_patterns(required_patterns=required_patterns)
         for input_directory in folders_to_process:
             input_directory = source_fs.get_connector_root_dir(
                 input_dir=input_directory, root_path=root_dir_path
             )
             logger.debug(f"Listing files from:  {input_directory}")
-            is_directory = source_fs_fsspec.isdir(input_directory)
-            if not is_directory:
-                raise InvalidInputDirectory(dir=input_directory)
             matched_files, count = self._get_matched_files(
                 source_fs_fsspec, input_directory, patterns, recursive, limit
             )

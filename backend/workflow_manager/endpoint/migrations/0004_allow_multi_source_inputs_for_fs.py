@@ -27,9 +27,7 @@ class Migration(migrations.Migration):
         """
         WorkflowEndpoint = apps.get_model("endpoint", "WorkflowEndpoint")
 
-        endpoints_to_update = WorkflowEndpoint.objects.filter(
-            connection_type="FILESYSTEM", endpoint_type="SOURCE"
-        )
+        endpoints_to_update = WorkflowEndpoint.objects.filter(endpoint_type="SOURCE")
         for endpoint in endpoints_to_update:
             configuration: Optional[dict[str, Any]] = endpoint.configuration
             # Skip in case of partially initialized sources
@@ -45,7 +43,6 @@ class Migration(migrations.Migration):
 
             # Update the configuration JSON
             configuration["folders"] = folders
-            del configuration["rootFolder"]  # Remove the old rootFolder key
 
             # Save the updated configuration back to the model
             endpoint.configuration = configuration
@@ -66,9 +63,7 @@ class Migration(migrations.Migration):
         """
         WorkflowEndpoint = apps.get_model("endpoint", "WorkflowEndpoint")
 
-        endpoints_to_update = WorkflowEndpoint.objects.filter(
-            connection_type="FILESYSTEM", endpoint_type="SOURCE"
-        )
+        endpoints_to_update = WorkflowEndpoint.objects.filter(endpoint_type="SOURCE")
 
         for endpoint in endpoints_to_update:
             configuration: Optional[dict[str, Any]] = endpoint.configuration
@@ -85,7 +80,6 @@ class Migration(migrations.Migration):
 
             # Update the configuration JSON
             configuration["rootFolder"] = root_folder
-            del configuration["folders"]  # Remove the folders key
 
             # Save the updated configuration back to the model
             endpoint.configuration = configuration
