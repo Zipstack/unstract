@@ -3,10 +3,8 @@ import time
 from typing import Optional
 
 from account.constants import Common
-from api.exceptions import InvalidAPIRequest
 from django.db import connection
 from platform_settings.platform_auth_service import PlatformAuthenticationService
-from tool_instance.constants import JsonSchemaKey
 from tool_instance.models import ToolInstance
 from tool_instance.tool_processor import ToolProcessor
 from unstract.tool_registry.dto import Tool
@@ -104,13 +102,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         )
 
         self.compilation_result = self.compile_workflow(execution_id=self.execution_id)
-
-    def _initiate_api_execution(
-        self, tool_instance: ToolInstance, execution_path: Optional[str]
-    ) -> None:
-        if not execution_path:
-            raise InvalidAPIRequest("File shouldn't be empty")
-        tool_instance.metadata[JsonSchemaKey.ROOT_FOLDER] = execution_path
 
     @staticmethod
     def create_workflow_execution(
