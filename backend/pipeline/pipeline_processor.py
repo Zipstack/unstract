@@ -28,6 +28,9 @@ class PipelineProcessor:
     @staticmethod
     def fetch_pipeline(pipeline_id: str, check_active: bool = True) -> Pipeline:
         """Retrieves and checks for an active pipeline.
+        Args:
+            pipeline_id (str): UUID of the pipeline
+            check_active (bool): Whether to check if the pipeline is active
 
         Raises:
             InactivePipelineError: If an active pipeline is not found
