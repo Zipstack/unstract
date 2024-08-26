@@ -1,6 +1,7 @@
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
+import { formatNumberWithCommas } from "../../../helpers/GetStaticData";
 
 /**
  * TokenUsage component displays token usage details in a tag with a tooltip.
@@ -27,7 +28,7 @@ function TokenUsage({ tokenUsageId }) {
     return 0;
   }
 
-  return tokens?.total_tokens;
+  return formatNumberWithCommas(tokens?.total_tokens);
 }
 
 TokenUsage.propTypes = {

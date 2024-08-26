@@ -101,7 +101,7 @@ function EditableText({
 
   return (
     <Input
-      className="font-size-14 width-100 input-header-text"
+      className="width-100 input-header-text"
       value={text}
       onChange={handleTextChange}
       placeholder="Enter Key"
