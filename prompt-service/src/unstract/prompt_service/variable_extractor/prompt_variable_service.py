@@ -1,8 +1,9 @@
+import json
 import logging
 import re
 from typing import Any
 
-from utils.request import HTTPMethod, make_http_request
+from unstract.prompt_service.utils.request import HTTPMethod, make_http_request
 
 from .constants import VariableConstants, VariableType
 
@@ -44,9 +45,20 @@ class VariableService:
             return output
 
     @staticmethod
-    def replace_generic_string_value(prompt: str, variable: str, value: str) -> str:
-        replaced_prompt = re.sub(variable, value, prompt)
+    def replace_generic_string_value(prompt: str, variable: str, value: Any) -> str:
+        formatted_value: str = value
+        if not isinstance(value, str):
+            formatted_value = VariableService.handle_json_and_str_types(value)
+        replaced_prompt = prompt.replace(variable, formatted_value)
         return replaced_prompt
+
+    @staticmethod
+    def handle_json_and_str_types(value: Any) -> str:
+        try:
+            formatted_value = json.dumps(value)
+        except ValueError:
+            formatted_value = str(value)
+        return formatted_value
 
     @staticmethod
     def identify_variable_type(variable: str) -> VariableType:
@@ -59,13 +71,27 @@ class VariableService:
         return variable_type
 
     @staticmethod
-    def replace_dynamic_variable(prompt: str, variable: str) -> str:
+    def replace_dynamic_variable(
+        prompt: str, variable: str, structured_output: dict[str, Any]
+    ) -> str:
         url = re.search(VariableConstants.DYNAMIC_VARIABLE_URL_REGEX, variable).group(0)
         data = re.findall(VariableConstants.DYNAMIC_VARIABLE_DATA_REGEX, variable)[0]
-        api_response = VariableService.fetch_dynamic_variable_value(url=url, data=data)
+        output_value = VariableService.check_static_variable_run_status(
+            structure_output=structured_output, variable=data
+        )
+        if not output_value:
+            return prompt
+        api_response: Any = VariableService.fetch_dynamic_variable_value(
+            url=url, data=output_value
+        )
+        formatted_api_response: str = VariableService.handle_json_and_str_types(
+            api_response
+        )
         static_variable_marker_string = "".join(["{{", variable, "}}"])
         replaced_prompt: str = VariableService.replace_generic_string_value(
-            prompt=prompt, variable=static_variable_marker_string, value=api_response
+            prompt=prompt,
+            variable=static_variable_marker_string,
+            value=formatted_api_response,
         )
         return replaced_prompt
 
