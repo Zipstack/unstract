@@ -133,7 +133,7 @@ class WorkflowHelper:
                 file_hash,
             )
             try:
-                is_executed, error = WorkflowHelper.process_file(
+                error = WorkflowHelper.process_file(
                     current_file_idx=file_number,
                     total_files=total_files,
                     input_file=file_hash.file_path,
@@ -144,10 +144,10 @@ class WorkflowHelper:
                     single_step=single_step,
                     file_hash=file_hash,
                 )
-                if is_executed:
-                    successful_files += 1
                 if error:
                     failed_files += 1
+                else:
+                    successful_files += 1
             except StopExecution as exception:
                 execution_service.update_execution(
                     ExecutionStatus.STOPPED, error=str(exception)
@@ -184,9 +184,8 @@ class WorkflowHelper:
         execution_service: WorkflowExecutionServiceHelper,
         single_step: bool,
         file_hash: FileHash,
-    ) -> tuple[bool, Optional[str]]:
-        error = None
-        is_executed = False
+    ) -> Optional[str]:
+        error: Optional[str] = None
         file_name = source.add_file_to_volume(
             input_file_path=input_file, file_hash=file_hash
         )
@@ -221,7 +220,7 @@ class WorkflowHelper:
             f"{file_name}'s output is processed successfully",
             LogComponent.DESTINATION,
         )
-        return is_executed, error
+        return error
 
     @staticmethod
     def validate_tool_instances_meta(
@@ -303,20 +302,13 @@ class WorkflowHelper:
         except Exception as e:
             logger.error(f"Error executing workflow {workflow}: {e}")
             logger.error(f"Error {traceback.format_exc()}")
-            if not workflow_execution.error_message:
-                workflow_execution.error_message = str(e)
+            workflow_execution = WorkflowExecutionServiceHelper.update_execution_err(
+                execution_id, str(e)
+            )
             WorkflowHelper._update_pipeline_status(
                 pipeline_id=pipeline_id, workflow_execution=workflow_execution
             )
-            # TODO: Raise error directly and wrap for API, ETL
-            return ExecutionResponse(
-                str(workflow.id),
-                str(workflow_execution.id),
-                workflow_execution.status,
-                log_id=str(execution_service.execution_log_id),
-                error=workflow_execution.error_message or str(e),
-                mode=workflow_execution.execution_mode,
-            )
+            raise
         finally:
             destination.delete_execution_directory()
 
@@ -332,6 +324,7 @@ class WorkflowHelper:
                         pipeline_id,
                         Pipeline.PipelineStatus.SUCCESS,
                         execution_id=workflow_execution.id,
+                        is_end=True,
                     )
                 else:
                     PipelineProcessor.update_pipeline(
@@ -339,6 +332,7 @@ class WorkflowHelper:
                         Pipeline.PipelineStatus.FAILURE,
                         execution_id=workflow_execution.id,
                         error_message=workflow_execution.error_message,
+                        is_end=True,
                     )
         # Expected exception since API deployments are not tracked in Pipeline
         except Pipeline.DoesNotExist:
@@ -519,15 +513,23 @@ class WorkflowHelper:
             WorkflowExecutionServiceHelper.update_execution_task(
                 execution_id=execution_id, task_id=task_id
             )
-            execution_response = WorkflowHelper.run_workflow(
-                workflow=workflow,
-                organization_id=schema_name,
-                pipeline_id=pipeline_id,
-                scheduled=scheduled,
-                workflow_execution=workflow_execution,
-                execution_mode=execution_mode,
-                hash_values_of_files=hash_values,
-            )
+            try:
+                execution_response = WorkflowHelper.run_workflow(
+                    workflow=workflow,
+                    organization_id=schema_name,
+                    pipeline_id=pipeline_id,
+                    scheduled=scheduled,
+                    workflow_execution=workflow_execution,
+                    execution_mode=execution_mode,
+                    hash_values_of_files=hash_values,
+                )
+            except Exception as e:
+                return ExecutionResponse(
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    execution_status=ExecutionStatus.ERROR.value,
+                    error=str(e),
+                )
             return execution_response.result
 
     @staticmethod

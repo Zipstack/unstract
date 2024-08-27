@@ -99,6 +99,7 @@ class Pipeline(BaseModel):
     def __str__(self) -> str:
         return (
             f"Pipeline({self.id}) ("
+            f"name: {self.pipeline_name}, "
             f"cron string: {self.cron_string}, "
             f"is active: {self.active}, "
             f"is scheduled: {self.scheduled}"

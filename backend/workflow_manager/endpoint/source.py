@@ -177,13 +177,14 @@ class SourceConnector(BaseConnector):
                 input_directory = source_fs.get_connector_root_dir(
                     input_dir=input_directory, root_path=root_dir_path
                 )
-                is_directory = source_fs_fsspec.isdir(input_directory)
+                if not source_fs_fsspec.isdir(input_directory):
+                    raise InvalidInputDirectory(dir=input_directory)
             except Exception as e:
-                raise InvalidInputDirectory(
-                    detail=f"Error while validating path '{input_directory}'. {str(e)}"
-                )
-            if not is_directory:
-                raise InvalidInputDirectory(dir=input_directory)
+                msg = f"Error while validating path '{input_directory}'. {str(e)}"
+                self.publish_user_sys_log(msg)
+                if isinstance(e, InvalidInputDirectory):
+                    raise
+                raise InvalidInputDirectory(detail=msg)
 
         total_files_to_process = 0
         total_matched_files = {}
@@ -322,7 +323,7 @@ class SourceConnector(BaseConnector):
         if file_history and file_history.is_completed():
             self.execution_service.publish_log(
                 f"Skipping file {file_path} as it has already been processed. "
-                "Clear the cache to process it again."
+                "Clear the file markers to process it again."
             )
             return False
 

@@ -91,6 +91,8 @@ class PipelineSerializer(AuditSerializer):
     def save(self, **kwargs: Any) -> Pipeline:
         if self.validated_data[PK.CRON_STRING]:
             self.validated_data[PK.SCHEDULED] = True
+        else:
+            self.validated_data[PK.SCHEDULED] = False
         pipeline: Pipeline = super().save(**kwargs)
         if pipeline.cron_string is None:
             SchedulerHelper.remove_job(pipeline_id=str(pipeline.id))
