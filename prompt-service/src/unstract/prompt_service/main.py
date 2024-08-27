@@ -128,14 +128,38 @@ def prompt_processor() -> Any:
         )
         try:
             variable_map = output[PSKeys.VARIABLE_MAP]
-            VariableExtractor.execute_variable_replacement(
+            promptx = VariableExtractor.execute_variable_replacement(
                 prompt=promptx, variable_map=variable_map
+            )
+            app.logger.info(f"[{tool_id}] Prompt after variable replacement: {promptx}")
+            _publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.DEBUG,
+                RunLevel.RUN,
+                f"Prompt after variable replacement:{promptx} ",
             )
         except KeyError:
             # Executed incase of structured tool and
             # APIs where we do not set the variable map
-            VariableExtractor.execute_variable_replacement(
+            promptx = VariableExtractor.execute_variable_replacement(
                 prompt=promptx, variable_map=structured_output
+            )
+            app.logger.info(f"[{tool_id}] Prompt after variable replacement: {promptx}")
+            _publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.DEBUG,
+                RunLevel.RUN,
+                f"Prompt after variable replacement:{promptx} ",
             )
         except APIError as api_error:
             raise api_error
