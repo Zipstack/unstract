@@ -259,6 +259,13 @@ class PromptStudioHelper:
         choices = f.read()
         f.close()
         response: dict[str, Any] = json.loads(choices)
+
+        for modifier_plugin in modifier_loader:
+            cls = modifier_plugin[ModifierConfig.METADATA][
+                ModifierConfig.METADATA_SERVICE_CLASS
+            ]
+            response = cls.update_select_choices(default_choices=response)
+
         return response
 
     @staticmethod
