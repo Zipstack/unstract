@@ -225,8 +225,12 @@ function Router() {
                 element={<ManualReviewPage type="review" />}
               ></Route>
               <Route
-                path="simple_review"
+                path="simple_review/review"
                 element={<SimpleManualReviewPage type="simple_review" />}
+              ></Route>
+              <Route
+                path="simple_review/approve"
+                element={<SimpleManualReviewPage type="simple_approve" />}
               ></Route>
               <Route
                 path="review/download_and_sync"
