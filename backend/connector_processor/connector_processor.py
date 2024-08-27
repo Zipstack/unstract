@@ -133,7 +133,7 @@ class ConnectorProcessor:
             logger.info(f"{connector_id} test result: {test_result}")
             return test_result
         except ConnectorError as e:
-            raise TestConnectorInputError(core_err=e)
+            raise TestConnectorInputError(core_err=e) from e
 
     def get_connector_data_with_key(connector_id: str, key_value: str) -> Any:
         """Generic Function to get connector data with provided key."""

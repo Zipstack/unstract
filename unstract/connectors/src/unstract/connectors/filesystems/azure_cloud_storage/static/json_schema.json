@@ -5,8 +5,7 @@
   "required": [
     "connectorName",
     "account_name",
-    "access_key",
-    "bucket"
+    "access_key"
   ],
   "properties": {
     "connectorName": {
@@ -26,11 +25,6 @@
       "format": "password",
       "description": "Access key of the corresponding account",
       "default":""
-    },
-    "bucket": {
-      "type": "string",
-      "title": "Bucket Name",
-      "description": "Name of the bucket to be restricted to."
     }
   }
 }

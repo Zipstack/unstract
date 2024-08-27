@@ -5,8 +5,9 @@ evaluate,   list, segments and much more. This can be further extended
 to add more methods to interact with the Flipt server as per the
 requirement.
 """
-import os
+
 import logging
+import os
 
 import grpc
 
