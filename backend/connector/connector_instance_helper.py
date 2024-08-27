@@ -44,7 +44,6 @@ class ConnectorInstanceHelper:
         connector_metadata = {
             UCSKey.KEY: settings.GOOGLE_STORAGE_ACCESS_KEY_ID,
             UCSKey.SECRET: settings.GOOGLE_STORAGE_SECRET_ACCESS_KEY,
-            UCSKey.BUCKET: bucket_name,
             UCSKey.ENDPOINT_URL: settings.GOOGLE_STORAGE_BASE_URL,
         }
         connector_metadata__input = {

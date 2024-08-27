@@ -3,10 +3,8 @@ import time
 from typing import Optional
 
 from account.constants import Common
-from api.exceptions import InvalidAPIRequest
 from django.db import connection
 from platform_settings.platform_auth_service import PlatformAuthenticationService
-from tool_instance.constants import JsonSchemaKey
 from tool_instance.models import ToolInstance
 from tool_instance.tool_processor import ToolProcessor
 from unstract.tool_registry.dto import Tool
@@ -104,13 +102,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         )
 
         self.compilation_result = self.compile_workflow(execution_id=self.execution_id)
-
-    def _initiate_api_execution(
-        self, tool_instance: ToolInstance, execution_path: Optional[str]
-    ) -> None:
-        if not execution_path:
-            raise InvalidAPIRequest("File shouldn't be empty")
-        tool_instance.metadata[JsonSchemaKey.ROOT_FOLDER] = execution_path
 
     @staticmethod
     def create_workflow_execution(
@@ -365,10 +356,11 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.publish_log("Trying to fetch results from cache")
 
     @staticmethod
-    def update_execution_status(execution_id: str, status: ExecutionStatus) -> None:
+    def update_execution_err(execution_id: str, err_msg: str = "") -> None:
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
-            execution.status = status.value
+            execution.status = ExecutionStatus.ERROR.value
+            execution.error_message = err_msg
             execution.save()
         except WorkflowExecution.DoesNotExist:
             logger.error(f"execution doesn't exist {execution_id}")
@@ -404,10 +396,3 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         workflow: Workflow,
     ) -> WorkflowDto:
         return WorkflowDto(id=workflow.id)
-
-    @staticmethod
-    def get_execution_by_id(execution_id: str) -> Optional[WorkflowExecution]:
-        try:
-            return WorkflowExecution.objects.get(id=execution_id)
-        except WorkflowExecution.DoesNotExist:
-            return None

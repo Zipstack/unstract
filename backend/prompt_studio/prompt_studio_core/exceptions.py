@@ -1,3 +1,5 @@
+from typing import Optional
+
 from prompt_studio.prompt_profile_manager.constants import ProfileManagerKeys
 from prompt_studio.prompt_studio_core.constants import ToolStudioErrors
 from rest_framework.exceptions import APIException
@@ -77,3 +79,19 @@ class OperationNotSupported(APIException):
         "Please check our cloud or enterprise on-premise offering  "
         "for access to this functionality."
     )
+
+
+class PromptNotRun(APIException):
+    status_code = 403
+    default_detail = (
+        "The prompt must be executed before "
+        "it can be used as a variable in another prompt. "
+        "Please execute the prompt first and try again."
+    )
+
+    def __init__(self, detail: Optional[str] = None, code: Optional[int] = None):
+        if detail is not None:
+            self.detail = detail
+        if code is not None:
+            self.code = code
+        super().__init__(detail, code)

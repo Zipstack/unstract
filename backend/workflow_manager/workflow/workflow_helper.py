@@ -154,10 +154,11 @@ class WorkflowHelper:
                 )
                 break
             except Exception as error:
-                error_message = str(error)
                 error_raised += 1
-                log_message = f"Error processing file {file_path}: {error_message}"
-                execution_service.publish_log(message=log_message, level=LogLevel.ERROR)
+                error_message = f"Error processing file {file_path}. {error}"
+                execution_service.publish_log(
+                    message=error_message, level=LogLevel.ERROR
+                )
         if error_raised and error_raised >= total_files:
             execution_service.update_execution(
                 ExecutionStatus.ERROR, error=error_message
@@ -199,11 +200,8 @@ class WorkflowHelper:
         except StopExecution:
             raise
         except Exception as e:
-            execution_service.publish_log(
-                f"Error processing file {input_file}: {str(e)}",
-                level=LogLevel.ERROR,
-            )
-            error = str(e)
+            error = f"Error processing file {input_file}: {str(e)}"
+            execution_service.publish_log(error, level=LogLevel.ERROR)
         execution_service.publish_update_log(
             LogState.RUNNING,
             f"Processing output for {file_name}",
@@ -302,6 +300,7 @@ class WorkflowHelper:
             )
         except Exception as e:
             logger.error(f"Error executing workflow {workflow}: {e}")
+            logger.error(f"Error {traceback.format_exc()}")
             WorkflowHelper._update_pipeline_status(
                 pipeline_id=pipeline_id, workflow_execution=workflow_execution
             )
@@ -310,7 +309,7 @@ class WorkflowHelper:
                 str(workflow_execution.id),
                 workflow_execution.status,
                 log_id=str(execution_service.execution_log_id),
-                error=workflow_execution.error_message,
+                error=workflow_execution.error_message or str(e),
                 mode=workflow_execution.execution_mode,
             )
         finally:
@@ -421,9 +420,7 @@ class WorkflowHelper:
             logger.info(f"Job {async_execution} enqueued.")
             celery_result = task.to_dict()
             task_result = celery_result.get("result")
-            workflow_execution = WorkflowExecutionServiceHelper.get_execution_by_id(
-                execution_id=execution_id
-            )
+            workflow_execution = WorkflowExecution.objects.get(id=execution_id)
             execution_response = ExecutionResponse(
                 workflow_id,
                 execution_id,
@@ -439,8 +436,8 @@ class WorkflowHelper:
                 message=WorkflowMessages.CELERY_TIMEOUT_MESSAGE,
             )
         except Exception as error:
-            WorkflowExecutionServiceHelper.update_execution_status(
-                execution_id, ExecutionStatus.ERROR
+            WorkflowExecutionServiceHelper.update_execution_err(
+                execution_id, str(error)
             )
             logger.error(f"Errors while job enqueueing {str(error)}")
             logger.error(f"Error {traceback.format_exc()}")
