@@ -116,8 +116,8 @@ class WorkflowHelper:
     ) -> WorkflowExecution:
         input_files, total_files = source.list_files_from_source(hash_values_of_files)
         error_message = None
-        processed_files = 0
-        error_raised = 0
+        successful_files = 0
+        failed_files = 0
         execution_service.publish_initial_workflow_logs(total_files)
         execution_service.update_execution(
             ExecutionStatus.EXECUTING, increment_attempt=True
@@ -145,21 +145,21 @@ class WorkflowHelper:
                     file_hash=file_hash,
                 )
                 if is_executed:
-                    processed_files += 1
+                    successful_files += 1
                 if error:
-                    error_raised += 1
+                    failed_files += 1
             except StopExecution as exception:
                 execution_service.update_execution(
                     ExecutionStatus.STOPPED, error=str(exception)
                 )
                 break
             except Exception as error:
-                error_raised += 1
-                error_message = f"Error processing file {file_path}. {error}"
+                failed_files += 1
+                error_message = f"Error processing file '{file_path}'. {error}"
                 execution_service.publish_log(
                     message=error_message, level=LogLevel.ERROR
                 )
-        if error_raised and error_raised >= total_files:
+        if failed_files and failed_files >= total_files:
             execution_service.update_execution(
                 ExecutionStatus.ERROR, error=error_message
             )
@@ -167,7 +167,9 @@ class WorkflowHelper:
             execution_service.update_execution(ExecutionStatus.COMPLETED)
 
         execution_service.publish_final_workflow_logs(
-            total_files=total_files, processed_files=processed_files
+            total_files=total_files,
+            successful_files=successful_files,
+            failed_files=failed_files,
         )
         return execution_service.get_execution_instance()
 
@@ -301,9 +303,12 @@ class WorkflowHelper:
         except Exception as e:
             logger.error(f"Error executing workflow {workflow}: {e}")
             logger.error(f"Error {traceback.format_exc()}")
+            if not workflow_execution.error_message:
+                workflow_execution.error_message = str(e)
             WorkflowHelper._update_pipeline_status(
                 pipeline_id=pipeline_id, workflow_execution=workflow_execution
             )
+            # TODO: Raise error directly and wrap for API, ETL
             return ExecutionResponse(
                 str(workflow.id),
                 str(workflow_execution.id),

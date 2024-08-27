@@ -159,7 +159,11 @@ class SourceConnector(BaseConnector):
         # Process from root in case its user provided list is empty
         if not folders_to_process:
             folders_to_process = ["/"]
-        logger.info(f"Folders to process: {folders_to_process}")
+        patterns = self.valid_file_patterns(required_patterns=required_patterns)
+        self.publish_user_sys_log(
+            f"Matching for patterns '{', '.join(patterns)}' from "
+            f"'{', '.join(folders_to_process)}'"
+        )
 
         source_fs = self.get_fs_connector(
             settings=connector_settings, connector_id=connector.connector_id
@@ -176,14 +180,14 @@ class SourceConnector(BaseConnector):
                 is_directory = source_fs_fsspec.isdir(input_directory)
             except Exception as e:
                 raise InvalidInputDirectory(
-                    detail=f"Error while validating path '{input_directory}': {str(e)}"
+                    detail=f"Error while validating path '{input_directory}'. {str(e)}"
                 )
             if not is_directory:
                 raise InvalidInputDirectory(dir=input_directory)
 
         total_files_to_process = 0
         total_matched_files = {}
-        patterns = self.valid_file_patterns(required_patterns=required_patterns)
+
         for input_directory in folders_to_process:
             input_directory = source_fs.get_connector_root_dir(
                 input_dir=input_directory, root_path=root_dir_path
@@ -192,13 +196,28 @@ class SourceConnector(BaseConnector):
             matched_files, count = self._get_matched_files(
                 source_fs_fsspec, input_directory, patterns, recursive, limit
             )
-            logger.info(f"Matched '{count}' files from '{input_directory}'")
+            self.publish_user_sys_log(
+                f"Matched '{count}' files from '{input_directory}'"
+            )
             total_matched_files.update(matched_files)
             total_files_to_process += count
         self.publish_input_output_list_file_logs(
             folders_to_process, total_matched_files, total_files_to_process
         )
         return total_matched_files, total_files_to_process
+
+    def publish_user_sys_log(self, msg: str) -> None:
+        """Publishes log to the user and system.
+
+        Pushes logs messages to the websocket channel and to
+        the configured logger
+
+        Args:
+            msg (str): Message to log
+        """
+        logger.info(msg)
+        self.execution_service.publish_log(msg)
+        return
 
     def publish_input_output_list_file_logs(
         self, folders: list[str], matched_files: dict[str, FileHash], count: int
@@ -235,7 +254,7 @@ class SourceConnector(BaseConnector):
     ) -> str:
         output_log = "### Matched files \n```text\n\n\n"
         for file_path in islice(matched_files.keys(), 20):
-            output_log += f"{file_path}\n"
+            output_log += f"- {file_path}\n"
         output_log += "```\n\n"
         output_log += f"""Total matched files: {count}
             \n\nPlease note that only the first 20 files are shown.\n\n"""
