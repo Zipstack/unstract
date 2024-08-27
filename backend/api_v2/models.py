@@ -4,6 +4,7 @@ from typing import Any
 from account_v2.models import User
 from api_v2.constants import ApiExecution
 from django.db import models
+from pipeline_v2.models import Pipeline
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
@@ -44,6 +45,8 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
         default=True,
         db_comment="Flag indicating whether the API is active or not.",
     )
+    # TODO: Implement dynamic generation of API endpoints for API deployments
+    # instead of persisting them in the database.
     api_endpoint = models.CharField(
         max_length=API_ENDPOINT_MAX_LENGTH,
         unique=True,
@@ -74,6 +77,10 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
 
     # Manager
     objects = APIDeploymentModelManager()
+
+    @property
+    def api_key_data(self):
+        return {"api": self.id, "description": f"API Key for {self.api_name}"}
 
     def __str__(self) -> str:
         return f"{self.id} - {self.display_name}"
@@ -129,8 +136,17 @@ class APIKey(BaseModel):
     api = models.ForeignKey(
         APIDeployment,
         on_delete=models.CASCADE,
+        null=True,
+        blank=True,
         db_comment="Foreign key reference to the APIDeployment model.",
         related_name="api_keys",
+    )
+    pipeline = models.ForeignKey(
+        Pipeline,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        db_comment="Foreign key reference to the Pipeline model.",
     )
     description = models.CharField(
         max_length=DESCRIPTION_MAX_LENGTH,

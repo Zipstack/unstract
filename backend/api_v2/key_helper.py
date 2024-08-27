@@ -1,8 +1,10 @@
 import logging
+from typing import Union
 
-from api_v2.exceptions import Forbidden, UnauthorizedKey
+from api_v2.exceptions import UnauthorizedKey
 from api_v2.models import APIDeployment, APIKey
 from api_v2.serializers import APIKeySerializer
+from pipeline_v2.models import Pipeline
 from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
 
 logger = logging.getLogger(__name__)
@@ -10,24 +12,24 @@ logger = logging.getLogger(__name__)
 
 class KeyHelper:
     @staticmethod
-    def validate_api_key(api_key: str, api_instance: APIDeployment) -> None:
+    def validate_api_key(
+        api_key: str, instance: Union[APIDeployment, Pipeline]
+    ) -> None:
         """Validate api key.
 
         Args:
             api_key (str): api key from request
-            api_instance (APIDeployment): api deployment instance
+            instance (Union[APIDeployment, Pipeline]): api or pipeline instance
 
         Raises:
-            Forbidden: _description_
+            UnauthorizedKey: if not valid
         """
         try:
             api_key_instance: APIKey = APIKey.objects.get(api_key=api_key)
-            if not KeyHelper.has_access(api_key_instance, api_instance):
+            if not KeyHelper.has_access(api_key_instance, instance):
                 raise UnauthorizedKey()
         except APIKey.DoesNotExist:
             raise UnauthorizedKey()
-        except APIDeployment.DoesNotExist:
-            raise Forbidden("API not found.")
 
     @staticmethod
     def list_api_keys_of_api(api_instance: APIDeployment) -> list[APIKey]:
@@ -35,21 +37,28 @@ class KeyHelper:
         return api_keys
 
     @staticmethod
-    def has_access(api_key: APIKey, api_instance: APIDeployment) -> bool:
+    def list_api_keys_of_pipeline(pipeline_instance: Pipeline) -> list[APIKey]:
+        api_keys: list[APIKey] = APIKey.objects.filter(pipeline=pipeline_instance).all()
+        return api_keys
+
+    @staticmethod
+    def has_access(api_key: APIKey, instance: Union[APIDeployment, Pipeline]) -> bool:
         """Check if the provided API key has access to the specified API
         instance.
 
         Args:
-            api_key (APIKey): api key associated with the api
-            api_instance (APIDeployment): api model
+            api_key (APIKey): api key associated with  the instance
+            instance (Union[APIDeployment, Pipeline]): api or pipeline instance
 
         Returns:
             bool: True if allowed to execute, False otherwise
         """
         if not api_key.is_active:
             return False
-        if isinstance(api_key.api, APIDeployment):
-            return api_key.api == api_instance
+        if isinstance(instance, APIDeployment):
+            return api_key.api == instance
+        if isinstance(instance, Pipeline):
+            return api_key.pipeline == instance
         return False
 
     @staticmethod
@@ -59,12 +68,11 @@ class KeyHelper:
         WorkflowHelper.get_workflow_by_id(workflow_id)
 
     @staticmethod
-    def create_api_key(deployment: APIDeployment) -> APIKey:
-        """Create an APIKey entity with the data from the provided
-        APIDeployment instance."""
-        # Create an instance of the APIKey model
+    def create_api_key(deployment: Union[APIDeployment, Pipeline]) -> APIKey:
+        """Create an APIKey entity using the data from the provided
+        APIDeployment or Pipeline instance."""
         api_key_serializer = APIKeySerializer(
-            data={"api": deployment.id, "description": "Initial Access Key"},
+            data=deployment.api_key_data,
             context={"deployment": deployment},
         )
         api_key_serializer.is_valid(raise_exception=True)

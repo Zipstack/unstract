@@ -4,13 +4,12 @@ from typing import Any
 from account_v2.serializer import UserSerializer
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
-from adapter_processor_v2.exceptions import InvalidEncryptionKey
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
-from unstract.adapters.constants import Common as common
-from unstract.adapters.enums import AdapterTypes
+from unstract.sdk.adapters.constants import Common as common
+from unstract.sdk.adapters.enums import AdapterTypes
 
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
@@ -62,11 +61,7 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
         rep: dict[str, str] = super().to_representation(instance)
 
         rep.pop(AdapterKeys.ADAPTER_METADATA_B)
-
-        try:
-            adapter_metadata = instance.get_adapter_meta_data()
-        except InvalidToken:
-            raise InvalidEncryptionKey
+        adapter_metadata = instance.metadata
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
         # Retrieve context window if adapter is a LLM
         # For other adapter types, context_window is not relevant.
@@ -124,8 +119,7 @@ class AdapterListSerializer(BaseAdapterSerializer):
         rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
             instance.adapter_id, common.ICON
         )
-        adapter_metadata = instance.get_adapter_meta_data()
-        model = adapter_metadata.get("model")
+        model = instance.metadata.get("model")
         if model:
             rep["model"] = model
 
