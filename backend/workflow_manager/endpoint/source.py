@@ -218,7 +218,6 @@ class SourceConnector(BaseConnector):
         """
         logger.info(msg)
         self.execution_service.publish_log(msg)
-        return
 
     def publish_input_output_list_file_logs(
         self, folders: list[str], matched_files: dict[str, FileHash], count: int
