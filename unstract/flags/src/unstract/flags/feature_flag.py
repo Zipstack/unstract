@@ -1,6 +1,7 @@
 """Feature flag utils file."""
-import os
+
 import logging
+import os
 from typing import Optional
 
 from .client.evaluation import EvaluationClient
