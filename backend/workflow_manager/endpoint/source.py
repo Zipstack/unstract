@@ -170,6 +170,9 @@ class SourceConnector(BaseConnector):
         for input_directory in folders_to_process:
             # TODO: Move to connector class for better error handling
             try:
+                input_directory = source_fs.get_connector_root_dir(
+                    input_dir=input_directory, root_path=root_dir_path
+                )
                 is_directory = source_fs_fsspec.isdir(input_directory)
             except Exception as e:
                 raise InvalidInputDirectory(
