@@ -44,7 +44,6 @@ class WorkflowExecutionService:
         tool_instances: list[ToolInstance],
         platform_service_api_key: str,
         ignore_processed_entities: bool = False,
-        include_metadata: bool = False,
     ) -> None:
         self.organization_id = organization_id
         self.workflow_id = workflow_id
@@ -56,7 +55,6 @@ class WorkflowExecutionService:
             workflow=workflow,
             platform_service_api_key=platform_service_api_key,
             ignore_processed_entities=False,
-            include_metadata=include_metadata,
         )
         self.tool_sandboxes: list[ToolSandbox] = []
         self.ignore_processed_entities = ignore_processed_entities

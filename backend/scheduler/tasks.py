@@ -95,21 +95,26 @@ def execute_pipeline_task(
                 pipeline_id=pipepline_id, check_active=True
             )
             workflow = pipeline.workflow
-            logger.info(f"Executing workflow: {workflow} by pipeline {pipeline}")
+            logger.info(
+                f"Executing pipeline: {pipeline}, "
+                f"workflow: {workflow}, pipeline name: {name}"
+            )
             if (
                 subscription_loader
                 and subscription_loader[0]
                 and not validate_etl_run(org_schema)
             ):
                 try:
-                    logger.info(f"Disabling ETL task: {pipepline_id}")
+                    logger.info(
+                        f"Subscription expired for '{org_schema}', "
+                        f"disabling pipeline: {pipepline_id}"
+                    )
                     disable_task(pipepline_id)
                 except Exception as e:
                     logger.warning(
                         f"Failed to disable task: {pipepline_id}. Error: {e}"
                     )
                 return
-            logger.info(f"Executing workflow: {workflow}")
             PipelineProcessor.initialize_pipeline_sync(pipeline_id=pipepline_id)
             PipelineProcessor.update_pipeline(
                 pipepline_id, Pipeline.PipelineStatus.INPROGRESS
@@ -117,6 +122,7 @@ def execute_pipeline_task(
             execution_response = WorkflowHelper.complete_execution(
                 workflow, execution_id, pipepline_id
             )
+            execution_response.remove_result_metadata_keys()
             logger.info(f"Execution response: {execution_response}")
         logger.info(f"Execution completed for pipeline: {name}")
     except Exception as e:
@@ -166,6 +172,7 @@ def execute_pipeline_task_v2(
         execution_response = WorkflowHelper.complete_execution(
             workflow, execution_id, pipeline_id
         )
+        execution_response.remove_result_metadata_keys()
         logger.info(
             f"Execution response for pipeline {pipeline_name} of organization "
             f"{organization_id}: {execution_response}"

@@ -1,17 +1,16 @@
 from typing import Any, Optional
 
 from flask import Request, current_app
-from peewee import PostgresqlDatabase
+from unstract.prompt_service.config import db
 from unstract.prompt_service.constants import DBTableV2, FeatureFlag
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
 
 class AuthenticationMiddleware:
-    be_db: PostgresqlDatabase
 
-    @classmethod
-    def validate_bearer_token(cls, token: Optional[str]) -> bool:
+    @staticmethod
+    def validate_bearer_token(token: Optional[str]) -> bool:
         try:
             if token is None:
                 current_app.logger.error("Authentication failed. Empty bearer token")
@@ -23,7 +22,7 @@ class AuthenticationMiddleware:
                 platform_key_table = "account_platformkey"
 
             query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
-            cursor = cls.be_db.execute_sql(query)
+            cursor = db.execute_sql(query)
             result_row = cursor.fetchone()
             cursor.close()
             if not result_row or len(result_row) == 0:
@@ -54,8 +53,8 @@ class AuthenticationMiddleware:
             return False
         return True
 
-    @classmethod
-    def get_token_from_auth_header(cls, request: Request) -> Optional[str]:
+    @staticmethod
+    def get_token_from_auth_header(request: Request) -> Optional[str]:
         try:
             bearer_token = request.headers.get("Authorization")
             if not bearer_token:
@@ -66,8 +65,8 @@ class AuthenticationMiddleware:
             current_app.logger.info(f"Exception while getting token {e}")
             return None
 
-    @classmethod
-    def get_account_from_bearer_token(cls, token: Optional[str]) -> str:
+    @staticmethod
+    def get_account_from_bearer_token(token: Optional[str]) -> str:
         if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
             platform_key_table = DBTableV2.PLATFORM_KEY
             organization_table = DBTableV2.ORGANIZATION
@@ -83,9 +82,9 @@ class AuthenticationMiddleware:
         schema_name: str = AuthenticationMiddleware.execute_query(query_org)
         return schema_name
 
-    @classmethod
-    def execute_query(cls, query: str) -> Any:
-        cursor = cls.be_db.execute_sql(query)
+    @staticmethod
+    def execute_query(query: str) -> Any:
+        cursor = db.execute_sql(query)
         result_row = cursor.fetchone()
         cursor.close()
         if not result_row or len(result_row) == 0:

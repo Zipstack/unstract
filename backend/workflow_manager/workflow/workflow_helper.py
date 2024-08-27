@@ -91,7 +91,6 @@ class WorkflowHelper:
         scheduled: bool,
         execution_mode: tuple[str, str],
         workflow_execution: Optional[WorkflowExecution],
-        include_metadata: bool = False,
     ) -> WorkflowExecutionServiceHelper:
         workflow_execution_service = WorkflowExecutionServiceHelper(
             organization_id=organization_id,
@@ -102,7 +101,6 @@ class WorkflowHelper:
             scheduled=scheduled,
             mode=execution_mode,
             workflow_execution=workflow_execution,
-            include_metadata=include_metadata,
         )
         workflow_execution_service.build()
         return workflow_execution_service
@@ -156,10 +154,11 @@ class WorkflowHelper:
                 )
                 break
             except Exception as error:
-                error_message = str(error)
                 error_raised += 1
-                log_message = f"Error processing file {file_path}: {error_message}"
-                execution_service.publish_log(message=log_message, level=LogLevel.ERROR)
+                error_message = f"Error processing file {file_path}. {error}"
+                execution_service.publish_log(
+                    message=error_message, level=LogLevel.ERROR
+                )
         if error_raised and error_raised >= total_files:
             execution_service.update_execution(
                 ExecutionStatus.ERROR, error=error_message
@@ -201,11 +200,8 @@ class WorkflowHelper:
         except StopExecution:
             raise
         except Exception as e:
-            execution_service.publish_log(
-                f"Error processing file {input_file}: {str(e)}",
-                level=LogLevel.ERROR,
-            )
-            error = str(e)
+            error = f"Error processing file {input_file}: {str(e)}"
+            execution_service.publish_log(error, level=LogLevel.ERROR)
         execution_service.publish_update_log(
             LogState.RUNNING,
             f"Processing output for {file_name}",
@@ -246,7 +242,6 @@ class WorkflowHelper:
         single_step: bool = False,
         workflow_execution: Optional[WorkflowExecution] = None,
         execution_mode: Optional[tuple[str, str]] = None,
-        include_metadata: bool = False,
     ) -> ExecutionResponse:
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
@@ -265,7 +260,6 @@ class WorkflowHelper:
             scheduled=scheduled,
             execution_mode=execution_mode,
             workflow_execution=workflow_execution,
-            include_metadata=include_metadata,
         )
         execution_id = execution_service.execution_id
         source = SourceConnector(
@@ -306,6 +300,7 @@ class WorkflowHelper:
             )
         except Exception as e:
             logger.error(f"Error executing workflow {workflow}: {e}")
+            logger.error(f"Error {traceback.format_exc()}")
             WorkflowHelper._update_pipeline_status(
                 pipeline_id=pipeline_id, workflow_execution=workflow_execution
             )
@@ -314,7 +309,7 @@ class WorkflowHelper:
                 str(workflow_execution.id),
                 workflow_execution.status,
                 log_id=str(execution_service.execution_log_id),
-                error=workflow_execution.error_message,
+                error=workflow_execution.error_message or str(e),
                 mode=workflow_execution.execution_mode,
             )
         finally:
@@ -390,7 +385,6 @@ class WorkflowHelper:
         hash_values_of_files: dict[str, FileHash],
         timeout: int = -1,
         pipeline_id: Optional[str] = None,
-        include_metadata: bool = False,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
 
@@ -399,7 +393,6 @@ class WorkflowHelper:
             execution_id (str): Execution ID
             timeout (int):  Celery timeout (timeout -1 : async execution)
             pipeline_id (Optional[str], optional): Optional pipeline. Defaults to None.
-            include_metadata (bool): Whether to include metadata in the prompt output
 
         Returns:
             ExecutionResponse: Existing status of execution
@@ -417,7 +410,6 @@ class WorkflowHelper:
                 execution_id=execution_id,
                 pipeline_id=pipeline_id,
                 log_events_id=log_events_id,
-                include_metadata=include_metadata,
             )
             if timeout > -1:
                 async_execution.wait(
@@ -428,15 +420,14 @@ class WorkflowHelper:
             logger.info(f"Job {async_execution} enqueued.")
             celery_result = task.to_dict()
             task_result = celery_result.get("result")
-            workflow_execution = WorkflowExecutionServiceHelper.get_execution_by_id(
-                execution_id=execution_id
-            )
-            return ExecutionResponse(
+            workflow_execution = WorkflowExecution.objects.get(id=execution_id)
+            execution_response = ExecutionResponse(
                 workflow_id,
                 execution_id,
                 workflow_execution.status,
                 result=task_result,
             )
+            return execution_response
         except celery_exceptions.TimeoutError:
             return ExecutionResponse(
                 workflow_id,
@@ -445,8 +436,8 @@ class WorkflowHelper:
                 message=WorkflowMessages.CELERY_TIMEOUT_MESSAGE,
             )
         except Exception as error:
-            WorkflowExecutionServiceHelper.update_execution_status(
-                execution_id, ExecutionStatus.ERROR
+            WorkflowExecutionServiceHelper.update_execution_err(
+                execution_id, str(error)
             )
             logger.error(f"Errors while job enqueueing {str(error)}")
             logger.error(f"Error {traceback.format_exc()}")
@@ -475,7 +466,6 @@ class WorkflowHelper:
         scheduled: bool = False,
         execution_mode: Optional[tuple[str, str]] = None,
         pipeline_id: Optional[str] = None,
-        include_metadata: bool = False,
         **kwargs: dict[str, Any],
     ) -> Optional[list[Any]]:
         """Asynchronous Execution By celery.
@@ -489,7 +479,6 @@ class WorkflowHelper:
             execution_mode (Optional[WorkflowExecution.Mode]): WorkflowExecution Mode
                 Defaults to None
             pipeline_id (Optional[str], optional): Id of pipeline. Defaults to None
-            include_metadata (bool): Whether to include metadata in the prompt output
 
         Kwargs:
             log_events_id (str): Session ID of the user,
@@ -525,7 +514,7 @@ class WorkflowHelper:
             WorkflowExecutionServiceHelper.update_execution_task(
                 execution_id=execution_id, task_id=task_id
             )
-            result = WorkflowHelper.run_workflow(
+            execution_response = WorkflowHelper.run_workflow(
                 workflow=workflow,
                 organization_id=schema_name,
                 pipeline_id=pipeline_id,
@@ -533,9 +522,8 @@ class WorkflowHelper:
                 workflow_execution=workflow_execution,
                 execution_mode=execution_mode,
                 hash_values_of_files=hash_values,
-                include_metadata=include_metadata,
-            ).result
-            return result
+            )
+            return execution_response.result
 
     @staticmethod
     def complete_execution(
@@ -543,7 +531,6 @@ class WorkflowHelper:
         execution_id: Optional[str] = None,
         pipeline_id: Optional[str] = None,
         hash_values_of_files: dict[str, FileHash] = {},
-        include_metadata: bool = False,
     ) -> ExecutionResponse:
         if pipeline_id:
             logger.info(f"Executing pipeline: {pipeline_id}")
@@ -582,7 +569,6 @@ class WorkflowHelper:
                 workflow=workflow,
                 workflow_execution=workflow_execution,
                 hash_values_of_files=hash_values_of_files,
-                include_metadata=include_metadata,
             )
         except WorkflowExecution.DoesNotExist:
             return WorkflowHelper.create_and_make_execution_response(
@@ -610,7 +596,6 @@ class WorkflowHelper:
         execution_action: str,
         execution_id: Optional[str] = None,
         hash_values_of_files: dict[str, FileHash] = {},
-        include_metadata: bool = False,
     ) -> ExecutionResponse:
         if execution_action is Workflow.ExecutionAction.START.value:  # type: ignore
             if execution_id is None:
@@ -624,7 +609,6 @@ class WorkflowHelper:
                     single_step=True,
                     workflow_execution=workflow_execution,
                     hash_values_of_files=hash_values_of_files,
-                    include_metadata=include_metadata,
                 )
             except WorkflowExecution.DoesNotExist:
                 return WorkflowHelper.create_and_make_execution_response(
