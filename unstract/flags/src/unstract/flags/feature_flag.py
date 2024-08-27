@@ -1,5 +1,5 @@
 """Feature flag utils file."""
-
+import os
 import logging
 from typing import Optional
 
@@ -30,6 +30,10 @@ def check_feature_flag_status(
     """
 
     try:
+        FLIPT_SERVICE_AVAILABLE = os.environ.get("FLIPT_SERVICE_AVAILABLE", False)
+        if not FLIPT_SERVICE_AVAILABLE:
+            return False
+
         evaluation_client = EvaluationClient()
         response = evaluation_client.boolean_evaluate_feature_flag(
             namespace_key=namespace_key,
