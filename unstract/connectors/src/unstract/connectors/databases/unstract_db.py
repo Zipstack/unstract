@@ -79,8 +79,7 @@ class UnstractDB(UnstractConnector, ABC):
         except Exception as e:
             raise ConnectorError(str(e)) from e
 
-    @staticmethod
-    def sql_to_db_mapping(value: str) -> str:
+    def sql_to_db_mapping(self, value: str) -> str:
         """
         Gets the python datatype of value and converts python datatype
         to corresponding DB datatype
@@ -99,14 +98,27 @@ class UnstractDB(UnstractConnector, ABC):
         }
         return mapping.get(python_type, "TEXT")
 
-    @staticmethod
-    def get_create_table_query(table: str) -> str:
+    def get_create_table_base_query(self, table: str) -> str:
         sql_query = (
             f"CREATE TABLE IF NOT EXISTS {table} "
             f"(id TEXT , "
             f"created_by TEXT, created_at TIMESTAMP, "
         )
         return sql_query
+
+    def create_table_query(self, table: str, database_entry: dict[str, Any]) -> Any:
+        PERMANENT_COLUMNS = ["created_by", "created_at"]
+
+        sql_query = ""
+        create_table_query = self.get_create_table_base_query(table=table)
+        sql_query += create_table_query
+
+        for key, val in database_entry.items():
+            if key not in PERMANENT_COLUMNS:
+                sql_type = self.sql_to_db_mapping(val)
+                sql_query += f"{key} {sql_type}, "
+
+        return sql_query.rstrip(", ") + ")"
 
     @staticmethod
     def get_sql_insert_query(table_name: str, sql_keys: list[str]) -> str:

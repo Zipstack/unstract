@@ -67,8 +67,7 @@ class BigQuery(UnstractDB):
         except Exception as e:
             raise ConnectorError(str(e))
 
-    @staticmethod
-    def sql_to_db_mapping(value: str) -> str:
+    def sql_to_db_mapping(self, value: str) -> str:
         """
         Gets the python datatype of value and converts python datatype
         to corresponding DB datatype
@@ -88,8 +87,7 @@ class BigQuery(UnstractDB):
         }
         return mapping.get(python_type, "string")
 
-    @staticmethod
-    def get_create_table_query(table: str) -> str:
+    def get_create_table_base_query(self, table: str) -> str:
         sql_query = (
             f"CREATE TABLE IF NOT EXISTS {table} "
             f"(id string,"

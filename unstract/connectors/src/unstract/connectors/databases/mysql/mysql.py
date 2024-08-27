@@ -60,8 +60,7 @@ class MySQL(UnstractDB, MysqlHandler):
         )
         return con
 
-    @staticmethod
-    def sql_to_db_mapping(value: str) -> str:
+    def sql_to_db_mapping(self, value: str) -> str:
         """
         Gets the python datatype of value and converts python datatype
         to corresponding DB datatype

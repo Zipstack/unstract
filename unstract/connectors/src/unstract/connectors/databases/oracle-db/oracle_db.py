@@ -70,8 +70,7 @@ class OracleDB(UnstractDB):
         )
         return con
 
-    @staticmethod
-    def sql_to_db_mapping(value: str) -> str:
+    def sql_to_db_mapping(self, value: str) -> str:
         python_type = type(value)
         mapping = {
             str: "CLOB",
@@ -81,8 +80,7 @@ class OracleDB(UnstractDB):
         }
         return mapping.get(python_type, "CLOB")
 
-    @staticmethod
-    def get_create_table_query(table: str) -> str:
+    def get_create_table_base_query(self, table: str) -> str:
         sql_query = (
             f"CREATE TABLE IF NOT EXISTS {table} "
             f"(id VARCHAR2(32767) , "
@@ -103,15 +101,19 @@ class OracleDB(UnstractDB):
 
     @staticmethod
     def get_sql_insert_values(sql_values: list[Any], **kwargs: Any) -> Any:
-        sql_keys = str(kwargs.get("sql_keys"))
-        return dict(zip(sql_keys, sql_values))
+        sql_keys = list(kwargs.get("sql_keys", []))
+        params = dict(zip(sql_keys, sql_values))
+        return params
 
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
-        with engine.cursor() as cursor:
-            if sql_values:
-                cursor.execute(sql_query, sql_values)
-            else:
-                cursor.execute(sql_query)
-        engine.commit()
+        try:
+            with engine.cursor() as cursor:
+                if sql_values:
+                    cursor.execute(sql_query, sql_values)
+                else:
+                    cursor.execute(sql_query)
+                engine.commit()
+        except Exception as e:
+            print("** exception check ** ", str(e))

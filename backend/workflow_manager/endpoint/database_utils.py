@@ -10,7 +10,6 @@ from workflow_manager.endpoint.constants import (
     DBConnectionClass,
     TableColumns,
 )
-from workflow_manager.endpoint.db_connector_helper import DBConnectorQueryHelper
 from workflow_manager.endpoint.exceptions import (
     BigQueryTableNotFound,
     UnstractDBException,
@@ -69,7 +68,7 @@ class DatabaseUtils:
                 # Default to Other SQL DBs
                 # TODO: Handle numeric types with no quotes
                 sql_values[column] = f"{values[column]}"
-        if column_types.get("id"):
+        if any(key in column_types for key in ["id", "ID"]):
             uuid_id = str(uuid.uuid4())
             sql_values["id"] = f"{uuid_id}"
         return sql_values
@@ -133,6 +132,18 @@ class DatabaseUtils:
                     "SELECT column_name, data_type FROM "
                     f"{database}.{schema}.INFORMATION_SCHEMA.COLUMNS WHERE "
                     f"table_name = '{table}'"
+                )
+                results = DatabaseUtils.execute_and_fetch_data(
+                    connector_id=connector_id,
+                    connector_settings=connector_settings,
+                    query=query,
+                )
+                column_types = DatabaseUtils.get_column_types_util(results)
+            elif cls_name == DBConnectionClass.ORACLEDB:
+                query = (
+                    "SELECT column_name, data_type FROM "
+                    "user_tab_columns WHERE "
+                    f"table_name = UPPER('{table_name}')"
                 )
                 results = DatabaseUtils.execute_and_fetch_data(
                     connector_id=connector_id,
@@ -270,7 +281,7 @@ class DatabaseUtils:
         engine: Any,
         table_name: str,
         sql_keys: list[str],
-        sql_values: Any,
+        sql_values: list[str],
     ) -> None:
         """Execute Insert Query.
 
@@ -289,10 +300,10 @@ class DatabaseUtils:
         print("###### sql ########## ", sql)
         logger.debug(f"inserting into table {table_name} with: {sql} query")
 
-        sql_values = db_class.get_sql_insert_values(
+        params = db_class.get_sql_insert_values(
             sql_values=sql_values, sql_keys=sql_keys
         )
-        print("###### sql_values ########## ", sql_values)
+        print("###### sql_values ########## ", params)
 
         logger.debug(f"sql_values: {sql_values}")
 
@@ -300,7 +311,7 @@ class DatabaseUtils:
             db_class.execute_query(
                 engine=engine,
                 sql_query=sql,
-                sql_values=sql_values,
+                sql_values=params,
                 table_name=table_name,
                 sql_keys=sql_keys,
             )
@@ -344,8 +355,8 @@ class DatabaseUtils:
         Raises:
             e: _description_
         """
-        sql = DBConnectorQueryHelper.create_table_query(
-            conn_cls=db_class, table=table_name, database_entry=database_entry
+        sql = db_class.create_table_query(
+            table=table_name, database_entry=database_entry
         )
         logger.debug(f"creating table {table_name} with: {sql} query")
         try:

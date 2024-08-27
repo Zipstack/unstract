@@ -66,8 +66,7 @@ class MSSQL(UnstractDB):
             database=self.database,
         )
 
-    @staticmethod
-    def get_create_table_query(table: str) -> str:
+    def get_create_table_base_query(self, table: str) -> str:
         sql_query = (
             f"IF NOT EXISTS ("
             f"SELECT * FROM sysobjects WHERE name='{table}' and xtype='U')"

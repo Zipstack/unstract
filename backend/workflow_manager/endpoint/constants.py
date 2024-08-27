@@ -8,6 +8,7 @@ class DBConnectionClass:
     SNOWFLAKE = "SnowflakeDB"
     BIGQUERY = "BigQuery"
     MSSQL = "MSSQL"
+    ORACLEDB = "OracleDB"
 
 
 class Snowflake:
