@@ -632,7 +632,7 @@ class PromptStudioHelper:
             document_id=document_id,
             is_single_pass_extract=is_single_pass,
             profile_manager_id=profile_manager_id,
-            context=response["metadata"].get("context"),
+            metadata=response["metadata"],
         )
         return response
 

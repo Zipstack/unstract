@@ -39,6 +39,13 @@ try {
 } catch {
   // The component will remain null of it is not available
 }
+let ChallengeModal;
+try {
+  ChallengeModal =
+    require("../../../plugins/challenge-modal/ChallengeModal").ChallengeModal;
+} catch {
+  // The component will remain null of it is not available
+}
 
 function PromptOutput({
   promptDetails,
@@ -244,7 +251,7 @@ function PromptOutput({
                     </CheckableTag>
                     <div className="llm-info-container">
                       <Tooltip title={tooltipContent(profile?.conf)}>
-                        <InfoCircleOutlined />
+                        <InfoCircleOutlined className="prompt-card-actions-head" />
                       </Tooltip>
                       <Tooltip title="Chunk used">
                         <DatabaseOutlined
@@ -259,6 +266,18 @@ function PromptOutput({
                           className="prompt-card-actions-head"
                         />
                       </Tooltip>
+                      {ChallengeModal && (
+                        <ChallengeModal
+                          challengeData={
+                            result.find((r) => r?.profileManager === profileId)
+                              ?.challengeData || {}
+                          }
+                          context={
+                            result.find((r) => r?.profileManager === profileId)
+                              ?.context || ""
+                          }
+                        />
+                      )}
                       {isNotSingleLlmProfile && (
                         <Radio
                           checked={profileId === selectedLlmProfileId}
