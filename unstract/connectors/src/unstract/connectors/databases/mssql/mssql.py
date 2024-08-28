@@ -76,10 +76,6 @@ class MSSQL(UnstractDB):
         )
         return sql_query
 
-    @staticmethod
-    def get_sql_insert_values(sql_values: list[Any], **kwargs: Any) -> Any:
-        return tuple(sql_values)
-
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
@@ -87,7 +83,8 @@ class MSSQL(UnstractDB):
         try:
             with engine.cursor() as cursor:
                 if sql_values:
-                    cursor.execute(sql_query, sql_values)
+                    params = tuple(sql_values)
+                    cursor.execute(sql_query, params)
                 else:
                     cursor.execute(sql_query)
             engine.commit()

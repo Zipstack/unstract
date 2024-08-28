@@ -99,18 +99,14 @@ class OracleDB(UnstractDB):
                 values.append(f":{key}")
         return f"INSERT INTO {table_name} ({columns}) VALUES ({', '.join(values)})"
 
-    @staticmethod
-    def get_sql_insert_values(sql_values: list[Any], **kwargs: Any) -> Any:
-        sql_keys = list(kwargs.get("sql_keys", []))
-        params = dict(zip(sql_keys, sql_values))
-        return params
-
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
+        sql_keys = list(kwargs.get("sql_keys", []))
         with engine.cursor() as cursor:
             if sql_values:
-                cursor.execute(sql_query, sql_values)
+                params = dict(zip(sql_keys, sql_values))
+                cursor.execute(sql_query, params)
             else:
                 cursor.execute(sql_query)
             engine.commit()

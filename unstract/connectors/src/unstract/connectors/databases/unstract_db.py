@@ -126,10 +126,6 @@ class UnstractDB(UnstractConnector, ABC):
         values_placeholder = ",".join(["%s" for _ in sql_keys])
         return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
 
-    @staticmethod
-    def get_sql_insert_values(sql_values: list[Any], **kwargs: Any) -> Any:
-        return sql_values
-
     @abstractmethod
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any

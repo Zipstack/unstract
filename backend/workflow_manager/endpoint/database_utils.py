@@ -218,9 +218,6 @@ class DatabaseUtils:
         print("###### sql ########## ", sql)
         logger.debug(f"inserting into table {table_name} with: {sql} query")
 
-        sql_values = db_class.get_sql_insert_values(
-            sql_values=sql_values, sql_keys=sql_keys
-        )
         print("###### sql_values ########## ", sql_values)
 
         logger.debug(f"sql_values: {sql_values}")
