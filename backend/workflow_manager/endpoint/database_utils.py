@@ -218,10 +218,10 @@ class DatabaseUtils:
         print("###### sql ########## ", sql)
         logger.debug(f"inserting into table {table_name} with: {sql} query")
 
-        params = db_class.get_sql_insert_values(
+        sql_values = db_class.get_sql_insert_values(
             sql_values=sql_values, sql_keys=sql_keys
         )
-        print("###### sql_values ########## ", params)
+        print("###### sql_values ########## ", sql_values)
 
         logger.debug(f"sql_values: {sql_values}")
 
@@ -229,7 +229,7 @@ class DatabaseUtils:
             db_class.execute_query(
                 engine=engine,
                 sql_query=sql,
-                sql_values=params,
+                sql_values=sql_values,
                 table_name=table_name,
                 sql_keys=sql_keys,
             )
