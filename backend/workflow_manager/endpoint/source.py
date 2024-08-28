@@ -61,10 +61,18 @@ class SourceConnector(BaseConnector):
         organization_id: Optional[str] = None,
         execution_service: Optional[WorkflowExecutionServiceHelper] = None,
     ) -> None:
-        """Initialize a SourceConnector object.
+        """Create a SourceConnector.
 
         Args:
-            workflow (Workflow): _description_
+            workflow (Workflow): Associated workflow instance
+            execution_id (str): UUID of the current execution
+            organization_id (Optional[str]): Organization ID. Defaults to None.
+            execution_service (Optional[WorkflowExecutionServiceHelper]): Instance of
+                WorkflowExecutionServiceHelper that helps with WF execution.
+                Defaults to None. This is not used in case of execution by API.
+
+        Raises:
+            OrganizationIdNotFound: _description_
         """
         organization_id = organization_id or connection.tenant.schema_name
         if not organization_id:
@@ -210,14 +218,15 @@ class SourceConnector(BaseConnector):
     def publish_user_sys_log(self, msg: str) -> None:
         """Publishes log to the user and system.
 
-        Pushes logs messages to the websocket channel and to
-        the configured logger
+        Pushes logs messages to the configured logger and to the
+        websocket channel if the `execution_service` is configured.
 
         Args:
             msg (str): Message to log
         """
         logger.info(msg)
-        self.execution_service.publish_log(msg)
+        if self.execution_service:
+            self.execution_service.publish_log(msg)
 
     def publish_input_output_list_file_logs(
         self, folders: list[str], matched_files: dict[str, FileHash], count: int
@@ -236,18 +245,18 @@ class SourceConnector(BaseConnector):
         )
 
     def publish_input_file_content(self, input_file_path: str, input_text: str) -> None:
-        if self.execution_service:
-            output_log_message = f"##Input text:\n\n```text\n{input_text}\n```\n\n"
-            input_log_message = (
-                "##Input file:\n\n```text\n"
-                f"{os.path.basename(input_file_path)}\n```\n\n"
-            )
-            self.execution_service.publish_update_log(
-                state=LogState.INPUT_UPDATE, message=input_log_message
-            )
-            self.execution_service.publish_update_log(
-                state=LogState.OUTPUT_UPDATE, message=output_log_message
-            )
+        if not self.execution_service:
+            return None
+        output_log_message = f"##Input text:\n\n```text\n{input_text}\n```\n\n"
+        input_log_message = (
+            "##Input file:\n\n```text\n" f"{os.path.basename(input_file_path)}\n```\n\n"
+        )
+        self.execution_service.publish_update_log(
+            state=LogState.INPUT_UPDATE, message=input_log_message
+        )
+        self.execution_service.publish_update_log(
+            state=LogState.OUTPUT_UPDATE, message=output_log_message
+        )
 
     def _matched_files_component_log(
         self, matched_files: dict[str, FileHash], count: int

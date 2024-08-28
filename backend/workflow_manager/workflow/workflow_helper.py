@@ -148,14 +148,14 @@ class WorkflowHelper:
                     failed_files += 1
                 else:
                     successful_files += 1
-            except StopExecution as exception:
+            except StopExecution as e:
                 execution_service.update_execution(
-                    ExecutionStatus.STOPPED, error=str(exception)
+                    ExecutionStatus.STOPPED, error=str(e)
                 )
                 break
-            except Exception as error:
+            except Exception as e:
                 failed_files += 1
-                error_message = f"Error processing file '{file_path}'. {error}"
+                error_message = f"Error processing file '{file_path}'. {e}"
                 execution_service.publish_log(
                     message=error_message, level=LogLevel.ERROR
                 )
