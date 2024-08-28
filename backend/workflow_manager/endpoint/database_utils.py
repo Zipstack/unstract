@@ -5,15 +5,8 @@ import uuid
 from typing import Any, Optional
 
 from utils.constants import Common
-from workflow_manager.endpoint.constants import (
-    BigQuery,
-    DBConnectionClass,
-    TableColumns,
-)
-from workflow_manager.endpoint.exceptions import (
-    BigQueryTableNotFound,
-    UnstractDBException,
-)
+from workflow_manager.endpoint.constants import DBConnectionClass, TableColumns
+from workflow_manager.endpoint.exceptions import UnstractDBException
 from workflow_manager.workflow.enums import AgentName, ColumnModes
 
 from unstract.connectors.databases import connectors as db_connectors
@@ -74,34 +67,15 @@ class DatabaseUtils:
         return sql_values
 
     @staticmethod
-    def get_column_types_util(columns_with_types: Any) -> dict[str, str]:
-        """Converts db results columns_with_types to dict.
-
-        Args:
-            columns_with_types (Any): _description_
-
-        Returns:
-            dict[str, str]: _description_
-        """
-        column_types: dict[str, str] = {}
-        for column_name, data_type in columns_with_types:
-            column_types[column_name] = data_type
-        return column_types
-
-    @staticmethod
     def get_column_types(
-        cls_name: Any,
+        conn_cls: Any,
         table_name: str,
-        connector_id: str,
-        connector_settings: dict[str, Any],
     ) -> Any:
         """Get db column name and types.
 
         Args:
-            cls (Any): _description_
-            table_name (str): _description_
-            connector_id (str): _description_
-            connector_settings (dict[str, Any]): _description_
+            conn_cls (Any): DB Connection class
+            table_name (str): DB table-name
 
         Raises:
             ValueError: _description_
@@ -110,64 +84,13 @@ class DatabaseUtils:
         Returns:
             Any: _description_
         """
-        column_types: dict[str, str] = {}
         try:
-            if cls_name == DBConnectionClass.SNOWFLAKE:
-                query = f"describe table {table_name}"
-                results = DatabaseUtils.execute_and_fetch_data(
-                    connector_id=connector_id,
-                    connector_settings=connector_settings,
-                    query=query,
-                )
-                for column in results:
-                    column_types[column[0].lower()] = column[1].split("(")[0]
-            elif cls_name == DBConnectionClass.BIGQUERY:
-                bigquery_table_name = str.lower(table_name).split(".")
-                if len(bigquery_table_name) != BigQuery.TABLE_NAME_SIZE:
-                    raise BigQueryTableNotFound()
-                database = bigquery_table_name[0]
-                schema = bigquery_table_name[1]
-                table = bigquery_table_name[2]
-                query = (
-                    "SELECT column_name, data_type FROM "
-                    f"{database}.{schema}.INFORMATION_SCHEMA.COLUMNS WHERE "
-                    f"table_name = '{table}'"
-                )
-                results = DatabaseUtils.execute_and_fetch_data(
-                    connector_id=connector_id,
-                    connector_settings=connector_settings,
-                    query=query,
-                )
-                column_types = DatabaseUtils.get_column_types_util(results)
-            elif cls_name == DBConnectionClass.ORACLEDB:
-                query = (
-                    "SELECT column_name, data_type FROM "
-                    "user_tab_columns WHERE "
-                    f"table_name = UPPER('{table_name}')"
-                )
-                results = DatabaseUtils.execute_and_fetch_data(
-                    connector_id=connector_id,
-                    connector_settings=connector_settings,
-                    query=query,
-                )
-                column_types = DatabaseUtils.get_column_types_util(results)
-            else:
-                table_name = str.lower(table_name)
-                query = (
-                    "SELECT column_name, data_type FROM "
-                    "information_schema.columns WHERE "
-                    f"table_name = '{table_name}'"
-                )
-                results = DatabaseUtils.execute_and_fetch_data(
-                    connector_id=connector_id,
-                    connector_settings=connector_settings,
-                    query=query,
-                )
-                column_types = DatabaseUtils.get_column_types_util(results)
+            return conn_cls.get_information_schema(table_name=table_name)
+        except ConnectorError as e:
+            raise UnstractDBException(detail=e.message) from e
         except Exception as e:
             logger.error(f"Error getting column types for {table_name}: {str(e)}")
-            raise e
-        return column_types
+            raise
 
     @staticmethod
     def get_columns_and_values(
@@ -235,9 +158,7 @@ class DatabaseUtils:
 
     @staticmethod
     def get_sql_query_data(
-        cls_name: str,
-        connector_id: str,
-        connector_settings: dict[str, Any],
+        conn_cls: Any,
         table_name: str,
         values: dict[str, Any],
     ) -> dict[str, Any]:
@@ -245,8 +166,7 @@ class DatabaseUtils:
         provided values and table schema.
 
         Args:
-            connector_id: The connector id of the connector provided
-            connector_settings: Connector settings provided by user
+            connector_cls: DB connection class
             table_name (str): The name of the target table for the insert query.
             values (dict[str, Any]): A dictionary containing column-value pairs
                 for the insert query.
@@ -262,11 +182,9 @@ class DatabaseUtils:
             - For other SQL databases, it uses default SQL generation
                 based on column types.
         """
+        cls_name = conn_cls.__class__.__name__
         column_types: dict[str, str] = DatabaseUtils.get_column_types(
-            cls_name=cls_name,
-            table_name=table_name,
-            connector_id=connector_id,
-            connector_settings=connector_settings,
+            conn_cls=conn_cls, table_name=table_name
         )
         sql_columns_and_values = DatabaseUtils.get_sql_values_for_query(
             values=values,
@@ -326,17 +244,6 @@ class DatabaseUtils:
         connector = db_connectors[connector_id][Common.METADATA][Common.CONNECTOR]
         connector_class: UnstractDB = connector(connector_settings)
         return connector_class
-
-    @staticmethod
-    def execute_and_fetch_data(
-        connector_id: str, connector_settings: dict[str, Any], query: str
-    ) -> Any:
-        connector = db_connectors[connector_id][Common.METADATA][Common.CONNECTOR]
-        connector_class: UnstractDB = connector(connector_settings)
-        try:
-            return connector_class.execute(query=query)
-        except ConnectorError as e:
-            raise UnstractDBException(detail=e.message) from e
 
     @staticmethod
     def create_table_if_not_exists(

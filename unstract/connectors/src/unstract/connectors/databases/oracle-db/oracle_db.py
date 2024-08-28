@@ -117,3 +117,15 @@ class OracleDB(UnstractDB):
                 engine.commit()
         except Exception as e:
             print("** exception check ** ", str(e))
+
+    def get_information_schema(self, table_name: str) -> dict[str, str]:
+        query = (
+            "SELECT column_name, data_type FROM "
+            "user_tab_columns WHERE "
+            f"table_name = UPPER('{table_name}')"
+        )
+        results = self.execute(query=query)
+        column_types: dict[str, str] = self.get_db_column_types(
+            columns_with_types=results
+        )
+        return column_types

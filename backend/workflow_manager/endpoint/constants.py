@@ -6,9 +6,6 @@ class TableColumns:
 
 class DBConnectionClass:
     SNOWFLAKE = "SnowflakeDB"
-    BIGQUERY = "BigQuery"
-    MSSQL = "MSSQL"
-    ORACLEDB = "OracleDB"
 
 
 class Snowflake:
@@ -93,22 +90,6 @@ class SourceConstant:
 class ApiDeploymentResultStatus:
     SUCCESS = "Success"
     FAILED = "Failed"
-
-
-class BigQuery:
-    """In big query, table name has to be in the format {db}.{schema}.{table}
-    Throws error if any of the params not set.
-
-    When converted to list table size should be 3
-    """
-
-    TABLE_NAME_SIZE = 3
-    COLUMN_TYPES = [
-        "DATE",
-        "DATETIME",
-        "TIME",
-        "TIMESTAMP",
-    ]
 
 
 class QueueResultStatus:

@@ -18,11 +18,14 @@ from unstract.connectors.exceptions import ConnectorError
 
 logger = logging.getLogger(__name__)
 
+BIG_QUERY_TABLE_SIZE = 3
+
 
 class BigQuery(UnstractDB):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("BigQuery")
         self.json_credentials = json.loads(settings.get("json_credentials", "{}"))
+        self.big_query_table_size = BIG_QUERY_TABLE_SIZE
 
     @staticmethod
     def get_id() -> str:
@@ -140,3 +143,24 @@ class BigQuery(UnstractDB):
                 schema=schema,
                 table_name=table,
             ) from e
+
+    def get_information_schema(self, table_name: str) -> dict[str, str]:
+        bigquery_table_name = str.lower(table_name).split(".")
+        if len(bigquery_table_name) != self.big_query_table_size:
+            raise ValueError(
+                f"Invalid table name format: '{table_name}'. "
+                f"Expected {self.big_query_table_size} components separated by '.'"
+            )
+        database = bigquery_table_name[0]
+        schema = bigquery_table_name[1]
+        table = bigquery_table_name[2]
+        query = (
+            "SELECT column_name, data_type FROM "
+            f"{database}.{schema}.INFORMATION_SCHEMA.COLUMNS WHERE "
+            f"table_name = '{table}'"
+        )
+        results = self.execute(query=query)
+        column_types: dict[str, str] = self.get_db_column_types(
+            columns_with_types=results
+        )
+        return column_types

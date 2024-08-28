@@ -97,3 +97,11 @@ class SnowflakeDB(UnstractDB):
                 schema=self.schema,
                 table_name=table_name,
             ) from e
+
+    def get_information_schema(self, table_name: str) -> dict[str, str]:
+        query = f"describe table {table_name}"
+        column_types: dict[str, str] = {}
+        results = self.execute(query=query)
+        for column in results:
+            column_types[column[0].lower()] = column[1].split("(")[0]
+        return column_types

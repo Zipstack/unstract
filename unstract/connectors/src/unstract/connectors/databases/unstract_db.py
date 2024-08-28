@@ -135,3 +135,30 @@ class UnstractDB(UnstractConnector, ABC):
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
         pass
+
+    def get_information_schema(self, table_name: str) -> dict[str, str]:
+        table_name = str.lower(table_name)
+        query = (
+            "SELECT column_name, data_type FROM "
+            "information_schema.columns WHERE "
+            f"table_name = '{table_name}'"
+        )
+        results = self.execute(query=query)
+        column_types: dict[str, str] = self.get_db_column_types(
+            columns_with_types=results
+        )
+        return column_types
+
+    def get_db_column_types(self, columns_with_types: Any) -> dict[str, str]:
+        """Converts db results columns_with_types to dict.
+
+        Args:
+            columns_with_types (Any): _description_
+
+        Returns:
+            dict[str, str]: _description_
+        """
+        column_types: dict[str, str] = {}
+        for column_name, data_type in columns_with_types:
+            column_types[column_name] = data_type
+        return column_types
