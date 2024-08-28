@@ -85,11 +85,14 @@ class PipelineSerializer(AuditSerializer):
 
     def create(self, validated_data: dict[str, Any]) -> Any:
         # TODO: Deduce pipeline type based on WF?
-        validated_data[PK.ACTIVE] = True  # Add this as default instead?
-        validated_data[PK.SCHEDULED] = True
+        validated_data[PK.ACTIVE] = True
         return super().create(validated_data)
 
     def save(self, **kwargs: Any) -> Pipeline:
+        if self.validated_data[PK.CRON_STRING]:
+            self.validated_data[PK.SCHEDULED] = True
+        else:
+            self.validated_data[PK.SCHEDULED] = False
         pipeline: Pipeline = super().save(**kwargs)
         if pipeline.cron_string is None:
             SchedulerHelper.remove_job(pipeline_id=str(pipeline.id))
