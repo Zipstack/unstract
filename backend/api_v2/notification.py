@@ -1,8 +1,8 @@
 import logging
 
 from api_v2.models import APIDeployment
-from notification.helper import NotificationHelper
-from notification.models import Notification
+from notification_v2.helper import NotificationHelper
+from notification_v2.models import Notification
 from pipeline_v2.dto import PipelineStatusPayload
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
