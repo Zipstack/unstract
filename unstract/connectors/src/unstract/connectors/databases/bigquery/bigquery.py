@@ -92,14 +92,11 @@ class BigQuery(UnstractDB):
 
     def get_create_table_base_query(self, table: str) -> str:
         bigquery_table_name = str.lower(table).split(".")
-        database = bigquery_table_name[0]
-        schema = bigquery_table_name[1]
-        table = bigquery_table_name[2]
         if len(bigquery_table_name) != self.big_query_table_size:
             raise ValueError(
                 f"Invalid table name format: '{table}'. "
-                f"Please enter correct correct bigquery table in the form "
-                f"{table}.{schema}.{database}."
+                "Please enter correct correct bigquery table in the form "
+                "{table}.{schema}.{database}."
             )
         sql_query = (
             f"CREATE TABLE IF NOT EXISTS {table} "
@@ -117,16 +114,17 @@ class BigQuery(UnstractDB):
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
-        print("*** HERE ** ")
         table_name = str(kwargs.get("table_name"))
         sql_keys = list(kwargs.get("sql_keys", []))
-        query_parameters = [
-            bigquery.ScalarQueryParameter(key, "STRING", value)
-            for key, value in zip(sql_keys, sql_values)
-        ]
-        query_params = bigquery.QueryJobConfig(query_parameters=query_parameters)
         try:
             if sql_values:
+                query_parameters = [
+                    bigquery.ScalarQueryParameter(key, "STRING", value)
+                    for key, value in zip(sql_keys, sql_values)
+                ]
+                query_params = bigquery.QueryJobConfig(
+                    query_parameters=query_parameters
+                )
                 query_job = engine.query(sql_query, job_config=query_params)
             else:
                 query_job = engine.query(sql_query)

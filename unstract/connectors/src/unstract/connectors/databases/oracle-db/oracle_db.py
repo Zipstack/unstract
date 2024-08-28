@@ -108,15 +108,12 @@ class OracleDB(UnstractDB):
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
-        try:
-            with engine.cursor() as cursor:
-                if sql_values:
-                    cursor.execute(sql_query, sql_values)
-                else:
-                    cursor.execute(sql_query)
-                engine.commit()
-        except Exception as e:
-            print("** exception check ** ", str(e))
+        with engine.cursor() as cursor:
+            if sql_values:
+                cursor.execute(sql_query, sql_values)
+            else:
+                cursor.execute(sql_query)
+            engine.commit()
 
     def get_information_schema(self, table_name: str) -> dict[str, str]:
         query = (
