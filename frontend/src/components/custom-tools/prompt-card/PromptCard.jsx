@@ -655,8 +655,8 @@ function PromptCard({
             profileManager: outputResult?.profile_manager,
             context: outputResult?.context,
             challengeData: outputResult?.challenge_data,
+            tokenUsage: outputResult?.token_usage,
             output: outputResult?.output,
-            totalCost: outputResult?.token_usage?.cost_in_dollars,
             evalMetrics: getEvalMetrics(
               promptDetails?.evaluate,
               outputResult?.eval_metrics || []
