@@ -26,14 +26,20 @@ class PromptStudioVariableService:
         variable_prompt: ToolStudioPrompt = ToolStudioPrompt.objects.get(
             prompt_key=variable, tool_id=tool_id
         )
-        output = PromptStudioOutputManager.objects.get(
-            prompt_id=variable_prompt.prompt_id,
-            document_manager=doc_id,
-            tool_id=variable_prompt.tool_id,
-            profile_manager=variable_prompt.profile_manager,
-        )
-        if not output:
-            raise PromptNotRun()
+        try:
+            output = PromptStudioOutputManager.objects.get(
+                prompt_id=variable_prompt.prompt_id,
+                document_manager=doc_id,
+                tool_id=variable_prompt.tool_id,
+                profile_manager=variable_prompt.profile_manager,
+                is_single_pass_extract=False,
+            )
+        except PromptStudioOutputManager.DoesNotExist:
+            raise PromptNotRun(
+                f"The prompt : {variable} must be executed before "
+                "it can be used as a variable in another prompt. "
+                "Please execute the prompt first and try again."
+            )
         return output.output
 
     @staticmethod

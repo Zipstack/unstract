@@ -503,6 +503,21 @@ const displayURL = (text) => {
   return getBaseUrl() + "/" + text;
 };
 
+const formatNumberWithCommas = (number) => {
+  if (!number && number !== 0) return null;
+
+  // Convert the number to a string and split into integer and decimal parts.
+  const [integerPart, decimalPart] = number.toString().split(".");
+
+  // Add commas to the integer part.
+  const formattedIntegerPart = Number(integerPart).toLocaleString();
+
+  // Reassemble the formatted number, including the decimal part if it exists.
+  return decimalPart
+    ? `${formattedIntegerPart}.${decimalPart}`
+    : formattedIntegerPart;
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -547,4 +562,5 @@ export {
   pollForCompletion,
   getDocIdFromKey,
   displayURL,
+  formatNumberWithCommas,
 };

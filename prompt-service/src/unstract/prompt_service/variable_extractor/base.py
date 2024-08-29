@@ -20,6 +20,6 @@ class VariableExtractor:
 
             if variable_type == VariableType.DYNAMIC:
                 prompt = VariableService.replace_dynamic_variable(
-                    prompt=prompt, variable=variable
+                    prompt=prompt, variable=variable, structured_output=variable_map
                 )
         return prompt
