@@ -225,9 +225,7 @@ def prompt_processor() -> Any:
                 )
 
         try:
-            vector_index = vector_db.get_vector_store_index(
-                callback_manager=embedding.get_callback_manager()
-            )
+            vector_index = vector_db.get_vector_store_index()
 
             context = ""
             if output[PSKeys.CHUNK_SIZE] == 0:
