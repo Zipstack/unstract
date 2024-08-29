@@ -4,6 +4,7 @@ from account.models import User
 from django.conf import settings
 from django.db import connection, models
 from utils.models.base_model import BaseModel
+from workflow_manager.endpoint.models import WorkflowEndpoint
 from workflow_manager.workflow.models.workflow import Workflow
 
 from backend.constants import FieldLengthConstants as FieldLength
@@ -93,6 +94,15 @@ class Pipeline(BaseModel):
     def api_endpoint(self):
         org_schema = connection.get_tenant().schema_name
         deployment_endpoint = settings.API_DEPLOYMENT_PATH_PREFIX + "/pipeline/api"
+
+        # Check if the WorkflowEndpoint has a connection_type of MANUALREVIEW
+        workflow_endpoint = WorkflowEndpoint.objects.filter(
+            workflow=self.workflow,
+            connection_type=WorkflowEndpoint.ConnectionType.MANUALREVIEW,
+        ).first()
+        if workflow_endpoint:
+            deployment_endpoint = "mr/api"
+
         api_endpoint = f"{deployment_endpoint}/{org_schema}/{self.id}/"
         return api_endpoint
 
