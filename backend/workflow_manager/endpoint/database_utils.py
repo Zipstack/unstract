@@ -215,11 +215,8 @@ class DatabaseUtils:
         - sql values can contain data with single quote. It needs to
         """
         sql = db_class.get_sql_insert_query(table_name=table_name, sql_keys=sql_keys)
-        print("###### sql ########## ", sql)
+
         logger.debug(f"inserting into table {table_name} with: {sql} query")
-
-        print("###### sql_values ########## ", sql_values)
-
         logger.debug(f"sql_values: {sql_values}")
 
         try:

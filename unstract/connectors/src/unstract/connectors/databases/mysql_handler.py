@@ -16,15 +16,6 @@ logger = logging.getLogger(__name__)
 class MysqlHandler:
     @staticmethod
     def sql_to_db_mapping(value: str) -> str:
-        """
-        Gets the python datatype of value and converts python datatype
-        to corresponding DB datatype
-        Args:
-            value (str): _description_
-
-        Returns:
-            str: _description_
-        """
         python_type = type(value)
         mapping = {
             str: "LONGTEXT",

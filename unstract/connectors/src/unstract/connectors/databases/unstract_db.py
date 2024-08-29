@@ -99,6 +99,14 @@ class UnstractDB(UnstractConnector, ABC):
         return mapping.get(python_type, "TEXT")
 
     def get_create_table_base_query(self, table: str) -> str:
+        """Function to create a base create table sql query.
+
+        Args:
+            table (str): db-connector table name
+
+        Returns:
+            str: generates a create sql base query with the constant columns
+        """
         sql_query = (
             f"CREATE TABLE IF NOT EXISTS {table} "
             f"(id TEXT , "
@@ -107,6 +115,15 @@ class UnstractDB(UnstractConnector, ABC):
         return sql_query
 
     def create_table_query(self, table: str, database_entry: dict[str, Any]) -> Any:
+        """Function to create a create table sql query.
+
+        Args:
+            table (str): db-connector table name
+            database_entry (dict[str, Any]): a dictionary of column name and types
+
+        Returns:
+            Any: generates a create sql query for all the columns
+        """
         PERMANENT_COLUMNS = ["created_by", "created_at"]
 
         sql_query = ""
@@ -122,6 +139,15 @@ class UnstractDB(UnstractConnector, ABC):
 
     @staticmethod
     def get_sql_insert_query(table_name: str, sql_keys: list[str]) -> str:
+        """Function to generate parameterised insert sql query.
+
+        Args:
+            table_name (str): db-connector table name
+            sql_keys (list[str]): column names
+
+        Returns:
+            str: returns a string with parameterised insert sql query
+        """
         keys_str = ",".join(sql_keys)
         values_placeholder = ",".join(["%s" for _ in sql_keys])
         return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
@@ -133,6 +159,15 @@ class UnstractDB(UnstractConnector, ABC):
         pass
 
     def get_information_schema(self, table_name: str) -> dict[str, str]:
+        """Function to generate information schema of the corresponding table.
+
+        Args:
+            table_name (str): db-connector table name
+
+        Returns:
+            dict[str, str]: a dictionary contains db column name and
+            db column types of corresponding table
+        """
         table_name = str.lower(table_name)
         query = (
             "SELECT column_name, data_type FROM "
