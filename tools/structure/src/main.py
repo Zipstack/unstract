@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
-from unstract.sdk.constants import LogState, MetadataKey
+from unstract.sdk.constants import LogLevel, LogState, MetadataKey
 from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
@@ -167,7 +167,10 @@ class StructureTool(BaseTool):
                         break
                     reindex = False
             except Exception as e:
-                self.stream_error_and_exit(f"Error fetching data and indexing: {e}")
+                self.stream_log(
+                    f"Error fetching data and indexing: {e}", level=LogLevel.ERROR
+                )
+                raise
 
             # TODO : Make this snippet pluggable and introduce pluggablity for tools.
             for output in outputs:
