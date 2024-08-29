@@ -94,6 +94,7 @@ def prompt_processor() -> Any:
     structured_output: dict[str, Any] = {}
     metadata: Optional[dict[str, Any]] = {
         PSKeys.RUN_ID: run_id,
+        PSKeys.FILE_NAME: doc_name,
         PSKeys.CONTEXT: {},
     }
     variable_names: list[str] = []
@@ -533,6 +534,7 @@ def prompt_processor() -> Any:
                             structured_output=structured_output,
                             logger=app.logger,
                             platform_key=platform_key,
+                            metadata=metadata,
                         )
                         # Will inline replace the structured output passed.
                         challenge.run()

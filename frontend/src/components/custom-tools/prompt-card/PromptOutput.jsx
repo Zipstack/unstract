@@ -75,6 +75,7 @@ function PromptOutput({
     isSinglePassExtractLoading,
     isSimplePromptStudio,
     isPublicSource,
+    isChallengeEnabled,
   } = useCustomToolStore();
 
   const tooltipContent = (adapterConf) => (
@@ -266,7 +267,7 @@ function PromptOutput({
                           className="prompt-card-actions-head"
                         />
                       </Tooltip>
-                      {ChallengeModal && (
+                      {isChallengeEnabled && ChallengeModal && (
                         <ChallengeModal
                           challengeData={
                             result.find((r) => r?.profileManager === profileId)
@@ -275,6 +276,10 @@ function PromptOutput({
                           context={
                             result.find((r) => r?.profileManager === profileId)
                               ?.context || ""
+                          }
+                          tokenUsage={
+                            result.find((r) => r?.profileManager === profileId)
+                              ?.tokenUsage || {}
                           }
                         />
                       )}
