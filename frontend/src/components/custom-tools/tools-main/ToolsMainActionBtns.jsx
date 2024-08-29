@@ -38,7 +38,6 @@ function ToolsMainActionBtns() {
     singlePassExtractMode,
     isSinglePassExtractLoading,
     isSimplePromptStudio,
-    isChallengeEnabled,
     defaultLlmProfile,
     selectedDoc,
   } = useCustomToolStore();
@@ -46,6 +45,7 @@ function ToolsMainActionBtns() {
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { tokenUsage } = useTokenUsageStore();
   const tokenUsageId = `single_pass__${defaultLlmProfile}__${selectedDoc?.document_id}`;
+
   const handleOutputAnalyzerBtnClick = () => {
     navigate("outputAnalyzer");
 
@@ -65,10 +65,10 @@ function ToolsMainActionBtns() {
   return (
     <Space>
       {singlePassExtractMode && RunSinglePassBtn && <RunSinglePassBtn />}
-      {singlePassExtractMode && isChallengeEnabled && ChallengeModal && (
+      {singlePassExtractMode && ChallengeModal && (
         <ChallengeModal
-          challengeData={tokenUsage?.[`${tokenUsageId}_challenge_data`]}
-          context={tokenUsage?.[`${tokenUsageId}_context`]}
+          challengeData={tokenUsage?.[`${tokenUsageId}__challenge_data`]}
+          context={tokenUsage?.[`${tokenUsageId}__context`]}
           tokenUsage={tokenUsage?.[`${tokenUsageId}`]}
         />
       )}

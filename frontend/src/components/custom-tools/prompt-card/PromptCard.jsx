@@ -743,10 +743,10 @@ function PromptCard({
               item?.profile_manager === defaultLlmProfile &&
               item?.document_manager === selectedDoc?.document_id
           );
-          setTokenUsage(`${tokenUsageId}_context`, data?.context);
+          setTokenUsage(`${tokenUsageId}__context`, usage?.context);
           setTokenUsage(
-            `${tokenUsageId}_challenge_data`,
-            data?.challenge_data?.["single_pass_extraction"]
+            `${tokenUsageId}__challenge_data`,
+            usage?.challenge_data
           );
           if (usage) {
             setTokenUsage(tokenUsageId, usage?.token_usage);
