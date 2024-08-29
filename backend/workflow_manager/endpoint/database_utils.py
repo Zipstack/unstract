@@ -71,18 +71,18 @@ class DatabaseUtils:
         conn_cls: Any,
         table_name: str,
     ) -> Any:
-        """Get db column name and types.
+        """Function to return connector db column and types by calling
+        connector table information schema.
 
         Args:
             conn_cls (Any): DB Connection class
             table_name (str): DB table-name
 
         Raises:
-            ValueError: _description_
-            e: _description_
+            UnstractDBException: _description_
 
         Returns:
-            Any: _description_
+            Any: db column name and db column types of corresponding table
         """
         try:
             return conn_cls.get_information_schema(table_name=table_name)
