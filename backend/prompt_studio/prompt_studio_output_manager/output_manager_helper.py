@@ -115,7 +115,9 @@ class OutputManagerHelper:
                 context = context.get(prompt.prompt_key)
                 if challenge_data:
                     challenge_data = challenge_data.get(prompt.prompt_key)
-                    challenge_data["file_name"] = metadata.get("file_name")
+
+            if challenge_data:
+                challenge_data["file_name"] = metadata.get("file_name")
 
             output = outputs.get(prompt.prompt_key)
             if prompt.enforce_type in {"json", "table"}:
