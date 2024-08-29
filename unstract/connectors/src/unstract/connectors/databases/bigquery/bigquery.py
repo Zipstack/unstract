@@ -71,6 +71,15 @@ class BigQuery(UnstractDB):
             raise ConnectorError(str(e))
 
     def sql_to_db_mapping(self, value: str) -> str:
+        """Gets the python datatype of value and converts python datatype to
+        corresponding DB datatype.
+
+        Args:
+            value (str): _description_
+
+        Returns:
+            str: _description_
+        """
         python_type = type(value)
 
         mapping = {
@@ -82,6 +91,14 @@ class BigQuery(UnstractDB):
         return mapping.get(python_type, "string")
 
     def get_create_table_base_query(self, table: str) -> str:
+        """Function to create a base create table sql query.
+
+        Args:
+            table (str): db-connector table name
+
+        Returns:
+            str: generates a create sql base query with the constant columns
+        """
         bigquery_table_name = str.lower(table).split(".")
         if len(bigquery_table_name) != self.big_query_table_size:
             raise ValueError(
@@ -98,6 +115,15 @@ class BigQuery(UnstractDB):
 
     @staticmethod
     def get_sql_insert_query(table_name: str, sql_keys: list[str]) -> str:
+        """Function to generate parameterised insert sql query.
+
+        Args:
+            table_name (str): db-connector table name
+            sql_keys (list[str]): column names
+
+        Returns:
+            str: returns a string with parameterised insert sql query
+        """
         keys_str = ",".join(sql_keys)
         values_placeholder = ",".join(["@" + key for key in sql_keys])
         return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
@@ -105,6 +131,18 @@ class BigQuery(UnstractDB):
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
+        """Executes create/insert query.
+
+        Args:
+            engine (Any): big query client engine
+            sql_query (str): _description_
+            sql_values (Any): _description_
+
+        Raises:
+            BigQueryForbiddenException: _description_
+            BigQueryNotFoundException: _description_
+            ColumnMissingException: _description_
+        """
         table_name = str(kwargs.get("table_name"))
         sql_keys = list(kwargs.get("sql_keys", []))
         try:
@@ -142,6 +180,14 @@ class BigQuery(UnstractDB):
             ) from e
 
     def get_information_schema(self, table_name: str) -> dict[str, str]:
+        """Function to generate information schema of the big query table.
+
+        Args:
+            table_name (str): _description_
+
+        Returns:
+            dict[str, str]: _description_
+        """
         bigquery_table_name = str.lower(table_name).split(".")
         database = bigquery_table_name[0]
         schema = bigquery_table_name[1]

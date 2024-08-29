@@ -71,6 +71,15 @@ class OracleDB(UnstractDB):
         return con
 
     def sql_to_db_mapping(self, value: str) -> str:
+        """Function to generate information schema of the corresponding table.
+
+        Args:
+            table_name (str): db-connector table name
+
+        Returns:
+            dict[str, str]: a dictionary contains db column name and
+            db column types of corresponding table
+        """
         python_type = type(value)
         mapping = {
             str: "CLOB",
@@ -81,6 +90,14 @@ class OracleDB(UnstractDB):
         return mapping.get(python_type, "CLOB")
 
     def get_create_table_base_query(self, table: str) -> str:
+        """Function to create a base create table sql query.
+
+        Args:
+            table (str): db-connector table name
+
+        Returns:
+            str: generates a create sql base query with the constant columns
+        """
         sql_query = (
             f"CREATE TABLE IF NOT EXISTS {table} "
             f"(id VARCHAR2(32767) , "
@@ -90,6 +107,15 @@ class OracleDB(UnstractDB):
 
     @staticmethod
     def get_sql_insert_query(table_name: str, sql_keys: list[str]) -> str:
+        """Function to generate parameterised insert sql query.
+
+        Args:
+            table_name (str): db-connector table name
+            sql_keys (list[str]): column names
+
+        Returns:
+            str: returns a string with parameterised insert sql query
+        """
         columns = ", ".join(sql_keys)
         values = []
         for key in sql_keys:
@@ -102,6 +128,13 @@ class OracleDB(UnstractDB):
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
+        """Executes create/insert query.
+
+        Args:
+            engine (Any): oracle db client engine
+            sql_query (str): _description_
+            sql_values (Any): _description_
+        """
         sql_keys = list(kwargs.get("sql_keys", []))
         with engine.cursor() as cursor:
             if sql_values:
@@ -112,6 +145,14 @@ class OracleDB(UnstractDB):
             engine.commit()
 
     def get_information_schema(self, table_name: str) -> dict[str, str]:
+        """Function to generate information schema of the big query table.
+
+        Args:
+            table_name (str): _description_
+
+        Returns:
+            dict[str, str]: _description_
+        """
         query = (
             "SELECT column_name, data_type FROM "
             "user_tab_columns WHERE "
