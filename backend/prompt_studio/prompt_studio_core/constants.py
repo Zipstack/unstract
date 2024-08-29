@@ -93,6 +93,7 @@ class ToolStudioPromptKeys:
     EXTRACT = "extract"
     PLATFORM_POSTAMBLE = "platform_postamble"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
+    VARIABLE_MAP = "variable_map"
 
 
 class FileViewTypes:
