@@ -64,15 +64,6 @@ class Redshift(UnstractDB, PsycoPgHandler):
         )
 
     def sql_to_db_mapping(self, value: str) -> str:
-        """
-        Gets the python datatype of value and converts python datatype
-        to corresponding DB datatype
-        Args:
-            value (str): _description_
-
-        Returns:
-            str: _description_
-        """
         python_type = type(value)
         mapping = {
             str: "VARCHAR(65535)",
