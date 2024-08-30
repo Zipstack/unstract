@@ -92,7 +92,7 @@ def prompt_processor() -> Any:
     doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
     structured_output: dict[str, Any] = {}
-    metadata: Optional[dict[str, Any]] = {
+    metadata: dict[str, Any] = {
         PSKeys.RUN_ID: run_id,
         PSKeys.CONTEXT: {},
     }
@@ -276,8 +276,6 @@ def prompt_processor() -> Any:
                 )
 
         try:
-            vector_index = vector_db.get_vector_store_index()
-
             context = ""
             if output[PSKeys.CHUNK_SIZE] == 0:
                 # We can do this only for chunkless indexes
@@ -374,6 +372,7 @@ def prompt_processor() -> Any:
                 retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
 
                 if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
+                    vector_index = vector_db.get_vector_store_index()
                     answer, context = run_retrieval(
                         tool_settings=tool_settings,
                         output=output,
