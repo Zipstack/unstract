@@ -69,7 +69,7 @@ function ToolsMainActionBtns() {
         <ChallengeModal
           challengeData={tokenUsage?.[`${tokenUsageId}__challenge_data`]}
           context={tokenUsage?.[`${tokenUsageId}__context`]}
-          tokenUsage={tokenUsage?.[`${tokenUsageId}`]}
+          tokenUsage={tokenUsage?.[tokenUsageId]}
         />
       )}
       <Tooltip title="Output Analyzer">

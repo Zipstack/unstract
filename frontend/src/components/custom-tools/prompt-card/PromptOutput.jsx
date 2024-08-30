@@ -77,7 +77,6 @@ function PromptOutput({
     isSinglePassExtractLoading,
     isSimplePromptStudio,
     isPublicSource,
-    isChallengeEnabled,
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
 
@@ -172,6 +171,8 @@ function PromptOutput({
             selectedDoc?.document_id +
             "__" +
             profileId;
+          const profileData =
+            result.find((r) => r?.profileManager === profileId) || {};
           return (
             <motion.div
               key={profileId}
@@ -258,29 +259,16 @@ function PromptOutput({
                         <DatabaseOutlined
                           onClick={() => {
                             setIsIndexOpen(true);
-                            setOpenIndexProfile(
-                              result.find(
-                                (r) => r?.profileManager === profileId
-                              )?.context
-                            );
+                            setOpenIndexProfile(profileData?.context);
                           }}
                           className="prompt-card-actions-head"
                         />
                       </Tooltip>
-                      {isChallengeEnabled && ChallengeModal && (
+                      {ChallengeModal && (
                         <ChallengeModal
-                          challengeData={
-                            result.find((r) => r?.profileManager === profileId)
-                              ?.challengeData || {}
-                          }
-                          context={
-                            result.find((r) => r?.profileManager === profileId)
-                              ?.context || ""
-                          }
-                          tokenUsage={
-                            result.find((r) => r?.profileManager === profileId)
-                              ?.tokenUsage || {}
-                          }
+                          challengeData={profileData?.challengeData || {}}
+                          context={profileData?.context || ""}
+                          tokenUsage={profileData?.tokenUsage || {}}
                         />
                       )}
                       {isNotSingleLlmProfile && (
@@ -322,11 +310,7 @@ function PromptOutput({
                                 </Typography.Text>
                               ) : (
                                 <DisplayPromptResult
-                                  output={
-                                    result.find(
-                                      (r) => r?.profileManager === profileId
-                                    )?.output
-                                  }
+                                  output={profileData?.output}
                                 />
                               )}
                             </div>
@@ -369,12 +353,7 @@ function PromptOutput({
                         isDisabled={enforceType === TABLE_ENFORCE_TYPE}
                         copyToClipboard={() =>
                           copyOutputToClipboard(
-                            displayPromptResult(
-                              result.find(
-                                (r) => r?.profileManager === profileId
-                              )?.output,
-                              true
-                            )
+                            displayPromptResult(profileData?.output, true)
                           )
                         }
                       />
@@ -387,12 +366,7 @@ function PromptOutput({
                     </div>
                   </div>
                   {enforceType === TABLE_ENFORCE_TYPE && TableOutput && (
-                    <TableOutput
-                      output={
-                        result.find((r) => r?.profileManager === profileId)
-                          ?.output
-                      }
-                    />
+                    <TableOutput output={profileData?.output} />
                   )}
                 </>
               </Col>
