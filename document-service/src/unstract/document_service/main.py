@@ -63,7 +63,7 @@ def upload_file():
     """
     Sample Usage:
         curl -X POST -H "Authorization: 0xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
-        -F "file=@/Users/arun/Devel/pandora_storage/train_ticket.pdf" \
+        -F "file=@/Users/arun/Devel/unstract_storage/train_ticket.pdf" \
         http://localhost:3000/upload?file_name=file1.pdf&account_id=1234
     """
 
