@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:5a41f7fb855a552c750c23bda694bd4c8058dc87d912a06fd0e1933878e92d86"
+content_hash = "sha256:73f9c170bdb20c4d3dbefec017dce3cf3bdd90966c3ac31a5bdbcdba985240bf"
 
 [[package]]
 name = "adlfs"
@@ -521,13 +521,13 @@ files = [
 
 [[package]]
 name = "certifi"
-version = "2024.7.4"
+version = "2024.8.30"
 requires_python = ">=3.6"
 summary = "Python package for providing Mozilla's CA Bundle."
 groups = ["default", "dev"]
 files = [
-    {file = "certifi-2024.7.4-py3-none-any.whl", hash = "sha256:c198e21b1289c2ab85ee4e67bb4b4ef3ead0892059901a8d5b622f24a1101e90"},
-    {file = "certifi-2024.7.4.tar.gz", hash = "sha256:5a1e7645bc0ec61a09e26c36f6106dd4cf40c6db3a1fb6352b0244e7fb057c7b"},
+    {file = "certifi-2024.8.30-py3-none-any.whl", hash = "sha256:922820b53db7a7257ffbda3f597266d435245903d80737e34f8a45ff3e3230d8"},
+    {file = "certifi-2024.8.30.tar.gz", hash = "sha256:bec941d2aa8195e248a60b31ff9f0558284cf01a52591ceda73ea9afffd69fd9"},
 ]
 
 [[package]]
@@ -2468,7 +2468,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.42.0"
+version = "1.43.0"
 requires_python = ">=3.7.1"
 summary = "The official Python library for the openai API"
 groups = ["default", "dev"]
@@ -2483,8 +2483,8 @@ dependencies = [
     "typing-extensions<5,>=4.11",
 ]
 files = [
-    {file = "openai-1.42.0-py3-none-any.whl", hash = "sha256:dc91e0307033a4f94931e5d03cc3b29b9717014ad5e73f9f2051b6cb5eda4d80"},
-    {file = "openai-1.42.0.tar.gz", hash = "sha256:c9d31853b4e0bc2dc8bd08003b462a006035655a701471695d0bfdc08529cde3"},
+    {file = "openai-1.43.0-py3-none-any.whl", hash = "sha256:1a748c2728edd3a738a72a0212ba866f4fdbe39c9ae03813508b267d45104abe"},
+    {file = "openai-1.43.0.tar.gz", hash = "sha256:e607aff9fc3e28eade107e5edd8ca95a910a4b12589336d3cbb6bfe2ac306b3c"},
 ]
 
 [[package]]
@@ -2850,13 +2850,13 @@ files = [
 
 [[package]]
 name = "pymilvus"
-version = "2.4.5"
+version = "2.4.6"
 requires_python = ">=3.8"
 summary = "Python Sdk for Milvus"
 groups = ["default", "dev"]
 dependencies = [
     "environs<=9.5.0",
-    "grpcio<=1.63.0,>=1.49.1",
+    "grpcio>=1.49.1",
     "milvus-lite<2.5.0,>=2.4.0; sys_platform != \"win32\"",
     "pandas>=1.2.4",
     "protobuf>=3.20.0",
@@ -2864,8 +2864,8 @@ dependencies = [
     "ujson>=2.0.0",
 ]
 files = [
-    {file = "pymilvus-2.4.5-py3-none-any.whl", hash = "sha256:dc4f2d1eac8db9cf3951de39566a1a244695760bb94d8310fbfc73d6d62bb267"},
-    {file = "pymilvus-2.4.5.tar.gz", hash = "sha256:1a497fe9b41d6bf62b1d5e1c412960922dde1598576fcbb8818040c8af11149f"},
+    {file = "pymilvus-2.4.6-py3-none-any.whl", hash = "sha256:b4c43472edc313b845d313be50610e19054e6954b2c5c3b515565c596c2d3d97"},
+    {file = "pymilvus-2.4.6.tar.gz", hash = "sha256:6ac3eb91c92cc01bbe444fe83f895f02d7b2546d96ac67998630bf31ac074d66"},
 ]
 
 [[package]]
@@ -3731,7 +3731,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.46.0"
+version = "0.48.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default", "dev"]
@@ -3770,8 +3770,8 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.46.0-py3-none-any.whl", hash = "sha256:09b13289c3384578b6e9598cfe2ae1013705d9e394218682aa24bbb6406422b4"},
-    {file = "unstract_sdk-0.46.0.tar.gz", hash = "sha256:4fa969eb078b5f1bb0eb05142519a08d307b5ea95afaaf06fb8383285857d037"},
+    {file = "unstract_sdk-0.48.0-py3-none-any.whl", hash = "sha256:3b795be2ad1b695b342b7a6c675f99ff5a3acf98a66bce9f93a016f80af9e580"},
+    {file = "unstract_sdk-0.48.0.tar.gz", hash = "sha256:a00574d17cf06ac461b479b42f518efaf52356e4ad58ea523c4608faf17337e3"},
 ]
 
 [[package]]
@@ -3786,7 +3786,7 @@ dependencies = [
     "PyYAML~=6.0.1",
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
-    "unstract-sdk~=0.46.0",
+    "unstract-sdk~=0.48.0",
     "unstract-tool-sandbox",
 ]
 
@@ -3829,13 +3829,13 @@ files = [
 
 [[package]]
 name = "urllib3"
-version = "1.26.19"
+version = "1.26.20"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,>=2.7"
 summary = "HTTP library with thread-safe connection pooling, file post, and more."
 groups = ["default", "dev"]
 files = [
-    {file = "urllib3-1.26.19-py2.py3-none-any.whl", hash = "sha256:37a0344459b199fce0e80b0d3569837ec6b6937435c5244e7fd73fa6006830f3"},
-    {file = "urllib3-1.26.19.tar.gz", hash = "sha256:3e3d753a8618b86d7de333b4223005f68720bcd6a7d2bcb9fbd2229ec7c1e429"},
+    {file = "urllib3-1.26.20-py2.py3-none-any.whl", hash = "sha256:0ed14ccfbf1c30a9072c7ca157e4319b70d65f623e91e7b32fadb2853431016e"},
+    {file = "urllib3-1.26.20.tar.gz", hash = "sha256:40c2dc0c681e47eb8f90e7e27bf6ff7df2e677421fd46756da1161c39ca70d32"},
 ]
 
 [[package]]
