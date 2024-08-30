@@ -697,7 +697,7 @@ def run_retrieval(  # type:ignore
     prompt = output[PSKeys.PROMPTX]
     if retrieval_type == PSKeys.SUBQUESTION:
         subq_prompt: str = (
-            f"I am sending you a verbose prompt \n \n {prompt} \n \n"
+            f"I am sending you a verbose prompt \n \n prompt : {prompt} \n \n"
             "Generate set of specific subquestions "
             "from the prompt which can be used to retrive "
             "relevant context from vector db. "
