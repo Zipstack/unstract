@@ -8,6 +8,7 @@ class PromptServiceContants:
     TOOL_ID = "tool_id"
     RUN_ID = "run_id"
     FILE_NAME = "file_name"
+    FILE_PATH = "file_path"
     FILE_HASH = "file_hash"
     NAME = "name"
     ACTIVE = "active"

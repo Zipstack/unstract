@@ -797,6 +797,7 @@ class PromptStudioHelper:
             TSPKeys.TOOL_ID: tool_id,
             TSPKeys.RUN_ID: run_id,
             TSPKeys.FILE_NAME: doc_name,
+            TSPKeys.FILE_PATH: os.path.split(doc_path)[0],
             TSPKeys.FILE_HASH: file_hash,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
         }

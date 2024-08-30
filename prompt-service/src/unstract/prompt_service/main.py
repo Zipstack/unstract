@@ -1,3 +1,4 @@
+import os
 import time
 import traceback
 from enum import Enum
@@ -91,6 +92,9 @@ def prompt_processor() -> Any:
     file_hash = payload.get(PSKeys.FILE_HASH)
     doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
+    file_path = str(payload.get(PSKeys.FILE_PATH, ""))
+    extracted_doc_name = doc_name.split(".")[0] + ".txt"
+    extract_file_path = os.path.join(file_path, "extract", extracted_doc_name)
     structured_output: dict[str, Any] = {}
     metadata: Optional[dict[str, Any]] = {
         PSKeys.RUN_ID: run_id,
@@ -280,47 +284,10 @@ def prompt_processor() -> Any:
 
             context = ""
             if output[PSKeys.CHUNK_SIZE] == 0:
-                # We can do this only for chunkless indexes
-                context: Optional[str] = index.query_index(
-                    embedding_instance_id=output[PSKeys.EMBEDDING],
-                    vector_db_instance_id=output[PSKeys.VECTOR_DB],
-                    doc_id=doc_id,
-                    usage_kwargs=usage_kwargs,
-                )
-                if not context:
-                    # UN-1288 For Pinecone, we are seeing an inconsistent case where
-                    # query with doc_id fails even though indexing just happened.
-                    # This causes the following retrieve to return no text.
-                    # To rule out any lag on the Pinecone vector DB write,
-                    # the following sleep is added.
-                    # Note: This will not fix the issue. Since this issue is
-                    # inconsistent, and not reproducible easily,
-                    # this is just a safety net.
-                    time.sleep(2)
-                    context: Optional[str] = index.query_index(
-                        embedding_instance_id=output[PSKeys.EMBEDDING],
-                        vector_db_instance_id=output[PSKeys.VECTOR_DB],
-                        doc_id=doc_id,
-                        usage_kwargs=usage_kwargs,
-                    )
-                    if context is None:
-                        # TODO: Obtain user set name for vector DB
-                        msg = NO_CONTEXT_ERROR
-                        app.logger.error(
-                            f"{msg} {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
-                        )
-                        _publish_log(
-                            log_events_id,
-                            {
-                                "tool_id": tool_id,
-                                "prompt_key": prompt_name,
-                                "doc_name": doc_name,
-                            },
-                            LogLevel.ERROR,
-                            RunLevel.RUN,
-                            msg,
-                        )
-                        raise APIError(message=msg)
+                # Read from extract_file_path and set that as context
+                with open(extract_file_path) as file:
+                    context = file.read()
+                    file.close()
                 # TODO: Use vectorDB name when available
                 _publish_log(
                     log_events_id,
