@@ -718,10 +718,10 @@ def run_retrieval(  # type:ignore
         )
         subquestion_list = subquestions.split(",")
         for each_subq in subquestion_list:
-            retrived_context = _retrieve_context(
+            retrieved_context = _retrieve_context(
                 output, doc_id, vector_index, each_subq
             )
-            context = "".join([context, retrived_context])
+            context = "".join([context, retrieved_context])
 
     if retrieval_type == PSKeys.SIMPLE:
 
