@@ -100,10 +100,11 @@ class Pipeline(BaseModel):
             workflow=self.workflow,
             connection_type=WorkflowEndpoint.ConnectionType.MANUALREVIEW,
         ).first()
-        if workflow_endpoint:
-            deployment_endpoint = "mr/api"
-
         api_endpoint = f"{deployment_endpoint}/{org_schema}/{self.id}/"
+        if workflow_endpoint:
+            deployment_endpoint = f"mr/api/{org_schema}/approved/result"
+            api_endpoint = f"{deployment_endpoint}/{self.workflow_id}/"
+
         return api_endpoint
 
     def __str__(self) -> str:
