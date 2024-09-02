@@ -229,7 +229,7 @@ def construct_and_run_prompt(
         prompt=prompt,
         metadata=metadata,
         prompt_key=output[PSKeys.NAME],
-        prompt_type=output.get(PSKeys.TYPE, "Text"),
+        prompt_type=output.get(PSKeys.TYPE, PSKeys.TEXT),
     )
 
 
