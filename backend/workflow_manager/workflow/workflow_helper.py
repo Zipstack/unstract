@@ -156,8 +156,7 @@ class WorkflowHelper:
             except Exception as e:
                 failed_files += 1
                 error_message = f"Error processing file '{file_path}'. {e}"
-                logger.error(error_message)
-                logger.error(f"Error {traceback.format_exc()}")
+                logger.error(error_message, stack_info=True, exc_info=True)
                 execution_service.publish_log(
                     message=error_message, level=LogLevel.ERROR
                 )
