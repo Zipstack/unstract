@@ -5,7 +5,7 @@ import { useSessionStore } from "../../../store/session-store";
 let selectedProductStore;
 let selectedProduct;
 try {
-  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-produc-store.js");
+  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
 } catch {
   // do nothing
 }

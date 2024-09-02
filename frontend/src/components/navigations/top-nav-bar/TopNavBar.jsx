@@ -19,6 +19,7 @@ import {
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
+import PropTypes from "prop-types";
 
 import { UnstractLogo } from "../../../assets/index.js";
 import {
@@ -44,7 +45,7 @@ let selectedProduct;
 let selectedProductStore;
 
 try {
-  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-produc-store.js");
+  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
 } catch {
   // Ignore if hook not available
 }
@@ -59,7 +60,7 @@ try {
 }
 
 try {
-  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-produc-store.js");
+  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
 } catch {
   // Ignore if hook not available
 }
@@ -71,7 +72,7 @@ try {
   // Ignore if hook not available
 }
 
-function TopNavBar() {
+function TopNavBar({ isSimpleLayout }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const { orgName, remainingTrialDays, allOrganization, orgId } =
@@ -126,7 +127,7 @@ function TopNavBar() {
     }
   }, [location]);
 
-  const cascadeOptions = allOrganization.map((org) => {
+  const cascadeOptions = allOrganization?.map((org) => {
     return {
       key: org?.id,
       label:
@@ -183,7 +184,7 @@ function TopNavBar() {
         </Button>
       ),
     },
-    allOrganization.length > 1 && {
+    allOrganization?.length > 1 && {
       key: "3",
       label: (
         <Dropdown
@@ -275,57 +276,66 @@ function TopNavBar() {
         )}
         {PlatformDropdown && <PlatformDropdown />}
       </Col>
-      <Col span={14} className="top-nav-alert-col">
-        {isUnstract && showOnboardBanner && (
-          <Alert
-            type="error"
-            message={
-              <>
-                <span className="top-nav-alert-msg">
-                  Your setup process is incomplete. Now, that&apos;s a bummer!
-                </span>
-                <a
-                  href={onBoardUrl}
-                  size="small"
-                  type="text"
-                  className="top-nav-alert-link"
-                >
-                  Complete it to start using Unstract
-                </a>
-              </>
-            }
-            showIcon
-          />
-        )}
-      </Col>
-      <Col span={4}>
-        <Row justify="end" align="middle">
-          <Space>
-            {isUnstract && TrialDaysInfo && (
-              <TrialDaysInfo remainingTrialDays={remainingTrialDays} />
+      {!isSimpleLayout && (
+        <>
+          <Col span={14} className="top-nav-alert-col">
+            {isUnstract && showOnboardBanner && (
+              <Alert
+                type="error"
+                message={
+                  <>
+                    <span className="top-nav-alert-msg">
+                      Your setup process is incomplete. Now, that&apos;s a
+                      bummer!
+                    </span>
+                    <a
+                      href={onBoardUrl}
+                      size="small"
+                      type="text"
+                      className="top-nav-alert-link"
+                    >
+                      Complete it to start using Unstract
+                    </a>
+                  </>
+                }
+                showIcon
+              />
             )}
-            <Dropdown menu={{ items }} placement="bottomLeft" arrow>
-              <div className="top-navbar-dp">
-                {sessionDetails?.picture ? (
-                  <Image
-                    className="navbar-img"
-                    height="100%"
-                    width="100%"
-                    preview={false}
-                    src={sessionDetails?.picture}
-                  />
-                ) : (
-                  <Typography.Text className="initials">
-                    {getInitials(sessionDetails?.name)}
-                  </Typography.Text>
+          </Col>
+          <Col span={4}>
+            <Row justify="end" align="middle">
+              <Space>
+                {isUnstract && TrialDaysInfo && (
+                  <TrialDaysInfo remainingTrialDays={remainingTrialDays} />
                 )}
-              </div>
-            </Dropdown>
-          </Space>
-        </Row>
-      </Col>
+                <Dropdown menu={{ items }} placement="bottomLeft" arrow>
+                  <div className="top-navbar-dp">
+                    {sessionDetails?.picture ? (
+                      <Image
+                        className="navbar-img"
+                        height="100%"
+                        width="100%"
+                        preview={false}
+                        src={sessionDetails?.picture}
+                      />
+                    ) : (
+                      <Typography.Text className="initials">
+                        {getInitials(sessionDetails?.name)}
+                      </Typography.Text>
+                    )}
+                  </div>
+                </Dropdown>
+              </Space>
+            </Row>
+          </Col>
+        </>
+      )}
     </Row>
   );
 }
+
+TopNavBar.propTypes = {
+  isSimpleLayout: PropTypes.bool,
+};
 
 export { TopNavBar };
