@@ -190,7 +190,7 @@ class WorkflowHelper:
             raise
         except Exception as e:
             execution_service.publish_log(
-                f"Error processing file {input_file}: {str(e)}",
+                f"'Error processing file '{os.path.basename(input_file)}'. {str(e)}",
                 level=LogLevel.ERROR,
             )
             error = str(e)
