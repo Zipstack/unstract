@@ -38,6 +38,12 @@ function useSessionValid() {
   return async () => {
     try {
       const userSessionData = await userSession();
+
+      // Return if the user is not authenticated
+      if (!userSessionData) {
+        return;
+      }
+
       const signedInOrgId = userSessionData?.organization_id;
 
       // API to get the list of organizations
