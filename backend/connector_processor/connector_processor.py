@@ -137,7 +137,7 @@ class ConnectorProcessor:
         except UnstractFSConnectorException as e:
             raise UnstractFSException(detail=e.detail, status_code=e.status_code) from e
         except ConnectorError as e:
-            raise TestConnectorInputError(core_err=e)
+            raise TestConnectorInputError(core_err=e) from e
 
     def get_connector_data_with_key(connector_id: str, key_value: str) -> Any:
         """Generic Function to get connector data with provided key."""

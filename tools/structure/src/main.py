@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
-from unstract.sdk.constants import LogState, MetadataKey
+from unstract.sdk.constants import LogLevel, LogState, MetadataKey
 from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
@@ -69,6 +69,9 @@ class StructureTool(BaseTool):
         if summarize_as_source:
             file_name = SettingsKeys.SUMMARIZE
         tool_data_dir = Path(self.get_env_or_die(SettingsKeys.TOOL_DATA_DIR))
+        execution_run_data_folder = Path(
+            self.get_env_or_die(SettingsKeys.EXECUTION_RUN_DATA_FOLDER)
+        )
         run_id = CommonUtils.generate_uuid()
         # TODO : Resolve and pass log events ID
         payload = {
@@ -164,14 +167,19 @@ class StructureTool(BaseTool):
                         break
                     reindex = False
             except Exception as e:
-                self.stream_error_and_exit(f"Error fetching data and indexing: {e}")
+                self.stream_log(
+                    f"Error fetching data and indexing: {e}", level=LogLevel.ERROR
+                )
+                raise
 
             # TODO : Make this snippet pluggable and introduce pluggablity for tools.
             for output in outputs:
                 try:
                     table_settings = output[SettingsKeys.TABLE_SETTINGS]
-                    extracted_input_file = tool_data_dir / SettingsKeys.EXTRACT
-                    table_settings[SettingsKeys.INPUT_FILE] = extracted_input_file
+                    extracted_input_file = (
+                        execution_run_data_folder / SettingsKeys.EXTRACT
+                    )
+                    table_settings[SettingsKeys.INPUT_FILE] = str(extracted_input_file)
                     output.update({SettingsKeys.TABLE_SETTINGS: table_settings})
 
                 except KeyError:

@@ -1,5 +1,4 @@
 class SettingsKeys:
-    ROOT_FOLDER = "rootFolder"
     TOOL_INSTANCE_ID = "tool_instance_id"
     PROMPT_REGISTRY_ID = "prompt_registry_id"
     PROMPT_HOST = "PROMPT_HOST"
@@ -73,3 +72,4 @@ class SettingsKeys:
     METADATA = "metadata"
     EPILOGUE = "epilogue"
     HIGHLIGHT_DATA = "highlight_data"
+    EXECUTION_RUN_DATA_FOLDER = "EXECUTION_RUN_DATA_FOLDER"

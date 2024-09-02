@@ -24,6 +24,11 @@
       "type": "string",
       "title": "Project ID",
       "description": "Name of the project ID."
+    },
+    "bucket": {
+      "type": "string",
+      "title": "Bucket Name",
+      "description": "Name of the bucket to be restricted to."
     }
   }
 }
