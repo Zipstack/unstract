@@ -91,10 +91,19 @@ backend.help = "Runs the Unstract backend"
 migrate_db.cmd = "python manage.py migrate"
 migrate_db.env_file = ".env"
 migrate_db.help = "Performs DB migrations for Unstract backend"
-# Commands for backend execution
-consumer.cmd = "celery -A backend worker --loglevel=info -Q celery,celery_periodic_logs,celery_log_task_queue --autoscale 8,1"
+# Commands for execution consumer
+consumer.cmd = "celery -A backend worker --loglevel=info -Q celery --autoscale 4,1"
 consumer.env_file = ".env"
 consumer.help = "Runs the Unstract consumer"
+# Commands for log-manager
+log-management-worker.cmd = "celery -A backend worker --loglevel=info -Q celery_periodic_logs,celery_llog-managere --autoscale 4,1"
+log-management-worker.env_file = ".env"
+log-management-worker.help = "Runs the Unstract log management worker."
+# Commands for api deployment executor
+api-deployment-worker.cmd = "celery -A backend worker --loglevel=info -Q celery_api_deployments --autoscale 4,1"
+api-deployment-worker.env_file = ".env"
+api-deployment-worker.help = "Runs the Unstract API deployment worker."
+
 # Celery Flower
 flower.cmd = "celery -A backend flower --port=5555"
 flower.env_file = ".env"
