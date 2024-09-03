@@ -155,7 +155,7 @@ class PlatformAuthenticationService:
             error: IntegrityError
         """
         try:
-            organization = connection.get_tenant()
+            organization = connection.tenant
             platform_key.modified_by = user
             if action == PlatformServiceConstants.ACTIVATE:
                 active_keys: list[PlatformKey] = PlatformKey.objects.filter(
@@ -193,7 +193,7 @@ class PlatformAuthenticationService:
             Any: List of platform keys.
         """
         try:
-            organization_id = connection.get_tenant().id
+            organization_id = connection.tenant.id
             platform_keys: list[PlatformKey] = PlatformKey.objects.filter(
                 organization=organization_id
             )
