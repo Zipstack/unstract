@@ -96,7 +96,7 @@ def prompt_processor() -> Any:
     extracted_doc_name = doc_name.split(".")[0] + ".txt"
     extract_file_path = os.path.join(file_path, "extract", extracted_doc_name)
     structured_output: dict[str, Any] = {}
-    metadata: Optional[dict[str, Any]] = {
+    metadata: dict[str, Any] = {
         PSKeys.RUN_ID: run_id,
         PSKeys.CONTEXT: {},
     }
@@ -280,8 +280,6 @@ def prompt_processor() -> Any:
                 )
 
         try:
-            vector_index = vector_db.get_vector_store_index()
-
             context = ""
             if output[PSKeys.CHUNK_SIZE] == 0:
                 # Read from extract_file_path and set that as context
@@ -341,6 +339,7 @@ def prompt_processor() -> Any:
                 retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
 
                 if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
+                    vector_index = vector_db.get_vector_store_index()
                     answer, context = run_retrieval(
                         tool_settings=tool_settings,
                         output=output,
@@ -660,28 +659,55 @@ def run_retrieval(  # type:ignore
     retrieval_type: str,
     metadata: dict[str, Any],
 ) -> tuple[str, str]:
+    context: str = ""
     prompt = output[PSKeys.PROMPTX]
     if retrieval_type == PSKeys.SUBQUESTION:
-        subq_prompt = (
-            f"Generate a sub-question from the following verbose prompt that will"
-            f" help extract relevant documents from a vector store:\n\n{prompt}"
+        subq_prompt: str = (
+            f"I am sending you a verbose prompt \n \n Prompt : {prompt} \n \n"
+            "Generate set of specific subquestions "
+            "from the prompt which can be used to retrive "
+            "relevant context from vector db. "
+            "Ensure that each subquestion is distinct and relevant"
+            "to the different facets of the original query. Do not"
+            "add subquestions for details not mentioned in the original "
+            "prompt. The goal is to maximize retrieval accuracy"
+            " using these subquestions. Please note that, there are cases where the "
+            "response might have a list of answers. The subquestions must not miss out "
+            "any values in these cases. "
+            "Output should be a list of comma seperated "
+            "subquestion prompts. Do not change this format. \n \n "
+            " Subquestions : "
         )
-        prompt = run_completion(
+        subquestions = run_completion(
             llm=llm,
             prompt=subq_prompt,
         )
-    context = _retrieve_context(output, doc_id, vector_index, prompt)
+        subquestion_list = subquestions.split(",")
+        for each_subq in subquestion_list:
+            retrieved_context = _retrieve_context(
+                output, doc_id, vector_index, each_subq
+            )
+            # Not adding the potential for pinecode serverless
+            # inconsistency issue owing to risk of infinte loop
+            # and inablity to diffrentiate genuine cases of
+            # empty context.
 
-    if not context:
-        # UN-1288 For Pinecone, we are seeing an inconsistent case where
-        # query with doc_id fails even though indexing just happened.
-        # This causes the following retrieve to return no text.
-        # To rule out any lag on the Pinecone vector DB write,
-        # the following sleep is added
-        # Note: This will not fix the issue. Since this issue is inconsistent
-        # and not reproducible easily, this is just a safety net.
-        time.sleep(2)
+            context = "".join([context, retrieved_context])
+
+    if retrieval_type == PSKeys.SIMPLE:
+
         context = _retrieve_context(output, doc_id, vector_index, prompt)
+
+        if not context:
+            # UN-1288 For Pinecone, we are seeing an inconsistent case where
+            # query with doc_id fails even though indexing just happened.
+            # This causes the following retrieve to return no text.
+            # To rule out any lag on the Pinecone vector DB write,
+            # the following sleep is added
+            # Note: This will not fix the issue. Since this issue is inconsistent
+            # and not reproducible easily, this is just a safety net.
+            time.sleep(2)
+            context = _retrieve_context(output, doc_id, vector_index, prompt)
 
     answer = construct_and_run_prompt(  # type:ignore
         tool_settings=tool_settings,
