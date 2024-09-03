@@ -1,0 +1,14 @@
+auth:
+- auth-required: false
+  domain: docker.io
+  password: <password>
+  username: <username>
+- auth-required: true
+  domain: <private-registry>
+  password: <password>
+  username: <username>
+document: unstract-tool-registry
+tools:
+  # - docker:unstract/tool-classifier
+  - local:classifier
+version: 1.0.0

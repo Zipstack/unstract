@@ -41,6 +41,58 @@ class ExecutionResponse:
         self.message = self.message or None
         self.status_api = self.status_api or None
 
+    def remove_result_metadata_keys(self, keys_to_remove: list[str] = []) -> None:
+        """Removes specified keys from the 'metadata' dictionary within each
+        'result' dictionary in the 'result' list attribute of the instance. If
+        'keys_to_remove' is empty, the 'metadata' key itself is removed.
+
+        Args:
+            keys_to_remove (List[str]): List of keys to be removed from 'metadata'.
+        """
+        if not isinstance(self.result, list):
+            return
+
+        for item in self.result:
+            if not isinstance(item, dict):
+                break
+
+            result = item.get("result")
+            if not isinstance(result, dict):
+                break
+
+            self._remove_specific_keys(result=result, keys_to_remove=keys_to_remove)
+
+    def _remove_specific_keys(self, result: dict, keys_to_remove: list[str]) -> None:
+        """Removes specified keys from the 'metadata' dictionary within the
+        provided 'result' dictionary. If 'keys_to_remove' is empty, the
+        'metadata' dictionary is cleared.
+
+        Args:
+            result (dict): The dictionary containing the 'metadata' key.
+            keys_to_remove (List[str]): List of keys to be removed from 'metadata'.
+        """
+        metadata = result.get("metadata", {})
+        if keys_to_remove:
+            for key in keys_to_remove:
+                metadata.pop(key, None)
+        else:
+            metadata = {}
+        self._update_metadata(result=result, metadata=metadata)
+
+    def _update_metadata(self, result: dict, metadata: dict) -> None:
+        """Updates the 'metadata' key in the provided 'result' dictionary. If
+        'metadata' is empty, removes the 'metadata' key from 'result'.
+
+        Args:
+            result (dict): The dictionary to be updated.
+            metadata (dict): The new metadata dictionary to be set. If empty, 'metadata'
+                is removed.
+        """
+        if metadata:
+            result["metadata"] = metadata
+        else:
+            result.pop("metadata", None)
+
 
 @dataclass
 class AsyncResultData:

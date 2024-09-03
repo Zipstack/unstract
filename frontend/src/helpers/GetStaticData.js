@@ -205,6 +205,11 @@ const deploymentTypes = {
   app: "app",
 };
 
+const deploymentApiTypes = {
+  api: "api",
+  pipeline: "pipeline",
+};
+
 const deploymentsStaticContent = {
   etl: {
     title: "Unstructured to Structured ETL Pipelines",
@@ -482,12 +487,44 @@ const pollForCompletion = (
   return recursivePoll();
 };
 
+function getDocIdFromKey(key) {
+  // Split the key by '__'
+  const parts = key.split("__");
+
+  // Return the docId part, which is the second element in the array
+  if (parts.length === 3) {
+    return parts[1];
+  } else {
+    return null;
+  }
+}
+
+const displayURL = (text) => {
+  return getBaseUrl() + "/" + text;
+};
+
+const formatNumberWithCommas = (number) => {
+  if (!number && number !== 0) return null;
+
+  // Convert the number to a string and split into integer and decimal parts.
+  const [integerPart, decimalPart] = number.toString().split(".");
+
+  // Add commas to the integer part.
+  const formattedIntegerPart = Number(integerPart).toLocaleString();
+
+  // Reassemble the formatted number, including the decimal part if it exists.
+  return decimalPart
+    ? `${formattedIntegerPart}.${decimalPart}`
+    : formattedIntegerPart;
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
   THEME,
   calculateDivHeight,
   deploymentTypes,
+  deploymentApiTypes,
   deploymentsStaticContent,
   endpointType,
   formatBytes,
@@ -523,4 +560,7 @@ export {
   getLLMModelNamesForProfiles,
   getFormattedTotalCost,
   pollForCompletion,
+  getDocIdFromKey,
+  displayURL,
+  formatNumberWithCommas,
 };

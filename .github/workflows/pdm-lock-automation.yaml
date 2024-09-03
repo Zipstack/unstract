@@ -1,0 +1,131 @@
+name: Automate pdm.lock
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, review_requested]
+    branches: [main]
+    paths:
+      - 'pyproject.toml'
+      - 'backend/pyproject.toml'
+      - 'prompt-service/pyproject.toml'
+      - 'worker/pyproject.toml'
+      - 'unstract/core/pyproject.toml'
+      - 'unstract/flags/pyproject.toml'
+      - 'platform-service/pyproject.toml'
+      - 'x2text-service/pyproject.toml'
+      - 'unstract/connectors/pyproject.toml'
+      # - 'unstract/tool-registry' # commenting due to transitive dependency on local libraries/pyproject.toml
+      - 'unstract/tool-sandbox/pyproject.toml'
+      # - 'unstract/workflow-execution/pyproject.toml' # commenting due to transitive dependency on local libraries
+  workflow_dispatch:
+
+jobs:
+  check_pyproject_changes:
+    name: ${{ matrix.directory }} PDM lock update
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        directory:
+          - root
+          - backend
+          - prompt-service
+          - worker
+          - unstract/core
+          - unstract/flags
+          - platform-service
+          - x2text-service
+          - unstract/connectors
+          # - unstract/tool-registry # commenting due to transitive dependency on local libraries
+          - unstract/tool-sandbox
+          # - unstract/workflow-execution # commenting due to transitive dependency on local libraries
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.head_ref }}
+
+
+      - name: Check file changes
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ matrix.directory }}" = "root" ]; then
+            file_path="pyproject.toml"
+          else
+            file_path="${{ matrix.directory }}/pyproject.toml"
+          fi
+          echo "checking changes for $file_path for origin/main branch"
+          echo "changed=false" >> $GITHUB_OUTPUT
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git fetch origin
+          if git diff --quiet origin/main -- "$file_path"; then
+            echo "No changes detected in $file_path against origin/main branch."
+          else
+            echo "Changes detected in $file_path against origin/main branch."
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Python
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install PDM
+        if: steps.check.outputs.changed == 'true'
+        run: python -m pip install pdm==2.16.1
+
+      - name: Update and Push pdm.lock
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ matrix.directory }}" != "root" ]; then
+            cd ${{ matrix.directory }}
+          fi
+
+          if [ ! -d ".venv" ]; then
+            echo 'Creating virtual environment inside "${{ matrix.directory }}".'
+            pdm venv create -w virtualenv --with-pip
+          else
+            echo "Virtual environment already exists."
+          fi
+
+          source .venv/bin/activate
+
+          echo "Generating/Updating pdm.lock..."
+          pdm lock -G :all -v
+
+          echo "Checking pdm lock..."
+          pdm lock --check
+
+          echo "Stashing changes if there are any..."
+          git stash || echo "No changes to stash, continuing..."
+
+          echo "Pulling remote ${{ github.head_ref }} branch..."
+          git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
+
+          echo "Trying to pop stash if any..."
+          if git stash list | grep -q 'stash@{0}'; then
+            echo "Popping stash..."
+            git stash pop || echo "Failed to pop stash. Continue with other changes."
+          else
+            echo "No stash found, skipping pop."
+          fi
+
+          if git diff --quiet; then
+            echo "No changes between the current branch and the ${{ github.head_ref }} branch."
+            echo "Nothing to commit"
+          else
+            echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
+
+            echo "Adding pdm lock changes..."
+            git add pdm.lock
+
+            echo "Committing and pushing pdm lock ..."
+            git commit -m "Update pdm.lock for ${{ matrix.directory }}"
+            git push origin HEAD:${{ github.head_ref }}
+          fi

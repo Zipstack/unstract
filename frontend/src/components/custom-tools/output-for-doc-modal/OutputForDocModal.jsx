@@ -6,7 +6,8 @@ import {
   CloseCircleFilled,
   InfoCircleFilled,
 } from "@ant-design/icons";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import TabPane from "antd/es/tabs/TabPane";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -14,6 +15,7 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import "./OutputForDocModal.css";
 import {
   displayPromptResult,
+  getDocIdFromKey,
   getLLMModelNamesForProfiles,
 } from "../../../helpers/GetStaticData";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
@@ -21,28 +23,18 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
-import TabPane from "antd/es/tabs/TabPane";
 import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 
-const columns = [
-  {
-    title: "Document",
-    dataIndex: "document",
-    key: "document",
-  },
-  {
-    title: "Token Count",
-    dataIndex: "token_count",
-    key: "token_count",
-    width: 200,
-  },
-  {
-    title: "Value",
-    dataIndex: "value",
-    key: "value",
-    width: 600,
-  },
-];
+let publicOutputsApi;
+let publicAdapterApi;
+try {
+  publicOutputsApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
+  publicAdapterApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicAdapterApi;
+} catch {
+  // The component will remain null of it is not available
+}
 
 const outputStatus = {
   yet_to_process: "YET_TO_PROCESS",
@@ -68,30 +60,32 @@ function OutputForDocModal({
     details,
     listOfDocs,
     selectedDoc,
-    defaultLlmProfile,
     disableLlmOrDocChange,
     singlePassExtractMode,
     isSinglePassExtractLoading,
+    isPublicSource,
     llmProfiles,
+    defaultLlmProfile,
   } = useCustomToolStore();
+  const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
+  const { id } = useParams();
   const { setAlertDetails } = useAlertStore();
-  const { handleException } = useExceptionHandler();
+  const handleException = useExceptionHandler();
   const { tokenUsage } = useTokenUsageStore();
-  const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
 
   useEffect(() => {
     if (!open) {
       return;
     }
-    handleGetOutputForDocs();
+    handleGetOutputForDocs(selectedProfile || profileManagerId);
     getAdapterInfo();
   }, [open, singlePassExtractMode, isSinglePassExtractLoading]);
 
   useEffect(() => {
-    updatePromptOutput();
+    updatePromptOutput(docOutputs);
   }, [docOutputs]);
 
   useEffect(() => {
@@ -127,67 +121,87 @@ function OutputForDocModal({
 
   const updatePromptOutput = (data) => {
     setPromptOutputs((prev) => {
-      // If data is provided, use it; otherwise, create a copy of the previous state
       const updatedPromptOutput = data || [...prev];
-
-      // Get the keys of docOutputs
       const keys = Object.keys(docOutputs);
 
       keys.forEach((key) => {
-        // Find the index of the prompt output corresponding to the document manager key
-        const index = updatedPromptOutput.findIndex(
-          (promptOutput) => promptOutput?.document_manager === key
-        );
-
-        let promptOutputInstance = {};
-        // If the prompt output for the current key doesn't exist, skip it
-        if (index > -1) {
-          promptOutputInstance = updatedPromptOutput[index];
-          promptOutputInstance["output"] = docOutputs[key]?.output;
-        }
-
-        // Update output and isLoading properties based on docOutputs
-        promptOutputInstance["document_manager"] = key;
-        promptOutputInstance["isLoading"] = docOutputs[key]?.isLoading || false;
-
-        // Update the prompt output instance in the array
-        if (index > -1) {
-          updatedPromptOutput[index] = promptOutputInstance;
-        } else {
-          updatedPromptOutput.push(promptOutputInstance);
-        }
+        const docId = getDocIdFromKey(key);
+        updatePromptOutputInstance(updatedPromptOutput, docId, key);
       });
 
       return updatedPromptOutput;
     });
   };
 
+  const updatePromptOutputInstance = (updatedPromptOutput, docId, key) => {
+    const index = findPromptOutputIndex(updatedPromptOutput, docId);
+    const promptOutputInstance = createOrUpdatePromptOutputInstance(
+      updatedPromptOutput,
+      docId,
+      key,
+      index
+    );
+
+    if (index > -1) {
+      updatedPromptOutput[index] = promptOutputInstance;
+    } else {
+      updatedPromptOutput.push(promptOutputInstance);
+    }
+  };
+
+  const findPromptOutputIndex = (updatedPromptOutput, docId) => {
+    return updatedPromptOutput.findIndex(
+      (promptOutput) => promptOutput?.document_manager === docId
+    );
+  };
+
+  const createOrUpdatePromptOutputInstance = (
+    updatedPromptOutput,
+    docId,
+    key,
+    index
+  ) => {
+    let promptOutputInstance = {};
+
+    if (index > -1) {
+      promptOutputInstance = { ...updatedPromptOutput[index] };
+    }
+
+    promptOutputInstance["document_manager"] = docId;
+    promptOutputInstance["output"] = docOutputs[key]?.output;
+    promptOutputInstance["isLoading"] = docOutputs[key]?.isLoading || false;
+
+    return promptOutputInstance;
+  };
+
   const getAdapterInfo = () => {
-    axiosPrivate
-      .get(`/api/v1/unstract/${sessionDetails.orgId}/adapter/?adapter_type=LLM`)
-      .then((res) => {
-        const adapterList = res.data;
-        setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
-      });
+    let url = `/api/v1/unstract/${sessionDetails.orgId}/adapter/?adapter_type=LLM`;
+    if (isPublicSource) {
+      url = publicAdapterApi(id, "LLM");
+    }
+    axiosPrivate.get(url).then((res) => {
+      const adapterList = res.data;
+      setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
+    });
   };
 
   const handleGetOutputForDocs = (profile = profileManagerId) => {
-    if (singlePassExtractMode) {
-      profile = defaultLlmProfile;
-    }
-
     if (!profile) {
       setRows([]);
       return;
     }
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`;
+    if (isPublicSource) {
+      url = publicOutputsApi(id, promptId, singlePassExtractMode);
+      url += `&profile_manager=${profile}`;
+    }
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`,
+      url,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
-
     setIsLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
@@ -208,9 +222,16 @@ function OutputForDocModal({
     const rowsData = [];
     const docs = moveSelectedDocToTop();
     docs.forEach((item) => {
-      const output = data.find(
-        (outputValue) => outputValue?.document_manager === item?.document_id
-      );
+      const output = data.find((outputValue) => {
+        const docId =
+          outputValue?.document_manager ||
+          (outputValue?.key && getDocIdFromKey(outputValue?.key)) ||
+          null;
+        return docId === item?.document_id;
+      });
+      const key = `${promptId}__${item?.document_id}__${
+        selectedProfile || profileManagerId
+      }`;
 
       let status = outputStatus.fail;
       let message = displayPromptResult(output?.output, true);
@@ -227,20 +248,25 @@ function OutputForDocModal({
         status = outputStatus.yet_to_process;
         message = "Yet to process";
       }
+      const isLoading = docOutputs.find((obj) => obj?.key === key)?.isLoading;
 
       const result = {
         key: item?.document_id,
         document: item?.document_name,
-        token_count: (
+        token_count: !singlePassExtractMode && (
           <TokenUsage
             tokenUsageId={
-              promptId + "__" + item?.document_id + "__" + profileManagerId
+              promptId +
+              "__" +
+              item?.document_id +
+              "__" +
+              (selectedProfile || profileManagerId)
             }
           />
         ),
         value: (
           <>
-            {output?.isLoading ? (
+            {isLoading ? (
               <SpinnerLoader align="default" />
             ) : (
               <Typography.Text>
@@ -268,11 +294,31 @@ function OutputForDocModal({
 
   const handleTabChange = (key) => {
     if (key === "0") {
-      setSelectedProfile(profileManagerId);
+      setSelectedProfile(defaultLlmProfile);
     } else {
       setSelectedProfile(adapterData[key - 1]?.profile_id);
     }
   };
+
+  const columns = [
+    {
+      title: "Document",
+      dataIndex: "document",
+      key: "document",
+    },
+    !singlePassExtractMode && {
+      title: "Token Count",
+      dataIndex: "token_count",
+      key: "token_count",
+      width: 200,
+    },
+    {
+      title: "Value",
+      dataIndex: "value",
+      key: "value",
+      width: 600,
+    },
+  ].filter(Boolean);
 
   return (
     <Modal
@@ -296,12 +342,15 @@ function OutputForDocModal({
             <TabPane tab={<span>Default</span>} key={"0"}></TabPane>
             {adapterData?.map((adapter, index) => (
               <TabPane
-                tab={<span>{adapter?.llm_model}</span>}
+                tab={<span>{adapter?.llm_model || adapter?.profile_name}</span>}
                 key={(index + 1)?.toString()}
               ></TabPane>
             ))}
           </Tabs>{" "}
-          <ProfileInfoBar profileId={selectedProfile} profiles={llmProfiles} />
+          <ProfileInfoBar
+            profileId={selectedProfile || profileManagerId}
+            profiles={llmProfiles}
+          />
         </div>
         <div className="display-flex-right">
           <Button

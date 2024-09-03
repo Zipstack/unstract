@@ -7,7 +7,7 @@ This document explains the structure of the Tool Registry and provides instructi
 
 ## Registry Configuration
 
-The Tool Registry relies on a `registry.yaml` file to maintain a comprehensive list of registered tools. Tools can be made public or private
+The Tool Registry relies on a `registry.yaml` file to maintain a comprehensive list of registered tools. Tools can be made public or private. In order for the tool registry configuration to be used, set the env `TOOL_REGISTRY_CONFIG_PATH` wherever this library is imported and used.
 
 ### Registry
 

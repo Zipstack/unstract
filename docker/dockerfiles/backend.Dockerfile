@@ -11,7 +11,7 @@ ENV PYTHONPATH /unstract
 ENV BUILD_CONTEXT_PATH backend
 ENV BUILD_PACKAGES_PATH unstract
 ENV DJANGO_SETTINGS_MODULE "backend.settings.dev"
-ENV PDM_VERSION 2.12.3
+ENV PDM_VERSION 2.16.1
 
 # Disable all telemetry by default
 ENV OTEL_TRACES_EXPORTER none
@@ -37,7 +37,7 @@ COPY ${BUILD_PACKAGES_PATH}/ /unstract
 
 RUN set -e; \
     \
-    rm -rf .venv .pdm* .python* requirements.txt 2>/dev/null; \
+    rm -rf .venv .pdm* .python* 2>/dev/null; \
     \
     pdm venv create -w virtualenv --with-pip; \
     # source command may not be availble in sh

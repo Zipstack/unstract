@@ -31,6 +31,7 @@ urlpatterns = [
     path(f"{path_prefix}/", include("docs.urls")),
     # API deployment
     path(f"{api_path_prefix}/", include("api.urls")),
+    path(f"{api_path_prefix}/pipeline/", include("pipeline.public_api_urls")),
     # Feature flags
     path(f"{path_prefix}/flags/", include("feature_flag.urls")),
 ]
@@ -44,13 +45,3 @@ if settings.ADMIN_ENABLED:
         ),
     ]
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-
-
-try:
-    import pluggable_apps.platform_admin.urls  # noqa: F401
-
-    urlpatterns += [
-        path(f"{path_prefix}/", include("pluggable_apps.platform_admin.urls")),
-    ]
-except ImportError:
-    pass

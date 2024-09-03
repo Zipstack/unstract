@@ -91,6 +91,10 @@
   flex-basis: 60%;
 }
 
+.prompt-card-display-output {
+  white-space: pre-wrap;
+}
+
 .prompt-card-select-type {
   width: 100px;
 }
@@ -202,4 +206,22 @@
   background-color: #00000005 !important;
   border-color: #00000026 !important;
   color: #000 !important;
+}
+
+.prompt-not-ran {
+  color: #575859;
+  font-size: 13px;
+}
+
+.prompt-output-pad {
+  padding: 0px 10px;
+}
+
+.prompt-output-llm-bg {
+  background-color: #DDDDDD;
+  padding: 10px;
+}
+
+.prompt-output-title {
+  font-size: 18px;
 }

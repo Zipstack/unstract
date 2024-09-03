@@ -3,28 +3,36 @@ import uuid
 from typing import Any
 
 from django.db import connection
-from pipeline.models import Pipeline
-from pipeline.pipeline_processor import PipelineProcessor
 from rest_framework.serializers import ValidationError
 from scheduler.constants import SchedulerConstants as SC
 from scheduler.exceptions import JobDeletionError, JobSchedulingError
 from scheduler.serializer import AddJobSerializer
 from scheduler.tasks import (
-    create_periodic_task,
+    create_or_update_periodic_task,
     delete_periodic_task,
     disable_task,
     enable_task,
 )
-from workflow_manager.workflow.constants import WorkflowExecutionKey, WorkflowKey
-from workflow_manager.workflow.serializers import ExecuteWorkflowSerializer
 
+from backend.constants import FeatureFlag
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+    from pipeline_v2.models import Pipeline
+    from utils.user_context import UserContext
+    from workflow_manager.workflow_v2.constants import WorkflowExecutionKey, WorkflowKey
+    from workflow_manager.workflow_v2.serializers import ExecuteWorkflowSerializer
+else:
+    from pipeline.models import Pipeline
+    from workflow_manager.workflow.constants import WorkflowExecutionKey, WorkflowKey
+    from workflow_manager.workflow.serializers import ExecuteWorkflowSerializer
 logger = logging.getLogger(__name__)
 
 
 class SchedulerHelper:
 
     @staticmethod
-    def _schedule_task_job(pipeline_id: str, job_data: Any) -> None:
+    def _schedule_task_job(pipeline: Pipeline, job_data: Any) -> None:
         if "cron_string" not in job_data:
             raise ValidationError("cron_string is required in job_data")
         if "id" not in job_data:
@@ -37,7 +45,6 @@ class SchedulerHelper:
         job_kwargs = job_data.get("job_kwargs", {})
         task_data = job_kwargs.get("data", {})
 
-        pipeline: Pipeline = PipelineProcessor.fetch_pipeline(pipeline_id)
         task_data[WorkflowKey.WF_ID] = pipeline.workflow.id
         execution_id = str(uuid.uuid4())
         task_data[WorkflowExecutionKey.EXECUTION_ID] = execution_id
@@ -46,15 +53,18 @@ class SchedulerHelper:
         workflow_id = serializer.get_workflow_id(serializer.validated_data)
         # TODO: Remove unused argument in execute_pipeline_task
         execution_action = serializer.get_execution_action(serializer.validated_data)
-        org_schema = connection.tenant.schema_name
+        if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+            organization_id = UserContext.get_organization_identifier()
+        else:
+            organization_id = connection.tenant.schema_name
 
-        create_periodic_task(
+        create_or_update_periodic_task(
             cron_string=cron_string,
-            task_name=pipeline.pk,
+            task_name=str(pipeline.pk),
             task_path="scheduler.tasks.execute_pipeline_task",
             task_args=[
                 str(workflow_id),
-                org_schema,
+                organization_id,
                 execution_action or "",
                 execution_id,
                 str(pipeline.pk),
@@ -63,23 +73,22 @@ class SchedulerHelper:
                 bool(False),
                 str(name),
             ],
+            enabled=pipeline.active,
         )
 
     @staticmethod
-    def add_job(pipeline_id: str, cron_string: str = SC.DEFAULT_CRON_STRING) -> None:
-        logger.info(f"Scheduling job for {pipeline_id} with {cron_string}")
-        name = f"Pipeline job-{pipeline_id}"
+    def add_or_update_job(pipeline: Pipeline) -> None:
+        logger.info(f"Scheduling job for {pipeline}")
+        name = f"Pipeline job-{str(pipeline.id)}"
         job_serialize_data = {
-            SC.ID: pipeline_id,
-            SC.CRON_STRING: cron_string,
+            SC.ID: str(pipeline.id),
+            SC.CRON_STRING: pipeline.cron_string,
             SC.NAME: name,
         }
         job_serializer = AddJobSerializer(data=job_serialize_data)
         job_serializer.is_valid(raise_exception=True)
         try:
-            SchedulerHelper._schedule_task_job(
-                pipeline_id, job_serializer.validated_data
-            )
+            SchedulerHelper._schedule_task_job(pipeline, job_serializer.validated_data)
         except Exception as e:
             logger.error(f"Exception while adding job: {e}")
             raise JobSchedulingError from e

@@ -44,7 +44,7 @@ class SourceKey:
     FILE_EXTENSIONS = "fileExtensions"
     PROCESS_SUB_DIRECTORIES = "processSubDirectories"
     MAX_FILES = "maxFiles"
-    ROOT_FOLDER = "rootFolder"
+    FOLDERS = "folders"
 
 
 class DestinationKey:
@@ -57,6 +57,8 @@ class DestinationKey:
     PATH = "path"
     OUTPUT_FOLDER = "outputFolder"
     OVERWRITE_OUTPUT_DOCUMENT = "overwriteOutput"
+    FILE_PATH = "filePath"
+    EXECUTION_ID = "executionId"
 
 
 class OutputJsonKey:
@@ -71,8 +73,16 @@ class FileType:
 
 class FilePattern:
     PDF_DOCUMENTS = ["*.pdf"]
-    TEXT_DOCUMENTS = ["*.txt"]
-    IMAGES = ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp"]
+    TEXT_DOCUMENTS = ["*.txt", "*.doc", "*.docx"]
+    IMAGES = [
+        "*.jpg",
+        "*.jpeg",
+        "*.png",
+        "*.gif",
+        "*.bmp",
+        "*.tif",
+        "*.tiff",
+    ]
 
 
 class SourceConstant:

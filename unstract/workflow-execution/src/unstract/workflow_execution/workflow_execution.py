@@ -44,7 +44,6 @@ class WorkflowExecutionService:
         tool_instances: list[ToolInstance],
         platform_service_api_key: str,
         ignore_processed_entities: bool = False,
-        include_metadata: bool = False,
     ) -> None:
         self.organization_id = organization_id
         self.workflow_id = workflow_id
@@ -56,7 +55,6 @@ class WorkflowExecutionService:
             workflow=workflow,
             platform_service_api_key=platform_service_api_key,
             ignore_processed_entities=False,
-            include_metadata=include_metadata,
         )
         self.tool_sandboxes: list[ToolSandbox] = []
         self.ignore_processed_entities = ignore_processed_entities
@@ -201,9 +199,9 @@ class WorkflowExecutionService:
                 message="Ready for execution",
                 component=tool_instance_id,
             )
-            self.tool_utils.run_tool(
-                tool_sandbox=sandbox,
-            )
+            result = self.tool_utils.run_tool(tool_sandbox=sandbox)
+            if result and result.get("error"):
+                raise ToolOutputNotFoundException(result.get("error"))
             if not self.validate_execution_result(step + 1):
                 raise ToolOutputNotFoundException(
                     f"Tool exception raised for tool {tool_uid}, "

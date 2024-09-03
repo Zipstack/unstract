@@ -37,6 +37,9 @@ let ChatAppPage;
 let ChatAppLayout;
 let ManualReviewPage;
 let ReviewLayout;
+let PublicPromptStudioHelper;
+let ManualReviewSettings;
+
 try {
   TrialRoutes =
     require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
@@ -64,6 +67,8 @@ try {
     require("../plugins/manual-review/page/ManualReviewPage.jsx").ManualReviewPage;
   ReviewLayout =
     require("../plugins/manual-review/review-layout/ReviewLayout.jsx").ReviewLayout;
+  ManualReviewSettings =
+    require("../plugins/manual-review/settings/Settings.jsx").ManualReviewSettings;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
@@ -84,7 +89,12 @@ try {
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
-
+try {
+  PublicPromptStudioHelper =
+    require("../plugins/prompt-studio-public-share/helpers/PublicPromptStudioHelper.js").PublicPromptStudioHelper;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
 function Router() {
   return (
     <Routes>
@@ -111,6 +121,18 @@ function Router() {
                 <Route path="upload" element={<SpsUpload />} />
               </Route>
             )}
+          {PublicPromptStudioHelper && (
+            <Route
+              path="/promptStudio/share/:id"
+              element={<PublicPromptStudioHelper />}
+            >
+              <Route path="" element={<ToolIdePage />} />
+              <Route
+                path="/promptStudio/share/:id/outputAnalyzer"
+                element={<OutputAnalyzerPage />}
+              />
+            </Route>
+          )}
         </Route>
 
         {/* protected routes */}
@@ -174,6 +196,12 @@ function Router() {
               element={<ToolsSettingsPage type="ocr" />}
             />
             <Route path="settings" element={<SettingsPage />} />
+            {ManualReviewSettings && (
+              <Route
+                path="settings/review"
+                element={<ManualReviewSettings />}
+              />
+            )}
             <Route path="settings/platform" element={<PlatformSettings />} />
             <Route element={<RequireAdmin />}>
               <Route path="users" element={<UsersPage />} />

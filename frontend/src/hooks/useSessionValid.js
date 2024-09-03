@@ -7,6 +7,7 @@ import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
 import { useSessionStore } from "../store/session-store";
 import { useUserSession } from "./useUserSession.js";
 import { listFlags } from "../helpers/FeatureFlagsData.js";
+import { useAlertStore } from "../store/alert-store";
 
 let getTrialDetails;
 let isPlatformAdmin;
@@ -30,12 +31,19 @@ try {
 function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
   const handleException = useExceptionHandler();
+  const { setAlertDetails } = useAlertStore();
   const navigate = useNavigate();
   const userSession = useUserSession();
 
   return async () => {
     try {
       const userSessionData = await userSession();
+
+      // Return if the user is not authenticated
+      if (!userSessionData) {
+        return;
+      }
+
       const signedInOrgId = userSessionData?.organization_id;
 
       // API to get the list of organizations
@@ -134,6 +142,7 @@ function useSessionValid() {
       setSessionDetails(getSessionData(userAndOrgDetails));
     } catch (err) {
       // TODO: Throw popup error message
+      // REVIEW: Add condition to check for trial period status
       if (err.response?.status === 402) {
         handleException(err);
       }
@@ -145,6 +154,7 @@ function useSessionValid() {
         window.location.href = `/error?code=${code}&domain=${domainName}`;
         // May be need a logout button there or auto logout
       }
+      setAlertDetails(handleException(err));
     }
   };
 }

@@ -1,13 +1,12 @@
 import { FullscreenExitOutlined, FullscreenOutlined } from "@ant-design/icons";
 import { Col, Collapse, Modal, Row } from "antd";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import { CustomSynonymsModal } from "../custom-synonyms-modal/CustomSynonymsModal";
 import { DisplayLogs } from "../display-logs/DisplayLogs";
 import { DocumentManager } from "../document-manager/DocumentManager";
 import { Header } from "../header/Header";
@@ -16,8 +15,11 @@ import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
-
 let OnboardMessagesModal;
+let PromptShareModal;
+let PromptShareLink;
+let CloneTitle;
+let HeaderPublic;
 let slides;
 try {
   OnboardMessagesModal =
@@ -28,11 +30,22 @@ try {
   OnboardMessagesModal = null;
   slides = [];
 }
+try {
+  PromptShareModal =
+    require("../../../plugins/prompt-studio-public-share/public-share-modal/PromptShareModal.jsx").PromptShareModal;
+  PromptShareLink =
+    require("../../../plugins/prompt-studio-public-share/public-link-modal/PromptShareLink.jsx").PromptShareLink;
+  CloneTitle =
+    require("../../../plugins/prompt-studio-clone/clone-title-modal/CloneTitle.jsx").CloneTitle;
+  HeaderPublic =
+    require("../../../plugins/prompt-studio-public-share/header-public/HeaderPublic.jsx").HeaderPublic;
+} catch (err) {
+  // Do nothing if plugins are not loaded.
+}
 
 function ToolIde() {
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [activeKey, setActiveKey] = useState([]);
-  const [openCusSynonymsModal, setOpenCusSynonymsModal] = useState(false);
   const [openSettings, setOpenSettings] = useState(false);
   const {
     details,
@@ -42,6 +55,8 @@ function ToolIde() {
     indexDocs,
     pushIndexDoc,
     deleteIndexDoc,
+    shareId,
+    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { promptOnboardingMessage } = sessionDetails;
@@ -50,6 +65,10 @@ function ToolIde() {
   const handleException = useExceptionHandler();
   const [loginModalOpen, setLoginModalOpen] = useState(true);
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const [openShareLink, setOpenShareLink] = useState(false);
+  const [openShareConfirmation, setOpenShareConfirmation] = useState(false);
+  const [openShareModal, setOpenShareModal] = useState(false);
+  const [openCloneModal, setOpenCloneModal] = useState(false);
 
   const openLogsModal = () => {
     setShowLogsModal(true);
@@ -58,6 +77,24 @@ function ToolIde() {
   const closeLogsModal = () => {
     setShowLogsModal(false);
   };
+  useEffect(() => {
+    if (openShareModal) {
+      if (shareId) {
+        setOpenShareConfirmation(false);
+        setOpenShareLink(true);
+      } else {
+        setOpenShareConfirmation(true);
+        setOpenShareLink(false);
+      }
+    }
+  }, [shareId, openShareModal]);
+
+  useEffect(() => {
+    if (!openShareModal) {
+      setOpenShareConfirmation(false);
+      setOpenShareLink(false);
+    }
+  }, [openShareModal]);
 
   const genExtra = () => (
     <FullscreenOutlined
@@ -170,11 +207,12 @@ function ToolIde() {
       selectedDoc: doc,
     };
     updateCustomTool(data);
-
+    if (isPublicSource) {
+      return;
+    }
     const body = {
       output: doc?.document_id,
     };
-
     handleUpdateTool(body).catch((err) => {
       const revertSelectedDoc = {
         selectedDoc: prevSelectedDoc,
@@ -186,13 +224,18 @@ function ToolIde() {
 
   return (
     <div className="tool-ide-layout">
+      {isPublicSource && HeaderPublic && <HeaderPublic />}
       <div>
         <Header
           handleUpdateTool={handleUpdateTool}
           setOpenSettings={setOpenSettings}
+          setOpenShareModal={setOpenShareModal}
+          setOpenCloneModal={setOpenCloneModal}
         />
       </div>
-      <div className="tool-ide-body">
+      <div
+        className={isPublicSource ? "public-tool-ide-body" : "tool-ide-body"}
+      >
         <div className="tool-ide-body-2">
           <Row className="tool-ide-main">
             <Col span={12} className="tool-ide-col">
@@ -235,16 +278,32 @@ function ToolIde() {
           </Modal>
         </div>
       </div>
-      <CustomSynonymsModal
-        open={openCusSynonymsModal}
-        setOpen={setOpenCusSynonymsModal}
-      />
       <SettingsModal
         open={openSettings}
         setOpen={setOpenSettings}
         handleUpdateTool={handleUpdateTool}
       />
-      {!promptOnboardingMessage && OnboardMessagesModal && (
+      {PromptShareModal && (
+        <PromptShareModal
+          open={openShareConfirmation}
+          setOpenShareModal={setOpenShareModal}
+          setOpenShareConfirmation={setOpenShareConfirmation}
+        />
+      )}
+      {PromptShareLink && (
+        <PromptShareLink
+          open={openShareLink}
+          setOpenShareModal={setOpenShareModal}
+          setOpenShareLink={setOpenShareLink}
+        />
+      )}
+      {CloneTitle && (
+        <CloneTitle
+          open={openCloneModal}
+          setOpenCloneModal={setOpenCloneModal}
+        />
+      )}
+      {!promptOnboardingMessage && OnboardMessagesModal && !isPublicSource && (
         <OnboardMessagesModal
           open={loginModalOpen}
           setOpen={setLoginModalOpen}

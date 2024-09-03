@@ -1,9 +1,8 @@
-import shutil
 import sys
-from pathlib import Path
 from typing import Any, Optional
 
 from helper import ClassifierHelper  # type: ignore
+from helper import ReservedBins
 from unstract.sdk.constants import LogLevel, LogState, MetadataKey, ToolSettingsKey
 from unstract.sdk.exceptions import SdkError
 from unstract.sdk.llm import LLM
@@ -14,20 +13,27 @@ from unstract.sdk.tool.entrypoint import ToolEntrypoint
 class UnstractClassifier(BaseTool):
     def __init__(self, log_level: str = LogLevel.INFO) -> None:
         super().__init__(log_level)
-        self.helper = ClassifierHelper(tool=self)
 
     def validate(self, input_file: str, settings: dict[str, Any]) -> None:
         bins: Optional[list[str]] = settings.get("classificationBins")
         llm_adapter_instance_id = settings.get(ToolSettingsKey.LLM_ADAPTER_ID)
         text_extraction_adapter_id = settings.get("textExtractorId")
         if not bins:
-            self.stream_error_and_exit("Classification bins are required")
+            self.stream_error_and_exit("Classification bins are required.")
         elif len(bins) < 2:
-            self.stream_error_and_exit("At least two bins are required")
+            self.stream_error_and_exit("At least two classification bins are required.")
+        elif ReservedBins.UNKNOWN in bins:
+            self.stream_error_and_exit(
+                f"Classification bin '{ReservedBins.UNKNOWN}' is reserved to mark "
+                "files which cannot be classified."
+            )
+
         if not llm_adapter_instance_id:
-            self.stream_error_and_exit("Choose an LLM to process the classifier")
+            self.stream_error_and_exit("Choose an LLM to perform the classification.")
         if not text_extraction_adapter_id:
-            self.stream_error_and_exit("Choose an LLM to extract the documents")
+            self.stream_error_and_exit(
+                "Choose a text extractor to extract the documents."
+            )
 
     def run(
         self,
@@ -39,6 +45,7 @@ class UnstractClassifier(BaseTool):
         use_cache = settings["useCache"]
         text_extraction_adapter_id = settings["textExtractorId"]
         llm_adapter_instance_id = settings[ToolSettingsKey.LLM_ADAPTER_ID]
+        self.helper = ClassifierHelper(tool=self, output_dir=output_dir)
 
         # Update GUI
         input_log = f"### Classification bins:\n```text\n{bins}\n```\n\n"
@@ -52,7 +59,7 @@ class UnstractClassifier(BaseTool):
             text_extraction_adapter_id=text_extraction_adapter_id,
         )
         if not text:
-            self.stream_error_and_exit("Unable to extract text")
+            self.helper.stream_error_and_exit("Unable to extract text")
             return
         self.stream_log(f"Text length: {len(text)}")
 
@@ -68,8 +75,8 @@ class UnstractClassifier(BaseTool):
         self.stream_update(input_log, state=LogState.INPUT_UPDATE)
         self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
 
-        if "unknown" not in bins:
-            bins.append("unknown")
+        if ReservedBins.UNKNOWN not in bins:
+            bins.append(ReservedBins.UNKNOWN)
         bins_with_quotes = [f"'{b}'" for b in bins]
 
         usage_kwargs: dict[Any, Any] = dict()
@@ -83,7 +90,8 @@ class UnstractClassifier(BaseTool):
                 usage_kwargs=usage_kwargs,
             )
         except SdkError:
-            self.stream_error_and_exit("Unable to get llm instance")
+            self.helper.stream_error_and_exit("Unable to get llm instance")
+            return
 
         max_tokens = llm.get_max_tokens(reserved_for_output=50 + 1000)
         max_bytes = int(max_tokens * 1.3)
@@ -99,9 +107,10 @@ class UnstractClassifier(BaseTool):
 
         prompt = (
             f"Classify the following text into one of the following categories: {' '.join(bins_with_quotes)}.\n\n"  # noqa: E501
-            f"Your categorization should be strictly exactly one of the items in the "  # noqa: E501
-            f"categories given. Find a semantic match of category if possible. If it does not categorize well "  # noqa: E501
-            f"into any of the listed categories, categorize it as 'unknown'.\n\nText:\n\n{text}\n\n\nCategory:"  # noqa: E501
+            "Your categorization should be strictly exactly one of the items in the "  # noqa: E501
+            "categories given, do not provide any explanation. Find a semantic match of category if possible. "  # noqa: E501
+            "If it does not categorize well into any of the listed categories, categorize it as 'unknown'."  # noqa: E501
+            f"Do not enclose the result within single quotes.\n\nText:\n\n{text}\n\n\nCategory:"  # noqa: E501
         )
 
         settings_string = "".join(str(value) for value in settings.values())
@@ -114,8 +123,7 @@ class UnstractClassifier(BaseTool):
         )
 
         source_name = self.get_exec_metadata.get(MetadataKey.SOURCE_NAME)
-        self._copy_input_to_output_bin(
-            output_dir=output_dir,
+        self.helper.copy_source_to_output_bin(
             classification=classification,
             source_file=self.get_source_file(),
             source_name=source_name,
@@ -130,31 +138,6 @@ class UnstractClassifier(BaseTool):
             "result": classification,
         }
         self.write_tool_result(data=classification_dict)
-
-    def _copy_input_to_output_bin(
-        self,
-        output_dir: str,
-        classification: str,
-        source_file: str,
-        source_name: str,
-    ) -> None:
-        """Method to save result in output folder and the data directory.
-
-        Args:
-            output_dir (str): Output directory in TOOL_DATA_DIR
-            classification (str): classification result
-            source_file (str): Path to source file used in the workflow
-            source_name (str): Name of the actual input from the source
-        """
-        try:
-            output_folder_bin = Path(output_dir) / classification
-            if not output_folder_bin.is_dir():
-                output_folder_bin.mkdir(parents=True, exist_ok=True)
-
-            output_file = output_folder_bin / source_name
-            shutil.copyfile(source_file, output_file)
-        except Exception as e:
-            self.stream_error_and_exit(f"Error creating output file: {e}")
 
 
 if __name__ == "__main__":

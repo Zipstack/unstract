@@ -19,6 +19,7 @@ import {
 } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -41,6 +42,13 @@ try {
   // The component will remain null if it is not available
 }
 
+let publicIndexApi = null;
+try {
+  publicIndexApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicIndexApi;
+} catch {
+  // The component will remain null if it is not available
+}
 const indexTypes = {
   raw: "RAW",
   summarize: "Summarize",
@@ -63,6 +71,7 @@ function ManageDocsModal({
   const [lastMessagesUpdate, setLastMessagesUpdate] = useState("");
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
+  const { id } = useParams();
   const {
     selectedDoc,
     listOfDocs,
@@ -75,6 +84,7 @@ function ManageDocsModal({
     rawIndexStatus,
     summarizeIndexStatus,
     isSinglePassExtractLoading,
+    isPublicSource,
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
@@ -140,7 +150,6 @@ function ManageDocsModal({
     if (!open) {
       return;
     }
-
     handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
   }, [indexDocs, rawLlmProfile, open]);
 
@@ -243,10 +252,13 @@ function ManageDocsModal({
       handleIndexStatus(indexType, []);
       return;
     }
-
+    let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/document-index/?profile_manager=${llmProfileId}`;
+    if (isPublicSource) {
+      url = publicIndexApi(id, llmProfileId);
+    }
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/document-index/?profile_manager=${llmProfileId}`,
+      url,
     };
 
     handleLoading(indexType, true);
@@ -287,7 +299,7 @@ function ManageDocsModal({
     {
       title: (
         <Space className="w-100">
-          <Typography.Text>Index</Typography.Text>
+          <Typography.Text>Raw View</Typography.Text>
           <Typography.Text type="secondary">
             {"(" + getLlmProfileName(rawLlmProfile) + ")"}
           </Typography.Text>
@@ -296,13 +308,13 @@ function ManageDocsModal({
       ),
       dataIndex: "index",
       key: "index",
-      width: 260,
+      width: 300,
     },
     {
-      title: "Index",
+      title: "Actions",
       dataIndex: "reindex",
       key: "reindex",
-      width: 260,
+      width: 200,
     },
     {
       title: "",
@@ -328,7 +340,7 @@ function ManageDocsModal({
       ),
       dataIndex: "summary",
       key: "summary",
-      width: 260,
+      width: 300,
     });
   }
 
@@ -384,7 +396,8 @@ function ManageDocsModal({
                       isSinglePassExtractLoading ||
                       indexDocs.includes(item?.document_id) ||
                       isUploading ||
-                      !defaultLlmProfile
+                      !defaultLlmProfile ||
+                      isPublicSource
                     }
                   />
                 </Tooltip>
@@ -408,7 +421,8 @@ function ManageDocsModal({
                   disableLlmOrDocChange?.length > 0 ||
                   isSinglePassExtractLoading ||
                   indexDocs.includes(item?.document_id) ||
-                  isUploading
+                  isUploading ||
+                  isPublicSource
                 }
               >
                 <DeleteOutlined className="manage-llm-pro-icon" />
@@ -589,7 +603,8 @@ function ManageDocsModal({
                   disabled={
                     !defaultLlmProfile ||
                     disableLlmOrDocChange?.length > 0 ||
-                    isSinglePassExtractLoading
+                    isSinglePassExtractLoading ||
+                    isPublicSource
                   }
                 >
                   Upload New File

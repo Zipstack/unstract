@@ -3,10 +3,8 @@ import time
 from typing import Optional
 
 from account.constants import Common
-from api.exceptions import InvalidAPIRequest
 from django.db import connection
 from platform_settings.platform_auth_service import PlatformAuthenticationService
-from tool_instance.constants import JsonSchemaKey
 from tool_instance.models import ToolInstance
 from tool_instance.tool_processor import ToolProcessor
 from unstract.tool_registry.dto import Tool
@@ -21,7 +19,6 @@ from workflow_manager.workflow.enums import ExecutionStatus
 from workflow_manager.workflow.exceptions import WorkflowExecutionError
 from workflow_manager.workflow.models import Workflow, WorkflowExecution
 from workflow_manager.workflow.models.execution import EXECUTION_ERROR_LENGTH
-from workflow_manager.workflow.models.file_history import FileHistory
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +34,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         scheduled: bool = False,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
         workflow_execution: Optional[WorkflowExecution] = None,
-        include_metadata: bool = False,
     ) -> None:
         tool_instances_as_dto = []
         for tool_instance in tool_instances:
@@ -59,7 +55,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             tool_instances=tool_instances_as_dto,
             platform_service_api_key=str(platform_key.key),
             ignore_processed_entities=False,
-            include_metadata=include_metadata,
         )
         if not workflow_execution:
             # Use pipline_id for pipelines / API deployment
@@ -107,13 +102,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         )
 
         self.compilation_result = self.compile_workflow(execution_id=self.execution_id)
-
-    def _initiate_api_execution(
-        self, tool_instance: ToolInstance, execution_path: Optional[str]
-    ) -> None:
-        if not execution_path:
-            raise InvalidAPIRequest("File shouldn't be empty")
-        tool_instance.metadata[JsonSchemaKey.ROOT_FOLDER] = execution_path
 
     @staticmethod
     def create_workflow_execution(
@@ -250,7 +238,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         )
 
     def publish_final_workflow_logs(
-        self, total_files: int, processed_files: int
+        self, total_files: int, successful_files: int, failed_files: int
     ) -> None:
         """Publishes the final logs for the workflow.
 
@@ -262,7 +250,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             LogState.SUCCESS, "Executed successfully", LogComponent.WORKFLOW
         )
         self.publish_log(
-            f"Execution completed for {processed_files} files out of {total_files}"
+            f"Total files: {total_files}, "
+            f"{successful_files} successfully executed and {failed_files} errored"
         )
 
     def publish_initial_tool_execution_logs(
@@ -289,34 +278,23 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self,
         file_name: str,
         single_step: bool,
-        file_history: Optional[FileHistory] = None,
-    ) -> bool:
+    ) -> tuple[bool, bool]:
         """Executes the input file.
 
         Args:
             file_name (str): The name of the file to be executed.
             single_step (bool): Flag indicating whether to execute in
             single step mode.
-            file_history (Optional[FileHistory], optional):
-            The file history object. Defaults to None.
         Returns:
-            bool: Flag indicating whether the file was executed.
+            tuple[bool, bool]: Flag indicating whether the file was executed
+            and skipped.
         """
         execution_type = ExecutionType.COMPLETE
-        is_executed = False
         if single_step:
             execution_type = ExecutionType.STEP
-        if not (file_history and file_history.is_completed()):
-            self.execute_uncached_input(file_name=file_name, single_step=single_step)
-            self.publish_log(f"Tool executed successfully for {file_name}")
-            is_executed = True
-        else:
-            self.publish_log(
-                f"Skipping file {file_name} as it is already processed."
-                "Clear the cache to process it again"
-            )
+        self.execute_uncached_input(file_name=file_name, single_step=single_step)
+        self.publish_log(f"Tool executed successfully for '{file_name}'")
         self._handle_execution_type(execution_type)
-        return is_executed
 
     def execute_uncached_input(self, file_name: str, single_step: bool) -> None:
         """Executes the uncached input file.
@@ -379,11 +357,13 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.publish_log("Trying to fetch results from cache")
 
     @staticmethod
-    def update_execution_status(execution_id: str, status: ExecutionStatus) -> None:
+    def update_execution_err(execution_id: str, err_msg: str = "") -> WorkflowExecution:
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
-            execution.status = status.value
+            execution.status = ExecutionStatus.ERROR.value
+            execution.error_message = err_msg
             execution.save()
+            return execution
         except WorkflowExecution.DoesNotExist:
             logger.error(f"execution doesn't exist {execution_id}")
 

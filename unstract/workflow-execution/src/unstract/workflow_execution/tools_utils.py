@@ -28,7 +28,6 @@ class ToolsUtils:
         workflow: WorkflowDto,
         platform_service_api_key: str,
         ignore_processed_entities: bool = False,
-        include_metadata: bool = False,
     ) -> None:
         self.redis = redis
         self.tool_registry = ToolRegistry()
@@ -53,7 +52,6 @@ class ToolsUtils:
         self.llmw_max_polls = ToolsUtils.get_env(
             ToolRV.ADAPTER_LLMW_MAX_POLLS, raise_exception=False
         )
-        self.include_metadata = include_metadata
 
     def set_messaging_channel(self, messaging_channel: str) -> None:
         self.messaging_channel = messaging_channel
@@ -137,7 +135,6 @@ class ToolsUtils:
                 image_tag=image_tag,
                 environment_variables=tool_envs,
                 messaging_channel=self.messaging_channel,
-                include_metadata=self.include_metadata,
             )
             tool_sandbox.set_tool_instance_settings(tool_instance.metadata)
             tool_sandboxes.append(tool_sandbox)
@@ -185,8 +182,7 @@ class ToolsUtils:
             try:
                 response = tool_sandbox.run_tool()
                 if response:
-                    result: dict[str, Any] = response.get("result", {})
-                    return result
+                    return response
                 logger.warning(
                     f"ToolExecutionException - Retrying "
                     f"({retry_count + 1}/{max_retries})"

@@ -10,7 +10,7 @@ ENV PYTHONPATH /unstract
 
 ENV BUILD_CONTEXT_PATH platform-service
 ENV BUILD_PACKAGES_PATH unstract
-ENV PDM_VERSION 2.12.3
+ENV PDM_VERSION 2.16.1
 
 RUN pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}; \
     \
@@ -42,4 +42,4 @@ RUN set -e; \
 EXPOSE 3001
 
 # During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
-CMD [".venv/bin/gunicorn", "--bind", "0.0.0.0:3001", "--timeout", "300", "unstract.platform_service.main:app"]
+CMD [".venv/bin/gunicorn", "--bind", "0.0.0.0:3001", "--timeout", "300", "unstract.platform_service.run:app"]
