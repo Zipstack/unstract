@@ -61,6 +61,8 @@ class DatabaseUtils:
                 # Default to Other SQL DBs
                 # TODO: Handle numeric types with no quotes
                 sql_values[column] = f"{values[column]}"
+        # If table has a column 'id', unstract inserts a unique value to it
+        # Oracle db has column 'ID' instead of 'id'
         if any(key in column_types for key in ["id", "ID"]):
             uuid_id = str(uuid.uuid4())
             sql_values["id"] = f"{uuid_id}"
