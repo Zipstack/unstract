@@ -529,7 +529,7 @@ class WorkflowHelper:
                     execution_id=execution_id,
                     execution_status=ExecutionStatus.ERROR.value,
                     error=str(e),
-                )
+                ).result
             return execution_response.result
 
     @staticmethod
