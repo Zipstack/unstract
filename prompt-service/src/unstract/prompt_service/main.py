@@ -3,7 +3,7 @@ import time
 import traceback
 from enum import Enum
 from json import JSONDecodeError
-from typing import Any, Optional
+from typing import Any
 
 from flask import json, jsonify, request
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
@@ -282,10 +282,49 @@ def prompt_processor() -> Any:
         try:
             context = ""
             if output[PSKeys.CHUNK_SIZE] == 0:
-                # Read from extract_file_path and set that as context
-                with open(extract_file_path) as file:
-                    context = file.read()
-                    file.close()
+                try:
+                    # Read from extract_file_path and set that as context
+                    with open(extract_file_path) as file:
+                        context = file.read()
+                        file.close()
+                        app.logger.info(
+                            "Reading extracted file from %s for "
+                            "context as chunk size is 0",
+                            extract_file_path,
+                        )
+                        _publish_log(
+                            log_events_id,
+                            {
+                                "tool_id": tool_id,
+                                "prompt_key": prompt_name,
+                                "doc_name": doc_name,
+                            },
+                            LogLevel.INFO,
+                            RunLevel.RUN,
+                            "Reading extracted file for context as chunk size is 0",
+                        )
+                except FileNotFoundError:
+                    msg = (
+                        "Extracted file not present. "
+                        "Please re-index the document and try again"
+                    )
+                    app.logger.error(
+                        "Extracted file for document is missing at %s",
+                        extract_file_path,
+                    )
+                    _publish_log(
+                        log_events_id,
+                        {
+                            "tool_id": tool_id,
+                            "prompt_key": prompt_name,
+                            "doc_name": doc_name,
+                        },
+                        LogLevel.ERROR,
+                        RunLevel.RUN,
+                        "Extracted file not present.",
+                    )
+                    return APIError(message=msg)
+
                 # TODO: Use vectorDB name when available
                 _publish_log(
                     log_events_id,
