@@ -55,20 +55,28 @@ To update the username or password after it's been set:
 1. Login with the new credentials
 
 
-## Asynchronous execution/pipeline execution
+## Asynchronous Execution
 
- - Working with celery
- - Each pipeline or shared tasks will added to the queue (Redis), And the worker will consume from the queue
+This project uses Celery for handling asynchronous execution. Celery tasks are managed through various queues and consumed by workers.
+
+> ETL, TASK, and API Deployment are using these asynchronous workers. Log management also utilizes Celery.
+
+### Queues
+
+| Queue Name                 | Description                         |
+|----------------------------|-------------------------------------|
+| `celery`                   | Default queue for general Celery tasks. |
+| `celery_periodic_logs`     | Queue for logging history tasks.    |
+| `celery_log_task_queue`    | Queue for persisting logs.          |
+| `celery_api_deployments`   | Queue for API deployment tasks.     |
 
 ### Run Execution Worker
 
-Run the following command to start the worker:
+To start a Celery worker, use the following command:
 
 ```bash
 celery -A backend worker --loglevel=info -Q <queue_name>
-```
-- The `celery` queue is used for default Celery tasks.
-- The `celery_periodic_logs` queue is utilized for logging history tasks.
+
 
 ### Worker Dashboard
 
