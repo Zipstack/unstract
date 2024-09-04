@@ -61,10 +61,18 @@ class SourceConnector(BaseConnector):
         organization_id: Optional[str] = None,
         execution_service: Optional[WorkflowExecutionServiceHelper] = None,
     ) -> None:
-        """Initialize a SourceConnector object.
+        """Create a SourceConnector.
 
         Args:
-            workflow (Workflow): _description_
+            workflow (Workflow): Associated workflow instance
+            execution_id (str): UUID of the current execution
+            organization_id (Optional[str]): Organization ID. Defaults to None.
+            execution_service (Optional[WorkflowExecutionServiceHelper]): Instance of
+                WorkflowExecutionServiceHelper that helps with WF execution.
+                Defaults to None. This is not used in case of execution by API.
+
+        Raises:
+            OrganizationIdNotFound: _description_
         """
         organization_id = organization_id or connection.tenant.schema_name
         if not organization_id:
@@ -159,7 +167,11 @@ class SourceConnector(BaseConnector):
         # Process from root in case its user provided list is empty
         if not folders_to_process:
             folders_to_process = ["/"]
-        logger.info(f"Folders to process: {folders_to_process}")
+        patterns = self.valid_file_patterns(required_patterns=required_patterns)
+        self.publish_user_sys_log(
+            f"Matching for patterns '{', '.join(patterns)}' from "
+            f"'{', '.join(folders_to_process)}'"
+        )
 
         source_fs = self.get_fs_connector(
             settings=connector_settings, connector_id=connector.connector_id
@@ -170,17 +182,21 @@ class SourceConnector(BaseConnector):
         for input_directory in folders_to_process:
             # TODO: Move to connector class for better error handling
             try:
-                is_directory = source_fs_fsspec.isdir(input_directory)
-            except Exception as e:
-                raise InvalidInputDirectory(
-                    detail=f"Error while validating path '{input_directory}': {str(e)}"
+                input_directory = source_fs.get_connector_root_dir(
+                    input_dir=input_directory, root_path=root_dir_path
                 )
-            if not is_directory:
-                raise InvalidInputDirectory(dir=input_directory)
+                if not source_fs_fsspec.isdir(input_directory):
+                    raise InvalidInputDirectory(dir=input_directory)
+            except Exception as e:
+                msg = f"Error while validating path '{input_directory}'. {str(e)}"
+                self.publish_user_sys_log(msg)
+                if isinstance(e, InvalidInputDirectory):
+                    raise
+                raise InvalidInputDirectory(detail=msg)
 
         total_files_to_process = 0
         total_matched_files = {}
-        patterns = self.valid_file_patterns(required_patterns=required_patterns)
+
         for input_directory in folders_to_process:
             input_directory = source_fs.get_connector_root_dir(
                 input_dir=input_directory, root_path=root_dir_path
@@ -189,13 +205,28 @@ class SourceConnector(BaseConnector):
             matched_files, count = self._get_matched_files(
                 source_fs_fsspec, input_directory, patterns, recursive, limit
             )
-            logger.info(f"Matched '{count}' files from '{input_directory}'")
+            self.publish_user_sys_log(
+                f"Matched '{count}' files from '{input_directory}'"
+            )
             total_matched_files.update(matched_files)
             total_files_to_process += count
         self.publish_input_output_list_file_logs(
             folders_to_process, total_matched_files, total_files_to_process
         )
         return total_matched_files, total_files_to_process
+
+    def publish_user_sys_log(self, msg: str) -> None:
+        """Publishes log to the user and system.
+
+        Pushes logs messages to the configured logger and to the
+        websocket channel if the `execution_service` is configured.
+
+        Args:
+            msg (str): Message to log
+        """
+        logger.info(msg)
+        if self.execution_service:
+            self.execution_service.publish_log(msg)
 
     def publish_input_output_list_file_logs(
         self, folders: list[str], matched_files: dict[str, FileHash], count: int
@@ -214,25 +245,25 @@ class SourceConnector(BaseConnector):
         )
 
     def publish_input_file_content(self, input_file_path: str, input_text: str) -> None:
-        if self.execution_service:
-            output_log_message = f"##Input text:\n\n```text\n{input_text}\n```\n\n"
-            input_log_message = (
-                "##Input file:\n\n```text\n"
-                f"{os.path.basename(input_file_path)}\n```\n\n"
-            )
-            self.execution_service.publish_update_log(
-                state=LogState.INPUT_UPDATE, message=input_log_message
-            )
-            self.execution_service.publish_update_log(
-                state=LogState.OUTPUT_UPDATE, message=output_log_message
-            )
+        if not self.execution_service:
+            return None
+        output_log_message = f"##Input text:\n\n```text\n{input_text}\n```\n\n"
+        input_log_message = (
+            "##Input file:\n\n```text\n" f"{os.path.basename(input_file_path)}\n```\n\n"
+        )
+        self.execution_service.publish_update_log(
+            state=LogState.INPUT_UPDATE, message=input_log_message
+        )
+        self.execution_service.publish_update_log(
+            state=LogState.OUTPUT_UPDATE, message=output_log_message
+        )
 
     def _matched_files_component_log(
         self, matched_files: dict[str, FileHash], count: int
     ) -> str:
         output_log = "### Matched files \n```text\n\n\n"
         for file_path in islice(matched_files.keys(), 20):
-            output_log += f"{file_path}\n"
+            output_log += f"- {file_path}\n"
         output_log += "```\n\n"
         output_log += f"""Total matched files: {count}
             \n\nPlease note that only the first 20 files are shown.\n\n"""
@@ -300,7 +331,7 @@ class SourceConnector(BaseConnector):
         if file_history and file_history.is_completed():
             self.execution_service.publish_log(
                 f"Skipping file {file_path} as it has already been processed. "
-                "Clear the cache to process it again."
+                "Clear the file markers to process it again."
             )
             return False
 
