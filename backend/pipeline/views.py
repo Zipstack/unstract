@@ -58,15 +58,15 @@ class PipelineViewSet(viewsets.ModelViewSet):
         data = serializer.data
 
         # Check if the request is for 'MRQ'
-        type = request.query_params.get(PipelineConstants.TYPE)
-        if type == "MRQ":
+        etl_type = request.query_params.get(PipelineConstants.TYPE)
+        if etl_type == "MRQ":
             # Filter the data based on 'destination_name'
             filtered_data = [
                 item for item in data if item["destination_name"] == "Manual Review"
             ]
             return Response(filtered_data)
 
-        if type == "ETL":
+        if etl_type == "ETL":
             # Filter the data to exclude those with
             # 'destination_name' == "Manual Review"
             filtered_data = [
