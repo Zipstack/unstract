@@ -245,7 +245,7 @@ def prompt_processor() -> Any:
                 RunLevel.RUN,
                 "Unable to obtain LLM / embedding / vectorDB",
             )
-            return APIError(message=msg)
+            raise APIError(message=msg)
 
         if output[PSKeys.TYPE] == PSKeys.TABLE:
             try:
@@ -323,7 +323,7 @@ def prompt_processor() -> Any:
                         RunLevel.RUN,
                         "Extracted file not present.",
                     )
-                    return APIError(message=msg)
+                    raise APIError(message=msg)
 
                 # TODO: Use vectorDB name when available
                 _publish_log(
