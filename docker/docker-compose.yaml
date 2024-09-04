@@ -68,10 +68,6 @@ services:
       - ENVIRONMENT=development
     labels:
       - traefik.enable=false
-    volumes:
-      - ./workflow_data:/data
-      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
-
 
   # Celery worker for handling API deployment tasks
   api-deployment-worker:

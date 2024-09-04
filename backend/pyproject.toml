@@ -96,7 +96,7 @@ consumer.cmd = "celery -A backend worker --loglevel=info -Q celery --autoscale 4
 consumer.env_file = ".env"
 consumer.help = "Runs the Unstract consumer"
 # Commands for log-manager
-log-management-worker.cmd = "celery -A backend worker --loglevel=info -Q celery_periodic_logs,celery_llog-managere --autoscale 4,1"
+log-management-worker.cmd = "celery -A backend worker --loglevel=info -Q celery_periodic_logs,celery_log_task_queue --autoscale 4,1"
 log-management-worker.env_file = ".env"
 log-management-worker.help = "Runs the Unstract log management worker."
 # Commands for api deployment executor
