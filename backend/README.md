@@ -65,10 +65,10 @@ This project uses Celery for handling asynchronous execution. Celery tasks are m
 
 | Queue Name                 | Description                                    | Tasks                                                 |
 |----------------------------|------------------------------------------------|-------------------------------------------------------|
-| `celery`                   | Default queue for general Celery tasks, including those without a defined queue. | Webhook notifications, Pipeline (ETL, Tasks) Executions. |
-| `celery_periodic_logs`     | Queue for logging history tasks.               |                                                       |
-| `celery_log_task_queue`    | Queue for persisting logs.                     |                                                       |
-| `celery_api_deployments`   | Queue for API deployment tasks.                |                                                       |
+| `celery`                   | Default queue for general Celery tasks, including those without a specific queue. | Webhook notifications, Pipeline (ETL, Tasks) Executions. |
+| `celery_periodic_logs`     | Queue for persisting logs into the database.   |                                                       |
+| `celery_log_task_queue`    | Queue for publishing logs to WebSocket clients. |                                                       |
+| `celery_api_deployments`   | Queue for managing API deployment tasks.       |                                                       |
 
 ### Run Execution Worker
 
