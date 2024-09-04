@@ -43,6 +43,13 @@ try {
 } catch {
   // The component will remain null of it is not available
 }
+let ChallengeModal;
+try {
+  ChallengeModal =
+    require("../../../plugins/challenge-modal/ChallengeModal").ChallengeModal;
+} catch {
+  // The component will remain null of it is not available
+}
 
 function PromptOutput({
   promptDetails,
@@ -164,6 +171,8 @@ function PromptOutput({
             selectedDoc?.document_id +
             "__" +
             profileId;
+          const profileData =
+            result.find((r) => r?.profileManager === profileId) || {};
           return (
             <motion.div
               key={profileId}
@@ -244,21 +253,24 @@ function PromptOutput({
                     </CheckableTag>
                     <div className="llm-info-container">
                       <Tooltip title={tooltipContent(profile?.conf)}>
-                        <InfoCircleOutlined />
+                        <InfoCircleOutlined className="prompt-card-actions-head" />
                       </Tooltip>
                       <Tooltip title="Chunk used">
                         <DatabaseOutlined
                           onClick={() => {
                             setIsIndexOpen(true);
-                            setOpenIndexProfile(
-                              result.find(
-                                (r) => r?.profileManager === profileId
-                              )?.context
-                            );
+                            setOpenIndexProfile(profileData?.context);
                           }}
                           className="prompt-card-actions-head"
                         />
                       </Tooltip>
+                      {ChallengeModal && (
+                        <ChallengeModal
+                          challengeData={profileData?.challengeData || {}}
+                          context={profileData?.context || ""}
+                          tokenUsage={profileData?.tokenUsage || {}}
+                        />
+                      )}
                       {isNotSingleLlmProfile && (
                         <Radio
                           checked={profileId === selectedLlmProfileId}
@@ -298,11 +310,7 @@ function PromptOutput({
                                 </Typography.Text>
                               ) : (
                                 <DisplayPromptResult
-                                  output={
-                                    result.find(
-                                      (r) => r?.profileManager === profileId
-                                    )?.output
-                                  }
+                                  output={profileData?.output}
                                 />
                               )}
                             </div>
@@ -345,12 +353,7 @@ function PromptOutput({
                         isDisabled={enforceType === TABLE_ENFORCE_TYPE}
                         copyToClipboard={() =>
                           copyOutputToClipboard(
-                            displayPromptResult(
-                              result.find(
-                                (r) => r?.profileManager === profileId
-                              )?.output,
-                              true
-                            )
+                            displayPromptResult(profileData?.output, true)
                           )
                         }
                       />
@@ -363,12 +366,7 @@ function PromptOutput({
                     </div>
                   </div>
                   {enforceType === TABLE_ENFORCE_TYPE && TableOutput && (
-                    <TableOutput
-                      output={
-                        result.find((r) => r?.profileManager === profileId)
-                          ?.output
-                      }
-                    />
+                    <TableOutput output={profileData?.output} />
                   )}
                 </>
               </Col>
