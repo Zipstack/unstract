@@ -251,7 +251,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         )
         self.publish_log(
             f"Total files: {total_files}, "
-            f"{successful_files} successfully executed and {failed_files} errored"
+            f"{successful_files} successfully executed and {failed_files} errors"
         )
 
     def publish_initial_tool_execution_logs(
