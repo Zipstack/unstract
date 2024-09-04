@@ -218,10 +218,15 @@
 }
 
 .prompt-output-llm-bg {
-  background-color: #DDDDDD;
+  background-color: #dddddd;
   padding: 10px;
 }
 
 .prompt-output-title {
   font-size: 18px;
+}
+
+.card-disabled {
+  opacity: 0.7;
+  filter: grayscale(100%);
 }

@@ -123,7 +123,7 @@ function PromptOutput({
 
   if (
     (singlePassExtractMode || isSimplePromptStudio) &&
-    (promptDetails?.active || isSimplePromptStudio) &&
+    isSimplePromptStudio &&
     (firstResult?.output ||
       firstResult?.output === 0 ||
       spsLoading[selectedDoc?.document_id])
