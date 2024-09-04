@@ -29,7 +29,7 @@ DB_PORT=5432
 - If you've made changes to the model, run `python manage.py makemigrations`, else ignore this step
 - Run the following to apply any migrations to the DB and start the server
 
-```
+```bash
 python manage.py migrate
 python manage.py runserver localhost:8000
 ```
@@ -55,20 +55,42 @@ To update the username or password after it's been set:
 1. Login with the new credentials
 
 
-## Asynchronous execution/pipeline execution
+## Asynchronous Execution
 
- - Working with celery
- - Each pipeline or shared tasks will added to the queue (Redis), And the worker will consume from the queue
+This project uses Celery for handling asynchronous execution. Celery tasks are managed through various queues and consumed by workers.
+
+> ETL, TASK, and API Deployment tasks are handled by these asynchronous workers. Log management also utilizes Celery.
+
+### Queues
+
+| Queue Name                 | Description                                    | Tasks                                                 |
+|----------------------------|------------------------------------------------|-------------------------------------------------------|
+| `celery`                   | Default queue for general Celery tasks, including those without a specific queue. | Webhook notifications, Pipeline (ETL, Tasks) Executions. |
+| `celery_periodic_logs`     | Queue for persisting logs into the database.   |                                                       |
+| `celery_log_task_queue`    | Queue for publishing logs to WebSocket clients. |                                                       |
+| `celery_api_deployments`   | Queue for managing API deployment tasks.       |                                                       |
 
 ### Run Execution Worker
 
-Run the following command to start the worker:
+To start a Celery worker, use the following command:
 
 ```bash
-celery -A backend worker --loglevel=info -Q celery,celery_periodic_logs
+celery -A backend worker --loglevel=info -Q <queue_name>
 ```
-- The `celery` queue is used for default Celery tasks.
-- The `celery_periodic_logs` queue is utilized for logging history tasks.
+
+### Autoscaling Workers
+```bash
+  celery -A backend worker --loglevel=info -Q <queue_name> --autoscale=<max_workers>,<min_workers>
+```
+
+Celery supports autoscaling of worker processes, allowing you to dynamically adjust the number of workers based on workload.
+
+- **Max Workers (`max_workers`)**: This value is related to your CPU resources and the level of concurrency you need.
+  - For CPU-bound tasks: Consider setting `max_workers` close to or slightly above the number of CPU cores.
+  - For I/O-bound tasks: You can set a higher `max_workers` value, typically 2-3 times the number of CPU cores.
+
+- **Min Workers (`min_workers`)**: This is the minimum number of worker processes that will always be running.
+
 
 ### Worker Dashboard
 
