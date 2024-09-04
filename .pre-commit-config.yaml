@@ -41,11 +41,11 @@ repos:
       - id: yamllint
         args: ["-d", "relaxed"]
         # language: system
-  # - repo: https://github.com/rhysd/actionlint
-  #   rev: v1.6.27
-  #   hooks:
-  #     - id: actionlint-docker
-  #       args: [-ignore, 'label ".+" is unknown']
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.6.27
+    hooks:
+      - id: actionlint-docker
+        args: [-ignore, 'label ".+" is unknown']
   - repo: https://github.com/psf/black
     rev: 24.4.2
     hooks:

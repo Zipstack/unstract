@@ -58,7 +58,7 @@ jobs:
             file_path="${{ matrix.directory }}/pyproject.toml"
           fi
           echo "checking changes for $file_path for origin/main branch"
-          echo "changed=false" >> $GITHUB_OUTPUT
+          echo "changed=false" >> "$GITHUB_OUTPUT"
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git fetch origin
@@ -66,7 +66,7 @@ jobs:
             echo "No changes detected in $file_path against origin/main branch."
           else
             echo "Changes detected in $file_path against origin/main branch."
-            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Set up Python
@@ -108,7 +108,7 @@ jobs:
           git stash || echo "No changes to stash, continuing..."
 
           echo "Pulling remote $GITHUB_HEAD_REF branch..."
-          git pull origin $GITHUB_HEAD_REF --allow-unrelated-histories --no-rebase
+          git pull origin "$GITHUB_HEAD_REF" --allow-unrelated-histories --no-rebase
 
           echo "Trying to pop stash if any..."
           if git stash list | grep -q 'stash@{0}'; then
@@ -131,12 +131,12 @@ jobs:
 
             echo "Attempting to push changes..."
             for attempt in {1..2}; do
-              if git push origin HEAD:$GITHUB_HEAD_REF; then
+              if git push origin HEAD:"$GITHUB_HEAD_REF"; then
                 echo "Push successful."
                 break
               else
                 echo "Push failed. Retrying... (Attempt $attempt)"
-                git pull origin $GITHUB_HEAD_REF --allow-unrelated-histories --no-rebase
+                git pull origin "$GITHUB_HEAD_REF" --allow-unrelated-histories --no-rebase
               fi
             done
           fi
