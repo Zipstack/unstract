@@ -18,6 +18,7 @@ import { useWorkflowStore } from "../../../store/workflow-store";
 import { LogsLabel } from "../logs-label/LogsLabel";
 import { SidePanel } from "../side-panel/SidePanel";
 import { DisplayLogs } from "../display-logs/DisplayLogs";
+import { PageTitle } from "../../widgets/page-title/PageTitle";
 
 function Agency() {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -31,7 +32,7 @@ function Agency() {
   const { message, setDefault } = useSocketMessagesStore();
   const { emptyLogs } = useSocketLogsStore();
   const workflowStore = useWorkflowStore();
-  const { details, loadingType } = workflowStore;
+  const { details, loadingType, projectName } = workflowStore;
   const prompt = details?.prompt_text;
   const [activeToolId, setActiveToolId] = useState("");
   const [prevLoadingType, setPrevLoadingType] = useState("");
@@ -184,6 +185,7 @@ function Agency() {
 
   return (
     <div className="agency-layout">
+      <PageTitle title={projectName} />
       <Layout className="agency-sider-layout">
         <Layout className="agency-sider-layout">
           <IslandLayout>
