@@ -127,5 +127,15 @@ jobs:
 
             echo "Committing and pushing pdm lock ..."
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
-            git push origin HEAD:${{ github.head_ref }}
+
+            echo "Attempting to push changes..."
+            for attempt in {1..2}; do
+              if git push origin HEAD:${{ github.head_ref }}; then
+                echo "Push successful."
+                break
+              else
+                echo "Push failed. Retrying... (Attempt $attempt)"
+                git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
+              fi
+            done
           fi
