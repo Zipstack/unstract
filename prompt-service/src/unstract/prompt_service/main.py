@@ -776,7 +776,7 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
         if node.score > 0:
             text += node.get_content() + "\n"
         else:
-            app.logger.info("Node score is less than 0. " f"Ignored: {node.score}")
+            app.logger.info("Node score is less than 0. " f"Ignored: {node}")
     return text
 
 

@@ -39,7 +39,7 @@ class UsageHelper:
                 cost_in_dollars=Sum(UsageKeys.COST_IN_DOLLARS),
             )
 
-            logger.info(f"Token counts aggregated successfully for run_id: {run_id}")
+            logger.debug(f"Token counts aggregated successfully for run_id: {run_id}")
 
             # Prepare the result dictionary with None as the default value
             result = {
@@ -61,4 +61,4 @@ class UsageHelper:
         except Exception as e:
             # Handle any other exceptions that might occur during the execution
             logger.error(f"An unexpected error occurred for run_id {run_id}: {str(e)}")
-            raise APIException("An unexpected error occurred")
+            raise APIException("Error while aggregating token counts")
