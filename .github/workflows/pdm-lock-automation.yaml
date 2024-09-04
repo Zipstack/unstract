@@ -38,13 +38,14 @@ jobs:
           # - unstract/tool-registry # commenting due to transitive dependency on local libraries
           - unstract/tool-sandbox
           # - unstract/workflow-execution # commenting due to transitive dependency on local libraries
+    env:
+      GITHUB_HEAD_REF: ${{ github.head_ref }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.head_ref }}
-
+          ref: ${{ env.GITHUB_HEAD_REF }}
 
       - name: Check file changes
         id: check
@@ -82,6 +83,7 @@ jobs:
         if: steps.check.outputs.changed == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_HEAD_REF: ${{ env.GITHUB_HEAD_REF }}
         run: |
           if [ "${{ matrix.directory }}" != "root" ]; then
             cd ${{ matrix.directory }}
@@ -105,8 +107,8 @@ jobs:
           echo "Stashing changes if there are any..."
           git stash || echo "No changes to stash, continuing..."
 
-          echo "Pulling remote ${{ github.head_ref }} branch..."
-          git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
+          echo "Pulling remote $GITHUB_HEAD_REF branch..."
+          git pull origin $GITHUB_HEAD_REF --allow-unrelated-histories --no-rebase
 
           echo "Trying to pop stash if any..."
           if git stash list | grep -q 'stash@{0}'; then
@@ -117,11 +119,10 @@ jobs:
           fi
 
           if git diff --quiet; then
-            echo "No changes between the current branch and the ${{ github.head_ref }} branch."
+            echo "No changes between the current branch and the $GITHUB_HEAD_REF branch."
             echo "Nothing to commit"
           else
-            echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
-
+            echo "Changes detected between the current branch and the $GITHUB_HEAD_REF branch."
             echo "Adding pdm lock changes..."
             git add pdm.lock
 
@@ -130,12 +131,12 @@ jobs:
 
             echo "Attempting to push changes..."
             for attempt in {1..2}; do
-              if git push origin HEAD:${{ github.head_ref }}; then
+              if git push origin HEAD:$GITHUB_HEAD_REF; then
                 echo "Push successful."
                 break
               else
                 echo "Push failed. Retrying... (Attempt $attempt)"
-                git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
+                git pull origin $GITHUB_HEAD_REF --allow-unrelated-histories --no-rebase
               fi
             done
           fi
