@@ -654,8 +654,9 @@ function PromptCard({
             promptOutputId: outputResult?.prompt_output_id,
             profileManager: outputResult?.profile_manager,
             context: outputResult?.context,
+            challengeData: outputResult?.challenge_data,
+            tokenUsage: outputResult?.token_usage,
             output: outputResult?.output,
-            totalCost: outputResult?.token_usage?.cost_in_dollars,
             evalMetrics: getEvalMetrics(
               promptDetails?.evaluate,
               outputResult?.eval_metrics || []
@@ -742,7 +743,11 @@ function PromptCard({
               item?.profile_manager === defaultLlmProfile &&
               item?.document_manager === selectedDoc?.document_id
           );
-
+          setTokenUsage(`${tokenUsageId}__context`, usage?.context);
+          setTokenUsage(
+            `${tokenUsageId}__challenge_data`,
+            usage?.challenge_data
+          );
           if (usage) {
             setTokenUsage(tokenUsageId, usage?.token_usage);
           }
