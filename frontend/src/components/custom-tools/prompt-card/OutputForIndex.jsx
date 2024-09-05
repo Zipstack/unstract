@@ -17,7 +17,7 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
 
   useEffect(() => {
     if (chunkData) {
-      // Split chunkData into chunks using <<< delimiter
+      // Split chunkData into chunks using \f\n delimiter
       const tempChunks = chunkData?.split("\f\n");
       // To remove " at the end
       if (tempChunks?.length > 0) {
@@ -26,16 +26,16 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
           tempChunks.pop();
         }
       }
+      // To remove " at the end
+      if (tempChunks?.length > 0) {
+        const lastChunk = tempChunks[tempChunks.length - 1].trim();
+        if (lastChunk === '\\n"' || tempChunks === "") {
+          chunks.pop();
+        }
+      }
       setChunks(tempChunks);
     }
   }, [chunkData]);
-  // To remove " at the end
-  if (chunks.length > 0) {
-    const lastChunk = chunks[chunks.length - 1].trim();
-    if (lastChunk === '\\n"' || lastChunk === "") {
-      chunks.pop();
-    }
-  }
 
   // Debounced search handler
   const handleSearch = useCallback(
