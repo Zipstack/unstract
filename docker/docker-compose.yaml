@@ -203,23 +203,6 @@ services:
     labels:
       - traefik.enable=false
 
-  document-service:
-    profiles:
-        - optional
-    image: unstract/document-service:${VERSION}
-    container_name: unstract-document-service
-    restart: unless-stopped
-    ports:
-      - 3002:3002
-    depends_on:
-      - redis
-    env_file:
-      - ../document-service/.env
-    environment:
-      - ENVIRONMENT=development
-    labels:
-      - traefik.enable=false
-
 volumes:
   prompt_studio_data:
   unstract_data:
