@@ -1,23 +1,23 @@
-name: Automate pdm.lock
+# name: Automate pdm.lock
 
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, review_requested]
-    branches: [main]
-    paths:
-      - 'pyproject.toml'
-      - 'backend/pyproject.toml'
-      - 'prompt-service/pyproject.toml'
-      - 'worker/pyproject.toml'
-      - 'unstract/core/pyproject.toml'
-      - 'unstract/flags/pyproject.toml'
-      - 'platform-service/pyproject.toml'
-      - 'x2text-service/pyproject.toml'
-      - 'unstract/connectors/pyproject.toml'
-      # - 'unstract/tool-registry' # commenting due to transitive dependency on local libraries/pyproject.toml
-      - 'unstract/tool-sandbox/pyproject.toml'
-      # - 'unstract/workflow-execution/pyproject.toml' # commenting due to transitive dependency on local libraries
-  workflow_dispatch:
+# on:
+#   pull_request:
+#     types: [opened, synchronize, reopened, ready_for_review, review_requested]
+#     branches: [main]
+#     paths:
+#       - 'pyproject.toml'
+#       - 'backend/pyproject.toml'
+#       - 'prompt-service/pyproject.toml'
+#       - 'worker/pyproject.toml'
+#       - 'unstract/core/pyproject.toml'
+#       - 'unstract/flags/pyproject.toml'
+#       - 'platform-service/pyproject.toml'
+#       - 'x2text-service/pyproject.toml'
+#       - 'unstract/connectors/pyproject.toml'
+#       # - 'unstract/tool-registry' # commenting due to transitive dependency on local libraries/pyproject.toml
+#       - 'unstract/tool-sandbox/pyproject.toml'
+#       # - 'unstract/workflow-execution/pyproject.toml' # commenting due to transitive dependency on local libraries
+#   workflow_dispatch:
 
 jobs:
   check_pyproject_changes:
