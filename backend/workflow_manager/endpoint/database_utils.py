@@ -263,7 +263,9 @@ class DatabaseUtils:
         )
         logger.debug(f"creating table {table_name} with: {sql} query")
         try:
-            db_class.execute_query(engine=engine, sql_query=sql, sql_values=None)
+            db_class.execute_query(
+                engine=engine, sql_query=sql, sql_values=None, table_name=table_name
+            )
         except UnstractDBConnectorException as e:
             raise UnstractDBException(detail=e.detail) from e
         logger.debug(f"successfully created table {table_name} with: {sql} query")

@@ -146,6 +146,10 @@ class BigQuery(UnstractDB):
             ColumnMissingException: raised due to missing columns in table query
         """
         table_name = kwargs.get("table_name", None)
+        if table_name is None:
+            raise ValueError(
+                "Please enter a valid table_name to to create/insert table"
+            )
         sql_keys = list(kwargs.get("sql_keys", []))
         try:
             if sql_values:
