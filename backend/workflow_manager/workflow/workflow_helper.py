@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import traceback
-import uuid
 from typing import Any, Optional
 
 from account.constants import Common
@@ -546,6 +545,7 @@ class WorkflowHelper:
         workflow: Workflow,
         execution_id: Optional[str] = None,
         pipeline_id: Optional[str] = None,
+        execution_mode: Optional[WorkflowExecution] = WorkflowExecution.Mode.QUEUE,
         hash_values_of_files: dict[str, FileHash] = {},
     ) -> ExecutionResponse:
         if pipeline_id:
@@ -557,23 +557,32 @@ class WorkflowHelper:
                     workflow_id=workflow.id,
                     single_step=False,
                     pipeline_id=pipeline_id,
-                    mode=WorkflowExecution.Mode.QUEUE,
-                    execution_id=str(uuid.uuid4()),
+                    mode=execution_mode,
                 )
             )
             execution_id = workflow_execution.id
             log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
             org_schema = connection.tenant.schema_name
-            execution_result = WorkflowHelper.execute_bin(
-                schema_name=org_schema,
-                workflow_id=workflow.id,
-                execution_id=workflow_execution.id,
-                hash_values_of_files=hash_values_of_files,
-                scheduled=True,
-                execution_mode=WorkflowExecution.Mode.QUEUE,
-                pipeline_id=pipeline_id,
-                log_events_id=log_events_id,
-            )
+            if execution_mode == WorkflowExecution.Mode.INSTANT:
+                # Instant request from UX (Sync now in ETL and Workflow page)
+                response: ExecutionResponse = WorkflowHelper.execute_workflow_async(
+                    workflow_id=workflow.id,
+                    pipeline_id=pipeline_id,
+                    execution_id=execution_id,
+                    hash_values_of_files=hash_values_of_files,
+                )
+                return response
+            else:
+                execution_result = WorkflowHelper.execute_bin(
+                    schema_name=org_schema,
+                    workflow_id=workflow.id,
+                    execution_id=workflow_execution.id,
+                    hash_values_of_files=hash_values_of_files,
+                    scheduled=True,
+                    execution_mode=execution_mode,
+                    pipeline_id=pipeline_id,
+                    log_events_id=log_events_id,
+                )
 
             updated_execution = WorkflowExecution.objects.get(id=execution_id)
             execution_response = ExecutionResponse(
