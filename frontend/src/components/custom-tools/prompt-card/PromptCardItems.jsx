@@ -164,7 +164,9 @@ function PromptCardItems({
   }, [llmProfiles, selectedLlmProfileId, enabledProfiles]);
 
   return (
-    <Card className="prompt-card">
+    <Card
+      className={`prompt-card ${!promptDetails?.active && "card-disabled"}`}
+    >
       <div className="prompt-card-div prompt-card-bg-col1 prompt-card-rad">
         <Space direction="vertical" className="width-100" ref={divRef}>
           <Header

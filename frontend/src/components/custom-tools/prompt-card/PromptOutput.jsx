@@ -25,6 +25,7 @@ import CheckableTag from "antd/es/tag/CheckableTag";
 import {
   displayPromptResult,
   formatNumberWithCommas,
+  formatTimeMinuteSeconds,
   getFormattedTotalCost,
 } from "../../../helpers/GetStaticData";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
@@ -123,7 +124,7 @@ function PromptOutput({
 
   if (
     (singlePassExtractMode || isSimplePromptStudio) &&
-    (promptDetails?.active || isSimplePromptStudio) &&
+    isSimplePromptStudio &&
     (firstResult?.output ||
       firstResult?.output === 0 ||
       spsLoading[selectedDoc?.document_id])
@@ -211,7 +212,7 @@ function PromptOutput({
                     </Typography.Text>
                     <Typography.Text className="prompt-cost-item">
                       Time:
-                      {timers[tokenUsageId] || 0}s
+                      {formatTimeMinuteSeconds(timers[tokenUsageId]) || 0}
                     </Typography.Text>
                     <Typography.Text className="prompt-cost-item">
                       Cost: $
