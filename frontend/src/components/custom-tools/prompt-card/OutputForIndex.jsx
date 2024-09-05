@@ -1,8 +1,9 @@
 import PropTypes from "prop-types";
-import { useState, useEffect, useRef } from "react";
-import { Modal, Input, Button } from "antd";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Modal, Input, Button, Typography } from "antd";
 import "./PromptCard.css";
 import { uniqueId } from "lodash";
+import debounce from "lodash/debounce";
 import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
 
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
@@ -14,35 +15,46 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
   const activeRef = useRef(null);
 
   // Split chunkData into chunks using <<< delimiter
-  const chunks = chunkData ? chunkData.split("<<<") : [];
+  const chunks = chunkData ? chunkData.split("\f\n") : [];
   // To remove " at the end
-  if (chunks.length > 0 && chunks[chunks.length - 1].trim() === '\\n"') {
-    chunks.pop();
+  if (chunks.length > 0) {
+    const lastChunk = chunks[chunks.length - 1].trim();
+    if (lastChunk === '\\n"' || lastChunk === "") {
+      chunks.pop();
+    }
   }
 
-  useEffect(() => {
-    if (searchTerm) {
-      const allResults = [];
-      chunks.forEach((chunk, chunkIndex) => {
-        const lines = chunk.split("\\n");
-        lines.forEach((line, lineIndex) => {
-          const regex = new RegExp(`(${searchTerm})`, "gi");
-          let match;
-          while ((match = regex.exec(line)) !== null) {
-            allResults.push({
-              chunkIndex,
-              lineIndex,
-              startIndex: match.index,
-              matchLength: match[0].length,
-            });
-          }
+  // Debounced search handler
+  const handleSearch = useCallback(
+    debounce((term) => {
+      if (term) {
+        const allResults = [];
+        chunks.forEach((chunk, chunkIndex) => {
+          const lines = chunk.split("\\n");
+          lines.forEach((line, lineIndex) => {
+            const regex = new RegExp(`(${term})`, "gi");
+            let match;
+            while ((match = regex.exec(line)) !== null) {
+              allResults.push({
+                chunkIndex,
+                lineIndex,
+                startIndex: match.index,
+                matchLength: match[0].length,
+              });
+            }
+          });
         });
-      });
-      setHighlightedChunks(allResults);
-      setCurrentIndex(0);
-    } else {
-      setHighlightedChunks([]);
-    }
+        setHighlightedChunks(allResults);
+        setCurrentIndex(0);
+      } else {
+        setHighlightedChunks([]);
+      }
+    }, 300), // Debounce delay in milliseconds
+    [chunks]
+  );
+
+  useEffect(() => {
+    handleSearch(searchTerm);
   }, [searchTerm]);
 
   useEffect(() => {
@@ -168,6 +180,7 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
       <div className="index-output-tab">
         {chunks.map((chunk, chunkIndex) => (
           <div key={uniqueId()} className="chunk-container">
+            <Typography.Text strong>Chunk {chunkIndex + 1}</Typography.Text>
             <TextViewerPre
               text={
                 <>
