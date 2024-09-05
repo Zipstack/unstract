@@ -130,7 +130,7 @@ jobs:
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
 
             echo "Attempting to push changes..."
-            for attempt in {1..2}; do
+            for attempt in {1..3}; do
               if git push origin HEAD:"$GITHUB_HEAD_REF"; then
                 echo "Push successful."
                 break
