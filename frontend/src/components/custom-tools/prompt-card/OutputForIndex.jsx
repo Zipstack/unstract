@@ -12,10 +12,23 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [highlightedChunks, setHighlightedChunks] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [chunks, setChunks] = useState([]);
   const activeRef = useRef(null);
 
-  // Split chunkData into chunks using <<< delimiter
-  const chunks = chunkData ? chunkData.split("\f\n") : [];
+  useEffect(() => {
+    if (chunkData) {
+      // Split chunkData into chunks using <<< delimiter
+      const tempChunks = chunkData?.split("\f\n");
+      // To remove " at the end
+      if (tempChunks?.length > 0) {
+        const lastChunk = tempChunks[tempChunks?.length - 1].trim();
+        if (lastChunk === '\\n"' || lastChunk === "") {
+          tempChunks.pop();
+        }
+      }
+      setChunks(tempChunks);
+    }
+  }, [chunkData]);
   // To remove " at the end
   if (chunks.length > 0) {
     const lastChunk = chunks[chunks.length - 1].trim();
@@ -33,7 +46,7 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
       }
       const allResults = [];
       chunks.forEach((chunk, chunkIndex) => {
-        const lines = chunk.split("\\n");
+        const lines = chunk?.split("\\n");
         lines.forEach((line, lineIndex) => {
           const regex = new RegExp(`(${term})`, "gi");
           let match;
@@ -41,14 +54,14 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
             allResults.push({
               chunkIndex,
               lineIndex,
-              startIndex: match.index,
-              matchLength: match[0].length,
+              startIndex: match?.index,
+              matchLength: match[0]?.length,
             });
           }
         });
       });
       setHighlightedChunks(allResults);
-      setCurrentIndex(0);        
+      setCurrentIndex(0);
     }, 300), // Debounce delay in milliseconds
     [chunks]
   );
@@ -78,12 +91,12 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
   };
 
   const handleNext = () => {
-    setCurrentIndex((prev) => (prev + 1) % highlightedChunks.length);
+    setCurrentIndex((prev) => (prev + 1) % highlightedChunks?.length);
   };
 
   const handlePrev = () => {
     setCurrentIndex((prev) =>
-      prev === 0 ? highlightedChunks.length - 1 : prev - 1
+      prev === 0 ? highlightedChunks?.length - 1 : prev - 1
     );
   };
 
@@ -95,7 +108,7 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
         chunk.lineIndex === lineIndex && chunk.chunkIndex === chunkIndex
     );
 
-    if (!matchesInLine.length) return line;
+    if (!matchesInLine?.length) return line;
 
     const parts = [];
     let lastIndex = 0;
