@@ -63,7 +63,8 @@ class SchedulerHelper:
                 str(workflow_id),
                 organization_id,
                 execution_action or "",
-                "",  # TODO: execution_id parameter cannot be removed without a migration.
+                # TODO: execution_id parameter cannot be removed without a migration.
+                "",
                 str(pipeline.pk),
                 # Added to remain backward compatible - remove after data migration
                 # which removes unused args in execute_pipeline_task
