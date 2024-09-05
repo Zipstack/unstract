@@ -48,7 +48,7 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
         });
       });
       setHighlightedChunks(allResults);
-      setCurrentIndex(0);        
+      setCurrentIndex(0);
     }, 300), // Debounce delay in milliseconds
     [chunks]
   );
