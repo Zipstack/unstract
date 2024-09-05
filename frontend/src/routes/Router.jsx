@@ -36,6 +36,7 @@ let AppDeployments;
 let ChatAppPage;
 let ChatAppLayout;
 let ManualReviewPage;
+let SimpleManualReviewPage;
 let ReviewLayout;
 let PublicPromptStudioHelper;
 let ManualReviewSettings;
@@ -69,6 +70,8 @@ try {
     require("../plugins/manual-review/review-layout/ReviewLayout.jsx").ReviewLayout;
   ManualReviewSettings =
     require("../plugins/manual-review/settings/Settings.jsx").ManualReviewSettings;
+  SimpleManualReviewPage =
+    require("../plugins/manual-review/page/simple/SimpleManualReviewPage.jsx").SimpleManualReviewPage;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
@@ -220,6 +223,14 @@ function Router() {
               <Route
                 path="review"
                 element={<ManualReviewPage type="review" />}
+              ></Route>
+              <Route
+                path="simple_review/review"
+                element={<SimpleManualReviewPage type="simple_review" />}
+              ></Route>
+              <Route
+                path="simple_review/approve"
+                element={<SimpleManualReviewPage type="simple_approve" />}
               ></Route>
               <Route
                 path="review/download_and_sync"
