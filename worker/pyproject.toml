@@ -37,6 +37,6 @@ dev = [
 ]
 
 [tool.pdm.scripts]
-worker.cmd = "flask --app src/unstract/worker/main.py run --port 5002"
-worker.env_file = ".env"
-worker.help = "Runs the Unstract worker"
+runner.cmd = "flask --app src/unstract/worker/main.py run --port 5002"
+runner.env_file = ".env"
+runner.help = "Runs the Unstract tool runner"
