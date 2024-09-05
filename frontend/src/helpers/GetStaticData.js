@@ -518,6 +518,23 @@ const formatNumberWithCommas = (number) => {
     : formattedIntegerPart;
 };
 
+// utils/formatTime.js
+const formatTimeMinuteSeconds = (seconds) => {
+  if (!seconds) {
+    return `0s`;
+  }
+
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  // Pad single-digit seconds with leading zero
+  const formattedSeconds = secs < 10 ? `0${secs}` : secs;
+
+  if (seconds < 60) {
+    return `${formattedSeconds}s`;
+  }
+  return `${mins}m ${formattedSeconds}s`;
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -563,4 +580,5 @@ export {
   getDocIdFromKey,
   displayURL,
   formatNumberWithCommas,
+  formatTimeMinuteSeconds,
 };
