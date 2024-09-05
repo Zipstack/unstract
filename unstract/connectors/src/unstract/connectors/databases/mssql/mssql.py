@@ -91,12 +91,12 @@ class MSSQL(UnstractDB):
 
         Args:
             engine (Any): mssql client engine
-            sql_query (str): _description_
-            sql_values (Any): _description_
+            sql_query (str): sql create table/insert into table query
+            sql_values (Any): sql data to be insertted
 
         Raises:
-            InvalidSyntaxException: _description_
-            ColumnMissingException: _description_
+            InvalidSyntaxException: raised due to invalid syntax
+            ColumnMissingException: raised due to missing columns in table query
         """
         table_name = kwargs.get("table_name", None)
         try:

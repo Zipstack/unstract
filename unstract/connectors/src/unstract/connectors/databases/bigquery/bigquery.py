@@ -18,7 +18,9 @@ from unstract.connectors.exceptions import ConnectorError
 
 logger = logging.getLogger(__name__)
 
-BIG_QUERY_TABLE_SIZE = 3
+BIG_QUERY_TABLE_SIZE = (
+    3  # BigQuery table format 'database.schema.table' splits into an array of size 3
+)
 
 
 class BigQuery(UnstractDB):
@@ -75,10 +77,10 @@ class BigQuery(UnstractDB):
         corresponding DB datatype.
 
         Args:
-            value (str): _description_
+            value (str): python datatype
 
         Returns:
-            str: _description_
+            str: database columntype
         """
         python_type = type(value)
 
@@ -95,7 +97,7 @@ class BigQuery(UnstractDB):
 
         Args:
             table (str): db-connector table name
-
+            Format  {database}.{schema}.{table}
         Returns:
             str: generates a create sql base query with the constant columns
         """
@@ -103,8 +105,8 @@ class BigQuery(UnstractDB):
         if len(bigquery_table_name) != self.big_query_table_size:
             raise ValueError(
                 f"Invalid table name format: '{table}'. "
-                "Please enter correct correct bigquery table in the form "
-                "{table}.{schema}.{database}."
+                "Please ensure the BigQuery table is in the form of "
+                "{database}.{schema}.{table}."
             )
         sql_query = (
             f"CREATE TABLE IF NOT EXISTS {table} "
@@ -135,15 +137,15 @@ class BigQuery(UnstractDB):
 
         Args:
             engine (Any): big query client engine
-            sql_query (str): _description_
-            sql_values (Any): _description_
+            sql_query (str): sql create table/insert into table query
+            sql_values (Any): sql data to be insertted
 
         Raises:
-            BigQueryForbiddenException: _description_
-            BigQueryNotFoundException: _description_
-            ColumnMissingException: _description_
+            BigQueryForbiddenException: raised due to insufficient permission
+            BigQueryNotFoundException: raised due to unavailable resource
+            ColumnMissingException: raised due to missing columns in table query
         """
-        table_name = str(kwargs.get("table_name"))
+        table_name = kwargs.get("table_name", None)
         sql_keys = list(kwargs.get("sql_keys", []))
         try:
             if sql_values:
@@ -183,12 +185,19 @@ class BigQuery(UnstractDB):
         """Function to generate information schema of the big query table.
 
         Args:
-            table_name (str): _description_
-
+            table_name (str): db-connector table name
+                              Format  {database}.{schema}.{table}
         Returns:
-            dict[str, str]: _description_
+            dict[str, str]: a dictionary contains db column name and
+            db column types of corresponding table
         """
         bigquery_table_name = str.lower(table_name).split(".")
+        if len(bigquery_table_name) != self.big_query_table_size:
+            raise ValueError(
+                f"Invalid table name format: '{table_name}'. "
+                "Please ensure the BigQuery table is in the form of "
+                "{database}.{schema}.{table}."
+            )
         database = bigquery_table_name[0]
         schema = bigquery_table_name[1]
         table = bigquery_table_name[2]

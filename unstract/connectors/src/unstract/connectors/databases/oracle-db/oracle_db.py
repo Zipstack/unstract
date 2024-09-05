@@ -12,12 +12,12 @@ class OracleDB(UnstractDB):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("OracleDB")
 
-        self.config_dir = settings["config_dir"]
-        self.user = settings["user"]
-        self.password = settings["password"]
-        self.dsn = settings["dsn"]
-        self.wallet_location = settings["wallet_location"]
-        self.wallet_password = settings["wallet_password"]
+        self.config_dir = settings.get("config_dir", None)
+        self.user = settings.get("user", None)
+        self.password = settings.get("password", None)
+        self.dsn = settings.get("dsn", None)
+        self.wallet_location = settings.get("wallet_location", None)
+        self.wallet_password = settings.get("wallet_password", None)
         if not (
             self.config_dir
             and self.user
@@ -132,8 +132,8 @@ class OracleDB(UnstractDB):
 
         Args:
             engine (Any): oracle db client engine
-            sql_query (str): _description_
-            sql_values (Any): _description_
+            sql_query (str): sql create table/insert into table query
+            sql_values (Any): sql data to be insertted
         """
         sql_keys = list(kwargs.get("sql_keys", []))
         with engine.cursor() as cursor:
@@ -148,10 +148,11 @@ class OracleDB(UnstractDB):
         """Function to generate information schema of the big query table.
 
         Args:
-            table_name (str): _description_
+            table_name (str): db-connector table name
 
         Returns:
-            dict[str, str]: _description_
+            dict[str, str]: a dictionary contains db column name and
+            db column types of corresponding table
         """
         query = (
             "SELECT column_name, data_type FROM "

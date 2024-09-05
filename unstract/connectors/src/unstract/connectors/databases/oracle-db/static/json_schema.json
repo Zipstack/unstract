@@ -19,33 +19,39 @@
     },
     "config_dir": {
       "type": "string",
-      "title": "Specifies the directory containing tnsnames.ora ",
+      "title": "Connector Directory",
+      "description": "Specifies the directory containing tnsnames.ora ",
       "default": "/opt/OracleCloud/MYDB"
     },
     "user": {
       "type": "string",
-      "title": "Specifies the database user ",
+      "title": "User",
+      "description": "Specifies the database user ",
       "default": "admin"
     },
     "password": {
       "type": "string",
-      "title": "Specifies the database user password ",
+      "title": "Password",
+      "description": "Specifies the database user password ",
       "format": "password",
       "default": ""
     },
     "dsn": {
       "type": "string",
-      "title": "Specify the desired network or the TNS names",
+      "title": "Dsn",
+      "description": "Specify the desired network or the TNS names",
       "default": "db2024_low"
     },
     "wallet_location": {
       "type": "string",
-      "title": "Specifies the directory containing the PEM file (ewallet.pem)",
+      "title": "Wallet Location",
+      "description": "Specifies the directory containing the PEM file (ewallet.pem)",
       "default": "/opt/OracleCloud/MYDB"
     },
     "wallet_password": {
       "type": "string",
-      "title": "Specifies the password for the PEM file",
+      "title": "Wallet Password",
+      "description": "Specifies the password for the PEM file",
       "format": "password",
       "default": ""
     }

@@ -84,10 +84,10 @@ class UnstractDB(UnstractConnector, ABC):
         Gets the python datatype of value and converts python datatype
         to corresponding DB datatype
         Args:
-            value (str): _description_
+            value (str): python datatype
 
         Returns:
-            str: _description_
+            str: database columntype
         """
         python_type = type(value)
         mapping = {
@@ -156,6 +156,13 @@ class UnstractDB(UnstractConnector, ABC):
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
+        """Executes create/insert query.
+
+        Args:
+            engine (Any): big query client engine
+            sql_query (str): sql create table/insert into table query
+            sql_values (Any): sql data to be insertteds
+        """
         pass
 
     def get_information_schema(self, table_name: str) -> dict[str, str]:
@@ -184,10 +191,10 @@ class UnstractDB(UnstractConnector, ABC):
         """Converts db results columns_with_types to dict.
 
         Args:
-            columns_with_types (Any): _description_
+            columns_with_types (Any): database information schema array
 
         Returns:
-            dict[str, str]: _description_
+            dict[str, str]: a dictionary containing db column-name and column-type
         """
         column_types: dict[str, str] = {}
         for column_name, data_type in columns_with_types:
