@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:1ed666bdccc18633d017400131e77153fe2149ba007325e43b41502e5da17862"
+content_hash = "sha256:73f9c170bdb20c4d3dbefec017dce3cf3bdd90966c3ac31a5bdbcdba985240bf"
 
 [[package]]
 name = "adlfs"
