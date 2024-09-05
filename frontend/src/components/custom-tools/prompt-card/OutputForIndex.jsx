@@ -26,13 +26,6 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
           tempChunks.pop();
         }
       }
-      // To remove " at the end
-      if (tempChunks?.length > 0) {
-        const lastChunk = tempChunks[tempChunks.length - 1].trim();
-        if (lastChunk === '\\n"' || tempChunks === "") {
-          chunks.pop();
-        }
-      }
       setChunks(tempChunks);
     }
   }, [chunkData]);
