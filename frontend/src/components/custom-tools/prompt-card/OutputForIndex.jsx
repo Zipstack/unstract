@@ -16,18 +16,19 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
   const activeRef = useRef(null);
 
   useEffect(() => {
-    if (chunkData) {
-      // Split chunkData into chunks using \f\n delimiter
-      const tempChunks = chunkData?.split("\f\n");
-      // To remove " at the end
-      if (tempChunks?.length > 0) {
-        const lastChunk = tempChunks[tempChunks?.length - 1].trim();
-        if (lastChunk === '\\n"' || lastChunk === "") {
-          tempChunks.pop();
-        }
-      }
-      setChunks(tempChunks);
+    if (!chunkData) {
+      setChunks([]);
     }
+    // Split chunkData into chunks using \f\n delimiter
+    const tempChunks = chunkData?.split("\f\n");
+    // To remove " at the end
+    if (tempChunks?.length > 0) {
+      const lastChunk = tempChunks[tempChunks?.length - 1].trim();
+      if (lastChunk === '\\n"' || lastChunk === "") {
+        tempChunks.pop();
+      }
+    }
+    setChunks(tempChunks);
   }, [chunkData]);
 
   // Debounced search handler
@@ -38,7 +39,7 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
         return;
       }
       const allResults = [];
-      chunks.forEach((chunk, chunkIndex) => {
+      chunks?.forEach((chunk, chunkIndex) => {
         const lines = chunk?.split("\\n");
         lines.forEach((line, lineIndex) => {
           const regex = new RegExp(`(${term})`, "gi");
@@ -184,13 +185,13 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
         </div>
       </div>
       <div className="index-output-tab">
-        {chunks.map((chunk, chunkIndex) => (
+        {chunks?.map((chunk, chunkIndex) => (
           <div key={uniqueId()} className="chunk-container">
             <Typography.Text strong>Chunk {chunkIndex + 1}</Typography.Text>
             <TextViewerPre
               text={
                 <>
-                  {chunk.split("\\n").map((line, lineIndex) => (
+                  {chunk?.split("\\n")?.map((line, lineIndex) => (
                     <div key={uniqueId()}>
                       {renderHighlightedLine(line, lineIndex, chunkIndex)}
                       <br />
