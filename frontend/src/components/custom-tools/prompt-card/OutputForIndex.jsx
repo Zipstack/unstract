@@ -27,28 +27,28 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
   // Debounced search handler
   const handleSearch = useCallback(
     debounce((term) => {
-      if (term) {
-        const allResults = [];
-        chunks.forEach((chunk, chunkIndex) => {
-          const lines = chunk.split("\\n");
-          lines.forEach((line, lineIndex) => {
-            const regex = new RegExp(`(${term})`, "gi");
-            let match;
-            while ((match = regex.exec(line)) !== null) {
-              allResults.push({
-                chunkIndex,
-                lineIndex,
-                startIndex: match.index,
-                matchLength: match[0].length,
-              });
-            }
-          });
-        });
-        setHighlightedChunks(allResults);
-        setCurrentIndex(0);
-      } else {
+      if (!term) {
         setHighlightedChunks([]);
+        return;
       }
+      const allResults = [];
+      chunks.forEach((chunk, chunkIndex) => {
+        const lines = chunk.split("\\n");
+        lines.forEach((line, lineIndex) => {
+          const regex = new RegExp(`(${term})`, "gi");
+          let match;
+          while ((match = regex.exec(line)) !== null) {
+            allResults.push({
+              chunkIndex,
+              lineIndex,
+              startIndex: match.index,
+              matchLength: match[0].length,
+            });
+          }
+        });
+      });
+      setHighlightedChunks(allResults);
+      setCurrentIndex(0);        
     }, 300), // Debounce delay in milliseconds
     [chunks]
   );
