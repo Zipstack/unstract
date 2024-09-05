@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import traceback
+import uuid
 from typing import Any, Optional
 
 from account.constants import Common
@@ -549,24 +550,40 @@ class WorkflowHelper:
     ) -> ExecutionResponse:
         if pipeline_id:
             logger.info(f"Executing pipeline: {pipeline_id}")
-            if not execution_id:
-                workflow_execution = (
-                    WorkflowExecutionServiceHelper.create_workflow_execution(
-                        workflow_id=workflow.id,
-                        single_step=False,
-                        pipeline_id=pipeline_id,
-                        mode=WorkflowExecution.Mode.QUEUE,
-                        execution_id=execution_id,
-                    )
+            # Create a new WorkflowExecution entity for each pipeline execution.
+            # This ensures every pipeline run is tracked as a distinct execution.
+            workflow_execution = (
+                WorkflowExecutionServiceHelper.create_workflow_execution(
+                    workflow_id=workflow.id,
+                    single_step=False,
+                    pipeline_id=pipeline_id,
+                    mode=WorkflowExecution.Mode.QUEUE,
+                    execution_id=str(uuid.uuid4()),
                 )
-                execution_id = workflow_execution.id
-            response: ExecutionResponse = WorkflowHelper.execute_workflow_async(
-                workflow_id=workflow.id,
-                pipeline_id=pipeline_id,
-                execution_id=execution_id,
-                hash_values_of_files=hash_values_of_files,
             )
-            return response
+            execution_id = workflow_execution.id
+            log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
+            org_schema = connection.tenant.schema_name
+            execution_result = WorkflowHelper.execute_bin(
+                schema_name=org_schema,
+                workflow_id=workflow.id,
+                execution_id=workflow_execution.id,
+                hash_values_of_files=hash_values_of_files,
+                scheduled=True,
+                execution_mode=WorkflowExecution.Mode.QUEUE,
+                pipeline_id=pipeline_id,
+                log_events_id=log_events_id,
+            )
+
+            updated_execution = WorkflowExecution.objects.get(id=execution_id)
+            execution_response = ExecutionResponse(
+                workflow.id,
+                execution_id,
+                updated_execution.status,
+                result=execution_result,
+            )
+            return execution_response
+
         if execution_id is None:
             # Creating execution entity and return
             return WorkflowHelper.create_and_make_execution_response(
