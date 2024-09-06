@@ -1,6 +1,4 @@
-from django.db import transaction
 from django.urls import path
-from django.utils.decorators import method_decorator
 from rest_framework.urlpatterns import format_suffix_patterns
 
 from .views import PromptStudioCoreView
@@ -79,9 +77,7 @@ urlpatterns = format_suffix_patterns(
         ),
         path(
             "prompt-studio/index-document/<uuid:pk>",
-            method_decorator(transaction.non_atomic_requests)(
-                prompt_studio_prompt_index
-            ),
+            prompt_studio_prompt_index,
             name="prompt-studio-prompt-index",
         ),
         path(
