@@ -6,10 +6,12 @@ This project was bootstrapped with [Create React App](https://github.com/faceboo
 
 NodeJS 16
 
-1. Clone this repo in your local <https://github.com/Zipstack/Pandora> by the following command:
-   `git clone https://github.com/Zipstack/Pandora.git`
+1. Clone [this repo](https://github.com/Zipstack/unstract) in your machine
 
-2. Now in terminal navigate to this path `Pandora/frontend` and run the following commands:
+   `git clone https://github.com/Zipstack/unstract.git`
+
+2. Navigate to the path `unstract/frontend` and run the following commands
+
    `npm install`
 
 ### Steps to run the setup
