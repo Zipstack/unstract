@@ -32,6 +32,7 @@ class PromptStudioVariableService:
                 document_manager=doc_id,
                 tool_id=variable_prompt.tool_id,
                 profile_manager=variable_prompt.profile_manager,
+                is_single_pass_extract=False,
             )
         except PromptStudioOutputManager.DoesNotExist:
             raise PromptNotRun(
