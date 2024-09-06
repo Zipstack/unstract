@@ -1,8 +1,6 @@
-import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
 
 const useExceptionHandler = () => {
-  const navigate = useNavigate();
   const handleException = (
     err,
     errMessage = "Something went wrong",
@@ -36,7 +34,6 @@ const useExceptionHandler = () => {
           }
           break;
         case "subscription_error":
-          navigate("/trial-expired");
           return {
             title: title,
             type: "error",

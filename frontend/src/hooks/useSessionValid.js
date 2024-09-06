@@ -8,6 +8,7 @@ import { useSessionStore } from "../store/session-store";
 import { useUserSession } from "./useUserSession.js";
 import { listFlags } from "../helpers/FeatureFlagsData.js";
 import { useAlertStore } from "../store/alert-store";
+import useLogout from "./useLogout.js";
 
 let getTrialDetails;
 let isPlatformAdmin;
@@ -34,6 +35,8 @@ function useSessionValid() {
   const { setAlertDetails } = useAlertStore();
   const navigate = useNavigate();
   const userSession = useUserSession();
+  const logout = useLogout();
+  const timestamp = new Date().getTime();
 
   return async () => {
     try {
@@ -49,7 +52,7 @@ function useSessionValid() {
       // API to get the list of organizations
       const requestOptions = {
         method: "GET",
-        url: "/api/v1/organization",
+        url: `/api/v1/organization?q=${timestamp}`,
       };
       const getOrgsRes = await axios(requestOptions);
       const orgs = getOrgsRes?.data?.organizations;
@@ -66,7 +69,9 @@ function useSessionValid() {
 
       // API to set the organization and get the user details
       requestOptions["method"] = "POST";
-      requestOptions["url"] = `/api/v1/organization/${orgId}/set`;
+      requestOptions[
+        "url"
+      ] = `/api/v1/organization/${orgId}/set?q=${timestamp}`;
       requestOptions["headers"] = {
         "X-CSRFToken": csrfToken,
       };
@@ -90,7 +95,9 @@ function useSessionValid() {
 
       requestOptions["method"] = "GET";
 
-      requestOptions["url"] = `/api/v1/unstract/${orgId}/users/profile/`;
+      requestOptions[
+        "url"
+      ] = `/api/v1/unstract/${orgId}/users/profile/?q=${timestamp}`;
       requestOptions["headers"] = {
         "X-CSRFToken": csrfToken,
       };
@@ -109,7 +116,9 @@ function useSessionValid() {
 
       requestOptions["method"] = "GET";
 
-      requestOptions["url"] = `/api/v1/unstract/${orgId}/adapter/`;
+      requestOptions[
+        "url"
+      ] = `/api/v1/unstract/${orgId}/adapter/?q=${timestamp}`;
       requestOptions["headers"] = {
         "X-CSRFToken": csrfToken,
       };
@@ -141,10 +150,10 @@ function useSessionValid() {
       // Set the session details
       setSessionDetails(getSessionData(userAndOrgDetails));
     } catch (err) {
-      // TODO: Throw popup error message
-      // REVIEW: Add condition to check for trial period status
+      setAlertDetails(handleException(err));
       if (err.response?.status === 402) {
-        handleException(err);
+        navigate("/trial-expired");
+        return;
       }
 
       if (err.request?.status === 412) {
@@ -153,8 +162,10 @@ function useSessionValid() {
         const code = response.code;
         window.location.href = `/error?code=${code}&domain=${domainName}`;
         // May be need a logout button there or auto logout
+        return;
       }
-      setAlertDetails(handleException(err));
+
+      logout();
     }
   };
 }

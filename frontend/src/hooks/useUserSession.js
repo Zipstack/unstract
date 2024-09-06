@@ -8,12 +8,13 @@ const useUserSession = () => {
   const handleException = useExceptionHandler();
   const { setAlertDetails } = useAlertStore();
   const fallbackErrorMessage = "Error while getting session";
+  const timestamp = new Date().getTime();
 
   return async () => {
     try {
       const requestOptions = {
         method: "GET",
-        url: "/api/v1/session",
+        url: `/api/v1/session?q=${timestamp}`,
       };
       const res = await axios(requestOptions);
       return res.data;
