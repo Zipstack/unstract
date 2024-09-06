@@ -39,7 +39,7 @@ class TestProjects(APITestCase):
         url = reverse("projects_v1-list")
         data = {
             "org": 1,
-            "project_name": "Pandora8 Test",
+            "project_name": "Unstract Test",
             "created_by": 2,
             "modified_by": 2,
             "modified_at": "2023-06-14T05:28:47.759Z",
@@ -69,7 +69,7 @@ class TestProjects(APITestCase):
         url = reverse("projects_v1-detail", kwargs={"pk": 1})
         data = {
             "org": 1,
-            "project_name": "Pandora6 Test",
+            "project_name": "Unstract Test",
             "created_by": 2,
             "modified_by": 2,
             "modified_at": "2023-06-14T05:28:47.759Z",
