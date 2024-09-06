@@ -23,7 +23,7 @@ class UnstractCloudStorage(MinioFS):
 
     @staticmethod
     def get_icon() -> str:
-        return "/icons/connector-icons/Pandora%20Storage.png"
+        return "/icons/connector-icons/Unstract%20Storage.png"
 
     @staticmethod
     def get_json_schema() -> str:
