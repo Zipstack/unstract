@@ -36,10 +36,10 @@ function useSessionValid() {
   const navigate = useNavigate();
   const userSession = useUserSession();
   const logout = useLogout();
-  const timestamp = new Date().getTime();
 
   return async () => {
     try {
+      const timestamp = new Date().getTime();
       const userSessionData = await userSession();
 
       // Return if the user is not authenticated

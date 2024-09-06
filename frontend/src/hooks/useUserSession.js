@@ -8,10 +8,10 @@ const useUserSession = () => {
   const handleException = useExceptionHandler();
   const { setAlertDetails } = useAlertStore();
   const fallbackErrorMessage = "Error while getting session";
-  const timestamp = new Date().getTime();
 
   return async () => {
     try {
+      const timestamp = new Date().getTime();
       const requestOptions = {
         method: "GET",
         url: `/api/v1/session?q=${timestamp}`,
