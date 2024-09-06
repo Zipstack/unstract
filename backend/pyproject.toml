@@ -32,7 +32,7 @@ dependencies = [
     "python-socketio==5.9.0", # For log_events
     "social-auth-app-django==5.3.0", # For OAuth
     "social-auth-core==4.4.2", # For OAuth
-    "unstract-sdk~=0.46.0",
+    "unstract-sdk~=0.48.0",
     # ! IMPORTANT!
     # Indirect local dependencies usually need to be added in their own projects
     # as: https://pdm-project.org/latest/usage/dependency/#local-dependencies.
@@ -91,10 +91,19 @@ backend.help = "Runs the Unstract backend"
 migrate_db.cmd = "python manage.py migrate"
 migrate_db.env_file = ".env"
 migrate_db.help = "Performs DB migrations for Unstract backend"
-# Commands for backend execution
-consumer.cmd = "celery -A backend worker --loglevel=info -Q celery,celery_periodic_logs,celery_log_task_queue --autoscale 8,1"
-consumer.env_file = ".env"
-consumer.help = "Runs the Unstract consumer"
+# Commands for execution consumer
+worker.cmd = "celery -A backend worker --loglevel=info -Q celery --autoscale 4,1"
+worker.env_file = ".env"
+worker.help = "Runs the Unstract default worker"
+# Commands for log-manager
+worker-logging.cmd = "celery -A backend worker --loglevel=info -Q celery_periodic_logs,celery_log_task_queue --autoscale 4,1"
+worker-logging.env_file = ".env"
+worker-logging.help = "Runs the Unstract log management worker."
+# Commands for api deployment executor
+worker-api-deployment.cmd = "celery -A backend worker --loglevel=info -Q celery_api_deployments --autoscale 4,1"
+worker-api-deployment.env_file = ".env"
+worker-api-deployment.help = "Runs the Unstract API deployment worker."
+
 # Celery Flower
 flower.cmd = "celery -A backend flower --port=5555"
 flower.env_file = ".env"

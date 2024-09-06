@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:5a41f7fb855a552c750c23bda694bd4c8058dc87d912a06fd0e1933878e92d86"
+content_hash = "sha256:73f9c170bdb20c4d3dbefec017dce3cf3bdd90966c3ac31a5bdbcdba985240bf"
 
 [[package]]
 name = "adlfs"
@@ -92,16 +92,16 @@ files = [
 
 [[package]]
 name = "aioitertools"
-version = "0.11.0"
-requires_python = ">=3.6"
+version = "0.12.0"
+requires_python = ">=3.8"
 summary = "itertools and builtins for AsyncIO and mixed iterables"
 groups = ["default", "dev"]
 dependencies = [
     "typing-extensions>=4.0; python_version < \"3.10\"",
 ]
 files = [
-    {file = "aioitertools-0.11.0-py3-none-any.whl", hash = "sha256:04b95e3dab25b449def24d7df809411c10e62aab0cbe31a50ca4e68748c43394"},
-    {file = "aioitertools-0.11.0.tar.gz", hash = "sha256:42c68b8dd3a69c2bf7f2233bf7df4bb58b557bca5252ac02ed5187bbc67d6831"},
+    {file = "aioitertools-0.12.0-py3-none-any.whl", hash = "sha256:fc1f5fac3d737354de8831cbba3eb04f79dd649d8f3afb4c5b114925e662a796"},
+    {file = "aioitertools-0.12.0.tar.gz", hash = "sha256:c2a9055b4fbb7705f561b9d86053e8af5d10cc845d22c32008c43490b2d8dd6b"},
 ]
 
 [[package]]
@@ -521,13 +521,13 @@ files = [
 
 [[package]]
 name = "certifi"
-version = "2024.7.4"
+version = "2024.8.30"
 requires_python = ">=3.6"
 summary = "Python package for providing Mozilla's CA Bundle."
 groups = ["default", "dev"]
 files = [
-    {file = "certifi-2024.7.4-py3-none-any.whl", hash = "sha256:c198e21b1289c2ab85ee4e67bb4b4ef3ead0892059901a8d5b622f24a1101e90"},
-    {file = "certifi-2024.7.4.tar.gz", hash = "sha256:5a1e7645bc0ec61a09e26c36f6106dd4cf40c6db3a1fb6352b0244e7fb057c7b"},
+    {file = "certifi-2024.8.30-py3-none-any.whl", hash = "sha256:922820b53db7a7257ffbda3f597266d435245903d80737e34f8a45ff3e3230d8"},
+    {file = "certifi-2024.8.30.tar.gz", hash = "sha256:bec941d2aa8195e248a60b31ff9f0558284cf01a52591ceda73ea9afffd69fd9"},
 ]
 
 [[package]]
@@ -1281,14 +1281,14 @@ files = [
 
 [[package]]
 name = "google-crc32c"
-version = "1.5.0"
-requires_python = ">=3.7"
+version = "1.6.0"
+requires_python = ">=3.9"
 summary = "A python wrapper of the C library 'Google CRC32C'"
 groups = ["default", "dev"]
 files = [
-    {file = "google-crc32c-1.5.0.tar.gz", hash = "sha256:89284716bc6a5a415d4eaa11b1726d2d60a0cd12aadf5439828353662ede9dd7"},
-    {file = "google_crc32c-1.5.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e1674e4307fa3024fc897ca774e9c7562c957af85df55efe2988ed9056dc4e57"},
-    {file = "google_crc32c-1.5.0-cp39-cp39-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:278d2ed7c16cfc075c91378c4f47924c0625f5fc84b2d50d921b18b7975bd210"},
+    {file = "google_crc32c-1.6.0-cp39-cp39-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:386122eeaaa76951a8196310432c5b0ef3b53590ef4c317ec7588ec554fec5d2"},
+    {file = "google_crc32c-1.6.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:35834855408429cecf495cac67ccbab802de269e948e27478b1e47dfb6465e57"},
+    {file = "google_crc32c-1.6.0.tar.gz", hash = "sha256:6eceb6ad197656a1ff49ebfbbfa870678c75be4344feb35ac1edf694309413dc"},
 ]
 
 [[package]]
@@ -2468,7 +2468,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.42.0"
+version = "1.43.0"
 requires_python = ">=3.7.1"
 summary = "The official Python library for the openai API"
 groups = ["default", "dev"]
@@ -2483,8 +2483,8 @@ dependencies = [
     "typing-extensions<5,>=4.11",
 ]
 files = [
-    {file = "openai-1.42.0-py3-none-any.whl", hash = "sha256:dc91e0307033a4f94931e5d03cc3b29b9717014ad5e73f9f2051b6cb5eda4d80"},
-    {file = "openai-1.42.0.tar.gz", hash = "sha256:c9d31853b4e0bc2dc8bd08003b462a006035655a701471695d0bfdc08529cde3"},
+    {file = "openai-1.43.0-py3-none-any.whl", hash = "sha256:1a748c2728edd3a738a72a0212ba866f4fdbe39c9ae03813508b267d45104abe"},
+    {file = "openai-1.43.0.tar.gz", hash = "sha256:e607aff9fc3e28eade107e5edd8ca95a910a4b12589336d3cbb6bfe2ac306b3c"},
 ]
 
 [[package]]
@@ -2850,13 +2850,13 @@ files = [
 
 [[package]]
 name = "pymilvus"
-version = "2.4.5"
+version = "2.4.6"
 requires_python = ">=3.8"
 summary = "Python Sdk for Milvus"
 groups = ["default", "dev"]
 dependencies = [
     "environs<=9.5.0",
-    "grpcio<=1.63.0,>=1.49.1",
+    "grpcio>=1.49.1",
     "milvus-lite<2.5.0,>=2.4.0; sys_platform != \"win32\"",
     "pandas>=1.2.4",
     "protobuf>=3.20.0",
@@ -2864,8 +2864,8 @@ dependencies = [
     "ujson>=2.0.0",
 ]
 files = [
-    {file = "pymilvus-2.4.5-py3-none-any.whl", hash = "sha256:dc4f2d1eac8db9cf3951de39566a1a244695760bb94d8310fbfc73d6d62bb267"},
-    {file = "pymilvus-2.4.5.tar.gz", hash = "sha256:1a497fe9b41d6bf62b1d5e1c412960922dde1598576fcbb8818040c8af11149f"},
+    {file = "pymilvus-2.4.6-py3-none-any.whl", hash = "sha256:b4c43472edc313b845d313be50610e19054e6954b2c5c3b515565c596c2d3d97"},
+    {file = "pymilvus-2.4.6.tar.gz", hash = "sha256:6ac3eb91c92cc01bbe444fe83f895f02d7b2546d96ac67998630bf31ac074d66"},
 ]
 
 [[package]]
@@ -3278,13 +3278,13 @@ files = [
 
 [[package]]
 name = "setuptools"
-version = "74.0.0"
+version = "74.1.1"
 requires_python = ">=3.8"
 summary = "Easily download, build, install, upgrade, and uninstall Python packages"
 groups = ["default", "dev"]
 files = [
-    {file = "setuptools-74.0.0-py3-none-any.whl", hash = "sha256:0274581a0037b638b9fc1c6883cc71c0210865aaa76073f7882376b641b84e8f"},
-    {file = "setuptools-74.0.0.tar.gz", hash = "sha256:a85e96b8be2b906f3e3e789adec6a9323abf79758ecfa3065bd740d81158b11e"},
+    {file = "setuptools-74.1.1-py3-none-any.whl", hash = "sha256:fc91b5f89e392ef5b77fe143b17e32f65d3024744fba66dc3afe07201684d766"},
+    {file = "setuptools-74.1.1.tar.gz", hash = "sha256:2353af060c06388be1cecbf5953dcdb1f38362f87a2356c480b6b4d5fcfc8847"},
 ]
 
 [[package]]
@@ -3451,7 +3451,7 @@ files = [
 
 [[package]]
 name = "sqlalchemy"
-version = "2.0.32"
+version = "2.0.33"
 requires_python = ">=3.7"
 summary = "Database Abstraction Library"
 groups = ["default", "dev"]
@@ -3460,26 +3460,26 @@ dependencies = [
     "typing-extensions>=4.6.0",
 ]
 files = [
-    {file = "SQLAlchemy-2.0.32-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:aaf04784797dcdf4c0aa952c8d234fa01974c4729db55c45732520ce12dd95b4"},
-    {file = "SQLAlchemy-2.0.32-py3-none-any.whl", hash = "sha256:e567a8793a692451f706b363ccf3c45e056b67d90ead58c3bc9471af5d212202"},
-    {file = "SQLAlchemy-2.0.32.tar.gz", hash = "sha256:c1b88cc8b02b6a5f0efb0345a03672d4c897dc7d92585176f88c67346f565ea8"},
+    {file = "SQLAlchemy-2.0.33-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:454e9b4355f0051063daebc4060140251c19f33fc5d02151c347431860fd104b"},
+    {file = "SQLAlchemy-2.0.33-py3-none-any.whl", hash = "sha256:ae294808afde1b14a1a69aa86a69cadfe391848bbb233a5332a8065e4081cabc"},
+    {file = "sqlalchemy-2.0.33.tar.gz", hash = "sha256:91c93333c2b37ff721dc83b37e28c29de4c502b5612f2d093468037b86aa2be0"},
 ]
 
 [[package]]
 name = "sqlalchemy"
-version = "2.0.32"
+version = "2.0.33"
 extras = ["asyncio"]
 requires_python = ">=3.7"
 summary = "Database Abstraction Library"
 groups = ["default", "dev"]
 dependencies = [
     "greenlet!=0.4.17",
-    "sqlalchemy==2.0.32",
+    "sqlalchemy==2.0.33",
 ]
 files = [
-    {file = "SQLAlchemy-2.0.32-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:aaf04784797dcdf4c0aa952c8d234fa01974c4729db55c45732520ce12dd95b4"},
-    {file = "SQLAlchemy-2.0.32-py3-none-any.whl", hash = "sha256:e567a8793a692451f706b363ccf3c45e056b67d90ead58c3bc9471af5d212202"},
-    {file = "SQLAlchemy-2.0.32.tar.gz", hash = "sha256:c1b88cc8b02b6a5f0efb0345a03672d4c897dc7d92585176f88c67346f565ea8"},
+    {file = "SQLAlchemy-2.0.33-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:454e9b4355f0051063daebc4060140251c19f33fc5d02151c347431860fd104b"},
+    {file = "SQLAlchemy-2.0.33-py3-none-any.whl", hash = "sha256:ae294808afde1b14a1a69aa86a69cadfe391848bbb233a5332a8065e4081cabc"},
+    {file = "sqlalchemy-2.0.33.tar.gz", hash = "sha256:91c93333c2b37ff721dc83b37e28c29de4c502b5612f2d093468037b86aa2be0"},
 ]
 
 [[package]]
@@ -3731,7 +3731,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.46.0"
+version = "0.48.1"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default", "dev"]
@@ -3770,8 +3770,8 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.46.0-py3-none-any.whl", hash = "sha256:09b13289c3384578b6e9598cfe2ae1013705d9e394218682aa24bbb6406422b4"},
-    {file = "unstract_sdk-0.46.0.tar.gz", hash = "sha256:4fa969eb078b5f1bb0eb05142519a08d307b5ea95afaaf06fb8383285857d037"},
+    {file = "unstract_sdk-0.48.1-py3-none-any.whl", hash = "sha256:90bd27142f265d0397bb5a4b3630ad6e4f232a4405a15db8806c91c6cf5be4af"},
+    {file = "unstract_sdk-0.48.1.tar.gz", hash = "sha256:72b62d15f1dcd9dc9d07d3c2682a9a4edcfc7b2dcf568d94376703c909630455"},
 ]
 
 [[package]]
@@ -3786,7 +3786,7 @@ dependencies = [
     "PyYAML~=6.0.1",
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
-    "unstract-sdk~=0.46.0",
+    "unstract-sdk~=0.48.0",
     "unstract-tool-sandbox",
 ]
 
@@ -3829,13 +3829,13 @@ files = [
 
 [[package]]
 name = "urllib3"
-version = "1.26.19"
+version = "1.26.20"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,>=2.7"
 summary = "HTTP library with thread-safe connection pooling, file post, and more."
 groups = ["default", "dev"]
 files = [
-    {file = "urllib3-1.26.19-py2.py3-none-any.whl", hash = "sha256:37a0344459b199fce0e80b0d3569837ec6b6937435c5244e7fd73fa6006830f3"},
-    {file = "urllib3-1.26.19.tar.gz", hash = "sha256:3e3d753a8618b86d7de333b4223005f68720bcd6a7d2bcb9fbd2229ec7c1e429"},
+    {file = "urllib3-1.26.20-py2.py3-none-any.whl", hash = "sha256:0ed14ccfbf1c30a9072c7ca157e4319b70d65f623e91e7b32fadb2853431016e"},
+    {file = "urllib3-1.26.20.tar.gz", hash = "sha256:40c2dc0c681e47eb8f90e7e27bf6ff7df2e677421fd46756da1161c39ca70d32"},
 ]
 
 [[package]]
@@ -3930,8 +3930,8 @@ files = [
 
 [[package]]
 name = "yarl"
-version = "1.9.4"
-requires_python = ">=3.7"
+version = "1.9.8"
+requires_python = ">=3.8"
 summary = "Yet another URL library"
 groups = ["default", "dev"]
 dependencies = [
@@ -3939,7 +3939,7 @@ dependencies = [
     "multidict>=4.0",
 ]
 files = [
-    {file = "yarl-1.9.4-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:23d32a2594cb5d565d358a92e151315d1b2268bc10f4610d098f96b147370136"},
-    {file = "yarl-1.9.4-py3-none-any.whl", hash = "sha256:928cecb0ef9d5a7946eb6ff58417ad2fe9375762382f1bf5c55e61645f2c43ad"},
-    {file = "yarl-1.9.4.tar.gz", hash = "sha256:566db86717cf8080b99b58b083b773a908ae40f06681e87e589a976faf8246bf"},
+    {file = "yarl-1.9.8-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3ba7c4b50cc0bb4caaa54554613ca13db47a24878a4fc1063e6303494fc67567"},
+    {file = "yarl-1.9.8-py3-none-any.whl", hash = "sha256:d1612ce50f23b94897b9ef5eb65b72398a9a83ea990b42825272590f3484dae3"},
+    {file = "yarl-1.9.8.tar.gz", hash = "sha256:3089553548d9ab23152cecb5a71131caaa9e9b16d7fc8196057c374fdc53cc4b"},
 ]
