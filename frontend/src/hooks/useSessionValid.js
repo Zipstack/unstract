@@ -156,7 +156,7 @@ function useSessionValid() {
     } catch (err) {
       setAlertDetails(handleException(err));
       if (err.response?.status === 402) {
-        navigate("/trial-expired");
+        handleException(err);
         return;
       }
 
