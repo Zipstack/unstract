@@ -67,6 +67,10 @@ function useSessionValid() {
       const orgId = signedInOrgId || orgs[0].id;
       const csrfToken = Cookies.get("csrftoken");
 
+      if (!orgId || !csrfToken) {
+        throw Error("Required fields are missing.");
+      }
+
       // API to set the organization and get the user details
       requestOptions["method"] = "POST";
       requestOptions[
