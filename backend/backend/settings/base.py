@@ -361,7 +361,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "backend.wsgi.application"
 
-
+ATOMIC_REQUESTS = os.environ.get("DJANGO_ATOMIC_REQUESTS", False)
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
@@ -373,7 +373,7 @@ DATABASES = {
         "HOST": f"{DB_HOST}",
         "PASSWORD": f"{DB_PASSWORD}",
         "PORT": f"{DB_PORT}",
-        "ATOMIC_REQUESTS": True,
+        "ATOMIC_REQUESTS": ATOMIC_REQUESTS,
     }
 }
 
