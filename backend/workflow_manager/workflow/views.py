@@ -221,12 +221,14 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 workflow=workflow,
                 execution_id=execution_id,
                 pipeline_id=pipeline_guid,
+                execution_mode=WorkflowExecution.Mode.INSTANT,
                 hash_values_of_files=hash_values_of_files,
             )
         else:
             execution_response = WorkflowHelper.complete_execution(
                 workflow=workflow,
                 execution_id=execution_id,
+                execution_mode=WorkflowExecution.Mode.INSTANT,
                 hash_values_of_files=hash_values_of_files,
             )
         return execution_response

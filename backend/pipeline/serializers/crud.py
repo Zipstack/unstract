@@ -66,6 +66,15 @@ class PipelineSerializer(AuditSerializer):
             logger.error(f"Invalid cron string '{cron_string}': {error}")
             raise serializers.ValidationError("Invalid cron string format.")
 
+        # Check if the frequency is less than 1 hour
+        cron_parts = cron_string.split()
+        minute_field = cron_parts[0]
+        if minute_field == "*" or any(char in minute_field for char in [",", "-", "/"]):
+            raise serializers.ValidationError(
+                "Cron schedule can not be more than once per hour. Please provide a "
+                "cron schedule to run at an hourly or less frequent interval."
+            )
+
         return cron_string
 
     def get_api_endpoint(self, instance: Pipeline):

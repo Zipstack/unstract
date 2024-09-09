@@ -25,9 +25,9 @@ class OutputManagerHelper:
         run_id: str,
         prompts: list[ToolStudioPrompt],
         outputs: Any,
-        context: Any,
         document_id: str,
         is_single_pass_extract: bool,
+        metadata: dict[str, Any],
         profile_manager_id: Optional[str] = None,
     ) -> None:
         """Handles updating prompt outputs in the database.
@@ -49,6 +49,7 @@ class OutputManagerHelper:
             eval_metrics: list[Any],
             tool: CustomTool,
             context: str,
+            challenge_data: Optional[dict[str, Any]],
         ):
             try:
                 _, success = PromptStudioOutputManager.objects.get_or_create(
@@ -61,6 +62,7 @@ class OutputManagerHelper:
                         "output": output,
                         "eval_metrics": eval_metrics,
                         "context": context,
+                        "challenge_data": challenge_data,
                     },
                 )
 
@@ -75,11 +77,12 @@ class OutputManagerHelper:
                         f"profile {profile_manager.profile_id}"
                     )
 
-                args: dict[str, str] = {
+                args: dict[str, Any] = {
                     "run_id": run_id,
                     "output": output,
                     "eval_metrics": eval_metrics,
                     "context": context,
+                    "challenge_data": challenge_data,
                 }
                 PromptStudioOutputManager.objects.filter(
                     document_manager=document_manager,
@@ -91,6 +94,9 @@ class OutputManagerHelper:
 
             except Exception as e:
                 raise AnswerFetchError(f"Error updating prompt output {e}") from e
+
+        context = metadata.get("context")
+        challenge_data = metadata.get("challenge_data")
 
         if not prompts:
             return  # Return early if prompts list is empty
@@ -107,6 +113,11 @@ class OutputManagerHelper:
 
             if not is_single_pass_extract:
                 context = context.get(prompt.prompt_key)
+                if challenge_data:
+                    challenge_data = challenge_data.get(prompt.prompt_key)
+
+            if challenge_data:
+                challenge_data["file_name"] = metadata.get("file_name")
 
             output = outputs.get(prompt.prompt_key)
             if prompt.enforce_type in {"json", "table"}:
@@ -121,6 +132,7 @@ class OutputManagerHelper:
                 eval_metrics=eval_metrics,
                 tool=tool,
                 context=context,
+                challenge_data=challenge_data,
             )
 
     @staticmethod

@@ -18,9 +18,9 @@ class ToolSandboxHelper:
         messaging_channel: str,
         environment_variables: dict[str, str],
     ) -> None:
-        worker_host = os.environ.get("UNSTRACT_WORKER_HOST")
-        worker_port = os.environ.get("UNSTRACT_WORKER_PORT")
-        self.base_url = f"{worker_host}:{worker_port}{UnstractWorker.BASE_API_ENDPOINT}"
+        runner_host = os.environ.get("UNSTRACT_RUNNER_HOST")
+        runner_port = os.environ.get("UNSTRACT_RUNNER_PORT")
+        self.base_url = f"{runner_host}:{runner_port}{UnstractWorker.BASE_API_ENDPOINT}"
         self.organization_id = str(organization_id)
         self.workflow_id = str(workflow_id)
         self.execution_id = str(execution_id)
