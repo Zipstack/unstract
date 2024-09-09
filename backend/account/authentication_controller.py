@@ -168,7 +168,7 @@ class AuthenticationController:
             )
 
             # Django tenant migration will happen in the below code block
-            with transaction.atomic():
+            with transaction.atomic(durable=True):
                 if not organization:
                     try:
                         organization_data: OrganizationData = (
