@@ -26,6 +26,7 @@ from workflow_manager.workflow.exceptions import (
     WorkflowGenerationError,
     WorkflowRegenerationError,
 )
+from workflow_manager.workflow.models.execution import WorkflowExecution
 from workflow_manager.workflow.models.workflow import Workflow
 from workflow_manager.workflow.serializers import (
     ExecuteWorkflowResponseSerializer,
