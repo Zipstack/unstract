@@ -188,7 +188,9 @@ class Client(ContainerClientInterface):
                 execution_id,
             )
         return {
-            "name": ContainerClientHelper.normalize_container_name(self.image_name),
+            "name": ContainerClientHelper.normalize_container_name(
+                self.image_name, execution_id
+            ),
             "image": self.get_image(),
             "command": command,
             "detach": True,
