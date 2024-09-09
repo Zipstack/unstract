@@ -229,6 +229,7 @@ def construct_and_run_prompt(
         prompt=prompt,
         metadata=metadata,
         prompt_key=output[PSKeys.NAME],
+        prompt_type=output.get(PSKeys.TYPE, PSKeys.TEXT),
     )
 
 
@@ -267,6 +268,7 @@ def run_completion(
     prompt: str,
     metadata: Optional[dict[str, str]] = None,
     prompt_key: Optional[str] = None,
+    prompt_type: Optional[str] = PSKeys.TEXT,
 ) -> str:
     logger: Logger = current_app.logger
     try:
@@ -279,6 +281,7 @@ def run_completion(
         completion = llm.complete(
             prompt=prompt,
             process_text=extract_epilogue,
+            extract_json=prompt_type.lower() != PSKeys.TEXT,
         )
         answer: str = completion[PSKeys.RESPONSE].text
         epilogue = completion.get(PSKeys.EPILOGUE)

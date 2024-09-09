@@ -1,5 +1,4 @@
 import logging
-import uuid
 from typing import Any
 
 from django.db import connection
@@ -20,11 +19,11 @@ from unstract.flags.feature_flag import check_feature_flag_status
 if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
     from pipeline_v2.models import Pipeline
     from utils.user_context import UserContext
-    from workflow_manager.workflow_v2.constants import WorkflowExecutionKey, WorkflowKey
+    from workflow_manager.workflow_v2.constants import WorkflowKey
     from workflow_manager.workflow_v2.serializers import ExecuteWorkflowSerializer
 else:
     from pipeline.models import Pipeline
-    from workflow_manager.workflow.constants import WorkflowExecutionKey, WorkflowKey
+    from workflow_manager.workflow.constants import WorkflowKey
     from workflow_manager.workflow.serializers import ExecuteWorkflowSerializer
 logger = logging.getLogger(__name__)
 
@@ -46,8 +45,6 @@ class SchedulerHelper:
         task_data = job_kwargs.get("data", {})
 
         task_data[WorkflowKey.WF_ID] = pipeline.workflow.id
-        execution_id = str(uuid.uuid4())
-        task_data[WorkflowExecutionKey.EXECUTION_ID] = execution_id
         serializer = ExecuteWorkflowSerializer(data=task_data)
         serializer.is_valid(raise_exception=True)
         workflow_id = serializer.get_workflow_id(serializer.validated_data)
@@ -66,7 +63,8 @@ class SchedulerHelper:
                 str(workflow_id),
                 organization_id,
                 execution_action or "",
-                execution_id,
+                # TODO: execution_id parameter cannot be removed without a migration.
+                "",
                 str(pipeline.pk),
                 # Added to remain backward compatible - remove after data migration
                 # which removes unused args in execute_pipeline_task

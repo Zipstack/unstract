@@ -103,8 +103,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
         self.compilation_result = self.compile_workflow(execution_id=self.execution_id)
 
-    @staticmethod
+    @classmethod
     def create_workflow_execution(
+        cls,
         workflow_id: str,
         pipeline_id: Optional[str] = None,
         single_step: bool = False,
@@ -113,6 +114,11 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         execution_id: Optional[str] = None,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
     ) -> WorkflowExecution:
+        # Validating with existing execution
+        existing_execution = cls.get_execution_instance_by_id(execution_id)
+        if existing_execution:
+            return existing_execution
+
         execution_method: tuple[str, str] = (
             WorkflowExecution.Method.SCHEDULED
             if scheduled
@@ -167,6 +173,26 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             pk=self.execution_id
         )
         return execution
+
+    @classmethod
+    def get_execution_instance_by_id(
+        cls, execution_id: str
+    ) -> Optional[WorkflowExecution]:
+        """Get execution by execution ID.
+
+        Args:
+            execution_id (str): UID of execution entity
+
+        Returns:
+            Optional[WorkflowExecution]: WorkflowExecution Entity
+        """
+        try:
+            execution: WorkflowExecution = WorkflowExecution.objects.get(
+                pk=execution_id
+            )
+            return execution
+        except WorkflowExecution.DoesNotExist:
+            return None
 
     def build(self) -> None:
         if self.compilation_result["success"] is True:
@@ -251,7 +277,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         )
         self.publish_log(
             f"Total files: {total_files}, "
-            f"{successful_files} successfully executed and {failed_files} errored"
+            f"{successful_files} successfully executed and {failed_files} errors"
         )
 
     def publish_initial_tool_execution_logs(
