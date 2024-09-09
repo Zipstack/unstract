@@ -8,13 +8,13 @@ const STORE_VARIABLES = {
 
 const useSocketLogsStore = create((setState, getState) => ({
   ...STORE_VARIABLES,
-  pushLogMessages: (msg) => {
+  pushLogMessages: (messages) => {
     const existingState = { ...getState() };
     let logsData = [...(existingState?.logs || [])];
 
-    const newLog = {
+    const newLogs = messages.map((msg, index) => ({
       timestamp: getTimeForLogs(),
-      key: logsData?.length + 1,
+      key: logsData?.length + index + 1,
       level: msg?.level,
       stage: msg?.stage,
       step: msg?.step,
@@ -24,9 +24,9 @@ const useSocketLogsStore = create((setState, getState) => ({
       cost_value: msg?.cost,
       iteration: msg?.iteration,
       iteration_total: msg?.iteration_total,
-    };
+    }));
 
-    logsData.push(newLog);
+    logsData = [...logsData, ...newLogs];
 
     // Remove the previous logs if the length exceeds 200
     const logsDataLength = logsData?.length;
