@@ -39,8 +39,6 @@ try {
     require("../plugins/manual-review/page/ManualReviewPage.jsx").ManualReviewPage;
   ReviewLayout =
     require("../plugins/manual-review/review-layout/ReviewLayout.jsx").ReviewLayout;
-  ManualReviewSettings =
-    require("../plugins/manual-review/settings/Settings.jsx").ManualReviewSettings;
   SimpleManualReviewPage =
     require("../plugins/manual-review/page/simple/SimpleManualReviewPage.jsx").SimpleManualReviewPage;
 } catch (err) {
