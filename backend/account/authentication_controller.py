@@ -167,7 +167,9 @@ class AuthenticationController:
             organization = OrganizationService.get_organization_by_org_id(
                 organization_id
             )
-            with transaction.atomic():
+
+            # Django tenant migration will happen in the below code block
+            with transaction.atomic(durable=True):
                 if not organization:
                     try:
                         organization_data: OrganizationData = (
@@ -192,6 +194,12 @@ class AuthenticationController:
                 organization_member = self.create_tenant_user(
                     organization=organization, user=user
                 )
+                
+            if new_organization:
+                try:
+                    self.auth_service.hubspot_signup_api(request=request)
+                except MethodNotImplemented:
+                    Logger.info("hubspot_signup_api not implemented")
 
             with transaction.atomic():
                 if new_organization:
