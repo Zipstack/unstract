@@ -23,8 +23,6 @@ function TokenUsage({ tokenUsageId, isLoading }) {
     setTokens(tokenUsage[tokenUsageId]); // Update tokens state with the token usage data for the given tokenUsageId
   }, [tokenUsage, tokenUsageId]);
 
-  console.log(isLoading);
-
   // If no tokens data is available, render nothing
   if (!tokens || !Object.keys(tokens)?.length || isLoading) {
     return "NA";

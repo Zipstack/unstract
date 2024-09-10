@@ -83,7 +83,7 @@ function PromptCard({
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
-  const { tokenUsage, setTokenUsage } = useTokenUsageStore();
+  const { setTokenUsage } = useTokenUsageStore();
   const { id } = useParams();
 
   useEffect(() => {
@@ -635,20 +635,10 @@ function PromptCard({
         }
 
         const outputResults = data.map((outputResult) => {
-          const promptId = outputResult?.prompt_id;
-          const docId = outputResult?.document_manager;
-          const profileManagerId = outputResult?.profile_manager;
-          const tokenUsageId = getTokenUsageId(
-            promptId,
-            docId,
-            profileManagerId
-          );
-          setTokenUsage(tokenUsageId, outputResult?.token_usage);
-
           return {
             runId: outputResult?.run_id,
             promptOutputId: outputResult?.prompt_output_id,
-            profileManager: profileManagerId,
+            profileManager: outputResult?.profile_manager,
             context: outputResult?.context,
             challengeData: outputResult?.challenge_data,
             output: outputResult?.output,
@@ -743,16 +733,11 @@ function PromptCard({
             `${tokenUsageId}__challenge_data`,
             usage?.challenge_data
           );
-          if (usage) {
-            setTokenUsage(tokenUsageId, usage?.token_usage);
-          }
+          setTokenUsage(tokenUsageId, usage?.token_usage);
         } else {
           data?.forEach((item) => {
             const tokenUsageId = `${item?.prompt_id}__${item?.document_manager}__${item?.profile_manager}`;
-
-            if (tokenUsage[tokenUsageId] === undefined) {
-              setTokenUsage(tokenUsageId, item?.token_usage);
-            }
+            setTokenUsage(tokenUsageId, item?.token_usage);
           });
         }
         return res;
