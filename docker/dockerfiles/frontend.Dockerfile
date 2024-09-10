@@ -1,6 +1,6 @@
 FROM node:16 AS builder
 
-# Build-time environment variables 
+# Build-time environment variables
 ENV BUILD_CONTEXT_PATH frontend
 ENV REACT_APP_BACKEND_URL ""
 
