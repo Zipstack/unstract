@@ -129,7 +129,7 @@ def test_get_container_run_config(docker_client, mocker):
         auto_remove=True,
     )
 
-    mocker_normalize.assert_called_once_with("test-image")
+    mocker_normalize.assert_called_once_with("test-image", "ex123")
     assert config["name"] == "test-image"
     assert config["image"] == "test-image:latest"
     assert config["command"] == ["echo", "hello"]
@@ -150,6 +150,7 @@ def test_get_container_run_config_without_mount(docker_client, mocker):
     """Test the get_container_run_config method."""
     os.environ[Env.WORKFLOW_DATA_DIR] = "/source"
     command = ["echo", "hello"]
+    execution_id = "ex123"
 
     mocker.patch.object(docker_client, "_Client__image_exists", return_value=True)
     mocker_normalize = mocker.patch(
@@ -160,11 +161,11 @@ def test_get_container_run_config_without_mount(docker_client, mocker):
         command,
         None,
         None,
-        None,
+        execution_id,
         auto_remove=True,
     )
 
-    mocker_normalize.assert_called_once_with("test-image")
+    mocker_normalize.assert_called_once_with("test-image", "ex123")
     assert config["name"] == "test-image"
     assert config["image"] == "test-image:latest"
     assert config["command"] == ["echo", "hello"]
