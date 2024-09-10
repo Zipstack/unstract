@@ -15,7 +15,6 @@ import { useSessionStore } from "../../../store/session-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
-import useTokenUsage from "../../../hooks/useTokenUsage";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
@@ -62,7 +61,7 @@ function PromptCard({
   const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
   const [progressMsg, setProgressMsg] = useState({});
   const [docOutputs, setDocOutputs] = useState([]);
-  const [timers, setTimers] = useState({});
+  const [timers, setTimers] = useState({}); // Prompt run timer
   const [spsLoading, setSpsLoading] = useState({});
   const {
     getDropdownItems,
@@ -86,7 +85,6 @@ function PromptCard({
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { tokenUsage, setTokenUsage } = useTokenUsageStore();
-  const { getTokenUsage } = useTokenUsage();
   const { id } = useParams();
 
   useEffect(() => {
@@ -544,7 +542,6 @@ function PromptCard({
     const runId = generateUUID();
     const maxWaitTime = 30 * 1000; // 30 seconds
     const pollingInterval = 5000; // 5 seconds
-    const tokenUsagepollingInterval = 5000;
 
     const body = {
       document_id: docId,
@@ -562,16 +559,7 @@ function PromptCard({
         tokenUsageId = promptId + "__" + docId + "__" + profileManagerId;
         setTokenUsage(tokenUsageId, defaultTokenUsage);
 
-        // Set up an interval to fetch token usage data at regular intervals
-        if (
-          profileManagerId === selectedLlmProfileId &&
-          docId === selectedDoc?.document_id
-        ) {
-          intervalId = setInterval(
-            () => getTokenUsage(runId, tokenUsageId),
-            tokenUsagepollingInterval // Fetch token usage data every 5000 milliseconds (5 seconds)
-          );
-        }
+        // Set prompt run timer
         setTimers((prev) => ({
           ...prev,
           [tokenUsageId]: 0,
@@ -612,7 +600,6 @@ function PromptCard({
         .finally(() => {
           if (!isSimplePromptStudio) {
             clearInterval(intervalId);
-            getTokenUsage(runId, tokenUsageId);
             stopTimer(tokenUsageId, timerIntervalId);
           }
         });
