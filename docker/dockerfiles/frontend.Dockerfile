@@ -1,7 +1,11 @@
 FROM node:16 AS builder
 
+# Build-time environment variables 
 ENV BUILD_CONTEXT_PATH frontend
 ENV REACT_APP_BACKEND_URL ""
+
+ARG REACT_APP_STRIPE_PUBLISHABLE_KEY
+ENV REACT_APP_STRIPE_PUBLISHABLE_KEY $REACT_APP_STRIPE_PUBLISHABLE_KEY
 
 # Set the working directory inside the container
 WORKDIR /app
