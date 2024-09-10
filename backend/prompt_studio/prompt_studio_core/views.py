@@ -241,14 +241,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             name="summarizer",
             plugins=self.processor_plugins,
         )
-        cls.process(
-            tool_id=str(tool.tool_id),
-            file_name=file_name,
-            org_id=UserSessionUtils.get_organization_id(request),
-            user_id=tool.created_by.user_id,
-            document_id=document_id,
-            usage_kwargs=usage_kwargs.copy(),
-        )
+        if cls:
+            cls.process(
+                tool_id=str(tool.tool_id),
+                file_name=file_name,
+                org_id=UserSessionUtils.get_organization_id(request),
+                user_id=tool.created_by.user_id,
+                document_id=document_id,
+                usage_kwargs=usage_kwargs.copy(),
+            )
 
         if unique_id:
             return Response(

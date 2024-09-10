@@ -113,7 +113,6 @@ function TopNavBar({ isSimpleLayout }) {
 
   useEffect(() => {
     const checkReviewPage = location.pathname.split("review");
-
     if (checkReviewPage.length > 1) {
       if (checkReviewPage[1].includes("/approve")) {
         setReviewPageHeader("Approve");
@@ -124,6 +123,9 @@ function TopNavBar({ isSimpleLayout }) {
       }
     } else {
       setReviewPageHeader(null);
+    }
+    if (location.pathname.includes("/simple_review")) {
+      setReviewPageHeader("Simple Review");
     }
   }, [location]);
 

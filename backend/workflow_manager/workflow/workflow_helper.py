@@ -384,6 +384,7 @@ class WorkflowHelper:
         hash_values_of_files: dict[str, FileHash],
         timeout: int = -1,
         pipeline_id: Optional[str] = None,
+        queue: Optional[str] = None,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
 
@@ -402,13 +403,20 @@ class WorkflowHelper:
             }
             org_schema = connection.tenant.schema_name
             log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
-            async_execution = WorkflowHelper.execute_bin.delay(
-                org_schema,
-                workflow_id,
-                hash_values_of_files=file_hash_in_str,
-                execution_id=execution_id,
-                pipeline_id=pipeline_id,
-                log_events_id=log_events_id,
+            async_execution = WorkflowHelper.execute_bin.apply_async(
+                args=[
+                    org_schema,  # schema_name
+                    workflow_id,  # workflow_id
+                    execution_id,  # execution_id
+                    file_hash_in_str,  # hash_values_of_files
+                ],
+                kwargs={
+                    "scheduled": False,
+                    "execution_mode": None,
+                    "pipeline_id": pipeline_id,
+                    "log_events_id": log_events_id,
+                },
+                queue=queue,
             )
             if timeout > -1:
                 async_execution.wait(
