@@ -9,7 +9,7 @@ import { formatNumberWithCommas } from "../../../helpers/GetStaticData";
  * @param {string} tokenUsageId - The token usage ID to fetch token usage for.
  * @return {JSX.Element} - The TokenUsage component.
  */
-function TokenUsage({ tokenUsageId }) {
+function TokenUsage({ tokenUsageId, isLoading }) {
   const [tokens, setTokens] = useState({});
   const { tokenUsage } = useTokenUsageStore();
 
@@ -23,9 +23,11 @@ function TokenUsage({ tokenUsageId }) {
     setTokens(tokenUsage[tokenUsageId]); // Update tokens state with the token usage data for the given tokenUsageId
   }, [tokenUsage, tokenUsageId]);
 
+  console.log(isLoading);
+
   // If no tokens data is available, render nothing
-  if (!tokens || !Object.keys(tokens)?.length) {
-    return 0;
+  if (!tokens || !Object.keys(tokens)?.length || isLoading) {
+    return "NA";
   }
 
   return formatNumberWithCommas(tokens?.total_tokens);
@@ -33,6 +35,7 @@ function TokenUsage({ tokenUsageId }) {
 
 TokenUsage.propTypes = {
   tokenUsageId: PropTypes.string.isRequired,
+  isLoading: PropTypes.bool.isRequired,
 };
 
 export { TokenUsage };

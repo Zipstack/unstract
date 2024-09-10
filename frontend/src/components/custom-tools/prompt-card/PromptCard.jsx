@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import {
-  defaultTokenUsage,
   generateUUID,
   pollForCompletion,
 } from "../../../helpers/GetStaticData";
@@ -231,6 +230,10 @@ function PromptCard({
       ...prev,
       [docId]: isLoadingStatus,
     }));
+  };
+
+  const getTokenUsageId = (promptId, docId, profileManagerId) => {
+    return promptId + "__" + docId + "__" + profileManagerId;
   };
 
   // Generate the result for the currently selected document
@@ -550,14 +553,11 @@ function PromptCard({
 
     if (profileManagerId) {
       body.profile_manager = profileManagerId;
-      let intervalId;
       let tokenUsageId;
       let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/${details?.tool_id}`;
       if (!isSimplePromptStudio) {
         body["run_id"] = runId;
-        // Update the token usage state with default token usage for a specific document ID
-        tokenUsageId = promptId + "__" + docId + "__" + profileManagerId;
-        setTokenUsage(tokenUsageId, defaultTokenUsage);
+        tokenUsageId = getTokenUsageId(promptId, docId, profileManagerId);
 
         // Set prompt run timer
         setTimers((prev) => ({
@@ -599,7 +599,6 @@ function PromptCard({
         })
         .finally(() => {
           if (!isSimplePromptStudio) {
-            clearInterval(intervalId);
             stopTimer(tokenUsageId, timerIntervalId);
           }
         });
@@ -636,13 +635,22 @@ function PromptCard({
         }
 
         const outputResults = data.map((outputResult) => {
+          const promptId = outputResult?.prompt_id;
+          const docId = outputResult?.document_manager;
+          const profileManagerId = outputResult?.profile_manager;
+          const tokenUsageId = getTokenUsageId(
+            promptId,
+            docId,
+            profileManagerId
+          );
+          setTokenUsage(tokenUsageId, outputResult?.token_usage);
+
           return {
             runId: outputResult?.run_id,
             promptOutputId: outputResult?.prompt_output_id,
-            profileManager: outputResult?.profile_manager,
+            profileManager: profileManagerId,
             context: outputResult?.context,
             challengeData: outputResult?.challenge_data,
-            tokenUsage: outputResult?.token_usage,
             output: outputResult?.output,
             evalMetrics: getEvalMetrics(
               promptDetails?.evaluate,
