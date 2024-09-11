@@ -10,6 +10,7 @@ import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
 import { Button, Space, Tabs, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import "./DocumentManager.css";
 
 import { base64toBlob, docIndexStatus } from "../../../helpers/GetStaticData";
@@ -21,7 +22,6 @@ import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
-import { useParams } from "react-router-dom";
 
 let items = [
   {
