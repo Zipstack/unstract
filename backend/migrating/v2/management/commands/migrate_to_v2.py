@@ -1,16 +1,16 @@
-    import json
+import json
     import logging
     import os
     import time
+    from contextlib import contextmanager
     from typing import Any, Generator, Optional
 
-    from migrating.v2.constants import V2
     import psycopg2
     from django.conf import settings
     from django.core.management.base import BaseCommand
+    from migrating.v2.constants import V2
     from migrating.v2.unstract_migrations import UnstractMigration
     from psycopg2.extensions import connection, cursor
-    from contextlib import contextmanager
 
     logger = logging.getLogger(__name__)
 
@@ -25,15 +25,14 @@
 
         @contextmanager
         def _db_connect_and_cursor(self, db_config: dict) -> Generator[tuple[connection, cursor], None, None]:
-            """
-            A context manager to manage database connection and cursor.
+            """A context manager to manage database connection and cursor.
 
             Args:
                 db_config (dict): Database configuration dictionary.
 
             Yields:
                 tuple[connection, cursor]: A tuple containing the connection and cursor.
-            """            
+            """
             conn: connection = psycopg2.connect(**db_config)
             try:
                 with conn.cursor() as cur:  # Manage cursor within the same context
@@ -46,10 +45,11 @@
                 conn.close()
 
         def _create_tracking_table_if_not_exists(self):
-            """
-            Ensures that the migration tracking table exists in the destination database.
+            """Ensures that the migration tracking table exists in the
+            destination database.
+
             Creates the table if it does not exist.
-            """            
+            """
             with self._db_connect_and_cursor(self.dest_db_config) as (conn, cur):
                 try:
                     cur.execute(
@@ -67,15 +67,14 @@
                     logger.error(f"Error creating migration tracking table: {e}")
 
         def _is_migration_applied(self, migration_name):
-            """
-            Checks whether the specified migration has already been applied.
+            """Checks whether the specified migration has already been applied.
 
             Args:
                 migration_name (str): The name of the migration to check.
 
             Returns:
                 bool: True if the migration has been applied, False otherwise.
-            """        
+            """
             with self._db_connect_and_cursor(self.dest_db_config) as (conn, cur):
                 cur.execute(
                     f"""
@@ -88,12 +87,12 @@
                 return result[0] > 0
 
         def _record_migration(self, migration_name):
-            """
-            Records the completion of a migration by inserting its name into the tracking table.
+            """Records the completion of a migration by inserting its name into
+            the tracking table.
 
             Args:
                 migration_name (str): The name of the migration to record.
-            """            
+            """
             with self._db_connect_and_cursor(self.dest_db_config) as (conn, cur):
                 cur.execute(
                     f"""
@@ -107,16 +106,16 @@
         def _fetch_schema_names(
             self, schemas_to_migrate: list[str]
         ) -> list[tuple[int, str]]:
-            """
-            Fetches schema names and their IDs from the destination database based on the 
-            provided schema list. Supports fetching all schemas if '_ALL_' is specified.
+            """Fetches schema names and their IDs from the destination database
+            based on the provided schema list. Supports fetching all schemas if
+            '_ALL_' is specified.
 
             Args:
                 schemas_to_migrate (list[str]): A list of schema names to migrate, or '_ALL_' to migrate all.
 
             Returns:
                 list[tuple[int, str]]: A list of tuples containing the ID and schema name.
-            """                
+            """
             with self._db_connect_and_cursor(self.dest_db_config) as (conn, cur):
 
                 # Process schemas_to_migrate: trim spaces and remove empty entries
@@ -128,7 +127,7 @@
                 if schemas_to_migrate == ["_ALL_"]:
                     query = "SELECT id, schema_name FROM account_organization;"
                     cur.execute(query)
-                else:   
+                else:
                     placeholders = ",".join(["%s"] * len(schemas_to_migrate))
                     query = (
                         "SELECT id, schema_name FROM account_organization WHERE "
@@ -146,28 +145,27 @@
             column_names: list[str],
             column_transformations: dict[str, dict[str, Any]],
         ) -> tuple[Any, ...]:
-            """
-            Prepares and migrates the relational keys of a single row from
-            the source database to the destination database,
-            updating specific column values based on provided transformations.
+            """Prepares and migrates the relational keys of a single row from
+            the source database to the destination database, updating specific
+            column values based on provided transformations.
 
             Args:
                 row (tuple[Any, ...]): The row containing the original relational keys.
                 dest_cursor (cursor): Cursor for the destination database.
                 column_names (list[str]): List of column names in the row.
                 column_transformations (dict[str, dict[str, Any]]):
-                    A mapping that defines how to transform 
+                    A mapping that defines how to transform
                     specific column values (usually foreign keys).
-                    The key is the name of the column to be 
+                    The key is the name of the column to be
                     transformed, and the value is a dictionary containing:
                         - query (str): SQL query to fetch the corresponding new value.
                         - params (list[str]): List of column names to use as
                             parameters for the query.
-                    This is used to migrate old column names from V1 to new column names in V2. 
+                    This is used to migrate old column names from V1 to new column names in V2.
 
             Returns:
                 tuple[Any, ...]: The row with updated relational keys.
-            """                     
+            """
             row = list(row)
 
             for key, transaction in column_transformations.items():
@@ -196,8 +194,8 @@
             column_names: list[str],
             column_transformations: dict[str, dict[str, Any]],
         ) -> None:
-            """
-            Migrates rows in batches from the source to the destination database.
+            """Migrates rows in batches from the source to the destination
+            database.
 
             Args:
                 migration_name (str): The name of the migration.
@@ -206,16 +204,16 @@
                 dest_conn (connection): Connection to the destination database.
                 dest_query (str): SQL query to insert rows into the destination database.
                 column_names (list[str]): List of column names in the source data.
-                column_transformations (dict[str, dict[str, Any]]): A mapping that defines key 
-                    transformations. The key is the name of the column to be transformed, and 
+                column_transformations (dict[str, dict[str, Any]]): A mapping that defines key
+                    transformations. The key is the name of the column to be transformed, and
                     the value is a dictionary containing:
                         - "query" (str): SQL query to fetch the new value.
                         - "params" (list[str]): List of column names to use as parameters for the query.
-                    This is used to migrate old column names from V1 to new column names in V2. 
+                    This is used to migrate old column names from V1 to new column names in V2.
 
             Returns:
                 None
-            """            
+            """
             batch_count = 0
             total_rows = 0
 
@@ -259,7 +257,9 @@
         def _bump_auto_increment_id(
             self, dest_cursor: cursor, dest_table: str, dest_conn: connection
         ) -> None:
-            """Adjust the auto-increment ID for a table in the destination database.
+            """Adjust the auto-increment ID for a table in the destination
+            database.
+
             This method retrieves the maximum ID value from the specified table
             and sets the next auto-increment value for the table accordingly.
             Args:
@@ -330,7 +330,7 @@
 
             with self._db_connect_and_cursor(self.src_db_config) as (src_conn, src_cursor), \
                 self._db_connect_and_cursor(self.dest_db_config) as (dest_conn, dest_cursor):
-            
+
                 for migration in migrations:
                     migration_name = migration["name"]
                     logger.info(f"Migration '{migration_name}' started")
