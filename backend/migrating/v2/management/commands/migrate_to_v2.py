@@ -44,6 +44,10 @@ class DataMigrator:
             conn.rollback()  # Rollback on error
             logger.error(f"Database operation error: {e}")
             raise
+        except Exception as e:
+            conn.rollback()  # Rollback on unexpected error
+            logger.error(f"Unexpected error: {e}")
+            raise
         finally:
             conn.close()
 
@@ -68,6 +72,7 @@ class DataMigrator:
                 logger.info("Migration tracking table ensured.")
             except psycopg2.Error as e:
                 logger.error(f"Error creating migration tracking table: {e}")
+                raise
 
     def _is_migration_applied(self, migration_name):
         """Checks whether the specified migration has already been applied.
@@ -251,7 +256,6 @@ class DataMigrator:
                     f" Time taken: {elapsed_time:.2f} seconds."
                 )
             except psycopg2.Error as e:
-                dest_conn.rollback()
                 logger.error(
                     f"[{migration_name}] Error inserting batch {batch_count}: {e}"
                 )
@@ -324,7 +328,6 @@ class DataMigrator:
             )
 
         except psycopg2.Error as e:
-            dest_conn.rollback()
             logger.error(f"Error adjusting auto-increment for table {dest_table}: {e}")
             raise
 
@@ -371,7 +374,6 @@ class DataMigrator:
                         )
                     except Exception as e:
                         logger.error(f"Error clearing table '{dest_table}': {e}")
-                        dest_conn.rollback()
                         raise
 
                 src_cursor.execute(src_query)
@@ -398,7 +400,16 @@ class DataMigrator:
 
 
 class Command(BaseCommand):
-    help = "Migrates data from v1 models to v2 models for all apps"
+    help = (
+        "Migrate data from v1 models to v2 models across all applications.\n\n"
+        "This command facilitates data migration for the specified schemas or "
+        "for all schemas if '_ALL_' is provided. It connects to both the source "
+        "and destination databases and ensures the data is properly migrated "
+        "from the v1 schema to the new v2 schema."
+    )
+
+    if not V2.SCHEMA_NAME:
+        raise ValueError("SCHEMA_NAME is not defined.")
 
     def handle(self, *args, **options):
         v2_schema = V2.SCHEMA_NAME

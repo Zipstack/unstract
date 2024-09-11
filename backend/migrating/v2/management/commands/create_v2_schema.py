@@ -7,6 +7,8 @@ class Command(BaseCommand):
     help = "Create v2 schema if it does not exist"
 
     def handle(self, *args, **kwargs):
+        if not V2.SCHEMA_NAME:
+            raise ValueError("SCHEMA_NAME is not defined.")
         with connection.cursor() as cursor:
             cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {V2.SCHEMA_NAME}")
         self.stdout.write(
