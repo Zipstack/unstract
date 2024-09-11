@@ -12,7 +12,7 @@ from unstract.platform_service.utils import EnvManager
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
-V2_SCHEMA = EnvManager.get_required_setting("V2_SCHEMA", "unstract_v2")
+DB_SCHEMA = EnvManager.get_required_setting("DB_SCHEMA", "unstract_v2")
 
 
 class AdapterInstanceRequestHelper:
@@ -36,7 +36,7 @@ class AdapterInstanceRequestHelper:
         if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
             query = (
                 "SELECT id, adapter_id, adapter_metadata_b FROM "
-                f'"{V2_SCHEMA}".{DBTableV2.ADAPTER_INSTANCE} x '
+                f'"{DB_SCHEMA}".{DBTableV2.ADAPTER_INSTANCE} x '
                 f"WHERE id='{adapter_instance_id}' and "
                 f"organization_id='{organization_uid}'"
             )
@@ -78,7 +78,7 @@ class PromptStudioRequestHelper:
             query = (
                 "SELECT prompt_registry_id, tool_spec, "
                 "tool_metadata, tool_property FROM "
-                f'"{V2_SCHEMA}".{DBTableV2.PROMPT_STUDIO_REGISTRY} x '
+                f'"{DB_SCHEMA}".{DBTableV2.PROMPT_STUDIO_REGISTRY} x '
                 f"WHERE prompt_registry_id='{prompt_registry_id}'"
             )
         else:

@@ -4,7 +4,7 @@ from peewee import PostgresqlDatabase
 from unstract.prompt_service.constants import DBTableV2
 from unstract.prompt_service.env_manager import EnvLoader
 
-V2_SCHEMA = EnvLoader.get_env_or_die("V2_SCHEMA", "unstract_v2")
+DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract_v2")
 
 
 class DBUtils:
@@ -22,8 +22,8 @@ class DBUtils:
         Returns:
             tuple[int, str]: organization uid and organization identifier
         """
-        platform_key_table = f'"{V2_SCHEMA}".{DBTableV2.PLATFORM_KEY}'
-        organization_table = f'"{V2_SCHEMA}".{DBTableV2.ORGANIZATION}'
+        platform_key_table = f'"{DB_SCHEMA}".{DBTableV2.PLATFORM_KEY}'
+        organization_table = f'"{DB_SCHEMA}".{DBTableV2.ORGANIZATION}'
 
         organization_uid: Optional[int] = cls._execute_query(
             f"SELECT organization_id FROM {platform_key_table} WHERE key=%s", (token,)

@@ -8,7 +8,7 @@ from unstract.prompt_service.env_manager import EnvLoader
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
-V2_SCHEMA = EnvLoader.get_env_or_die("V2_SCHEMA", "unstract_v2")
+DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract_v2")
 
 
 class AuthenticationMiddleware:
@@ -22,7 +22,7 @@ class AuthenticationMiddleware:
                 return False
 
             if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-                platform_key_table = f'"{V2_SCHEMA}".{DBTableV2.PLATFORM_KEY}'
+                platform_key_table = f'"{DB_SCHEMA}".{DBTableV2.PLATFORM_KEY}'
             else:
                 platform_key_table = "account_platformkey"
 

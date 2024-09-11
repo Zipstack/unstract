@@ -13,7 +13,7 @@ from unstract.prompt_service.env_manager import EnvLoader
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
-V2_SCHEMA = EnvLoader.get_env_or_die("V2_SCHEMA", "unstract_v2")
+DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract_v2")
 
 load_dotenv()
 
@@ -123,7 +123,7 @@ def query_usage_metadata(db, token: str, metadata: dict[str, Any]) -> dict[str, 
 
 
 def query_usage_metadata_v2(db, token: str, metadata: dict[str, Any]) -> dict[str, Any]:
-    V2_SCHEMA = EnvLoader.get_env_or_die("V2_SCHEMA", "unstract_v2")
+    DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract_v2")
     organization_uid, org_id = DBUtils.get_organization_from_bearer_token(token)
     run_id: str = metadata["run_id"]
     query: str = f"""
@@ -136,7 +136,7 @@ def query_usage_metadata_v2(db, token: str, metadata: dict[str, Any]) -> dict[st
             SUM(total_tokens) AS total_tokens,
             SUM(embedding_tokens) AS embedding_tokens,
             SUM(cost_in_dollars) AS cost_in_dollars
-        FROM "{V2_SCHEMA}"."token_usage_v2"
+        FROM "{DB_SCHEMA}"."token_usage_v2"
         WHERE run_id = %s and organization_id = %s
         GROUP BY usage_type, llm_usage_reason, model_name;
     """
