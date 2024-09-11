@@ -201,7 +201,7 @@ class WorkflowHelper:
         except StopExecution:
             raise
         except Exception as e:
-            error = f"Error processing file {input_file}: {str(e)}"
+            error = f"Error processing file '{os.path.basename(input_file)}'. {str(e)}"
             execution_service.publish_log(error, level=LogLevel.ERROR)
         execution_service.publish_update_log(
             LogState.RUNNING,
