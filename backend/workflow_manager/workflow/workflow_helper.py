@@ -418,7 +418,10 @@ class WorkflowHelper:
                 },
                 queue=queue,
             )
-            logger.info(f"Job {async_execution} enqueued.")
+            logger.info(
+                f"Job '{async_execution}' has been enqueued for "
+                f"execution_id '{execution_id}'"
+            )
             if timeout > -1:
                 async_execution.wait(
                     timeout=timeout,
