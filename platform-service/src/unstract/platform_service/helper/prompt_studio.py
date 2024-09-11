@@ -1,6 +1,6 @@
 from typing import Any
 
-import peewee
+from playhouse.pool import PooledPostgresqlDatabase
 from unstract.platform_service.constants import DBTableV2, FeatureFlag
 from unstract.platform_service.exceptions import APIError
 
@@ -10,14 +10,14 @@ from unstract.flags.feature_flag import check_feature_flag_status
 class PromptStudioRequestHelper:
     @staticmethod
     def get_prompt_instance_from_db(
-        db_instance: peewee.PostgresqlDatabase,
+        db_instance: PooledPostgresqlDatabase,
         organization_id: str,
         prompt_registry_id: str,
     ) -> dict[str, Any]:
         """Get prompt studio registry from Backend Database.
 
         Args:
-            db_instance (peewee.PostgresqlDatabase): Backend DB
+            db_instance (PooledPostgresqlDatabase): Backend DB Connection Pool
             organization_id (str): organization schema id
             prompt_registry_id (str): prompt_registry_id
 
@@ -45,5 +45,5 @@ class PromptStudioRequestHelper:
         columns = [desc[0] for desc in cursor.description]
         data_dict: dict[str, Any] = dict(zip(columns, result_row))
         cursor.close()
-        db_instance.close()
+        db_instance.manual_close()
         return data_dict
