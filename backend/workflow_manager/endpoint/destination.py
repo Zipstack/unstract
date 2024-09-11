@@ -186,7 +186,7 @@ class DestinationConnector(BaseConnector):
             self._push_data_to_queue(file_name, workflow, input_file_path)
         if self.execution_service:
             self.execution_service.publish_log(
-                message=f"File {file_name} processed successfully"
+                message=f"File '{file_name}' processed successfully"
             )
         if not file_history:
             FileHistoryHelper.create_file_history(

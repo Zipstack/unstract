@@ -43,7 +43,7 @@ else:
     # Execute code for disabled feature
     pass
 
-## Feature flags in Pandora
+## Feature flags in Unstract
 
 - Refer related files in /backend/feature_flag and /unstract/flags
 

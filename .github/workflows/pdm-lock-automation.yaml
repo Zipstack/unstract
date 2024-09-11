@@ -21,6 +21,7 @@ on:
 
 jobs:
   check_pyproject_changes:
+    name: ${{ matrix.directory }} PDM lock update
     runs-on: ubuntu-latest
     strategy:
       matrix:

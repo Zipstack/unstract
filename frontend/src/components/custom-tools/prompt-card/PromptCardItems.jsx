@@ -80,7 +80,6 @@ function PromptCardItems({
   const [enabledProfiles, setEnabledProfiles] = useState(
     llmProfiles.map((profile) => profile.profile_id)
   );
-  const [expandedProfiles, setExpandedProfiles] = useState([]); // New state for expanded profiles
   const [isIndexOpen, setIsIndexOpen] = useState(false);
   const isNotSingleLlmProfile = llmProfiles.length > 1;
   const divRef = useRef(null);
@@ -157,9 +156,6 @@ function PromptCardItems({
   }, [isSinglePassExtractLoading]);
 
   useEffect(() => {
-    if (singlePassExtractMode) {
-      setExpandedProfiles([]);
-    }
     setCoverageCount(getCoverageData());
   }, [singlePassExtractMode, coverage]);
 
@@ -296,8 +292,6 @@ function PromptCardItems({
               setOpenIndexProfile={setOpenIndexProfile}
               enabledProfiles={enabledProfiles}
               setEnabledProfiles={setEnabledProfiles}
-              expandedProfiles={expandedProfiles}
-              setExpandedProfiles={setExpandedProfiles}
               isNotSingleLlmProfile={isNotSingleLlmProfile}
               setIsIndexOpen={setIsIndexOpen}
               enforceType={enforceType}
