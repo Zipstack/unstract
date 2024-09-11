@@ -113,7 +113,7 @@ def validate_bearer_token(token: Optional[str]) -> bool:
         cursor = be_db.execute_sql(query)
         result_row = cursor.fetchone()
         cursor.close()
-        be_db.manual_close()
+        be_db.close()
         if not result_row or len(result_row) == 0:
             app.logger.error(f"Authentication failed. bearer token not found {token}")
             return False

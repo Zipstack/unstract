@@ -45,5 +45,5 @@ class AdapterInstanceRequestHelper:
         columns = [desc[0] for desc in cursor.description]
         data_dict: dict[str, Any] = dict(zip(columns, result_row))
         cursor.close()
-        db_instance.manual_close()
+        db_instance.close()
         return data_dict
