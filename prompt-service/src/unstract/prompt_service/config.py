@@ -54,6 +54,9 @@ def create_app() -> Flask:
     db_user = get_env_or_die("PG_BE_USERNAME")
     db_pass = get_env_or_die("PG_BE_PASSWORD")
     db_name = get_env_or_die("PG_BE_DATABASE")
+    max_connections = int(get_env_or_die("POOL_MAX_CONNECTIONS"))
+    stale_timeout = int(get_env_or_die("POOL_STALE_TIMEOUT"))
+    timeout = int(get_env_or_die("POOL_TIMEOUT"))
 
     # Initialize and connect to the database
     db.init(
@@ -62,13 +65,9 @@ def create_app() -> Flask:
         password=db_pass,
         host=db_host,
         port=db_port,
-        max_connections=32,
-        #  Number of seconds to allow connections
-        # to be used. Same as gunicorn timeout
-        stale_timeout=900,
-        #  Number of seconds to block when
-        # pool is full. Set to 5 minutes.
-        timeout=300,
+        max_connections=max_connections,
+        stale_timeout=stale_timeout,
+        timeout=timeout,
     )
     db.connect()
 

@@ -26,13 +26,9 @@ be_db = PooledPostgresqlDatabase(
     password=Env.PG_BE_PASSWORD,
     host=Env.PG_BE_HOST,
     port=Env.PG_BE_PORT,
-    max_connections=32,
-    #  Number of seconds to allow connections
-    # to be used. Same as gunicorn timeout
-    stale_timeout=900,
-    #  Number of seconds to block
-    # when pool is full. Set to 5 minutes.
-    timeout=300,
+    max_connections=Env.POOL_MAX_CONNECTIONS,
+    stale_timeout=Env.POOL_STALE_TIMEOUT,
+    timeout=Env.POOL_TIMEOUT,
 )
 be_db.init(Env.PG_BE_DATABASE)
 be_db.connect()
