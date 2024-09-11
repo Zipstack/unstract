@@ -8,6 +8,7 @@ name = "unstract-connectors"
 version = "0.0.3"
 description = "All connectors that are part of the Unstract platform"
 dependencies = [
+    "singleton-decorator~=1.0.0",
     # For GCSHelper
     "google-auth==2.20.0",
     "google-cloud-secret-manager==2.16.1",
@@ -25,7 +26,9 @@ dependencies = [
     "snowflake-connector-python[pandas]~=3.6.0", # For Snowflake
     "google-cloud-bigquery==3.11.4", # For Bigquery
     "pymssql==2.2.8", # For MSSQL
-    "PyMySQL==1.1.0" # For MySQL
+    "PyMySQL==1.1.0", # For MySQL
+    # TODO: Use sshfs if built-in SFTP implementation doesn't work as expected
+    # "sshfs~=2024.6.0"  # For SFTP
 ]
 readme = "README.md"
 urls = { Homepage = "https://unstract.com", Source = "https://github.com/Zipstack/unstract/tree/main/unstract/connectors" }
