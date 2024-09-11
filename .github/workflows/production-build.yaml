@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service_name: [backend, frontend, document-service, platform-service, prompt-service, worker, x2text-service]
+        service_name: [backend, frontend, platform-service, prompt-service, worker, x2text-service]
 
     steps:
       - name: Checkout code for release

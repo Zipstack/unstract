@@ -68,13 +68,17 @@ class ExceptionLoggingMiddleware:
         # Handle only when running in production, for debug mode
         # Django takes care of displaying a detailed HTML page.
         if not settings.DEBUG and exception:
+            logger.error(f"Unhandled exception by DRF for {request}, logging error...")
+            ExceptionLoggingMiddleware.format_exc_and_log(
+                request=request, exception=exception
+            )
             detail = {"detail": "Error processing the request."}
             return HttpResponse(json.dumps(detail), status=500)
         return None
 
     @staticmethod
     def format_exc_and_log(
-        request: Request, response: Optional[Response], exception: Exception
+        request: Request, exception: Exception, response: Optional[Response] = None
     ) -> None:
         """Format the exception to be logged and logs it.
 

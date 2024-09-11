@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import {
-  defaultTokenUsage,
   generateUUID,
   pollForCompletion,
 } from "../../../helpers/GetStaticData";
@@ -15,7 +14,6 @@ import { useSessionStore } from "../../../store/session-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
-import useTokenUsage from "../../../hooks/useTokenUsage";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
@@ -62,7 +60,7 @@ function PromptCard({
   const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
   const [progressMsg, setProgressMsg] = useState({});
   const [docOutputs, setDocOutputs] = useState([]);
-  const [timers, setTimers] = useState({});
+  const [timers, setTimers] = useState({}); // Prompt run timer
   const [spsLoading, setSpsLoading] = useState({});
   const {
     getDropdownItems,
@@ -85,8 +83,7 @@ function PromptCard({
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
-  const { tokenUsage, setTokenUsage } = useTokenUsageStore();
-  const { getTokenUsage } = useTokenUsage();
+  const { setTokenUsage } = useTokenUsageStore();
   const { id } = useParams();
 
   useEffect(() => {
@@ -233,6 +230,10 @@ function PromptCard({
       ...prev,
       [docId]: isLoadingStatus,
     }));
+  };
+
+  const getTokenUsageId = (promptId, docId, profileManagerId) => {
+    return promptId + "__" + docId + "__" + profileManagerId;
   };
 
   // Generate the result for the currently selected document
@@ -544,7 +545,6 @@ function PromptCard({
     const runId = generateUUID();
     const maxWaitTime = 30 * 1000; // 30 seconds
     const pollingInterval = 5000; // 5 seconds
-    const tokenUsagepollingInterval = 5000;
 
     const body = {
       document_id: docId,
@@ -553,25 +553,13 @@ function PromptCard({
 
     if (profileManagerId) {
       body.profile_manager = profileManagerId;
-      let intervalId;
       let tokenUsageId;
       let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/${details?.tool_id}`;
       if (!isSimplePromptStudio) {
         body["run_id"] = runId;
-        // Update the token usage state with default token usage for a specific document ID
-        tokenUsageId = promptId + "__" + docId + "__" + profileManagerId;
-        setTokenUsage(tokenUsageId, defaultTokenUsage);
+        tokenUsageId = getTokenUsageId(promptId, docId, profileManagerId);
 
-        // Set up an interval to fetch token usage data at regular intervals
-        if (
-          profileManagerId === selectedLlmProfileId &&
-          docId === selectedDoc?.document_id
-        ) {
-          intervalId = setInterval(
-            () => getTokenUsage(runId, tokenUsageId),
-            tokenUsagepollingInterval // Fetch token usage data every 5000 milliseconds (5 seconds)
-          );
-        }
+        // Set prompt run timer
         setTimers((prev) => ({
           ...prev,
           [tokenUsageId]: 0,
@@ -611,8 +599,6 @@ function PromptCard({
         })
         .finally(() => {
           if (!isSimplePromptStudio) {
-            clearInterval(intervalId);
-            getTokenUsage(runId, tokenUsageId);
             stopTimer(tokenUsageId, timerIntervalId);
           }
         });
@@ -655,7 +641,6 @@ function PromptCard({
             profileManager: outputResult?.profile_manager,
             context: outputResult?.context,
             challengeData: outputResult?.challenge_data,
-            tokenUsage: outputResult?.token_usage,
             output: outputResult?.output,
             evalMetrics: getEvalMetrics(
               promptDetails?.evaluate,
@@ -748,16 +733,11 @@ function PromptCard({
             `${tokenUsageId}__challenge_data`,
             usage?.challenge_data
           );
-          if (usage) {
-            setTokenUsage(tokenUsageId, usage?.token_usage);
-          }
+          setTokenUsage(tokenUsageId, usage?.token_usage);
         } else {
           data?.forEach((item) => {
             const tokenUsageId = `${item?.prompt_id}__${item?.document_manager}__${item?.profile_manager}`;
-
-            if (tokenUsage[tokenUsageId] === undefined) {
-              setTokenUsage(tokenUsageId, item?.token_usage);
-            }
+            setTokenUsage(tokenUsageId, item?.token_usage);
           });
         }
         return res;
