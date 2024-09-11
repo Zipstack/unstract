@@ -159,7 +159,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         if execution_time is not None:
             execution.execution_time = execution_time
         if error:
-            execution.error_message = error
+            execution.error_message = error[:EXECUTION_ERROR_LENGTH]
         if increment_attempt:
             execution.attempts += 1
 
@@ -387,7 +387,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
             execution.status = ExecutionStatus.ERROR.value
-            execution.error_message = err_msg
+            execution.error_message = err_msg[:EXECUTION_ERROR_LENGTH]
             execution.save()
             return execution
         except WorkflowExecution.DoesNotExist:
