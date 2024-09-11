@@ -194,7 +194,7 @@ class AuthenticationController:
                 organization_member = self.create_tenant_user(
                     organization=organization, user=user
                 )
-                
+
             if new_organization:
                 try:
                     self.auth_service.hubspot_signup_api(request=request)
