@@ -1,5 +1,3 @@
-import os
-
 from django.core.management.base import BaseCommand
 from django.db import connection
 from migrating.v2.constants import V2
@@ -12,5 +10,7 @@ class Command(BaseCommand):
         with connection.cursor() as cursor:
             cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {V2.SCHEMA_NAME}")
         self.stdout.write(
-            self.style.SUCCESS(f'Schema "{V2.SCHEMA_NAME}" checked/created successfully.')
+            self.style.SUCCESS(
+                f'Schema "{V2.SCHEMA_NAME}" checked/created successfully.'
+            )
         )

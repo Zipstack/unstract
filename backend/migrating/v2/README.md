@@ -6,6 +6,10 @@ This folder contains scripts and management commands for performing data migrati
 
 The commands provided here help you manage the migration process, including creating and dropping schemas and applying the necessary migrations to transition from v1 to v2.
 
+
+**Pre-requisites:**
+Ensure that `migrating.v2` is added to the `SHARED_APPS` in your Django settings.
+
 ## Available Commands
 
 ### 1. List Commands
