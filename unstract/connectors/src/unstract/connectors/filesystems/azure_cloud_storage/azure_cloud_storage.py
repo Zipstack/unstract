@@ -7,6 +7,7 @@ from adlfs import AzureBlobFileSystem
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
+logging.getLogger("azurefs").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
