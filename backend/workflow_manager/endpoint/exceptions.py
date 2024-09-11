@@ -105,3 +105,11 @@ class UnstractQueueException(APIException):
     def __init__(self, detail: str = default_detail) -> None:
         status_code = 500
         super().__init__(detail=detail, code=status_code)
+
+
+class UnstractFSException(APIException):
+    default_detail = "Error writing to filesystem. "
+
+    def __init__(self, detail: str = default_detail) -> None:
+        status_code = 500
+        super().__init__(detail=detail, code=status_code)

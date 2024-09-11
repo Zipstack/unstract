@@ -2,9 +2,11 @@ import logging
 import os
 from typing import Any
 
+import azure.core.exceptions as AzureException
 from adlfs import AzureBlobFileSystem
 
 from unstract.connectors.exceptions import ConnectorError
+from unstract.connectors.filesystems.exceptions import InvalidDirectoryPathException
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 logging.getLogger("azurefs").setLevel(logging.ERROR)
@@ -73,3 +75,27 @@ class AzureCloudStorageFS(UnstractFileSystem):
                 f"Error from Azure Cloud Storage while testing connection: {str(e)}"
             ) from e
         return True
+
+    def create_dir_if_not_exists(self, input_dir: str) -> None:
+        """Override to create dir of a connector if not exists."""
+        fs_fsspec = self.get_fsspec_fs()
+        try:
+            is_dir = fs_fsspec.isdir(input_dir)
+            print("*** current_dir ** ", dir)
+            if not is_dir:
+                fs_fsspec.mkdir(input_dir)
+                print("*** dir created ** ")
+        except Exception as e:
+            print("*** exception type *** ", type(e))
+            print("*** exception value *** ", str(e))
+
+    def upload_file_to_storage(self, source_path: str, destination_path: str) -> None:
+        normalized_path = os.path.normpath(destination_path)
+        fs = self.get_fsspec_fs()
+        try:
+            with open(source_path, "rb") as source_file:
+                fs.write_bytes(normalized_path, source_file.read())
+        except AzureException.HttpResponseError as e:
+            raise InvalidDirectoryPathException(
+                f"The specifed resource name contains invalid characters: {e.message}"
+            ) from e
