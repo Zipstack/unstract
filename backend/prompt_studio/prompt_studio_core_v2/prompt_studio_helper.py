@@ -780,7 +780,7 @@ class PromptStudioHelper:
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
         extract_file_path: Optional[str] = None
-
+        directory, filename = os.path.split(file_path)
         if not is_summary:
             directory, filename = os.path.split(file_path)
             extract_file_path = os.path.join(
@@ -792,6 +792,7 @@ class PromptStudioHelper:
         try:
 
             usage_kwargs = {"run_id": run_id}
+            usage_kwargs["file_name"] = filename
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = Index(tool=util)
             doc_id_key = tool_index.generate_index_key(
