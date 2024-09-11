@@ -533,10 +533,12 @@ class WorkflowHelper:
                 )
             except Exception as error:
                 error_message = traceback.format_exc()
-                logger.error(f"Error executing execution {workflow_execution}: {error_message}")
+                logger.error(
+                    f"Error executing execution {workflow_execution}: {error_message}"
+                )
                 WorkflowExecutionServiceHelper.update_execution_err(
                     execution_id, str(error)
-                )                
+                )
                 raise
             return execution_response.result
 
