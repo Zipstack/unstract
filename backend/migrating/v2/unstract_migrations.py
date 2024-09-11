@@ -1,4 +1,4 @@
-from migration_tools.query import MigrationQuery
+from migrating.v2.query import MigrationQuery
 
 
 class UnstractMigration(MigrationQuery):
