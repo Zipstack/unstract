@@ -155,8 +155,8 @@ const SideNavBar = ({ collapsed }) => {
     },
   ];
 
-  if (getMenuItem && flags.app_deployment) {
-    data[0].subMenu.splice(1, 0, getMenuItem.default(orgName));
+  if (getMenuItem && flags?.app_deployment) {
+    data[0]?.subMenu?.splice(1, 0, getMenuItem?.default(orgName));
   }
 
   return (
