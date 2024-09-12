@@ -25,6 +25,7 @@ class AuthenticationMiddleware:
             cursor = db.execute_sql(query)
             result_row = cursor.fetchone()
             cursor.close()
+            db.close()
             if not result_row or len(result_row) == 0:
                 current_app.logger.error(
                     f"Authentication failed. bearer token not found {token}"
