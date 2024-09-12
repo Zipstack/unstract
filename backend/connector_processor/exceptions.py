@@ -1,5 +1,3 @@
-from typing import Any
-
 from rest_framework.exceptions import APIException
 
 from backend.exceptions import UnstractBaseException
@@ -51,10 +49,3 @@ class TestConnectorInputError(UnstractBaseException):
         super().__init__(detail=core_err.message, core_err=core_err)
         self.default_detail = core_err.message
         self.status_code = 400
-
-
-class UnstractFSException(APIException):
-    default_detail = "Error testing connection. "
-
-    def __init__(self, detail: str = default_detail, status_code: Any = 500) -> None:
-        super().__init__(detail=detail, code=status_code)

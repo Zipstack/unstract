@@ -9,15 +9,14 @@ from connector_processor.exceptions import (
     InValidConnectorMode,
     OAuthTimeOut,
     TestConnectorInputError,
-    UnstractFSException,
 )
 
 from backend.constants import FeatureFlag
+from backend.exceptions import UnstractFSException
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.connectorkit import Connectorkit
 from unstract.connectors.enums import ConnectorMode
-from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.exceptions import UnstractFSConnectorException
+from unstract.connectors.exceptions import ConnectorAccessDeniedError, ConnectorError
 from unstract.connectors.filesystems.ucs import UnstractCloudStorage
 from unstract.flags.feature_flag import check_feature_flag_status
 
@@ -134,8 +133,8 @@ class ConnectorProcessor:
             test_result = connector_impl.test_credentials()
             logger.info(f"{connector_id} test result: {test_result}")
             return test_result
-        except UnstractFSConnectorException as e:
-            raise UnstractFSException(detail=e.detail, status_code=e.status_code) from e
+        except ConnectorAccessDeniedError as e:
+            raise UnstractFSException(core_err=e) from e
         except ConnectorError as e:
             raise TestConnectorInputError(core_err=e) from e
 

@@ -9,12 +9,12 @@ from oauth2client.client import OAuth2Credentials
 from pydrive2.auth import GoogleAuth
 from pydrive2.fs import GDriveFileSystem
 
-from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.exceptions import AccessDeniedException
+from unstract.connectors.exceptions import ConnectorAccessDeniedError, ConnectorError
 from unstract.connectors.filesystems.google_drive.constants import GDriveConstants
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.connectors.gcs_helper import GCSHelper
 
+logging.getLogger("gdrive").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
@@ -32,7 +32,11 @@ class GoogleDriveFS(UnstractFileSystem):
                 GCSHelper().get_secret("google_drive_client_secret")
             )
         except GoogleApiException.PermissionDenied as e:
-            raise AccessDeniedException(detail=e.details) from e
+            user_message = "Permission denied. Please check your credentials. "
+            raise ConnectorAccessDeniedError(
+                user_message,
+                treat_as_user_message=True,
+            ) from e
         self.oauth2_credentials = {
             "client_id": self.client_secrets["web"]["client_id"],
             "client_secret": self.client_secrets["web"]["client_secret"],
