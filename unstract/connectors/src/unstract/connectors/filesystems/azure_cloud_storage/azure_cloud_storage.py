@@ -76,6 +76,16 @@ class AzureCloudStorageFS(UnstractFileSystem):
         return True
 
     def upload_file_to_storage(self, source_path: str, destination_path: str) -> None:
+        """Method to upload filepath from tool to destination connector
+        directory.
+
+        Args:
+            source_path (str): source file path from tool
+            destination_path (str): destination azure directory file path
+
+        Raises:
+            AzureInvalidDirectoryError: returns error for invalid directory
+        """
         normalized_path = os.path.normpath(destination_path)
         fs = self.get_fsspec_fs()
         try:

@@ -42,6 +42,13 @@ def custom_exception_handler(exc, context) -> Response:  # type: ignore
 
 
 class UnstractFSException(UnstractBaseException):
+    """Handles all error from fs connector class and propagates the error
+    message to UI.
+
+    Args:
+        UnstractBaseException: Inherits class UnstractBaseException
+    """
+
     def __init__(self, core_err: ConnectorError) -> None:
         super().__init__(detail=core_err.message, core_err=core_err)
         self.default_detail = core_err.message

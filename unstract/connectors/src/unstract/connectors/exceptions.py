@@ -34,6 +34,12 @@ class ConnectorError(ConnectorBaseException):
 
 
 class AzureInvalidDirectoryError(ConnectorError):
+    """Handles invalid directory error from azure.
+
+    Args:
+        ConnectorError (Class): Inherits class ConnectorError
+    """
+
     def __init__(
         self,
         message: str,
