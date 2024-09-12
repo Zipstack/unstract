@@ -92,7 +92,10 @@ class AzureCloudStorageFS(UnstractFileSystem):
             with open(source_path, "rb") as source_file:
                 fs.write_bytes(normalized_path, source_file.read())
         except AzureException.HttpResponseError as e:
-            user_message = "Invalid directory. Container name must be a valid DNS name"
+            user_message = (
+                "Invalid directory from azurefs container. Container name must be a "
+                "valid DNS name. Please include only letters or numbers or slash('/')"
+            )
             raise AzureInvalidDirectoryError(
                 user_message,
                 treat_as_user_message=True,
