@@ -418,13 +418,16 @@ class WorkflowHelper:
                 },
                 queue=queue,
             )
+            logger.info(
+                f"Job '{async_execution}' has been enqueued for "
+                f"execution_id '{execution_id}'"
+            )
             if timeout > -1:
                 async_execution.wait(
                     timeout=timeout,
                     interval=CeleryConfigurations.INTERVAL,
                 )
             task = AsyncResultData(async_result=async_execution)
-            logger.info(f"Job {async_execution} enqueued.")
             celery_result = task.to_dict()
             task_result = celery_result.get("result")
             workflow_execution = WorkflowExecution.objects.get(id=execution_id)
@@ -531,13 +534,15 @@ class WorkflowHelper:
                     execution_mode=execution_mode,
                     hash_values_of_files=hash_values,
                 )
-            except Exception as e:
-                return ExecutionResponse(
-                    workflow_id=workflow_id,
-                    execution_id=execution_id,
-                    execution_status=ExecutionStatus.ERROR.value,
-                    error=str(e),
+            except Exception as error:
+                error_message = traceback.format_exc()
+                logger.error(
+                    f"Error executing execution {workflow_execution}: {error_message}"
                 )
+                WorkflowExecutionServiceHelper.update_execution_err(
+                    execution_id, str(error)
+                )
+                raise
             return execution_response.result
 
     @staticmethod
