@@ -3,12 +3,12 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-import peewee
 import redis
 from cryptography.fernet import Fernet, InvalidToken
 from flask import Blueprint, Request
 from flask import current_app as app
 from flask import jsonify, make_response, request
+from playhouse.pool import PooledPostgresqlDatabase
 from unstract.platform_service.constants import DBTable, DBTableV2, FeatureFlag
 from unstract.platform_service.env import Env
 from unstract.platform_service.exceptions import APIError
@@ -20,12 +20,15 @@ from unstract.platform_service.helper.prompt_studio import PromptStudioRequestHe
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
-be_db = peewee.PostgresqlDatabase(
+be_db = PooledPostgresqlDatabase(
     Env.PG_BE_DATABASE,
     user=Env.PG_BE_USERNAME,
     password=Env.PG_BE_PASSWORD,
     host=Env.PG_BE_HOST,
     port=Env.PG_BE_PORT,
+    max_connections=Env.POOL_MAX_CONNECTIONS,
+    stale_timeout=Env.POOL_STALE_TIMEOUT,
+    timeout=Env.POOL_TIMEOUT,
 )
 be_db.init(Env.PG_BE_DATABASE)
 be_db.connect()
@@ -110,6 +113,7 @@ def validate_bearer_token(token: Optional[str]) -> bool:
         cursor = be_db.execute_sql(query)
         result_row = cursor.fetchone()
         cursor.close()
+        be_db.close()
         if not result_row or len(result_row) == 0:
             app.logger.error(f"Authentication failed. bearer token not found {token}")
             return False

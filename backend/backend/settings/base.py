@@ -53,11 +53,15 @@ DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "filters": {"request_id": {"()": "log_request_id.filters.RequestIDFilter"}},
+    "filters": {
+        "request_id": {"()": "log_request_id.filters.RequestIDFilter"},
+        "tenant_context": {"()": "django_tenants.log.TenantContextFilter"},
+    },
     "formatters": {
         "enriched": {
             "format": (
-                "%(levelname)s : [%(asctime)s] {module:%(module)s process:%(process)d "
+                "%(levelname)s : [%(asctime)s] [%(schema_name)s:%(domain_url)s]"
+                "{module:%(module)s process:%(process)d "
                 "thread:%(thread)d request_id:%(request_id)s} :- %(message)s"
             ),
         },
@@ -74,7 +78,7 @@ LOGGING = {
         "console": {
             "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
             "class": "logging.StreamHandler",
-            "filters": ["request_id"],
+            "filters": ["request_id", "tenant_context"],
             "formatter": "enriched",
         },
     },
@@ -337,6 +341,7 @@ MIDDLEWARE = [
     "middleware.exception.ExceptionLoggingMiddleware",
     "social_django.middleware.SocialAuthExceptionMiddleware",
     "middleware.remove_allow_header.RemoveAllowHeaderMiddleware",
+    "middleware.cache_control.CacheControlMiddleware",
 ]
 
 TENANT_SUBFOLDER_PREFIX = f"/{PATH_PREFIX}/unstract"
@@ -360,7 +365,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "backend.wsgi.application"
 
-
+ATOMIC_REQUESTS = os.environ.get("DJANGO_ATOMIC_REQUESTS", False)
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
@@ -372,7 +377,7 @@ DATABASES = {
         "HOST": f"{DB_HOST}",
         "PASSWORD": f"{DB_PASSWORD}",
         "PORT": f"{DB_PORT}",
-        "ATOMIC_REQUESTS": True,
+        "ATOMIC_REQUESTS": ATOMIC_REQUESTS,
     }
 }
 

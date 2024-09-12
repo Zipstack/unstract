@@ -77,7 +77,6 @@ check_untyped_defs = true
 exclude = '''(?x)^(
     .*migrations/.*\.py|
     backend/prompt/.*|
-    document-service/.*|
     unstract/connectors/tests/.*|
     unstract/core/.*|
     unstract/flags/src/unstract/flags/.*|
