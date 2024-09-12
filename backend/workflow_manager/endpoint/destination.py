@@ -37,7 +37,7 @@ from workflow_manager.workflow.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow.models.file_history import FileHistory
 from workflow_manager.workflow.models.workflow import Workflow
 
-from unstract.connectors.filesystems.exceptions import FSConnectorError
+from unstract.connectors.exceptions import ConnectorError
 
 logger = logging.getLogger(__name__)
 
@@ -248,8 +248,8 @@ class DestinationConnector(BaseConnector):
                     destination_fs.upload_file_to_storage(
                         source_path=source_path, destination_path=destination_path
                     )
-        except FSConnectorError as e:
-            raise UnstractFSException(detail=e.detail) from e
+        except ConnectorError as e:
+            raise UnstractFSException(core_err=e) from e
 
     def insert_into_db(self, input_file_path: str) -> None:
         """Insert data into the database."""
