@@ -39,14 +39,3 @@ class FSAccessDeniedError(ConnectorError):
     Args:
         ConnectorError: Inherits from base ConnectorError class
     """
-
-    def __init__(
-        self,
-        message: str,
-        *args: Any,
-        treat_as_user_message: bool = False,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(
-            message, *args, treat_as_user_message=treat_as_user_message, **kwargs
-        )

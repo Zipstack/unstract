@@ -4,7 +4,7 @@ from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
-from unstract.connectors.exceptions import ConnectorBaseException, ConnectorError
+from unstract.connectors.exceptions import ConnectorBaseException
 
 
 class UnstractBaseException(APIException):
@@ -49,8 +49,4 @@ class UnstractFSException(UnstractBaseException):
     """
 
     default_detail = "Error testing connection. "
-
-    def __init__(self, core_err: ConnectorError) -> None:
-        super().__init__(detail=core_err.message, core_err=core_err)
-        self.default_detail = core_err.message
-        self.status_code = 500
+    status_code = 500
