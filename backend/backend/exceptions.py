@@ -42,6 +42,12 @@ def custom_exception_handler(exc, context) -> Response:  # type: ignore
 
 
 class UnstractFSException(UnstractBaseException):
+    """Handles all FS related error in backend.
+
+    Args:
+        UnstractBaseException: Inherits from base UnstractBaseException class
+    """
+
     default_detail = "Error testing connection. "
 
     def __init__(self, core_err: ConnectorError) -> None:

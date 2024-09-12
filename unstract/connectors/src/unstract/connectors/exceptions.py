@@ -33,7 +33,12 @@ class ConnectorError(ConnectorBaseException):
         return f"{self.message}"
 
 
-class ConnectorAccessDeniedError(ConnectorError):
+class FSAccessDeniedError(ConnectorError):
+    """Handles all FS access denied error.
+
+    Args:
+        ConnectorError: Inherits from base ConnectorError class
+    """
 
     def __init__(
         self,
