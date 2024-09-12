@@ -2,9 +2,6 @@ from typing import Optional
 
 from rest_framework.exceptions import APIException
 
-from backend.exceptions import UnstractBaseException
-from unstract.connectors.exceptions import ConnectorError
-
 
 class InvalidInputDirectory(APIException):
     status_code = 400
@@ -108,10 +105,3 @@ class UnstractQueueException(APIException):
     def __init__(self, detail: str = default_detail) -> None:
         status_code = 500
         super().__init__(detail=detail, code=status_code)
-
-
-class UnstractFSException(UnstractBaseException):
-    def __init__(self, core_err: ConnectorError) -> None:
-        super().__init__(detail=core_err.message, core_err=core_err)
-        self.default_detail = core_err.message
-        self.status_code = 500

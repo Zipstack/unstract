@@ -5,7 +5,7 @@ from typing import Any
 import azure.core.exceptions as AzureException
 from adlfs import AzureBlobFileSystem
 
-from unstract.connectors.exceptions import ConnectorError
+from unstract.connectors.exceptions import AzureInvalidDirectoryError, ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 logging.getLogger("azurefs").setLevel(logging.ERROR)
@@ -83,7 +83,7 @@ class AzureCloudStorageFS(UnstractFileSystem):
                 fs.write_bytes(normalized_path, source_file.read())
         except AzureException.HttpResponseError as e:
             user_message = "Invalid directory. Container name must be a valid DNS name"
-            raise ConnectorError(
+            raise AzureInvalidDirectoryError(
                 user_message,
                 treat_as_user_message=True,
             ) from e

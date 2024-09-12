@@ -31,3 +31,16 @@ class ConnectorError(ConnectorBaseException):
 
     def __str__(self) -> str:
         return f"{self.message}"
+
+
+class AzureInvalidDirectoryError(ConnectorError):
+    def __init__(
+        self,
+        message: str,
+        *args: Any,
+        treat_as_user_message: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            message, *args, treat_as_user_message=treat_as_user_message, **kwargs
+        )
