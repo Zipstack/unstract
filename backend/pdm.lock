@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:73f9c170bdb20c4d3dbefec017dce3cf3bdd90966c3ac31a5bdbcdba985240bf"
+content_hash = "sha256:457643276486a193b58004d12410b5f91f523b1e18f0f3175bac75ec1a106795"
 
 [[package]]
 name = "adlfs"
@@ -277,7 +277,7 @@ files = [
 
 [[package]]
 name = "azure-core"
-version = "1.30.2"
+version = "1.31.0"
 requires_python = ">=3.8"
 summary = "Microsoft Azure Core Library for Python"
 groups = ["default", "dev"]
@@ -287,8 +287,8 @@ dependencies = [
     "typing-extensions>=4.6.0",
 ]
 files = [
-    {file = "azure-core-1.30.2.tar.gz", hash = "sha256:a14dc210efcd608821aa472d9fb8e8d035d29b68993819147bc290a8ac224472"},
-    {file = "azure_core-1.30.2-py3-none-any.whl", hash = "sha256:cf019c1ca832e96274ae85abd3d9f752397194d9fea3b41487290562ac8abe4a"},
+    {file = "azure_core-1.31.0-py3-none-any.whl", hash = "sha256:22954de3777e0250029360ef31d80448ef1be13b80a459bff80ba7073379e2cd"},
+    {file = "azure_core-1.31.0.tar.gz", hash = "sha256:656a0dd61e1869b1506b7c6a3b31d62f15984b1a573d6326f6aa2f3e4123284b"},
 ]
 
 [[package]]
@@ -532,7 +532,7 @@ files = [
 
 [[package]]
 name = "cffi"
-version = "1.17.0"
+version = "1.17.1"
 requires_python = ">=3.8"
 summary = "Foreign Function Interface for Python calling C code."
 groups = ["default", "dev"]
@@ -540,8 +540,8 @@ dependencies = [
     "pycparser",
 ]
 files = [
-    {file = "cffi-1.17.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6f76a90c345796c01d85e6332e81cab6d70de83b829cf1d9762d0a3da59c7932"},
-    {file = "cffi-1.17.0.tar.gz", hash = "sha256:f3157624b7558b914cb039fd1af735e5e8049a87c817cc215109ad1c8779df76"},
+    {file = "cffi-1.17.1-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:cdf5ce3acdfd1661132f2a9c19cac174758dc2352bfe37d98aa7512c6b7178b3"},
+    {file = "cffi-1.17.1.tar.gz", hash = "sha256:1c39c6016c32bc48dd54561950ebd6836e1670f2ae46128f67cf49e789c52824"},
 ]
 
 [[package]]
@@ -959,13 +959,13 @@ files = [
 
 [[package]]
 name = "filelock"
-version = "3.15.4"
+version = "3.16.0"
 requires_python = ">=3.8"
 summary = "A platform independent file lock."
 groups = ["default", "dev"]
 files = [
-    {file = "filelock-3.15.4-py3-none-any.whl", hash = "sha256:6ca1fffae96225dab4c6eaf1c4f4f28cd2568d3ec2a44e15a08520504de468e7"},
-    {file = "filelock-3.15.4.tar.gz", hash = "sha256:2207938cbc1844345cb01a5a95524dae30f0ce089eba5b00378295a17e3e90cb"},
+    {file = "filelock-3.16.0-py3-none-any.whl", hash = "sha256:f6ed4c963184f4c84dd5557ce8fece759a3724b37b80c6c4f20a2f63a4dc6609"},
+    {file = "filelock-3.16.0.tar.gz", hash = "sha256:81de9eb8453c769b63369f87f11131a7ab04e367f8d97ad39dc230daa07e3bec"},
 ]
 
 [[package]]
@@ -1102,7 +1102,7 @@ files = [
 
 [[package]]
 name = "google-api-python-client"
-version = "2.143.0"
+version = "2.145.0"
 requires_python = ">=3.7"
 summary = "Google API Client Library for Python"
 groups = ["default", "dev"]
@@ -1114,8 +1114,8 @@ dependencies = [
     "uritemplate<5,>=3.0.1",
 ]
 files = [
-    {file = "google_api_python_client-2.143.0-py2.py3-none-any.whl", hash = "sha256:d5654134522b9b574b82234e96f7e0aeeabcbf33643fbabcd449ef0068e3a476"},
-    {file = "google_api_python_client-2.143.0.tar.gz", hash = "sha256:6a75441f9078e6e2fcdf4946a153fda1e2cc81b5e9c8d6e8c0750c85c7f8a566"},
+    {file = "google_api_python_client-2.145.0-py2.py3-none-any.whl", hash = "sha256:d74da1358f3f2d63daf3c6f26bd96d89652051183bc87cf10a56ceb2a70beb50"},
+    {file = "google_api_python_client-2.145.0.tar.gz", hash = "sha256:8b84dde11aaccadc127e4846f5cd932331d804ea324e353131595e3f25376e97"},
 ]
 
 [[package]]
@@ -1167,7 +1167,7 @@ files = [
 
 [[package]]
 name = "google-cloud-aiplatform"
-version = "1.64.0"
+version = "1.66.0"
 requires_python = ">=3.8"
 summary = "Vertex AI API client library"
 groups = ["default", "dev"]
@@ -1185,8 +1185,8 @@ dependencies = [
     "shapely<3.0.0dev",
 ]
 files = [
-    {file = "google-cloud-aiplatform-1.64.0.tar.gz", hash = "sha256:475a612829b283eb8f783e773d37115c30db42e2e50065c8653db0c9bd18b0da"},
-    {file = "google_cloud_aiplatform-1.64.0-py2.py3-none-any.whl", hash = "sha256:3a79ce2ec047868c348336624a60993464ca977fd258bcf609cc79309a8101c4"},
+    {file = "google-cloud-aiplatform-1.66.0.tar.gz", hash = "sha256:e95a2b45087e0e2cbfed9ffaf3f10aa8ef3fa2e5642f067246181b5c7b9b2b04"},
+    {file = "google_cloud_aiplatform-1.66.0-py2.py3-none-any.whl", hash = "sha256:3f7de6aab42f67b933a36bfb1354e36a5256f45780df92ac8b1b6361a145af49"},
 ]
 
 [[package]]
@@ -1356,14 +1356,14 @@ files = [
 
 [[package]]
 name = "greenlet"
-version = "3.0.3"
+version = "3.1.0"
 requires_python = ">=3.7"
 summary = "Lightweight in-process concurrent programming"
 groups = ["default", "dev"]
 files = [
-    {file = "greenlet-3.0.3-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:1551a8195c0d4a68fac7a4325efac0d541b48def35feb49d803674ac32582f61"},
-    {file = "greenlet-3.0.3-cp39-cp39-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:64d7675ad83578e3fc149b617a444fab8efdafc9385471f868eb5ff83e446b8b"},
-    {file = "greenlet-3.0.3.tar.gz", hash = "sha256:43374442353259554ce33599da8b692d5aa96f8976d567d4badf263371fbe491"},
+    {file = "greenlet-3.1.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d45b75b0f3fd8d99f62eb7908cfa6d727b7ed190737dec7fe46d993da550b81a"},
+    {file = "greenlet-3.1.0-cp39-cp39-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:2d004db911ed7b6218ec5c5bfe4cf70ae8aa2223dffbb5b3c69e342bb253cb28"},
+    {file = "greenlet-3.1.0.tar.gz", hash = "sha256:b395121e9bbe8d02a750886f108d540abe66075e61e22f7353d9acb0b81be0f0"},
 ]
 
 [[package]]
@@ -1556,7 +1556,7 @@ files = [
 
 [[package]]
 name = "huggingface-hub"
-version = "0.24.6"
+version = "0.24.7"
 requires_python = ">=3.8.0"
 summary = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
 groups = ["default", "dev"]
@@ -1570,8 +1570,8 @@ dependencies = [
     "typing-extensions>=3.7.4.3",
 ]
 files = [
-    {file = "huggingface_hub-0.24.6-py3-none-any.whl", hash = "sha256:a990f3232aa985fe749bc9474060cbad75e8b2f115f6665a9fda5b9c97818970"},
-    {file = "huggingface_hub-0.24.6.tar.gz", hash = "sha256:cc2579e761d070713eaa9c323e3debe39d5b464ae3a7261c39a9195b27bb8000"},
+    {file = "huggingface_hub-0.24.7-py3-none-any.whl", hash = "sha256:a212c555324c8a7b1ffdd07266bb7e7d69ca71aa238d27b7842d65e9a26ac3e5"},
+    {file = "huggingface_hub-0.24.7.tar.gz", hash = "sha256:0ad8fb756e2831da0ac0491175b960f341fe06ebcf80ed6f8728313f95fc0207"},
 ]
 
 [[package]]
@@ -1724,7 +1724,7 @@ files = [
 
 [[package]]
 name = "llama-cloud"
-version = "0.0.15"
+version = "0.0.17"
 requires_python = "<4,>=3.8"
 summary = ""
 groups = ["default", "dev"]
@@ -1733,8 +1733,8 @@ dependencies = [
     "pydantic>=1.10",
 ]
 files = [
-    {file = "llama_cloud-0.0.15-py3-none-any.whl", hash = "sha256:52f18a3870e23c4a9b5f66827a58dc87d5a1c3034d1ce6ab513ca7eb09ae8b36"},
-    {file = "llama_cloud-0.0.15.tar.gz", hash = "sha256:be06fd888e889623796b9c2aa0fc0d09ef039ed5145ff267d8408ccbea70c048"},
+    {file = "llama_cloud-0.0.17-py3-none-any.whl", hash = "sha256:da898dcc98de84f29886f979b1ccae1e96d9f73d1b0e07146a51d315b161e45c"},
+    {file = "llama_cloud-0.0.17.tar.gz", hash = "sha256:7fd6857bbbb91937535572ccb48daa38189f55cdd7411185d8083dab29ba1299"},
 ]
 
 [[package]]
@@ -2274,7 +2274,7 @@ files = [
 
 [[package]]
 name = "milvus-lite"
-version = "2.4.9"
+version = "2.4.10"
 requires_python = ">=3.7"
 summary = "A lightweight version of Milvus wrapped with Python."
 groups = ["default", "dev"]
@@ -2283,7 +2283,7 @@ dependencies = [
     "tqdm",
 ]
 files = [
-    {file = "milvus_lite-2.4.9-py3-none-manylinux2014_x86_64.whl", hash = "sha256:7f53e674602101cfbcf0a4a59d19eaa139dfd5580639f3040ad73d901f24fc0b"},
+    {file = "milvus_lite-2.4.10-py3-none-manylinux2014_x86_64.whl", hash = "sha256:211d2e334a043f9282bdd9755f76b9b2d93b23bffa7af240919ffce6a8dfe325"},
 ]
 
 [[package]]
@@ -2304,18 +2304,18 @@ files = [
 
 [[package]]
 name = "msal"
-version = "1.30.0"
+version = "1.31.0"
 requires_python = ">=3.7"
 summary = "The Microsoft Authentication Library (MSAL) for Python library enables your app to access the Microsoft Cloud by supporting authentication of users with Microsoft Azure Active Directory accounts (AAD) and Microsoft Accounts (MSA) using industry standard OAuth2 and OpenID Connect."
 groups = ["default", "dev"]
 dependencies = [
     "PyJWT[crypto]<3,>=1.0.0",
-    "cryptography<45,>=2.5",
+    "cryptography<46,>=2.5",
     "requests<3,>=2.0.0",
 ]
 files = [
-    {file = "msal-1.30.0-py3-none-any.whl", hash = "sha256:423872177410cb61683566dc3932db7a76f661a5d2f6f52f02a047f101e1c1de"},
-    {file = "msal-1.30.0.tar.gz", hash = "sha256:b4bf00850092e465157d814efa24a18f788284c9a479491024d62903085ea2fb"},
+    {file = "msal-1.31.0-py3-none-any.whl", hash = "sha256:96bc37cff82ebe4b160d5fc0f1196f6ca8b50e274ecd0ec5bf69c438514086e7"},
+    {file = "msal-1.31.0.tar.gz", hash = "sha256:2c4f189cf9cc8f00c80045f66d39b7c0f3ed45873fd3d1f2af9f22db2e12ff4b"},
 ]
 
 [[package]]
@@ -2353,14 +2353,17 @@ files = [
 
 [[package]]
 name = "multidict"
-version = "6.0.5"
-requires_python = ">=3.7"
+version = "6.1.0"
+requires_python = ">=3.8"
 summary = "multidict implementation"
 groups = ["default", "dev"]
+dependencies = [
+    "typing-extensions>=4.1.0; python_version < \"3.11\"",
+]
 files = [
-    {file = "multidict-6.0.5-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c0868d64af83169e4d4152ec612637a543f7a336e4a307b119e98042e852ad9c"},
-    {file = "multidict-6.0.5-py3-none-any.whl", hash = "sha256:0d63c74e3d7ab26de115c49bffc92cc77ed23395303d496eae515d4204a625e7"},
-    {file = "multidict-6.0.5.tar.gz", hash = "sha256:f7e301075edaf50500f0b341543c41194d8df3ae5caf4702f2095f3ca73dd8da"},
+    {file = "multidict-6.1.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:957cf8e4b6e123a9eea554fa7ebc85674674b713551de587eb318a2df3e00255"},
+    {file = "multidict-6.1.0-py3-none-any.whl", hash = "sha256:48e171e52d1c4d33888e529b999e5900356b9ae588c2f09a52dcefb158b27506"},
+    {file = "multidict-6.1.0.tar.gz", hash = "sha256:22ae2ebf9b0c69d206c003e2f6a914ea33f0a932d4aa16f236afc049d9958f4a"},
 ]
 
 [[package]]
@@ -2454,7 +2457,7 @@ files = [
 
 [[package]]
 name = "ollama"
-version = "0.3.2"
+version = "0.3.3"
 requires_python = "<4.0,>=3.8"
 summary = "The official Python client for Ollama."
 groups = ["default", "dev"]
@@ -2462,13 +2465,13 @@ dependencies = [
     "httpx<0.28.0,>=0.27.0",
 ]
 files = [
-    {file = "ollama-0.3.2-py3-none-any.whl", hash = "sha256:ed2a6f752bd91c49b477d84a259c5657785d7777689d4a27ffe0a4d5b5dd3cae"},
-    {file = "ollama-0.3.2.tar.gz", hash = "sha256:7deb3287cdefa1c39cc046163096f8597b83f59ca31a1f8ae78e71eccb7af95f"},
+    {file = "ollama-0.3.3-py3-none-any.whl", hash = "sha256:ca6242ce78ab34758082b7392df3f9f6c2cb1d070a9dede1a4c545c929e16dba"},
+    {file = "ollama-0.3.3.tar.gz", hash = "sha256:f90a6d61803117f40b0e8ff17465cab5e1eb24758a473cfe8101aff38bc13b51"},
 ]
 
 [[package]]
 name = "openai"
-version = "1.43.0"
+version = "1.45.0"
 requires_python = ">=3.7.1"
 summary = "The official Python library for the openai API"
 groups = ["default", "dev"]
@@ -2483,8 +2486,8 @@ dependencies = [
     "typing-extensions<5,>=4.11",
 ]
 files = [
-    {file = "openai-1.43.0-py3-none-any.whl", hash = "sha256:1a748c2728edd3a738a72a0212ba866f4fdbe39c9ae03813508b267d45104abe"},
-    {file = "openai-1.43.0.tar.gz", hash = "sha256:e607aff9fc3e28eade107e5edd8ca95a910a4b12589336d3cbb6bfe2ac306b3c"},
+    {file = "openai-1.45.0-py3-none-any.whl", hash = "sha256:2f1f7b7cf90f038a9f1c24f0d26c0f1790c102ec5acd07ffd70a9b7feac1ff4e"},
+    {file = "openai-1.45.0.tar.gz", hash = "sha256:731207d10637335413aa3c0955f8f8df30d7636a4a0f9c381f2209d32cf8de97"},
 ]
 
 [[package]]
@@ -2721,18 +2724,18 @@ files = [
 
 [[package]]
 name = "pyasn1"
-version = "0.6.0"
+version = "0.6.1"
 requires_python = ">=3.8"
 summary = "Pure-Python implementation of ASN.1 types and DER/BER/CER codecs (X.208)"
 groups = ["default", "dev"]
 files = [
-    {file = "pyasn1-0.6.0-py2.py3-none-any.whl", hash = "sha256:cca4bb0f2df5504f02f6f8a775b6e416ff9b0b3b16f7ee80b5a3153d9b804473"},
-    {file = "pyasn1-0.6.0.tar.gz", hash = "sha256:3a35ab2c4b5ef98e17dfdec8ab074046fbda76e281c5a706ccd82328cfc8f64c"},
+    {file = "pyasn1-0.6.1-py3-none-any.whl", hash = "sha256:0d632f46f2ba09143da3a8afe9e33fb6f92fa2320ab7e886e2d0f7672af84629"},
+    {file = "pyasn1-0.6.1.tar.gz", hash = "sha256:6f580d2bdd84365380830acf45550f2511469f673cb4a5ae3857a3170128b034"},
 ]
 
 [[package]]
 name = "pyasn1-modules"
-version = "0.4.0"
+version = "0.4.1"
 requires_python = ">=3.8"
 summary = "A collection of ASN.1-based protocols modules"
 groups = ["default", "dev"]
@@ -2740,8 +2743,8 @@ dependencies = [
     "pyasn1<0.7.0,>=0.4.6",
 ]
 files = [
-    {file = "pyasn1_modules-0.4.0-py3-none-any.whl", hash = "sha256:be04f15b66c206eed667e0bb5ab27e2b1855ea54a842e5037738099e8ca4ae0b"},
-    {file = "pyasn1_modules-0.4.0.tar.gz", hash = "sha256:831dbcea1b177b28c9baddf4c6d1013c24c3accd14a1873fffaa6a2e905f17b6"},
+    {file = "pyasn1_modules-0.4.1-py3-none-any.whl", hash = "sha256:49bfa96b45a292b711e986f222502c1c9a5e1f4e568fc30e2574a6c7d07838fd"},
+    {file = "pyasn1_modules-0.4.1.tar.gz", hash = "sha256:c28e2dbf9c06ad61c71a075c7e0f9fd0f1b0bb2d2ad4377f240d33ac2ab60a7c"},
 ]
 
 [[package]]
@@ -2757,23 +2760,23 @@ files = [
 
 [[package]]
 name = "pydantic"
-version = "2.8.2"
+version = "2.9.1"
 requires_python = ">=3.8"
 summary = "Data validation using Python type hints"
 groups = ["default", "dev"]
 dependencies = [
-    "annotated-types>=0.4.0",
-    "pydantic-core==2.20.1",
+    "annotated-types>=0.6.0",
+    "pydantic-core==2.23.3",
     "typing-extensions>=4.6.1; python_version < \"3.13\"",
 ]
 files = [
-    {file = "pydantic-2.8.2-py3-none-any.whl", hash = "sha256:73ee9fddd406dc318b885c7a2eab8a6472b68b8fb5ba8150949fc3db939f23c8"},
-    {file = "pydantic-2.8.2.tar.gz", hash = "sha256:6f62c13d067b0755ad1c21a34bdd06c0c12625a22b0fc09c6b149816604f7c2a"},
+    {file = "pydantic-2.9.1-py3-none-any.whl", hash = "sha256:7aff4db5fdf3cf573d4b3c30926a510a10e19a0774d38fc4967f78beb6deb612"},
+    {file = "pydantic-2.9.1.tar.gz", hash = "sha256:1363c7d975c7036df0db2b4a61f2e062fbc0aa5ab5f2772e0ffc7191a4f4bce2"},
 ]
 
 [[package]]
 name = "pydantic-core"
-version = "2.20.1"
+version = "2.23.3"
 requires_python = ">=3.8"
 summary = "Core functionality for Pydantic validation and serialization"
 groups = ["default", "dev"]
@@ -2781,8 +2784,8 @@ dependencies = [
     "typing-extensions!=4.7.0,>=4.6.0",
 ]
 files = [
-    {file = "pydantic_core-2.20.1-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:10d4204d8ca33146e761c79f83cc861df20e7ae9f6487ca290a97702daf56006"},
-    {file = "pydantic_core-2.20.1.tar.gz", hash = "sha256:26ca695eeee5f9f1aeeb211ffc12f10bcb6f71e2989988fda61dabd65db878d4"},
+    {file = "pydantic_core-2.23.3-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:94f85614f2cba13f62c3c6481716e4adeae48e1eaa7e8bac379b9d177d93947a"},
+    {file = "pydantic_core-2.23.3.tar.gz", hash = "sha256:3cb0f65d8b4121c1b015c60104a685feb929a29d7cf204387c7f2688c7974690"},
 ]
 
 [[package]]
@@ -2945,7 +2948,7 @@ files = [
 
 [[package]]
 name = "pytest"
-version = "8.3.2"
+version = "8.3.3"
 requires_python = ">=3.8"
 summary = "pytest: simple powerful testing with Python"
 groups = ["test"]
@@ -2957,8 +2960,8 @@ dependencies = [
     "tomli>=1; python_version < \"3.11\"",
 ]
 files = [
-    {file = "pytest-8.3.2-py3-none-any.whl", hash = "sha256:4ba08f9ae7dcf84ded419494d229b48d0903ea6407b030eaec46df5e6a73bba5"},
-    {file = "pytest-8.3.2.tar.gz", hash = "sha256:c132345d12ce551242c87269de812483f5bcc87cdbb4722e48487ba194f9fdce"},
+    {file = "pytest-8.3.3-py3-none-any.whl", hash = "sha256:a6853c7375b2663155079443d2e45de913a911a11d669df02a50814944db57b2"},
+    {file = "pytest-8.3.3.tar.gz", hash = "sha256:70b98107bd648308a7952b06e6ca9a50bc660be218d53c257cc1fc94fda10181"},
 ]
 
 [[package]]
@@ -3068,12 +3071,12 @@ files = [
 
 [[package]]
 name = "pytz"
-version = "2024.1"
+version = "2024.2"
 summary = "World timezone definitions, modern and historical"
 groups = ["default", "dev"]
 files = [
-    {file = "pytz-2024.1-py2.py3-none-any.whl", hash = "sha256:328171f4e3623139da4983451950b28e95ac706e13f3f2630a879749e7a8b319"},
-    {file = "pytz-2024.1.tar.gz", hash = "sha256:2a29735ea9c18baf14b448846bde5a48030ed267578472d8955cd0e7443a9812"},
+    {file = "pytz-2024.2-py2.py3-none-any.whl", hash = "sha256:31c7c1817eb7fae7ca4b8c7ee50c72f93aa2dd863de768e1ef4245d426aa0725"},
+    {file = "pytz-2024.2.tar.gz", hash = "sha256:2aa355083c50a0f93fa581709deac0c9ad65cca8a9e9beac660adcbd493c798a"},
 ]
 
 [[package]]
@@ -3138,14 +3141,14 @@ files = [
 
 [[package]]
 name = "regex"
-version = "2024.7.24"
+version = "2024.9.11"
 requires_python = ">=3.8"
 summary = "Alternative regular expression module, to replace re."
 groups = ["default", "dev"]
 files = [
-    {file = "regex-2024.7.24-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:836d3cc225b3e8a943d0b02633fb2f28a66e281290302a79df0e1eaa984ff7c1"},
-    {file = "regex-2024.7.24-cp39-cp39-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:973335b1624859cb0e52f96062a28aa18f3a5fc77a96e4a3d6d76e29811a0e6e"},
-    {file = "regex-2024.7.24.tar.gz", hash = "sha256:9cfd009eed1a46b27c14039ad5bbc5e71b6367c5b2e6d5f5da0ea91600817506"},
+    {file = "regex-2024.9.11-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:297f54910247508e6e5cae669f2bc308985c60540a4edd1c77203ef19bfa63ca"},
+    {file = "regex-2024.9.11-cp39-cp39-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:eab4bb380f15e189d1313195b062a6aa908f5bd687a0ceccd47c8211e9cf0d4a"},
+    {file = "regex-2024.9.11.tar.gz", hash = "sha256:6c188c307e8433bcb63dc1915022deb553b4203a70722fc542c363bf120a01fd"},
 ]
 
 [[package]]
@@ -3267,24 +3270,24 @@ files = [
 
 [[package]]
 name = "safetensors"
-version = "0.4.4"
+version = "0.4.5"
 requires_python = ">=3.7"
 summary = ""
 groups = ["default", "dev"]
 files = [
-    {file = "safetensors-0.4.4-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9850754c434e636ce3dc586f534bb23bcbd78940c304775bee9005bf610e98f1"},
-    {file = "safetensors-0.4.4.tar.gz", hash = "sha256:5fe3e9b705250d0172ed4e100a811543108653fb2b66b9e702a088ad03772a07"},
+    {file = "safetensors-0.4.5-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b75a616e02f21b6f1d5785b20cecbab5e2bd3f6358a90e8925b813d557666ec1"},
+    {file = "safetensors-0.4.5.tar.gz", hash = "sha256:d73de19682deabb02524b3d5d1f8b3aaba94c72f1bbfc7911b9b9d5d391c0310"},
 ]
 
 [[package]]
 name = "setuptools"
-version = "74.1.1"
+version = "74.1.2"
 requires_python = ">=3.8"
 summary = "Easily download, build, install, upgrade, and uninstall Python packages"
 groups = ["default", "dev"]
 files = [
-    {file = "setuptools-74.1.1-py3-none-any.whl", hash = "sha256:fc91b5f89e392ef5b77fe143b17e32f65d3024744fba66dc3afe07201684d766"},
-    {file = "setuptools-74.1.1.tar.gz", hash = "sha256:2353af060c06388be1cecbf5953dcdb1f38362f87a2356c480b6b4d5fcfc8847"},
+    {file = "setuptools-74.1.2-py3-none-any.whl", hash = "sha256:5f4c08aa4d3ebcb57a50c33b1b07e94315d7fc7230f7115e47fc99776c8ce308"},
+    {file = "setuptools-74.1.2.tar.gz", hash = "sha256:95b40ed940a1c67eb70fc099094bd6e99c6ee7c23aa2306f4d2697ba7916f9c6"},
 ]
 
 [[package]]
@@ -3451,7 +3454,7 @@ files = [
 
 [[package]]
 name = "sqlalchemy"
-version = "2.0.33"
+version = "2.0.34"
 requires_python = ">=3.7"
 summary = "Database Abstraction Library"
 groups = ["default", "dev"]
@@ -3460,26 +3463,26 @@ dependencies = [
     "typing-extensions>=4.6.0",
 ]
 files = [
-    {file = "SQLAlchemy-2.0.33-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:454e9b4355f0051063daebc4060140251c19f33fc5d02151c347431860fd104b"},
-    {file = "SQLAlchemy-2.0.33-py3-none-any.whl", hash = "sha256:ae294808afde1b14a1a69aa86a69cadfe391848bbb233a5332a8065e4081cabc"},
-    {file = "sqlalchemy-2.0.33.tar.gz", hash = "sha256:91c93333c2b37ff721dc83b37e28c29de4c502b5612f2d093468037b86aa2be0"},
+    {file = "SQLAlchemy-2.0.34-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9ebc11c54c6ecdd07bb4efbfa1554538982f5432dfb8456958b6d46b9f834bb7"},
+    {file = "SQLAlchemy-2.0.34-py3-none-any.whl", hash = "sha256:7286c353ee6475613d8beff83167374006c6b3e3f0e6491bfe8ca610eb1dec0f"},
+    {file = "sqlalchemy-2.0.34.tar.gz", hash = "sha256:10d8f36990dd929690666679b0f42235c159a7051534adb135728ee52828dd22"},
 ]
 
 [[package]]
 name = "sqlalchemy"
-version = "2.0.33"
+version = "2.0.34"
 extras = ["asyncio"]
 requires_python = ">=3.7"
 summary = "Database Abstraction Library"
 groups = ["default", "dev"]
 dependencies = [
     "greenlet!=0.4.17",
-    "sqlalchemy==2.0.33",
+    "sqlalchemy==2.0.34",
 ]
 files = [
-    {file = "SQLAlchemy-2.0.33-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:454e9b4355f0051063daebc4060140251c19f33fc5d02151c347431860fd104b"},
-    {file = "SQLAlchemy-2.0.33-py3-none-any.whl", hash = "sha256:ae294808afde1b14a1a69aa86a69cadfe391848bbb233a5332a8065e4081cabc"},
-    {file = "sqlalchemy-2.0.33.tar.gz", hash = "sha256:91c93333c2b37ff721dc83b37e28c29de4c502b5612f2d093468037b86aa2be0"},
+    {file = "SQLAlchemy-2.0.34-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9ebc11c54c6ecdd07bb4efbfa1554538982f5432dfb8456958b6d46b9f834bb7"},
+    {file = "SQLAlchemy-2.0.34-py3-none-any.whl", hash = "sha256:7286c353ee6475613d8beff83167374006c6b3e3f0e6491bfe8ca610eb1dec0f"},
+    {file = "sqlalchemy-2.0.34.tar.gz", hash = "sha256:10d8f36990dd929690666679b0f42235c159a7051534adb135728ee52828dd22"},
 ]
 
 [[package]]
@@ -3731,7 +3734,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.48.1"
+version = "0.48.2"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default", "dev"]
@@ -3770,8 +3773,8 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.48.1-py3-none-any.whl", hash = "sha256:90bd27142f265d0397bb5a4b3630ad6e4f232a4405a15db8806c91c6cf5be4af"},
-    {file = "unstract_sdk-0.48.1.tar.gz", hash = "sha256:72b62d15f1dcd9dc9d07d3c2682a9a4edcfc7b2dcf568d94376703c909630455"},
+    {file = "unstract_sdk-0.48.2-py3-none-any.whl", hash = "sha256:75efb92999984a96186ec9542bd35ed5b1e8858162cdab2ef22c992ca4769004"},
+    {file = "unstract_sdk-0.48.2.tar.gz", hash = "sha256:9debd795516f16546a8c0d4e392dd1df4829cbaebfb32cb13b4cd3bc13801def"},
 ]
 
 [[package]]
@@ -3872,7 +3875,7 @@ files = [
 
 [[package]]
 name = "weaviate-client"
-version = "4.7.1"
+version = "4.8.0"
 requires_python = ">=3.8"
 summary = "A python native Weaviate client"
 groups = ["default", "dev"]
@@ -3887,8 +3890,8 @@ dependencies = [
     "validators==0.33.0",
 ]
 files = [
-    {file = "weaviate_client-4.7.1-py3-none-any.whl", hash = "sha256:342f5c67b126cee4dc3a60467ad1ae74971cd5614e27af6fb13d687a345352c4"},
-    {file = "weaviate_client-4.7.1.tar.gz", hash = "sha256:af99ac4e53613d2ff5b797372e95d004d0c8a1dd10a7f592068bcb423a30af30"},
+    {file = "weaviate_client-4.8.0-py3-none-any.whl", hash = "sha256:2e449e66f328df734cce9907bcbd280004b5e83897c9f1c4cb3448392fe16a06"},
+    {file = "weaviate_client-4.8.0.tar.gz", hash = "sha256:f7bd475fbe55ba63db08d6188a8452d4b357e1792a509bee6bfdc388921fbdc6"},
 ]
 
 [[package]]
@@ -3930,7 +3933,7 @@ files = [
 
 [[package]]
 name = "yarl"
-version = "1.9.8"
+version = "1.11.1"
 requires_python = ">=3.8"
 summary = "Yet another URL library"
 groups = ["default", "dev"]
@@ -3939,7 +3942,7 @@ dependencies = [
     "multidict>=4.0",
 ]
 files = [
-    {file = "yarl-1.9.8-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3ba7c4b50cc0bb4caaa54554613ca13db47a24878a4fc1063e6303494fc67567"},
-    {file = "yarl-1.9.8-py3-none-any.whl", hash = "sha256:d1612ce50f23b94897b9ef5eb65b72398a9a83ea990b42825272590f3484dae3"},
-    {file = "yarl-1.9.8.tar.gz", hash = "sha256:3089553548d9ab23152cecb5a71131caaa9e9b16d7fc8196057c374fdc53cc4b"},
+    {file = "yarl-1.11.1-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f46f81501160c28d0c0b7333b4f7be8983dbbc161983b6fb814024d1b4952f79"},
+    {file = "yarl-1.11.1-py3-none-any.whl", hash = "sha256:72bf26f66456baa0584eff63e44545c9f0eaed9b73cb6601b647c91f14c11f38"},
+    {file = "yarl-1.11.1.tar.gz", hash = "sha256:1bb2d9e212fb7449b8fb73bc461b51eaa17cc8430b4a87d87be7b25052d92f53"},
 ]
