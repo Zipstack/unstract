@@ -1,8 +1,9 @@
 import { ArrowsAltOutlined } from "@ant-design/icons";
 import { Button, Tooltip } from "antd";
 import PropTypes from "prop-types";
-import { PromptOutputsModal } from "./PromptOutputsModal";
 import { useState } from "react";
+
+import { PromptOutputsModal } from "./PromptOutputsModal";
 
 function PromptOutputExpandBtn({
   llmProfiles,

@@ -18,7 +18,7 @@ class TestPCS_FS(unittest.TestCase):
             }
         )
 
-        print(gcs.get_fsspec_fs().ls("pandora-user-storage"))  # type:ignore
+        print(gcs.get_fsspec_fs().ls("unstract-user-storage"))  # type:ignore
 
 
 if __name__ == "__main__":

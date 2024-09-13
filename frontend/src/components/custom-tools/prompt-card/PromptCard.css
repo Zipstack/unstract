@@ -218,10 +218,45 @@
 }
 
 .prompt-output-llm-bg {
-  background-color: #DDDDDD;
+  background-color: #dddddd;
   padding: 10px;
 }
 
 .prompt-output-title {
   font-size: 18px;
+}
+
+/* PromptCard.css */
+.chunk-highlight {
+  background-color: yellow;
+}
+
+.active-chunk-highlight {
+  background-color: orange;
+  border: 1px solid red;
+}
+
+.chunk-container {
+  margin-bottom: 20px;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: #f9f9f9;
+}
+
+.chunk-search-container {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.search-control-container {
+  min-width: 120px;
+  align-self: center;
+}
+
+.page-count-container {
+  background-color: #f9f9f9;
+  border-radius: 10px;
+  padding: 5px 10px;
 }
