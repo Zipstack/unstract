@@ -703,11 +703,20 @@ def run_retrieval(  # type:ignore
             "Generate set of specific subquestions "
             "from the prompt which can be used to retrive "
             "relevant context from vector db. "
+            "Use your logical abilities to "
+            " only generate as many subquestions as necessary "
+            " — fewer subquestions if the prompt is simpler. "
+            "Decide the minimum limit for subquestions "
+            "based on the complexity input prompt and set the maximum limit"
+            "for the subquestions to 10."
             "Ensure that each subquestion is distinct and relevant"
-            "to the different facets of the original query. Do not"
-            "add subquestions for details not mentioned in the original "
-            "prompt. The goal is to maximize retrieval accuracy"
-            " using these subquestions. Please note that, there are cases where the "
+            "to the the original query. "
+            "Do not add subquestions for details"
+            "not mentioned in the original prompt."
+            " The goal is to maximize retrieval accuracy"
+            " using these subquestions. Use your logical abilities to ensure "
+            " that each subquestion targets a distinct aspect of the original query."
+            " Please note that, there are cases where the "
             "response might have a list of answers. The subquestions must not miss out "
             "any values in these cases. "
             "Output should be a list of comma seperated "
@@ -719,6 +728,7 @@ def run_retrieval(  # type:ignore
             prompt=subq_prompt,
         )
         subquestion_list = subquestions.split(",")
+        raw_retrieved_context = ""
         for each_subq in subquestion_list:
             retrieved_context = _retrieve_context(
                 output, doc_id, vector_index, each_subq
@@ -727,8 +737,10 @@ def run_retrieval(  # type:ignore
             # inconsistency issue owing to risk of infinte loop
             # and inablity to diffrentiate genuine cases of
             # empty context.
-
-            context = "".join([context, retrieved_context])
+            raw_retrieved_context = "\f\n".join(
+                [raw_retrieved_context, retrieved_context]
+            )
+        context = _remove_duplicate_nodes(raw_retrieved_context)
 
     if retrieval_type == PSKeys.SIMPLE:
 
@@ -757,6 +769,12 @@ def run_retrieval(  # type:ignore
     return (answer, context)
 
 
+def _remove_duplicate_nodes(retrieved_context: str) -> str:
+    context_set: set[str] = set(retrieved_context.split("\f\n"))
+    fomatted_context = "\f\n".join(context_set)
+    return fomatted_context
+
+
 def _retrieve_context(output, doc_id, vector_index, answer) -> str:
     retriever = vector_index.as_retriever(
         similarity_top_k=output[PSKeys.SIMILARITY_TOP_K],
@@ -775,7 +793,7 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
         # ToDo: May have to fine-tune this value for node score or keep it
         # configurable at the adapter level
         if node.score > 0:
-            text += node.get_content() + "\n"
+            text += node.get_content() + "\f\n"
         else:
             app.logger.info("Node score is less than 0. " f"Ignored: {node.score}")
     return text

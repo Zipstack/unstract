@@ -206,7 +206,14 @@ function PromptOutput({
                     <Typography.Text className="prompt-cost-item">
                       Tokens:{" "}
                       {!singlePassExtractMode && (
-                        <TokenUsage tokenUsageId={tokenUsageId} />
+                        <TokenUsage
+                          tokenUsageId={tokenUsageId}
+                          isLoading={
+                            isRunLoading[
+                              `${selectedDoc?.document_id}_${profileId}`
+                            ]
+                          }
+                        />
                       )}
                     </Typography.Text>
                     <Typography.Text className="prompt-cost-item">
