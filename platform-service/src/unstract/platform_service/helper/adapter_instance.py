@@ -1,6 +1,6 @@
 from typing import Any, Optional
 
-from playhouse.pool import PooledPostgresqlDatabase
+from peewee import PostgresqlDatabase
 from unstract.platform_service.constants import DBTableV2, FeatureFlag
 from unstract.platform_service.exceptions import APIError
 
@@ -10,7 +10,7 @@ from unstract.flags.feature_flag import check_feature_flag_status
 class AdapterInstanceRequestHelper:
     @staticmethod
     def get_adapter_instance_from_db(
-        db_instance: PooledPostgresqlDatabase,
+        db_instance: PostgresqlDatabase,
         organization_id: str,
         adapter_instance_id: str,
         organization_uid: Optional[int] = None,
@@ -18,7 +18,7 @@ class AdapterInstanceRequestHelper:
         """Get adapter instance from Backend Database.
 
         Args:
-            db_instance (PooledPostgresqlDatabase): Backend DB Connection Pool
+            db_instance (PostgresqlDatabase): Backend DB Connection
             organization_id (str): organization schema id
             adapter_instance_id (str): adapter instance id
 
@@ -45,5 +45,4 @@ class AdapterInstanceRequestHelper:
         columns = [desc[0] for desc in cursor.description]
         data_dict: dict[str, Any] = dict(zip(columns, result_row))
         cursor.close()
-        db_instance.close()
         return data_dict

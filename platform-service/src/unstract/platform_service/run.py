@@ -3,6 +3,7 @@ from logging.config import dictConfig
 from dotenv import load_dotenv
 from flask import Flask
 from unstract.platform_service.controller import api
+from unstract.platform_service.controller.platform import be_db
 
 load_dotenv()
 
@@ -34,6 +35,13 @@ def create_app() -> Flask:
 
 
 app = create_app()
+
+
+@app.before_request
+def before_request() -> None:
+    if be_db.is_closed():
+        be_db.connect(reuse_if_open=True)
+
 
 if __name__ == "__main__":
     # Start the server
