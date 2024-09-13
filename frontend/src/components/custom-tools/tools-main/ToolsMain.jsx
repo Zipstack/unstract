@@ -14,6 +14,8 @@ import { Footer } from "../footer/Footer";
 import "./ToolsMain.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { ToolsMainActionBtns } from "./ToolsMainActionBtns";
+import usePromptOutput from "../../../hooks/usePromptOutput";
+import { usePromptOutputStore } from "../../../store/prompt-output-store";
 
 function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
@@ -27,11 +29,14 @@ function ToolsMain() {
     updateCustomTool,
     disableLlmOrDocChange,
     isSimplePromptStudio,
+    singlePassExtractMode,
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const { setPromptOutput } = usePromptOutputStore();
+  const { promptOutputApi, generatePromptOutputKey } = usePromptOutput();
 
   const items = [
     {
@@ -56,6 +61,53 @@ function ToolsMain() {
       disabled: prompts?.length === 0 || disableLlmOrDocChange?.length > 0,
     },
   ];
+
+  useEffect(() => {
+    promptOutputApi(
+      details?.tool_id,
+      selectedDoc?.document_id,
+      null,
+      null,
+      singlePassExtractMode
+    )
+      .then((res) => {
+        const data = res?.data || [];
+        console.log(data);
+
+        const outputs = {};
+        data.forEach((outputResult) => {
+          const promptId = outputResult?.prompt_id;
+          const docId = outputResult?.document_manager;
+          const llmProfile = outputResult?.profile_manager;
+          const isSinglePass = outputResult?.is_single_pass_extract;
+
+          if (!promptId || !docId || !llmProfile) {
+            return;
+          }
+
+          const key = generatePromptOutputKey(
+            promptId,
+            docId,
+            llmProfile,
+            isSinglePass
+          );
+
+          outputs[key] = {
+            runId: outputResult?.run_id,
+            promptOutputId: outputResult?.prompt_output_id,
+            profileManager: outputResult?.profile_manager,
+            context: outputResult?.context,
+            challengeData: outputResult?.challenge_data,
+            output: outputResult?.output,
+          };
+        });
+
+        setPromptOutput(outputs);
+      })
+      .catch((err) => {
+        console.log(err);
+      });
+  }, [selectedDoc, singlePassExtractMode]);
 
   const getPromptKey = (len) => {
     const promptKey = `${details?.tool_name}_${len}`;

@@ -14,6 +14,7 @@ function PromptDnd({
   handleDelete,
   updateStatus,
   moveItem,
+  outputs,
 }) {
   const ref = useRef(null);
   const { isSimplePromptStudio } = useCustomToolStore();
@@ -43,6 +44,7 @@ function PromptDnd({
           handleDelete={handleDelete}
           updateStatus={updateStatus}
           updatePlaceHolder="Enter Prompt"
+          promptOutputs={outputs}
         />
       )}
       {item.prompt_type === promptType.notes && (
@@ -65,6 +67,7 @@ PromptDnd.propTypes = {
   handleDelete: PropTypes.func.isRequired,
   updateStatus: PropTypes.object.isRequired,
   moveItem: PropTypes.func.isRequired,
+  outputs: PropTypes.object.isRequired,
 };
 
 export { PromptDnd };

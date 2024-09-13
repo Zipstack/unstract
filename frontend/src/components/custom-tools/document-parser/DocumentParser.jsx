@@ -15,6 +15,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { PromptDnd } from "../prompt-card/PrompDnd";
+import { usePromptOutputStore } from "../../../store/prompt-output-store";
 
 let promptPatchApiSps;
 let promptReorderApiSps;
@@ -46,6 +47,7 @@ function DocumentParser({
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const { promptOutputs } = usePromptOutputStore();
 
   useEffect(() => {
     if (scrollToBottom) {
@@ -302,6 +304,20 @@ function DocumentParser({
     });
   };
 
+  const getPromptOutputs = (promptId) => {
+    const keys = Object.keys(promptOutputs || {});
+
+    if (!keys?.length) return {};
+
+    const outputs = {};
+    keys.forEach((key) => {
+      if (key.startsWith(promptId)) {
+        outputs[key] = promptOutputs[key];
+      }
+    });
+    return outputs;
+  };
+
   if (!details?.prompts?.length) {
     if (isSimplePromptStudio && SpsPromptsEmptyState) {
       return <SpsPromptsEmptyState />;
@@ -330,6 +346,7 @@ function DocumentParser({
                 handleDelete={handleDelete}
                 updateStatus={updateStatus}
                 moveItem={moveItem}
+                outputs={getPromptOutputs(item?.prompt_id)}
               />
               <div ref={bottomRef} className="doc-parser-pad-bottom" />
             </div>

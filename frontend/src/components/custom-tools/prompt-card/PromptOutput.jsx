@@ -36,6 +36,7 @@ import { CopyPromptOutputBtn } from "./CopyPromptOutputBtn";
 import { useAlertStore } from "../../../store/alert-store";
 import { PromptOutputExpandBtn } from "./PromptOutputExpandBtn";
 import { DisplayPromptResult } from "./DisplayPromptResult";
+import usePromptOutput from "../../../hooks/usePromptOutput";
 
 let TableOutput;
 try {
@@ -67,8 +68,8 @@ function PromptOutput({
   isNotSingleLlmProfile,
   setIsIndexOpen,
   enforceType,
+  promptOutputs,
 }) {
-  const [firstResult] = result || [];
   const { width: windowWidth } = useWindowDimensions();
   const componentWidth = windowWidth * 0.4;
   const {
@@ -79,6 +80,7 @@ function PromptOutput({
     isPublicSource,
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
+  const { generatePromptOutputKey } = usePromptOutput();
 
   const tooltipContent = (adapterConf) => (
     <div>
@@ -123,12 +125,20 @@ function PromptOutput({
 
   if (
     (singlePassExtractMode || isSimplePromptStudio) &&
-    (promptDetails?.active || isSimplePromptStudio) &&
-    (firstResult?.output ||
-      firstResult?.output === 0 ||
-      spsLoading[selectedDoc?.document_id])
+    (promptDetails?.active || isSimplePromptStudio)
   ) {
-    const promptOutput = displayPromptResult(firstResult?.output, true);
+    const promptId = promptDetails?.prompt_id;
+    const docId = selectedDoc?.document_id;
+    const promptOutputKey = generatePromptOutputKey(
+      promptId,
+      docId,
+      selectedLlmProfileId,
+      singlePassExtractMode
+    );
+    const promptOutput = displayPromptResult(
+      promptOutputs[promptOutputKey]?.output,
+      true
+    );
     return (
       <>
         <Divider className="prompt-card-divider" />
@@ -163,16 +173,21 @@ function PromptOutput({
       {!singlePassExtractMode &&
         !isSimplePromptStudio &&
         llmProfileDetails.map((profile, index) => {
+          const promptId = promptDetails?.prompt_id;
+          const docId = selectedDoc?.document_id;
           const profileId = profile?.profile_id;
           const isChecked = enabledProfiles.includes(profileId);
-          const tokenUsageId =
-            promptDetails?.prompt_id +
-            "__" +
-            selectedDoc?.document_id +
-            "__" +
-            profileId;
-          const profileData =
-            result.find((r) => r?.profileManager === profileId) || {};
+          const tokenUsageId = promptId + "__" + docId + "__" + profileId;
+          let profileData = {};
+          const promptOutputKey = generatePromptOutputKey(
+            promptId,
+            docId,
+            profileId,
+            singlePassExtractMode
+          );
+          if (promptOutputs[promptOutputKey] !== undefined) {
+            profileData = promptOutputs[promptOutputKey];
+          }
           return (
             <motion.div
               key={profileId}
@@ -400,6 +415,7 @@ PromptOutput.propTypes = {
   isNotSingleLlmProfile: PropTypes.bool.isRequired,
   setIsIndexOpen: PropTypes.func.isRequired,
   enforceType: PropTypes.string.isRequired,
+  promptOutputs: PropTypes.object.isRequired,
 };
 
 export { PromptOutput };

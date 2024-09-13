@@ -1,6 +1,5 @@
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
 
 import {
   generateUUID,
@@ -14,46 +13,31 @@ import { useSessionStore } from "../../../store/session-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
-import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
 
-const EvalModal = null;
-const getEvalMetrics = (param1, param2) => {
-  return [];
-};
-
 let promptRunApiSps;
-let promptOutputApiSps;
 try {
   promptRunApiSps =
     require("../../../plugins/simple-prompt-studio/helper").promptRunApiSps;
-  promptOutputApiSps =
-    require("../../../plugins/simple-prompt-studio/helper").promptOutputApiSps;
 } catch {
   // The component will remain null of it is not available
 }
-let publicOutputsApi;
-try {
-  publicOutputsApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
-} catch {
-  // The component will remain null of it is not available
-}
+
 function PromptCard({
   promptDetails,
   handleChange,
   handleDelete,
   updateStatus,
   updatePlaceHolder,
+  promptOutputs,
 }) {
   const [enforceTypeList, setEnforceTypeList] = useState([]);
   const [isRunLoading, setIsRunLoading] = useState({});
   const [promptKey, setPromptKey] = useState("");
   const [promptText, setPromptText] = useState("");
   const [selectedLlmProfileId, setSelectedLlmProfileId] = useState(null);
-  const [openEval, setOpenEval] = useState(false);
-  const [result, setResult] = useState([]);
+  const [result] = useState([]);
   const [coverage, setCoverage] = useState({});
   const [coverageTotal, setCoverageTotal] = useState(0);
   const [isCoverageLoading, setIsCoverageLoading] = useState(false);
@@ -75,7 +59,6 @@ function PromptCard({
     singlePassExtractMode,
     isSinglePassExtractLoading,
     isSimplePromptStudio,
-    isPublicSource,
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const { sessionDetails } = useSessionStore();
@@ -83,8 +66,6 @@ function PromptCard({
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
-  const { setTokenUsage } = useTokenUsageStore();
-  const { id } = useParams();
 
   useEffect(() => {
     const outputTypeData = getDropdownItems("output_type") || {};
@@ -125,8 +106,6 @@ function PromptCard({
 
   useEffect(() => {
     resetInfoMsgs();
-    handleGetOutput();
-    handleGetCoverage();
   }, [
     selectedLlmProfileId,
     selectedDoc,
@@ -353,7 +332,7 @@ function PromptCard({
               false,
               value
             );
-            handleGetOutput(profile?.profile_id);
+
             updateDocCoverage(
               promptDetails?.prompt_id,
               profile?.profile_id,
@@ -399,7 +378,6 @@ function PromptCard({
             false,
             value
           );
-          handleGetOutput();
           setCoverageTotal(1);
         })
         .catch((err) => {
@@ -605,158 +583,6 @@ function PromptCard({
     }
   };
 
-  const handleGetOutput = (profileManager = undefined) => {
-    if (!selectedDoc) {
-      setResult([]);
-      return;
-    }
-
-    if (
-      !singlePassExtractMode &&
-      !isSimplePromptStudio &&
-      !selectedLlmProfileId
-    ) {
-      setResult([]);
-      return;
-    }
-
-    handleIsRunLoading(
-      selectedDoc?.document_id,
-      profileManager || selectedLlmProfileId,
-      true
-    );
-
-    handleOutputApiRequest(true)
-      .then((res) => {
-        const data = res?.data;
-        if (!data || data?.length === 0) {
-          setResult([]);
-          return;
-        }
-
-        const outputResults = data.map((outputResult) => {
-          return {
-            runId: outputResult?.run_id,
-            promptOutputId: outputResult?.prompt_output_id,
-            profileManager: outputResult?.profile_manager,
-            context: outputResult?.context,
-            challengeData: outputResult?.challenge_data,
-            output: outputResult?.output,
-            evalMetrics: getEvalMetrics(
-              promptDetails?.evaluate,
-              outputResult?.eval_metrics || []
-            ),
-          };
-        });
-        setResult(outputResults);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to generate the result"));
-      })
-      .finally(() => {
-        handleIsRunLoading(
-          selectedDoc?.document_id,
-          profileManager || selectedLlmProfileId,
-          false
-        );
-      });
-  };
-
-  const handleGetCoverage = () => {
-    if (
-      (singlePassExtractMode && !defaultLlmProfile) ||
-      (!singlePassExtractMode && !selectedLlmProfileId)
-    ) {
-      setCoverage({});
-      return;
-    }
-
-    handleOutputApiRequest(false)
-      .then((res) => {
-        const data = res?.data;
-        handleGetCoverageData(data);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to generate the result"));
-      });
-  };
-
-  const handleOutputApiRequest = async (isOutput) => {
-    let url;
-    let profileManager = selectedLlmProfileId;
-    if (isSimplePromptStudio) {
-      url = promptOutputApiSps(
-        details?.tool_id,
-        promptDetails?.prompt_id,
-        null
-      );
-    } else {
-      if (singlePassExtractMode) {
-        profileManager = defaultLlmProfile;
-      }
-      url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptDetails?.prompt_id}&is_single_pass_extract=${singlePassExtractMode}`;
-    }
-    if (isPublicSource) {
-      url = publicOutputsApi(
-        id,
-        promptDetails?.prompt_id,
-        singlePassExtractMode
-      );
-    }
-    if (isOutput) {
-      url += `&document_manager=${selectedDoc?.document_id}`;
-    }
-    if (singlePassExtractMode) {
-      url += `&profile_manager=${profileManager}`;
-    }
-
-    const requestOptions = {
-      method: "GET",
-      url,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-    };
-    return axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data || [];
-
-        if (singlePassExtractMode) {
-          const tokenUsageId = `single_pass__${defaultLlmProfile}__${selectedDoc?.document_id}`;
-          const usage = data?.find(
-            (item) =>
-              item?.profile_manager === defaultLlmProfile &&
-              item?.document_manager === selectedDoc?.document_id
-          );
-          setTokenUsage(`${tokenUsageId}__context`, usage?.context);
-          setTokenUsage(
-            `${tokenUsageId}__challenge_data`,
-            usage?.challenge_data
-          );
-          setTokenUsage(tokenUsageId, usage?.token_usage);
-        } else {
-          data?.forEach((item) => {
-            const tokenUsageId = `${item?.prompt_id}__${item?.document_manager}__${item?.profile_manager}`;
-            setTokenUsage(tokenUsageId, item?.token_usage);
-          });
-        }
-        return res;
-      })
-      .catch((err) => {
-        throw err;
-      });
-  };
-
-  const handleGetCoverageData = (data) => {
-    data?.forEach((item) => {
-      updateDocCoverage(
-        item?.prompt_id,
-        item?.profile_manager,
-        item?.document_manager
-      );
-    });
-  };
-
   const startTimer = (profileId) => {
     setTimers((prev) => ({
       ...prev,
@@ -798,23 +624,14 @@ function PromptCard({
         updateStatus={updateStatus}
         updatePlaceHolder={updatePlaceHolder}
         isCoverageLoading={isCoverageLoading}
-        setOpenEval={setOpenEval}
         setOpenOutputForDoc={setOpenOutputForDoc}
         selectedLlmProfileId={selectedLlmProfileId}
         handleSelectDefaultLLM={handleSelectDefaultLLM}
         timers={timers}
         spsLoading={spsLoading}
         handleSpsLoading={handleSpsLoading}
-        handleGetOutput={handleGetOutput}
+        promptOutputs={promptOutputs}
       />
-      {EvalModal && !singlePassExtractMode && (
-        <EvalModal
-          open={openEval}
-          setOpen={setOpenEval}
-          promptDetails={promptDetails}
-          handleChange={handleChange}
-        />
-      )}
       <OutputForDocModal
         open={openOutputForDoc}
         setOpen={setOpenOutputForDoc}
@@ -833,6 +650,7 @@ PromptCard.propTypes = {
   handleDelete: PropTypes.func.isRequired,
   updateStatus: PropTypes.object.isRequired,
   updatePlaceHolder: PropTypes.string,
+  promptOutputs: PropTypes.object.isRequired,
 };
 
 export { PromptCard };

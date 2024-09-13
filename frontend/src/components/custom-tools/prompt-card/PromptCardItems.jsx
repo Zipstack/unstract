@@ -20,9 +20,6 @@ import { OutputForIndex } from "./OutputForIndex";
 import { PromptOutput } from "./PromptOutput";
 import { TABLE_ENFORCE_TYPE } from "./constants";
 
-const EvalBtn = null;
-const EvalMetrics = null;
-
 let TableExtractionSettingsBtn;
 try {
   TableExtractionSettingsBtn =
@@ -49,14 +46,13 @@ function PromptCardItems({
   updateStatus,
   updatePlaceHolder,
   isCoverageLoading,
-  setOpenEval,
   setOpenOutputForDoc,
   selectedLlmProfileId,
   handleSelectDefaultLLM,
   timers,
   spsLoading,
   handleSpsLoading,
-  handleGetOutput,
+  promptOutputs,
 }) {
   const {
     llmProfiles,
@@ -185,7 +181,6 @@ function PromptCardItems({
             enabledProfiles={enabledProfiles}
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
-            handleGetOutput={handleGetOutput}
           />
         </Space>
       </div>
@@ -221,13 +216,6 @@ function PromptCardItems({
                 >
                   <div className="prompt-card-llm-profiles">
                     <Space direction="horizontal">
-                      {EvalBtn && !singlePassExtractMode && (
-                        <EvalBtn
-                          btnText={promptDetails?.evaluate ? "On" : "Off"}
-                          promptId={promptDetails?.prompt_id}
-                          setOpenEval={setOpenEval}
-                        />
-                      )}
                       <Button
                         size="small"
                         type="link"
@@ -273,7 +261,6 @@ function PromptCardItems({
                       />
                     </Space>
                   </div>
-                  {EvalMetrics && <EvalMetrics result={result} />}
                 </Space>
               </>
             )}
@@ -295,6 +282,7 @@ function PromptCardItems({
               isNotSingleLlmProfile={isNotSingleLlmProfile}
               setIsIndexOpen={setIsIndexOpen}
               enforceType={enforceType}
+              promptOutputs={promptOutputs}
             />
           </Row>
         </Collapse.Panel>
@@ -327,13 +315,12 @@ PromptCardItems.propTypes = {
   updateStatus: PropTypes.object.isRequired,
   updatePlaceHolder: PropTypes.string,
   isCoverageLoading: PropTypes.bool.isRequired,
-  setOpenEval: PropTypes.func.isRequired,
   setOpenOutputForDoc: PropTypes.func.isRequired,
   selectedLlmProfileId: PropTypes.string,
   timers: PropTypes.object.isRequired,
   spsLoading: PropTypes.object,
   handleSpsLoading: PropTypes.func.isRequired,
-  handleGetOutput: PropTypes.func.isRequired,
+  promptOutputs: PropTypes.object.isRequired,
 };
 
 export { PromptCardItems };
