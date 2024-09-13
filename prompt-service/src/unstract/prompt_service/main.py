@@ -507,6 +507,7 @@ def prompt_processor() -> Any:
                             answer = run_completion(
                                 llm=llm,
                                 prompt=prompt,
+                                prompt_type=PSKeys.JSON,
                             )
                             structured_output[output[PSKeys.NAME]] = json.loads(answer)
                         except JSONDecodeError as e:
