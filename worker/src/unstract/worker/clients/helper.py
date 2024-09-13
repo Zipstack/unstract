@@ -15,7 +15,3 @@ class ContainerClientHelper:
         )
         logger.info("Loading the container client from path:", client_path)
         return import_module(client_path).Client
-
-    @staticmethod
-    def normalize_container_name(name: str, execution_id: str) -> str:
-        return name.replace("/", "-") + "-" + execution_id
