@@ -1,6 +1,7 @@
 from typing import Any
 
 from peewee import PostgresqlDatabase
+from unstract.platform_service import be_db, db_context
 from unstract.platform_service.constants import DBTableV2, FeatureFlag
 from unstract.platform_service.exceptions import APIError
 
@@ -38,11 +39,12 @@ class PromptStudioRequestHelper:
                 f'"{organization_id}".prompt_studio_registry_promptstudioregistry x'
                 f" WHERE prompt_registry_id='{prompt_registry_id}'"
             )
-        cursor = db_instance.execute_sql(query)
-        result_row = cursor.fetchone()
-        if not result_row:
-            raise APIError(message="Custom Tool not found", code=404)
-        columns = [desc[0] for desc in cursor.description]
-        data_dict: dict[str, Any] = dict(zip(columns, result_row))
-        cursor.close()
+        with db_context():
+            cursor = be_db.execute_sql(query)
+            result_row = cursor.fetchone()
+            if not result_row:
+                raise APIError(message="Custom Tool not found", code=404)
+            columns = [desc[0] for desc in cursor.description]
+            data_dict: dict[str, Any] = dict(zip(columns, result_row))
+            cursor.close()
         return data_dict

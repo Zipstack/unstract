@@ -8,7 +8,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from flask import Blueprint, Request
 from flask import current_app as app
 from flask import jsonify, make_response, request
-from peewee import PostgresqlDatabase
+from unstract.platform_service import be_db, db_context
 from unstract.platform_service.constants import DBTable, DBTableV2, FeatureFlag
 from unstract.platform_service.env import Env
 from unstract.platform_service.exceptions import APIError
@@ -19,15 +19,6 @@ from unstract.platform_service.helper.cost_calculation import CostCalculationHel
 from unstract.platform_service.helper.prompt_studio import PromptStudioRequestHelper
 
 from unstract.flags.feature_flag import check_feature_flag_status
-
-be_db = PostgresqlDatabase(
-    Env.PG_BE_DATABASE,
-    user=Env.PG_BE_USERNAME,
-    password=Env.PG_BE_PASSWORD,
-    host=Env.PG_BE_HOST,
-    port=Env.PG_BE_PORT,
-)
-be_db.init(Env.PG_BE_DATABASE)
 
 platform_bp = Blueprint("platform", __name__)
 
@@ -85,9 +76,10 @@ def get_organization_from_bearer_token(token: str) -> tuple[Optional[int], str]:
 
 
 def execute_query(query: str, params: tuple = ()) -> Any:
-    cursor = be_db.execute_sql(query, params)
-    result_row = cursor.fetchone()
-    cursor.close()
+    with db_context():
+        cursor = be_db.execute_sql(query, params)
+        result_row = cursor.fetchone()
+        cursor.close()
     if not result_row or len(result_row) == 0:
         return None
     return result_row[0]
@@ -104,10 +96,11 @@ def validate_bearer_token(token: Optional[str]) -> bool:
         else:
             platform_key_table = "account_platformkey"
 
-        query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
-        cursor = be_db.execute_sql(query)
-        result_row = cursor.fetchone()
-        cursor.close()
+        with db_context():
+            query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
+            cursor = be_db.execute_sql(query)
+            result_row = cursor.fetchone()
+            cursor.close()
         if not result_row or len(result_row) == 0:
             app.logger.error(f"Authentication failed. bearer token not found {token}")
             return False
@@ -174,9 +167,10 @@ def page_usage() -> Any:
     )
 
     try:
-        with be_db.atomic() as transaction:
-            be_db.execute_sql(query, params)
-            transaction.commit()
+        with db_context():
+            with be_db.atomic() as transaction:
+                be_db.execute_sql(query, params)
+                transaction.commit()
             app.logger.info("Entry created with id %s for %s", usage_id, org_id)
             result["status"] = "OK"
             result["unique_id"] = usage_id
@@ -294,9 +288,11 @@ def usage() -> Any:
             current_time,
         )
     try:
-        with be_db.atomic() as transaction:
-            be_db.execute_sql(query, params)
-            transaction.commit()
+
+        with db_context():
+            with be_db.atomic() as transaction:
+                be_db.execute_sql(query, params)
+                transaction.commit()
             app.logger.info("Entry created with id %s for %s", usage_id, org_id)
             result["status"] = "OK"
             result["unique_id"] = usage_id
