@@ -7,7 +7,7 @@ from typing import Any, Optional
 from flask import json, jsonify, request
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
-from unstract.prompt_service.config import create_app, db
+from unstract.prompt_service.config import create_app
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.exceptions import APIError, ErrorResponse, NoPayloadError
@@ -46,12 +46,6 @@ NO_CONTEXT_ERROR = (
 app = create_app()
 # Load plugins
 plugin_loader(app)
-
-
-@app.before_request
-def before_request() -> None:
-    if db.is_closed():
-        db.connect(reuse_if_open=True)
 
 
 def _publish_log(

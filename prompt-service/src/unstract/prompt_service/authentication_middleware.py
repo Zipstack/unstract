@@ -1,7 +1,7 @@
 from typing import Any, Optional
 
 from flask import Request, current_app
-from unstract.prompt_service.config import db
+from unstract.prompt_service import be_db, db_context
 from unstract.prompt_service.constants import DBTableV2, FeatureFlag
 
 from unstract.flags.feature_flag import check_feature_flag_status
@@ -22,9 +22,10 @@ class AuthenticationMiddleware:
                 platform_key_table = "account_platformkey"
 
             query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
-            cursor = db.execute_sql(query)
-            result_row = cursor.fetchone()
-            cursor.close()
+            with db_context():
+                cursor = be_db.execute_sql(query)
+                result_row = cursor.fetchone()
+                cursor.close()
             if not result_row or len(result_row) == 0:
                 current_app.logger.error(
                     f"Authentication failed. bearer token not found {token}"
@@ -84,8 +85,9 @@ class AuthenticationMiddleware:
 
     @staticmethod
     def execute_query(query: str) -> Any:
-        cursor = db.execute_sql(query)
-        result_row = cursor.fetchone()
+        with db_context():
+            cursor = be_db.execute_sql(query)
+            result_row = cursor.fetchone()
         cursor.close()
         if not result_row or len(result_row) == 0:
             return None

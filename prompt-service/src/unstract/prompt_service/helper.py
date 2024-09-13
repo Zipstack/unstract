@@ -7,8 +7,8 @@ from typing import Any, Optional
 
 from dotenv import load_dotenv
 from flask import Flask, current_app, json
+from unstract.prompt_service import be_db, db_context
 from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
-from unstract.prompt_service.config import db
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.exceptions import APIError, RateLimitError
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
@@ -130,12 +130,13 @@ def query_usage_metadata(token: str, metadata: dict[str, Any]) -> dict[str, Any]
     """
     logger: Logger = current_app.logger
     try:
-        with db.atomic():
-            logger.info(
-                "Querying usage metadata for org_id: %s, run_id: %s", org_id, run_id
-            )
-            cursor = db.execute_sql(query, (run_id,))
-            results: list[tuple] = cursor.fetchall()
+        with db_context():
+            with be_db.atomic():
+                logger.info(
+                    "Querying usage metadata for org_id: %s, run_id: %s", org_id, run_id
+                )
+                cursor = be_db.execute_sql(query, (run_id,))
+                results: list[tuple] = cursor.fetchall()
             # Process results as needed
             for row in results:
                 key, item = _get_key_and_item(row)

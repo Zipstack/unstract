@@ -4,7 +4,6 @@ from os import environ as env
 
 from dotenv import load_dotenv
 from flask import Flask
-from peewee import PostgresqlDatabase
 from unstract.prompt_service.constants import LogLevel
 
 load_dotenv()
@@ -28,15 +27,6 @@ dictConfig(
     }
 )
 
-db = PostgresqlDatabase(None)
-
-
-def get_env_or_die(env_key: str) -> str:
-    env_value = env.get(env_key)
-    if not env_value:
-        raise ValueError(f"Env variable {env_key} is required")
-    return env_value
-
 
 def create_app() -> Flask:
     app = Flask("prompt-service")
@@ -48,19 +38,4 @@ def create_app() -> Flask:
     else:
         app.logger.setLevel(logging.WARNING)
 
-    # Load required environment variables
-    db_host = get_env_or_die("PG_BE_HOST")
-    db_port = get_env_or_die("PG_BE_PORT")
-    db_user = get_env_or_die("PG_BE_USERNAME")
-    db_pass = get_env_or_die("PG_BE_PASSWORD")
-    db_name = get_env_or_die("PG_BE_DATABASE")
-
-    # Initialize and connect to the database
-    db.init(
-        database=db_name,
-        user=db_user,
-        password=db_pass,
-        host=db_host,
-        port=db_port,
-    )
     return app
