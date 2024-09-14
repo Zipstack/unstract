@@ -1,4 +1,5 @@
 from logging.config import dictConfig
+from typing import Any
 
 from dotenv import load_dotenv
 from flask import Flask
@@ -41,6 +42,13 @@ app = create_app()
 def before_request() -> None:
     if be_db.is_closed():
         be_db.connect(reuse_if_open=True)
+
+
+@app.teardown_request
+def after_request(exception: Any) -> None:
+    # Close the connection after each request
+    if not be_db.is_closed():
+        be_db.close()
 
 
 if __name__ == "__main__":
