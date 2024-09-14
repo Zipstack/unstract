@@ -4,7 +4,7 @@ from os import environ as env
 
 from dotenv import load_dotenv
 from flask import Flask
-from playhouse.pool import PooledPostgresqlDatabase
+from peewee import PostgresqlDatabase
 from unstract.prompt_service.constants import LogLevel
 
 load_dotenv()
@@ -28,7 +28,7 @@ dictConfig(
     }
 )
 
-db = PooledPostgresqlDatabase(None)
+db = PostgresqlDatabase(None)
 
 
 def get_env_or_die(env_key: str) -> str:
@@ -54,9 +54,6 @@ def create_app() -> Flask:
     db_user = get_env_or_die("PG_BE_USERNAME")
     db_pass = get_env_or_die("PG_BE_PASSWORD")
     db_name = get_env_or_die("PG_BE_DATABASE")
-    max_connections = int(get_env_or_die("POOL_MAX_CONNECTIONS"))
-    stale_timeout = int(get_env_or_die("POOL_STALE_TIMEOUT"))
-    timeout = int(get_env_or_die("POOL_TIMEOUT"))
 
     # Initialize and connect to the database
     db.init(
@@ -65,10 +62,5 @@ def create_app() -> Flask:
         password=db_pass,
         host=db_host,
         port=db_port,
-        max_connections=max_connections,
-        stale_timeout=stale_timeout,
-        timeout=timeout,
     )
-    db.connect()
-
     return app
