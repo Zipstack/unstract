@@ -40,14 +40,23 @@ function DocumentParser({
     promptId: null,
     status: null,
   });
+  const [enforceTypeList, setEnforceTypeList] = useState([]);
   const bottomRef = useRef(null);
-  const { details, isSimplePromptStudio, updateCustomTool } =
+  const { details, isSimplePromptStudio, updateCustomTool, getDropdownItems } =
     useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { promptOutputs } = usePromptOutputStore();
+
+  useEffect(() => {
+    const outputTypeData = getDropdownItems("output_type") || {};
+    const dropdownList1 = Object.keys(outputTypeData).map((item) => {
+      return { value: outputTypeData[item] };
+    });
+    setEnforceTypeList(dropdownList1);
+  }, []);
 
   useEffect(() => {
     if (scrollToBottom) {
@@ -347,6 +356,7 @@ function DocumentParser({
                 updateStatus={updateStatus}
                 moveItem={moveItem}
                 outputs={getPromptOutputs(item?.prompt_id)}
+                enforceTypeList={enforceTypeList}
               />
               <div ref={bottomRef} className="doc-parser-pad-bottom" />
             </div>

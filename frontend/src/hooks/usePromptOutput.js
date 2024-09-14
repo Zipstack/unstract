@@ -1,17 +1,27 @@
+import { usePromptOutputStore } from "../store/prompt-output-store";
 import { useSessionStore } from "../store/session-store";
+import { useTokenUsageStore } from "../store/token-usage-store";
 import { useAxiosPrivate } from "./useAxiosPrivate";
 
 const usePromptOutput = () => {
   const { sessionDetails } = useSessionStore();
+  const { setTokenUsage, updateTokenUsage } = useTokenUsageStore();
+  const { setPromptOutput, updatePromptOutput } = usePromptOutputStore();
   const axiosPrivate = useAxiosPrivate();
 
   const generatePromptOutputKey = (
     promptId,
     docId,
     llmProfile,
-    isSinglePass
+    isSinglePass,
+    isIncludeSinglePass = true
   ) => {
-    return `${promptId}__${docId}__${llmProfile}__${isSinglePass}`;
+    let key = `${promptId}__${docId}__${llmProfile}`;
+
+    if (isIncludeSinglePass) {
+      key += `__${isSinglePass}`;
+    }
+    return key;
   };
 
   const generatePromptOutputKeyForSinglePass = (llmProfile, docId) => {
@@ -48,6 +58,78 @@ const usePromptOutput = () => {
     return url;
   };
 
+  const updatePromptOutputState = (data, isReset) => {
+    const outputs = {};
+
+    let isTokenUsageForSinglePassAdded = false;
+    const tokenUsageDetails = {};
+
+    data.forEach((item) => {
+      const promptId = item?.prompt_id;
+      const docId = item?.document_manager;
+      const llmProfile = item?.profile_manager;
+      const isSinglePass = item?.is_single_pass_extract;
+
+      if (!promptId || !docId || !llmProfile) {
+        return;
+      }
+
+      const key = generatePromptOutputKey(
+        promptId,
+        docId,
+        llmProfile,
+        isSinglePass,
+        true
+      );
+
+      outputs[key] = {
+        runId: item?.run_id,
+        promptOutputId: item?.prompt_output_id,
+        profileManager: llmProfile,
+        context: item?.context,
+        challengeData: item?.challenge_data,
+        tokenUsage: item?.token_usage,
+        output: item?.output,
+      };
+
+      if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded)
+        return;
+
+      if (item?.is_single_pass_extract) {
+        const tokenUsageId = generatePromptOutputKeyForSinglePass(
+          llmProfile,
+          docId
+        );
+        tokenUsageDetails[tokenUsageId] = item?.token_usage;
+        tokenUsageDetails[
+          generatePromptOutputKeyForContext(llmProfile, docId)
+        ] = item?.context;
+        tokenUsageDetails[
+          generatePromptOutputKeyForChallenge(llmProfile, docId)
+        ] = item?.challenge_data;
+        isTokenUsageForSinglePassAdded = true;
+        return;
+      }
+
+      const tokenUsageId = generatePromptOutputKey(
+        promptId,
+        docId,
+        llmProfile,
+        false,
+        false
+      );
+      tokenUsageDetails[tokenUsageId] = item?.token_usage;
+    });
+
+    if (isReset) {
+      setPromptOutput(outputs);
+      setTokenUsage(tokenUsageDetails);
+    } else {
+      updatePromptOutput(outputs);
+      updateTokenUsage(tokenUsageDetails);
+    }
+  };
+
   const promptOutputApi = async (
     toolId,
     docId = null,
@@ -70,15 +152,15 @@ const usePromptOutput = () => {
       },
     };
 
-    return axiosPrivate(requestOptions);
+    return axiosPrivate(requestOptions)
+      .then((res) => res)
+      .catch((err) => err);
   };
 
   return {
     promptOutputApi,
+    updatePromptOutputState,
     generatePromptOutputKey,
-    generatePromptOutputKeyForSinglePass,
-    generatePromptOutputKeyForContext,
-    generatePromptOutputKeyForChallenge,
   };
 };
 

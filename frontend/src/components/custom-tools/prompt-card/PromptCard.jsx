@@ -15,6 +15,7 @@ import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
+import usePromptOutput from "../../../hooks/usePromptOutput";
 
 let promptRunApiSps;
 try {
@@ -31,13 +32,12 @@ function PromptCard({
   updateStatus,
   updatePlaceHolder,
   promptOutputs,
+  enforceTypeList,
 }) {
-  const [enforceTypeList, setEnforceTypeList] = useState([]);
   const [isRunLoading, setIsRunLoading] = useState({});
   const [promptKey, setPromptKey] = useState("");
   const [promptText, setPromptText] = useState("");
   const [selectedLlmProfileId, setSelectedLlmProfileId] = useState(null);
-  const [result] = useState([]);
   const [coverage, setCoverage] = useState({});
   const [coverageTotal, setCoverageTotal] = useState(0);
   const [isCoverageLoading, setIsCoverageLoading] = useState(false);
@@ -47,7 +47,6 @@ function PromptCard({
   const [timers, setTimers] = useState({}); // Prompt run timer
   const [spsLoading, setSpsLoading] = useState({});
   const {
-    getDropdownItems,
     llmProfiles,
     selectedDoc,
     listOfDocs,
@@ -66,14 +65,7 @@ function PromptCard({
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
-
-  useEffect(() => {
-    const outputTypeData = getDropdownItems("output_type") || {};
-    const dropdownList1 = Object.keys(outputTypeData).map((item) => {
-      return { value: outputTypeData[item] };
-    });
-    setEnforceTypeList(dropdownList1);
-  }, []);
+  const { updatePromptOutputState } = usePromptOutput();
 
   useEffect(() => {
     // Find the latest message that matches the criteria
@@ -323,8 +315,10 @@ function PromptCard({
         handleIsRunLoading(selectedDoc?.document_id, profile?.profile_id, true);
         handleRunApiRequest(docId, profile?.profile_id)
           .then((res) => {
-            const data = res?.data?.output;
-            const value = data[promptDetails?.prompt_key];
+            const data = res?.data || [];
+            const value = data[0]?.output;
+
+            updatePromptOutputState(data, false);
             handleDocOutputs(
               docId,
               promptDetails?.prompt_id,
@@ -368,8 +362,10 @@ function PromptCard({
       );
       handleRunApiRequest(docId, profileManagerId)
         .then((res) => {
-          const data = res?.data?.output;
-          const value = data[promptDetails?.prompt_key];
+          const data = res?.data || [];
+          const value = data[0]?.output;
+
+          updatePromptOutputState(data, false);
           updateDocCoverage(promptDetails?.prompt_id, profileManagerId, docId);
           handleDocOutputs(
             docId,
@@ -455,8 +451,8 @@ function PromptCard({
       );
       handleRunApiRequest(docId, profileManagerId)
         .then((res) => {
-          const data = res?.data?.output;
-          const outputValue = data[promptDetails?.prompt_key];
+          const data = res?.data || [];
+          const outputValue = data[0]?.output;
           updateDocCoverage(promptDetails?.prompt_id, profileManagerId, docId);
           handleDocOutputs(
             docId,
@@ -614,7 +610,6 @@ function PromptCard({
         setPromptKey={setPromptKey}
         promptText={promptText}
         setPromptText={setPromptText}
-        result={result}
         coverage={coverage}
         progressMsg={progressMsg}
         handleRun={handleRun}
@@ -651,6 +646,7 @@ PromptCard.propTypes = {
   updateStatus: PropTypes.object.isRequired,
   updatePlaceHolder: PropTypes.string,
   promptOutputs: PropTypes.object.isRequired,
+  enforceTypeList: PropTypes.array.isRequired,
 };
 
 export { PromptCard };

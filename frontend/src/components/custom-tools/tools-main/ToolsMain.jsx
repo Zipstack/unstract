@@ -15,7 +15,6 @@ import "./ToolsMain.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { ToolsMainActionBtns } from "./ToolsMainActionBtns";
 import usePromptOutput from "../../../hooks/usePromptOutput";
-import { usePromptOutputStore } from "../../../store/prompt-output-store";
 
 function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
@@ -35,8 +34,7 @@ function ToolsMain() {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
-  const { setPromptOutput } = usePromptOutputStore();
-  const { promptOutputApi, generatePromptOutputKey } = usePromptOutput();
+  const { promptOutputApi, updatePromptOutputState } = usePromptOutput();
 
   const items = [
     {
@@ -72,40 +70,10 @@ function ToolsMain() {
     )
       .then((res) => {
         const data = res?.data || [];
-        console.log(data);
-
-        const outputs = {};
-        data.forEach((outputResult) => {
-          const promptId = outputResult?.prompt_id;
-          const docId = outputResult?.document_manager;
-          const llmProfile = outputResult?.profile_manager;
-          const isSinglePass = outputResult?.is_single_pass_extract;
-
-          if (!promptId || !docId || !llmProfile) {
-            return;
-          }
-
-          const key = generatePromptOutputKey(
-            promptId,
-            docId,
-            llmProfile,
-            isSinglePass
-          );
-
-          outputs[key] = {
-            runId: outputResult?.run_id,
-            promptOutputId: outputResult?.prompt_output_id,
-            profileManager: outputResult?.profile_manager,
-            context: outputResult?.context,
-            challengeData: outputResult?.challenge_data,
-            output: outputResult?.output,
-          };
-        });
-
-        setPromptOutput(outputs);
+        updatePromptOutputState(data, true);
       })
       .catch((err) => {
-        console.log(err);
+        setAlertDetails(handleException(err, "Failed to fetch prompt outputs"));
       });
   }, [selectedDoc, singlePassExtractMode]);
 

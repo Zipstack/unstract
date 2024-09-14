@@ -36,7 +36,6 @@ function PromptCardItems({
   setPromptKey,
   promptText,
   setPromptText,
-  result,
   coverage,
   progressMsg,
   handleRun,
@@ -210,8 +209,7 @@ function PromptCardItems({
                 <Space
                   direction="vertical"
                   className={`prompt-card-comp-layout ${
-                    !(isRunLoading || result?.output || result?.output === 0) &&
-                    "prompt-card-comp-layout-border"
+                    !isRunLoading && "prompt-card-comp-layout-border"
                   }`}
                 >
                   <div className="prompt-card-llm-profiles">
@@ -269,7 +267,6 @@ function PromptCardItems({
             <PromptOutput
               promptDetails={promptDetails}
               isRunLoading={isRunLoading}
-              result={result}
               handleRun={handleRun}
               selectedLlmProfileId={selectedLlmProfileId}
               handleSelectDefaultLLM={handleSelectDefaultLLM}
@@ -304,7 +301,6 @@ PromptCardItems.propTypes = {
   setPromptKey: PropTypes.func.isRequired,
   promptText: PropTypes.text,
   setPromptText: PropTypes.func.isRequired,
-  result: PropTypes.object.isRequired,
   coverage: PropTypes.number.isRequired,
   progressMsg: PropTypes.object.isRequired,
   handleRun: PropTypes.func.isRequired,

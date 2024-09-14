@@ -55,7 +55,6 @@ try {
 function PromptOutput({
   promptDetails,
   isRunLoading,
-  result,
   handleRun,
   selectedLlmProfileId,
   handleSelectDefaultLLM,
@@ -133,7 +132,8 @@ function PromptOutput({
       promptId,
       docId,
       selectedLlmProfileId,
-      singlePassExtractMode
+      singlePassExtractMode,
+      true
     );
     const promptOutput = displayPromptResult(
       promptOutputs[promptOutputKey]?.output,
@@ -157,10 +157,11 @@ function PromptOutput({
               copyToClipboard={() => copyOutputToClipboard(promptOutput)}
             />
             <PromptOutputExpandBtn
+              promptId={promptDetails?.prompt_id}
               llmProfiles={llmProfileDetails}
-              result={result}
               enforceType={enforceType}
               displayLlmProfile={false}
+              promptOutputs={promptOutputs}
             />
           </div>
         </div>
@@ -178,15 +179,18 @@ function PromptOutput({
           const profileId = profile?.profile_id;
           const isChecked = enabledProfiles.includes(profileId);
           const tokenUsageId = promptId + "__" + docId + "__" + profileId;
-          let profileData = {};
-          const promptOutputKey = generatePromptOutputKey(
-            promptId,
-            docId,
-            profileId,
-            singlePassExtractMode
-          );
-          if (promptOutputs[promptOutputKey] !== undefined) {
-            profileData = promptOutputs[promptOutputKey];
+          let promptOutputData = {};
+          if (promptOutputs && Object.keys(promptOutputs)) {
+            const promptOutputKey = generatePromptOutputKey(
+              promptId,
+              docId,
+              profileId,
+              singlePassExtractMode,
+              true
+            );
+            if (promptOutputs[promptOutputKey] !== undefined) {
+              promptOutputData = promptOutputs[promptOutputKey];
+            }
           }
           return (
             <motion.div
@@ -238,7 +242,7 @@ function PromptOutput({
                     <Typography.Text className="prompt-cost-item">
                       Cost: $
                       {formatNumberWithCommas(
-                        getFormattedTotalCost(result, profile)
+                        getFormattedTotalCost(promptOutputData?.tokenUsage)
                       )}
                     </Typography.Text>
                   </div>
@@ -281,16 +285,16 @@ function PromptOutput({
                         <DatabaseOutlined
                           onClick={() => {
                             setIsIndexOpen(true);
-                            setOpenIndexProfile(profileData?.context);
+                            setOpenIndexProfile(promptOutputData?.context);
                           }}
                           className="prompt-card-actions-head"
                         />
                       </Tooltip>
                       {ChallengeModal && (
                         <ChallengeModal
-                          challengeData={profileData?.challengeData || {}}
-                          context={profileData?.context || ""}
-                          tokenUsage={profileData?.tokenUsage || {}}
+                          challengeData={promptOutputData?.challengeData || {}}
+                          context={promptOutputData?.context || ""}
+                          tokenUsage={promptOutputData?.tokenUsage || {}}
                         />
                       )}
                       {isNotSingleLlmProfile && (
@@ -319,9 +323,7 @@ function PromptOutput({
                         ) : (
                           <Typography.Paragraph className="prompt-card-res font-size-12">
                             <div className="expanded-output">
-                              {!result.find(
-                                (r) => r?.profileManager === profileId
-                              )?.output ? (
+                              {!promptOutputData?.output ? (
                                 <Typography.Text className="prompt-not-ran">
                                   <span>
                                     <InfoCircleFilled
@@ -332,7 +334,7 @@ function PromptOutput({
                                 </Typography.Text>
                               ) : (
                                 <DisplayPromptResult
-                                  output={profileData?.output}
+                                  output={promptOutputData?.output}
                                 />
                               )}
                             </div>
@@ -375,20 +377,21 @@ function PromptOutput({
                         isDisabled={enforceType === TABLE_ENFORCE_TYPE}
                         copyToClipboard={() =>
                           copyOutputToClipboard(
-                            displayPromptResult(profileData?.output, true)
+                            displayPromptResult(promptOutputData?.output, true)
                           )
                         }
                       />
                       <PromptOutputExpandBtn
+                        promptId={promptDetails?.prompt_id}
                         llmProfiles={llmProfileDetails}
-                        result={result}
                         enforceType={enforceType}
                         displayLlmProfile={true}
+                        promptOutputs={promptOutputs}
                       />
                     </div>
                   </div>
                   {enforceType === TABLE_ENFORCE_TYPE && TableOutput && (
-                    <TableOutput output={profileData?.output} />
+                    <TableOutput output={promptOutputData?.output} />
                   )}
                 </>
               </Col>
@@ -402,7 +405,6 @@ function PromptOutput({
 PromptOutput.propTypes = {
   promptDetails: PropTypes.object.isRequired,
   isRunLoading: PropTypes.object,
-  result: PropTypes.object.isRequired,
   handleRun: PropTypes.func.isRequired,
   handleSelectDefaultLLM: PropTypes.func.isRequired,
   selectedLlmProfileId: PropTypes.string,
