@@ -54,6 +54,13 @@ def before_request() -> None:
         db.connect(reuse_if_open=True)
 
 
+@app.teardown_request
+def after_request(exception: Any) -> None:
+    # Close the connection after each request
+    if not db.is_closed():
+        db.close()
+
+
 def _publish_log(
     log_events_id: str,
     component: dict[str, str],
