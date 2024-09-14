@@ -641,6 +641,7 @@ function PromptCard({
             profileManager: outputResult?.profile_manager,
             context: outputResult?.context,
             challengeData: outputResult?.challenge_data,
+            tokenUsage: outputResult?.token_usage,
             output: outputResult?.output,
             evalMetrics: getEvalMetrics(
               promptDetails?.evaluate,
