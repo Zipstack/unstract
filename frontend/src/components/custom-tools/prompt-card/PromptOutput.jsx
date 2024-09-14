@@ -77,6 +77,7 @@ function PromptOutput({
     isSinglePassExtractLoading,
     isSimplePromptStudio,
     isPublicSource,
+    defaultLlmProfile,
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const { generatePromptOutputKey } = usePromptOutput();
@@ -131,7 +132,7 @@ function PromptOutput({
     const promptOutputKey = generatePromptOutputKey(
       promptId,
       docId,
-      selectedLlmProfileId,
+      defaultLlmProfile,
       singlePassExtractMode,
       true
     );

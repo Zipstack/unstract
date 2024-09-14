@@ -1,13 +1,32 @@
+import { useParams } from "react-router-dom";
+import { useCustomToolStore } from "../store/custom-tool-store";
 import { usePromptOutputStore } from "../store/prompt-output-store";
 import { useSessionStore } from "../store/session-store";
 import { useTokenUsageStore } from "../store/token-usage-store";
 import { useAxiosPrivate } from "./useAxiosPrivate";
 
+let promptOutputApiSps;
+try {
+  promptOutputApiSps =
+    require("../plugins/simple-prompt-studio/helper").promptOutputApiSps;
+} catch {
+  // The component will remain null of it is not available
+}
+let publicOutputsApi;
+try {
+  publicOutputsApi =
+    require("../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
+} catch {
+  // The component will remain null of it is not available
+}
+
 const usePromptOutput = () => {
   const { sessionDetails } = useSessionStore();
   const { setTokenUsage, updateTokenUsage } = useTokenUsageStore();
   const { setPromptOutput, updatePromptOutput } = usePromptOutputStore();
+  const { isSimplePromptStudio, isPublicSource } = useCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
+  const { id } = useParams();
 
   const generatePromptOutputKey = (
     promptId,
@@ -38,6 +57,14 @@ const usePromptOutput = () => {
 
   const getUrl = (toolId, docId, promptId, llmProfile, isSinglePassExtract) => {
     let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${toolId}`;
+
+    if (isSimplePromptStudio) {
+      url = promptOutputApiSps(toolId, null, null);
+    }
+
+    if (isPublicSource) {
+      url = publicOutputsApi(id, promptId, isSinglePassExtract);
+    }
 
     if (docId) {
       url += `&document_manager=${docId}`;
