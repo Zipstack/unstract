@@ -200,17 +200,12 @@ class ToolsUtils:
         )
         return None
 
-    def get_tool_environment_variables(
-        self, project_settings: Optional[dict[str, Any]] = None
-    ) -> dict[str, Any]:
+    def get_tool_environment_variables(self) -> dict[str, Any]:
         """Obtain a dictionary of env variables required by a tool.
 
         This combines the user defined envs (coming from project_settings)
         as well as the env variables that are platform specific into
         one key-value store.
-
-        Args:
-            project_settings (Optional[dict[str, Any]]): User defined settings
 
         Returns:
             dict[str, Any]: Dict of env variables for a tool
@@ -223,15 +218,14 @@ class ToolsUtils:
             ToolRV.PROMPT_PORT: self.prompt_port,
             ToolRV.X2TEXT_HOST: self.x2text_host,
             ToolRV.X2TEXT_PORT: self.x2text_port,
+            ToolRV.EXECUTION_BY_TOOL: True,
         }
         # For async LLM Whisperer extraction
         if self.llmw_poll_interval:
             platform_vars[ToolRV.ADAPTER_LLMW_POLL_INTERVAL] = self.llmw_poll_interval
         if self.llmw_max_polls:
             platform_vars[ToolRV.ADAPTER_LLMW_MAX_POLLS] = self.llmw_max_polls
-        if not project_settings:
-            project_settings = {}
-        return {**project_settings, **platform_vars}
+        return platform_vars
 
     @staticmethod
     def get_env(env_key: str, raise_exception: bool = False) -> Optional[str]:
