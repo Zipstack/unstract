@@ -9,7 +9,7 @@ services:
     build:
       dockerfile: docker/dockerfiles/backend.Dockerfile
       context: ..
-  worker:
+  runner:
     image: unstract/worker:${VERSION}
     build:
       dockerfile: docker/dockerfiles/worker.Dockerfile
