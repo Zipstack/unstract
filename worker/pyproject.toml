@@ -37,6 +37,11 @@ dev = [
 ]
 
 [tool.pdm.scripts]
+# Runs the flask service
 runner.cmd = "flask --app src/unstract/worker/main.py run --port 5002"
 runner.env_file = ".env"
 runner.help = "Runs the Unstract tool runner"
+# Run tests for this service
+test.cmd = "pytest -s -v"
+test.env_file = "tests/.env"
+test.help = "Runs pytests for the Unstract tool runner"

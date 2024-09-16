@@ -28,6 +28,7 @@ def run_container() -> Optional[Any]:
     organization_id = data["organization_id"]
     workflow_id = data["workflow_id"]
     execution_id = data["execution_id"]
+    run_id = data["run_id"]
     settings = data["settings"]
     envs = data["envs"]
     messaging_channel = data["messaging_channel"]
@@ -37,6 +38,7 @@ def run_container() -> Optional[Any]:
         organization_id=organization_id,
         workflow_id=workflow_id,
         execution_id=execution_id,
+        run_id=run_id,
         settings=settings,
         envs=envs,
         messaging_channel=messaging_channel,
