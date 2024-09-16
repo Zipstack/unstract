@@ -139,6 +139,7 @@ class UnstractWorker:
             organization_id="",
             workflow_id="",
             execution_id="",
+            run_id="",
             auto_remove=True,
         )
         container = None
@@ -163,6 +164,7 @@ class UnstractWorker:
         organization_id: str,
         workflow_id: str,
         execution_id: str,
+        run_id: str,
         settings: dict[str, Any],
         envs: dict[str, Any],
         messaging_channel: Optional[str] = None,
@@ -193,6 +195,7 @@ class UnstractWorker:
             organization_id=organization_id,
             workflow_id=workflow_id,
             execution_id=execution_id,
+            run_id=run_id,
             envs=envs,
         )
         # Add labels to container for logging with Loki.
@@ -207,10 +210,11 @@ class UnstractWorker:
         container = None
         result = {"type": "RESULT", "result": None}
         try:
-            container: ContainerInterface = self.client.run_container(container_config)
             self.logger.info(
-                f"Running Docker container: {container_config.get('name')}"
+                f"Execution ID: {execution_id}, running docker "
+                f"container: {container_config.get('name')}"
             )
+            container: ContainerInterface = self.client.run_container(container_config)
             tool_instance_id = str(settings.get(ToolKey.TOOL_INSTANCE_ID))
             # Stream logs
             self.stream_logs(

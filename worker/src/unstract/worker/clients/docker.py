@@ -5,7 +5,6 @@ from typing import Any, Optional
 
 from docker.errors import APIError, ImageNotFound
 from docker.models.containers import Container
-from unstract.worker.clients.helper import ContainerClientHelper
 from unstract.worker.clients.interface import (
     ContainerClientInterface,
     ContainerInterface,
@@ -14,6 +13,7 @@ from unstract.worker.constants import Env
 from unstract.worker.utils import Utils
 
 from docker import DockerClient
+from unstract.core.utilities import UnstractUtils
 
 
 class DockerContainer(ContainerInterface):
@@ -161,6 +161,7 @@ class Client(ContainerClientInterface):
         organization_id: str,
         workflow_id: str,
         execution_id: str,
+        run_id: str,
         envs: Optional[dict[str, Any]] = None,
         auto_remove: bool = False,
     ) -> dict[str, Any]:
@@ -188,7 +189,9 @@ class Client(ContainerClientInterface):
                 execution_id,
             )
         return {
-            "name": ContainerClientHelper.normalize_container_name(self.image_name),
+            "name": UnstractUtils.build_tool_container_name(
+                tool_image=self.image_name, tool_version=self.image_tag, run_id=run_id
+            ),
             "image": self.get_image(),
             "command": command,
             "detach": True,
