@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   generateUUID,
   pollForCompletion,
+  promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -16,6 +17,7 @@ import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
 import usePromptOutput from "../../../hooks/usePromptOutput";
+import { handleUpdateStatus } from "./constants";
 
 let promptRunApiSps;
 try {
@@ -27,13 +29,20 @@ try {
 
 function PromptCard({
   promptDetails,
-  handleChange,
+  handleChangePromptCard,
   handleDelete,
-  updateStatus,
   updatePlaceHolder,
   promptOutputs,
   enforceTypeList,
+  setUpdatedPromptsCopy,
 }) {
+  const [promptDetailsState, setPromptDetailsState] = useState({});
+  const [isPromptDetailsStateUpdated, setIsPromptDetailsStateUpdated] =
+    useState(false);
+  const [updateStatus, setUpdateStatus] = useState({
+    promptId: null,
+    status: null,
+  });
   const [isRunLoading, setIsRunLoading] = useState({});
   const [promptKey, setPromptKey] = useState("");
   const [promptText, setPromptText] = useState("");
@@ -68,12 +77,22 @@ function PromptCard({
   const { updatePromptOutputState } = usePromptOutput();
 
   useEffect(() => {
+    if (
+      isPromptDetailsStateUpdated ||
+      !Object.keys(promptDetails || {})?.length
+    )
+      return;
+    setPromptDetailsState(promptDetails);
+    setIsPromptDetailsStateUpdated(true);
+  }, [promptDetails]);
+
+  useEffect(() => {
     // Find the latest message that matches the criteria
     const msg = [...messages]
       .reverse()
       .find(
         (item) =>
-          (item?.component?.prompt_id === promptDetails?.prompt_id ||
+          (item?.component?.prompt_id === promptDetailsState?.prompt_id ||
             item?.component?.prompt_key === promptKey) &&
           (item?.level === "INFO" || item?.level === "ERROR")
       );
@@ -92,9 +111,9 @@ function PromptCard({
 
   useEffect(() => {
     setSelectedLlmProfileId(
-      promptDetails?.profile_manager || llmProfiles[0]?.profile_id
+      promptDetailsState?.profile_manager || llmProfiles[0]?.profile_id
     );
-  }, [promptDetails]);
+  }, [promptDetailsState]);
 
   useEffect(() => {
     resetInfoMsgs();
@@ -109,7 +128,7 @@ function PromptCard({
 
   useEffect(() => {
     let listOfIds = [...disableLlmOrDocChange];
-    const promptId = promptDetails?.prompt_id;
+    const promptId = promptDetailsState?.prompt_id;
     const isIncluded = listOfIds.includes(promptId);
 
     const isDocLoading = docOutputs?.some(
@@ -129,7 +148,7 @@ function PromptCard({
     }
 
     updateCustomTool({ disableLlmOrDocChange: listOfIds });
-  }, [docOutputs, promptDetails, updateCustomTool]);
+  }, [docOutputs]);
 
   useEffect(() => {
     if (isCoverageLoading && coverageTotal === listOfDocs?.length) {
@@ -153,6 +172,61 @@ function PromptCard({
     }
   }, [llmProfiles]);
 
+  const handleChange = async (
+    event,
+    promptId,
+    dropdownItem,
+    isUpdateStatus = false
+  ) => {
+    let name = "";
+    let value = "";
+    if (dropdownItem?.length) {
+      name = dropdownItem;
+      value = event;
+    } else {
+      name = event.target.name;
+      value = event.target.value;
+    }
+
+    const prevPromptDetailsState = { ...promptDetailsState };
+
+    const updatedPromptDetailsState = { ...promptDetailsState };
+    updatedPromptDetailsState[name] = value;
+
+    handleUpdateStatus(
+      isUpdateStatus,
+      promptId,
+      promptStudioUpdateStatus.isUpdating,
+      setUpdateStatus
+    );
+    setPromptDetailsState(updatedPromptDetailsState);
+    return handleChangePromptCard(name, value, promptId)
+      .then((res) => {
+        const data = res?.data;
+        setUpdatedPromptsCopy((prev) => {
+          prev[promptId] = data;
+          return prev;
+        });
+        handleUpdateStatus(
+          isUpdateStatus,
+          promptId,
+          promptStudioUpdateStatus.done,
+          setUpdateStatus
+        );
+      })
+      .catch(() => {
+        handleUpdateStatus(isUpdateStatus, promptId, null, setUpdateStatus);
+        setPromptDetailsState(prevPromptDetailsState);
+      })
+      .finally(() => {
+        if (isUpdateStatus) {
+          setTimeout(() => {
+            handleUpdateStatus(true, promptId, null, setUpdateStatus);
+          }, 3000);
+        }
+      });
+  };
+
   // Function to update loading state for a specific document and profile
   const handleIsRunLoading = (docId, profileId, isLoading) => {
     setIsRunLoading((prevLoadingProfiles) => ({
@@ -163,11 +237,15 @@ function PromptCard({
 
   const handleSelectDefaultLLM = (llmProfileId) => {
     setSelectedLlmProfileId(llmProfileId);
-    handleChange(llmProfileId, promptDetails?.prompt_id, "profile_manager");
+    handleChange(
+      llmProfileId,
+      promptDetailsState?.prompt_id,
+      "profile_manager"
+    );
   };
 
   const handleTypeChange = (value) => {
-    handleChange(value, promptDetails?.prompt_id, "enforce_type", true);
+    handleChange(value, promptDetailsState?.prompt_id, "enforce_type", true);
   };
 
   const handleDocOutputs = (docId, promptId, profileId, isLoading, output) => {
@@ -229,7 +307,7 @@ function PromptCard({
     ) => {
       if (
         !profileManagerId &&
-        !promptDetails?.profile_manager?.length &&
+        !promptDetailsState?.profile_manager?.length &&
         !(!coverAllDoc && selectedLlmProfiles?.length > 0) &&
         !isSimplePromptStudio
       ) {
@@ -305,7 +383,7 @@ function PromptCard({
       for (const profile of selectedProfiles) {
         handleDocOutputs(
           docId,
-          promptDetails?.prompt_id,
+          promptDetailsState?.prompt_id,
           profile?.profile_id,
           true,
           null
@@ -321,23 +399,22 @@ function PromptCard({
             updatePromptOutputState(data, false);
             handleDocOutputs(
               docId,
-              promptDetails?.prompt_id,
+              promptDetailsState?.prompt_id,
               profile?.profile_id,
               false,
               value
             );
 
             updateDocCoverage(
-              promptDetails?.prompt_id,
+              promptDetailsState?.prompt_id,
               profile?.profile_id,
               docId
             );
           })
           .catch((err) => {
-            handleIsRunLoading(docId, profile?.profile_id, false);
             handleDocOutputs(
               docId,
-              promptDetails?.prompt_id,
+              promptDetailsState?.prompt_id,
               profile?.profile_id,
               false,
               null
@@ -347,6 +424,7 @@ function PromptCard({
             );
           })
           .finally(() => {
+            handleIsRunLoading(docId, profile?.profile_id, false);
             setIsCoverageLoading(false);
           });
         runCoverageForAllDoc(coverAllDoc, profile.profile_id);
@@ -355,7 +433,7 @@ function PromptCard({
       handleIsRunLoading(selectedDoc?.document_id, profileManagerId, true);
       handleDocOutputs(
         docId,
-        promptDetails?.prompt_id,
+        promptDetailsState?.prompt_id,
         profileManagerId,
         true,
         null
@@ -366,10 +444,14 @@ function PromptCard({
           const value = data[0]?.output;
 
           updatePromptOutputState(data, false);
-          updateDocCoverage(promptDetails?.prompt_id, profileManagerId, docId);
+          updateDocCoverage(
+            promptDetailsState?.prompt_id,
+            profileManagerId,
+            docId
+          );
           handleDocOutputs(
             docId,
-            promptDetails?.prompt_id,
+            promptDetailsState?.prompt_id,
             profileManagerId,
             false,
             value
@@ -384,7 +466,7 @@ function PromptCard({
           );
           handleDocOutputs(
             docId,
-            promptDetails?.prompt_id,
+            promptDetailsState?.prompt_id,
             profileManagerId,
             false,
             null
@@ -444,7 +526,7 @@ function PromptCard({
       setIsCoverageLoading(true);
       handleDocOutputs(
         docId,
-        promptDetails?.prompt_id,
+        promptDetailsState?.prompt_id,
         profileManagerId,
         true,
         null
@@ -453,10 +535,14 @@ function PromptCard({
         .then((res) => {
           const data = res?.data || [];
           const outputValue = data[0]?.output;
-          updateDocCoverage(promptDetails?.prompt_id, profileManagerId, docId);
+          updateDocCoverage(
+            promptDetailsState?.prompt_id,
+            profileManagerId,
+            docId
+          );
           handleDocOutputs(
             docId,
-            promptDetails?.prompt_id,
+            promptDetailsState?.prompt_id,
             profileManagerId,
             false,
             outputValue
@@ -465,7 +551,7 @@ function PromptCard({
         .catch((err) => {
           handleDocOutputs(
             docId,
-            promptDetails?.prompt_id,
+            promptDetailsState?.prompt_id,
             profileManagerId,
             false,
             null
@@ -515,7 +601,7 @@ function PromptCard({
   };
 
   const handleRunApiRequest = async (docId, profileManagerId) => {
-    const promptId = promptDetails?.prompt_id;
+    const promptId = promptDetailsState?.prompt_id;
     const runId = generateUUID();
     const maxWaitTime = 30 * 1000; // 30 seconds
     const pollingInterval = 5000; // 5 seconds
@@ -603,7 +689,7 @@ function PromptCard({
   return (
     <>
       <PromptCardItems
-        promptDetails={promptDetails}
+        promptDetails={promptDetailsState}
         enforceTypeList={enforceTypeList}
         isRunLoading={isRunLoading}
         promptKey={promptKey}
@@ -630,8 +716,8 @@ function PromptCard({
       <OutputForDocModal
         open={openOutputForDoc}
         setOpen={setOpenOutputForDoc}
-        promptId={promptDetails?.prompt_id}
-        promptKey={promptDetails?.prompt_key}
+        promptId={promptDetailsState?.prompt_id}
+        promptKey={promptDetailsState?.prompt_key}
         profileManagerId={selectedLlmProfileId}
         docOutputs={docOutputs}
       />
@@ -641,12 +727,12 @@ function PromptCard({
 
 PromptCard.propTypes = {
   promptDetails: PropTypes.object.isRequired,
-  handleChange: PropTypes.func.isRequired,
+  handleChangePromptCard: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
-  updateStatus: PropTypes.object.isRequired,
   updatePlaceHolder: PropTypes.string,
   promptOutputs: PropTypes.object.isRequired,
   enforceTypeList: PropTypes.array.isRequired,
+  setUpdatedPromptsCopy: PropTypes.func.isRequired,
 };
 
 export { PromptCard };

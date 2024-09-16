@@ -515,6 +515,14 @@ const formatNumberWithCommas = (number) => {
     : formattedIntegerPart;
 };
 
+const isValidJsonKey = (key) => {
+  // Check for Prompt-Key
+  // Allowed case, contains alphanumeric characters and underscores,
+  // and doesn't start with a number.
+  const regex = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+  return regex.test(key);
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -560,4 +568,5 @@ export {
   getDocIdFromKey,
   displayURL,
   formatNumberWithCommas,
+  isValidJsonKey,
 };
