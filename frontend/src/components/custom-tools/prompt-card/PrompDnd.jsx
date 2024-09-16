@@ -10,12 +10,12 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 function PromptDnd({
   item,
   index,
-  handleChange,
+  handleChangePromptCard,
   handleDelete,
-  updateStatus,
   moveItem,
   outputs,
   enforceTypeList,
+  setUpdatedPromptsCopy,
 }) {
   const ref = useRef(null);
   const { isSimplePromptStudio } = useCustomToolStore();
@@ -41,21 +41,21 @@ function PromptDnd({
       {(item.prompt_type === promptType.prompt || isSimplePromptStudio) && (
         <PromptCard
           promptDetails={item}
-          handleChange={handleChange}
+          handleChangePromptCard={handleChangePromptCard}
           handleDelete={handleDelete}
-          updateStatus={updateStatus}
           updatePlaceHolder="Enter Prompt"
           promptOutputs={outputs}
           enforceTypeList={enforceTypeList}
+          setUpdatedPromptsCopy={setUpdatedPromptsCopy}
         />
       )}
       {item.prompt_type === promptType.notes && (
         <NotesCard
-          details={item}
-          handleChange={handleChange}
+          promptDetails={item}
+          handleChangePromptCard={handleChangePromptCard}
           handleDelete={handleDelete}
-          updateStatus={updateStatus}
           updatePlaceHolder="Enter Notes"
+          setUpdatedPromptsCopy={setUpdatedPromptsCopy}
         />
       )}
     </div>
@@ -65,12 +65,12 @@ function PromptDnd({
 PromptDnd.propTypes = {
   item: PropTypes.object.isRequired,
   index: PropTypes.number.isRequired,
-  handleChange: PropTypes.func.isRequired,
+  handleChangePromptCard: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
-  updateStatus: PropTypes.object.isRequired,
   moveItem: PropTypes.func.isRequired,
   outputs: PropTypes.object.isRequired,
   enforceTypeList: PropTypes.array.isRequired,
+  setUpdatedPromptsCopy: PropTypes.func.isRequired,
 };
 
 export { PromptDnd };
