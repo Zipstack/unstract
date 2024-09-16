@@ -37,7 +37,7 @@ from workflow_manager.workflow.models.file_history import FileHistory
 from workflow_manager.workflow.models.workflow import Workflow
 
 from backend.exceptions import UnstractFSException
-from unstract.connectors.exceptions import AzureInvalidDirectoryError
+from unstract.connectors.exceptions import AzureHttpError
 
 logger = logging.getLogger(__name__)
 
@@ -248,7 +248,7 @@ class DestinationConnector(BaseConnector):
                     destination_fs.upload_file_to_storage(
                         source_path=source_path, destination_path=destination_path
                     )
-        except AzureInvalidDirectoryError as e:
+        except AzureHttpError as e:
             raise UnstractFSException(core_err=e) from e
 
     def insert_into_db(self, input_file_path: str) -> None:

@@ -33,7 +33,7 @@ class ConnectorError(ConnectorBaseException):
         return f"{self.message}"
 
 
-class AzureInvalidDirectoryError(ConnectorError):
+class AzureHttpError(ConnectorError):
     """Handles invalid directory error from azure.
 
     Args:
