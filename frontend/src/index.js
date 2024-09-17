@@ -1,4 +1,3 @@
-import React from "react";
 import ReactDOM from "react-dom/client";
 import posthog from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
@@ -24,15 +23,13 @@ if (enablePosthog !== "false") {
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
-  <React.StrictMode>
-    <PostHogProvider client={posthog}>
-      <SocketProvider>
-        <LazyLoader
-          loader={<GenericLoader />}
-          component={() => import("./App.jsx")}
-          componentName="App"
-        />
-      </SocketProvider>
-    </PostHogProvider>
-  </React.StrictMode>
+  <PostHogProvider client={posthog}>
+    <SocketProvider>
+      <LazyLoader
+        loader={<GenericLoader />}
+        component={() => import("./App.jsx")}
+        componentName="App"
+      />
+    </SocketProvider>
+  </PostHogProvider>
 );
