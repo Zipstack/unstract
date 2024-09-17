@@ -92,8 +92,18 @@ class AzureCloudStorageFS(UnstractFileSystem):
             with open(source_path, "rb") as source_file:
                 fs.write_bytes(normalized_path, source_file.read())
         except AzureException.HttpResponseError as e:
-            user_message = f"Error from Azure Cloud Storage connector. {e.reason} "
-            raise AzureHttpError(
-                user_message,
-                treat_as_user_message=True,
-            ) from e
+            self.raise_http_exception(e=e, path=normalized_path)
+
+    def raise_http_exception(
+        self, e: AzureException.HttpResponseError, path: str
+    ) -> AzureHttpError:
+        user_message = f"Error from Azure Cloud Storage connector. {e.reason} "
+        if e.status_code == 400:
+            user_message = (
+                f"Error from Azure Cloud Storage connector. "
+                f"Invalid resource name for path '{path}'. {e.reason}"
+            )
+        raise AzureHttpError(
+            user_message,
+            treat_as_user_message=True,
+        ) from e
