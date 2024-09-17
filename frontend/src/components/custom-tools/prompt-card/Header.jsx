@@ -43,7 +43,6 @@ function Header({
   enabledProfiles,
   spsLoading,
   handleSpsLoading,
-  handleGetOutput,
 }) {
   const {
     selectedDoc,
@@ -224,7 +223,7 @@ function Header({
           <PromptRunBtnSps
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
-            handleGetOutput={handleGetOutput}
+            handleGetOutput={() => {}}
             promptDetails={promptDetails}
           />
         )}
@@ -260,7 +259,6 @@ Header.propTypes = {
   enabledProfiles: PropTypes.array.isRequired,
   spsLoading: PropTypes.object,
   handleSpsLoading: PropTypes.func.isRequired,
-  handleGetOutput: PropTypes.func.isRequired,
 };
 
 export { Header };

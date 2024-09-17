@@ -63,6 +63,4 @@ def create_app() -> Flask:
         host=db_host,
         port=db_port,
     )
-    db.connect()
-
     return app

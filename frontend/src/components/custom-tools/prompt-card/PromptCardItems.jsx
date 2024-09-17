@@ -20,9 +20,6 @@ import { OutputForIndex } from "./OutputForIndex";
 import { PromptOutput } from "./PromptOutput";
 import { TABLE_ENFORCE_TYPE } from "./constants";
 
-const EvalBtn = null;
-const EvalMetrics = null;
-
 let TableExtractionSettingsBtn;
 try {
   TableExtractionSettingsBtn =
@@ -39,7 +36,6 @@ function PromptCardItems({
   setPromptKey,
   promptText,
   setPromptText,
-  result,
   coverage,
   progressMsg,
   handleRun,
@@ -49,14 +45,13 @@ function PromptCardItems({
   updateStatus,
   updatePlaceHolder,
   isCoverageLoading,
-  setOpenEval,
   setOpenOutputForDoc,
   selectedLlmProfileId,
   handleSelectDefaultLLM,
   timers,
   spsLoading,
   handleSpsLoading,
-  handleGetOutput,
+  promptOutputs,
 }) {
   const {
     llmProfiles,
@@ -185,7 +180,6 @@ function PromptCardItems({
             enabledProfiles={enabledProfiles}
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
-            handleGetOutput={handleGetOutput}
           />
         </Space>
       </div>
@@ -215,19 +209,11 @@ function PromptCardItems({
                 <Space
                   direction="vertical"
                   className={`prompt-card-comp-layout ${
-                    !(isRunLoading || result?.output || result?.output === 0) &&
-                    "prompt-card-comp-layout-border"
+                    !isRunLoading && "prompt-card-comp-layout-border"
                   }`}
                 >
                   <div className="prompt-card-llm-profiles">
                     <Space direction="horizontal">
-                      {EvalBtn && !singlePassExtractMode && (
-                        <EvalBtn
-                          btnText={promptDetails?.evaluate ? "On" : "Off"}
-                          promptId={promptDetails?.prompt_id}
-                          setOpenEval={setOpenEval}
-                        />
-                      )}
                       <Button
                         size="small"
                         type="link"
@@ -273,7 +259,6 @@ function PromptCardItems({
                       />
                     </Space>
                   </div>
-                  {EvalMetrics && <EvalMetrics result={result} />}
                 </Space>
               </>
             )}
@@ -282,7 +267,6 @@ function PromptCardItems({
             <PromptOutput
               promptDetails={promptDetails}
               isRunLoading={isRunLoading}
-              result={result}
               handleRun={handleRun}
               selectedLlmProfileId={selectedLlmProfileId}
               handleSelectDefaultLLM={handleSelectDefaultLLM}
@@ -295,6 +279,7 @@ function PromptCardItems({
               isNotSingleLlmProfile={isNotSingleLlmProfile}
               setIsIndexOpen={setIsIndexOpen}
               enforceType={enforceType}
+              promptOutputs={promptOutputs}
             />
           </Row>
         </Collapse.Panel>
@@ -316,7 +301,6 @@ PromptCardItems.propTypes = {
   setPromptKey: PropTypes.func.isRequired,
   promptText: PropTypes.text,
   setPromptText: PropTypes.func.isRequired,
-  result: PropTypes.object.isRequired,
   coverage: PropTypes.number.isRequired,
   progressMsg: PropTypes.object.isRequired,
   handleRun: PropTypes.func.isRequired,
@@ -327,13 +311,12 @@ PromptCardItems.propTypes = {
   updateStatus: PropTypes.object.isRequired,
   updatePlaceHolder: PropTypes.string,
   isCoverageLoading: PropTypes.bool.isRequired,
-  setOpenEval: PropTypes.func.isRequired,
   setOpenOutputForDoc: PropTypes.func.isRequired,
   selectedLlmProfileId: PropTypes.string,
   timers: PropTypes.object.isRequired,
   spsLoading: PropTypes.object,
   handleSpsLoading: PropTypes.func.isRequired,
-  handleGetOutput: PropTypes.func.isRequired,
+  promptOutputs: PropTypes.object.isRequired,
 };
 
 export { PromptCardItems };
