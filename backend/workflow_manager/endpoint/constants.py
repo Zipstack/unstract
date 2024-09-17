@@ -44,7 +44,7 @@ class SourceKey:
     FILE_EXTENSIONS = "fileExtensions"
     PROCESS_SUB_DIRECTORIES = "processSubDirectories"
     MAX_FILES = "maxFiles"
-    ROOT_FOLDER = "rootFolder"
+    FOLDERS = "folders"
 
 
 class DestinationKey:

@@ -53,11 +53,15 @@ DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "filters": {"request_id": {"()": "log_request_id.filters.RequestIDFilter"}},
+    "filters": {
+        "request_id": {"()": "log_request_id.filters.RequestIDFilter"},
+        "tenant_context": {"()": "django_tenants.log.TenantContextFilter"},
+    },
     "formatters": {
         "enriched": {
             "format": (
-                "%(levelname)s : [%(asctime)s] {module:%(module)s process:%(process)d "
+                "%(levelname)s : [%(asctime)s] [%(schema_name)s:%(domain_url)s]"
+                "{module:%(module)s process:%(process)d "
                 "thread:%(thread)d request_id:%(request_id)s} :- %(message)s"
             ),
         },
@@ -74,7 +78,7 @@ LOGGING = {
         "console": {
             "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
             "class": "logging.StreamHandler",
-            "filters": ["request_id"],
+            "filters": ["request_id", "tenant_context"],
             "formatter": "enriched",
         },
     },
@@ -171,6 +175,7 @@ CELERY_BROKER_URL = get_required_setting(
 
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
 NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))
+ATOMIC_REQUESTS = os.environ.get("DJANGO_ATOMIC_REQUESTS", False)
 # Flag to Enable django admin
 ADMIN_ENABLED = False
 
@@ -350,7 +355,7 @@ if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
             "HOST": f"{DB_HOST}",
             "PASSWORD": f"{DB_PASSWORD}",
             "PORT": f"{DB_PORT}",
-            "ATOMIC_REQUESTS": True,
+            "ATOMIC_REQUESTS": ATOMIC_REQUESTS,
             "OPTIONS": {"options": f"-c search_path={DB_SCHEMA}"},
         }
     }
@@ -391,7 +396,7 @@ else:
             "HOST": f"{DB_HOST}",
             "PASSWORD": f"{DB_PASSWORD}",
             "PORT": f"{DB_PORT}",
-            "ATOMIC_REQUESTS": True,
+            "ATOMIC_REQUESTS": ATOMIC_REQUESTS,
         }
     }
 
@@ -410,6 +415,7 @@ MIDDLEWARE = [
     "middleware.exception.ExceptionLoggingMiddleware",
     "social_django.middleware.SocialAuthExceptionMiddleware",
     "middleware.remove_allow_header.RemoveAllowHeaderMiddleware",
+    "middleware.cache_control.CacheControlMiddleware",
 ]
 
 TENANT_SUBFOLDER_PREFIX = f"/{PATH_PREFIX}/unstract"

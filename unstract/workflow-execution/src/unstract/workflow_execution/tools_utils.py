@@ -28,7 +28,6 @@ class ToolsUtils:
         workflow: WorkflowDto,
         platform_service_api_key: str,
         ignore_processed_entities: bool = False,
-        include_metadata: bool = False,
     ) -> None:
         self.redis = redis
         self.tool_registry = ToolRegistry()
@@ -53,7 +52,6 @@ class ToolsUtils:
         self.llmw_max_polls = ToolsUtils.get_env(
             ToolRV.ADAPTER_LLMW_MAX_POLLS, raise_exception=False
         )
-        self.include_metadata = include_metadata
 
     def set_messaging_channel(self, messaging_channel: str) -> None:
         self.messaging_channel = messaging_channel
@@ -137,7 +135,6 @@ class ToolsUtils:
                 image_tag=image_tag,
                 environment_variables=tool_envs,
                 messaging_channel=self.messaging_channel,
-                include_metadata=self.include_metadata,
             )
             tool_sandbox.set_tool_instance_settings(tool_instance.metadata)
             tool_sandboxes.append(tool_sandbox)
@@ -171,19 +168,21 @@ class ToolsUtils:
 
     def run_tool(
         self,
+        run_id: str,
         tool_sandbox: ToolSandbox,
     ) -> Any:
-        return self.run_tool_with_retry(tool_sandbox)
+        return self.run_tool_with_retry(run_id, tool_sandbox)
 
     def run_tool_with_retry(
         self,
+        run_id: str,
         tool_sandbox: ToolSandbox,
         max_retries: int = ToolExecution.MAXIMUM_RETRY,
     ) -> Any:
         error: Optional[dict[str, Any]] = None
         for retry_count in range(max_retries):
             try:
-                response = tool_sandbox.run_tool()
+                response = tool_sandbox.run_tool(run_id)
                 if response:
                     return response
                 logger.warning(
@@ -201,17 +200,12 @@ class ToolsUtils:
         )
         return None
 
-    def get_tool_environment_variables(
-        self, project_settings: Optional[dict[str, Any]] = None
-    ) -> dict[str, Any]:
+    def get_tool_environment_variables(self) -> dict[str, Any]:
         """Obtain a dictionary of env variables required by a tool.
 
         This combines the user defined envs (coming from project_settings)
         as well as the env variables that are platform specific into
         one key-value store.
-
-        Args:
-            project_settings (Optional[dict[str, Any]]): User defined settings
 
         Returns:
             dict[str, Any]: Dict of env variables for a tool
@@ -224,15 +218,14 @@ class ToolsUtils:
             ToolRV.PROMPT_PORT: self.prompt_port,
             ToolRV.X2TEXT_HOST: self.x2text_host,
             ToolRV.X2TEXT_PORT: self.x2text_port,
+            ToolRV.EXECUTION_BY_TOOL: True,
         }
         # For async LLM Whisperer extraction
         if self.llmw_poll_interval:
             platform_vars[ToolRV.ADAPTER_LLMW_POLL_INTERVAL] = self.llmw_poll_interval
         if self.llmw_max_polls:
             platform_vars[ToolRV.ADAPTER_LLMW_MAX_POLLS] = self.llmw_max_polls
-        if not project_settings:
-            project_settings = {}
-        return {**project_settings, **platform_vars}
+        return platform_vars
 
     @staticmethod
     def get_env(env_key: str, raise_exception: bool = False) -> Optional[str]:

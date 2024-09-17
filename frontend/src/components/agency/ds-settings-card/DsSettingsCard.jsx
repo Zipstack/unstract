@@ -14,7 +14,6 @@ import {
   Space,
   Tooltip,
   Typography,
-  Modal,
 } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
@@ -321,21 +320,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         } else {
           updatedData["destination"] = data;
         }
-
-        // Remove the below code once new highlight feature implemented
-        // Show warning message to user when MRQ selected as destination to enable highlight
-        if (
-          type === "output" &&
-          updatedData?.destination?.connection_type === "MANUALREVIEW"
-        ) {
-          Modal.warning({
-            title: "Warning",
-            content:
-              "Please ensure that the tool in use is exported with Highlighting enabled.",
-          });
-        }
-        // Warning message section.
-
         updateWorkflow(updatedData);
         if (showSuccess) {
           setAlertDetails({

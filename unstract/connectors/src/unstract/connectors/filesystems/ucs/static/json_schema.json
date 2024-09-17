@@ -6,7 +6,6 @@
     "connectorName",
     "key",
     "secret",
-    "bucket",
     "path"
   ],
   "properties": {
@@ -24,11 +23,6 @@
       "type": "string",
       "title": "Secret",
       "format": "password"
-    },
-    "bucket": {
-      "type": "string",
-      "title": "Bucket Name",
-      "description": "Name of the bucket to be restricted to."
     },
     "path": {
       "type": "string",

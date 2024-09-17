@@ -15,8 +15,8 @@
             "fileExtensions": [],
             "tool_instance_id": "bec093f7-a97d-430a-92d5-936b3b40e57e",
             "createOutputFolder": true,
-            "inputFileConnector": "Pandora's S3/Minio",
-            "outputFileConnector": "Pandora's S3/Minio",
+            "inputFileConnector": "Unstract's S3/Minio",
+            "outputFileConnector": "Unstract's S3/Minio",
             "createOutputDocument": true,
             "processSubDirectories": true
         },

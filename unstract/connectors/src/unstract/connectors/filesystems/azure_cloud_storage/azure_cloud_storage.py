@@ -15,7 +15,6 @@ class AzureCloudStorageFS(UnstractFileSystem):
         super().__init__("AzureCloudStorageFS")
         account_name = settings.get("account_name", "")
         access_key = settings.get("access_key", "")
-        self.bucket = settings.get("bucket", "")
         self.azure_fs = AzureBlobFileSystem(
             account_name=account_name, credential=access_key
         )
@@ -65,9 +64,9 @@ class AzureCloudStorageFS(UnstractFileSystem):
     def test_credentials(self) -> bool:
         """To test credentials for Azure Cloud Storage."""
         try:
-            is_dir = bool(self.get_fsspec_fs().isdir(self.bucket))
+            is_dir = bool(self.get_fsspec_fs().isdir(""))
             if not is_dir:
-                raise RuntimeError(f"'{self.bucket}' is not a valid bucket.")
+                raise RuntimeError("Could not access root directory.")
         except Exception as e:
             raise ConnectorError(
                 f"Error from Azure Cloud Storage while testing connection: {str(e)}"

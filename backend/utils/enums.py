@@ -9,3 +9,4 @@ class CeleryTaskState(Enum):
     REVOKED = "REVOKED"
     STARTED = "STARTED"
     SUCCESS = "SUCCESS"
+    COMPLETED = "COMPLETED"

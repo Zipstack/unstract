@@ -20,6 +20,7 @@ from django.db import connection
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
 from rest_framework.utils.serializer_helpers import ReturnDict
+from utils.constants import CeleryQueue
 from workflow_manager.endpoint.destination import DestinationConnector
 from workflow_manager.endpoint.source import SourceConnector
 from workflow_manager.workflow.dto import ExecutionResponse
@@ -174,11 +175,15 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 hash_values_of_files=hash_values_of_files,
                 timeout=timeout,
                 execution_id=execution_id,
-                include_metadata=include_metadata,
+                queue=CeleryQueue.CELERY_API_DEPLOYMENTS,
             )
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id
             )
+            if include_metadata:
+                result.remove_result_metadata_keys(keys_to_remove=["highlight_data"])
+            else:
+                result.remove_result_metadata_keys()
         except Exception as error:
             DestinationConnector.delete_api_storage_dir(
                 workflow_id=workflow_id, execution_id=execution_id

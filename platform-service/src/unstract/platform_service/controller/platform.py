@@ -1,82 +1,35 @@
-import logging
-import os
+import json
 import uuid
 from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Any, Optional
 
-import peewee
 import redis
-from cryptography.fernet import Fernet
-from dotenv import load_dotenv
-from flask import Flask, Request, Response, json, jsonify, make_response, request
+from cryptography.fernet import Fernet, InvalidToken
+from flask import Blueprint, Request
+from flask import current_app as app
+from flask import jsonify, make_response, request
+from peewee import PostgresqlDatabase
 from unstract.platform_service.constants import DBTable, DBTableV2, FeatureFlag
-from unstract.platform_service.exceptions import CustomException
-from unstract.platform_service.helper import (
+from unstract.platform_service.env import Env
+from unstract.platform_service.exceptions import APIError
+from unstract.platform_service.helper.adapter_instance import (
     AdapterInstanceRequestHelper,
-    CostCalculationHelper,
-    PromptStudioRequestHelper,
 )
-from unstract.platform_service.utils import EnvManager
+from unstract.platform_service.helper.cost_calculation import CostCalculationHelper
+from unstract.platform_service.helper.prompt_studio import PromptStudioRequestHelper
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
-load_dotenv()
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s : %(message)s",
+be_db = PostgresqlDatabase(
+    Env.PG_BE_DATABASE,
+    user=Env.PG_BE_USERNAME,
+    password=Env.PG_BE_PASSWORD,
+    host=Env.PG_BE_HOST,
+    port=Env.PG_BE_PORT,
 )
-# Configuring envs
-MAX_FILE_SIZE = 100 * 1024 * 1024
-INVALID_ORGANIZATOIN = "Invalid organization"
-INVALID_PAYLOAD = "Bad Request / No payload"
-BAD_REQUEST = "Bad Request"
-REDIS_HOST = EnvManager.get_required_setting("REDIS_HOST")
-REDIS_PORT = int(EnvManager.get_required_setting("REDIS_PORT", 6379))
-REDIS_USERNAME = os.environ.get("REDIS_USERNAME")
-REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD")
-PG_BE_HOST = os.environ.get("PG_BE_HOST")
-PG_BE_PORT = int(os.environ.get("PG_BE_PORT", 5432))
-PG_BE_USERNAME = os.environ.get("PG_BE_USERNAME")
-PG_BE_PASSWORD = os.environ.get("PG_BE_PASSWORD")
-PG_BE_DATABASE = os.environ.get("PG_BE_DATABASE")
-ENCRYPTION_KEY = EnvManager.get_required_setting("ENCRYPTION_KEY")
-MODEL_PRICES_URL = EnvManager.get_required_setting("MODEL_PRICES_URL")
-MODEL_PRICES_TTL_IN_DAYS = EnvManager.get_required_setting("MODEL_PRICES_TTL_IN_DAYS")
-MODEL_PRICES_FILE_PATH = EnvManager.get_required_setting("MODEL_PRICES_FILE_PATH")
-EnvManager.raise_for_missing_envs()
-MODEL_PRICES_TTL_IN_DAYS = int(MODEL_PRICES_TTL_IN_DAYS)
+be_db.init(Env.PG_BE_DATABASE)
 
-# TODO: Follow Flask best practices and refactor accordingly
-app = Flask("platform_service")
-
-be_db = peewee.PostgresqlDatabase(
-    PG_BE_DATABASE,
-    user=PG_BE_USERNAME,
-    password=PG_BE_PASSWORD,
-    host=PG_BE_HOST,
-    port=PG_BE_PORT,
-)
-be_db.init(PG_BE_DATABASE)
-be_db.connect()
-
-cost_calculation_helper = CostCalculationHelper(
-    url=MODEL_PRICES_URL,
-    ttl_days=MODEL_PRICES_TTL_IN_DAYS,
-    file_path=MODEL_PRICES_FILE_PATH,
-    logger=app.logger,
-)
-
-
-def drop_unstract_usage_table() -> None:
-    query = "DROP TABLE IF EXISTS unstract_usage"
-    try:
-        be_db.execute_sql(query)
-    except Exception as e:
-        app.logger.error(f"Error dropping 'unstract_usage' table: {e}")
-
-
-drop_unstract_usage_table()
+platform_bp = Blueprint("platform", __name__)
 
 
 def get_token_from_auth_header(request: Request) -> Any:
@@ -179,12 +132,7 @@ def validate_bearer_token(token: Optional[str]) -> bool:
     return True
 
 
-@app.route("/health", methods=["GET"], endpoint="health_check")
-def health_check() -> str:
-    return "OK"
-
-
-@app.route("/page-usage", methods=["POST"], endpoint="page_usage")
+@platform_bp.route("/page-usage", methods=["POST"], endpoint="page_usage")
 @authentication_middleware
 def page_usage() -> Any:
     """Usage endpoint."""
@@ -195,7 +143,7 @@ def page_usage() -> Any:
     }
     payload: Optional[dict[Any, Any]] = request.json
     if not payload:
-        result["error"] = INVALID_PAYLOAD
+        result["error"] = Env.INVALID_PAYLOAD
         return make_response(result, 400)
 
     bearer_token = get_token_from_auth_header(request)
@@ -239,7 +187,7 @@ def page_usage() -> Any:
         return make_response(result, 500)
 
 
-@app.route("/usage", methods=["POST"])
+@platform_bp.route("/usage", methods=["POST"])
 @authentication_middleware
 def usage() -> Any:
     """Usage endpoint.
@@ -260,7 +208,7 @@ def usage() -> Any:
     }
     payload: Optional[dict[Any, Any]] = request.json
     if not payload:
-        result["error"] = INVALID_PAYLOAD
+        result["error"] = Env.INVALID_PAYLOAD
         return make_response(result, 400)
     bearer_token = get_token_from_auth_header(request)
     organization_uid, org_id = get_organization_from_bearer_token(bearer_token)
@@ -281,6 +229,7 @@ def usage() -> Any:
         input_tokens = embedding_tokens
     cost_in_dollars = 0.0
     if provider:
+        cost_calculation_helper = CostCalculationHelper()
         cost_in_dollars = cost_calculation_helper.calculate_cost(
             model_name=model_name,
             provider=provider,
@@ -358,7 +307,7 @@ def usage() -> Any:
         return make_response(result, 500)
 
 
-@app.route(
+@platform_bp.route(
     "/platform_details",
     methods=["GET"],
     endpoint="platform_details",
@@ -377,19 +326,14 @@ def platform_details() -> Any:
     bearer_token = get_token_from_auth_header(request)
     _, organization_id = get_organization_from_bearer_token(bearer_token)
     if not organization_id:
-        result["error"] = INVALID_ORGANIZATOIN
+        result["error"] = Env.INVALID_ORGANIZATOIN
         return result, 403
     platform_details = {"organization_id": organization_id}
     result = {"status": "OK", "details": platform_details}
     return result, 200
 
 
-@app.route("/ping", methods=["GET"])
-def ping() -> Literal["Pong"]:
-    return "Pong"
-
-
-@app.route("/cache", methods=["POST", "GET", "DELETE"], endpoint="cache")
+@platform_bp.route("/cache", methods=["POST", "GET", "DELETE"], endpoint="cache")
 @authentication_middleware
 def cache() -> Any:
     """Cache endpoint.
@@ -406,23 +350,23 @@ def cache() -> Any:
     """
     bearer_token = get_token_from_auth_header(request)
     _, account_id = get_organization_from_bearer_token(bearer_token)
-    if not REDIS_HOST:
-        app.logger.error("REDIS_HOST not set")
+    if not Env.REDIS_HOST:
+        app.logger.error("Env.REDIS_HOST not set")
         return "Internal Server Error", 500
     if request.method == "POST":
         payload: Optional[dict[Any, Any]] = request.json
         if not payload:
-            return BAD_REQUEST, 400
+            return Env.BAD_REQUEST, 400
         key = payload.get("key")
         value = payload.get("value")
         if key is None or value is None:
-            return BAD_REQUEST, 400
+            return Env.BAD_REQUEST, 400
         try:
             r = redis.Redis(
-                host=REDIS_HOST,
-                port=REDIS_PORT,
-                username=REDIS_USERNAME,
-                password=REDIS_PASSWORD,
+                host=Env.REDIS_HOST,
+                port=Env.REDIS_PORT,
+                username=Env.REDIS_USERNAME,
+                password=Env.REDIS_PASSWORD,
             )
             redis_key = f"{account_id}:{key}"
             r.set(redis_key, value)
@@ -434,10 +378,10 @@ def cache() -> Any:
         key = request.args.get("key")
         try:
             r = redis.Redis(
-                host=REDIS_HOST,
-                port=REDIS_PORT,
-                username=REDIS_USERNAME,
-                password=REDIS_PASSWORD,
+                host=Env.REDIS_HOST,
+                port=Env.REDIS_PORT,
+                username=Env.REDIS_USERNAME,
+                password=Env.REDIS_PASSWORD,
             )
             redis_key = f"{account_id}:{key}"
             app.logger.info(f"Getting cached data for key: {redis_key}")
@@ -454,10 +398,10 @@ def cache() -> Any:
         key = request.args.get("key")
         try:
             r = redis.Redis(
-                host=REDIS_HOST,
-                port=REDIS_PORT,
-                username=REDIS_USERNAME,
-                password=REDIS_PASSWORD,
+                host=Env.REDIS_HOST,
+                port=Env.REDIS_PORT,
+                username=Env.REDIS_USERNAME,
+                password=Env.REDIS_PASSWORD,
             )
             redis_key = f"{account_id}:{key}"
             app.logger.info(f"Deleting cached data for key: {redis_key}")
@@ -471,7 +415,7 @@ def cache() -> Any:
     return "OK", 200
 
 
-@app.route(
+@platform_bp.route(
     "/adapter_instance",
     methods=["GET"],
     endpoint="adapter_instance",
@@ -488,7 +432,7 @@ def adapter_instance() -> Any:
     bearer_token = get_token_from_auth_header(request)
     organization_uid, organization_id = get_organization_from_bearer_token(bearer_token)
     if not organization_id:
-        return INVALID_ORGANIZATOIN, 403
+        return Env.INVALID_ORGANIZATOIN, 403
 
     if request.method == "GET":
         adapter_instance_id = request.args.get("adapter_instance_id")
@@ -501,24 +445,34 @@ def adapter_instance() -> Any:
                 organization_uid=organization_uid,
             )
 
-            f: Fernet = Fernet(ENCRYPTION_KEY.encode("utf-8"))
+            f: Fernet = Fernet(Env.ENCRYPTION_KEY.encode("utf-8"))
 
             data_dict["adapter_metadata"] = json.loads(
                 f.decrypt(bytes(data_dict.pop("adapter_metadata_b")).decode("utf-8"))
             )
 
             return jsonify(data_dict)
-        except Exception as e:
-            print(e)
+        except InvalidToken:
+            msg = (
+                "Platform encryption key for storing adapter credentials has "
+                "changed! All adapters are inaccessible. Please inform "
+                "the platform admin immediately."
+            )
             app.logger.error(
                 f"Error while getting db adapter settings for: "
-                f"{adapter_instance_id} Error: {str(e)}"
+                f"{adapter_instance_id}, Error: {msg}"
+            )
+            raise APIError(message=msg, code=403)
+        except Exception as e:
+            app.logger.error(
+                f"Error while getting db adapter settings for: "
+                f"{adapter_instance_id}, Error: {str(e)}"
             )
             return "Internal Server Error", 500
     return "Method Not Allowed", 405
 
 
-@app.route(
+@platform_bp.route(
     "/custom_tool_instance",
     methods=["GET"],
     endpoint="custom_tool_instance",
@@ -535,7 +489,7 @@ def custom_tool_instance() -> Any:
     bearer_token = get_token_from_auth_header(request)
     _, organization_id = get_organization_from_bearer_token(bearer_token)
     if not organization_id:
-        return INVALID_ORGANIZATOIN, 403
+        return Env.INVALID_ORGANIZATOIN, 403
 
     if request.method == "GET":
         prompt_registry_id = request.args.get("prompt_registry_id")
@@ -548,20 +502,12 @@ def custom_tool_instance() -> Any:
             )
             return jsonify(data_dict)
         except Exception as e:
-            print(e)
             app.logger.error(
                 f"Error while getting db adapter settings for: "
                 f"{prompt_registry_id} Error: {str(e)}"
             )
             return "Internal Server Error", 500
     return "Method Not Allowed", 405
-
-
-@app.errorhandler(CustomException)
-def handle_custom_exception(error: Any) -> tuple[Response, Any]:
-    response = jsonify({"error": error.message})
-    response.status_code = error.code  # You can customize the HTTP status code
-    return jsonify(response), error.code
 
 
 if __name__ == "__main__":

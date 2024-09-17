@@ -11,6 +11,7 @@ import {
 import { Button, Divider, Space, Tooltip, Typography, Alert } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { StepIcon } from "../../../assets/index.js";
 import {
@@ -520,13 +521,13 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
                   <span>
                     This Workflow has been deployed as an {deploymentType}:{" "}
                   </span>
-                  <a
-                    href={`/${orgName}/${deploymentType
+                  <Link
+                    to={`/${orgName}/${deploymentType
                       .split(" ")[0]
                       .toLowerCase()}`}
                   >
                     {deploymentName}
-                  </a>
+                  </Link>
                 </>
               }
               type="success"

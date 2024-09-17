@@ -65,6 +65,7 @@ class ContainerClientInterface(ABC):
         organization_id: str,
         workflow_id: str,
         execution_id: str,
+        run_id: str,
         envs: Optional[dict[str, Any]] = None,
         auto_remove: bool = False,
     ) -> dict[str, Any]:

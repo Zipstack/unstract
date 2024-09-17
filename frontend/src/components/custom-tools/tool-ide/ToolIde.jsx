@@ -7,7 +7,6 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import { CustomSynonymsModal } from "../custom-synonyms-modal/CustomSynonymsModal";
 import { DisplayLogs } from "../display-logs/DisplayLogs";
 import { DocumentManager } from "../document-manager/DocumentManager";
 import { Header } from "../header/Header";
@@ -47,7 +46,6 @@ try {
 function ToolIde() {
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [activeKey, setActiveKey] = useState([]);
-  const [openCusSynonymsModal, setOpenCusSynonymsModal] = useState(false);
   const [openSettings, setOpenSettings] = useState(false);
   const {
     details,
@@ -280,10 +278,6 @@ function ToolIde() {
           </Modal>
         </div>
       </div>
-      <CustomSynonymsModal
-        open={openCusSynonymsModal}
-        setOpen={setOpenCusSynonymsModal}
-      />
       <SettingsModal
         open={openSettings}
         setOpen={setOpenSettings}

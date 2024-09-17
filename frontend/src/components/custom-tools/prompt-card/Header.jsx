@@ -43,7 +43,6 @@ function Header({
   enabledProfiles,
   spsLoading,
   handleSpsLoading,
-  handleGetOutput,
 }) {
   const {
     selectedDoc,
@@ -123,54 +122,62 @@ function Header({
         />
       </Col>
       <Col span={12} className="display-flex-right">
-        {progressMsg?.message && (
-          <Tooltip title={progressMsg?.message || ""}>
-            <Tag
-              icon={isCoverageLoading && <LoadingOutlined spin />}
-              color={progressMsg?.level === "ERROR" ? "error" : "processing"}
-              className="display-flex-align-center"
-            >
-              <div className="tag-max-width ellipsis">
-                {progressMsg?.message}
-              </div>
-            </Tag>
-          </Tooltip>
-        )}
+        <div>
+          {progressMsg?.message && (
+            <Tooltip title={progressMsg?.message || ""}>
+              <Tag
+                icon={isCoverageLoading && <LoadingOutlined spin />}
+                color={progressMsg?.level === "ERROR" ? "error" : "processing"}
+                className="display-flex-align-center"
+              >
+                <div className="tag-max-width ellipsis">
+                  {progressMsg?.message}
+                </div>
+              </Tag>
+            </Tooltip>
+          )}
+        </div>
         {updateStatus?.promptId === promptDetails?.prompt_id && (
           <>
-            {updateStatus?.status === promptStudioUpdateStatus.isUpdating && (
-              <Tag
-                icon={<SyncOutlined spin />}
-                color="processing"
-                className="display-flex-align-center"
-              >
-                Updating
-              </Tag>
-            )}
-            {updateStatus?.status === promptStudioUpdateStatus.done && (
-              <Tag
-                icon={<CheckCircleOutlined />}
-                color="success"
-                className="display-flex-align-center"
-              >
-                Done
-              </Tag>
-            )}
-            {updateStatus?.status ===
-              promptStudioUpdateStatus.validationError && (
-              <Tag
-                icon={<CheckCircleOutlined />}
-                color="error"
-                className="display-flex-align-center"
-              >
-                Invalid JSON Key
-              </Tag>
-            )}
+            <div>
+              {updateStatus?.status === promptStudioUpdateStatus.isUpdating && (
+                <Tag
+                  icon={<SyncOutlined spin />}
+                  color="processing"
+                  className="display-flex-align-center"
+                >
+                  Updating
+                </Tag>
+              )}
+            </div>
+            <div>
+              {updateStatus?.status === promptStudioUpdateStatus.done && (
+                <Tag
+                  icon={<CheckCircleOutlined />}
+                  color="success"
+                  className="display-flex-align-center"
+                >
+                  Done
+                </Tag>
+              )}
+            </div>
+            <div>
+              {updateStatus?.status ===
+                promptStudioUpdateStatus.validationError && (
+                <Tag
+                  icon={<CheckCircleOutlined />}
+                  color="error"
+                  className="display-flex-align-center"
+                >
+                  Invalid JSON Key
+                </Tag>
+              )}
+            </div>
           </>
         )}
         {!singlePassExtractMode && !isSimplePromptStudio && (
           <>
-            <Tooltip title="Run">
+            <Tooltip title="Run all LLMs for current document">
               <Button
                 size="small"
                 type="text"
@@ -191,7 +198,7 @@ function Header({
                 <PlayCircleOutlined className="prompt-card-actions-head" />
               </Button>
             </Tooltip>
-            <Tooltip title="Run All">
+            <Tooltip title="Run all LLMs for all documents">
               <Button
                 size="small"
                 type="text"
@@ -216,7 +223,7 @@ function Header({
           <PromptRunBtnSps
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
-            handleGetOutput={handleGetOutput}
+            handleGetOutput={() => {}}
             promptDetails={promptDetails}
           />
         )}
@@ -252,7 +259,6 @@ Header.propTypes = {
   enabledProfiles: PropTypes.array.isRequired,
   spsLoading: PropTypes.object,
   handleSpsLoading: PropTypes.func.isRequired,
-  handleGetOutput: PropTypes.func.isRequired,
 };
 
 export { Header };

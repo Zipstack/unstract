@@ -4,9 +4,24 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, review_requested]
     branches: [main]
+    paths:
+      - 'pyproject.toml'
+      - 'backend/pyproject.toml'
+      - 'prompt-service/pyproject.toml'
+      - 'worker/pyproject.toml'
+      - 'unstract/core/pyproject.toml'
+      - 'unstract/flags/pyproject.toml'
+      - 'platform-service/pyproject.toml'
+      - 'x2text-service/pyproject.toml'
+      - 'unstract/connectors/pyproject.toml'
+      # - 'unstract/tool-registry' # commenting due to transitive dependency on local libraries/pyproject.toml
+      - 'unstract/tool-sandbox/pyproject.toml'
+      # - 'unstract/workflow-execution/pyproject.toml' # commenting due to transitive dependency on local libraries
+  workflow_dispatch:
 
 jobs:
   check_pyproject_changes:
+    name: ${{ matrix.directory }} PDM lock update
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -27,6 +42,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          ref: ${{ github.head_ref }}
+
 
       - name: Check file changes
         id: check
@@ -75,17 +93,39 @@ jobs:
           else
             echo "Virtual environment already exists."
           fi
+
           source .venv/bin/activate
+
+          echo "Generating/Updating pdm.lock..."
           pdm lock -G :all -v
+
+          echo "Checking pdm lock..."
+          pdm lock --check
+
+          echo "Stashing changes if there are any..."
+          git stash || echo "No changes to stash, continuing..."
+
+          echo "Pulling remote ${{ github.head_ref }} branch..."
+          git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
+
+          echo "Trying to pop stash if any..."
+          if git stash list | grep -q 'stash@{0}'; then
+            echo "Popping stash..."
+            git stash pop || echo "Failed to pop stash. Continue with other changes."
+          else
+            echo "No stash found, skipping pop."
+          fi
+
           if git diff --quiet; then
             echo "No changes between the current branch and the ${{ github.head_ref }} branch."
             echo "Nothing to commit"
           else
-            git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
             echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
+
+            echo "Adding pdm lock changes..."
             git add pdm.lock
-            pip install pre-commit~=3.6.2
-            pre-commit run pdm-lock-check
+
+            echo "Committing and pushing pdm lock ..."
             git commit -m "Update pdm.lock for ${{ matrix.directory }}"
             git push origin HEAD:${{ github.head_ref }}
           fi
