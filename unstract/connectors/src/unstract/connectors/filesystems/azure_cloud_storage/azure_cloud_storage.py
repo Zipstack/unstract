@@ -12,11 +12,10 @@ logging.getLogger("azurefs").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
-class AzureFsError:
-    INVALID_PATH = "The specifed resource name contains invalid characters."
-
-
 class AzureCloudStorageFS(UnstractFileSystem):
+    class AzureFsError:
+        INVALID_PATH = "The specifed resource name contains invalid characters."
+
     def __init__(self, settings: dict[str, Any]):
         super().__init__("AzureCloudStorageFS")
         account_name = settings.get("account_name", "")
@@ -104,7 +103,7 @@ class AzureCloudStorageFS(UnstractFileSystem):
         user_message = f"Error from Azure Cloud Storage connector. {e.reason} "
         if hasattr(e, "reason"):
             error_reason = e.reason
-            if error_reason == AzureFsError.INVALID_PATH:
+            if error_reason == self.AzureFsError.INVALID_PATH:
                 user_message = (
                     f"Error from Azure Cloud Storage connector. "
                     f"Invalid resource name for path '{path}'. {e.reason}"
