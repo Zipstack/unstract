@@ -3,7 +3,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { publicRoutes, onboardCompleted } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
 let selectedProductStore;
-let selectedProduct;
+let isLlmWhisperer;
 try {
   selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
 } catch {
@@ -16,13 +16,12 @@ const RequireGuest = () => {
   const location = useLocation();
   const pathname = location.pathname;
   try {
-    selectedProduct = selectedProductStore.useSelectedProductStore(
-      (state) => state?.selectedProduct
+    isLlmWhisperer = selectedProductStore.useSelectedProductStore(
+      (state) => state?.isLlmWhisperer
     );
   } catch (error) {
     // Do nothing
   }
-  const isLlmWhisperer = selectedProduct && selectedProduct === "llm-whisperer";
 
   let navigateTo = `/${orgName}/onboard`;
   if (isLlmWhisperer) {

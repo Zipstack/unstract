@@ -59,7 +59,9 @@ function useSessionValid() {
   ) => {
     if (userSessionData && selectedProductStore && !selectedProduct) {
       navigate("/selectProduct");
+      return true; // Indicate that navigation has occurred
     }
+    return false;
   };
   return async () => {
     try {
@@ -71,11 +73,14 @@ function useSessionValid() {
       }
 
       const signedInOrgId = userSessionData?.organization_id;
-      navToSelectProduct(
+      const shouldNavigate = navToSelectProduct(
         userSessionData,
         selectedProductStore,
         selectedProduct
       );
+      if (shouldNavigate) {
+        return; // Exit early, don't run the remaining steps
+      }
       const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
 
       // API to get the list of organizations

@@ -16,7 +16,7 @@ try {
   // The component will remain null of it is not available
 }
 let selectedProductStore;
-let selectedProduct;
+let isLlmWhisperer;
 try {
   selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
 } catch {
@@ -31,15 +31,14 @@ const RequireAuth = () => {
   const orgName = sessionDetails?.orgName;
   const pathname = location?.pathname;
   const adapters = sessionDetails?.adapters;
-  const currOrgName = getOrgNameFromPathname(pathname);
   try {
-    selectedProduct = selectedProductStore.useSelectedProductStore(
-      (state) => state?.selectedProduct
+    isLlmWhisperer = selectedProductStore.useSelectedProductStore(
+      (state) => state?.isLlmWhisperer
     );
   } catch (error) {
     // Do nothing
   }
-  const isLlmWhisperer = selectedProduct && selectedProduct === "llm-whisperer";
+  const currOrgName = getOrgNameFromPathname(pathname, !isLlmWhisperer);
 
   useEffect(() => {
     if (!sessionDetails?.isLoggedIn) {
@@ -66,7 +65,7 @@ const RequireAuth = () => {
     return <Navigate to="/landing" state={{ from: location }} replace />;
   }
 
-  if (!isLlmWhisperer && currOrgName !== orgName) {
+  if (currOrgName !== orgName) {
     return <Navigate to={navigateTo} />;
   }
 
