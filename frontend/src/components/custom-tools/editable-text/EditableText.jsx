@@ -30,7 +30,7 @@ function EditableText({
 
   useEffect(() => {
     setText(defaultText);
-  }, []);
+  }, [defaultText]);
 
   useEffect(() => {
     // Attach the event listener when the component mounts
