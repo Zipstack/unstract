@@ -38,7 +38,10 @@ const RequireAuth = () => {
   } catch (error) {
     // Do nothing
   }
-  const currOrgName = getOrgNameFromPathname(pathname, !isLlmWhisperer);
+  const currOrgName = getOrgNameFromPathname(
+    pathname,
+    isLlmWhisperer !== undefined ? !isLlmWhisperer : null
+  );
 
   useEffect(() => {
     if (!sessionDetails?.isLoggedIn) {
