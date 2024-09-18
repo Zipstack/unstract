@@ -31,7 +31,16 @@ services:
     volumes:
       - mssql_data:/var/opt/mssql
 
+  sftp:
+    image: atmoz/sftp:debian
+    ports:
+      - "2222:22"
+    volumes:
+      - sftp_data:/home/${SFTP_USER}
+    command: "${SFTP_USER}:${SFTP_PASS}:::${SFTP_DIR}"
+
 volumes:
   mariadb_data:
   mysql_data:
   mssql_data:
+  sftp_data:
