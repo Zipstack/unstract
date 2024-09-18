@@ -365,7 +365,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "backend.wsgi.application"
 
-ATOMIC_REQUESTS = os.environ.get("DJANGO_ATOMIC_REQUESTS", False)
+ATOMIC_REQUESTS = os.environ.get("DJANGO_ATOMIC_REQUESTS", "False").lower() == "true"
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
