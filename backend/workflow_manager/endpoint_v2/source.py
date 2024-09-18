@@ -37,6 +37,7 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 logger = logging.getLogger(__name__)
 
 
+# TODO: Inherit from SourceConnector for different sources - File, API .etc.
 class SourceConnector(BaseConnector):
     """A class representing a source connector for a workflow.
 
@@ -404,9 +405,11 @@ class SourceConnector(BaseConnector):
         """Add input file to api storage.
 
         Args:
-            workflow_id (str): workflow id
-            execution_id (str): execution_id
-            file_objs (list[UploadedFile]): api file objects
+            workflow_id (str): UUID of the worklfow
+            execution_id (str): UUID of the execution
+            file_objs (list[UploadedFile]): List of uploaded files
+        Returns:
+            dict[str, FileHash]: Dict containing file name and its corresponding hash
         """
         api_storage_dir = cls.get_api_storage_dir_path(
             workflow_id=workflow_id, execution_id=execution_id
