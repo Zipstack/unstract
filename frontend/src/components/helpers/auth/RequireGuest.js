@@ -16,9 +16,10 @@ const RequireGuest = () => {
   const location = useLocation();
   const pathname = location.pathname;
   try {
-    isLlmWhisperer = selectedProductStore.useSelectedProductStore(
-      (state) => state?.isLlmWhisperer
-    );
+    isLlmWhisperer =
+      selectedProductStore.useSelectedProductStore(
+        (state) => state?.selectedProduct
+      ) === "llm-whisperer";
   } catch (error) {
     // Do nothing
   }
