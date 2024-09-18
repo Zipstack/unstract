@@ -2,7 +2,6 @@ import {
   CheckCircleOutlined,
   DatabaseOutlined,
   ExclamationCircleFilled,
-  InfoCircleFilled,
   InfoCircleOutlined,
   PlayCircleFilled,
   PlayCircleOutlined,
@@ -136,10 +135,9 @@ function PromptOutput({
       singlePassExtractMode,
       true
     );
-    const promptOutput = displayPromptResult(
-      promptOutputs[promptOutputKey]?.output,
-      true
-    );
+
+    const promptOutput = promptOutputs[promptOutputKey]?.output;
+
     return (
       <>
         <Divider className="prompt-card-divider" />
@@ -149,13 +147,17 @@ function PromptOutput({
             <Spin indicator={<SpinnerLoader size="small" />} />
           ) : (
             <Typography.Paragraph className="prompt-card-res font-size-12">
-              <div className="expanded-output">{promptOutput}</div>
+              <div className="expanded-output">
+                <DisplayPromptResult output={promptOutput} />
+              </div>
             </Typography.Paragraph>
           )}
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
               isDisabled={enforceType === TABLE_ENFORCE_TYPE}
-              copyToClipboard={() => copyOutputToClipboard(promptOutput)}
+              copyToClipboard={() =>
+                copyOutputToClipboard(displayPromptResult(promptOutput, true))
+              }
             />
             <PromptOutputExpandBtn
               promptId={promptDetails?.prompt_id}
@@ -324,20 +326,9 @@ function PromptOutput({
                         ) : (
                           <Typography.Paragraph className="prompt-card-res font-size-12">
                             <div className="expanded-output">
-                              {!promptOutputData?.output ? (
-                                <Typography.Text className="prompt-not-ran">
-                                  <span>
-                                    <InfoCircleFilled
-                                      style={{ color: "#F0AD4E" }}
-                                    />
-                                  </span>{" "}
-                                  Yet to run
-                                </Typography.Text>
-                              ) : (
-                                <DisplayPromptResult
-                                  output={promptOutputData?.output}
-                                />
-                              )}
+                              <DisplayPromptResult
+                                output={promptOutputData?.output}
+                              />
                             </div>
                           </Typography.Paragraph>
                         )}
