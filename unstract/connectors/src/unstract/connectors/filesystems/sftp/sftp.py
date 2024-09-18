@@ -17,6 +17,7 @@ class SettingsKey:
     PORT = "port"
     USERNAME = "username"
     PASSWORD = "password"
+    DIRECTORY = "directory"
 
 
 class SettingsDefault:
@@ -28,8 +29,9 @@ class SftpFS(UnstractFileSystem):
         super().__init__("SFTP")
         host = settings.get(SettingsKey.HOST)
         port = int(settings.get(SettingsKey.PORT, SettingsDefault.PORT))
-        username = settings.get(SettingsKey.USERNAME)
-        password = settings.get(SettingsKey.PASSWORD)
+        username = settings.get(SettingsKey.USERNAME, "")
+        password = settings.get(SettingsKey.PASSWORD, "")
+        self.directory = str(settings.get(SettingsKey.DIRECTORY))
 
         self.sftp_fs = SFTPFileSystem(
             host=host, port=port, username=username, password=password
@@ -67,8 +69,9 @@ class SftpFS(UnstractFileSystem):
     def test_credentials(self) -> bool:
         """To test credentials for SFTP."""
         is_dir = False
+        user_dir = f"{self.directory.strip('/')}/"
         try:
-            is_dir = bool(self.get_fsspec_fs().isdir("/"))
+            is_dir = bool(self.get_fsspec_fs().isdir(user_dir))
         except Exception as e:
             raise ConnectorError(
                 f"Error while connecting to SFTP server: {str(e)}"

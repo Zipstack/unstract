@@ -33,6 +33,11 @@
         "title": "Password",
         "description": "The password used to authenticate with the SFTP server",
         "format": "password"
+      },
+      "directory": {
+        "type": "string",
+        "title": "Directory",
+        "description": "The directory user has accesed to"
       }
     }
   }
