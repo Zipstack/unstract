@@ -69,6 +69,7 @@ class ToolSandboxHelper:
 
     def call_tool_handler(
         self,
+        run_id: str,
         image_name: str,
         image_tag: str,
         settings: dict[str, Any],
@@ -86,6 +87,7 @@ class ToolSandboxHelper:
         """
         url = f"{self.base_url}{UnstractWorker.RUN_API_ENDPOINT}"
         data = self.create_tool_request_data(
+            run_id,
             image_name,
             image_tag,
             settings,
@@ -108,6 +110,7 @@ class ToolSandboxHelper:
 
     def create_tool_request_data(
         self,
+        run_id: str,
         image_name: str,
         image_tag: str,
         settings: dict[str, Any],
@@ -118,6 +121,7 @@ class ToolSandboxHelper:
             "organization_id": self.organization_id,
             "workflow_id": self.workflow_id,
             "execution_id": self.execution_id,
+            "run_id": run_id,
             "settings": settings,
             "envs": self.envs,
             "messaging_channel": self.messaging_channel,

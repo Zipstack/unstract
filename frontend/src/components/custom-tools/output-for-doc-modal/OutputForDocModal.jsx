@@ -82,7 +82,12 @@ function OutputForDocModal({
     }
     handleGetOutputForDocs(selectedProfile || profileManagerId);
     getAdapterInfo();
-  }, [open, singlePassExtractMode, isSinglePassExtractLoading]);
+  }, [
+    open,
+    selectedProfile,
+    singlePassExtractMode,
+    isSinglePassExtractLoading,
+  ]);
 
   useEffect(() => {
     updatePromptOutput(docOutputs);
@@ -91,12 +96,6 @@ function OutputForDocModal({
   useEffect(() => {
     handleRowsGeneration(promptOutputs);
   }, [promptOutputs, tokenUsage]);
-
-  useEffect(() => {
-    if (selectedProfile) {
-      handleGetOutputForDocs(selectedProfile);
-    }
-  }, [selectedProfile]);
 
   const moveSelectedDocToTop = () => {
     // Create a copy of the list of documents
