@@ -2,13 +2,14 @@ import { Typography } from "antd";
 import PropTypes from "prop-types";
 import { displayPromptResult } from "../../../helpers/GetStaticData";
 import { InfoCircleFilled } from "@ant-design/icons";
+import "./PromptCard.css"
 
 function DisplayPromptResult({ output }) {
   if (!output) {
     return (
       <Typography.Text className="prompt-not-ran">
         <span>
-          <InfoCircleFilled style={{ color: "#F0AD4E" }} />
+          <InfoCircleFilled className="info-circle-colored" />
         </span>{" "}
         Yet to run
       </Typography.Text>
