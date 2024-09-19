@@ -16,7 +16,6 @@ class SettingsKey:
     USERNAME = "username"
     PASSWORD = "password"
     USER_DIRECTORY = "user_dir"
-    PROTOCOL = "sftp"
 
 
 class SettingsDefault:
@@ -31,10 +30,8 @@ class SftpFS(UnstractFileSystem):
         username = settings.get(SettingsKey.USERNAME)
         password = settings.get(SettingsKey.PASSWORD)
         self.directory = str(settings.get(SettingsKey.USER_DIRECTORY))
-        protocol = SettingsKey.PROTOCOL
 
         self.sftp_fs = SFTPFileSystem(
-            protocol=protocol,
             host=host,
             port=port,
             username=username,
@@ -76,6 +73,14 @@ class SftpFS(UnstractFileSystem):
         schema = f.read()
         f.close()
         return schema
+
+    @staticmethod
+    def requires_oauth() -> bool:
+        return False
+
+    @staticmethod
+    def python_social_auth_backend() -> str:
+        return ""
 
     def test_credentials(self) -> bool:
         """To test credentials for SFTP."""
