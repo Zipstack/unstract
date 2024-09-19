@@ -1,8 +1,9 @@
 import { Typography } from "antd";
 import PropTypes from "prop-types";
-import { displayPromptResult } from "../../../helpers/GetStaticData";
 import { InfoCircleFilled } from "@ant-design/icons";
-import "./PromptCard.css"
+
+import { displayPromptResult } from "../../../helpers/GetStaticData";
+import "./PromptCard.css";
 
 function DisplayPromptResult({ output }) {
   if (!output) {
