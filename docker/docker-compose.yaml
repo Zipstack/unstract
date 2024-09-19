@@ -112,6 +112,7 @@ services:
       - "5555:5555"
     environment:
       - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-celery-flower
     volumes:
       - unstract_data:/data
     profiles:
