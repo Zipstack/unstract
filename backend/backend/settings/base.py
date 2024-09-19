@@ -15,6 +15,7 @@ from typing import Optional
 from urllib.parse import quote_plus
 
 from dotenv import find_dotenv, load_dotenv
+from utils.common_utils import CommonUtils
 
 from backend.constants import FeatureFlag
 from unstract.flags.feature_flag import check_feature_flag_status
@@ -365,7 +366,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "backend.wsgi.application"
 
-ATOMIC_REQUESTS = os.environ.get("DJANGO_ATOMIC_REQUESTS", False)
+ATOMIC_REQUESTS = CommonUtils.str_to_bool(
+    os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
+)
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
