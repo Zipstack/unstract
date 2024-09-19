@@ -1,13 +1,11 @@
 import logging
+import os
 from typing import Any
 
 from fsspec.implementations.sftp import SFTPFileSystem
 
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
-
-# from sshfs import SSHFileSystem
-
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +15,8 @@ class SettingsKey:
     PORT = "port"
     USERNAME = "username"
     PASSWORD = "password"
-    DIRECTORY = "directory"
+    USER_DIRECTORY = "user_dir"
+    PROTOCOL = "sftp"
 
 
 class SettingsDefault:
@@ -29,12 +28,17 @@ class SftpFS(UnstractFileSystem):
         super().__init__("SFTP")
         host = settings.get(SettingsKey.HOST)
         port = int(settings.get(SettingsKey.PORT, SettingsDefault.PORT))
-        username = settings.get(SettingsKey.USERNAME, "")
-        password = settings.get(SettingsKey.PASSWORD, "")
-        self.directory = str(settings.get(SettingsKey.DIRECTORY))
+        username = settings.get(SettingsKey.USERNAME)
+        password = settings.get(SettingsKey.PASSWORD)
+        self.directory = str(settings.get(SettingsKey.USER_DIRECTORY))
+        protocol = SettingsKey.PROTOCOL
 
         self.sftp_fs = SFTPFileSystem(
-            host=host, port=port, username=username, password=password
+            protocol=protocol,
+            host=host,
+            port=port,
+            username=username,
+            password=password,
         )
         # TODO: Use sshfs if above implementation doesn't work as expected
         # self.sftp_fs = SSHFileSystem(host=host, port=port, username=username, password=password)  # noqa: E501
@@ -53,7 +57,7 @@ class SftpFS(UnstractFileSystem):
 
     @staticmethod
     def get_icon() -> str:
-        return "/icons/connector-icons/SFTP.svg"
+        return "/icons/connector-icons/SFTP.png"
 
     @staticmethod
     def can_write() -> bool:
@@ -65,6 +69,13 @@ class SftpFS(UnstractFileSystem):
 
     def get_fsspec_fs(self) -> SFTPFileSystem:
         return self.sftp_fs
+
+    @staticmethod
+    def get_json_schema() -> str:
+        f = open(f"{os.path.dirname(__file__)}/static/json_schema.json")
+        schema = f.read()
+        f.close()
+        return schema
 
     def test_credentials(self) -> bool:
         """To test credentials for SFTP."""

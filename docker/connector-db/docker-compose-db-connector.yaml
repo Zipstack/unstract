@@ -34,7 +34,7 @@ services:
   sftp:
     image: atmoz/sftp:debian
     ports:
-      - "2222:22"
+      - "22:22"
     volumes:
       - sftp_data:/home/${SFTP_USER}
     command: "${SFTP_USER}:${SFTP_PASS}:::${SFTP_DIR}"
