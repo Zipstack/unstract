@@ -36,8 +36,8 @@ services:
     ports:
       - "22:22"
     volumes:
-      - sftp_data:/home/${SFTP_USER}
-    command: "${SFTP_USER}:${SFTP_PASS}:::${SFTP_DIR}"
+      - sftp_data:/home/foo
+    command: "${SFTP_USER}:${SFTP_PASS}:${SFTP_USER_ID}::${SFTP_DIR}"
 
 volumes:
   mariadb_data:
