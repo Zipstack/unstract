@@ -272,7 +272,7 @@ class DestinationConnector(BaseConnector):
         if not data:
             return
         # Remove metadata from result
-        # Tool text-extractor returns data in the form of string. Don't pop out metadata
+        # Tool text-extractor returns data in the form of string. Don't pop out metadata in this case.  noqa: E501
         if isinstance(data, dict):
             data.pop("metadata", None)
         values = DatabaseUtils.get_columns_and_values(
