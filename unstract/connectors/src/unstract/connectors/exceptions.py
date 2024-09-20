@@ -39,3 +39,11 @@ class FSAccessDeniedError(ConnectorError):
     Args:
         ConnectorError: Inherits from base ConnectorError class
     """
+
+
+class AzureHttpError(ConnectorError):
+    """Handles invalid directory error from azure.
+
+    Args:
+        ConnectorError (Class): Inherits class ConnectorError
+    """
