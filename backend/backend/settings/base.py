@@ -381,6 +381,9 @@ DATABASES = {
         "PASSWORD": f"{DB_PASSWORD}",
         "PORT": f"{DB_PORT}",
         "ATOMIC_REQUESTS": ATOMIC_REQUESTS,
+        "OPTIONS": {
+            "application_name": os.environ.get("APPLICATION_NAME", ""),
+        },
     }
 }
 
