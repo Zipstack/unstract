@@ -15,8 +15,8 @@ from platform_settings_v2.platform_auth_service import PlatformAuthenticationSer
 from unstract.adapters.adapterkit import Adapterkit
 from unstract.adapters.base import Adapter
 from unstract.adapters.enums import AdapterTypes
-from unstract.adapters.exceptions import AdapterError
 from unstract.adapters.x2text.constants import X2TextConstants
+from unstract.sdk.exceptions import SdkError
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -97,7 +97,7 @@ class AdapterProcessor:
             test_result: bool = adapter_instance.test_connection()
             logger.info(f"{adapter_id} test result: {test_result}")
             return test_result
-        except AdapterError as e:
+        except SdkError as e:
             raise TestAdapterError(str(e))
 
     @staticmethod
