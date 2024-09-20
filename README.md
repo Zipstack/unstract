@@ -137,6 +137,8 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 
 ## 🙌 Contributing
 
+[![Open in DevZero](https://assets.devzero.io/open-in-devzero.svg)](https://www.devzero.io/dashboard/recipes/new?repo-url=https://github.com/Zipstack/unstract)
+
 Contributions are welcome! Please read [CONTRIBUTE.md](CONTRIBUTE.md) for further details on setting up the development environment, etc. It also points you to other detailed documents as needed.
 
 ## 👋 Join the LLM-powered automation community
