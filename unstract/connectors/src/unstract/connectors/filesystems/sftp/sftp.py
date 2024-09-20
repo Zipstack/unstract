@@ -4,7 +4,7 @@ from typing import Any
 
 from fsspec.implementations.sftp import SFTPFileSystem
 
-from unstract.connectors.exceptions import ConnectorError
+from unstract.connectors.exceptions import ConnectorError, PermissionDeniedError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 logger = logging.getLogger(__name__)
@@ -98,3 +98,45 @@ class SftpFS(UnstractFileSystem):
                 "please check the connection settings."
             )
         return True
+
+    def create_dir_if_not_exists(self, input_dir: str) -> None:
+        """Method to create dir of a connector if not exists.
+
+        Args:
+            input_dir (str): input directory of source connector
+        """
+        fs_fsspec = self.get_fsspec_fs()
+        try:
+            is_dir = fs_fsspec.isdir(input_dir)
+            if not is_dir:
+                fs_fsspec.mkdir(input_dir)
+        except PermissionError as e:
+            self.raise_permission_error(input_dir=input_dir, error=e)
+
+    def upload_file_to_storage(self, source_path: str, destination_path: str) -> None:
+        """Method to upload filepath from tool to sftp connector directory.
+
+        Args:
+            source_path (str): local path of file to be uploaded, coming from tool
+            destination_path (str): target path in the storage where the file will be
+            uploaded
+        """
+        try:
+            normalized_path = os.path.normpath(destination_path)
+            fs = self.get_fsspec_fs()
+            with open(source_path, "rb") as source_file:
+                fs.write_bytes(normalized_path, source_file.read())
+        except PermissionError as e:
+            self.raise_permission_error(input_dir=normalized_path, error=e)
+
+    def raise_permission_error(
+        self, input_dir: str, error: PermissionError
+    ) -> PermissionDeniedError:
+        user_message = (
+            "Permission denied error from sftp connector. Please verify your creds and "
+            f" ensure you have the necessary permissions for the path '{input_dir}'. "
+        )
+        raise PermissionDeniedError(
+            user_message,
+            treat_as_user_message=True,
+        ) from error

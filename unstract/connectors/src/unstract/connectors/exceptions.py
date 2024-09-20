@@ -47,3 +47,11 @@ class AzureHttpError(ConnectorError):
     Args:
         ConnectorError (Class): Inherits class ConnectorError
     """
+
+
+class PermissionDeniedError(ConnectorError):
+    """Handles permission denied error from fs connector.
+
+    Args:
+        ConnectorError (Class): Inherits class ConnectorError
+    """
