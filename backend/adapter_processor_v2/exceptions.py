@@ -20,14 +20,6 @@ class InValidAdapterId(APIException):
     default_detail = "Adapter ID is not Valid."
 
 
-class InvalidEncryptionKey(APIException):
-    status_code = 403
-    default_detail = (
-        "Platform encryption key for storing adapter credentials has changed! "
-        "Please inform the organization admin to contact support."
-    )
-
-
 class InternalServiceError(APIException):
     status_code = 500
     default_detail = "Internal Service error"

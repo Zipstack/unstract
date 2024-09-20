@@ -6,9 +6,10 @@ from account_v2.models import User
 from connector_auth_v2.models import ConnectorAuth
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from django.db import models
+from utils.exceptions import InvalidEncryptionKey
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
@@ -84,6 +85,7 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
     # Manager
     objects = ConnectorInstanceModelManager()
 
+    # TODO: Remove if unused
     def get_connector_metadata(self) -> dict[str, str]:
         """Gets connector metadata and refreshes the tokens if needed in case
         of OAuth."""
@@ -113,11 +115,14 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
 
     @property
     def metadata(self) -> Any:
-        encryption_secret: str = settings.ENCRYPTION_KEY
-        cipher_suite: Fernet = Fernet(encryption_secret.encode("utf-8"))
-        decrypted_value = cipher_suite.decrypt(
-            bytes(self.connector_metadata).decode("utf-8")
-        )
+        try:
+            encryption_secret: str = settings.ENCRYPTION_KEY
+            cipher_suite: Fernet = Fernet(encryption_secret.encode("utf-8"))
+            decrypted_value = cipher_suite.decrypt(
+                bytes(self.connector_metadata).decode("utf-8")
+            )
+        except InvalidToken:
+            raise InvalidEncryptionKey(entity=InvalidEncryptionKey.Entity.CONNECTOR)
         return json.loads(decrypted_value)
 
     class Meta:

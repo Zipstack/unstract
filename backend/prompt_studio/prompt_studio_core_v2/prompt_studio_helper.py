@@ -965,7 +965,7 @@ class PromptStudioHelper:
         if answer["status"] == "ERROR":
             error_message = answer.get("error", None)
             raise AnswerFetchError(
-                f"Error while fetching response for prompt. {error_message}"
+                f"Error while fetching response for prompt(s). {error_message}"
             )
         output_response = json.loads(answer["structure_output"])
         return output_response
