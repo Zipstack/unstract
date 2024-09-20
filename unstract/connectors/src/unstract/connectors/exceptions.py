@@ -31,3 +31,11 @@ class ConnectorError(ConnectorBaseException):
 
     def __str__(self) -> str:
         return f"{self.message}"
+
+
+class AzureHttpError(ConnectorError):
+    """Handles invalid directory error from azure.
+
+    Args:
+        ConnectorError (Class): Inherits class ConnectorError
+    """
