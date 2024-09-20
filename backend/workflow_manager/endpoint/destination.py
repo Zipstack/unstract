@@ -3,7 +3,7 @@ import base64
 import json
 import logging
 import os
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import fsspec
 import magic
@@ -279,7 +279,10 @@ class DestinationConnector(BaseConnector):
         if not data:
             return
         # Remove metadata from result
-        data.pop("metadata", None)
+        # Tool text-extractor returns data in the form of string.
+        # Don't pop out metadata in this case.
+        if isinstance(data, dict):
+            data.pop("metadata", None)
         values = DatabaseUtils.get_columns_and_values(
             column_mode_str=column_mode,
             data=data,
@@ -404,7 +407,7 @@ class DestinationConnector(BaseConnector):
         output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         metadata: dict[str, Any] = self.get_workflow_metadata()
         output_type = self.get_output_type(metadata)
-        result: Optional[Any] = None
+        result: Union[dict[str, Any], str] = ""
         try:
             # TODO: SDK handles validation; consider removing here.
             mime = magic.Magic()
