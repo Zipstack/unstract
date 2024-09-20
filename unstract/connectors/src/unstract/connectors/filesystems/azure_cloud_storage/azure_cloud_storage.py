@@ -2,15 +2,20 @@ import logging
 import os
 from typing import Any
 
+import azure.core.exceptions as AzureException
 from adlfs import AzureBlobFileSystem
 
-from unstract.connectors.exceptions import ConnectorError
+from unstract.connectors.exceptions import AzureHttpError, ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
+logging.getLogger("azurefs").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
 class AzureCloudStorageFS(UnstractFileSystem):
+    class AzureFsError:
+        INVALID_PATH = "The specifed resource name contains invalid characters."
+
     def __init__(self, settings: dict[str, Any]):
         super().__init__("AzureCloudStorageFS")
         account_name = settings.get("account_name", "")
@@ -72,3 +77,38 @@ class AzureCloudStorageFS(UnstractFileSystem):
                 f"Error from Azure Cloud Storage while testing connection: {str(e)}"
             ) from e
         return True
+
+    def upload_file_to_storage(self, source_path: str, destination_path: str) -> None:
+        """Method to upload filepath from tool to destination connector
+        directory.
+
+        Args:
+            source_path (str): source file path from tool
+            destination_path (str): destination azure directory file path
+
+        Raises:
+            AzureHttpError: returns error for invalid directory
+        """
+        normalized_path = os.path.normpath(destination_path)
+        fs = self.get_fsspec_fs()
+        try:
+            with open(source_path, "rb") as source_file:
+                fs.write_bytes(normalized_path, source_file.read())
+        except AzureException.HttpResponseError as e:
+            self.raise_http_exception(e=e, path=normalized_path)
+
+    def raise_http_exception(
+        self, e: AzureException.HttpResponseError, path: str
+    ) -> AzureHttpError:
+        user_message = f"Error from Azure Cloud Storage connector. {e.reason} "
+        if hasattr(e, "reason"):
+            error_reason = e.reason
+            if error_reason == self.AzureFsError.INVALID_PATH:
+                user_message = (
+                    f"Error from Azure Cloud Storage connector. "
+                    f"Invalid resource name for path '{path}'. {e.reason}"
+                )
+        raise AzureHttpError(
+            user_message,
+            treat_as_user_message=True,
+        ) from e
