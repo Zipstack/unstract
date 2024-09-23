@@ -22,6 +22,9 @@ class Env:
         EnvManager.get_required_setting("MODEL_PRICES_TTL_IN_DAYS")
     )
     MODEL_PRICES_FILE_PATH = EnvManager.get_required_setting("MODEL_PRICES_FILE_PATH")
+    APPLICATION_NAME = EnvManager.get_required_setting(
+        "APPLICATION_NAME", "unstract-platform-service"
+    )
 
 
 EnvManager.raise_for_missing_envs()

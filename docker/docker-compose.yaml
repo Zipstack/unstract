@@ -26,6 +26,7 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
     environment:
       - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-backend
     labels:
       - traefik.enable=true
       - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && PathPrefix(`/api/v1`, `/deployment`)
@@ -46,6 +47,7 @@ services:
       - redis
     environment:
       - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker
     labels:
       - traefik.enable=false
     volumes:
@@ -66,6 +68,7 @@ services:
       - redis
     environment:
       - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-logging
     labels:
       - traefik.enable=false
 
@@ -82,6 +85,7 @@ services:
       - redis
     environment:
       - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-api-deployment
     labels:
       - traefik.enable=false
     volumes:
@@ -108,6 +112,7 @@ services:
       - "5555:5555"
     environment:
       - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-celery-flower
     volumes:
       - unstract_data:/data
     profiles:
@@ -126,6 +131,9 @@ services:
     depends_on:
         - db
         - redis
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-celery-beat
 
   # Frontend React app
   frontend:

@@ -89,7 +89,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         Returns:
         - str: The complete API endpoint URL.
         """
-        org_schema = connection.get_tenant().schema_name
+        org_schema = connection.tenant.schema_name
         return f"{ApiExecution.PATH}/{org_schema}/{api_name}/"
 
     @staticmethod
