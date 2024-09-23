@@ -30,12 +30,12 @@ try {
 } catch {
   // The component will remain null of it is not available
 }
-let publicOutputsDocApi;
+let publicOutputsApi;
 let publicAdapterApi;
 let publicDefaultOutputApi;
 try {
-  publicOutputsDocApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsDocApi;
+  publicOutputsApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
   publicAdapterApi =
     require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicAdapterApi;
   publicDefaultOutputApi =
@@ -145,11 +145,12 @@ function CombinedOutput({ docId, setFilledFields }) {
     if (isSimplePromptStudio) {
       url = promptOutputApiSps(details?.tool_id, null, docId);
     } else if (isPublicSource) {
-      url = publicOutputsDocApi(
+      url = publicOutputsApi(
         id,
+        null,
+        singlePassExtractMode,
         docId,
-        selectedProfile || defaultLlmProfile,
-        singlePassExtractMode
+        selectedProfile || defaultLlmProfile
       );
       if (activeKey === "0") {
         url = publicDefaultOutputApi(id, docId);
