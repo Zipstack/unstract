@@ -37,7 +37,7 @@ from workflow_manager.workflow.models.file_history import FileHistory
 from workflow_manager.workflow.models.workflow import Workflow
 
 from backend.exceptions import UnstractFSException
-from unstract.connectors.exceptions import AzureHttpError, PermissionDeniedError
+from unstract.connectors.exceptions import ConnectorError
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +246,7 @@ class DestinationConnector(BaseConnector):
                     destination_fs.upload_file_to_storage(
                         source_path=source_path, destination_path=destination_path
                     )
-        except (AzureHttpError, PermissionDeniedError) as e:
+        except ConnectorError as e:
             raise UnstractFSException(core_err=e) from e
 
     def insert_into_db(self, input_file_path: str) -> None:

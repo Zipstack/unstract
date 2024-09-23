@@ -105,11 +105,8 @@ class SftpFS(UnstractFileSystem):
         Args:
             input_dir (str): input directory of source connector
         """
-        fs_fsspec = self.get_fsspec_fs()
         try:
-            is_dir = fs_fsspec.isdir(input_dir)
-            if not is_dir:
-                fs_fsspec.mkdir(input_dir)
+            super().create_dir_if_not_exists(input_dir=input_dir)
         except PermissionError as e:
             self.raise_permission_error(input_dir=input_dir, error=e)
 
@@ -123,9 +120,9 @@ class SftpFS(UnstractFileSystem):
         """
         try:
             normalized_path = os.path.normpath(destination_path)
-            fs = self.get_fsspec_fs()
-            with open(source_path, "rb") as source_file:
-                fs.write_bytes(normalized_path, source_file.read())
+            super().upload_file_to_storage(
+                source_path=source_path, destination_path=destination_path
+            )
         except PermissionError as e:
             self.raise_permission_error(input_dir=normalized_path, error=e)
 
@@ -133,7 +130,7 @@ class SftpFS(UnstractFileSystem):
         self, input_dir: str, error: PermissionError
     ) -> PermissionDeniedError:
         user_message = (
-            "Permission denied error from sftp connector. Please verify your creds and "
+            "Please verify your SFTP credentials and ensure you "
             f" ensure you have the necessary permissions for the path '{input_dir}'. "
         )
         raise PermissionDeniedError(

@@ -42,7 +42,7 @@
       "user_dir": {
         "type": "string",
         "title": "User directory",
-        "description": "The directory user has accesed to"
+        "description": "The directory that the user has access to"
       }
     }
 }
