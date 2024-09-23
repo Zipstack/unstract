@@ -1,4 +1,4 @@
 # Add your dependencies here
 
 # Required for all unstract tools
-unstract-sdk~=0.48.0
+unstract-sdk~=0.48.2

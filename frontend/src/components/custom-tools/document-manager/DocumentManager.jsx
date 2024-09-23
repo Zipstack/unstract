@@ -10,6 +10,7 @@ import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
 import { Button, Space, Tabs, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import "./DocumentManager.css";
 
 import { base64toBlob, docIndexStatus } from "../../../helpers/GetStaticData";
@@ -98,6 +99,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const { id } = useParams();
 
   useEffect(() => {
     if (isSimplePromptStudio) {
@@ -208,7 +210,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const getDocuments = async (toolId, docId, viewType) => {
     let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${toolId}?document_id=${docId}&view_type=${viewType}`;
     if (isPublicSource) {
-      url = publicDocumentApi(toolId, docId, viewType);
+      url = publicDocumentApi(id, docId, viewType);
     }
 
     const requestOptions = {

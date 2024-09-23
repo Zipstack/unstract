@@ -8,10 +8,9 @@ const STORE_VARIABLES = defaultState;
 
 const useSocketCustomToolStore = create((setState, getState) => ({
   ...STORE_VARIABLES,
-  updateCusToolMessages: (message) => {
+  updateCusToolMessages: (messages) => {
     const existingState = { ...getState() };
-    let data = [...(existingState?.messages || [])];
-    data.push(message);
+    let data = [...(existingState?.messages || []), ...messages];
 
     // Remove the previous messages if the length exceeds 200
     const dataLength = data?.length;

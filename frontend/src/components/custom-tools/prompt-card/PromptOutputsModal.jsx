@@ -3,6 +3,8 @@ import PropTypes from "prop-types";
 import { DisplayPromptResult } from "./DisplayPromptResult";
 import { TABLE_ENFORCE_TYPE } from "./constants";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
+import usePromptOutput from "../../../hooks/usePromptOutput";
 
 let TableOutput;
 try {
@@ -14,11 +16,15 @@ try {
 function PromptOutputsModal({
   open,
   setOpen,
+  promptId,
   llmProfiles,
-  result,
   enforceType,
   displayLlmProfile,
+  promptOutputs,
 }) {
+  const { singlePassExtractMode, selectedDoc } = useCustomToolStore();
+  const { generatePromptOutputKey } = usePromptOutput();
+
   return (
     <Modal
       open={open}
@@ -38,6 +44,14 @@ function PromptOutputsModal({
         <Row style={{ height: "85vh" }}>
           {llmProfiles.map((profile, index) => {
             const profileId = profile?.profile_id;
+            const promptOutputKey = generatePromptOutputKey(
+              promptId,
+              selectedDoc?.document_id,
+              profileId,
+              singlePassExtractMode,
+              true
+            );
+            const promptOutputData = promptOutputs[promptOutputKey];
             return (
               <Col
                 className={`overflow-hidden height-100 prompt-output-pad ${
@@ -66,19 +80,11 @@ function PromptOutputsModal({
                   <div className="flex-1 overflow-y-auto pad-top-10">
                     {enforceType === TABLE_ENFORCE_TYPE && TableOutput ? (
                       <TableOutput
-                        output={
-                          result.find((r) => r?.profileManager === profileId)
-                            ?.output
-                        }
+                        output={promptOutputData?.output}
                         pagination={10}
                       />
                     ) : (
-                      <DisplayPromptResult
-                        output={
-                          result.find((r) => r?.profileManager === profileId)
-                            ?.output
-                        }
-                      />
+                      <DisplayPromptResult output={promptOutputData?.output} />
                     )}
                   </div>
                 </div>
@@ -94,10 +100,11 @@ function PromptOutputsModal({
 PromptOutputsModal.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
+  promptId: PropTypes.string.isRequired,
   llmProfiles: PropTypes.array.isRequired,
-  result: PropTypes.array.isRequired,
   enforceType: PropTypes.string.isRequired,
   displayLlmProfile: PropTypes.bool.isRequired,
+  promptOutputs: PropTypes.object.isRequired,
 };
 
 export { PromptOutputsModal };
