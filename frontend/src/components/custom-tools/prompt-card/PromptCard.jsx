@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   generateUUID,
@@ -48,7 +48,6 @@ function PromptCard({
   const [promptText, setPromptText] = useState("");
   const [selectedLlmProfileId, setSelectedLlmProfileId] = useState(null);
   const [coverage, setCoverage] = useState({});
-  const [coverageTotal, setCoverageTotal] = useState(0);
   const [isCoverageLoading, setIsCoverageLoading] = useState(false);
   const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
   const [progressMsg, setProgressMsg] = useState({});
@@ -75,6 +74,15 @@ function PromptCard({
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { updatePromptOutputState } = usePromptOutput();
+
+  const outputKeys = useMemo(() => Object.keys(promptOutputs), [promptOutputs]);
+
+  useEffect(() => {
+    outputKeys.forEach((key) => {
+      const [promptId, docId, profileId] = key.split("__");
+      updateDocCoverage(promptId, profileId, docId);
+    });
+  }, [outputKeys]);
 
   useEffect(() => {
     if (
@@ -149,13 +157,6 @@ function PromptCard({
 
     updateCustomTool({ disableLlmOrDocChange: listOfIds });
   }, [docOutputs]);
-
-  useEffect(() => {
-    if (isCoverageLoading && coverageTotal === listOfDocs?.length) {
-      setIsCoverageLoading(false);
-      setCoverageTotal(0);
-    }
-  }, [coverageTotal]);
 
   const resetInfoMsgs = () => {
     setProgressMsg({}); // Reset Progress Message
@@ -345,7 +346,6 @@ function PromptCard({
       return;
     }
     setIsCoverageLoading(true);
-    setCoverageTotal(0);
     resetInfoMsgs();
 
     const docId = selectedDoc?.document_id;
@@ -360,7 +360,6 @@ function PromptCard({
     ) {
       // Summary needs to be indexed before running the prompt
       handleIsRunLoading(selectedDoc?.document_id, selectedLlmProfileId, false);
-      setCoverageTotal(1);
       handleCoverage(selectedLlmProfileId);
       setAlertDetails({
         type: "error",
@@ -458,7 +457,6 @@ function PromptCard({
             false,
             value
           );
-          setCoverageTotal(1);
         })
         .catch((err) => {
           handleIsRunLoading(
@@ -529,7 +527,6 @@ function PromptCard({
       ) {
         // Summary needs to be indexed before running the prompt
         totalCoverageValue++;
-        setCoverageTotal(totalCoverageValue);
         setAlertDetails({
           type: "error",
           content: `Summary needs to be indexed before running the prompt - ${item?.document_name}.`,
@@ -580,7 +577,6 @@ function PromptCard({
             setIsCoverageLoading(false);
             return;
           }
-          setCoverageTotal(totalCoverageValue);
         });
     });
   };
