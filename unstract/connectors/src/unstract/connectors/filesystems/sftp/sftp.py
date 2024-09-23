@@ -37,8 +37,6 @@ class SftpFS(UnstractFileSystem):
             username=username,
             password=password,
         )
-        # TODO: Use sshfs if above implementation doesn't work as expected
-        # self.sftp_fs = SSHFileSystem(host=host, port=port, username=username, password=password)  # noqa: E501
 
     @staticmethod
     def get_id() -> str:
@@ -67,6 +65,8 @@ class SftpFS(UnstractFileSystem):
     def get_fsspec_fs(self) -> SFTPFileSystem:
         return self.sftp_fs
 
+    # TODO: Check if this method can be removed, and use it from parent class
+    # (class UnstractFileSystem)
     @staticmethod
     def get_json_schema() -> str:
         f = open(f"{os.path.dirname(__file__)}/static/json_schema.json")
@@ -74,10 +74,14 @@ class SftpFS(UnstractFileSystem):
         f.close()
         return schema
 
+    # TODO: Check if this method can be removed, and use it from parent class
+    # (class UnstractFileSystem)
     @staticmethod
     def requires_oauth() -> bool:
         return False
 
+    # TODO: Check if this method can be removed, and use it from parent class
+    # (class UnstractFileSystem)
     @staticmethod
     def python_social_auth_backend() -> str:
         return ""
