@@ -14,6 +14,7 @@ import { Footer } from "../footer/Footer";
 import "./ToolsMain.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { ToolsMainActionBtns } from "./ToolsMainActionBtns";
+import usePromptOutput from "../../../hooks/usePromptOutput";
 
 function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
@@ -27,11 +28,13 @@ function ToolsMain() {
     updateCustomTool,
     disableLlmOrDocChange,
     isSimplePromptStudio,
+    singlePassExtractMode,
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const { promptOutputApi, updatePromptOutputState } = usePromptOutput();
 
   const items = [
     {
@@ -56,6 +59,23 @@ function ToolsMain() {
       disabled: prompts?.length === 0 || disableLlmOrDocChange?.length > 0,
     },
   ];
+
+  useEffect(() => {
+    promptOutputApi(
+      details?.tool_id,
+      selectedDoc?.document_id,
+      null,
+      null,
+      singlePassExtractMode
+    )
+      .then((res) => {
+        const data = res?.data || [];
+        updatePromptOutputState(data, true);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to fetch prompt outputs"));
+      });
+  }, [selectedDoc, singlePassExtractMode]);
 
   const getPromptKey = (len) => {
     const promptKey = `${details?.tool_name}_${len}`;

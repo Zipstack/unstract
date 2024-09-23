@@ -19,13 +19,6 @@ services:
     build:
       dockerfile: docker/dockerfiles/platform.Dockerfile
       context: ..
-  document-service:
-    profiles:
-        - optional
-    image: unstract/document-service:${VERSION}
-    build:
-      dockerfile: docker/dockerfiles/document.Dockerfile
-      context: ..
   prompt-service:
     image: unstract/prompt-service:${VERSION}
     build:

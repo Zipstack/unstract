@@ -1,5 +1,5 @@
-import { useContext, useEffect, useState } from "react";
-
+import { useContext, useEffect, useRef, useState, useCallback } from "react";
+import throttle from "lodash/throttle";
 import { SocketContext } from "../../../helpers/SocketContext";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
@@ -8,6 +8,8 @@ import { useSocketMessagesStore } from "../../../store/socket-messages-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { useSessionStore } from "../../../store/session-store";
 import { useUsageStore } from "../../../store/usage-store";
+
+const THROTTLE_DELAY = 2000; // 2 seconds
 
 function SocketMessages() {
   const [logId, setLogId] = useState("");
@@ -26,10 +28,55 @@ function SocketMessages() {
   const handleException = useExceptionHandler();
   const { setLLMTokenUsage } = useUsageStore();
 
+  // Buffer to hold the logs between throttle intervals
+  const psLogs = useRef([]);
+  const wfLogs = useRef([]);
+
   useEffect(() => {
     setLogId(sessionDetails?.logEventsId || "");
   }, [sessionDetails]);
 
+  // Throttled function for PS logs
+  const psLogsThrottledUpdate = useRef(
+    throttle((psLogMessages) => {
+      updateCusToolMessages(psLogMessages);
+      psLogs.current = [];
+    }, THROTTLE_DELAY)
+  ).current;
+
+  // Throttled function for WF logs
+  const wfLogsThrottledUpdate = useRef(
+    throttle((wfLogMessages) => {
+      pushLogMessages(wfLogMessages);
+      wfLogs.current = [];
+    }, THROTTLE_DELAY)
+  ).current;
+
+  // Clean up throttling functions on unmount
+  useEffect(() => {
+    return () => {
+      psLogsThrottledUpdate.cancel();
+      wfLogsThrottledUpdate.cancel();
+    };
+  }, [psLogsThrottledUpdate, wfLogsThrottledUpdate]);
+
+  const handlePsLogs = useCallback(
+    (msg) => {
+      psLogs.current = [...psLogs.current, msg];
+      psLogsThrottledUpdate(psLogs.current);
+    },
+    [psLogsThrottledUpdate]
+  );
+
+  const handleWfLogs = useCallback(
+    (msg) => {
+      wfLogs.current = [...wfLogs.current, msg];
+      wfLogsThrottledUpdate(wfLogs.current);
+    },
+    [wfLogsThrottledUpdate]
+  );
+
+  // Handle incoming socket messages
   const onMessage = (data) => {
     try {
       let msg = data.data;
@@ -47,15 +94,12 @@ function SocketMessages() {
         msg?.service !== "prompt"
       ) {
         msg.message = msg?.log;
-        pushLogMessages(msg);
-      }
-      if (msg?.type === "UPDATE") {
+        handleWfLogs(msg);
+      } else if (msg?.type === "UPDATE") {
         pushStagedMessage(msg);
-      }
-      if (msg?.type === "LOG" && msg?.service === "prompt") {
-        updateCusToolMessages(msg);
-      }
-      if (msg?.type === "LOG" && msg?.service === "usage") {
+      } else if (msg?.type === "LOG" && msg?.service === "prompt") {
+        handlePsLogs(msg);
+      } else if (msg?.type === "LOG" && msg?.service === "usage") {
         const remainingTokens =
           msg?.max_token_count_set - msg?.added_token_count;
         setLLMTokenUsage(Math.max(remainingTokens, 0));
@@ -66,9 +110,8 @@ function SocketMessages() {
   };
 
   useEffect(() => {
-    if (!logId) {
-      return;
-    }
+    if (!logId) return;
+
     const logMessageChannel = `logs:${logId}`;
     socket.on(logMessageChannel, onMessage);
 
@@ -79,15 +122,15 @@ function SocketMessages() {
   }, [logId]);
 
   useEffect(() => {
-    if (pointer > stagedMessages?.length - 1) {
-      return;
-    }
+    if (pointer > stagedMessages?.length - 1) return;
 
     const stagedMsg = stagedMessages[pointer];
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       updateMessage(stagedMsg);
       setPointer(pointer + 1);
     }, 0);
+
+    return () => clearTimeout(timer); // Cleanup timer on unmount
   }, [stagedMessages, pointer]);
 }
 

@@ -30,6 +30,7 @@ from workflow_manager.workflow.exceptions import (
     WorkflowRegenerationError,
 )
 from workflow_manager.workflow.generator import WorkflowGenerator
+from workflow_manager.workflow.models.execution import WorkflowExecution
 from workflow_manager.workflow.models.workflow import Workflow
 from workflow_manager.workflow.serializers import (
     ExecuteWorkflowResponseSerializer,
@@ -233,12 +234,14 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 workflow=workflow,
                 execution_id=execution_id,
                 pipeline_id=pipeline_guid,
+                execution_mode=WorkflowExecution.Mode.INSTANT,
                 hash_values_of_files=hash_values_of_files,
             )
         else:
             execution_response = WorkflowHelper.complete_execution(
                 workflow=workflow,
                 execution_id=execution_id,
+                execution_mode=WorkflowExecution.Mode.INSTANT,
                 hash_values_of_files=hash_values_of_files,
             )
         return execution_response
