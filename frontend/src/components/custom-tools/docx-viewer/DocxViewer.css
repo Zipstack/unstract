@@ -1,0 +1,27 @@
+.docx-viewer-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.zoom-controls {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.zoom-controls button {
+  padding: 5px 10px;
+  margin: 0 5px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.docx-content {
+  flex: 1;
+  overflow: auto;
+  padding: 10px;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.3s ease-in-out; /* Smooth zooming */
+}

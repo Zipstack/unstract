@@ -278,7 +278,7 @@ const getDateTimeString = (timestamp) => {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
 };
 
-const base64toBlob = (data) => {
+const base64toBlob = (data, mimeType) => {
   const bytes = atob(data);
   let length = bytes.length;
   const out = new Uint8Array(length);
@@ -287,7 +287,7 @@ const base64toBlob = (data) => {
     out[length] = bytes.charCodeAt(length);
   }
 
-  return new Blob([out], { type: "application/pdf" });
+  return new Blob([out], { type: mimeType || "application/pdf" });
 };
 
 const removeFileExtension = (fileName) => {
