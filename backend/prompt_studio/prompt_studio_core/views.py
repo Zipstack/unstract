@@ -393,32 +393,40 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         file_name: str = document.document_name
         view_type: str = serializer.validated_data.get("view_type")
 
+        # Extract filename without extension
         filename_without_extension = file_name.rsplit(".", 1)[0]
+
+        # Handle view_type logic, always converting to .txt for EXTRACT and SUMMARIZE
         if view_type == FileViewTypes.EXTRACT:
             file_name = (
                 f"{FileViewTypes.EXTRACT.lower()}/" f"{filename_without_extension}.txt"
             )
-        if view_type == FileViewTypes.SUMMARIZE:
+        elif view_type == FileViewTypes.SUMMARIZE:
             file_name = (
                 f"{FileViewTypes.SUMMARIZE.lower()}/"
                 f"{filename_without_extension}.txt"
             )
 
-        file_path = file_path = FileManagerHelper.handle_sub_directory_for_tenants(
+        file_path = FileManagerHelper.handle_sub_directory_for_tenants(
             UserSessionUtils.get_organization_id(request),
             is_create=True,
             user_id=custom_tool.created_by.user_id,
             tool_id=str(custom_tool.tool_id),
         )
-        file_system = LocalStorageFS(settings={"path": file_path})
+
+        # Ensure file path formatting
         if not file_path.endswith("/"):
             file_path += "/"
         file_path += file_name
-        # Temporary Hack for frictionless onboarding as the user id will be empty
+
+        file_system = LocalStorageFS(settings={"path": file_path})
+
+        # Handle file content retrieval
         try:
             contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
         except FileNotFound:
-            file_path = file_path = FileManagerHelper.handle_sub_directory_for_tenants(
+            # Retry with empty user_id
+            file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                 UserSessionUtils.get_organization_id(request),
                 is_create=True,
                 user_id="",
@@ -426,10 +434,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             )
             if not file_path.endswith("/"):
                 file_path += "/"
-                file_path += file_name
+            file_path += file_name
             contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
 
-        return Response({"data": contents}, status=status.HTTP_200_OK)
+        return Response(contents, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
     def upload_for_ide(self, request: HttpRequest, pk: Any = None) -> Response:
