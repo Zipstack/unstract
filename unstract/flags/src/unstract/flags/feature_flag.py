@@ -31,7 +31,9 @@ def check_feature_flag_status(
     """
 
     try:
-        FLIPT_SERVICE_AVAILABLE = os.environ.get("FLIPT_SERVICE_AVAILABLE", False)
+        FLIPT_SERVICE_AVAILABLE = (
+            os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() == "true"
+        )
         if not FLIPT_SERVICE_AVAILABLE:
             return False
 
