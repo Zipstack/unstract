@@ -82,7 +82,12 @@ function OutputForDocModal({
     }
     handleGetOutputForDocs(selectedProfile || profileManagerId);
     getAdapterInfo();
-  }, [open, singlePassExtractMode, isSinglePassExtractLoading]);
+  }, [
+    open,
+    selectedProfile,
+    singlePassExtractMode,
+    isSinglePassExtractLoading,
+  ]);
 
   useEffect(() => {
     updatePromptOutput(docOutputs);
@@ -91,12 +96,6 @@ function OutputForDocModal({
   useEffect(() => {
     handleRowsGeneration(promptOutputs);
   }, [promptOutputs, tokenUsage]);
-
-  useEffect(() => {
-    if (selectedProfile) {
-      handleGetOutputForDocs(selectedProfile);
-    }
-  }, [selectedProfile]);
 
   const moveSelectedDocToTop = () => {
     // Create a copy of the list of documents
@@ -192,8 +191,13 @@ function OutputForDocModal({
     }
     let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`;
     if (isPublicSource) {
-      url = publicOutputsApi(id, promptId, singlePassExtractMode);
-      url += `&profile_manager=${profile}`;
+      url = publicOutputsApi(
+        id,
+        promptId,
+        singlePassExtractMode,
+        null,
+        profile
+      );
     }
     const requestOptions = {
       method: "GET",

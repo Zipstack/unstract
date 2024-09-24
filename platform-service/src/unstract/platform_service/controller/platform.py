@@ -3,12 +3,12 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-import peewee
 import redis
 from cryptography.fernet import Fernet, InvalidToken
 from flask import Blueprint, Request
 from flask import current_app as app
 from flask import jsonify, make_response, request
+from peewee import PostgresqlDatabase
 from unstract.platform_service.constants import DBTable, DBTableV2, FeatureFlag
 from unstract.platform_service.env import Env
 from unstract.platform_service.exceptions import APIError
@@ -20,16 +20,15 @@ from unstract.platform_service.helper.prompt_studio import PromptStudioRequestHe
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
-be_db = peewee.PostgresqlDatabase(
+be_db = PostgresqlDatabase(
     Env.PG_BE_DATABASE,
     user=Env.PG_BE_USERNAME,
     password=Env.PG_BE_PASSWORD,
     host=Env.PG_BE_HOST,
     port=Env.PG_BE_PORT,
+    options=f"-c application_name={Env.APPLICATION_NAME}",
 )
 be_db.init(Env.PG_BE_DATABASE)
-be_db.connect()
-
 
 platform_bp = Blueprint("platform", __name__)
 
