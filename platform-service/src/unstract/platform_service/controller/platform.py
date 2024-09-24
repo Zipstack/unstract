@@ -20,6 +20,7 @@ from unstract.platform_service.helper.prompt_studio import PromptStudioRequestHe
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
+
 platform_bp = Blueprint("platform", __name__)
 
 
