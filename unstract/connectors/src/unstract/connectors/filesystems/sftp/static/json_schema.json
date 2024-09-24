@@ -4,7 +4,12 @@
     "type": "object",
     "required": [
       "connectorName",
-      "host"
+      "host",
+      "port",
+      "username",
+      "password",
+      "user_dir"
+
     ],
     "properties": {
       "connectorName": {
@@ -33,6 +38,11 @@
         "title": "Password",
         "description": "The password used to authenticate with the SFTP server",
         "format": "password"
+      },
+      "user_dir": {
+        "type": "string",
+        "title": "User directory",
+        "description": "The directory that the user has access to"
       }
     }
-  }
+}
