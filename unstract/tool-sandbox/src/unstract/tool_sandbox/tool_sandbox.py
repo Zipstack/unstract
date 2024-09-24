@@ -1,6 +1,6 @@
 from typing import Any, Optional
 
-from unstract.tool_sandbox.constants import Common, ToolCommandKey, UnstractWorker
+from unstract.tool_sandbox.constants import ToolCommandKey, UnstractWorker
 from unstract.tool_sandbox.helper import ToolSandboxHelper
 
 
@@ -16,7 +16,6 @@ class ToolSandbox:
         tool_instance_id: Optional[str] = None,
         environment_variables: dict[str, Any] = {},
         messaging_channel: Optional[str] = None,
-        include_metadata: bool = False,
     ):
         """PLATFORM_SERVICE_API_KEY should be available in the environment."""
         self.messaging_channel = str(messaging_channel)
@@ -31,11 +30,9 @@ class ToolSandbox:
         self.tool_instance_id = tool_instance_id
         self.image_name = image_name
         self.image_tag = image_tag
-        self.include_metadata = include_metadata
         self.settings: dict[str, Any] = {}
 
     def set_tool_instance_settings(self, tool_settings: dict[str, Any]) -> None:
-        tool_settings[Common.INCLUDE_METADATA] = self.include_metadata
         self.settings = tool_settings
 
     def get_tool_uid(self) -> str:
@@ -96,8 +93,9 @@ class ToolSandbox:
         )
         return result
 
-    def run_tool(self) -> Optional[dict[str, Any]]:
+    def run_tool(self, run_id: str) -> Optional[dict[str, Any]]:
         return self.helper.call_tool_handler(  # type: ignore
+            run_id,
             self.image_name,
             self.image_tag,
             self.settings,

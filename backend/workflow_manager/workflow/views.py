@@ -17,6 +17,7 @@ from tool_instance.tool_processor import ToolProcessor
 from unstract.tool_registry.dto import Tool
 from utils.filtering import FilterHelper
 from workflow_manager.endpoint.destination import DestinationConnector
+from workflow_manager.endpoint.dto import FileHash
 from workflow_manager.endpoint.endpoint_utils import WorkflowEndpointUtils
 from workflow_manager.endpoint.source import SourceConnector
 from workflow_manager.workflow.constants import WorkflowKey
@@ -29,6 +30,7 @@ from workflow_manager.workflow.exceptions import (
     WorkflowRegenerationError,
 )
 from workflow_manager.workflow.generator import WorkflowGenerator
+from workflow_manager.workflow.models.execution import WorkflowExecution
 from workflow_manager.workflow.models.workflow import Workflow
 from workflow_manager.workflow.serializers import (
     ExecuteWorkflowResponseSerializer,
@@ -170,10 +172,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         execution_id = serializer.get_execution_id(serializer.validated_data)
         execution_action = serializer.get_execution_action(serializer.validated_data)
         file_objs = request.FILES.getlist("files")
-        include_metadata = (
-            request.data.get("include_metadata", "false").lower() == "true"
-        )
-        hashes_of_files = {}
+        hashes_of_files: dict[str, FileHash] = {}
         if file_objs and execution_id and workflow_id:
             hashes_of_files = SourceConnector.add_input_file_to_api_storage(
                 workflow_id=workflow_id,
@@ -191,7 +190,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 execution_id=execution_id,
                 pipeline_guid=pipeline_guid,
                 hash_values_of_files=hashes_of_files,
-                include_metadata=include_metadata,
             )
             if (
                 execution_response.execution_status == "ERROR"
@@ -217,8 +215,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         execution_action: Optional[str] = None,
         execution_id: Optional[str] = None,
         pipeline_guid: Optional[str] = None,
-        hash_values_of_files: dict[str, str] = {},
-        include_metadata: bool = False,
+        hash_values_of_files: dict[str, FileHash] = {},
     ) -> ExecutionResponse:
         if execution_action is not None:
             # Step execution
@@ -227,7 +224,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 execution_action,
                 execution_id=execution_id,
                 hash_values_of_files=hash_values_of_files,
-                include_metadata=include_metadata,
             )
         elif pipeline_guid:
             # pipeline execution
@@ -238,14 +234,15 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 workflow=workflow,
                 execution_id=execution_id,
                 pipeline_id=pipeline_guid,
+                execution_mode=WorkflowExecution.Mode.INSTANT,
                 hash_values_of_files=hash_values_of_files,
             )
         else:
             execution_response = WorkflowHelper.complete_execution(
                 workflow=workflow,
                 execution_id=execution_id,
+                execution_mode=WorkflowExecution.Mode.INSTANT,
                 hash_values_of_files=hash_values_of_files,
-                include_metadata=include_metadata,
             )
         return execution_response
 

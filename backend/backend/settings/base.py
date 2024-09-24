@@ -15,6 +15,7 @@ from typing import Optional
 from urllib.parse import quote_plus
 
 from dotenv import find_dotenv, load_dotenv
+from utils.common_utils import CommonUtils
 
 from backend.constants import FeatureFlag
 from unstract.flags.feature_flag import check_feature_flag_status
@@ -53,11 +54,15 @@ DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "filters": {"request_id": {"()": "log_request_id.filters.RequestIDFilter"}},
+    "filters": {
+        "request_id": {"()": "log_request_id.filters.RequestIDFilter"},
+        "tenant_context": {"()": "django_tenants.log.TenantContextFilter"},
+    },
     "formatters": {
         "enriched": {
             "format": (
-                "%(levelname)s : [%(asctime)s] {module:%(module)s process:%(process)d "
+                "%(levelname)s : [%(asctime)s] [%(schema_name)s:%(domain_url)s]"
+                "{module:%(module)s process:%(process)d "
                 "thread:%(thread)d request_id:%(request_id)s} :- %(message)s"
             ),
         },
@@ -74,7 +79,7 @@ LOGGING = {
         "console": {
             "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
             "class": "logging.StreamHandler",
-            "filters": ["request_id"],
+            "filters": ["request_id", "tenant_context"],
             "formatter": "enriched",
         },
     },
@@ -124,6 +129,7 @@ SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", True)
 CSRF_COOKIE_SECURE = os.environ.get("CSRF_COOKIE_SECURE", True)
 
 PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
+# Resetting the path prefix will require reconfiguring all existing deployed APIs
 API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
     "API_DEPLOYMENT_PATH_PREFIX", "deployment"
 ).strip("/")
@@ -168,6 +174,7 @@ CELERY_BROKER_URL = get_required_setting(
 )
 
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
+NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))
 # Flag to Enable django admin
 ADMIN_ENABLED = False
 
@@ -192,6 +199,7 @@ SHARED_APPS = (
     "corsheaders",
     # For the organization model
     "account",
+    "account_usage",
     # Django apps should go below this line
     "django.contrib.admin",
     "django.contrib.auth",
@@ -244,6 +252,7 @@ TENANT_APPS = (
     "prompt_studio.prompt_studio_document_manager",
     "prompt_studio.prompt_studio_index_manager",
     "usage",
+    "notification",
 )
 
 INSTALLED_APPS = list(SHARED_APPS) + [
@@ -333,6 +342,7 @@ MIDDLEWARE = [
     "middleware.exception.ExceptionLoggingMiddleware",
     "social_django.middleware.SocialAuthExceptionMiddleware",
     "middleware.remove_allow_header.RemoveAllowHeaderMiddleware",
+    "middleware.cache_control.CacheControlMiddleware",
 ]
 
 TENANT_SUBFOLDER_PREFIX = f"/{PATH_PREFIX}/unstract"
@@ -356,7 +366,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "backend.wsgi.application"
 
-
+ATOMIC_REQUESTS = CommonUtils.str_to_bool(
+    os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
+)
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
@@ -368,7 +380,10 @@ DATABASES = {
         "HOST": f"{DB_HOST}",
         "PASSWORD": f"{DB_PASSWORD}",
         "PORT": f"{DB_PORT}",
-        "ATOMIC_REQUESTS": True,
+        "ATOMIC_REQUESTS": ATOMIC_REQUESTS,
+        "OPTIONS": {
+            "application_name": os.environ.get("APPLICATION_NAME", ""),
+        },
     }
 }
 

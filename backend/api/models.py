@@ -4,6 +4,7 @@ from typing import Any
 from account.models import User
 from api.constants import ApiExecution
 from django.db import connection, models
+from pipeline.models import Pipeline
 from utils.models.base_model import BaseModel
 from workflow_manager.workflow.models.workflow import Workflow
 
@@ -35,6 +36,8 @@ class APIDeployment(BaseModel):
         default=True,
         db_comment="Flag indicating whether the API is active or not.",
     )
+    # TODO: Implement dynamic generation of API endpoints for API deployments
+    # instead of persisting them in the database.
     api_endpoint = models.CharField(
         max_length=API_ENDPOINT_MAX_LENGTH,
         unique=True,
@@ -64,6 +67,10 @@ class APIDeployment(BaseModel):
         editable=False,
     )
 
+    @property
+    def api_key_data(self):
+        return {"api": self.id, "description": f"API Key for {self.api_name}"}
+
     def __str__(self) -> str:
         return f"{self.id} - {self.display_name}"
 
@@ -80,12 +87,12 @@ class APIDeployment(BaseModel):
             try:
                 original = APIDeployment.objects.get(pk=self.pk)
                 if original.api_name != self.api_name:
-                    org_schema = connection.get_tenant().schema_name
+                    org_schema = connection.tenant.schema_name
                     self.api_endpoint = (
                         f"{ApiExecution.PATH}/{org_schema}/{self.api_name}/"
                     )
             except APIDeployment.DoesNotExist:
-                org_schema = connection.get_tenant().schema_name
+                org_schema = connection.tenant.schema_name
 
                 self.api_endpoint = f"{ApiExecution.PATH}/{org_schema}/{self.api_name}/"
         super().save(*args, **kwargs)
@@ -107,7 +114,16 @@ class APIKey(BaseModel):
     api = models.ForeignKey(
         APIDeployment,
         on_delete=models.CASCADE,
+        null=True,
+        blank=True,
         db_comment="Foreign key reference to the APIDeployment model.",
+    )
+    pipeline = models.ForeignKey(
+        Pipeline,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        db_comment="Foreign key reference to the Pipeline model.",
     )
     description = models.CharField(
         max_length=DESCRIPTION_MAX_LENGTH,

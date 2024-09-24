@@ -20,15 +20,15 @@ logger = logging.getLogger(__name__)
 
 class GCSHelper:
     def __init__(self) -> None:
-        self.google_service_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT")
-        self.google_project_id = os.environ.get("GOOGLE_PROJECT_ID")
+        self.google_service_json = os.environ.get("GDRIVE_GOOGLE_SERVICE_ACCOUNT")
+        self.google_project_id = os.environ.get("GDRIVE_GOOGLE_PROJECT_ID")
         if self.google_service_json is None:
             raise GCSHelperEnvNotSetException(
-                "GOOGLE_SERVICE_ACCOUNT environment variable not set"
+                "GDRIVE_GOOGLE_SERVICE_ACCOUNT environment variable not set"
             )
         if self.google_project_id is None:
             raise GCSHelperEnvNotSetException(
-                "GOOGLE_PROJECT_ID environment variable not set"
+                "GDRIVE_GOOGLE_PROJECT_ID environment variable not set"
             )
 
         self.google_credentials = service_account.Credentials.from_service_account_info(

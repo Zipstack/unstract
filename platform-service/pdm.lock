@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:a650076acef87a75ba22e8a034cb07502e3592e76fff246f3d70673ff15bc457"
+content_hash = "sha256:d0e87ecffff8ccef00cdaa3fa34c2665d8b52cf8c92e2da2c95feb3dd2045d6b"
 
 [[package]]
 name = "async-timeout"
@@ -612,6 +612,15 @@ groups = ["default"]
 files = [
     {file = "setuptools-71.1.0-py3-none-any.whl", hash = "sha256:33874fdc59b3188304b2e7c80d9029097ea31627180896fb549c578ceb8a0855"},
     {file = "setuptools-71.1.0.tar.gz", hash = "sha256:032d42ee9fb536e33087fb66cac5f840eb9391ed05637b3f2a76a7c8fb477936"},
+]
+
+[[package]]
+name = "singleton-decorator"
+version = "1.0.0"
+summary = "A testable singleton decorator"
+groups = ["default"]
+files = [
+    {file = "singleton-decorator-1.0.0.tar.gz", hash = "sha256:1a90ad8a8a738be591c9c167fdd677c5d4a43d1bc6b1c128227be1c5e03bee07"},
 ]
 
 [[package]]

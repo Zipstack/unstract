@@ -4,6 +4,7 @@ from typing import Any, Union
 from api.constants import ApiExecution
 from api.models import APIDeployment, APIKey
 from django.core.validators import RegexValidator
+from pipeline.models import Pipeline
 from rest_framework.serializers import (
     CharField,
     IntegerField,
@@ -37,15 +38,42 @@ class APIKeySerializer(AuditSerializer):
         model = APIKey
         fields = "__all__"
 
+    def validate(self, data):
+        api = data.get("api")
+        pipeline = data.get("pipeline")
+
+        if api and pipeline:
+            raise ValidationError(
+                "Only one of `api` or `pipeline` should be set, not both."
+            )
+        elif not api and not pipeline:
+            raise ValidationError("At least one of `api` or `pipeline` must be set.")
+
+        return data
+
     def to_representation(self, instance: APIKey) -> OrderedDict[str, Any]:
         """Override the to_representation method to include additional
         context."""
-        context = self.context.get("context", {})
-        deployment: APIDeployment = context.get("deployment")
+        deployment: Union[APIDeployment, Pipeline] = self.context.get("deployment")
         representation: OrderedDict[str, Any] = super().to_representation(instance)
+
         if deployment:
-            representation["api"] = deployment.id
-            representation["description"] = f"API Key for {deployment.name}"
+            # Handle APIDeployment and Pipeline separately
+            if isinstance(deployment, APIDeployment):
+                representation["api"] = deployment.id
+                representation["pipeline"] = None
+                representation["description"] = f"API Key for {deployment.api_name}"
+            elif isinstance(deployment, Pipeline):
+                representation["api"] = None
+                representation["pipeline"] = deployment.id
+                representation["description"] = (
+                    f"API Key for {deployment.pipeline_name}"
+                )
+            else:
+                raise ValueError(
+                    "Context must be an instance of APIDeployment or Pipeline"
+                )
+
             representation["is_active"] = True
 
         return representation

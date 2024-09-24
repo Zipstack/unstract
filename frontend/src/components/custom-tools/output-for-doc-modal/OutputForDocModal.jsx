@@ -26,9 +26,12 @@ import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 
 let publicOutputsApi;
+let publicAdapterApi;
 try {
   publicOutputsApi =
     require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
+  publicAdapterApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicAdapterApi;
 } catch {
   // The component will remain null of it is not available
 }
@@ -79,7 +82,12 @@ function OutputForDocModal({
     }
     handleGetOutputForDocs(selectedProfile || profileManagerId);
     getAdapterInfo();
-  }, [open, singlePassExtractMode, isSinglePassExtractLoading]);
+  }, [
+    open,
+    selectedProfile,
+    singlePassExtractMode,
+    isSinglePassExtractLoading,
+  ]);
 
   useEffect(() => {
     updatePromptOutput(docOutputs);
@@ -88,12 +96,6 @@ function OutputForDocModal({
   useEffect(() => {
     handleRowsGeneration(promptOutputs);
   }, [promptOutputs, tokenUsage]);
-
-  useEffect(() => {
-    if (selectedProfile) {
-      handleGetOutputForDocs(selectedProfile);
-    }
-  }, [selectedProfile]);
 
   const moveSelectedDocToTop = () => {
     // Create a copy of the list of documents
@@ -172,12 +174,14 @@ function OutputForDocModal({
   };
 
   const getAdapterInfo = () => {
-    axiosPrivate
-      .get(`/api/v1/unstract/${sessionDetails.orgId}/adapter/?adapter_type=LLM`)
-      .then((res) => {
-        const adapterList = res.data;
-        setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
-      });
+    let url = `/api/v1/unstract/${sessionDetails.orgId}/adapter/?adapter_type=LLM`;
+    if (isPublicSource) {
+      url = publicAdapterApi(id, "LLM");
+    }
+    axiosPrivate.get(url).then((res) => {
+      const adapterList = res.data;
+      setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
+    });
   };
 
   const handleGetOutputForDocs = (profile = profileManagerId) => {
@@ -187,8 +191,13 @@ function OutputForDocModal({
     }
     let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`;
     if (isPublicSource) {
-      url = publicOutputsApi(id, promptId, singlePassExtractMode);
-      url += `&profile_manager=${profile}`;
+      url = publicOutputsApi(
+        id,
+        promptId,
+        singlePassExtractMode,
+        null,
+        profile
+      );
     }
     const requestOptions = {
       method: "GET",

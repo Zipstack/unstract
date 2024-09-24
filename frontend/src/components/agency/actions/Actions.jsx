@@ -11,6 +11,7 @@ import {
 import { Button, Divider, Space, Tooltip, Typography, Alert } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { StepIcon } from "../../../assets/index.js";
 import {
@@ -27,6 +28,9 @@ import FileUpload from "../file-upload/FileUpload.jsx";
 import "./Actions.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+
+// Remove this variable and its usages from the code after the fix for step execution is implemented.
+const DISABLE_STEP_EXECUTION = true;
 
 function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   const [executionId, setExecutionId] = useState("");
@@ -429,47 +433,51 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
             </Button>
           </Tooltip>
           <Divider type="vertical" />
-          <Tooltip title="Start step execution">
-            <Button
-              onClick={() =>
-                apiOpsPresent
-                  ? getInputFile(true, true, 0)
-                  : handleWfExecution(true, true, 0)
-              }
-              disabled={disableAction() || handleDisable(0)}
-              loading={execType === "STEP"}
-            >
-              <StepIcon className="step-icon" />
-            </Button>
-          </Tooltip>
-          <Tooltip title="Next step">
-            <Button
-              onClick={() => handleWfExecution(false, true, 1)}
-              disabled={handleDisable(1)}
-              loading={stepExecType === wfExecutionTypes[1]}
-            >
-              <StepForwardOutlined />
-            </Button>
-          </Tooltip>
-          <Tooltip title="Execute remaining steps">
-            <Button
-              onClick={() => handleWfExecution(false, true, 3)}
-              disabled={handleDisable(3)}
-              loading={stepExecType === wfExecutionTypes[3]}
-            >
-              <FastForwardOutlined />
-            </Button>
-          </Tooltip>
-          <Tooltip title="Stop execution">
-            <Button
-              onClick={() => handleWfExecution(false, true, 2)}
-              disabled={handleDisable(2)}
-              loading={stepExecType === wfExecutionTypes[2]}
-            >
-              <StopOutlined />
-            </Button>
-          </Tooltip>
-          <Divider type="vertical" />
+          {!DISABLE_STEP_EXECUTION && (
+            <>
+              <Tooltip title="Start step execution">
+                <Button
+                  onClick={() =>
+                    apiOpsPresent
+                      ? getInputFile(true, true, 0)
+                      : handleWfExecution(true, true, 0)
+                  }
+                  disabled={disableAction() || handleDisable(0)}
+                  loading={execType === "STEP"}
+                >
+                  <StepIcon className="step-icon" />
+                </Button>
+              </Tooltip>
+              <Tooltip title="Next step">
+                <Button
+                  onClick={() => handleWfExecution(false, true, 1)}
+                  disabled={handleDisable(1)}
+                  loading={stepExecType === wfExecutionTypes[1]}
+                >
+                  <StepForwardOutlined />
+                </Button>
+              </Tooltip>
+              <Tooltip title="Execute remaining steps">
+                <Button
+                  onClick={() => handleWfExecution(false, true, 3)}
+                  disabled={handleDisable(3)}
+                  loading={stepExecType === wfExecutionTypes[3]}
+                >
+                  <FastForwardOutlined />
+                </Button>
+              </Tooltip>
+              <Tooltip title="Stop execution">
+                <Button
+                  onClick={() => handleWfExecution(false, true, 2)}
+                  disabled={handleDisable(2)}
+                  loading={stepExecType === wfExecutionTypes[2]}
+                >
+                  <StopOutlined />
+                </Button>
+              </Tooltip>
+              <Divider type="vertical" />
+            </>
+          )}
           <Tooltip title="Clear Cache">
             <Button disabled={isLoading} onClick={handleClearCache}>
               <ClearOutlined />
@@ -513,13 +521,13 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
                   <span>
                     This Workflow has been deployed as an {deploymentType}:{" "}
                   </span>
-                  <a
-                    href={`/${orgName}/${deploymentType
+                  <Link
+                    to={`/${orgName}/${deploymentType
                       .split(" ")[0]
                       .toLowerCase()}`}
                   >
                     {deploymentName}
-                  </a>
+                  </Link>
                 </>
               }
               type="success"

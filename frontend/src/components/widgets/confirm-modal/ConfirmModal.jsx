@@ -8,10 +8,16 @@ function ConfirmModal({
   content,
   okText,
   cancelText,
+  isDisabled,
 }) {
   const [modal, contextHolder] = Modal.useModal();
 
   const handleConfirmModal = () => {
+    if (isDisabled) {
+      handleConfirm();
+      return;
+    }
+
     modal.confirm({
       title: title || "Are you sure?",
       content: content || "",
@@ -30,6 +36,10 @@ function ConfirmModal({
   );
 }
 
+ConfirmModal.defaultProps = {
+  isDisabled: false,
+};
+
 ConfirmModal.propTypes = {
   children: PropTypes.any.isRequired,
   handleConfirm: PropTypes.func.isRequired,
@@ -37,6 +47,7 @@ ConfirmModal.propTypes = {
   content: PropTypes.string,
   okText: PropTypes.string,
   cancelText: PropTypes.string,
+  isDisabled: PropTypes.bool,
 };
 
 export { ConfirmModal };

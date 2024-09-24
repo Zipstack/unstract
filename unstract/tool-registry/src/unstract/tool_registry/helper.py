@@ -33,6 +33,8 @@ class ToolRegistryHelper:
         self.private_tools_file = private_tools_file
         self.public_tools_file = public_tools_file
         self.tools = self._load_tools_from_registry_file()
+        if self.tools:
+            logger.info(f"Loaded tools from registry YAML: {self.tools}")
 
     def _load_tools_from_registry_file(self) -> list[str]:
         """Load all tools from the registry YAML.
@@ -197,12 +199,10 @@ class ToolRegistryHelper:
         Returns:
             dict[str, Any]: _description_
         """
-        try:
-            yml_data: dict[str, Any] = ToolUtils.get_registry(self.registry_file)
-            return yml_data
-        except FileNotFoundError:
-            logger.error(f"File not found: {self.registry_file}")
-            raise RegistryNotFound()
+        yml_data: dict[str, Any] = ToolUtils.get_registry(
+            self.registry_file, raise_exc=True
+        )
+        return yml_data
 
     def save_registry(self, data: dict[str, Any]) -> None:
         """save_registry Save the updated YAML back to the file.
@@ -301,8 +301,14 @@ class ToolRegistryHelper:
                 data = ToolUtils.get_all_tools_from_disk(file_path=tool_file)
                 if not data:
                     logger.info(f"No data from {tool_file}")
+                tool_version_list = [
+                    f"tool: {k}, version: {v['properties']['toolVersion']}"
+                    for k, v in data.items()
+                ]
+                logger.info(f"Loading tools from {tool_file}: {tool_version_list}")
                 tools.update(data)
             except FileNotFoundError:
+                logger.warning(f"Unable to find tool file to load tools: {tool_file}")
                 pass
         return tools
 

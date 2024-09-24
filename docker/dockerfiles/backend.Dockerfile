@@ -37,7 +37,7 @@ COPY ${BUILD_PACKAGES_PATH}/ /unstract
 
 RUN set -e; \
     \
-    rm -rf .venv .pdm* .python* requirements.txt 2>/dev/null; \
+    rm -rf .venv .pdm* .python* 2>/dev/null; \
     \
     pdm venv create -w virtualenv --with-pip; \
     # source command may not be availble in sh

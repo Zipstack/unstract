@@ -8,7 +8,6 @@ from adapter_processor.exceptions import (
     InternalServiceError,
     InValidAdapterId,
     TestAdapterError,
-    TestAdapterInputError,
 )
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
@@ -16,8 +15,8 @@ from platform_settings.platform_auth_service import PlatformAuthenticationServic
 from unstract.sdk.adapters.adapterkit import Adapterkit
 from unstract.sdk.adapters.base import Adapter
 from unstract.sdk.adapters.enums import AdapterTypes
-from unstract.sdk.adapters.exceptions import AdapterError
 from unstract.sdk.adapters.x2text.constants import X2TextConstants
+from unstract.sdk.exceptions import SdkError
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -33,13 +32,9 @@ class AdapterProcessor:
             AdapterKeys.ID, adapter_id
         )
         if len(updated_adapters) != 0:
-            try:
-                schema_details[AdapterKeys.JSON_SCHEMA] = json.loads(
-                    updated_adapters[0].get(AdapterKeys.JSON_SCHEMA)
-                )
-            except Exception as exc:
-                logger.error(f"Error occured while parsing JSON Schema : {exc}")
-                raise InternalServiceError()
+            schema_details[AdapterKeys.JSON_SCHEMA] = json.loads(
+                updated_adapters[0].get(AdapterKeys.JSON_SCHEMA)
+            )
         else:
             logger.error(
                 f"Invalid adapter Id : {adapter_id} while fetching JSON Schema"
@@ -98,13 +93,7 @@ class AdapterProcessor:
             test_result: bool = adapter_instance.test_connection()
             logger.info(f"{adapter_id} test result: {test_result}")
             return test_result
-        # HACK: Remove after error is explicitly handled in VertexAI adapter
-        except json.JSONDecodeError:
-            raise TestAdapterInputError(
-                "Credentials is not a valid service account JSON, "
-                "please provide a valid JSON."
-            )
-        except AdapterError as e:
+        except SdkError as e:
             raise TestAdapterError(str(e))
 
     @staticmethod
@@ -257,8 +246,5 @@ class AdapterProcessor:
         except ObjectDoesNotExist as e:
             logger.error(f"No default adapters found: {e}")
             raise InternalServiceError(
-                "No default adapters found, " "configure them through Platform Settings"
+                "No default adapters found, configure them through Platform Settings"
             )
-        except Exception as e:
-            logger.error(f"Error occurred while fetching default adapters: {e}")
-            raise InternalServiceError("Error fetching default adapters")

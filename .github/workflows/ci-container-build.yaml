@@ -12,7 +12,6 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'unstract/**'
-      - 'document-service/**'
       - 'platform-service/**'
       - 'x2text-service/**'
       - 'worker/**'
@@ -26,7 +25,6 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'unstract/**'
-      - 'document-service/**'
       - 'platform-service/**'
       - 'x2text-service/**'
       - 'worker/**'
@@ -52,12 +50,12 @@ jobs:
         working-directory: ./docker
         run: |
           cp ../backend/sample.env ../backend/.env
-          cp ../document-service/sample.env ../document-service/.env
           cp ../platform-service/sample.env ../platform-service/.env
           cp ../prompt-service/sample.env ../prompt-service/.env
           cp ../worker/sample.env ../worker/.env
           cp ../x2text-service/sample.env ../x2text-service/.env
           cp sample.essentials.env essentials.env
+          cp sample.env .env
 
           docker compose -f docker-compose.yaml up -d
           sleep 10

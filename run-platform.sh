@@ -162,6 +162,24 @@ do_git_pull() {
   git pull --quiet $(git remote) $branch
 }
 
+copy_or_merge_envs() {
+
+  local src_file="$1"
+  local dest_file="$2"
+  local displayed_reason="$3"
+
+  if [ ! -e "$dest_file" ]; then
+    cp "$src_file" "$dest_file"
+    echo -e "Created env for ""$blue_text""$displayed_reason""$default_text"" at ""$blue_text""$dest_file""$default_text""."
+  elif [ "$opt_only_env" = true ] || [ "$opt_update" = true ]; then
+    python3 $script_dir/docker/scripts/merge_env.py "$src_file" "$dest_file"
+    if [ $? -ne 0 ]; then
+      exit 1
+    fi
+    echo -e "Merged env for ""$blue_text""$displayed_reason""$default_text"" at ""$blue_text""$dest_file""$default_text""."
+  fi
+}
+
 setup_env() {
   # Generate Fernet Key. Refer https://pypi.org/project/cryptography/. for both backend and platform-service.
   ENCRYPTION_KEY=$(python3 -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
@@ -209,16 +227,9 @@ setup_env() {
     fi
   done
 
-  if [ ! -e "$script_dir/docker/essentials.env" ]; then
-    cp "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
-    echo -e "Created env for ""$blue_text""essential services""$default_text"" at ""$blue_text""$script_dir/docker/essentials.env""$default_text""."
-  elif [ "$opt_only_env" = true ] || [ "$opt_update" = true ]; then
-    python3 $script_dir/docker/scripts/merge_env.py "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env"
-    if [ $? -ne 0 ]; then
-      exit 1
-    fi
-    echo -e "Merged env for ""$blue_text""essential services""$default_text"" at ""$blue_text""$script_dir/docker/essentials.env""$default_text""."
-  fi
+  copy_or_merge_envs "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env" "essential services"
+  copy_or_merge_envs "$script_dir/docker/sample.env" "$script_dir/docker/.env" "docker compose"
+
 
   if [ "$opt_only_env" = true ]; then
     echo -e "$green_text""Done.""$default_text" && exit 0

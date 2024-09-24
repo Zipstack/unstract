@@ -30,7 +30,7 @@ function EditableText({
 
   useEffect(() => {
     setText(defaultText);
-  }, []);
+  }, [defaultText]);
 
   useEffect(() => {
     // Attach the event listener when the component mounts
@@ -101,7 +101,7 @@ function EditableText({
 
   return (
     <Input
-      className="font-size-14 width-100 input-header-text"
+      className="width-100 input-header-text"
       value={text}
       onChange={handleTextChange}
       placeholder="Enter Key"

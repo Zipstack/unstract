@@ -11,7 +11,6 @@ import { useEffect, useState } from "react";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
-import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
@@ -25,8 +24,9 @@ const ManageKeys = ({
   apiKeys,
   setApiKeys,
   selectedApiRow,
+  apiService,
+  type,
 }) => {
-  const apiDeploymentsApiService = apiDeploymentsService();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
@@ -43,7 +43,7 @@ const ManageKeys = ({
     if (isNewKey) {
       setFormDetails({
         description: "",
-        api: selectedApiRow?.id,
+        [type]: selectedApiRow?.id,
         is_active: true,
       });
     } else {
@@ -55,7 +55,7 @@ const ManageKeys = ({
     if (isEditKey) {
       setFormDetails({
         description: selectedKeyRow?.description,
-        api: selectedApiRow?.id,
+        [type]: selectedApiRow?.id,
         is_active: selectedKeyRow?.is_active,
       });
     } else {
@@ -95,7 +95,7 @@ const ManageKeys = ({
   };
 
   const createKey = () => {
-    apiDeploymentsApiService
+    apiService
       .createApiKey(selectedApiRow?.id, formDetails)
       .then((res) => {
         addTableData(res?.data);
@@ -113,7 +113,7 @@ const ManageKeys = ({
   };
 
   const updateKey = () => {
-    apiDeploymentsApiService
+    apiService
       .updateApiKey(selectedKeyRow?.id, formDetails)
       .then((res) => {
         updateTableData(selectedKeyRow?.id, res?.data);
@@ -147,7 +147,7 @@ const ManageKeys = ({
   };
 
   const deleteApiKey = () => {
-    apiDeploymentsApiService
+    apiService
       .deleteApiKey(selectedKeyRow?.id)
       .then((res) => {
         deleteTableData(selectedKeyRow?.id);
@@ -360,6 +360,8 @@ ManageKeys.propTypes = {
   apiKeys: PropTypes.array.isRequired,
   setApiKeys: PropTypes.func.isRequired,
   selectedApiRow: PropTypes.object.isRequired,
+  apiService: PropTypes.func.isRequired,
+  type: PropTypes.string.isRequired,
 };
 
 export { ManageKeys };

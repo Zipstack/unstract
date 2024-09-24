@@ -10,7 +10,7 @@
       "connectorName": {
         "type": "string",
         "title": "Name of the connector",
-        "default": "Pandora's Local file connector"
+        "default": "Unstract's Local file connector"
       },
       "path": {
         "type": "string",

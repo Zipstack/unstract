@@ -21,15 +21,15 @@ if __name__ == "__main__":
     2. Pull the images
     3. Load tool data in to json file
     """
-    WORKER_HOST = "UNSTRACT_WORKER_HOST"
-    WORKER_PORT = "UNSTRACT_WORKER_PORT"
-    if WORKER_HOST not in os.environ or WORKER_PORT not in os.environ:
+    RUNNER_HOST = "UNSTRACT_RUNNER_HOST"
+    RUNNER_PORT = "UNSTRACT_RUNNER_PORT"
+    if RUNNER_HOST not in os.environ or RUNNER_PORT not in os.environ:
         print(
-            "Mandatory environment variables UNSTRACT_WORKER_HOST "
-            "and UNSTRACT_WORKER_PORT are missing."
+            "Mandatory environment variables UNSTRACT_RUNNER_HOST "
+            "and UNSTRACT_RUNNER_PORT are missing."
         )
         print(
-            f"Usage: {WORKER_HOST}=<host> {WORKER_PORT}=<port> "
+            f"Usage: {RUNNER_HOST}=<host> {RUNNER_PORT}=<port> "
             "python load_tools_to_json.py"
         )
         sys.exit(1)

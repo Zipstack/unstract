@@ -299,7 +299,7 @@ function ManageDocsModal({
     {
       title: (
         <Space className="w-100">
-          <Typography.Text>Index</Typography.Text>
+          <Typography.Text>Raw View</Typography.Text>
           <Typography.Text type="secondary">
             {"(" + getLlmProfileName(rawLlmProfile) + ")"}
           </Typography.Text>
@@ -308,13 +308,13 @@ function ManageDocsModal({
       ),
       dataIndex: "index",
       key: "index",
-      width: 260,
+      width: 300,
     },
     {
-      title: "Index",
+      title: "Actions",
       dataIndex: "reindex",
       key: "reindex",
-      width: 260,
+      width: 200,
     },
     {
       title: "",
@@ -340,7 +340,7 @@ function ManageDocsModal({
       ),
       dataIndex: "summary",
       key: "summary",
-      width: 260,
+      width: 300,
     });
   }
 

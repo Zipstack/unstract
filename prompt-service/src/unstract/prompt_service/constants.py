@@ -52,11 +52,21 @@ class PromptServiceContants:
     EXTRACTION = "extraction"
     SUMMARIZE = "summarize"
     SINGLE_PASS_EXTRACTION = "single-pass-extraction"
+    SIMPLE_PROMPT_STUDIO = "simple-prompt-studio"
     LLM_USAGE_REASON = "llm_usage_reason"
     METADATA = "metadata"
     OUTPUT = "output"
     CONTEXT = "context"
     INCLUDE_METADATA = "include_metadata"
+    TABLE = "table"
+    TABLE_SETTINGS = "table_settings"
+    EPILOGUE = "epilogue"
+    PLATFORM_POSTAMBLE = "platform_postamble"
+    EXTRACT_EPILOGUE = "extract-epilogue"
+    CLEAN_CONTEXT = "clean-context"
+    SUMMARIZE_AS_SOURCE = "summarize_as_source"
+    VARIABLE_MAP = "variable_map"
+    TEXT = "text"
 
 
 class LogLevel(Enum):
@@ -76,6 +86,7 @@ class RunLevel(Enum):
     RUN = "RUN"
     EVAL = "EVAL"
     CHALLENGE = "CHALLENGE"
+    TABLE_EXTRACTION = "TABLE_EXTRACTION"
 
 
 class FeatureFlag:

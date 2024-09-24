@@ -1,6 +1,7 @@
 from typing import Any, Optional
 
 from peewee import PostgresqlDatabase
+from unstract.prompt_service.config import db
 from unstract.prompt_service.constants import DBTableV2
 from unstract.prompt_service.env_manager import EnvLoader
 
@@ -8,7 +9,6 @@ DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract_v2")
 
 
 class DBUtils:
-    be_db: PostgresqlDatabase
 
     @classmethod
     def get_organization_from_bearer_token(
@@ -39,7 +39,7 @@ class DBUtils:
 
     @classmethod
     def _execute_query(cls, query: str, params: tuple = ()) -> Any:
-        cursor = cls.be_db.execute_sql(query, params)
+        cursor = db.execute_sql(query, params)
         result_row = cursor.fetchone()
         cursor.close()
         if not result_row or len(result_row) == 0:

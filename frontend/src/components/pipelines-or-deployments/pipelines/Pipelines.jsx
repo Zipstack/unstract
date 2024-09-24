@@ -6,13 +6,30 @@ import {
   HighlightOutlined,
   FileSearchOutlined,
   ReloadOutlined,
+  NotificationOutlined,
+  EditOutlined,
+  KeyOutlined,
+  CloudDownloadOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
-import { Button, Dropdown, Image, Space, Switch, Typography } from "antd";
+import {
+  Button,
+  Dropdown,
+  Image,
+  Space,
+  Switch,
+  Tooltip,
+  Typography,
+} from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import cronstrue from "cronstrue";
 
-import { deploymentsStaticContent } from "../../../helpers/GetStaticData";
+import {
+  deploymentApiTypes,
+  deploymentsStaticContent,
+  displayURL,
+} from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { useSessionStore } from "../../../store/session-store.js";
@@ -23,6 +40,10 @@ import { LogsModal } from "../log-modal/LogsModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import "./Pipelines.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { pipelineService } from "../pipeline-service.js";
+import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
+import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
+import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -39,6 +60,12 @@ function Pipelines({ type }) {
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
   const { fetchExecutionLogs } = require("../log-modal/fetchExecutionLogs.js");
+  const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
+  const [apiKeys, setApiKeys] = useState([]);
+  const pipelineApiService = pipelineService();
+  const { getApiKeys, downloadPostmanCollection, copyUrl } =
+    usePipelineHelper();
+  const [openNotificationModal, setOpenNotificationModal] = useState(false);
 
   const handleFetchLogs = (page, pageSize) => {
     fetchExecutionLogs(
@@ -280,19 +307,67 @@ function Pipelines({ type }) {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={() => setOpenDeleteModal(true)}
+          onClick={() => openAddModal(true)}
         >
           <div>
-            <DeleteOutlined />
+            <EditOutlined />
           </div>
           <div>
-            <Typography.Text>Delete</Typography.Text>
+            <Typography.Text>Edit</Typography.Text>
           </div>
         </Space>
       ),
     },
     {
       key: "2",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() => setOpenDeleteModal(true)}
+        >
+          <DeleteOutlined />
+          <Typography.Text>Delete</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      key: "3",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() =>
+            getApiKeys(
+              pipelineApiService,
+              selectedPorD?.id,
+              setApiKeys,
+              setOpenManageKeysModal
+            )
+          }
+        >
+          <KeyOutlined />
+          <Typography.Text>Manage Keys</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      key: "4",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() =>
+            downloadPostmanCollection(pipelineApiService, selectedPorD?.id)
+          }
+        >
+          <CloudDownloadOutlined />
+          <Typography.Text>Download Postman Collection</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -310,51 +385,39 @@ function Pipelines({ type }) {
             );
           }}
         >
-          <div>
-            <FileSearchOutlined />
-          </div>
-          <div>
-            <Typography.Text>View Logs</Typography.Text>
-          </div>
+          <FileSearchOutlined />
+          <Typography.Text>View Logs</Typography.Text>
         </Space>
       ),
     },
     {
-      key: "3",
+      key: "6",
       label: (
         <Space
           direction="horizontal"
           className="action-items"
           onClick={() => clearCache()}
         >
-          <div>
-            <ClearOutlined />
-          </div>
-          <div>
-            <Typography.Text>Clear Cache</Typography.Text>
-          </div>
+          <ClearOutlined />
+          <Typography.Text>Clear Cache</Typography.Text>
         </Space>
       ),
     },
     {
-      key: "4",
+      key: "7",
       label: (
         <Space
           direction="horizontal"
           className="action-items"
           onClick={() => clearFileMarkers()}
         >
-          <div>
-            <HighlightOutlined />
-          </div>
-          <div>
-            <Typography.Text>Clear Processed File History</Typography.Text>
-          </div>
+          <HighlightOutlined />
+          <Typography.Text>Clear Processed File History</Typography.Text>
         </Space>
       ),
     },
     {
-      key: "5",
+      key: "8",
       label: (
         <Space
           direction="horizontal"
@@ -365,12 +428,21 @@ function Pipelines({ type }) {
             })
           }
         >
-          <div>
-            <SyncOutlined />
-          </div>
-          <div>
-            <Typography.Text>Sync Now</Typography.Text>
-          </div>
+          <SyncOutlined />
+          <Typography.Text>Sync Now</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      key: "9",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() => setOpenNotificationModal(true)}
+        >
+          <NotificationOutlined />
+          <Typography.Text>Setup Notifications</Typography.Text>
         </Space>
       ),
     },
@@ -422,6 +494,30 @@ function Pipelines({ type }) {
       align: "center",
     },
     {
+      title: "API Endpoint",
+      key: "api_endpoint",
+      render: (_, record) => (
+        <Space direction="horizontal" className="display-flex-space-between">
+          <div>
+            <Typography.Text>
+              {displayURL(record?.api_endpoint)}
+            </Typography.Text>
+          </div>
+          <div>
+            <Tooltip title="click to copy">
+              <Button
+                size="small"
+                onClick={() => copyUrl(record?.api_endpoint)}
+              >
+                <CopyOutlined />
+              </Button>
+            </Tooltip>
+          </div>
+        </Space>
+      ),
+      align: "left",
+    },
+    {
       title: "Status of Previous Run",
       dataIndex: "last_run_status",
       key: "last_run_status",
@@ -467,7 +563,7 @@ function Pipelines({ type }) {
       render: (_, record) => (
         <div>
           <Typography.Text className="p-or-d-typography" strong>
-            {cronstrue.toString(record?.cron_string)}
+            {record?.cron_string && cronstrue.toString(record?.cron_string)}
           </Typography.Text>
         </div>
       ),
@@ -495,8 +591,9 @@ function Pipelines({ type }) {
           menu={{ items: actionItems }}
           placement="bottomLeft"
           onOpenChange={() => setSelectedPorD(record)}
+          trigger={["click"]}
         >
-          <EllipsisOutlined rotate={90} className="p-or-d-actions" />
+          <EllipsisOutlined className="p-or-d-actions cur-pointer" />
         </Dropdown>
       ),
     },
@@ -534,6 +631,21 @@ function Pipelines({ type }) {
         open={openDeleteModal}
         setOpen={setOpenDeleteModal}
         deleteRecord={deletePipeline}
+      />
+      <ManageKeys
+        isDialogOpen={openManageKeysModal}
+        setDialogOpen={setOpenManageKeysModal}
+        apiKeys={apiKeys}
+        setApiKeys={setApiKeys}
+        selectedApiRow={selectedPorD}
+        apiService={pipelineApiService}
+        type={deploymentApiTypes.pipeline}
+      />
+      <NotificationModal
+        open={openNotificationModal}
+        setOpen={setOpenNotificationModal}
+        type={deploymentApiTypes.pipeline}
+        id={selectedPorD?.id}
       />
     </div>
   );

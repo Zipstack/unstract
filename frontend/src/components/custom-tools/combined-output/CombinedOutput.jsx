@@ -30,12 +30,12 @@ try {
 } catch {
   // The component will remain null of it is not available
 }
-let publicOutputsDocApi;
+let publicOutputsApi;
 let publicAdapterApi;
 let publicDefaultOutputApi;
 try {
-  publicOutputsDocApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsDocApi;
+  publicOutputsApi =
+    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
   publicAdapterApi =
     require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicAdapterApi;
   publicDefaultOutputApi =
@@ -69,10 +69,12 @@ function CombinedOutput({ docId, setFilledFields }) {
   useEffect(() => {
     getAdapterInfo();
   }, []);
+
   useEffect(() => {
     setActiveKey(singlePassExtractMode ? defaultLlmProfile : "0");
     setSelectedProfile(singlePassExtractMode ? defaultLlmProfile : null);
   }, [singlePassExtractMode]);
+
   useEffect(() => {
     if (!docId || isSinglePassExtractLoading) {
       return;
@@ -84,7 +86,7 @@ function CombinedOutput({ docId, setFilledFields }) {
       .then((res) => {
         const data = res?.data || [];
         const prompts = details?.prompts;
-        if (activeKey === "0") {
+        if (activeKey === "0" && !isSimplePromptStudio) {
           const output = {};
           for (const key in data) {
             if (Object.hasOwn(data, key)) {
@@ -143,11 +145,12 @@ function CombinedOutput({ docId, setFilledFields }) {
     if (isSimplePromptStudio) {
       url = promptOutputApiSps(details?.tool_id, null, docId);
     } else if (isPublicSource) {
-      url = publicOutputsDocApi(
+      url = publicOutputsApi(
         id,
+        null,
+        singlePassExtractMode,
         docId,
-        selectedProfile || defaultLlmProfile,
-        singlePassExtractMode
+        selectedProfile || defaultLlmProfile
       );
       if (activeKey === "0") {
         url = publicDefaultOutputApi(id, docId);
@@ -179,6 +182,7 @@ function CombinedOutput({ docId, setFilledFields }) {
   };
 
   const getAdapterInfo = () => {
+    if (isSimplePromptStudio) return;
     let url = `/api/v1/unstract/${sessionDetails?.orgId}/adapter/?adapter_type=LLM`;
     if (isPublicSource) {
       url = publicAdapterApi(id, "LLM");

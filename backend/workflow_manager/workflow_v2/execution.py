@@ -3,9 +3,7 @@ import time
 from typing import Optional
 
 from account_v2.constants import Common
-from api_v2.exceptions import InvalidAPIRequest
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
-from tool_instance_v2.constants import JsonSchemaKey
 from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.tool_processor import ToolProcessor
 from unstract.tool_registry.dto import Tool
@@ -108,13 +106,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
         self.compilation_result = self.compile_workflow(execution_id=self.execution_id)
 
-    def _initiate_api_execution(
-        self, tool_instance: ToolInstance, execution_path: Optional[str]
-    ) -> None:
-        if not execution_path:
-            raise InvalidAPIRequest("File shouldn't be empty")
-        tool_instance.metadata[JsonSchemaKey.ROOT_FOLDER] = execution_path
-
     @staticmethod
     def create_workflow_execution(
         workflow_id: str,
@@ -165,7 +156,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         if execution_time is not None:
             execution.execution_time = execution_time
         if error:
-            execution.error_message = error
+            execution.error_message = error[:EXECUTION_ERROR_LENGTH]
         if increment_attempt:
             execution.attempts += 1
 
