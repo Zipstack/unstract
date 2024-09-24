@@ -361,7 +361,7 @@ if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
             "ATOMIC_REQUESTS": ATOMIC_REQUESTS,
             "OPTIONS": {
                 "options": f"-c search_path={DB_SCHEMA}",
-                "application_name": os.environ.get("APPLICATION_NAME", "")
+                "application_name": os.environ.get("APPLICATION_NAME", ""),
             },
         }
     }
