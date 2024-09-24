@@ -7,30 +7,94 @@ import {
 import { Button, Card, Col, Collapse, Row, Space, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 import "./NotesCard.css";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { EditableText } from "../editable-text/EditableText";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";
 import { ExpandCardBtn } from "../prompt-card/ExpandCardBtn";
+import { handleUpdateStatus } from "../prompt-card/constants";
 
 function NotesCard({
-  details,
-  handleChange,
+  promptDetails,
+  handleChangePromptCard,
   handleDelete,
-  updateStatus,
   updatePlaceHolder,
+  setUpdatedPromptsCopy,
 }) {
+  const [promptDetailsState, setPromptDetailsState] = useState({});
+  const [isPromptDetailsStateUpdated, setIsPromptDetailsStateUpdated] =
+    useState(false);
+  const [updateStatus, setUpdateStatus] = useState({
+    promptId: null,
+    status: null,
+  });
   const [promptKey, setPromptKey] = useState("");
   const [promptText, setPromptText] = useState("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [expandCard, setExpandCard] = useState(true);
 
+  useEffect(() => {
+    if (
+      isPromptDetailsStateUpdated ||
+      !Object.keys(promptDetails || {})?.length
+    )
+      return;
+    setPromptDetailsState(promptDetails);
+    setIsPromptDetailsStateUpdated(true);
+  }, [promptDetails]);
+
   const enableEdit = (event) => {
     event.stopPropagation();
     setIsEditingTitle(true);
     setIsEditingNote(true);
+  };
+
+  const handleChange = async (
+    value,
+    promptId,
+    name,
+    isUpdateStatus = false
+  ) => {
+    const prevPromptDetailsState = { ...promptDetailsState };
+
+    const updatedPromptDetailsState = { ...promptDetailsState };
+    updatedPromptDetailsState[name] = value;
+
+    handleUpdateStatus(
+      isUpdateStatus,
+      promptId,
+      promptStudioUpdateStatus.isUpdating,
+      setUpdateStatus
+    );
+    setPromptDetailsState(updatedPromptDetailsState);
+
+    return handleChangePromptCard(name, value, promptId)
+      .then((res) => {
+        const data = res?.data;
+        setUpdatedPromptsCopy((prev) => {
+          prev[promptId] = data;
+          return prev;
+        });
+        handleUpdateStatus(
+          isUpdateStatus,
+          promptId,
+          promptStudioUpdateStatus.done,
+          setUpdateStatus
+        );
+      })
+      .catch(() => {
+        handleUpdateStatus(isUpdateStatus, promptId, null, setUpdateStatus);
+        setPromptDetailsState(prevPromptDetailsState);
+      })
+      .finally(() => {
+        if (isUpdateStatus) {
+          setTimeout(() => {
+            handleUpdateStatus(true, promptId, null, setUpdateStatus);
+          }, 3000);
+        }
+      });
   };
 
   return (
@@ -47,14 +111,14 @@ function NotesCard({
               setIsEditing={setIsEditingTitle}
               text={promptKey}
               setText={setPromptKey}
-              promptId={details?.prompt_id}
-              defaultText={details?.prompt_key}
+              promptId={promptDetailsState?.prompt_id}
+              defaultText={promptDetailsState?.prompt_key}
               handleChange={handleChange}
               placeHolder={updatePlaceHolder}
             />
           </Col>
           <Col span={6} className="display-flex-right">
-            {updateStatus?.promptId === details?.prompt_id && (
+            {updateStatus?.promptId === promptDetailsState?.prompt_id && (
               <>
                 {updateStatus?.status ===
                   promptStudioUpdateStatus.isUpdating && (
@@ -92,7 +156,7 @@ function NotesCard({
               </Button>
             </Tooltip>
             <ConfirmModal
-              handleConfirm={() => handleDelete(details?.prompt_id)}
+              handleConfirm={() => handleDelete(promptDetailsState?.prompt_id)}
               content="The note will be permanently deleted."
             >
               <Tooltip title="Delete">
@@ -114,8 +178,8 @@ function NotesCard({
               setIsEditing={setIsEditingNote}
               text={promptText}
               setText={setPromptText}
-              promptId={details?.prompt_id}
-              defaultText={details?.prompt}
+              promptId={promptDetailsState?.prompt_id}
+              defaultText={promptDetailsState?.prompt}
               handleChange={handleChange}
               isTextarea={true}
               placeHolder={updatePlaceHolder}
@@ -128,11 +192,11 @@ function NotesCard({
 }
 
 NotesCard.propTypes = {
-  details: PropTypes.object.isRequired,
-  handleChange: PropTypes.func.isRequired,
+  promptDetails: PropTypes.object.isRequired,
+  handleChangePromptCard: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
-  updateStatus: PropTypes.object.isRequired,
   updatePlaceHolder: PropTypes.string,
+  setUpdatedPromptsCopy: PropTypes.func.isRequired,
 };
 
 export { NotesCard };

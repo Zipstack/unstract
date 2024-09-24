@@ -6,11 +6,16 @@ const STORE_VARIABLES = {
 
 const useTokenUsageStore = create((setState) => ({
   ...STORE_VARIABLES,
-  setTokenUsage: (tokenUsageId, data) => {
+  setTokenUsage: (data) => {
+    setState({
+      tokenUsage: { ...data },
+    });
+  },
+  updateTokenUsage: (data) => {
     setState((state) => ({
       tokenUsage: {
         ...state.tokenUsage,
-        [tokenUsageId]: data,
+        ...data,
       },
     }));
   },

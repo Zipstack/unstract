@@ -1,5 +1,8 @@
+import logging
 import os
 from typing import Optional
+
+logger = logging.getLogger()
 
 
 class UnstractUtils:
@@ -23,3 +26,17 @@ class UnstractUtils:
         if env_value is None or env_value == "" and raise_err:
             raise RuntimeError(f"Env variable {env_key} is required")
         return env_value
+
+    @staticmethod
+    def build_tool_container_name(
+        tool_image: str, tool_version: str, run_id: str
+    ) -> str:
+        container_name = f"{tool_image.split('/')[-1]}-{tool_version}-{run_id}"
+
+        # To support limits of container clients like K8s
+        if len(container_name) > 63:
+            logger.warning(
+                f"Container name exceeds 63 char limit for '{container_name}', "
+                "truncating to 63 chars. There might be collisions in container names"
+            )
+        return container_name[:63]
