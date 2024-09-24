@@ -103,13 +103,10 @@ function Header({
   };
 
   const handleConfirmForceExport = useCallback(() => {
-    if (lastExportParams) {
-      const { selectedUsers, toolDetail, isSharedWithEveryone } =
-        lastExportParams;
+    const { selectedUsers, toolDetail, isSharedWithEveryone } =
+      lastExportParams;
 
-      handleExport(selectedUsers, toolDetail, isSharedWithEveryone, true);
-    }
-
+    handleExport(selectedUsers, toolDetail, isSharedWithEveryone, true);
     setConfirmModalVisible(false);
   }, [lastExportParams]);
 
