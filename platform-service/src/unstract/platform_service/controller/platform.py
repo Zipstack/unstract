@@ -26,6 +26,7 @@ be_db = PostgresqlDatabase(
     password=Env.PG_BE_PASSWORD,
     host=Env.PG_BE_HOST,
     port=Env.PG_BE_PORT,
+    options=f"-c application_name={Env.APPLICATION_NAME}",
 )
 be_db.init(Env.PG_BE_DATABASE)
 

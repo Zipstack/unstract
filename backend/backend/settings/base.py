@@ -15,6 +15,7 @@ from typing import Optional
 from urllib.parse import quote_plus
 
 from dotenv import find_dotenv, load_dotenv
+from utils.common_utils import CommonUtils
 
 from backend.constants import FeatureFlag
 from unstract.flags.feature_flag import check_feature_flag_status
@@ -175,7 +176,9 @@ CELERY_BROKER_URL = get_required_setting(
 
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
 NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))
-ATOMIC_REQUESTS = os.environ.get("DJANGO_ATOMIC_REQUESTS", False)
+ATOMIC_REQUESTS = CommonUtils.str_to_bool(
+    os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
+)
 # Flag to Enable django admin
 ADMIN_ENABLED = False
 
@@ -356,7 +359,10 @@ if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
             "PASSWORD": f"{DB_PASSWORD}",
             "PORT": f"{DB_PORT}",
             "ATOMIC_REQUESTS": ATOMIC_REQUESTS,
-            "OPTIONS": {"options": f"-c search_path={DB_SCHEMA}"},
+            "OPTIONS": {
+                "options": f"-c search_path={DB_SCHEMA}",
+                "application_name": os.environ.get("APPLICATION_NAME", "")
+            },
         }
     }
 else:
@@ -397,6 +403,9 @@ else:
             "PASSWORD": f"{DB_PASSWORD}",
             "PORT": f"{DB_PORT}",
             "ATOMIC_REQUESTS": ATOMIC_REQUESTS,
+            "OPTIONS": {
+                "application_name": os.environ.get("APPLICATION_NAME", ""),
+            },
         }
     }
 
@@ -438,7 +447,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "backend.wsgi.application"
-
 
 # SocketIO connection manager
 SOCKET_IO_MANAGER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
