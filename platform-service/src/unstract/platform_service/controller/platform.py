@@ -8,10 +8,10 @@ from cryptography.fernet import Fernet, InvalidToken
 from flask import Blueprint, Request
 from flask import current_app as app
 from flask import jsonify, make_response, request
-from peewee import PostgresqlDatabase
 from unstract.platform_service.constants import DBTable, DBTableV2, FeatureFlag
 from unstract.platform_service.env import Env
 from unstract.platform_service.exceptions import APIError
+from unstract.platform_service.extensions import db
 from unstract.platform_service.helper.adapter_instance import (
     AdapterInstanceRequestHelper,
 )
@@ -19,15 +19,6 @@ from unstract.platform_service.helper.cost_calculation import CostCalculationHel
 from unstract.platform_service.helper.prompt_studio import PromptStudioRequestHelper
 
 from unstract.flags.feature_flag import check_feature_flag_status
-
-be_db = PostgresqlDatabase(
-    Env.PG_BE_DATABASE,
-    user=Env.PG_BE_USERNAME,
-    password=Env.PG_BE_PASSWORD,
-    host=Env.PG_BE_HOST,
-    port=Env.PG_BE_PORT,
-)
-be_db.init(Env.PG_BE_DATABASE)
 
 platform_bp = Blueprint("platform", __name__)
 
@@ -85,7 +76,7 @@ def get_organization_from_bearer_token(token: str) -> tuple[Optional[int], str]:
 
 
 def execute_query(query: str, params: tuple = ()) -> Any:
-    cursor = be_db.execute_sql(query, params)
+    cursor = db.execute_sql(query, params)
     result_row = cursor.fetchone()
     cursor.close()
     if not result_row or len(result_row) == 0:
@@ -104,8 +95,8 @@ def validate_bearer_token(token: Optional[str]) -> bool:
         else:
             platform_key_table = "account_platformkey"
 
-        query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
-        cursor = be_db.execute_sql(query)
+        query = f"SELECT * FROM {platform_key_table} WHERE key = %s"
+        cursor = db.execute_sql(query, (token,))
         result_row = cursor.fetchone()
         cursor.close()
         if not result_row or len(result_row) == 0:
@@ -174,8 +165,8 @@ def page_usage() -> Any:
     )
 
     try:
-        with be_db.atomic() as transaction:
-            be_db.execute_sql(query, params)
+        with db.atomic() as transaction:
+            db.execute_sql(query, params)
             transaction.commit()
             app.logger.info("Entry created with id %s for %s", usage_id, org_id)
             result["status"] = "OK"
@@ -294,8 +285,8 @@ def usage() -> Any:
             current_time,
         )
     try:
-        with be_db.atomic() as transaction:
-            be_db.execute_sql(query, params)
+        with db.atomic() as transaction:
+            db.execute_sql(query, params)
             transaction.commit()
             app.logger.info("Entry created with id %s for %s", usage_id, org_id)
             result["status"] = "OK"
@@ -439,7 +430,6 @@ def adapter_instance() -> Any:
 
         try:
             data_dict = AdapterInstanceRequestHelper.get_adapter_instance_from_db(
-                db_instance=be_db,
                 organization_id=organization_id,
                 adapter_instance_id=adapter_instance_id,
                 organization_uid=organization_uid,
@@ -496,7 +486,7 @@ def custom_tool_instance() -> Any:
 
         try:
             data_dict = PromptStudioRequestHelper.get_prompt_instance_from_db(
-                db_instance=be_db,
+                db_instance=db,
                 organization_id=organization_id,
                 prompt_registry_id=prompt_registry_id,
             )
@@ -508,8 +498,3 @@ def custom_tool_instance() -> Any:
             )
             return "Internal Server Error", 500
     return "Method Not Allowed", 405
-
-
-if __name__ == "__main__":
-    # Start the server
-    app.run(host="0.0.0.0", port="3001")

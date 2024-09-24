@@ -1,4 +1,6 @@
+import logging
 import os
+import re
 from typing import Optional
 
 
@@ -59,3 +61,12 @@ def format_float_positional(value: float, precision: int = 10) -> str:
     """
     formatted: str = f"{value:.{precision}f}"
     return formatted.rstrip("0").rstrip(".") if "." in formatted else formatted
+
+
+class RemoveAccessLogTimestamp(logging.Filter):
+    # '127.0.0.1 - - [24/Sep/2024 06:57:35] "%s" %s %s' -> '192.168.0.102 - "%s" %s %s'
+    pattern: re.Pattern = re.compile(r' - - \[.+?] "')
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = self.pattern.sub(' - "', record.msg)
+        return True
