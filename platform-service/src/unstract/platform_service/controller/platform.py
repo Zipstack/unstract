@@ -76,12 +76,12 @@ def get_organization_from_bearer_token(token: str) -> tuple[Optional[int], str]:
     """
     if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
         query = f"""
-            SELECT organization_id FROM "{DB_SCHEMA}".{DBTableV2.PLATFORM_KEY}
+            SELECT organization_id FROM "{Env.DB_SCHEMA}".{DBTableV2.PLATFORM_KEY}
             WHERE key=%s
         """
         organization_uid: int = execute_query(query, (token,))
         query_org = f"""
-            SELECT organization_id FROM "{DB_SCHEMA}".{DBTableV2.ORGANIZATION}
+            SELECT organization_id FROM "{Env.DB_SCHEMA}".{DBTableV2.ORGANIZATION}
             WHERE id=%s
         """
         organization_identifier: str = execute_query(query_org, (organization_uid,))
@@ -109,7 +109,7 @@ def validate_bearer_token(token: Optional[str]) -> bool:
         if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
             platform_key_table = DBTableV2.PLATFORM_KEY
             query = f"""
-                SELECT * FROM \"{DB_SCHEMA}\".{platform_key_table}
+                SELECT * FROM \"{Env.DB_SCHEMA}\".{platform_key_table}
                 WHERE key = '{token}'
             """
         else:
@@ -253,7 +253,7 @@ def usage() -> Any:
     current_time = datetime.now()
     if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
         query = f"""
-            INSERT INTO \"{DB_SCHEMA}\".{DBTableV2.TOKEN_USAGE} (
+            INSERT INTO \"{Env.DB_SCHEMA}\".{DBTableV2.TOKEN_USAGE} (
             id, organization_id, workflow_id,
             execution_id, adapter_instance_id, run_id, usage_type,
             llm_usage_reason, model_name, embedding_tokens, prompt_tokens,
