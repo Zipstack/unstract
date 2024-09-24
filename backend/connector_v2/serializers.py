@@ -71,8 +71,6 @@ class ConnectorInstanceSerializer(AuditSerializer):
         encryption_secret: str = settings.ENCRYPTION_KEY
         f: Fernet = Fernet(encryption_secret.encode("utf-8"))
         json_string: str = json.dumps(kwargs.get(CIKey.CONNECTOR_METADATA))
-        if self.validated_data:
-            self.validated_data.pop(CIKey.CONNECTOR_METADATA)
 
         kwargs[CIKey.CONNECTOR_METADATA] = f.encrypt(json_string.encode("utf-8"))
 
