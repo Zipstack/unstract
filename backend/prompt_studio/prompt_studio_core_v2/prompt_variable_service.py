@@ -2,9 +2,9 @@ import re
 from enum import Enum
 from typing import Any
 
-from prompt_studio.prompt_studio.models import ToolStudioPrompt
-from prompt_studio.prompt_studio_core.exceptions import PromptNotRun
+from prompt_studio.prompt_studio_core_v2.exceptions import PromptNotRun
 from prompt_studio.prompt_studio_output_manager.models import PromptStudioOutputManager
+from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 
 
 class VariableType(str, Enum):
