@@ -386,10 +386,10 @@ function OutputForDocModal({
 OutputForDocModal.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
-  promptId: PropTypes.string.isRequired,
-  promptKey: PropTypes.string.isRequired,
+  promptId: PropTypes.string,
+  promptKey: PropTypes.string,
   profileManagerId: PropTypes.string,
-  docOutputs: PropTypes.object,
+  docOutputs: PropTypes.array,
 };
 
 export { OutputForDocModal };

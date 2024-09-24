@@ -1,5 +1,6 @@
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { formatNumberWithCommas } from "../../../helpers/GetStaticData";
 
@@ -33,7 +34,7 @@ function TokenUsage({ tokenUsageId, isLoading }) {
 
 TokenUsage.propTypes = {
   tokenUsageId: PropTypes.string.isRequired,
-  isLoading: PropTypes.bool.isRequired,
+  isLoading: PropTypes.bool,
 };
 
 export { TokenUsage };

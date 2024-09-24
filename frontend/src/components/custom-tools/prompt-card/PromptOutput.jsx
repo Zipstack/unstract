@@ -416,7 +416,7 @@ PromptOutput.propTypes = {
   setEnabledProfiles: PropTypes.func.isRequired,
   isNotSingleLlmProfile: PropTypes.bool.isRequired,
   setIsIndexOpen: PropTypes.func.isRequired,
-  enforceType: PropTypes.string.isRequired,
+  enforceType: PropTypes.string,
   promptOutputs: PropTypes.object.isRequired,
 };
 

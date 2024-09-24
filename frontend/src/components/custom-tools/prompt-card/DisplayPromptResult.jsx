@@ -25,7 +25,7 @@ function DisplayPromptResult({ output }) {
 }
 
 DisplayPromptResult.propTypes = {
-  output: PropTypes.any.isRequired,
+  output: PropTypes.any,
 };
 
 export { DisplayPromptResult };

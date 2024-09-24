@@ -13,7 +13,7 @@ PromptRunTimer.displayName = "PromptRunTimer";
 
 PromptRunTimer.propTypes = {
   timer: PropTypes.object,
-  isLoading: PropTypes.bool.isRequired,
+  isLoading: PropTypes.bool,
 };
 
 export { PromptRunTimer };

@@ -243,7 +243,7 @@ function Header({
 
 Header.propTypes = {
   promptDetails: PropTypes.object.isRequired,
-  promptKey: PropTypes.text,
+  promptKey: PropTypes.string,
   setPromptKey: PropTypes.func.isRequired,
   progressMsg: PropTypes.object.isRequired,
   handleRun: PropTypes.func.isRequired,

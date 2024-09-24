@@ -1,5 +1,6 @@
 import { Col, Image, Modal, Row, Typography } from "antd";
 import PropTypes from "prop-types";
+
 import { DisplayPromptResult } from "./DisplayPromptResult";
 import { TABLE_ENFORCE_TYPE } from "./constants";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
@@ -102,7 +103,7 @@ PromptOutputsModal.propTypes = {
   setOpen: PropTypes.func.isRequired,
   promptId: PropTypes.string.isRequired,
   llmProfiles: PropTypes.array.isRequired,
-  enforceType: PropTypes.string.isRequired,
+  enforceType: PropTypes.string,
   displayLlmProfile: PropTypes.bool.isRequired,
   promptOutputs: PropTypes.object.isRequired,
 };
