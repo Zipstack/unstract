@@ -36,3 +36,4 @@ class PromptStudioRegistryInfoSerializer(AuditSerializer):
 class ExportToolRequestSerializer(serializers.Serializer):
     is_shared_with_org = serializers.BooleanField(default=False)
     user_id = serializers.ListField(child=serializers.IntegerField(), required=False)
+    force_export = serializers.BooleanField(default=False)
