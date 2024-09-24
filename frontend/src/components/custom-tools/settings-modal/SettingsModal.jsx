@@ -14,7 +14,6 @@ import { ManageLlmProfiles } from "../manage-llm-profiles/ManageLlmProfiles";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { CustomSynonyms } from "../custom-synonyms/CustomSynonyms";
 import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
-import { HighLightMetaData } from "../highlight-metadata/HighLightMetaData.jsx";
 
 import "./SettingsModal.css";
 
@@ -42,7 +41,6 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       getMenuItem("Manage Grammar", 5, <MessageOutlined />),
       getMenuItem("Preamble", 6, <DiffOutlined />),
       getMenuItem("Postamble", 7, <DiffOutlined />),
-      getMenuItem("Manage Highlighting", 8, <CodeOutlined />),
     ];
 
     const listOfComponents = {
@@ -60,7 +58,6 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
           handleUpdateTool={handleUpdateTool}
         />
       ),
-      8: <HighLightMetaData handleUpdateTool={handleUpdateTool} />,
     };
 
     let position = 1;

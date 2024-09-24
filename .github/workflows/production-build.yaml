@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service_name: [backend, frontend, document-service, platform-service, prompt-service, worker, x2text-service]
+        service_name: [backend, frontend, platform-service, prompt-service, worker, x2text-service]
 
     steps:
       - name: Checkout code for release
@@ -43,7 +43,7 @@ jobs:
         working-directory: ./docker
         run: |
           DOCKER_VERSION_TAG=${{ github.event.release.tag_name  || github.event.inputs.tag}}
-          VERSION=$DOCKER_VERSION_TAG docker-compose -f docker-compose.build.yaml build --no-cache ${{ matrix.service_name }}
+          VERSION=$DOCKER_VERSION_TAG docker compose -f docker-compose.build.yaml build --no-cache ${{ matrix.service_name }}
           docker push unstract/${{ matrix.service_name }}:$DOCKER_VERSION_TAG
           if [ "${{ github.event_name }}" = "release" ]; then
             echo "This workflow was triggered by a release event."

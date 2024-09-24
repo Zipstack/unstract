@@ -14,15 +14,15 @@ const useAlertStore = create((setState) => ({
   ...STORE_VARIABLES,
   setAlertDetails: (details) => {
     setState(() => {
+      if (!details) return STORE_VARIABLES;
       const isErrorType = details?.type === "error";
-      details["title"] =
-        details["title"] || (isErrorType ? "Failed" : "Success");
-      details["duration"] = isNonNegativeNumber(details.duration)
-        ? details.duration
+      details["title"] = details?.title || (isErrorType ? "Failed" : "Success");
+      details["duration"] = isNonNegativeNumber(details?.duration)
+        ? details?.duration
         : isErrorType
         ? 0
         : undefined;
-      details.key = `open${Date.now()}`;
+      details["key"] = `open${Date.now()}`;
       return { alertDetails: { ...details } };
     });
   },

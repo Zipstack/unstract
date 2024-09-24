@@ -5,8 +5,7 @@
   "required": [
     "connectorName",
     "json_credentials",
-    "project_id",
-    "bucket"
+    "project_id"
   ],
   "properties": {
     "connectorName": {

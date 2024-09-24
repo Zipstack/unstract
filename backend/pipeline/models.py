@@ -1,7 +1,8 @@
 import uuid
 
 from account.models import User
-from django.db import models
+from django.conf import settings
+from django.db import connection, models
 from utils.models.base_model import BaseModel
 from workflow_manager.workflow.models.workflow import Workflow
 
@@ -41,12 +42,16 @@ class Pipeline(BaseModel):
     )
     # Added as text field until a model for App is included.
     app_id = models.TextField(null=True, blank=True, max_length=APP_ID_LENGTH)
-    active = models.BooleanField(default=False)  # TODO: Add dbcomment
-    scheduled = models.BooleanField(default=False)  # TODO: Add dbcomment
+    active = models.BooleanField(
+        default=False, db_comment="Indicates whether the pipeline is active"
+    )
+    scheduled = models.BooleanField(
+        default=False, db_comment="Indicates whether the pipeline is scheduled"
+    )
     cron_string = models.TextField(
         db_comment="UNIX cron string",
-        null=False,
-        blank=False,
+        null=True,
+        blank=True,
         max_length=FieldLength.CRON_LENGTH,
     )
     pipeline_type = models.CharField(
@@ -80,8 +85,25 @@ class Pipeline(BaseModel):
         blank=True,
     )
 
+    @property
+    def api_key_data(self):
+        return {"pipeline": self.id, "description": f"API Key for {self.pipeline_name}"}
+
+    @property
+    def api_endpoint(self):
+        org_schema = connection.tenant.schema_name
+        deployment_endpoint = settings.API_DEPLOYMENT_PATH_PREFIX + "/pipeline/api"
+        api_endpoint = f"{deployment_endpoint}/{org_schema}/{self.id}/"
+        return api_endpoint
+
     def __str__(self) -> str:
-        return f"Pipeline({self.id})"
+        return (
+            f"Pipeline({self.id}) ("
+            f"name: {self.pipeline_name}, "
+            f"cron string: {self.cron_string}, "
+            f"is active: {self.active}, "
+            f"is scheduled: {self.scheduled}"
+        )
 
     class Meta:
         constraints = [

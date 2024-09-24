@@ -39,3 +39,23 @@ class EnvManager:
                 cls.missing_settings
             )
             raise ValueError(ERROR_MESSAGE)
+
+
+def format_float_positional(value: float, precision: int = 10) -> str:
+    """Format floats to a string.
+
+    Formats a floating-point number to a string with the specified precision,
+    removing trailing zeros and the decimal point if not needed.
+
+    Args:
+        value (float): The floating-point number to format.
+        precision (int, optional): The number of decimal places to
+            include in the formatted output. Defaults to 10.
+
+    Returns:
+        str: The formatted string representation of the float,
+            with unnecessary trailing zeros and the decimal point
+            removed if the float is an integer.
+    """
+    formatted: str = f"{value:.{precision}f}"
+    return formatted.rstrip("0").rstrip(".") if "." in formatted else formatted

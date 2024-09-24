@@ -10,7 +10,6 @@ function Settings() {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const { setPostHogCustomEvent } = usePostHogEvents();
-  const { flags } = sessionDetails;
   const handleDefaultTriadClick = () => {
     navigate("triad");
 
@@ -71,17 +70,15 @@ function Settings() {
               </Typography.Link>
             </div>
           )}
-          {flags?.manual_review && (
-            <div className="settings-plt">
-              <Typography.Link
-                className="settings-plt-typo"
-                strong
-                onClick={() => navigate("review")}
-              >
-                Manual Review Settings
-              </Typography.Link>
-            </div>
-          )}
+          <div className="settings-plt">
+            <Typography.Link
+              className="settings-plt-typo"
+              strong
+              onClick={() => navigate("review")}
+            >
+              Manual Review Settings
+            </Typography.Link>
+          </div>
         </div>
       </IslandLayout>
     </div>

@@ -7,6 +7,7 @@ requirement.
 """
 
 import logging
+import os
 
 import grpc
 
@@ -32,6 +33,11 @@ class FliptClient(BaseClient):
 
     def list_feature_flags(self, namespace_key: str) -> dict:
         try:
+            FLIPT_SERVICE_AVAILABLE = os.environ.get("FLIPT_SERVICE_AVAILABLE", False)
+            if not FLIPT_SERVICE_AVAILABLE:
+                logger.warning("Flipt service is not available.")
+                return {}
+
             request = flipt_pb2.ListFlagRequest(namespace_key=namespace_key)
             response = self.stub.ListFlags(request)
             parsed_response = self.parse_flag_list(response)
@@ -44,6 +50,11 @@ class FliptClient(BaseClient):
         self, namespace_key: str, flag_key: str, entity_id: str, context: dict = None
     ) -> bool:
         try:
+            FLIPT_SERVICE_AVAILABLE = os.environ.get("FLIPT_SERVICE_AVAILABLE", False)
+            if not FLIPT_SERVICE_AVAILABLE:
+                logger.warning("Flipt service is not available.")
+                return False
+
             request = flipt_pb2.EvaluationRequest(
                 namespace_key=namespace_key,
                 flag_key=flag_key,

@@ -7,6 +7,8 @@ import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
 import { useSessionStore } from "../store/session-store";
 import { useUserSession } from "./useUserSession.js";
 import { listFlags } from "../helpers/FeatureFlagsData.js";
+import { useAlertStore } from "../store/alert-store";
+import useLogout from "./useLogout.js";
 
 let getTrialDetails;
 let isPlatformAdmin;
@@ -30,18 +32,27 @@ try {
 function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
   const handleException = useExceptionHandler();
+  const { setAlertDetails } = useAlertStore();
   const navigate = useNavigate();
   const userSession = useUserSession();
+  const logout = useLogout();
 
   return async () => {
     try {
+      const timestamp = new Date().getTime();
       const userSessionData = await userSession();
+
+      // Return if the user is not authenticated
+      if (!userSessionData) {
+        return;
+      }
+
       const signedInOrgId = userSessionData?.organization_id;
 
       // API to get the list of organizations
       const requestOptions = {
         method: "GET",
-        url: "/api/v1/organization",
+        url: `/api/v1/organization?q=${timestamp}`,
       };
       const getOrgsRes = await axios(requestOptions);
       const orgs = getOrgsRes?.data?.organizations;
@@ -56,9 +67,15 @@ function useSessionValid() {
       const orgId = signedInOrgId || orgs[0].id;
       const csrfToken = Cookies.get("csrftoken");
 
+      if (!orgId || !csrfToken) {
+        throw Error("Required fields are missing.");
+      }
+
       // API to set the organization and get the user details
       requestOptions["method"] = "POST";
-      requestOptions["url"] = `/api/v1/organization/${orgId}/set`;
+      requestOptions[
+        "url"
+      ] = `/api/v1/organization/${orgId}/set?q=${timestamp}`;
       requestOptions["headers"] = {
         "X-CSRFToken": csrfToken,
       };
@@ -82,7 +99,9 @@ function useSessionValid() {
 
       requestOptions["method"] = "GET";
 
-      requestOptions["url"] = `/api/v1/unstract/${orgId}/users/profile/`;
+      requestOptions[
+        "url"
+      ] = `/api/v1/unstract/${orgId}/users/profile/?q=${timestamp}`;
       requestOptions["headers"] = {
         "X-CSRFToken": csrfToken,
       };
@@ -101,7 +120,9 @@ function useSessionValid() {
 
       requestOptions["method"] = "GET";
 
-      requestOptions["url"] = `/api/v1/unstract/${orgId}/adapter/`;
+      requestOptions[
+        "url"
+      ] = `/api/v1/unstract/${orgId}/adapter/?q=${timestamp}`;
       requestOptions["headers"] = {
         "X-CSRFToken": csrfToken,
       };
@@ -133,9 +154,10 @@ function useSessionValid() {
       // Set the session details
       setSessionDetails(getSessionData(userAndOrgDetails));
     } catch (err) {
-      // TODO: Throw popup error message
+      setAlertDetails(handleException(err));
       if (err.response?.status === 402) {
         handleException(err);
+        return;
       }
 
       if (err.request?.status === 412) {
@@ -144,7 +166,10 @@ function useSessionValid() {
         const code = response.code;
         window.location.href = `/error?code=${code}&domain=${domainName}`;
         // May be need a logout button there or auto logout
+        return;
       }
+
+      logout();
     }
   };
 }

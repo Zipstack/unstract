@@ -7,7 +7,6 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import { CustomSynonymsModal } from "../custom-synonyms-modal/CustomSynonymsModal";
 import { DisplayLogs } from "../display-logs/DisplayLogs";
 import { DocumentManager } from "../document-manager/DocumentManager";
 import { Header } from "../header/Header";
@@ -36,18 +35,20 @@ try {
     require("../../../plugins/prompt-studio-public-share/public-share-modal/PromptShareModal.jsx").PromptShareModal;
   PromptShareLink =
     require("../../../plugins/prompt-studio-public-share/public-link-modal/PromptShareLink.jsx").PromptShareLink;
-  CloneTitle =
-    require("../../../plugins/prompt-studio-clone/clone-title-modal/CloneTitle.jsx").CloneTitle;
   HeaderPublic =
     require("../../../plugins/prompt-studio-public-share/header-public/HeaderPublic.jsx").HeaderPublic;
 } catch (err) {
   // Do nothing if plugins are not loaded.
 }
-
+try {
+  CloneTitle =
+    require("../../../plugins/prompt-studio-clone/clone-title-modal/CloneTitle.jsx").CloneTitle;
+} catch (err) {
+  // Do nothing if plugins are not loaded.
+}
 function ToolIde() {
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [activeKey, setActiveKey] = useState([]);
-  const [openCusSynonymsModal, setOpenCusSynonymsModal] = useState(false);
   const [openSettings, setOpenSettings] = useState(false);
   const {
     details,
@@ -280,10 +281,6 @@ function ToolIde() {
           </Modal>
         </div>
       </div>
-      <CustomSynonymsModal
-        open={openCusSynonymsModal}
-        setOpen={setOpenCusSynonymsModal}
-      />
       <SettingsModal
         open={openSettings}
         setOpen={setOpenSettings}
