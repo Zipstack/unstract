@@ -238,8 +238,8 @@ function Header({
           centered
         >
           Unable to export tool. Some Prompt(s) were not run. Please run them
-          before exporting.
-          <strong> Would you like to force export anyway?</strong>
+          before exporting.{" "}
+          <strong>Would you like to force export anyway?</strong>
         </Modal>
       )}
     </div>
