@@ -27,8 +27,7 @@ dependencies = [
     "google-cloud-bigquery==3.11.4", # For Bigquery
     "pymssql==2.2.8", # For MSSQL
     "PyMySQL==1.1.0", # For MySQL
-    "sshfs==2024.6.0", # For SFTP
-    "paramiko==3.4.1", # For SSHv2 protocol, need for SFTP
+    "fsspec[sftp]~=2024.6.0", # For SFTP
 
 ]
 readme = "README.md"
