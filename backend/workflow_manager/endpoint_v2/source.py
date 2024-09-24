@@ -4,7 +4,6 @@ import os
 import shutil
 from hashlib import md5, sha256
 from io import BytesIO
-from pathlib import Path
 from typing import Any, Optional
 
 import fsspec
@@ -154,21 +153,27 @@ class SourceConnector(BaseConnector):
             )
         )
         root_dir_path = connector_settings.get(ConnectorKeys.PATH, "")
+
         input_directory = str(source_configurations.get(SourceKey.ROOT_FOLDER, ""))
-        if root_dir_path:  # user needs to manually type the optional file path
-            input_directory = str(Path(root_dir_path, input_directory.lstrip("/")))
+
+        source_fs = self.get_fs_connector(
+            settings=connector_settings, connector_id=connector.connector_id
+        )
+        input_directory = source_fs.get_connector_root_dir(
+            input_dir=input_directory, root_path=root_dir_path
+        )
+        logger.debug(f"source input directory {input_directory}")
         if not isinstance(required_patterns, list):
             required_patterns = [required_patterns]
 
-        source_fs = self.get_fsspec(
-            settings=connector_settings, connector_id=connector.connector_id
-        )
+        source_fs_fsspec = source_fs.get_fsspec_fs()
+
         patterns = self.valid_file_patterns(required_patterns=required_patterns)
-        is_directory = source_fs.isdir(input_directory)
+        is_directory = source_fs_fsspec.isdir(input_directory)
         if not is_directory:
             raise InvalidInputDirectory()
         matched_files = self._get_matched_files(
-            source_fs, input_directory, patterns, recursive, limit
+            source_fs_fsspec, input_directory, patterns, recursive, limit
         )
         self.publish_input_output_list_file_logs(input_directory, matched_files)
         return matched_files
@@ -387,6 +392,17 @@ class SourceConnector(BaseConnector):
             results.append({"file": file_name, "result": result})
 
     def load_file(self, input_file_path: str) -> tuple[str, BytesIO]:
+        """Load file contnt and file name based on the file path.
+
+        Args:
+            input_file_path (str): source file
+
+        Raises:
+            InvalidSource: _description_
+
+        Returns:
+            tuple[str, BytesIO]: file_name , file content
+        """
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
         source_fs: fsspec.AbstractFileSystem = self.get_fsspec(
@@ -396,7 +412,7 @@ class SourceConnector(BaseConnector):
             file_content = remote_file.read()
             file_stream = BytesIO(file_content)
 
-        return remote_file.key, file_stream
+        return os.path.basename(input_file_path), file_stream
 
     @classmethod
     def add_input_file_to_api_storage(
