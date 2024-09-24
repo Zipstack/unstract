@@ -87,12 +87,12 @@ class APIDeployment(BaseModel):
             try:
                 original = APIDeployment.objects.get(pk=self.pk)
                 if original.api_name != self.api_name:
-                    org_schema = connection.get_tenant().schema_name
+                    org_schema = connection.tenant.schema_name
                     self.api_endpoint = (
                         f"{ApiExecution.PATH}/{org_schema}/{self.api_name}/"
                     )
             except APIDeployment.DoesNotExist:
-                org_schema = connection.get_tenant().schema_name
+                org_schema = connection.tenant.schema_name
 
                 self.api_endpoint = f"{ApiExecution.PATH}/{org_schema}/{self.api_name}/"
         super().save(*args, **kwargs)

@@ -6,10 +6,11 @@ import { useState } from "react";
 import { PromptOutputsModal } from "./PromptOutputsModal";
 
 function PromptOutputExpandBtn({
+  promptId,
   llmProfiles,
-  result,
   enforceType,
   displayLlmProfile,
+  promptOutputs,
 }) {
   const [openModal, setOpenModal] = useState(false);
 
@@ -28,20 +29,22 @@ function PromptOutputExpandBtn({
       <PromptOutputsModal
         open={openModal}
         setOpen={setOpenModal}
+        promptId={promptId}
         llmProfiles={llmProfiles}
-        result={result}
         enforceType={enforceType}
         displayLlmProfile={displayLlmProfile}
+        promptOutputs={promptOutputs}
       />
     </>
   );
 }
 
 PromptOutputExpandBtn.propTypes = {
+  promptId: PropTypes.string.isRequired,
   llmProfiles: PropTypes.array.isRequired,
-  result: PropTypes.array.isRequired,
   enforceType: PropTypes.string.isRequired,
   displayLlmProfile: PropTypes.bool.isRequired,
+  promptOutputs: PropTypes.object.isRequired,
 };
 
 export { PromptOutputExpandBtn };
