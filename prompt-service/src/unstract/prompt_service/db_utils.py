@@ -1,6 +1,5 @@
 from typing import Any, Optional
 
-from peewee import PostgresqlDatabase
 from unstract.prompt_service.config import db
 from unstract.prompt_service.constants import DBTableV2
 from unstract.prompt_service.env_manager import EnvLoader

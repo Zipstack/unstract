@@ -10,9 +10,6 @@ from unstract.prompt_service.authentication_middleware import AuthenticationMidd
 from unstract.prompt_service.config import create_app, db
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.constants import RunLevel
-from unstract.prompt_service.db_utils import DBUtils
-from unstract.prompt_service.env_manager import EnvLoader
-from unstract.prompt_service.helper import plugin_loader, query_usage_metadata
 from unstract.prompt_service.exceptions import APIError, ErrorResponse, NoPayloadError
 from unstract.prompt_service.helper import (
     construct_and_run_prompt,

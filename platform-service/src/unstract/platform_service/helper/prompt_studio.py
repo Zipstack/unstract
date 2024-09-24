@@ -6,6 +6,7 @@ from unstract.platform_service.exceptions import APIError
 from unstract.platform_service.utils import EnvManager
 
 from unstract.flags.feature_flag import check_feature_flag_status
+
 DB_SCHEMA = EnvManager.get_required_setting("DB_SCHEMA", "unstract_v2")
 
 
