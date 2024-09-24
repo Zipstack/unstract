@@ -1,6 +1,5 @@
 import logging
 import os
-import uuid
 from importlib import import_module
 
 from .interface import ContainerClientInterface
@@ -16,7 +15,3 @@ class ContainerClientHelper:
         )
         logger.info("Loading the container client from path:", client_path)
         return import_module(client_path).Client
-
-    @staticmethod
-    def normalize_container_name(name: str) -> str:
-        return name.replace("/", "-") + "-" + str(uuid.uuid4())

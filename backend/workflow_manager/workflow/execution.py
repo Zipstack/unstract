@@ -159,7 +159,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         if execution_time is not None:
             execution.execution_time = execution_time
         if error:
-            execution.error_message = error
+            execution.error_message = error[:EXECUTION_ERROR_LENGTH]
         if increment_attempt:
             execution.attempts += 1
 
@@ -209,7 +209,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             )
             raise WorkflowExecutionError(self.compilation_result["problems"][0])
 
-    def execute(self, single_step: bool = False) -> None:
+    def execute(self, run_id: str, file_name: str, single_step: bool = False) -> None:
         execution_type = ExecutionType.COMPLETE
         if single_step:
             execution_type = ExecutionType.STEP
@@ -230,7 +230,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
         start_time = time.time()
         try:
-            self.execute_workflow(execution_type=execution_type)
+            self.execute_workflow(
+                run_id=run_id, file_name=file_name, execution_type=execution_type
+            )
             end_time = time.time()
             execution_time = end_time - start_time
         except StopExecution as exception:
@@ -277,7 +279,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         )
         self.publish_log(
             f"Total files: {total_files}, "
-            f"{successful_files} successfully executed and {failed_files} errors"
+            f"{successful_files} successfully executed and {failed_files} error(s)"
         )
 
     def publish_initial_tool_execution_logs(
@@ -302,44 +304,32 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
     def execute_input_file(
         self,
+        run_id: str,
         file_name: str,
         single_step: bool,
-    ) -> tuple[bool, bool]:
+    ) -> None:
         """Executes the input file.
 
         Args:
+            run_id (str): UUID for a single run of a file
             file_name (str): The name of the file to be executed.
             single_step (bool): Flag indicating whether to execute in
             single step mode.
-        Returns:
-            tuple[bool, bool]: Flag indicating whether the file was executed
-            and skipped.
         """
         execution_type = ExecutionType.COMPLETE
         if single_step:
             execution_type = ExecutionType.STEP
-        self.execute_uncached_input(file_name=file_name, single_step=single_step)
-        self.publish_log(f"Tool executed successfully for '{file_name}'")
-        self._handle_execution_type(execution_type)
-
-    def execute_uncached_input(self, file_name: str, single_step: bool) -> None:
-        """Executes the uncached input file.
-
-        Args:
-            file_name (str): The name of the file to be executed.
-            single_step (bool): Flag indicating whether to execute in
-            single step mode.
-
-        Returns:
-            None
-        """
-        self.publish_log("No entries found in cache, executing the tools")
+        self.publish_log(
+            "No entries found in cache, " f"running the tool(s) for {file_name}"
+        )
         self.publish_update_log(
             state=LogState.SUCCESS,
             message=f"{file_name} Sent for execution",
             component=LogComponent.SOURCE,
         )
-        self.execute(single_step)
+        self.execute(run_id, file_name, single_step)
+        self.publish_log(f"Tool executed successfully for '{file_name}'")
+        self._handle_execution_type(execution_type)
 
     def initiate_tool_execution(
         self,
@@ -387,7 +377,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
             execution.status = ExecutionStatus.ERROR.value
-            execution.error_message = err_msg
+            execution.error_message = err_msg[:EXECUTION_ERROR_LENGTH]
             execution.save()
             return execution
         except WorkflowExecution.DoesNotExist:
