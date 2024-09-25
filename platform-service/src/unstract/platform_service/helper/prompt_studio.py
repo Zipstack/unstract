@@ -1,23 +1,26 @@
 from typing import Any
 
-from playhouse.pool import PooledPostgresqlDatabase
+from peewee import PostgresqlDatabase
 from unstract.platform_service.constants import DBTableV2, FeatureFlag
 from unstract.platform_service.exceptions import APIError
+from unstract.platform_service.utils import EnvManager
 
 from unstract.flags.feature_flag import check_feature_flag_status
+
+DB_SCHEMA = EnvManager.get_required_setting("DB_SCHEMA", "unstract_v2")
 
 
 class PromptStudioRequestHelper:
     @staticmethod
     def get_prompt_instance_from_db(
-        db_instance: PooledPostgresqlDatabase,
+        db_instance: PostgresqlDatabase,
         organization_id: str,
         prompt_registry_id: str,
     ) -> dict[str, Any]:
         """Get prompt studio registry from Backend Database.
 
         Args:
-            db_instance (PooledPostgresqlDatabase): Backend DB Connection Pool
+            db_instance (PostgresqlDatabase): Backend DB Connection
             organization_id (str): organization schema id
             prompt_registry_id (str): prompt_registry_id
 
@@ -28,7 +31,7 @@ class PromptStudioRequestHelper:
             query = (
                 "SELECT prompt_registry_id, tool_spec, "
                 "tool_metadata, tool_property FROM "
-                f"{DBTableV2.PROMPT_STUDIO_REGISTRY} x "
+                f'"{DB_SCHEMA}".{DBTableV2.PROMPT_STUDIO_REGISTRY} x '
                 f"WHERE prompt_registry_id='{prompt_registry_id}'"
             )
         else:
@@ -45,5 +48,4 @@ class PromptStudioRequestHelper:
         columns = [desc[0] for desc in cursor.description]
         data_dict: dict[str, Any] = dict(zip(columns, result_row))
         cursor.close()
-        db_instance.close()
         return data_dict

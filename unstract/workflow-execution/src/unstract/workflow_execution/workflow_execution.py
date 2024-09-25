@@ -24,6 +24,7 @@ from unstract.workflow_execution.execution_file_handler import ExecutionFileHand
 from unstract.workflow_execution.tools_utils import ToolsUtils
 
 from unstract.core.pubsub_helper import LogPublisher
+from unstract.core.utilities import UnstractUtils
 
 logger = logging.getLogger(__name__)
 
@@ -137,11 +138,15 @@ class WorkflowExecutionService:
 
         logger.info(f"Execution {self.execution_id}: Build completed")
 
-    def execute_workflow(self, execution_type: ExecutionType) -> None:
+    def execute_workflow(
+        self, run_id: str, file_name: str, execution_type: ExecutionType
+    ) -> None:
         """Executes the complete workflow by running each tools one by one.
         Returns the result from final tool in a dictionary.
 
         Args:
+            run_id (str): UUID for a single run of a file
+            file_name (str): Name of the file to process
             execution_type (ExecutionType): STEP or COMPLETE
 
         Raises:
@@ -157,8 +162,22 @@ class WorkflowExecutionService:
         self._initialize_execution()
         total_steps = len(self.tool_sandboxes)
         self.total_steps = total_steps
+        # Currently each tool is run serially for files and workflows contain 1 tool
+        # only. While supporting more tools in a workflow, correct the tool container
+        # name to avoid conflicts.
         for step, sandbox in enumerate(self.tool_sandboxes):
+            container_name = UnstractUtils.build_tool_container_name(
+                tool_image=sandbox.image_name,
+                tool_version=sandbox.image_tag,
+                run_id=run_id,
+            )
+            logger.info(
+                f"Running execution: '{self.execution_id}',  "
+                f"tool: '{sandbox.image_name}:{sandbox.image_tag}', "
+                f"file '{file_name}', container: '{container_name}'"
+            )
             self._execute_step(
+                run_id=run_id,
                 step=step,
                 sandbox=sandbox,
             )
@@ -166,12 +185,14 @@ class WorkflowExecutionService:
 
     def _execute_step(
         self,
+        run_id: str,
         step: int,
         sandbox: ToolSandbox,
     ) -> None:
         """Execution of workflow step.
 
         Args:
+            run_id (str): UUID for a single run of a file
             step (int): workflow step
             sandbox (ToolSandbox): instance of tool sandbox
             execution_type (ExecutionType): step or complete
@@ -186,7 +207,8 @@ class WorkflowExecutionService:
         tool_uid = sandbox.get_tool_uid()
         tool_instance_id = sandbox.get_tool_instance_id()
         log_message = f"Executing step {actual_step} with tool {tool_uid}"
-        logger.info(f"Execution {self.execution_id}: {log_message}")
+        logger.info(f"Execution {self.execution_id}, Run {run_id}: {log_message}")
+        # TODO: Mention run_id in the FE logs / components
         self.publish_log(
             log_message,
             step=actual_step,
@@ -199,13 +221,14 @@ class WorkflowExecutionService:
                 message="Ready for execution",
                 component=tool_instance_id,
             )
-            result = self.tool_utils.run_tool(tool_sandbox=sandbox)
+            result = self.tool_utils.run_tool(run_id=run_id, tool_sandbox=sandbox)
             if result and result.get("error"):
                 raise ToolOutputNotFoundException(result.get("error"))
             if not self.validate_execution_result(step + 1):
                 raise ToolOutputNotFoundException(
-                    f"Tool exception raised for tool {tool_uid}, "
-                    "check logs for more information"
+                    f"Error running tool '{tool_uid}' for run "
+                    f"'{run_id}' of execution '{self.execution_id}'. "
+                    "Check logs for more information"
                 )
             log_message = f"Step {actual_step} executed successfully"
             self.publish_update_log(
@@ -219,7 +242,6 @@ class WorkflowExecutionService:
 
         # TODO: Catch specific workflow execution error to avoid showing pythonic error
         except Exception as error:
-            self.publish_log(str(error), LogLevel.ERROR, step=actual_step)
             self.publish_update_log(
                 state=LogState.ERROR,
                 message="Failed to execute",

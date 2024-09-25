@@ -1,9 +1,16 @@
 from typing import Any
 
-from adapter_processor.models import AdapterInstance
 from rest_framework import permissions
 from rest_framework.request import Request
 from rest_framework.views import APIView
+
+from backend.constants import FeatureFlag
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+    from adapter_processor_v2.models import AdapterInstance
+else:
+    from adapter_processor.models import AdapterInstance
 
 
 class IsOwner(permissions.BasePermission):

@@ -46,7 +46,7 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
-from tool_instance.models import ToolInstance
+from tool_instance_v2.models import ToolInstance
 from unstract.sdk.utils.common_utils import CommonUtils
 from utils.user_session import UserSessionUtils
 
@@ -232,14 +232,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             cls = processor_plugin[ProcessorConfig.METADATA][
                 ProcessorConfig.METADATA_SERVICE_CLASS
             ]
-            cls.process(
-                tool_id=str(tool.tool_id),
-                file_name=file_name,
-                org_id=UserSessionUtils.get_organization_id(request),
-                user_id=tool.created_by.user_id,
-                document_id=document_id,
-                usage_kwargs=usage_kwargs.copy(),
-            )
+            if cls:
+                cls.process(
+                    tool_id=str(tool.tool_id),
+                    file_name=file_name,
+                    org_id=UserSessionUtils.get_organization_id(request),
+                    user_id=tool.created_by.user_id,
+                    document_id=document_id,
+                    usage_kwargs=usage_kwargs.copy(),
+                )
 
         if unique_id:
             return Response(
