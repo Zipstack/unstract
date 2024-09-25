@@ -516,7 +516,7 @@ class DestinationConnector(BaseConnector):
         workflow: Workflow,
         result: Optional[str] = None,
         input_file_path: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        meta_data: Optional[dict[str, Any]] = None,
     ) -> None:
         """Handle the Manual Review QUEUE result.
 
@@ -531,7 +531,7 @@ class DestinationConnector(BaseConnector):
             input_file_path (Optional[str], optional):
             The path to the input file.
                 Defaults to None.
-            metadata (Optional[dict[str, Any]], optional):
+            meta_data (Optional[dict[str, Any]], optional):
                 A dictionary containing additional
                 metadata related to the file. Defaults to None.
 
@@ -552,8 +552,8 @@ class DestinationConnector(BaseConnector):
             # Convert file content to a base64 encoded string
             file_content_base64 = base64.b64encode(file_content).decode("utf-8")
             q_name = f"review_queue_{self.organization_id}_{workflow.id}"
-            if metadata:
-                whisper_hash = metadata.get("whisper-hash")
+            if meta_data:
+                whisper_hash = meta_data.get("whisper-hash")
             else:
                 whisper_hash = None
             queue_result = QueueResult(
