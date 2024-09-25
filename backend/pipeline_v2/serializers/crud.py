@@ -157,7 +157,6 @@ class PipelineSerializer(AuditSerializer):
                         repr[PC.DESTINATION_NAME] = "Manual Review"
                 except Exception as ex:
                     logger.debug(f"Not a Manual review destination: {ex}")
-
         return repr
 
     def to_representation(self, instance: Pipeline) -> OrderedDict[str, Any]:
