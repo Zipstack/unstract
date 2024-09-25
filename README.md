@@ -102,7 +102,7 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |<img src="docs/assets/3rd_party/openai.png" width="32"/>| OpenAI | ✅ Working |
 |<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure OpenAI | ✅ Working  |
 |<img src="docs/assets/3rd_party/palm.png" width="32"/>| Google PaLM | ✅ Working  |
-| <img src="docs/assets/3rd_party/ollama.png" width="32"/>| Ollama | ✅ Working |
+|<img src="docs/assets/3rd_party/ollama.png" width="32"/>| Ollama | ✅ Working |
 
 ### Text Extractors
 
