@@ -628,7 +628,7 @@ class PromptStudioHelper:
                 "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
             }
 
-        OutputManagerHelper.handle_prompt_output_update(
+        return OutputManagerHelper.handle_prompt_output_update(
             run_id=run_id,
             prompts=prompts,
             outputs=response["output"],
@@ -637,7 +637,6 @@ class PromptStudioHelper:
             profile_manager_id=profile_manager_id,
             metadata=response["metadata"],
         )
-        return response
 
     @staticmethod
     def _fetch_response(

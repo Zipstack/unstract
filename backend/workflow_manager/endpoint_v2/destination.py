@@ -158,7 +158,7 @@ class DestinationConnector(BaseConnector):
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
         result: Optional[str] = None
-        meta_data: Optional[str] = None
+        metadata: Optional[str] = None
         if error:
             if connection_type == WorkflowEndpoint.ConnectionType.API:
                 self._handle_api_result(file_name=file_name, error=error, result=result)
@@ -178,9 +178,9 @@ class DestinationConnector(BaseConnector):
                 self.insert_into_db(input_file_path=input_file_path)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
-            meta_data = self.get_metadata(file_history)
+            metadata = self.get_metadata(file_history)
             self._handle_api_result(
-                file_name=file_name, error=error, result=result, meta_data=meta_data
+                file_name=file_name, error=error, result=result, metadata=metadata
             )
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
             self._push_data_to_queue(file_name, workflow, input_file_path)
@@ -194,7 +194,7 @@ class DestinationConnector(BaseConnector):
                 workflow=workflow,
                 status=ExecutionStatus.COMPLETED,
                 result=result,
-                metadata=meta_data,
+                metadata=metadata,
                 file_name=file_name,
             )
 
@@ -203,7 +203,7 @@ class DestinationConnector(BaseConnector):
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
         destination_configurations: dict[str, Any] = self.endpoint.configuration
-        root_path = connector_settings.get(DestinationKey.PATH, "")
+        root_path = str(connector_settings.get(DestinationKey.PATH, ""))
 
         output_directory = str(
             destination_configurations.get(DestinationKey.OUTPUT_FOLDER, "/")
@@ -317,7 +317,7 @@ class DestinationConnector(BaseConnector):
         file_name: str,
         error: Optional[str] = None,
         result: Optional[str] = None,
-        meta_data: Optional[dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         """Handle the API result.
 
@@ -343,7 +343,7 @@ class DestinationConnector(BaseConnector):
                     {
                         "status": ApiDeploymentResultStatus.SUCCESS,
                         "result": result,
-                        "metadata": meta_data,
+                        "metadata": metadata,
                     }
                 )
             else:
@@ -424,13 +424,13 @@ class DestinationConnector(BaseConnector):
     def get_metadata(
         self, file_history: Optional[FileHistory] = None
     ) -> Optional[dict[str, Any]]:
-        """Get meta_data from the output file.
+        """Get metadata from the output file.
 
         Returns:
             Union[dict[str, Any], str]: Meta data.
         """
-        if file_history and file_history.meta_data:
-            return self.parse_string(file_history.meta_data)
+        if file_history and file_history.metadata:
+            return self.parse_string(file_history.metadata)
         metadata: dict[str, Any] = self.get_workflow_metadata()
 
         return metadata
@@ -516,7 +516,7 @@ class DestinationConnector(BaseConnector):
         workflow: Workflow,
         result: Optional[str] = None,
         input_file_path: Optional[str] = None,
-        meta_data: Optional[dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         """Handle the Manual Review QUEUE result.
 
@@ -531,7 +531,7 @@ class DestinationConnector(BaseConnector):
             input_file_path (Optional[str], optional):
             The path to the input file.
                 Defaults to None.
-            meta_data (Optional[dict[str, Any]], optional):
+            metadata (Optional[dict[str, Any]], optional):
                 A dictionary containing additional
                 metadata related to the file. Defaults to None.
 
@@ -552,8 +552,8 @@ class DestinationConnector(BaseConnector):
             # Convert file content to a base64 encoded string
             file_content_base64 = base64.b64encode(file_content).decode("utf-8")
             q_name = f"review_queue_{self.organization_id}_{workflow.id}"
-            if meta_data:
-                whisper_hash = meta_data.get("whisper-hash")
+            if metadata:
+                whisper_hash = metadata.get("whisper-hash")
             else:
                 whisper_hash = None
             queue_result = QueueResult(

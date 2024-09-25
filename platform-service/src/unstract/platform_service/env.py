@@ -22,11 +22,10 @@ class Env:
         EnvManager.get_required_setting("MODEL_PRICES_TTL_IN_DAYS")
     )
     MODEL_PRICES_FILE_PATH = EnvManager.get_required_setting("MODEL_PRICES_FILE_PATH")
-    POOL_MAX_CONNECTIONS = int(
-        EnvManager.get_required_setting("POOL_MAX_CONNECTIONS", 32)
+    APPLICATION_NAME = EnvManager.get_required_setting(
+        "APPLICATION_NAME", "unstract-platform-service"
     )
-    POOL_STALE_TIMEOUT = int(EnvManager.get_required_setting("POOL_STALE_TIMEOUT", 900))
-    POOL_TIMEOUT = int(EnvManager.get_required_setting("POOL_TIMEOUT", 300))
+    DB_SCHEMA = EnvManager.get_required_setting("DB_SCHEMA", "unstract_v2")
 
 
 EnvManager.raise_for_missing_envs()

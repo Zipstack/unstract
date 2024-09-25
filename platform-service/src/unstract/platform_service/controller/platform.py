@@ -8,7 +8,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from flask import Blueprint, Request
 from flask import current_app as app
 from flask import jsonify, make_response, request
-from playhouse.pool import PooledPostgresqlDatabase
+from peewee import PostgresqlDatabase
 from unstract.platform_service.constants import DBTable, DBTableV2, FeatureFlag
 from unstract.platform_service.env import Env
 from unstract.platform_service.exceptions import APIError
@@ -20,19 +20,15 @@ from unstract.platform_service.helper.prompt_studio import PromptStudioRequestHe
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
-be_db = PooledPostgresqlDatabase(
+be_db = PostgresqlDatabase(
     Env.PG_BE_DATABASE,
     user=Env.PG_BE_USERNAME,
     password=Env.PG_BE_PASSWORD,
     host=Env.PG_BE_HOST,
     port=Env.PG_BE_PORT,
-    max_connections=Env.POOL_MAX_CONNECTIONS,
-    stale_timeout=Env.POOL_STALE_TIMEOUT,
-    timeout=Env.POOL_TIMEOUT,
+    options=f"-c application_name={Env.APPLICATION_NAME}",
 )
 be_db.init(Env.PG_BE_DATABASE)
-be_db.connect()
-
 
 platform_bp = Blueprint("platform", __name__)
 
@@ -79,9 +75,15 @@ def get_organization_from_bearer_token(token: str) -> tuple[Optional[int], str]:
         tuple[int, str]: organization uid and organization identifier
     """
     if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-        query = f"SELECT organization_id FROM {DBTableV2.PLATFORM_KEY} WHERE key=%s"
+        query = f"""
+            SELECT organization_id FROM "{Env.DB_SCHEMA}".{DBTableV2.PLATFORM_KEY}
+            WHERE key=%s
+        """
         organization_uid: int = execute_query(query, (token,))
-        query_org = f"SELECT organization_id FROM {DBTableV2.ORGANIZATION} WHERE id=%s"
+        query_org = f"""
+            SELECT organization_id FROM "{Env.DB_SCHEMA}".{DBTableV2.ORGANIZATION}
+            WHERE id=%s
+        """
         organization_identifier: str = execute_query(query_org, (organization_uid,))
         return organization_uid, organization_identifier
     else:
@@ -106,14 +108,19 @@ def validate_bearer_token(token: Optional[str]) -> bool:
 
         if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
             platform_key_table = DBTableV2.PLATFORM_KEY
+            query = f"""
+                SELECT * FROM \"{Env.DB_SCHEMA}\".{platform_key_table}
+                WHERE key = '{token}'
+            """
         else:
             platform_key_table = "account_platformkey"
+            query = f"""
+                SELECT * FROM {platform_key_table} WHERE key = '{token}'
+            """
 
-        query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
         cursor = be_db.execute_sql(query)
         result_row = cursor.fetchone()
         cursor.close()
-        be_db.close()
         if not result_row or len(result_row) == 0:
             app.logger.error(f"Authentication failed. bearer token not found {token}")
             return False
@@ -246,7 +253,8 @@ def usage() -> Any:
     current_time = datetime.now()
     if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
         query = f"""
-            INSERT INTO {DBTableV2.TOKEN_USAGE} (id, organization_id, workflow_id,
+            INSERT INTO \"{Env.DB_SCHEMA}\".{DBTableV2.TOKEN_USAGE} (
+            id, organization_id, workflow_id,
             execution_id, adapter_instance_id, run_id, usage_type,
             llm_usage_reason, model_name, embedding_tokens, prompt_tokens,
             completion_tokens, total_tokens, cost_in_dollars, created_at, modified_at)

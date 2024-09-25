@@ -35,14 +35,17 @@ try {
     require("../../../plugins/prompt-studio-public-share/public-share-modal/PromptShareModal.jsx").PromptShareModal;
   PromptShareLink =
     require("../../../plugins/prompt-studio-public-share/public-link-modal/PromptShareLink.jsx").PromptShareLink;
-  CloneTitle =
-    require("../../../plugins/prompt-studio-clone/clone-title-modal/CloneTitle.jsx").CloneTitle;
   HeaderPublic =
     require("../../../plugins/prompt-studio-public-share/header-public/HeaderPublic.jsx").HeaderPublic;
 } catch (err) {
   // Do nothing if plugins are not loaded.
 }
-
+try {
+  CloneTitle =
+    require("../../../plugins/prompt-studio-clone/clone-title-modal/CloneTitle.jsx").CloneTitle;
+} catch (err) {
+  // Do nothing if plugins are not loaded.
+}
 function ToolIde() {
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [activeKey, setActiveKey] = useState([]);

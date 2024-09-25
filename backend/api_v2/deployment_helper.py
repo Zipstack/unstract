@@ -134,7 +134,7 @@ class DeploymentHelper:
         Returns:
         - str: The complete API endpoint URL.
         """
-        org_schema = connection.get_tenant().schema_name
+        org_schema = connection.tenant.schema_name
         return f"{ApiExecution.PATH}/{org_schema}/{api_name}/"
 
     @staticmethod
@@ -191,6 +191,7 @@ class DeploymentHelper:
         api: APIDeployment,
         file_objs: list[UploadedFile],
         timeout: int,
+        include_metadata: bool = False,
     ) -> ReturnDict:
         """Execute workflow by api.
 
@@ -217,6 +218,7 @@ class DeploymentHelper:
                 hash_values_of_files=hash_values_of_files,
                 timeout=timeout,
                 execution_id=execution_id,
+                include_metadata=include_metadata,
             )
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id

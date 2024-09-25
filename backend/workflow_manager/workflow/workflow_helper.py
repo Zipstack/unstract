@@ -3,6 +3,7 @@ import logging
 import os
 import traceback
 from typing import Any, Optional
+from uuid import uuid4
 
 from account.constants import Common
 from account.models import Organization
@@ -156,6 +157,7 @@ class WorkflowHelper:
             except Exception as e:
                 failed_files += 1
                 error_message = f"Error processing file '{file_path}'. {e}"
+                logger.error(error_message, stack_info=True, exc_info=True)
                 execution_service.publish_log(
                     message=error_message, level=LogLevel.ERROR
                 )
@@ -194,7 +196,11 @@ class WorkflowHelper:
                 current_file_idx, total_files, file_name, single_step
             )
             if not file_hash.is_executed:
+                # Multiple run_ids are linked to an execution_id
+                # Each run_id corresponds to workflow runs for a single file
+                run_id = str(uuid4())
                 execution_service.execute_input_file(
+                    run_id=run_id,
                     file_name=file_name,
                     single_step=single_step,
                 )
