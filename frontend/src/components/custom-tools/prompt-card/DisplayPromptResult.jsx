@@ -6,7 +6,7 @@ import { displayPromptResult } from "../../../helpers/GetStaticData";
 import "./PromptCard.css";
 
 function DisplayPromptResult({ output }) {
-  if (!output) {
+  if (output === undefined) {
     return (
       <Typography.Text className="prompt-not-ran">
         <span>
