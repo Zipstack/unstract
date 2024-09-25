@@ -22,7 +22,8 @@ class AdapterKeys:
     SHARED_USERS = "shared_users"
     ADAPTER_NAME_EXISTS = (
         "Configuration with this name already exists within your organisation. "
-        "Please try with a different name"
+        "Please try with a different name."
     )
+    ADAPTER_NAME = "adapter_name"
     ADAPTER_CREATED_BY = "created_by_email"
     ADAPTER_CONTEXT_WINDOW_SIZE = "context_window_size"

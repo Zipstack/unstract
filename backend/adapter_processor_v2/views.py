@@ -7,9 +7,9 @@ from adapter_processor_v2.constants import AdapterKeys
 from adapter_processor_v2.exceptions import (
     CannotDeleteDefaultAdapter,
     DeleteAdapterInUseError,
+    DuplicateAdapterNameError,
     IdIsMandatory,
     InValidType,
-    UniqueConstraintViolation,
 )
 from adapter_processor_v2.serializers import (
     AdapterInfoSerializer,
@@ -41,7 +41,6 @@ from tenant_account_v2.organization_member_service import OrganizationMemberServ
 from utils.filtering import FilterHelper
 
 from .constants import AdapterKeys as constant
-from .exceptions import InternalServiceError
 from .models import AdapterInstance, UserDefaultAdapter
 
 logger = logging.getLogger(__name__)
@@ -121,17 +120,13 @@ class AdapterViewSet(GenericViewSet):
         adapter_metadata[AdapterKeys.ADAPTER_TYPE] = serializer.validated_data.get(
             AdapterKeys.ADAPTER_TYPE
         )
-        try:
-            test_result = AdapterProcessor.test_adapter(
-                adapter_id=adapter_id, adapter_metadata=adapter_metadata
-            )
-            return Response(
-                {AdapterKeys.IS_VALID: test_result},
-                status=status.HTTP_200_OK,
-            )
-        except Exception as e:
-            logger.error(f"Error testing adapter : {str(e)}")
-            raise e
+        test_result = AdapterProcessor.test_adapter(
+            adapter_id=adapter_id, adapter_metadata=adapter_metadata
+        )
+        return Response(
+            {AdapterKeys.IS_VALID: test_result},
+            status=status.HTTP_200_OK,
+        )
 
 
 class AdapterInstanceViewSet(ModelViewSet):
@@ -217,10 +212,9 @@ class AdapterInstanceViewSet(ModelViewSet):
             user_default_adapter.save()
 
         except IntegrityError:
-            raise UniqueConstraintViolation(f"{AdapterKeys.ADAPTER_NAME_EXISTS}")
-        except Exception as e:
-            logger.error(f"Error saving adapter to DB: {e}")
-            raise InternalServiceError
+            raise DuplicateAdapterNameError(
+                name=serializer.validated_data.get(AdapterKeys.ADAPTER_NAME)
+            )
         headers = self.get_success_headers(serializer.data)
         return Response(
             serializer.data, status=status.HTTP_201_CREATED, headers=headers

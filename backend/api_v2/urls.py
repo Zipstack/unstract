@@ -53,6 +53,9 @@ urlpatterns = format_suffix_patterns(
             name="download_postman_collection",
         ),
         path("keys/<uuid:pk>/", key_details, name="key_details"),
-        path("keys/api/<str:api_id>/", api_key, name="api_key"),
+        path("keys/api/<str:api_id>/", api_key, name="api_key_api"),
+        path("keys/api/", api_key, name="api_keys_api"),
+        path("keys/pipeline/<str:pipeline_id>/", api_key, name="api_key_pipeline"),
+        path("keys/pipeline/", api_key, name="api_keys_pipeline"),
     ]
 )

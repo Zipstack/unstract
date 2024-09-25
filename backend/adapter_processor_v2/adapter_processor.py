@@ -13,11 +13,11 @@ from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
 from tenant_account_v2.organization_member_service import OrganizationMemberService
-from unstract.adapters.adapterkit import Adapterkit
-from unstract.adapters.base import Adapter
-from unstract.adapters.enums import AdapterTypes
-from unstract.adapters.exceptions import AdapterError
-from unstract.adapters.x2text.constants import X2TextConstants
+from unstract.sdk.adapters.adapterkit import Adapterkit
+from unstract.sdk.adapters.base import Adapter
+from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.sdk.adapters.exceptions import AdapterError
+from unstract.sdk.adapters.x2text.constants import X2TextConstants
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -33,13 +33,9 @@ class AdapterProcessor:
             AdapterKeys.ID, adapter_id
         )
         if len(updated_adapters) != 0:
-            try:
-                schema_details[AdapterKeys.JSON_SCHEMA] = json.loads(
-                    updated_adapters[0].get(AdapterKeys.JSON_SCHEMA)
-                )
-            except Exception as exc:
-                logger.error(f"Error occured while parsing JSON Schema : {exc}")
-                raise InternalServiceError()
+            schema_details[AdapterKeys.JSON_SCHEMA] = json.loads(
+                updated_adapters[0].get(AdapterKeys.JSON_SCHEMA)
+            )
         else:
             logger.error(
                 f"Invalid adapter Id : {adapter_id} while fetching JSON Schema"
@@ -258,8 +254,5 @@ class AdapterProcessor:
         except ObjectDoesNotExist as e:
             logger.error(f"No default adapters found: {e}")
             raise InternalServiceError(
-                "No default adapters found, " "configure them through Platform Settings"
+                "No default adapters found, configure them through Platform Settings"
             )
-        except Exception as e:
-            logger.error(f"Error occurred while fetching default adapters: {e}")
-            raise InternalServiceError("Error fetching default adapters")
