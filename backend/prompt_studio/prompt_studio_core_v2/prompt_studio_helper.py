@@ -14,14 +14,9 @@ from django.db.models.manager import BaseManager
 from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.modifier_loader import ModifierConfig
 from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
-from prompt_studio.prompt_profile_manager.models import ProfileManager
-from prompt_studio.prompt_profile_manager.profile_manager_helper import (
+from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
+from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
-)
-from prompt_studio.prompt_studio_core.models import CustomTool
-from prompt_studio.prompt_studio_core.prompt_ide_base_tool import PromptIdeBaseTool
-from prompt_studio.prompt_studio_core.prompt_variable_service import (
-    PromptStudioVariableService,
 )
 from prompt_studio.prompt_studio_core_v2.constants import IndexingStatus, LogLevels
 from prompt_studio.prompt_studio_core_v2.constants import (
@@ -40,8 +35,13 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     PermissionError,
     ToolNotValid,
 )
-from prompt_studio.prompt_studio_document_manager.models import DocumentManager
-from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import (  # noqa: E501
+from prompt_studio.prompt_studio_core_v2.models import CustomTool
+from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import PromptIdeBaseTool
+from prompt_studio.prompt_studio_core_v2.prompt_variable_service import (
+    PromptStudioVariableService,
+)
+from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
+from prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper import (  # noqa: E501
     PromptStudioIndexHelper,
 )
 from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import (
