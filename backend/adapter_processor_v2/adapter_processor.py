@@ -12,12 +12,12 @@ from adapter_processor_v2.exceptions import (
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from unstract.sdk.adapters.adapterkit import Adapterkit
 from unstract.sdk.adapters.base import Adapter
 from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.sdk.adapters.exceptions import AdapterError
 from unstract.sdk.adapters.x2text.constants import X2TextConstants
-from tenant_account_v2.organization_member_service import OrganizationMemberService
 
 from .models import AdapterInstance, UserDefaultAdapter
 
