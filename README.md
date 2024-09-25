@@ -123,7 +123,7 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure Cloud Storage | ✅ Working |
 |<img src="docs/assets/3rd_party/google_drive.png" width="32"/>| Google Drive | ✅ Working |
 |<img src="docs/assets/3rd_party/dropbox.png" width="32"/>| Dropbox | ✅ Working |
-|<img src="docs/assets/3rd_party/sftp.png" width="32"/>| SFTP | 🗓️ Coming soon! |
+|<img src="docs/assets/3rd_party/sftp.png" width="32"/>| SFTP | ✅ Working |
 |<img src="docs/assets/3rd_party/box.png" width="32"/>| Box | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/http.png" width="32"/>| HTTP/HTTPS | 🗓️ Coming soon! |
 
