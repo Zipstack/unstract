@@ -31,14 +31,8 @@ class WorkflowExecution(BaseModel):
         null=True,
         db_comment="task id of asynchronous execution",
     )
-    # We can remove workflow_id if it not required
     workflow_id = models.UUIDField(
         editable=False, db_comment="Id of workflow to be executed"
-    )
-    project_settings_id = models.UUIDField(
-        editable=False,
-        default=uuid.uuid4,
-        db_comment="Id of project settings used while execution",
     )
     execution_mode = models.CharField(
         choices=Mode.choices, db_comment="Mode of execution"
@@ -78,4 +72,4 @@ class WorkflowExecution(BaseModel):
     class Meta:
         verbose_name = "Workflow Execution"
         verbose_name_plural = "Workflow Executions"
-        db_table = "workflow_execution_v2"
+        db_table = "workflow_execution"

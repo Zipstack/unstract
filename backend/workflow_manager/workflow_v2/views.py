@@ -1,8 +1,6 @@
 import logging
 from typing import Any, Optional
 
-from connector_v2.connector_instance_helper import ConnectorInstanceHelper
-from django.conf import settings
 from django.db.models.query import QuerySet
 from numpy import deprecate_with_doc
 from permissions.permission import IsOwner
@@ -111,16 +109,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 is_active=True,
             )
             WorkflowEndpointUtils.create_endpoints_for_workflow(workflow)
-
-            # Enable GCS configurations to create GCS while creating a workflow
-            if (
-                settings.GOOGLE_STORAGE_ACCESS_KEY_ID
-                and settings.UNSTRACT_FREE_STORAGE_BUCKET_NAME
-            ):
-                ConnectorInstanceHelper.create_default_gcs_connector(
-                    workflow, self.request.user
-                )
-
+            # NOTE: Add default connector here if needed
         except Exception as e:
             logger.error(f"Error saving workflow to DB: {e}")
             raise WorkflowGenerationError
