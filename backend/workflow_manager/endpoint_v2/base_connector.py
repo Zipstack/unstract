@@ -45,11 +45,26 @@ class BaseConnector(ExecutionFileHandler):
         Raises:
         KeyError: If the connector_id is not found in the connectors dictionary.
         """
+        return self.get_fs_connector(
+            settings=settings, connector_id=connector_id
+        ).get_fsspec_fs()
+
+    def get_fs_connector(
+        self, settings: dict[str, Any], connector_id: str
+    ) -> UnstractFileSystem:
+        """Get an fs connector based specified connector settings.
+
+        Parameters:
+        - settings (dict): Connector-specific settings.
+        - connector_id (str): Identifier for the desired connector.
+
+        Returns:
+        UnstractFileSystem: An unstract fs connector instance.
+        """
         if connector_id not in connectors:
-            raise ValueError(f"Invalid connector_id: {connector_id}")
+            raise ValueError(f"Connector '{connector_id}' is not supported.")
         connector = connectors[connector_id][Common.METADATA][Common.CONNECTOR]
-        connector_class: UnstractFileSystem = connector(settings)
-        return connector_class.get_fsspec_fs()
+        return connector(settings)
 
     @classmethod
     def get_json_schema(cls, file_path: str) -> dict[str, Any]:
