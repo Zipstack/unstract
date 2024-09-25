@@ -16,8 +16,8 @@ from tenant_account_v2.organization_member_service import OrganizationMemberServ
 from unstract.sdk.adapters.adapterkit import Adapterkit
 from unstract.sdk.adapters.base import Adapter
 from unstract.sdk.adapters.enums import AdapterTypes
-from unstract.sdk.adapters.exceptions import AdapterError
 from unstract.sdk.adapters.x2text.constants import X2TextConstants
+from unstract.sdk.exceptions import SdkError
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -94,7 +94,7 @@ class AdapterProcessor:
             test_result: bool = adapter_instance.test_connection()
             logger.info(f"{adapter_id} test result: {test_result}")
             return test_result
-        except AdapterError as e:
+        except SdkError as e:
             raise TestAdapterError(str(e))
 
     @staticmethod
