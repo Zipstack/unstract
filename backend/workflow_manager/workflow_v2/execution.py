@@ -239,15 +239,14 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution_time = end_time - start_time
             logger.info(f"Execution {self.execution_id} stopped")
             raise exception
-        except Exception as exception:
+        except Exception as exc:
             end_time = time.time()
             execution_time = end_time - start_time
-            message = str(exception)[:EXECUTION_ERROR_LENGTH]
-            logger.info(
-                f"Execution {self.execution_id} ran for {execution_time:.4f}s, "
-                f" Error {exception}"
+            message = str(exc)[:EXECUTION_ERROR_LENGTH]
+            logger.error(
+                f"Execution {self.execution_id} ran for {execution_time:.4f}s, {exc}"
             )
-            raise WorkflowExecutionError(message) from exception
+            raise WorkflowExecutionError(message) from exc
 
     def publish_initial_workflow_logs(self, total_files: int) -> None:
         """Publishes the initial logs for the workflow.
