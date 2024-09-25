@@ -63,4 +63,5 @@ class PipelineURL:
     DETAIL = "pipeline-detail"
     EXECUTIONS = "pipeline-executions"
     LIST = "pipeline-list"
-    EXECUTE = "tenant:pipeline-execute"
+    EXECUTE = "pipeline-execute"
+    EXECUTE_NAMESPACE = "tenant:pipeline-execute"

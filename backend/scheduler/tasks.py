@@ -159,9 +159,7 @@ def execute_pipeline_task_v2(
             except Exception as e:
                 logger.warning(f"Failed to disable task: {pipeline_id}. Error: {e}")
             return
-        workflow = WorkflowHelper.get_workflow_by_id(
-            id=workflow_id, organization_id=organization_id
-        )
+        workflow = WorkflowHelper.get_workflow_by_id(id=workflow_id)
         logger.info(f"Executing workflow: {workflow}")
         PipelineProcessor.update_pipeline(
             pipeline_id, Pipeline.PipelineStatus.INPROGRESS

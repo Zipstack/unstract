@@ -15,7 +15,7 @@ from tool_instance_v2.constants import JsonSchemaKey
 from tool_instance_v2.exceptions import ToolSettingValidationError
 from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.tool_processor import ToolProcessor
-from unstract.adapters.enums import AdapterTypes
+from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.sdk.tool.validator import DefaultsGeneratingValidator
 from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Spec, Tool
@@ -360,6 +360,18 @@ class ToolInstanceHelper:
                     required_prop = e.schema.get("properties").get(validator_val)
                     required_display_name = required_prop.get("title")
                     err_msg = err_msg.replace(validator_val, required_display_name)
+            elif e.validator == "minItems":
+                validated_entity_display_name = e.schema.get("title")
+                err_msg = (
+                    f"'{validated_entity_display_name}' requires atleast"
+                    f" {e.validator_value} values."
+                )
+            elif e.validator == "maxItems":
+                validated_entity_display_name = e.schema.get("title")
+                err_msg = (
+                    f"'{validated_entity_display_name}' requires atmost"
+                    f" {e.validator_value} values."
+                )
             else:
                 logger.warning(f"Unformatted exception sent to user: {err_msg}")
             raise ToolSettingValidationError(
