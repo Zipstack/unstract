@@ -6,9 +6,10 @@ from account_v2.models import User
 from connector_auth_v2.models import ConnectorAuth
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from django.db import models
+from utils.exceptions import InvalidEncryptionKey
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
@@ -84,6 +85,7 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
     # Manager
     objects = ConnectorInstanceModelManager()
 
+    # TODO: Remove if unused
     def get_connector_metadata(self) -> dict[str, str]:
         """Gets connector metadata and refreshes the tokens if needed in case
         of OAuth."""
@@ -132,17 +134,19 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
         Returns:
             dict: The decrypted connector metadata.
         """
+        try:
+            connector_metadata_bytes = self.get_connector_metadata_bytes()
 
-        connector_metadata_bytes = self.get_connector_metadata_bytes()
+            if connector_metadata_bytes is None:
+                return None
 
-        if connector_metadata_bytes is None:
-            return None
-
-        if isinstance(connector_metadata_bytes, (dict)):
-            return connector_metadata_bytes
-        encryption_secret: str = settings.ENCRYPTION_KEY
-        cipher_suite: Fernet = Fernet(encryption_secret.encode("utf-8"))
-        decrypted_value = cipher_suite.decrypt(connector_metadata_bytes)
+            if isinstance(connector_metadata_bytes, (dict)):
+                return connector_metadata_bytes
+            encryption_secret: str = settings.ENCRYPTION_KEY
+            cipher_suite: Fernet = Fernet(encryption_secret.encode("utf-8"))
+            decrypted_value = cipher_suite.decrypt(connector_metadata_bytes)
+        except InvalidToken:
+            raise InvalidEncryptionKey(entity=InvalidEncryptionKey.Entity.CONNECTOR)
         return json.loads(decrypted_value.decode("utf-8"))
 
     class Meta:
