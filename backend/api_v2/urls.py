@@ -1,6 +1,6 @@
 from api_v2.api_deployment_views import APIDeploymentViewSet, DeploymentExecution
 from api_v2.api_key_views import APIKeyViewSet
-from django.urls import path, re_path
+from django.urls import path
 from rest_framework.urlpatterns import format_suffix_patterns
 
 deployment = APIDeploymentViewSet.as_view(
@@ -51,11 +51,6 @@ urlpatterns = format_suffix_patterns(
             "postman_collection/<uuid:pk>/",
             download_postman_collection,
             name="download_postman_collection",
-        ),
-        re_path(
-            r"^api/(?P<org_name>[\w-]+)/(?P<api_name>[\w-]+)/?$",
-            execute,
-            name="api_deployment_execution",
         ),
         path("keys/<uuid:pk>/", key_details, name="key_details"),
         path("keys/api/<str:api_id>/", api_key, name="api_key_api"),

@@ -17,6 +17,7 @@ from unstract.sdk.adapters.base import Adapter
 from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.sdk.adapters.exceptions import AdapterError
 from unstract.sdk.adapters.x2text.constants import X2TextConstants
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -108,10 +109,13 @@ class AdapterProcessor:
     @staticmethod
     def set_default_triad(default_triad: dict[str, str], user: User) -> None:
         try:
+            organization_member = OrganizationMemberService.get_user_by_id(user.id)
             (
                 user_default_adapter,
                 created,
-            ) = UserDefaultAdapter.objects.get_or_create(user=user)
+            ) = UserDefaultAdapter.objects.get_or_create(
+                organization_member=organization_member
+            )
 
             if default_triad.get(AdapterKeys.LLM_DEFAULT, None):
                 user_default_adapter.default_llm_adapter = AdapterInstance.objects.get(
@@ -231,7 +235,11 @@ class AdapterProcessor:
         """
         try:
             adapters: list[AdapterInstance] = []
-            default_adapter = UserDefaultAdapter.objects.get(user=user)
+
+            organization_member = OrganizationMemberService.get_user_by_id(id=user.id)
+            default_adapter: UserDefaultAdapter = UserDefaultAdapter.objects.get(
+                organization_member=organization_member
+            )
 
             if default_adapter.default_embedding_adapter:
                 adapters.append(default_adapter.default_embedding_adapter)

@@ -111,7 +111,7 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
     class Meta:
         verbose_name = "Api Deployment"
         verbose_name_plural = "Api Deployments"
-        db_table = "api_deployment_v2"
+        db_table = "api_deployment"
         constraints = [
             models.UniqueConstraint(
                 fields=["api_name", "organization"],
@@ -180,4 +180,4 @@ class APIKey(BaseModel):
     class Meta:
         verbose_name = "Api Deployment key"
         verbose_name_plural = "Api Deployment keys"
-        db_table = "api_deployment_key_v2"
+        db_table = "api_deployment_key"
