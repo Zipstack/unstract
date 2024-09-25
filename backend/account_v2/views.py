@@ -142,6 +142,7 @@ def make_session_response(
             email=request.user.email,
             user=auth_controller.get_user_info(request),
             organization_id=UserSessionUtils.get_organization_id(request),
+            role=UserSessionUtils.get_organization_member_role(request),
         )
     ).data
 

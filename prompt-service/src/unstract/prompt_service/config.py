@@ -54,6 +54,7 @@ def create_app() -> Flask:
     db_user = get_env_or_die("PG_BE_USERNAME")
     db_pass = get_env_or_die("PG_BE_PASSWORD")
     db_name = get_env_or_die("PG_BE_DATABASE")
+    application_name = env.get("APPLICATION_NAME", "unstract-prompt-service")
 
     # Initialize and connect to the database
     db.init(
@@ -62,5 +63,6 @@ def create_app() -> Flask:
         password=db_pass,
         host=db_host,
         port=db_port,
+        options=f"-c application_name={application_name}",
     )
     return app

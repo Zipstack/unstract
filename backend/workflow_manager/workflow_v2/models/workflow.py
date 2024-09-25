@@ -85,7 +85,7 @@ class Workflow(DefaultOrganizationMixin, BaseModel):
     class Meta:
         verbose_name = "Workflow"
         verbose_name_plural = "Workflows"
-        db_table = "workflow_v2"
+        db_table = "workflow"
         constraints = [
             models.UniqueConstraint(
                 fields=["workflow_name", "organization"],

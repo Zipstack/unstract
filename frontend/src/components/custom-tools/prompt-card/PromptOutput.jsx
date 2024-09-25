@@ -21,11 +21,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import CheckableTag from "antd/es/tag/CheckableTag";
 
-import {
-  displayPromptResult,
-  formatNumberWithCommas,
-  getFormattedTotalCost,
-} from "../../../helpers/GetStaticData";
+import { displayPromptResult } from "../../../helpers/GetStaticData";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
@@ -36,6 +32,8 @@ import { useAlertStore } from "../../../store/alert-store";
 import { PromptOutputExpandBtn } from "./PromptOutputExpandBtn";
 import { DisplayPromptResult } from "./DisplayPromptResult";
 import usePromptOutput from "../../../hooks/usePromptOutput";
+import { PromptRunTimer } from "./PromptRunTimer";
+import { PromptRunCost } from "./PromptRunCost";
 
 let TableOutput;
 try {
@@ -239,14 +237,24 @@ function PromptOutput({
                       )}
                     </Typography.Text>
                     <Typography.Text className="prompt-cost-item">
-                      Time:
-                      {timers[tokenUsageId] || 0}s
+                      <PromptRunTimer
+                        timer={timers[profileId]}
+                        isLoading={
+                          isRunLoading[
+                            `${selectedDoc?.document_id}_${profileId}`
+                          ]
+                        }
+                      />
                     </Typography.Text>
                     <Typography.Text className="prompt-cost-item">
-                      Cost: $
-                      {formatNumberWithCommas(
-                        getFormattedTotalCost(promptOutputData?.tokenUsage)
-                      )}
+                      <PromptRunCost
+                        tokenUsage={promptOutputData?.tokenUsage}
+                        isLoading={
+                          isRunLoading[
+                            `${selectedDoc?.document_id}_${profileId}`
+                          ]
+                        }
+                      />
                     </Typography.Text>
                   </div>
                   <div className="prompt-info">
