@@ -25,6 +25,7 @@ class Env:
     APPLICATION_NAME = EnvManager.get_required_setting(
         "APPLICATION_NAME", "unstract-platform-service"
     )
+    DB_SCHEMA = EnvManager.get_required_setting("DB_SCHEMA", "unstract_v2")
 
 
 EnvManager.raise_for_missing_envs()
