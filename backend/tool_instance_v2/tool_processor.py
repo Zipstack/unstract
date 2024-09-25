@@ -7,7 +7,7 @@ from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper impor
     PromptStudioRegistryHelper,
 )
 from tool_instance_v2.exceptions import ToolDoesNotExist
-from unstract.adapters.enums import AdapterTypes
+from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_registry import ToolRegistry
 from unstract.tool_registry.tool_utils import ToolUtils
