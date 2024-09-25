@@ -65,7 +65,12 @@ class DefaultAdapterViewSet(ModelViewSet):
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> HttpResponse:
         try:
-            user_default_adapter = UserDefaultAdapter.objects.get(user=request.user)
+            organization_member = OrganizationMemberService.get_user_by_id(
+                request.user.id
+            )
+            user_default_adapter = UserDefaultAdapter.objects.get(
+                organization_member=organization_member
+            )
             serializer = UserDefaultAdapterSerializer(user_default_adapter).data
             return Response(serializer)
 
@@ -172,13 +177,18 @@ class AdapterInstanceViewSet(ModelViewSet):
         serializer.is_valid(raise_exception=True)
         try:
             instance = serializer.save()
+            organization_member = OrganizationMemberService.get_user_by_id(
+                request.user.id
+            )
 
             # Check to see if there is a default configured
             # for this adapter_type and for the current user
             (
                 user_default_adapter,
                 created,
-            ) = UserDefaultAdapter.objects.get_or_create(user=request.user)
+            ) = UserDefaultAdapter.objects.get_or_create(
+                organization_member=organization_member
+            )
 
             adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
             if (adapter_type == AdapterKeys.LLM) and (
@@ -222,8 +232,11 @@ class AdapterInstanceViewSet(ModelViewSet):
         adapter_instance: AdapterInstance = self.get_object()
         adapter_type = adapter_instance.adapter_type
         try:
+            organization_member = OrganizationMemberService.get_user_by_id(
+                request.user.id
+            )
             user_default_adapter: UserDefaultAdapter = UserDefaultAdapter.objects.get(
-                user=request.user
+                organization_member=organization_member
             )
 
             if (
@@ -279,8 +292,13 @@ class AdapterInstanceViewSet(ModelViewSet):
             # Remove the same from his default
             for user_id in removed_users:
                 try:
-                    user_default_adapter = UserDefaultAdapter.objects.get(
-                        user_id=user_id
+                    organization_member = OrganizationMemberService.get_user_by_id(
+                        id=user_id
+                    )
+                    user_default_adapter: UserDefaultAdapter = (
+                        UserDefaultAdapter.objects.get(
+                            organization_member=organization_member
+                        )
                     )
 
                     if user_default_adapter.default_llm_adapter == adapter:

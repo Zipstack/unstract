@@ -61,7 +61,7 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
 
     def get_output_for_tool_default(self, request: HttpRequest) -> Response:
         # Get the tool_id from request parameters
-        # Get the tool_id from request parameters
+        # TODO: Setup Serializer here
         tool_id = request.GET.get("tool_id")
         document_manager_id = request.GET.get("document_manager")
         tool_validation_message = PromptOutputManagerErrorMessage.TOOL_VALIDATION

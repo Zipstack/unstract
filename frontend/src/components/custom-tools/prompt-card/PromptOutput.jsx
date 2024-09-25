@@ -2,7 +2,6 @@ import {
   CheckCircleOutlined,
   DatabaseOutlined,
   ExclamationCircleFilled,
-  InfoCircleFilled,
   InfoCircleOutlined,
   PlayCircleFilled,
   PlayCircleOutlined,
@@ -22,11 +21,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import CheckableTag from "antd/es/tag/CheckableTag";
 
-import {
-  displayPromptResult,
-  formatNumberWithCommas,
-  getFormattedTotalCost,
-} from "../../../helpers/GetStaticData";
+import { displayPromptResult } from "../../../helpers/GetStaticData";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
@@ -37,6 +32,8 @@ import { useAlertStore } from "../../../store/alert-store";
 import { PromptOutputExpandBtn } from "./PromptOutputExpandBtn";
 import { DisplayPromptResult } from "./DisplayPromptResult";
 import usePromptOutput from "../../../hooks/usePromptOutput";
+import { PromptRunTimer } from "./PromptRunTimer";
+import { PromptRunCost } from "./PromptRunCost";
 
 let TableOutput;
 try {
@@ -136,10 +133,9 @@ function PromptOutput({
       singlePassExtractMode,
       true
     );
-    const promptOutput = displayPromptResult(
-      promptOutputs[promptOutputKey]?.output,
-      true
-    );
+
+    const promptOutput = promptOutputs[promptOutputKey]?.output;
+
     return (
       <>
         <Divider className="prompt-card-divider" />
@@ -149,13 +145,17 @@ function PromptOutput({
             <Spin indicator={<SpinnerLoader size="small" />} />
           ) : (
             <Typography.Paragraph className="prompt-card-res font-size-12">
-              <div className="expanded-output">{promptOutput}</div>
+              <div className="expanded-output">
+                <DisplayPromptResult output={promptOutput} />
+              </div>
             </Typography.Paragraph>
           )}
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
               isDisabled={enforceType === TABLE_ENFORCE_TYPE}
-              copyToClipboard={() => copyOutputToClipboard(promptOutput)}
+              copyToClipboard={() =>
+                copyOutputToClipboard(displayPromptResult(promptOutput, true))
+              }
             />
             <PromptOutputExpandBtn
               promptId={promptDetails?.prompt_id}
@@ -237,14 +237,24 @@ function PromptOutput({
                       )}
                     </Typography.Text>
                     <Typography.Text className="prompt-cost-item">
-                      Time:
-                      {timers[tokenUsageId] || 0}s
+                      <PromptRunTimer
+                        timer={timers[profileId]}
+                        isLoading={
+                          isRunLoading[
+                            `${selectedDoc?.document_id}_${profileId}`
+                          ]
+                        }
+                      />
                     </Typography.Text>
                     <Typography.Text className="prompt-cost-item">
-                      Cost: $
-                      {formatNumberWithCommas(
-                        getFormattedTotalCost(promptOutputData?.tokenUsage)
-                      )}
+                      <PromptRunCost
+                        tokenUsage={promptOutputData?.tokenUsage}
+                        isLoading={
+                          isRunLoading[
+                            `${selectedDoc?.document_id}_${profileId}`
+                          ]
+                        }
+                      />
                     </Typography.Text>
                   </div>
                   <div className="prompt-info">
@@ -324,20 +334,9 @@ function PromptOutput({
                         ) : (
                           <Typography.Paragraph className="prompt-card-res font-size-12">
                             <div className="expanded-output">
-                              {!promptOutputData?.output ? (
-                                <Typography.Text className="prompt-not-ran">
-                                  <span>
-                                    <InfoCircleFilled
-                                      style={{ color: "#F0AD4E" }}
-                                    />
-                                  </span>{" "}
-                                  Yet to run
-                                </Typography.Text>
-                              ) : (
-                                <DisplayPromptResult
-                                  output={promptOutputData?.output}
-                                />
-                              )}
+                              <DisplayPromptResult
+                                output={promptOutputData?.output}
+                              />
                             </div>
                           </Typography.Paragraph>
                         )}

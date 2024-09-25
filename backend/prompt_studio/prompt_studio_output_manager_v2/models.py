@@ -79,7 +79,7 @@ class PromptStudioOutputManager(BaseModel):
     class Meta:
         verbose_name = "Prompt Studio Output Manager"
         verbose_name_plural = "Prompt Studio Output Managers"
-        db_table = "prompt_studio_output_manager_v2"
+        db_table = "prompt_studio_output_manager"
         constraints = [
             models.UniqueConstraint(
                 fields=[
