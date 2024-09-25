@@ -1,5 +1,6 @@
 import { useContext, useEffect, useRef, useState, useCallback } from "react";
 import throttle from "lodash/throttle";
+
 import { SocketContext } from "../../../helpers/SocketContext";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
@@ -75,7 +76,6 @@ function SocketMessages() {
     },
     [wfLogsThrottledUpdate]
   );
-
   // Handle incoming socket messages
   const onMessage = (data) => {
     try {
@@ -88,7 +88,6 @@ function SocketMessages() {
           msg = JSON.parse(new TextDecoder().decode(msg));
         }
       }
-
       if (
         (msg?.type === "LOG" || msg?.type === "COST") &&
         msg?.service !== "prompt"
@@ -99,7 +98,8 @@ function SocketMessages() {
         pushStagedMessage(msg);
       } else if (msg?.type === "LOG" && msg?.service === "prompt") {
         handlePsLogs(msg);
-      } else if (msg?.type === "LOG" && msg?.service === "usage") {
+      }
+      if (msg?.type === "LOG" && msg?.service === "usage") {
         const remainingTokens =
           msg?.max_token_count_set - msg?.added_token_count;
         setLLMTokenUsage(Math.max(remainingTokens, 0));
