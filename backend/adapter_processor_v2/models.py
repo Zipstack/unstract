@@ -9,9 +9,9 @@ from django.conf import settings
 from django.db import models
 from django.db.models import QuerySet
 from tenant_account_v2.models import OrganizationMember
-from unstract.adapters.adapterkit import Adapterkit
-from unstract.adapters.enums import AdapterTypes
-from unstract.adapters.exceptions import AdapterError
+from unstract.sdk.adapters.adapterkit import Adapterkit
+from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.sdk.adapters.exceptions import AdapterError
 from utils.exceptions import InvalidEncryptionKey
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
@@ -123,7 +123,7 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
     class Meta:
         verbose_name = "adapter instance"
         verbose_name_plural = "adapter instances"
-        db_table = "adapter_instance_v2"
+        db_table = "adapter_instance"
         constraints = [
             models.UniqueConstraint(
                 fields=["adapter_name", "adapter_type", "organization"],
@@ -161,16 +161,13 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
         adapter_class = Adapterkit().get_adapter_class_by_adapter_id(self.adapter_id)
         try:
             adapter_instance = adapter_class(self.metadata)
-            return int(adapter_instance.get_context_window_size())
+            return adapter_instance.get_context_window_size()
         except AdapterError as e:
             logger.warning(f"Unable to retrieve context window size - {e}")
         return 0
 
 
 class UserDefaultAdapter(BaseModel):
-    user = models.OneToOneField(
-        User, on_delete=models.CASCADE, related_name="organization_default_adapters"
-    )
     organization_member = models.OneToOneField(
         OrganizationMember,
         on_delete=models.CASCADE,
@@ -208,4 +205,4 @@ class UserDefaultAdapter(BaseModel):
     class Meta:
         verbose_name = "Default Adapter for Organization User"
         verbose_name_plural = "Default Adapters for Organization Users"
-        db_table = "default_organization_user_adapter_v2"
+        db_table = "default_organization_user_adapter"

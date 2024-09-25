@@ -113,20 +113,44 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
             f" workflow: {self.workflow})"
         )
 
+    def get_connector_metadata_bytes(self):
+        """Convert connector_metadata to bytes if it is a memoryview.
+
+        Returns:
+            bytes: The connector_metadata as bytes.
+        """
+        if isinstance(self.connector_metadata, memoryview):
+            return self.connector_metadata.tobytes()
+        return self.connector_metadata
+
     @property
     def metadata(self) -> Any:
+        """Decrypt and return the connector metadata as a dictionary.
+
+        This property handles the decryption of the connector_metadata,
+        converting it to bytes if necessary, and then loading the decrypted
+        JSON string into a dictionary.
+
+        Returns:
+            dict: The decrypted connector metadata.
+        """
         try:
+            connector_metadata_bytes = self.get_connector_metadata_bytes()
+
+            if connector_metadata_bytes is None:
+                return None
+
+            if isinstance(connector_metadata_bytes, (dict)):
+                return connector_metadata_bytes
             encryption_secret: str = settings.ENCRYPTION_KEY
             cipher_suite: Fernet = Fernet(encryption_secret.encode("utf-8"))
-            decrypted_value = cipher_suite.decrypt(
-                bytes(self.connector_metadata).decode("utf-8")
-            )
+            decrypted_value = cipher_suite.decrypt(connector_metadata_bytes)
         except InvalidToken:
             raise InvalidEncryptionKey(entity=InvalidEncryptionKey.Entity.CONNECTOR)
-        return json.loads(decrypted_value)
+        return json.loads(decrypted_value.decode("utf-8"))
 
     class Meta:
-        db_table = "connector_instance_v2"
+        db_table = "connector_instance"
         verbose_name = "Connector Instance"
         verbose_name_plural = "Connector Instances"
         constraints = [
