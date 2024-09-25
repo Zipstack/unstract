@@ -51,45 +51,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load default log from env
 DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "filters": {
-        "request_id": {"()": "log_request_id.filters.RequestIDFilter"},
-        "tenant_context": {"()": "django_tenants.log.TenantContextFilter"},
-    },
-    "formatters": {
-        "enriched": {
-            "format": (
-                "%(levelname)s : [%(asctime)s] [%(schema_name)s:%(domain_url)s]"
-                "{module:%(module)s process:%(process)d "
-                "thread:%(thread)d request_id:%(request_id)s} :- %(message)s"
-            ),
-        },
-        "verbose": {
-            "format": "[%(asctime)s] %(levelname)s %(name)s: %(message)s",
-            "datefmt": "%d/%b/%Y %H:%M:%S",
-        },
-        "simple": {
-            "format": "{levelname} {message}",
-            "style": "{",
-        },
-    },
-    "handlers": {
-        "console": {
-            "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
-            "class": "logging.StreamHandler",
-            "filters": ["request_id", "tenant_context"],
-            "formatter": "enriched",
-        },
-    },
-    "root": {
-        "handlers": ["console"],
-        "level": DEFAULT_LOG_LEVEL,
-        # Set the desired logging level here as well
-    },
-}
-
 
 ENV_FILE = find_dotenv()
 if ENV_FILE:
@@ -197,6 +158,44 @@ CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL]
 CORS_ALLOW_ALL_ORIGINS = False
 
 if not check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "filters": {
+            "request_id": {"()": "log_request_id.filters.RequestIDFilter"},
+            "tenant_context": {"()": "django_tenants.log.TenantContextFilter"},
+        },
+        "formatters": {
+            "enriched": {
+                "format": (
+                    "%(levelname)s : [%(asctime)s] [%(schema_name)s:%(domain_url)s]"
+                    "{module:%(module)s process:%(process)d "
+                    "thread:%(thread)d request_id:%(request_id)s} :- %(message)s"
+                ),
+            },
+            "verbose": {
+                "format": "[%(asctime)s] %(levelname)s %(name)s: %(message)s",
+                "datefmt": "%d/%b/%Y %H:%M:%S",
+            },
+            "simple": {
+                "format": "{levelname} {message}",
+                "style": "{",
+            },
+        },
+        "handlers": {
+            "console": {
+                "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
+                "class": "logging.StreamHandler",
+                "filters": ["request_id", "tenant_context"],
+                "formatter": "enriched",
+            },
+        },
+        "root": {
+            "handlers": ["console"],
+            "level": DEFAULT_LOG_LEVEL,
+            # Set the desired logging level here as well
+        },
+    }
     SHARED_APPS = (
         # Multitenancy
         "django_tenants",
@@ -255,6 +254,43 @@ if not check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
         "notification",
     )
 else:
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "filters": {
+            "request_id": {"()": "log_request_id.filters.RequestIDFilter"},
+        },
+        "formatters": {
+            "enriched": {
+                "format": (
+                    "%(levelname)s : [%(asctime)s]"
+                    "{module:%(module)s process:%(process)d "
+                    "thread:%(thread)d request_id:%(request_id)s} :- %(message)s"
+                ),
+            },
+            "verbose": {
+                "format": "[%(asctime)s] %(levelname)s %(name)s: %(message)s",
+                "datefmt": "%d/%b/%Y %H:%M:%S",
+            },
+            "simple": {
+                "format": "{levelname} {message}",
+                "style": "{",
+            },
+        },
+        "handlers": {
+            "console": {
+                "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
+                "class": "logging.StreamHandler",
+                "filters": ["request_id"],
+                "formatter": "enriched",
+            },
+        },
+        "root": {
+            "handlers": ["console"],
+            "level": DEFAULT_LOG_LEVEL,
+            # Set the desired logging level here as well
+        },
+    }
     SHARED_APPS = (
         # Multitenancy
         # "django_tenants",
@@ -283,7 +319,7 @@ else:
         "django_celery_beat",
     )
     v2_apps = (
-        "migration_tools",
+        "migrating.v2",
         # "account_v2",
         "connector_auth_v2",
         "tenant_account_v2",
@@ -297,6 +333,7 @@ else:
         "platform_settings_v2",
         "api_v2",
         "usage_v2",
+        "notification_v2",
         "prompt_studio.prompt_profile_manager_v2",
         "prompt_studio.prompt_studio_v2",
         "prompt_studio.prompt_studio_core_v2",
