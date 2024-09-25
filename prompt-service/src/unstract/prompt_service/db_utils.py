@@ -24,20 +24,20 @@ class DBUtils:
         platform_key_table = f'"{DB_SCHEMA}".{DBTableV2.PLATFORM_KEY}'
         organization_table = f'"{DB_SCHEMA}".{DBTableV2.ORGANIZATION}'
 
-        organization_uid: Optional[int] = cls._execute_query(
+        organization_uid: Optional[int] = cls.execute_query(
             f"SELECT organization_id FROM {platform_key_table} WHERE key=%s", (token,)
         )
         if organization_uid is None:
             return None, None
 
-        organization_identifier: Optional[str] = cls._execute_query(
+        organization_identifier: Optional[str] = cls.execute_query(
             f"SELECT organization_id FROM {organization_table} WHERE id=%s",
             (organization_uid,),
         )
         return organization_uid, organization_identifier
 
     @classmethod
-    def _execute_query(cls, query: str, params: tuple = ()) -> Any:
+    def execute_query(cls, query: str, params: tuple = ()) -> Any:
         cursor = db.execute_sql(query, params)
         result_row = cursor.fetchone()
         cursor.close()
