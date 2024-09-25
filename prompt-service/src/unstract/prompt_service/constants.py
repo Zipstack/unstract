@@ -66,6 +66,7 @@ class PromptServiceContants:
     CLEAN_CONTEXT = "clean-context"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
     VARIABLE_MAP = "variable_map"
+    RECORD = "record"
 
 
 class LogLevel(Enum):

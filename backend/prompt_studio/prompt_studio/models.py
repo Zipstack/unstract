@@ -21,6 +21,7 @@ class ToolStudioPrompt(BaseModel):
         BOOLEAN = "boolean", "Response sent as boolean"
         JSON = "json", "Response sent as json"
         TABLE = "table", "Response sent as table"
+        RECORD = "record", "Response sent for records"
 
     class PromptType(models.TextChoices):
         PROMPT = "PROMPT", "Response sent as Text"
