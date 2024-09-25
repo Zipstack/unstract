@@ -62,11 +62,6 @@ function Header({
     isSharedWithEveryone,
     forcedExport = false
   ) => {
-    setLastExportParams({
-      selectedUsers,
-      toolDetail,
-      isSharedWithEveryone,
-    });
     const body = {
       is_shared_with_org: isSharedWithEveryone,
       user_id: isSharedWithEveryone ? [] : selectedUsers,
@@ -91,6 +86,11 @@ function Header({
       })
       .catch((err) => {
         if (err?.response?.data?.errors[0]?.code === "warning") {
+          setLastExportParams({
+            selectedUsers,
+            toolDetail,
+            isSharedWithEveryone,
+          });
           setConfirmModalVisible(true); // Show the confirmation modal
           return; // Exit early to prevent any further execution
         }
@@ -227,21 +227,18 @@ function Header({
           toolDetails={toolDetails}
         />
       </div>
-
-      {confirmModalVisible && (
-        <Modal
-          onOk={handleConfirmForceExport} // Pass the confirm action
-          onCancel={() => setConfirmModalVisible(false)} // Close the modal on cancel
-          open={confirmModalVisible}
-          title="Are you sure"
-          okText="Force Export"
-          centered
-        >
-          Unable to export tool. Some Prompt(s) were not run. Please run them
-          before exporting.
-          <strong> Would you like to force export anyway?</strong>
-        </Modal>
-      )}
+      <Modal
+        onOk={handleConfirmForceExport} // Pass the confirm action
+        onCancel={() => setConfirmModalVisible(false)} // Close the modal on cancel
+        open={confirmModalVisible}
+        title="Are you sure"
+        okText="Force Export"
+        centered
+      >
+        Unable to export tool. Some prompt(s) were not run. Please run them
+        before exporting.{" "}
+        <strong>Would you like to force export anyway?</strong>
+      </Modal>
     </div>
   );
 }
