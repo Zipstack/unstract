@@ -1,9 +1,14 @@
+import json
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 from account_v2.custom_exceptions import DuplicateData
+from api_v2.exceptions import NoActiveAPIKeyError
+from api_v2.key_helper import KeyHelper
+from api_v2.postman_collection.dto import PostmanCollection
 from django.db import IntegrityError
 from django.db.models import QuerySet
+from django.http import HttpResponse
 from permissions.permission import IsOwner
 from pipeline_v2.constants import (
     PipelineConstants,
@@ -18,8 +23,8 @@ from pipeline_v2.serializers.crud import PipelineSerializer
 from pipeline_v2.serializers.execute import (
     PipelineExecuteSerializer as ExecuteSerializer,
 )
-from pipeline_v2.serializers.update import PipelineUpdateSerializer
 from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -78,7 +83,9 @@ class PipelineViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            serializer.save()
+            pipeline_instance = serializer.save()
+            # Create API key using the created instance
+            KeyHelper.create_api_key(pipeline_instance)
         except IntegrityError:
             raise DuplicateData(
                 f"{PipelineErrors.PIPELINE_EXISTS}, " f"{PipelineErrors.DUPLICATE_API}"
@@ -90,29 +97,25 @@ class PipelineViewSet(viewsets.ModelViewSet):
         super().perform_destroy(instance)
         return SchedulerHelper.remove_job(pipeline_to_remove)
 
-    def partial_update(self, request: Request, pk: Any = None) -> Response:
-        serializer = PipelineUpdateSerializer(data=request.data)
-        if serializer.is_valid():
-            pipeline_id = serializer.validated_data.get("pipeline_id")
-            active = serializer.validated_data.get("active")
-            try:
-                if active:
-                    SchedulerHelper.resume_job(pipeline_id)
-                else:
-                    SchedulerHelper.pause_job(pipeline_id)
-            except Exception as e:
-                logger.error(f"Failed to update pipeline status: {e}")
-                return Response(
-                    {"error": "Failed to update pipeline status"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                )
+    @action(detail=True, methods=["get"])
+    def download_postman_collection(
+        self, request: Request, pk: Optional[str] = None
+    ) -> Response:
+        """Downloads a Postman Collection of the API deployment instance."""
+        instance: Pipeline = self.get_object()
+        api_key_inst = instance.apikey_set.filter(is_active=True).first()
+        if not api_key_inst:
+            logger.error(f"No active API key set for pipeline {instance}")
+            raise NoActiveAPIKeyError(deployment_name=instance.pipeline_name)
 
-            return Response(
-                {
-                    "status": "success",
-                    "message": f"Pipeline {pipeline_id} status updated",
-                },
-                status=status.HTTP_200_OK,
-            )
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        # Create a PostmanCollection for a Pipeline
+        postman_collection = PostmanCollection.create(
+            instance=instance, api_key=api_key_inst.api_key
+        )
+        response = HttpResponse(
+            json.dumps(postman_collection.to_dict()), content_type="application/json"
+        )
+        response["Content-Disposition"] = (
+            f'attachment; filename="{instance.pipeline_name}.json"'
+        )
+        return response

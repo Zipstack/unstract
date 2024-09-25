@@ -17,6 +17,7 @@ from unstract.core.llm_workflow_generator.llm_interface import LLMInterface
 logger = logging.getLogger(__name__)
 
 
+# TODO: Can be removed as not getting used with UX chnages.
 class WorkflowGenerator:
     """Helps with generating a workflow using the LLM."""
 

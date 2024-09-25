@@ -1,7 +1,7 @@
 import { SettingOutlined } from "@ant-design/icons";
-import { Button, Tooltip, Typography } from "antd";
+import { Button, Modal, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { HeaderTitle } from "../header-title/HeaderTitle.jsx";
 import { ExportToolIcon } from "../../../assets";
@@ -53,11 +53,19 @@ function Header({
   const { setPostHogCustomEvent } = usePostHogEvents();
 
   const [toolDetails, setToolDetails] = useState(null);
+  const [confirmModalVisible, setConfirmModalVisible] = useState(false);
+  const [lastExportParams, setLastExportParams] = useState(null);
 
-  const handleExport = (selectedUsers, toolDetail, isSharedWithEveryone) => {
+  const handleExport = (
+    selectedUsers,
+    toolDetail,
+    isSharedWithEveryone,
+    forcedExport = false
+  ) => {
     const body = {
       is_shared_with_org: isSharedWithEveryone,
       user_id: isSharedWithEveryone ? [] : selectedUsers,
+      force_export: forcedExport,
     };
     const requestOptions = {
       method: "POST",
@@ -77,6 +85,15 @@ function Header({
         });
       })
       .catch((err) => {
+        if (err?.response?.data?.errors[0]?.code === "warning") {
+          setLastExportParams({
+            selectedUsers,
+            toolDetail,
+            isSharedWithEveryone,
+          });
+          setConfirmModalVisible(true); // Show the confirmation modal
+          return; // Exit early to prevent any further execution
+        }
         setAlertDetails(handleException(err, "Failed to export"));
       })
       .finally(() => {
@@ -84,6 +101,14 @@ function Header({
         setOpenExportToolModal(false);
       });
   };
+
+  const handleConfirmForceExport = useCallback(() => {
+    const { selectedUsers, toolDetail, isSharedWithEveryone } =
+      lastExportParams;
+
+    handleExport(selectedUsers, toolDetail, isSharedWithEveryone, true);
+    setConfirmModalVisible(false);
+  }, [lastExportParams]);
 
   const handleShare = (isEdit) => {
     try {
@@ -199,6 +224,18 @@ function Header({
           toolDetails={toolDetails}
         />
       </div>
+      <Modal
+        onOk={handleConfirmForceExport} // Pass the confirm action
+        onCancel={() => setConfirmModalVisible(false)} // Close the modal on cancel
+        open={confirmModalVisible}
+        title="Are you sure"
+        okText="Force Export"
+        centered
+      >
+        Unable to export tool. Some prompt(s) were not run. Please run them
+        before exporting.{" "}
+        <strong>Would you like to force export anyway?</strong>
+      </Modal>
     </div>
   );
 }
