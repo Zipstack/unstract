@@ -241,14 +241,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             name="summarizer",
             plugins=self.processor_plugins,
         )
-        cls.process(
-            tool_id=str(tool.tool_id),
-            file_name=file_name,
-            org_id=UserSessionUtils.get_organization_id(request),
-            user_id=tool.created_by.user_id,
-            document_id=document_id,
-            usage_kwargs=usage_kwargs.copy(),
-        )
+        if cls:
+            cls.process(
+                tool_id=str(tool.tool_id),
+                file_name=file_name,
+                org_id=UserSessionUtils.get_organization_id(request),
+                user_id=tool.created_by.user_id,
+                document_id=document_id,
+                usage_kwargs=usage_kwargs.copy(),
+            )
 
         if unique_id:
             return Response(
@@ -529,10 +530,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         is_shared_with_org: bool = serializer.validated_data.get("is_shared_with_org")
         user_ids = set(serializer.validated_data.get("user_id"))
 
+        force_export = serializer.validated_data.get("force_export")
         PromptStudioRegistryHelper.update_or_create_psr_tool(
             custom_tool=custom_tool,
             shared_with_org=is_shared_with_org,
             user_ids=user_ids,
+            force_export=force_export,
         )
         return Response(
             {"message": "Custom tool exported sucessfully."},

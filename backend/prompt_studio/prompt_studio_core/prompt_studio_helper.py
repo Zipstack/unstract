@@ -427,6 +427,7 @@ class PromptStudioHelper:
         else:
             return PromptStudioHelper._execute_prompts_in_single_pass(
                 doc_path=doc_path,
+                doc_name=doc_name,
                 tool_id=tool_id,
                 org_id=org_id,
                 user_id=user_id,
@@ -534,6 +535,7 @@ class PromptStudioHelper:
     @staticmethod
     def _execute_prompts_in_single_pass(
         doc_path,
+        doc_name,
         tool_id,
         org_id,
         user_id,
@@ -567,6 +569,7 @@ class PromptStudioHelper:
             tool = prompts[0].tool_id
             response = PromptStudioHelper._fetch_single_pass_response(
                 file_path=doc_path,
+                doc_name=doc_name,
                 tool=tool,
                 prompts=prompts,
                 org_id=org_id,
@@ -636,16 +639,15 @@ class PromptStudioHelper:
                 "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
             }
 
-        OutputManagerHelper.handle_prompt_output_update(
+        return OutputManagerHelper.handle_prompt_output_update(
             run_id=run_id,
             prompts=prompts,
             outputs=response["output"],
             document_id=document_id,
             is_single_pass_extract=is_single_pass,
             profile_manager_id=profile_manager_id,
-            context=response["metadata"].get("context"),
+            metadata=response["metadata"],
         )
-        return response
 
     @staticmethod
     def _fetch_response(
@@ -989,6 +991,7 @@ class PromptStudioHelper:
     def _fetch_single_pass_response(
         tool: CustomTool,
         file_path: str,
+        doc_name: str,
         prompts: list[ToolStudioPrompt],
         org_id: str,
         user_id: str,
@@ -1076,6 +1079,7 @@ class PromptStudioHelper:
             TSPKeys.TOOL_ID: tool_id,
             TSPKeys.RUN_ID: run_id,
             TSPKeys.FILE_HASH: file_hash,
+            TSPKeys.FILE_NAME: doc_name,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
         }
 

@@ -20,6 +20,7 @@ from django.db import connection
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
 from rest_framework.utils.serializer_helpers import ReturnDict
+from utils.constants import CeleryQueue
 from workflow_manager.endpoint.destination import DestinationConnector
 from workflow_manager.endpoint.source import SourceConnector
 from workflow_manager.workflow.dto import ExecutionResponse
@@ -88,7 +89,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         Returns:
         - str: The complete API endpoint URL.
         """
-        org_schema = connection.get_tenant().schema_name
+        org_schema = connection.tenant.schema_name
         return f"{ApiExecution.PATH}/{org_schema}/{api_name}/"
 
     @staticmethod
@@ -174,6 +175,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 hash_values_of_files=hash_values_of_files,
                 timeout=timeout,
                 execution_id=execution_id,
+                queue=CeleryQueue.CELERY_API_DEPLOYMENTS,
             )
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id

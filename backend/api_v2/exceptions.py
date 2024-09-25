@@ -3,6 +3,15 @@ from typing import Optional
 from rest_framework.exceptions import APIException
 
 
+class NotFoundException(APIException):
+    status_code = 404
+    default_detail = "The requested resource was not found."
+
+
+class PathVariablesNotFound(NotFoundException):
+    default_detail = "Path variable must be provided."
+
+
 class MandatoryWorkflowId(APIException):
     status_code = 400
     default_detail = "Workflow ID is mandatory"
@@ -20,8 +29,7 @@ class Forbidden(APIException):
     )
 
 
-class APINotFound(APIException):
-    status_code = 404
+class APINotFound(NotFoundException):
     default_detail = "API not found"
 
 
@@ -30,8 +38,7 @@ class InvalidAPIRequest(APIException):
     default_detail = "Bad request"
 
 
-class InactiveAPI(APIException):
-    status_code = 404
+class InactiveAPI(NotFoundException):
     default_detail = "API not found or Inactive"
 
 

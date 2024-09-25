@@ -80,7 +80,6 @@ def execute_pipeline_task(
         execute_pipeline_task_v2(
             workflow_id=workflow_id,
             organization_id=org_schema,
-            execution_id=execution_id,
             pipeline_id=pipepline_id,
             pipeline_name=name,
         )
@@ -120,7 +119,7 @@ def execute_pipeline_task(
                 pipepline_id, Pipeline.PipelineStatus.INPROGRESS
             )
             execution_response = WorkflowHelper.complete_execution(
-                workflow, execution_id, pipepline_id
+                workflow=workflow, pipeline_id=pipepline_id
             )
             execution_response.remove_result_metadata_keys()
             logger.info(f"Execution response: {execution_response}")
@@ -132,7 +131,6 @@ def execute_pipeline_task(
 def execute_pipeline_task_v2(
     workflow_id: Any,
     organization_id: Any,
-    execution_id: Any,
     pipeline_id: Any,
     pipeline_name: Any,
 ) -> None:
@@ -141,7 +139,6 @@ def execute_pipeline_task_v2(
     Args:
         workflow_id (Any): UID of workflow entity
         org_schema (Any): Organization Identifier
-        execution_id (Any): UID of execution entity
         pipeline_id (Any): UID of pipeline entity
         name (Any): pipeline name
     """
@@ -162,15 +159,13 @@ def execute_pipeline_task_v2(
             except Exception as e:
                 logger.warning(f"Failed to disable task: {pipeline_id}. Error: {e}")
             return
-        workflow = WorkflowHelper.get_workflow_by_id(
-            id=workflow_id, organization_id=organization_id
-        )
+        workflow = WorkflowHelper.get_workflow_by_id(id=workflow_id)
         logger.info(f"Executing workflow: {workflow}")
         PipelineProcessor.update_pipeline(
             pipeline_id, Pipeline.PipelineStatus.INPROGRESS
         )
         execution_response = WorkflowHelper.complete_execution(
-            workflow, execution_id, pipeline_id
+            workflow=workflow, pipeline_id=pipeline_id
         )
         execution_response.remove_result_metadata_keys()
         logger.info(
