@@ -109,7 +109,7 @@ class PlatformKeyViewSet(viewsets.ModelViewSet):
         is_active = request.data.get(PlatformServiceConstants.IS_ACTIVE)
         key_name = request.data.get(PlatformServiceConstants.KEY_NAME)
 
-        organization: Organization = connection.get_tenant()
+        organization: Organization = connection.tenant
 
         PlatformAuthHelper.validate_token_count(organization=organization)
 

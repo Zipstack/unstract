@@ -500,7 +500,11 @@ class PromptStudioHelper:
         doc_path, tool_id, org_id, user_id, document_id, run_id
     ):
         prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
-        prompts = [prompt for prompt in prompts if prompt.prompt_type != TSPKeys.NOTES]
+        prompts = [
+            prompt
+            for prompt in prompts
+            if prompt.prompt_type != TSPKeys.NOTES and prompt.active
+        ]
         if not prompts:
             logger.error(f"[{tool_id or 'NA'}] No prompts found for id: {id}")
             raise NoPromptsFound()
@@ -733,8 +737,9 @@ class PromptStudioHelper:
             prompt_host=settings.PROMPT_HOST,
             prompt_port=settings.PROMPT_PORT,
         )
+        include_metadata = {TSPKeys.INCLUDE_METADATA: True}
 
-        answer = responder.answer_prompt(payload)
+        answer = responder.answer_prompt(payload, include_metadata)
         # TODO: Make use of dataclasses
         if answer["status"] == "ERROR":
             # TODO: Publish to FE logs from here
@@ -780,9 +785,8 @@ class PromptStudioHelper:
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
         extract_file_path: Optional[str] = None
-
+        directory, filename = os.path.split(file_path)
         if not is_summary:
-            directory, filename = os.path.split(file_path)
             extract_file_path = os.path.join(
                 directory, "extract", os.path.splitext(filename)[0] + ".txt"
             )
@@ -792,6 +796,7 @@ class PromptStudioHelper:
         try:
 
             usage_kwargs = {"run_id": run_id}
+            usage_kwargs["file_name"] = filename
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = Index(tool=util)
             doc_id_key = tool_index.generate_index_key(
@@ -849,6 +854,7 @@ class PromptStudioHelper:
             )
             return {"status": IndexingStatus.COMPLETED_STATUS.value, "output": doc_id}
         except (IndexingError, IndexingAPIError, SdkError) as e:
+            logger.error(f"Indexing failed : {e} ", stack_info=True, exc_info=True)
             doc_name = os.path.split(file_path)[1]
             PromptStudioHelper._publish_log(
                 {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
@@ -959,8 +965,9 @@ class PromptStudioHelper:
             prompt_host=settings.PROMPT_HOST,
             prompt_port=settings.PROMPT_PORT,
         )
+        include_metadata = {TSPKeys.INCLUDE_METADATA: True}
 
-        answer = responder.single_pass_extraction(payload)
+        answer = responder.single_pass_extraction(payload, include_metadata)
         # TODO: Make use of dataclasses
         if answer["status"] == "ERROR":
             error_message = answer.get("error", None)
@@ -969,3 +976,11 @@ class PromptStudioHelper:
             )
         output_response = json.loads(answer["structure_output"])
         return output_response
+
+    @staticmethod
+    def get_tool_from_tool_id(tool_id: str) -> Optional[CustomTool]:
+        try:
+            tool: CustomTool = CustomTool.objects.get(tool_id=tool_id)
+            return tool
+        except CustomTool.DoesNotExist:
+            return None
