@@ -3,7 +3,9 @@ from enum import Enum
 from typing import Any
 
 from prompt_studio.prompt_studio_core_v2.exceptions import PromptNotRun
-from prompt_studio.prompt_studio_output_manager.models import PromptStudioOutputManager
+from prompt_studio.prompt_studio_output_manager_v2.models import (
+    PromptStudioOutputManager,
+)
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 
 
