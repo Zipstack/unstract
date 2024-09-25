@@ -4,14 +4,15 @@ import uuid
 from typing import Any
 
 from account_v2.models import User
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from django.db import models
 from django.db.models import QuerySet
 from tenant_account_v2.models import OrganizationMember
-from unstract.adapters.adapterkit import Adapterkit
-from unstract.adapters.enums import AdapterTypes
-from unstract.adapters.exceptions import AdapterError
+from unstract.sdk.adapters.adapterkit import Adapterkit
+from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.sdk.adapters.exceptions import AdapterError
+from utils.exceptions import InvalidEncryptionKey
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
@@ -142,22 +143,24 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
 
         self.save()
 
-    def get_adapter_meta_data(self) -> Any:
-        encryption_secret: str = settings.ENCRYPTION_KEY
-        f: Fernet = Fernet(encryption_secret.encode("utf-8"))
+    @property
+    def metadata(self) -> Any:
+        try:
+            encryption_secret: str = settings.ENCRYPTION_KEY
+            f: Fernet = Fernet(encryption_secret.encode("utf-8"))
 
-        adapter_metadata = json.loads(
-            f.decrypt(bytes(self.adapter_metadata_b).decode("utf-8"))
-        )
+            adapter_metadata = json.loads(
+                f.decrypt(bytes(self.adapter_metadata_b).decode("utf-8"))
+            )
+        except InvalidToken:
+            raise InvalidEncryptionKey(entity=InvalidEncryptionKey.Entity.ADAPTER)
         return adapter_metadata
 
     def get_context_window_size(self) -> int:
-
-        adapter_metadata = self.get_adapter_meta_data()
         # Get the adapter_instance
         adapter_class = Adapterkit().get_adapter_class_by_adapter_id(self.adapter_id)
         try:
-            adapter_instance = adapter_class(adapter_metadata)
+            adapter_instance = adapter_class(self.metadata)
             return adapter_instance.get_context_window_size()
         except AdapterError as e:
             logger.warning(f"Unable to retrieve context window size - {e}")
