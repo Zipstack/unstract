@@ -1,8 +1,8 @@
 import logging
 from typing import Optional
 
-from notification.helper import NotificationHelper
-from notification.models import Notification
+from notification_v2.helper import NotificationHelper
+from notification_v2.models import Notification
 from pipeline_v2.dto import PipelineStatusPayload
 from pipeline_v2.models import Pipeline
 
