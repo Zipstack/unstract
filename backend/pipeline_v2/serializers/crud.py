@@ -10,6 +10,7 @@ from pipeline_v2.constants import PipelineKey as PK
 from pipeline_v2.models import Pipeline
 from scheduler.helper import SchedulerHelper
 from utils.serializer_utils import SerializerUtils
+from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 
 from backend.serializers import AuditSerializer
 from unstract.connectors.connectorkit import Connectorkit
@@ -73,6 +74,17 @@ class PipelineSerializer(AuditSerializer):
                         connector_id=instance.connector_id,
                     )
                 )
+            if repr[PC.DESTINATION_NAME] == PC.NOT_CONFIGURED:
+                try:
+                    check_manual_review = WorkflowEndpoint.objects.get(
+                        workflow=instance.workflow,
+                        endpoint_type=WorkflowEndpoint.EndpointType.DESTINATION,
+                        connection_type=WorkflowEndpoint.ConnectionType.MANUALREVIEW,
+                    )
+                    if check_manual_review:
+                        repr[PC.DESTINATION_NAME] = "Manual Review"
+                except Exception as ex:
+                    logger.debug(f"Not a Manual review destination: {ex}")
         return repr
 
     def to_representation(self, instance: Pipeline) -> OrderedDict[str, Any]:
