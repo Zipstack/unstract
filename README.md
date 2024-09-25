@@ -58,6 +58,7 @@ Next, either download a release or clone this repo and do the following:
 
 That's all there is to it!
 
+See [user guide](https://docs.unstract.com/unstract_platform/user_guides/run_platform) for more details on managing the platform.  
 Another really quick way to experience Unstract is by signing up for our [hosted version](https://us-central.unstract.com/).
 
 ## ⏩ Quick Start Guide
@@ -137,13 +138,19 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 
 ## 🙌 Contributing
 
-Contributions are welcome! Please read [CONTRIBUTE.md](CONTRIBUTE.md) for further details on setting up the development environment, etc. It also points you to other detailed documents as needed.
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for further details on setting up the development environment, etc. It also points you to other detailed documents as needed.
 
 ## 👋 Join the LLM-powered automation community
 
 - On Slack, [join great conversations](https://join-slack.unstract.com) around LLMs, their ecosystem and leveraging them to automate the previously unautomatable!
 - [Follow us on X/Twitter](https://twitter.com/GetUnstract)
 - [Follow us on LinkedIn](https://www.linkedin.com/showcase/unstract/)
+
+## 🚨 Backup encryption key
+
+Do copy the value of `ENCRYPTION_KEY` config in either `backend/.env` or `platform-service/.env` file to a secure location.  
+
+Adapter credentials are encrypted by the platform using this key. Its loss or change will make all existing adapters inaccessible!  
 
 ## 📊 A note on analytics
 
