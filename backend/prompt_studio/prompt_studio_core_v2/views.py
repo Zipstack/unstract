@@ -46,7 +46,7 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
-from tool_instance.models import ToolInstance
+from tool_instance_v2.models import ToolInstance
 from unstract.sdk.utils.common_utils import CommonUtils
 from utils.user_session import UserSessionUtils
 

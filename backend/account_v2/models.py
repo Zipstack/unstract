@@ -45,7 +45,7 @@ class Organization(models.Model):
     class Meta:
         verbose_name = "Organization"
         verbose_name_plural = "Organizations"
-        db_table = "organization_v2"
+        db_table = "organization"
 
 
 class User(AbstractUser):
@@ -96,7 +96,7 @@ class User(AbstractUser):
     class Meta:
         verbose_name = "User"
         verbose_name_plural = "Users"
-        db_table = "user_v2"
+        db_table = "user"
 
 
 class PlatformKey(models.Model):
@@ -135,7 +135,7 @@ class PlatformKey(models.Model):
     class Meta:
         verbose_name = "Platform Key"
         verbose_name_plural = "Platform Keys"
-        db_table = "platform_key_v2"
+        db_table = "platform_key"
         constraints = [
             models.UniqueConstraint(
                 fields=["key_name", "organization"],
