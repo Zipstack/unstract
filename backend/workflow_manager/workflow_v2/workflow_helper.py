@@ -5,8 +5,8 @@ import traceback
 from typing import Any, Optional
 
 from account_v2.constants import Common
-from api.utils import APIDeploymentUtils
 from api_v2.models import APIDeployment
+from api_v2.utils import APIDeploymentUtils
 from celery import current_task
 from celery import exceptions as celery_exceptions
 from celery import shared_task
