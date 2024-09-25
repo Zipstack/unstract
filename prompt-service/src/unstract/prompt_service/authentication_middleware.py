@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Optional
 
 from flask import Request, current_app
 from unstract.prompt_service.config import db
@@ -85,12 +85,3 @@ class AuthenticationMiddleware:
         )
         schema_name: str = DBUtils.execute_query(query_org)
         return schema_name
-
-    @staticmethod
-    def execute_query(query: str) -> Any:
-        cursor = db.execute_sql(query)
-        result_row = cursor.fetchone()
-        cursor.close()
-        if not result_row or len(result_row) == 0:
-            return None
-        return result_row[0]
