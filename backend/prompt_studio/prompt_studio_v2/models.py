@@ -119,7 +119,7 @@ class ToolStudioPrompt(BaseModel):
     class Meta:
         verbose_name = "Tool Studio Prompt"
         verbose_name_plural = "Tool Studio Prompts"
-        db_table = "tool_studio_prompt_v2"
+        db_table = "tool_studio_prompt"
         constraints = [
             models.UniqueConstraint(
                 fields=["prompt_key", "tool_id"],

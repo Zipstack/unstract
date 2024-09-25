@@ -33,6 +33,14 @@ class ConnectorError(ConnectorBaseException):
         return f"{self.message}"
 
 
+class FSAccessDeniedError(ConnectorError):
+    """Handles all FS access denied error.
+
+    Args:
+        ConnectorError: Inherits from base ConnectorError class
+    """
+
+
 class AzureHttpError(ConnectorError):
     """Handles invalid directory error from azure.
 

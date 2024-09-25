@@ -896,7 +896,6 @@ class PromptStudioHelper:
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
         extract_file_path: Optional[str] = None
-
         directory, filename = os.path.split(file_path)
         if not is_summary:
             extract_file_path = os.path.join(
@@ -968,6 +967,7 @@ class PromptStudioHelper:
             )
             return {"status": IndexingStatus.COMPLETED_STATUS.value, "output": doc_id}
         except (IndexingError, IndexingAPIError, SdkError) as e:
+            logger.error(f"Indexing failed : {e} ", stack_info=True, exc_info=True)
             doc_name = os.path.split(file_path)[1]
             PromptStudioHelper._publish_log(
                 {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
