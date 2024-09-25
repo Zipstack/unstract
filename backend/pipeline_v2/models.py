@@ -116,7 +116,7 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
     class Meta:
         verbose_name = "Pipeline"
         verbose_name_plural = "Pipelines"
-        db_table = "pipeline_v2"
+        db_table = "pipeline"
         constraints = [
             models.UniqueConstraint(
                 fields=["id", "pipeline_type"],
