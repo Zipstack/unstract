@@ -39,3 +39,15 @@ def custom_exception_handler(exc, context) -> Response:  # type: ignore
         response.data["status_code"] = response.status_code
 
     return response
+
+
+class UnstractFSException(UnstractBaseException):
+    """Handles all error from fs connector class and propagates the error
+    message to UI.
+
+    Args:
+        UnstractBaseException: Inherits class UnstractBaseException
+    """
+
+    default_detail = "Error testing connection. "
+    status_code = 500

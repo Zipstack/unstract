@@ -61,6 +61,17 @@ def after_request(exception: Any) -> None:
         db.close()
 
 
+@app.before_request
+def log_request_info():
+    app.logger.info(f"Request Path: {request.path} | Method: {request.method}")
+
+
+@app.after_request
+def log_response_info(response):
+    app.logger.info(f"Response Status: {response.status}")
+    return response
+
+
 def _publish_log(
     log_events_id: str,
     component: dict[str, str],
@@ -808,7 +819,10 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
         if node.score > 0:
             text += node.get_content() + "\f\n"
         else:
-            app.logger.info("Node score is less than 0. " f"Ignored: {node.score}")
+            app.logger.info(
+                "Node score is less than 0. "
+                f"Ignored: {node.node_id} with score {node.score}"
+            )
     return text
 
 

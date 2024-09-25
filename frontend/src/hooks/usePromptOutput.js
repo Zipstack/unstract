@@ -63,7 +63,7 @@ const usePromptOutput = () => {
     }
 
     if (isPublicSource) {
-      url = publicOutputsApi(id, promptId, isSinglePassExtract);
+      url = publicOutputsApi(id, promptId, isSinglePassExtract, null, null);
     }
 
     if (docId) {

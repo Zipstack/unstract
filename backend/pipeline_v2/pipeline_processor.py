@@ -4,6 +4,7 @@ from typing import Optional
 from django.utils import timezone
 from pipeline_v2.exceptions import InactivePipelineError
 from pipeline_v2.models import Pipeline
+from pipeline_v2.notification import PipelineNotification
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,9 @@ class PipelineProcessor:
     @staticmethod
     def fetch_pipeline(pipeline_id: str, check_active: bool = True) -> Pipeline:
         """Retrieves and checks for an active pipeline.
+        Args:
+            pipeline_id (str): UUID of the pipeline
+            check_active (bool): Whether to check if the pipeline is active
 
         Raises:
             InactivePipelineError: If an active pipeline is not found
@@ -36,6 +40,14 @@ class PipelineProcessor:
             logger.error(f"Inactive pipeline fetched: {pipeline_id}")
             raise InactivePipelineError(pipeline_name=pipeline.pipeline_name)
         return pipeline
+
+    @classmethod
+    def get_active_pipeline(cls, pipeline_id: str) -> Optional[Pipeline]:
+        """Retrieves a list of active pipelines."""
+        try:
+            return cls.fetch_pipeline(pipeline_id, check_active=True)
+        except Pipeline.DoesNotExist:
+            return None
 
     @staticmethod
     def _update_pipeline_status(
@@ -63,10 +75,31 @@ class PipelineProcessor:
         return pipeline
 
     @staticmethod
+    def _send_notification(
+        pipeline: Pipeline,
+        execution_id: Optional[str] = None,
+        error_message: Optional[str] = None,
+    ) -> None:
+        """Sends a notification for the pipeline.
+        Args:
+            pipeline (Pipeline): Pipeline to send notification for
+
+        Returns:
+            None
+        """
+        pipeline_notification = PipelineNotification(
+            pipeline=pipeline, execution_id=execution_id, error_message=error_message
+        )
+        pipeline_notification.send()
+
+    @staticmethod
     def update_pipeline(
         pipeline_guid: Optional[str],
         status: tuple[str, str],
         is_active: Optional[bool] = None,
+        execution_id: Optional[str] = None,
+        error_message: Optional[str] = None,
+        is_end: bool = False,
     ) -> None:
         if not pipeline_guid:
             return
@@ -75,7 +108,10 @@ class PipelineProcessor:
         pipeline: Pipeline = PipelineProcessor.fetch_pipeline(
             pipeline_id=pipeline_guid, check_active=check_active
         )
-        PipelineProcessor._update_pipeline_status(
-            pipeline=pipeline, is_end=True, status=status, is_active=is_active
+        pipeline = PipelineProcessor._update_pipeline_status(
+            pipeline=pipeline, is_end=is_end, status=status, is_active=is_active
+        )
+        PipelineProcessor._send_notification(
+            pipeline=pipeline, execution_id=execution_id, error_message=error_message
         )
         logger.info(f"Updated pipeline {pipeline_guid} status: {status}")

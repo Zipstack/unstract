@@ -281,10 +281,6 @@ function PromptCard({
     }));
   };
 
-  const getTokenUsageId = (promptId, docId, profileManagerId) => {
-    return promptId + "__" + docId + "__" + profileManagerId;
-  };
-
   // Generate the result for the currently selected document
   const handleRun = (
     profileManagerId,
@@ -380,6 +376,7 @@ function PromptCard({
           selectedLlmProfiles.includes(profile?.profile_id)
         );
       }
+
       for (const profile of selectedProfiles) {
         handleDocOutputs(
           docId,
@@ -391,6 +388,8 @@ function PromptCard({
         setIsCoverageLoading(true);
 
         handleIsRunLoading(selectedDoc?.document_id, profile?.profile_id, true);
+
+        const startTime = Date.now();
         handleRunApiRequest(docId, profile?.profile_id)
           .then((res) => {
             const data = res?.data || [];
@@ -426,6 +425,8 @@ function PromptCard({
           .finally(() => {
             handleIsRunLoading(docId, profile?.profile_id, false);
             setIsCoverageLoading(false);
+            const endTime = Date.now();
+            updateTimers(startTime, endTime, profile?.profile_id);
           });
         runCoverageForAllDoc(coverAllDoc, profile.profile_id);
       }
@@ -438,6 +439,7 @@ function PromptCard({
         true,
         null
       );
+      const startTime = Date.now();
       handleRunApiRequest(docId, profileManagerId)
         .then((res) => {
           const data = res?.data || [];
@@ -478,9 +480,21 @@ function PromptCard({
         .finally(() => {
           setIsCoverageLoading(false);
           handleIsRunLoading(selectedDoc?.document_id, profileManagerId, false);
+          const endTime = Date.now();
+          updateTimers(startTime, endTime, profileManagerId);
         });
       runCoverageForAllDoc(coverAllDoc, profileManagerId);
     }
+  };
+
+  const updateTimers = (startTime, endTime, profileManagerId) => {
+    setTimers((prev) => {
+      prev[profileManagerId] = {
+        startTime,
+        endTime,
+      };
+      return prev;
+    });
   };
 
   const runCoverageForAllDoc = (coverAllDoc, profileManagerId) => {
@@ -613,22 +627,13 @@ function PromptCard({
 
     if (profileManagerId) {
       body.profile_manager = profileManagerId;
-      let tokenUsageId;
       let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/${details?.tool_id}`;
       if (!isSimplePromptStudio) {
         body["run_id"] = runId;
-        tokenUsageId = getTokenUsageId(promptId, docId, profileManagerId);
-
-        // Set prompt run timer
-        setTimers((prev) => ({
-          ...prev,
-          [tokenUsageId]: 0,
-        }));
       } else {
         body["sps_id"] = details?.tool_id;
         url = promptRunApiSps;
       }
-      const timerIntervalId = startTimer(tokenUsageId);
 
       const requestOptions = {
         method: "POST",
@@ -656,34 +661,8 @@ function PromptCard({
         })
         .catch((err) => {
           throw err;
-        })
-        .finally(() => {
-          if (!isSimplePromptStudio) {
-            stopTimer(tokenUsageId, timerIntervalId);
-          }
         });
     }
-  };
-
-  const startTimer = (profileId) => {
-    setTimers((prev) => ({
-      ...prev,
-      [profileId]: (prev[profileId] || 0) + 1,
-    }));
-    return setInterval(() => {
-      setTimers((prev) => ({
-        ...prev,
-        [profileId]: (prev[profileId] || 0) + 1,
-      }));
-    }, 1000);
-  };
-
-  const stopTimer = (profileId, intervalId) => {
-    clearInterval(intervalId);
-    setTimers((prev) => ({
-      ...prev,
-      [profileId]: prev[profileId] || 0,
-    }));
   };
 
   return (
