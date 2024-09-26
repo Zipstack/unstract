@@ -35,7 +35,6 @@ from account.serializer import (
 from account.user import UserService
 from django.conf import settings
 from django.contrib.auth import logout as django_logout
-from django.db import transaction
 from django.db.utils import IntegrityError
 from django.middleware import csrf
 from django.shortcuts import redirect
@@ -167,33 +166,28 @@ class AuthenticationController:
             organization = OrganizationService.get_organization_by_org_id(
                 organization_id
             )
-
-            # Django tenant migration will happen in the below code block
-            with transaction.atomic(durable=True):
-                if not organization:
-                    try:
-                        organization_data: OrganizationData = (
-                            self.auth_service.get_organization_by_org_id(
-                                organization_id
-                            )
-                        )
-                    except ValueError:
-                        raise OrganizationNotExist()
-                    try:
-                        organization = OrganizationService.create_organization(
-                            organization_data.name,
-                            organization_data.display_name,
-                            organization_data.id,
-                        )
-                        new_organization = True
-                    except IntegrityError:
-                        raise DuplicateData(
-                            f"{ErrorMessage.ORGANIZATION_EXIST}, \
-                                {ErrorMessage.DUPLICATE_API}"
-                        )
-                organization_member = self.create_tenant_user(
-                    organization=organization, user=user
-                )
+            if not organization:
+                try:
+                    organization_data: OrganizationData = (
+                        self.auth_service.get_organization_by_org_id(organization_id)
+                    )
+                except ValueError:
+                    raise OrganizationNotExist()
+                try:
+                    organization = OrganizationService.create_organization(
+                        organization_data.name,
+                        organization_data.display_name,
+                        organization_data.id,
+                    )
+                    new_organization = True
+                except IntegrityError:
+                    raise DuplicateData(
+                        f"{ErrorMessage.ORGANIZATION_EXIST}, \
+                            {ErrorMessage.DUPLICATE_API}"
+                    )
+            organization_member = self.create_tenant_user(
+                organization=organization, user=user
+            )
 
             if new_organization:
                 try:

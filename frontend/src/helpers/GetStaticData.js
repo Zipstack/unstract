@@ -446,11 +446,8 @@ function getLLMModelNamesForProfiles(profiles, adapters) {
   });
 }
 
-function getFormattedTotalCost(result, profile) {
-  // Find the relevant object in the result array
-  const value =
-    result.find((r) => r?.profileManager === profile?.profile_id)?.tokenUsage
-      ?.cost_in_dollars ?? 0;
+function getFormattedTotalCost(tokenUsageDetails) {
+  const value = tokenUsageDetails?.cost_in_dollars ?? 0;
 
   // Format the value to 5 decimal places or return "0" if the value is zero
   return value === 0 ? 0 : value.toFixed(5);
@@ -522,6 +519,14 @@ const formatNumberWithCommas = (number) => {
     : formattedIntegerPart;
 };
 
+const isValidJsonKey = (key) => {
+  // Check for Prompt-Key
+  // Allowed case, contains alphanumeric characters and underscores,
+  // and doesn't start with a number.
+  const regex = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+  return regex.test(key);
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -567,4 +572,5 @@ export {
   getDocIdFromKey,
   displayURL,
   formatNumberWithCommas,
+  isValidJsonKey,
 };

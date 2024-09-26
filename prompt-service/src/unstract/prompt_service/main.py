@@ -7,7 +7,7 @@ from typing import Any, Optional
 from flask import json, jsonify, request
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
-from unstract.prompt_service.config import create_app
+from unstract.prompt_service.config import create_app, db
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.exceptions import APIError, ErrorResponse, NoPayloadError
@@ -46,6 +46,30 @@ NO_CONTEXT_ERROR = (
 app = create_app()
 # Load plugins
 plugin_loader(app)
+
+
+@app.before_request
+def before_request() -> None:
+    if db.is_closed():
+        db.connect(reuse_if_open=True)
+
+
+@app.teardown_request
+def after_request(exception: Any) -> None:
+    # Close the connection after each request
+    if not db.is_closed():
+        db.close()
+
+
+@app.before_request
+def log_request_info():
+    app.logger.info(f"Request Path: {request.path} | Method: {request.method}")
+
+
+@app.after_request
+def log_response_info(response):
+    app.logger.info(f"Response Status: {response.status}")
+    return response
 
 
 def _publish_log(
@@ -244,13 +268,14 @@ def prompt_processor() -> Any:
             )
             return APIError(message=msg)
 
-        if output[PSKeys.TYPE] == PSKeys.TABLE:
+        if output[PSKeys.TYPE] == PSKeys.TABLE or output[PSKeys.TYPE] == PSKeys.RECORD:
             try:
                 structured_output = extract_table(
                     output=output,
                     plugins=plugins,
                     structured_output=structured_output,
                     llm=llm,
+                    enforce_type=output[PSKeys.TYPE],
                 )
                 metadata = query_usage_metadata(token=platform_key, metadata=metadata)
                 response = {
@@ -275,6 +300,7 @@ def prompt_processor() -> Any:
                     RunLevel.TABLE_EXTRACTION,
                     "Error while extracting table for the prompt",
                 )
+                raise api_error
 
         try:
             context = ""
@@ -501,6 +527,7 @@ def prompt_processor() -> Any:
                             answer = run_completion(
                                 llm=llm,
                                 prompt=prompt,
+                                prompt_type=PSKeys.JSON,
                             )
                             structured_output[output[PSKeys.NAME]] = json.loads(answer)
                         except JSONDecodeError as e:
@@ -794,7 +821,10 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
         if node.score > 0:
             text += node.get_content() + "\f\n"
         else:
-            app.logger.info("Node score is less than 0. " f"Ignored: {node.score}")
+            app.logger.info(
+                "Node score is less than 0. "
+                f"Ignored: {node.node_id} with score {node.score}"
+            )
     return text
 
 
@@ -854,8 +884,3 @@ def handle_uncaught_exception(e):
 
     log_exceptions(e)
     return handle_http_exception(APIError())
-
-
-# TODO: Review if below code is needed
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5003)

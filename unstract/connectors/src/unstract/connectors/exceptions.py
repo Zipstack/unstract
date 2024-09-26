@@ -31,3 +31,27 @@ class ConnectorError(ConnectorBaseException):
 
     def __str__(self) -> str:
         return f"{self.message}"
+
+
+class FSAccessDeniedError(ConnectorError):
+    """Handles all FS access denied error.
+
+    Args:
+        ConnectorError: Inherits from base ConnectorError class
+    """
+
+
+class AzureHttpError(ConnectorError):
+    """Handles invalid directory error from azure.
+
+    Args:
+        ConnectorError (Class): Inherits class ConnectorError
+    """
+
+
+class PermissionDeniedError(ConnectorError):
+    """Handles permission denied error from fs connector.
+
+    Args:
+        ConnectorError (Class): Inherits class ConnectorError
+    """

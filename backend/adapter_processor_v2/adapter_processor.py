@@ -12,11 +12,12 @@ from adapter_processor_v2.exceptions import (
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
-from unstract.adapters.adapterkit import Adapterkit
-from unstract.adapters.base import Adapter
-from unstract.adapters.enums import AdapterTypes
-from unstract.adapters.exceptions import AdapterError
-from unstract.adapters.x2text.constants import X2TextConstants
+from tenant_account_v2.organization_member_service import OrganizationMemberService
+from unstract.sdk.adapters.adapterkit import Adapterkit
+from unstract.sdk.adapters.base import Adapter
+from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.sdk.adapters.x2text.constants import X2TextConstants
+from unstract.sdk.exceptions import SdkError
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -32,13 +33,9 @@ class AdapterProcessor:
             AdapterKeys.ID, adapter_id
         )
         if len(updated_adapters) != 0:
-            try:
-                schema_details[AdapterKeys.JSON_SCHEMA] = json.loads(
-                    updated_adapters[0].get(AdapterKeys.JSON_SCHEMA)
-                )
-            except Exception as exc:
-                logger.error(f"Error occured while parsing JSON Schema : {exc}")
-                raise InternalServiceError()
+            schema_details[AdapterKeys.JSON_SCHEMA] = json.loads(
+                updated_adapters[0].get(AdapterKeys.JSON_SCHEMA)
+            )
         else:
             logger.error(
                 f"Invalid adapter Id : {adapter_id} while fetching JSON Schema"
@@ -97,7 +94,7 @@ class AdapterProcessor:
             test_result: bool = adapter_instance.test_connection()
             logger.info(f"{adapter_id} test result: {test_result}")
             return test_result
-        except AdapterError as e:
+        except SdkError as e:
             raise TestAdapterError(str(e))
 
     @staticmethod
@@ -112,10 +109,13 @@ class AdapterProcessor:
     @staticmethod
     def set_default_triad(default_triad: dict[str, str], user: User) -> None:
         try:
+            organization_member = OrganizationMemberService.get_user_by_id(user.id)
             (
                 user_default_adapter,
                 created,
-            ) = UserDefaultAdapter.objects.get_or_create(user=user)
+            ) = UserDefaultAdapter.objects.get_or_create(
+                organization_member=organization_member
+            )
 
             if default_triad.get(AdapterKeys.LLM_DEFAULT, None):
                 user_default_adapter.default_llm_adapter = AdapterInstance.objects.get(
@@ -235,7 +235,11 @@ class AdapterProcessor:
         """
         try:
             adapters: list[AdapterInstance] = []
-            default_adapter = UserDefaultAdapter.objects.get(user=user)
+
+            organization_member = OrganizationMemberService.get_user_by_id(id=user.id)
+            default_adapter: UserDefaultAdapter = UserDefaultAdapter.objects.get(
+                organization_member=organization_member
+            )
 
             if default_adapter.default_embedding_adapter:
                 adapters.append(default_adapter.default_embedding_adapter)
@@ -250,8 +254,5 @@ class AdapterProcessor:
         except ObjectDoesNotExist as e:
             logger.error(f"No default adapters found: {e}")
             raise InternalServiceError(
-                "No default adapters found, " "configure them through Platform Settings"
+                "No default adapters found, configure them through Platform Settings"
             )
-        except Exception as e:
-            logger.error(f"Error occurred while fetching default adapters: {e}")
-            raise InternalServiceError("Error fetching default adapters")

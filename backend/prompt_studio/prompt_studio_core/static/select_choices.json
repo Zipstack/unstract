@@ -14,7 +14,8 @@
         "date":"date",
         "boolean":"boolean",
         "json":"json",
-        "table":"table"
+        "table":"table",
+        "record":"record"
     },
     "output_processing":{
         "DEFAULT":"Default"
