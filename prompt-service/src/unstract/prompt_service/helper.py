@@ -353,6 +353,7 @@ def extract_table(
     plugins: dict[str, dict[str, Any]],
     structured_output: dict[str, Any],
     llm: LLM,
+    enforce_type: str,
 ) -> dict[str, Any]:
     table_settings = output[PSKeys.TABLE_SETTINGS]
     table_extractor: dict[str, Any] = plugins.get("table-extractor", {})
@@ -363,7 +364,7 @@ def extract_table(
         )
     try:
         answer = table_extractor["entrypoint_cls"].extract_large_table(
-            llm=llm, table_settings=table_settings
+            llm=llm, table_settings=table_settings, enforce_type=enforce_type
         )
         structured_output[output[PSKeys.NAME]] = answer
         # We do not support summary and eval for table.
