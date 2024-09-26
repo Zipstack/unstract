@@ -81,14 +81,15 @@ class APIKeySerializer(AuditSerializer):
 
 
 class ExecutionRequestSerializer(Serializer):
-    """Execution request serializer timeout (int): Timeout for the API
-    deployment, maximum value can be 300s.
+    """Execution request serializer.
 
-    If -1 it     corresponds to async execution. Defaults to -1
-    include_metadata (bool): Flag to include metadata in API response
-    use_cache (bool): Flag to use FileHistory to save and retrieve
-    responses quickly.     This is undocumented to the user and can be
-    helpful for demos.
+    Attributes:
+        timeout (int): Timeout for the API deployment, maximum value can be 300s.
+            If -1 it corresponds to async execution. Defaults to -1
+        include_metadata (bool): Flag to include metadata in API response
+        use_cache (bool): Flag to use FileHistory to save and retrieve
+            responses quickly. This is undocumented to the user and can be
+            helpful for demos.
     """
 
     timeout = IntegerField(
