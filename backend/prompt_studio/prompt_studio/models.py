@@ -23,7 +23,7 @@ class ToolStudioPrompt(BaseModel):
         TABLE = "table", "Response sent as table"
         RECORD = "record", (
             "Response sent for records. "
-            "Entires of records are list of "
+            "Entries of records are list of "
             "logical and organized individual "
             "entities with distint values"
         )
