@@ -32,6 +32,7 @@ urlpatterns = [
     path("platform/", include("platform_settings_v2.urls")),
     path("api/", include("api_v2.urls")),
     path("usage/", include("usage_v2.urls")),
+    path("notifications/", include("notification_v2.urls")),
     path(
         UrlPathConstants.PROMPT_STUDIO,
         include("prompt_studio.prompt_profile_manager_v2.urls"),
@@ -58,12 +59,3 @@ urlpatterns = [
         include("prompt_studio.prompt_studio_index_manager_v2.urls"),
     ),
 ]
-
-try:
-    import pluggable_apps.subscription.urls  # noqa: F401
-
-    urlpatterns += [
-        path("", include("pluggable_apps.subscription.urls")),
-    ]
-except ImportError:
-    pass
