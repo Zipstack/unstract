@@ -18,3 +18,11 @@ class DBTableV2:
     PROMPT_STUDIO_REGISTRY = "prompt_studio_registry_v2"
     PLATFORM_KEY = "platform_key_v2"
     TOKEN_USAGE = "token_usage_v2"
+
+
+class LogLevel:
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
