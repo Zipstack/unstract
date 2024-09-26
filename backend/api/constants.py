@@ -4,4 +4,4 @@ class ApiExecution:
     FILES_FORM_DATA: str = "files"
     TIMEOUT_FORM_DATA: str = "timeout"
     INCLUDE_METADATA: str = "include_metadata"
-    USE_CACHE: str = "use_cache"  # Undocumented parameter, useful for demos
+    USE_FILE_HISTORY: str = "use_file_history"  # Undocumented parameter

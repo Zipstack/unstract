@@ -169,6 +169,10 @@ class DestinationConnector(BaseConnector):
             return
 
         file_history = None
+        if use_file_history:
+            file_history = FileHistoryHelper.get_file_history(
+                workflow=workflow, cache_key=file_hash.file_hash
+            )
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
@@ -180,10 +184,6 @@ class DestinationConnector(BaseConnector):
             else:
                 self.insert_into_db(input_file_path=input_file_path)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
-            if use_file_history:
-                file_history = FileHistoryHelper.get_file_history(
-                    workflow=workflow, cache_key=file_hash.file_hash
-                )
             result = self.get_result(file_history)
             exec_metadata = self.get_metadata(file_history)
             self._handle_api_result(

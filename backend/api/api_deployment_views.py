@@ -51,7 +51,7 @@ class DeploymentExecution(views.APIView):
         serializer.is_valid(raise_exception=True)
         timeout = serializer.validated_data.get(ApiExecution.TIMEOUT_FORM_DATA)
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
-        use_file_history = serializer.validated_data.get(ApiExecution.USE_CACHE)
+        use_file_history = serializer.validated_data.get(ApiExecution.USE_FILE_HISTORY)
         if not file_objs or len(file_objs) == 0:
             raise InvalidAPIRequest("File shouldn't be empty")
         response = DeploymentHelper.execute_workflow(
