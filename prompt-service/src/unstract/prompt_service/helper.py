@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from flask import Flask, current_app, json
 from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
 from unstract.prompt_service.config import db
-from unstract.prompt_service.constants import FeatureFlag
+from unstract.prompt_service.constants import DBTableV2, FeatureFlag
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.db_utils import DBUtils
 from unstract.prompt_service.env_manager import EnvLoader
@@ -118,7 +118,7 @@ def initialize_plugin_endpoints(app: Flask) -> None:
 
 def query_usage_metadata(token: str, metadata: dict[str, Any]) -> dict[str, Any]:
     if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-        return query_usage_metadata_v2(db, token, metadata)
+        return query_usage_metadata_v2(token, metadata)
     org_id: str = AuthenticationMiddleware.get_account_from_bearer_token(token)
     run_id: str = metadata["run_id"]
     query: str = f"""
@@ -170,7 +170,7 @@ def query_usage_metadata_v2(token: str, metadata: dict[str, Any]) -> dict[str, A
             SUM(total_tokens) AS total_tokens,
             SUM(embedding_tokens) AS embedding_tokens,
             SUM(cost_in_dollars) AS cost_in_dollars
-        FROM "{DB_SCHEMA}"."token_usage_v2"
+        FROM "{DB_SCHEMA}"."{DBTableV2.TOKEN_USAGE}"
         WHERE run_id = %s and organization_id = %s
         GROUP BY usage_type, llm_usage_reason, model_name;
     """
