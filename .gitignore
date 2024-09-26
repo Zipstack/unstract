@@ -621,6 +621,12 @@ backend/pluggable_apps/*
 # FE Plugins
 frontend/src/plugins/*
 
+# Modifier plugins
+backend/plugins/modifier/
+
+# Queue plugins
+backend/plugins/queues/
+
 # Tool registry
 unstract/tool-registry/tool_registry_config/*.json
 unstract/tool-registry/tests/*.yaml
@@ -653,3 +659,10 @@ unstract/unstract-sdk/
 
 # Backend requirements.txt
 backend/requirements.txt
+
+# Backend cloud urls
+backend/backend/cloud_public_urls.py
+backend/backend/cloud_urls.py
+
+# Backend onboardig static directory
+backend/onboarding_static/
