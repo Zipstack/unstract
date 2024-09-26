@@ -268,13 +268,14 @@ def prompt_processor() -> Any:
             )
             return APIError(message=msg)
 
-        if output[PSKeys.TYPE] == PSKeys.TABLE:
+        if output[PSKeys.TYPE] == PSKeys.TABLE or output[PSKeys.TYPE] == PSKeys.RECORD:
             try:
                 structured_output = extract_table(
                     output=output,
                     plugins=plugins,
                     structured_output=structured_output,
                     llm=llm,
+                    enforce_type=output[PSKeys.TYPE],
                 )
                 metadata = query_usage_metadata(token=platform_key, metadata=metadata)
                 response = {
@@ -299,6 +300,7 @@ def prompt_processor() -> Any:
                     RunLevel.TABLE_EXTRACTION,
                     "Error while extracting table for the prompt",
                 )
+                raise api_error
 
         try:
             context = ""
@@ -882,8 +884,3 @@ def handle_uncaught_exception(e):
 
     log_exceptions(e)
     return handle_http_exception(APIError())
-
-
-# TODO: Review if below code is needed
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5003)

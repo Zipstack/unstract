@@ -1,3 +1,4 @@
+import json
 from enum import Enum
 
 
@@ -13,6 +14,22 @@ class CommonUtils:
             bool
         """
         return string.lower() == "true"
+
+    @staticmethod
+    def is_json(string: str) -> bool:
+        """Utility method to check if input is a JSON String.
+
+        Args:
+            string (str): String to be checked.
+
+        Returns:
+            bool : true if valid JSON String
+        """
+        try:
+            json.loads(string)
+        except json.JSONDecodeError:
+            return False
+        return True
 
 
 class ModelEnum(Enum):
