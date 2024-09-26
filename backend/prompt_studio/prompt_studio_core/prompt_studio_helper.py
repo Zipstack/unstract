@@ -59,7 +59,7 @@ ERROR_MSG = "User %s doesn't have access to adapter %s"
 
 logger = logging.getLogger(__name__)
 
-modifier_loader = load_modifier_plugins()
+modifier_plugins = load_modifier_plugins()
 
 
 class PromptStudioHelper:
@@ -260,7 +260,7 @@ class PromptStudioHelper:
         f.close()
         response: dict[str, Any] = json.loads(choices)
 
-        for modifier_plugin in modifier_loader:
+        for modifier_plugin in modifier_plugins:
             cls = modifier_plugin[ModifierConfig.METADATA][
                 ModifierConfig.METADATA_SERVICE_CLASS
             ]
@@ -454,7 +454,7 @@ class PromptStudioHelper:
         if (
             prompt_instance.enforce_type == TSPKeys.TABLE
             or prompt_instance.enforce_type == TSPKeys.RECORD
-        ) and not modifier_loader:
+        ) and not modifier_plugins:
             raise OperationNotSupported()
 
         prompt_name = prompt_instance.prompt_key
@@ -854,7 +854,7 @@ class PromptStudioHelper:
                     org_id, user_id, tool_id, doc_name, TSPKeys.EXTRACT
                 )
             )
-            for modifier_plugin in modifier_loader:
+            for modifier_plugin in modifier_plugins:
                 cls = modifier_plugin[ModifierConfig.METADATA][
                     ModifierConfig.METADATA_SERVICE_CLASS
                 ]
