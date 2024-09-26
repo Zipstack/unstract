@@ -155,20 +155,24 @@ class DestinationConnector(BaseConnector):
         file_name: str,
         file_hash: FileHash,
         workflow: Workflow,
+        input_file_path: str,
         error: Optional[str] = None,
-        input_file_path: Optional[str] = None,
+        use_file_history: bool = True,
     ) -> None:
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
         result: Optional[str] = None
-        meta_data: Optional[str] = None
+        metadata: Optional[str] = None
         if error:
             if connection_type == WorkflowEndpoint.ConnectionType.API:
                 self._handle_api_result(file_name=file_name, error=error, result=result)
             return
-        file_history = FileHistoryHelper.get_file_history(
-            workflow=workflow, cache_key=file_hash.file_hash
-        )
+
+        file_history = None
+        if use_file_history:
+            file_history = FileHistoryHelper.get_file_history(
+                workflow=workflow, cache_key=file_hash.file_hash
+            )
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
@@ -181,9 +185,9 @@ class DestinationConnector(BaseConnector):
                 self.insert_into_db(input_file_path=input_file_path)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
-            meta_data = self.get_metadata(file_history)
+            exec_metadata = self.get_metadata(file_history)
             self._handle_api_result(
-                file_name=file_name, error=error, result=result, meta_data=meta_data
+                file_name=file_name, error=error, result=result, metadata=exec_metadata
             )
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
             self._push_data_to_queue(file_name, workflow, input_file_path)
@@ -191,13 +195,14 @@ class DestinationConnector(BaseConnector):
             self.execution_service.publish_log(
                 message=f"File '{file_name}' processed successfully"
             )
-        if not file_history:
+
+        if use_file_history and not file_history:
             FileHistoryHelper.create_file_history(
                 cache_key=file_hash.file_hash,
                 workflow=workflow,
                 status=ExecutionStatus.COMPLETED,
                 result=result,
-                metadata=meta_data,
+                metadata=metadata,
                 file_name=file_name,
             )
 
@@ -325,7 +330,7 @@ class DestinationConnector(BaseConnector):
         file_name: str,
         error: Optional[str] = None,
         result: Optional[str] = None,
-        meta_data: Optional[dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         """Handle the API result.
 
@@ -351,7 +356,7 @@ class DestinationConnector(BaseConnector):
                     {
                         "status": ApiDeploymentResultStatus.SUCCESS,
                         "result": result,
-                        "metadata": meta_data,
+                        "metadata": metadata,
                     }
                 )
             else:

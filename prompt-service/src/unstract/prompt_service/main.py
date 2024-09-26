@@ -884,8 +884,3 @@ def handle_uncaught_exception(e):
 
     log_exceptions(e)
     return handle_http_exception(APIError())
-
-
-# TODO: Review if below code is needed
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5003)
