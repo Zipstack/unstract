@@ -3,6 +3,11 @@ from typing import Optional
 from rest_framework.exceptions import APIException
 
 
+class NotFoundException(APIException):
+    status_code = 404
+    default_detail = "The requested resource was not found."
+
+
 class WorkflowTriggerError(APIException):
     status_code = 400
     default_detail = "Error triggering workflow. Pipeline created"
@@ -44,3 +49,7 @@ class MandatoryWorkflowId(APIException):
 class MandatoryCronSchedule(APIException):
     status_code = 400
     default_detail = "Cron schedule is mandatory"
+
+
+class PipelineNotFound(NotFoundException):
+    default_detail = "Pipeline not found"

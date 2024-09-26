@@ -19,7 +19,7 @@ class TestMinoFS(unittest.TestCase):
             }
         )
 
-        print(s3.get_fsspec_fs().ls("pandora-user-storage"))
+        print(s3.get_fsspec_fs().ls("unstract-user-storage"))
 
     # @unittest.skip("Minio is not running")
     def test_minio(self) -> None:

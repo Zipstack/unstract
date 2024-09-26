@@ -8,6 +8,7 @@ import { useAlertStore } from "./store/alert-store.js";
 import { useSessionStore } from "./store/session-store.js";
 import PostHogPageviewTracker from "./PostHogPageviewTracker.js";
 import { PageTitle } from "./components/widgets/page-title/PageTitle.jsx";
+import { useEffect } from "react";
 
 let GoogleTagManagerHelper;
 try {
@@ -42,15 +43,18 @@ function App() {
     </>
   );
 
-  alertDetails.content &&
+  useEffect(() => {
+    if (!alertDetails?.content) return;
+
     notificationAPI.open({
-      message: alertDetails.title,
-      description: alertDetails.content,
-      type: alertDetails.type,
-      duration: alertDetails.duration,
+      message: alertDetails?.title,
+      description: alertDetails?.content,
+      type: alertDetails?.type,
+      duration: alertDetails?.duration,
       btn,
-      key: alertDetails.key,
+      key: alertDetails?.key,
     });
+  }, [alertDetails]);
 
   return (
     <ConfigProvider

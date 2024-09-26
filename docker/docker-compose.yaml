@@ -26,6 +26,7 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
     environment:
       - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-backend
     labels:
       - traefik.enable=true
       - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && PathPrefix(`/api/v1`, `/deployment`)
@@ -46,6 +47,7 @@ services:
       - redis
     environment:
       - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker
     labels:
       - traefik.enable=false
     volumes:
@@ -66,6 +68,7 @@ services:
       - redis
     environment:
       - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-logging
     labels:
       - traefik.enable=false
 
@@ -82,6 +85,7 @@ services:
       - redis
     environment:
       - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-api-deployment
     labels:
       - traefik.enable=false
     volumes:
@@ -108,6 +112,7 @@ services:
       - "5555:5555"
     environment:
       - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-celery-flower
     volumes:
       - unstract_data:/data
     profiles:
@@ -126,6 +131,9 @@ services:
     depends_on:
         - db
         - redis
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-celery-beat
 
   # Frontend React app
   frontend:
@@ -200,23 +208,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - redis
-    labels:
-      - traefik.enable=false
-
-  document-service:
-    profiles:
-        - optional
-    image: unstract/document-service:${VERSION}
-    container_name: unstract-document-service
-    restart: unless-stopped
-    ports:
-      - 3002:3002
-    depends_on:
-      - redis
-    env_file:
-      - ../document-service/.env
-    environment:
-      - ENVIRONMENT=development
     labels:
       - traefik.enable=false
 
