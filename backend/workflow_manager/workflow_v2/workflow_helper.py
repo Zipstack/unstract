@@ -3,6 +3,7 @@ import logging
 import os
 import traceback
 from typing import Any, Optional
+from uuid import uuid4
 
 from account_v2.constants import Common
 from api_v2.models import APIDeployment
@@ -156,6 +157,7 @@ class WorkflowHelper:
             except Exception as e:
                 failed_files += 1
                 error_message = f"Error processing file '{file_path}'. {e}"
+                logger.error(error_message, stack_info=True, exc_info=True)
                 execution_service.publish_log(
                     message=error_message, level=LogLevel.ERROR
                 )
@@ -194,7 +196,11 @@ class WorkflowHelper:
                 current_file_idx, total_files, file_name, single_step
             )
             if not file_hash.is_executed:
+                # Multiple run_ids are linked to an execution_id
+                # Each run_id corresponds to workflow runs for a single file
+                run_id = str(uuid4())
                 execution_service.execute_input_file(
+                    run_id=run_id,
                     file_name=file_name,
                     single_step=single_step,
                 )
@@ -547,6 +553,10 @@ class WorkflowHelper:
             dict[str, list[Any]]: Returns a dict with result from
                 workflow execution
         """
+        hash_values = {
+            key: FileHash.from_json(value)
+            for key, value in hash_values_of_files.items()
+        }
         workflow = Workflow.objects.get(id=workflow_id)
         try:
             workflow_execution = (
@@ -573,7 +583,7 @@ class WorkflowHelper:
                 scheduled=scheduled,
                 workflow_execution=workflow_execution,
                 execution_mode=execution_mode,
-                hash_values_of_files=hash_values_of_files,
+                hash_values_of_files=hash_values,
             )
         except Exception as error:
             error_message = traceback.format_exc()
@@ -682,8 +692,7 @@ class WorkflowHelper:
         workflow: Workflow,
         execution_action: str,
         execution_id: Optional[str] = None,
-        hash_values_of_files: dict[str, str] = {},
-        include_metadata: bool = False,
+        hash_values_of_files: dict[str, FileHash] = {},
     ) -> ExecutionResponse:
         if execution_action is Workflow.ExecutionAction.START.value:  # type: ignore
             if execution_id is None:
@@ -697,7 +706,6 @@ class WorkflowHelper:
                     single_step=True,
                     workflow_execution=workflow_execution,
                     hash_values_of_files=hash_values_of_files,
-                    include_metadata=include_metadata,
                 )
             except WorkflowExecution.DoesNotExist:
                 return WorkflowHelper.create_and_make_execution_response(
