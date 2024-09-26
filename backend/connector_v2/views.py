@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 class ConnectorInstanceViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
-    queryset = ConnectorInstance.objects.all()
     serializer_class = ConnectorInstanceSerializer
 
     def get_queryset(self) -> Optional[QuerySet]:

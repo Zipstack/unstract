@@ -37,7 +37,7 @@ from workflow_manager.workflow.models.file_history import FileHistory
 from workflow_manager.workflow.models.workflow import Workflow
 
 from backend.exceptions import UnstractFSException
-from unstract.connectors.exceptions import AzureHttpError
+from unstract.connectors.exceptions import ConnectorError
 
 logger = logging.getLogger(__name__)
 
@@ -224,19 +224,17 @@ class DestinationConnector(BaseConnector):
 
         try:
             destination_fs.create_dir_if_not_exists(input_dir=output_directory)
-            destination_fsspec = destination_fs.get_fsspec_fs()
 
             # Traverse local directory and create the same structure in the
             # output_directory
             for root, dirs, files in os.walk(destination_volume_path):
                 for dir_name in dirs:
-                    destination_fsspec.mkdir(
-                        os.path.join(
-                            output_directory,
-                            os.path.relpath(root, destination_volume_path),
-                            dir_name,
-                        )
+                    current_dir = os.path.join(
+                        output_directory,
+                        os.path.relpath(root, destination_volume_path),
+                        dir_name,
                     )
+                    destination_fs.create_dir_if_not_exists(input_dir=current_dir)
 
                 for file_name in files:
                     source_path = os.path.join(root, file_name)
@@ -248,7 +246,7 @@ class DestinationConnector(BaseConnector):
                     destination_fs.upload_file_to_storage(
                         source_path=source_path, destination_path=destination_path
                     )
-        except AzureHttpError as e:
+        except ConnectorError as e:
             raise UnstractFSException(core_err=e) from e
 
     def insert_into_db(self, input_file_path: str) -> None:

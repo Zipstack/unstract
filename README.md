@@ -73,12 +73,13 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |----------------------------------------------------------------|-----------------------------|---|
 | <img src="docs/assets/3rd_party/openai.png" width="32"/>       | OpenAI                      | ✅ Working |
 | <img src="docs/assets/3rd_party/vertex_ai.png" width="32"/>    | Google VertexAI, Gemini Pro | ✅ Working |
-| <img src="docs/assets/3rd_party/azure_openai.png" width="32"/> | Azure OpenAI                | ✅ Working  |
-| <img src="docs/assets/3rd_party/palm.png" width="32"/>         | Google PaLM                 | ✅ Working  |
-| <img src="docs/assets/3rd_party/anyscale.png" width="32"/>     | Anyscale                    | ✅ Working |
-| <img src="docs/assets/3rd_party/mistral_ai.png" width="32"/>   | Mistral AI                  | ✅ Working |
+| <img src="docs/assets/3rd_party/azure_openai.png" width="32"/> | Azure OpenAI                | ✅ Working |
 | <img src="docs/assets/3rd_party/anthropic.png" width="32"/>    | Anthropic                   | ✅ Working |
 | <img src="docs/assets/3rd_party/ollama.png" width="32"/>       | Ollama                      | ✅ Working |
+| <img src="docs/assets/3rd_party/bedrock.png" width="32"/>      | Bedrock                     | ✅ Working |
+| <img src="docs/assets/3rd_party/palm.png" width="32"/>         | Google PaLM                 | ✅ Working |
+| <img src="docs/assets/3rd_party/anyscale.png" width="32"/>     | Anyscale                    | ✅ Working |
+| <img src="docs/assets/3rd_party/mistral_ai.png" width="32"/>   | Mistral AI                  | ✅ Working |
 | <img src="docs/assets/3rd_party/replicate.png" width="32"/>    | Replicate                   | 🗓️ Coming soon! |
 
 
@@ -101,15 +102,16 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |<img src="docs/assets/3rd_party/openai.png" width="32"/>| OpenAI | ✅ Working |
 |<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure OpenAI | ✅ Working  |
 |<img src="docs/assets/3rd_party/palm.png" width="32"/>| Google PaLM | ✅ Working  |
+|<img src="docs/assets/3rd_party/ollama.png" width="32"/>| Ollama | ✅ Working |
 
 ### Text Extractors
 
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/unstract_u_logo.png" width="32"/>| Unstract LLMWhisperer | ✅ Working |
-|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Community | 🗓️ Coming soon!  |
-|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Enterprise | 🗓️ Coming soon!  |
-|<img src="docs/assets/3rd_party/llamaindex.png" width="32"/>| LlamaIndex Parse | 🗓️ Coming soon! |
+|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Community | ✅ Working |
+|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Enterprise | ✅ Working |
+|<img src="docs/assets/3rd_party/llamaindex.png" width="32"/>| LlamaIndex Parse | ✅ Working |
 
 ### ETL Sources
 
@@ -117,11 +119,12 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |---|---|---|
 |<img src="docs/assets/3rd_party/s3.png" width="32"/>| AWS S3 | ✅ Working |
 |<img src="docs/assets/3rd_party/minio.png" width="32"/>| Minio | ✅ Working |
+|<img src="docs/assets/3rd_party/gcp.png" width="32"/>| Google Cloud Storage | ✅ Working |
+|<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure Cloud Storage | ✅ Working |
+|<img src="docs/assets/3rd_party/google_drive.png" width="32"/>| Google Drive | ✅ Working |
 |<img src="docs/assets/3rd_party/dropbox.png" width="32"/>| Dropbox | ✅ Working |
-|<img src="docs/assets/3rd_party/google_drive.png" width="32"/>| Google Drive | 🗓️ Coming soon! |
+|<img src="docs/assets/3rd_party/sftp.png" width="32"/>| SFTP | ✅ Working |
 |<img src="docs/assets/3rd_party/box.png" width="32"/>| Box | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/gcp.png" width="32"/>| Google Cloud Storage | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure Cloud Storage | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/http.png" width="32"/>| HTTP/HTTPS | 🗓️ Coming soon! |
 
 ### ETL Destinations
@@ -132,9 +135,9 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |<img src="docs/assets/3rd_party/amazon_redshift.png" width="32"/>| Amazon Redshift | ✅ Working |
 |<img src="docs/assets/3rd_party/google_bigquery.png" width="32"/>| Google Bigquery | ✅ Working |
 |<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | ✅ Working |
-|<img src="docs/assets/3rd_party/mysql.png" width="32"/>| MySQL | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/mariadb.png" width="32"/>| MariaDB | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/ms_sql.png" width="32"/>| Microsoft SQL Server | 🗓️ Coming soon! |
+|<img src="docs/assets/3rd_party/mysql.png" width="32"/>| MySQL | ✅ Working |
+|<img src="docs/assets/3rd_party/mariadb.png" width="32"/>| MariaDB | ✅ Working |
+|<img src="docs/assets/3rd_party/ms_sql.png" width="32"/>| Microsoft SQL Server | ✅ Working |
 
 ## 🙌 Contributing
 

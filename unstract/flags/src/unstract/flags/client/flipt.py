@@ -33,7 +33,9 @@ class FliptClient(BaseClient):
 
     def list_feature_flags(self, namespace_key: str) -> dict:
         try:
-            FLIPT_SERVICE_AVAILABLE = os.environ.get("FLIPT_SERVICE_AVAILABLE", False)
+            FLIPT_SERVICE_AVAILABLE = (
+                os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() == "true"
+            )
             if not FLIPT_SERVICE_AVAILABLE:
                 logger.warning("Flipt service is not available.")
                 return {}

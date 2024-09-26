@@ -20,6 +20,7 @@ class ToolStudioPrompt(BaseModel):
         DATE = "date", "Response sent as date"
         BOOLEAN = "boolean", "Response sent as boolean"
         JSON = "json", "Response sent as json"
+        TABLE = "table", "Response sent as table"
 
     class PromptType(models.TextChoices):
         PROMPT = "PROMPT", "Response sent as Text"
@@ -45,8 +46,8 @@ class ToolStudioPrompt(BaseModel):
     )
     tool_id = models.ForeignKey(
         CustomTool,
-        on_delete=models.CASCADE,
-        related_name="tool_studio_prompts",
+        on_delete=models.SET_NULL,
+        related_name="mapped_prompt",
         null=True,
         blank=True,
     )
@@ -118,7 +119,7 @@ class ToolStudioPrompt(BaseModel):
     class Meta:
         verbose_name = "Tool Studio Prompt"
         verbose_name_plural = "Tool Studio Prompts"
-        db_table = "tool_studio_prompt_v2"
+        db_table = "tool_studio_prompt"
         constraints = [
             models.UniqueConstraint(
                 fields=["prompt_key", "tool_id"],

@@ -93,8 +93,9 @@ class UnstractFileSystem(UnstractConnector, ABC):
         directory.
 
         Args:
-            source_path (str): _description_
-            destination_path (str): _description_
+            source_path (str): local path of file to be uploaded, coming from tool
+            destination_path (str): target path in the storage where the file will be
+            uploaded
         """
         normalized_path = os.path.normpath(destination_path)
         fs = self.get_fsspec_fs()

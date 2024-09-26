@@ -7,7 +7,6 @@ from unstract.platform_service.constants import LogLevel
 from unstract.platform_service.controller import api
 from unstract.platform_service.env import Env
 from unstract.platform_service.extensions import db
-from unstract.platform_service.utils import RemoveAccessLogTimestamp
 
 load_dotenv()
 
@@ -15,7 +14,6 @@ load_dotenv()
 dictConfig(
     {
         "version": 1,
-        "disable_existing_loggers": False,
         "formatters": {
             "default": {
                 "format": (
@@ -25,35 +23,27 @@ dictConfig(
                 "datefmt": "%Y-%m-%d %H:%M:%S %z",
             },
         },
-        "filters": {
-            "filter_timestamp": {"()": RemoveAccessLogTimestamp},
-        },
         "handlers": {
             "wsgi": {
                 "class": "logging.StreamHandler",
                 "stream": "ext://flask.logging.wsgi_errors_stream",
                 "formatter": "default",
             },
-            "remove_access_log_timestamp": {
-                "class": "logging.StreamHandler",
-                "formatter": "default",
-                "filters": ["filter_timestamp"],
-            },
         },
         "loggers": {
             "werkzeug": {
                 "level": Env.LOG_LEVEL,
-                "handlers": ["remove_access_log_timestamp"],
+                "handlers": ["wsgi"],
                 "propagate": False,
             },
             "gunicorn.access": {
                 "level": Env.LOG_LEVEL,
-                "handlers": ["remove_access_log_timestamp"],
+                "handlers": ["wsgi"],
                 "propagate": False,
             },
             "gunicorn.error": {
                 "level": Env.LOG_LEVEL,
-                "handlers": ["remove_access_log_timestamp"],
+                "handlers": ["wsgi"],
                 "propagate": False,
             },
         },

@@ -3,8 +3,11 @@ from typing import Any, Optional
 from unstract.platform_service.constants import DBTableV2, FeatureFlag
 from unstract.platform_service.exceptions import APIError
 from unstract.platform_service.extensions import db
+from unstract.platform_service.utils import EnvManager
 
 from unstract.flags.feature_flag import check_feature_flag_status
+
+DB_SCHEMA = EnvManager.get_required_setting("DB_SCHEMA", "unstract_v2")
 
 
 class AdapterInstanceRequestHelper:
@@ -26,7 +29,7 @@ class AdapterInstanceRequestHelper:
         if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
             query = (
                 "SELECT id, adapter_id, adapter_metadata_b FROM "
-                f"{DBTableV2.ADAPTER_INSTANCE} x "
+                f'"{DB_SCHEMA}".{DBTableV2.ADAPTER_INSTANCE} x '
                 f"WHERE id='{adapter_instance_id}' and "
                 f"organization_id='{organization_uid}'"
             )
