@@ -1,4 +1,5 @@
 const TABLE_ENFORCE_TYPE = "table";
+const RECORD_ENFORCE_TYPE = "record";
 
 const handleUpdateStatus = (isUpdate, promptId, value, setUpdateStatus) => {
   if (!isUpdate) {
@@ -10,4 +11,4 @@ const handleUpdateStatus = (isUpdate, promptId, value, setUpdateStatus) => {
   });
 };
 
-export { TABLE_ENFORCE_TYPE, handleUpdateStatus };
+export { TABLE_ENFORCE_TYPE, handleUpdateStatus, RECORD_ENFORCE_TYPE };

@@ -27,12 +27,12 @@ urlpatterns = [
     path("", include("account_v2.urls")),
     # Connector OAuth
     path("", include("connector_auth_v2.urls")),
-    # # Docs
+    # Docs
     path("", include("docs.urls")),
-    # # # API deployment
-    # path("api/", include("api_v2.execution_urls")),
-    # # Feature flags
+    # Feature flags
     path("flags/", include("feature_flag.urls")),
+    # Pipeline
+    path("pipeline/", include("pipeline_v2.public_api_urls")),
 ]
 if settings.ADMIN_ENABLED:
     # Admin URLs
@@ -44,13 +44,3 @@ if settings.ADMIN_ENABLED:
         ),
     ]
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-
-
-try:
-    import pluggable_apps.platform_admin.urls  # noqa: F401
-
-    urlpatterns += [
-        path("", include("pluggable_apps.platform_admin.urls")),
-    ]
-except ImportError:
-    pass
