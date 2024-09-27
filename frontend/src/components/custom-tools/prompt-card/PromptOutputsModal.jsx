@@ -102,7 +102,7 @@ PromptOutputsModal.propTypes = {
   setOpen: PropTypes.func.isRequired,
   promptId: PropTypes.string.isRequired,
   llmProfiles: PropTypes.array.isRequired,
-  enforceType: PropTypes.string.isRequired,
+  enforceType: PropTypes.string,
   displayLlmProfile: PropTypes.bool.isRequired,
   promptOutputs: PropTypes.object.isRequired,
 };

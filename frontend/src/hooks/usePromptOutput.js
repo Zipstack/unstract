@@ -85,7 +85,7 @@ const usePromptOutput = () => {
     return url;
   };
 
-  const updatePromptOutputState = (data, isReset) => {
+  const updatePromptOutputState = (data, isReset, timer = 0) => {
     const outputs = {};
 
     let isTokenUsageForSinglePassAdded = false;
@@ -117,6 +117,7 @@ const usePromptOutput = () => {
         challengeData: item?.challenge_data,
         tokenUsage: item?.token_usage,
         output: item?.output,
+        timer,
       };
 
       if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded)

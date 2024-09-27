@@ -15,6 +15,7 @@ const defaultState = {
   rawIndexStatus: [],
   summarizeIndexStatus: [],
   singlePassExtractMode: false,
+  isMultiPassExtractLoading: false,
   isSinglePassExtractLoading: false,
   isSimplePromptStudio: false,
   shareId: null,

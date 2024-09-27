@@ -16,6 +16,7 @@ function PromptDnd({
   outputs,
   enforceTypeList,
   setUpdatedPromptsCopy,
+  promptRunStatus,
 }) {
   const ref = useRef(null);
   const { isSimplePromptStudio } = useCustomToolStore();
@@ -47,6 +48,7 @@ function PromptDnd({
           promptOutputs={outputs}
           enforceTypeList={enforceTypeList}
           setUpdatedPromptsCopy={setUpdatedPromptsCopy}
+          promptRunStatus={promptRunStatus}
         />
       )}
       {item.prompt_type === promptType.notes && (
@@ -71,6 +73,7 @@ PromptDnd.propTypes = {
   outputs: PropTypes.object.isRequired,
   enforceTypeList: PropTypes.array.isRequired,
   setUpdatedPromptsCopy: PropTypes.func.isRequired,
+  promptRunStatus: PropTypes.object.isRequired,
 };
 
 export { PromptDnd };
