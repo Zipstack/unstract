@@ -16,5 +16,4 @@ fi
     --log-level debug \
     --timeout 600 \
     --access-logfile - \
-    --reload \
     backend.wsgi:application
