@@ -329,7 +329,11 @@ class SourceConnector(BaseConnector):
             workflow=workflow, cache_key=file_hash
         )
 
-        if file_history and file_history.is_completed():
+        if (
+            self.execution_service.use_file_history
+            and file_history
+            and file_history.is_completed()
+        ):
             self.execution_service.publish_log(
                 f"Skipping file {file_path} as it has already been processed. "
                 "Clear the file markers to process it again."
