@@ -26,7 +26,7 @@ const usePromptRun = () => {
   const handleException = useExceptionHandler();
 
   const runPrompt = (listOfApis) => {
-    if (!listOfApis || !listOfApis?.length) {
+    if (!listOfApis?.length) {
       return;
     }
 
