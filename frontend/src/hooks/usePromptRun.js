@@ -290,8 +290,6 @@ const usePromptRun = () => {
       });
       addPromptStatus(promptRunApiStatus);
       pushPromptRunApi(apiRequestsToQueue);
-
-      return;
     }
   };
 
