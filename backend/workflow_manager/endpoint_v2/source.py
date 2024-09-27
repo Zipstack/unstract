@@ -485,9 +485,7 @@ class SourceConnector(BaseConnector):
         shutil.copyfile(input_file_path, infile_path)
         shutil.copyfile(input_file_path, source_path)
 
-    def add_file_to_volume(
-        self, input_file_path: str, file_hash: FileHash
-    ) -> tuple[str, str]:
+    def add_file_to_volume(self, input_file_path: str, file_hash: FileHash) -> str:
         """Add input file to execution directory.
 
         Args:
@@ -555,7 +553,11 @@ class SourceConnector(BaseConnector):
 
     @classmethod
     def add_input_file_to_api_storage(
-        cls, workflow_id: str, execution_id: str, file_objs: list[UploadedFile]
+        cls,
+        workflow_id: str,
+        execution_id: str,
+        file_objs: list[UploadedFile],
+        use_file_history: bool = False,
     ) -> dict[str, FileHash]:
         """Add input file to api storage.
 
@@ -563,6 +565,8 @@ class SourceConnector(BaseConnector):
             workflow_id (str): UUID of the worklfow
             execution_id (str): UUID of the execution
             file_objs (list[UploadedFile]): List of uploaded files
+            use_file_history (bool): Use FileHistory table to return results on already
+                processed files. Defaults to False
         Returns:
             dict[str, FileHash]: Dict containing file name and its corresponding hash
         """
@@ -582,9 +586,12 @@ class SourceConnector(BaseConnector):
                 f.write(buffer)
             file_hash = cls.hash_str(buffer)
             connection_type = WorkflowEndpoint.ConnectionType.API
-            file_history = FileHistoryHelper.get_file_history(
-                workflow=workflow, cache_key=file_hash
-            )
+
+            file_history = None
+            if use_file_history:
+                file_history = FileHistoryHelper.get_file_history(
+                    workflow=workflow, cache_key=file_hash
+                )
             is_executed = (
                 True if file_history and file_history.is_completed() else False
             )
