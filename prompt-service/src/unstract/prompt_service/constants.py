@@ -66,6 +66,7 @@ class PromptServiceContants:
     CLEAN_CONTEXT = "clean-context"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
     VARIABLE_MAP = "variable_map"
+    RECORD = "record"
     TEXT = "text"
 
 
@@ -98,8 +99,8 @@ class FeatureFlag:
 class DBTableV2:
     """Database tables."""
 
-    ORGANIZATION = "organization_v2"
-    ADAPTER_INSTANCE = "adapter_instance_v2"
-    PROMPT_STUDIO_REGISTRY = "prompt_studio_registry_v2"
-    PLATFORM_KEY = "platform_key_v2"
-    TOKEN_USAGE = "token_usage_v2"
+    ORGANIZATION = "organization"
+    ADAPTER_INSTANCE = "adapter_instance"
+    PROMPT_STUDIO_REGISTRY = "prompt_studio_registry"
+    PLATFORM_KEY = "platform_key"
+    TOKEN_USAGE = "usage"
