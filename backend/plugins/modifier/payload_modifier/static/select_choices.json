@@ -1,0 +1,7 @@
+{
+    "table_document_type":
+    {
+        "bank_statement":"Bank Statement",
+        "default" : "Default"
+    }
+}
