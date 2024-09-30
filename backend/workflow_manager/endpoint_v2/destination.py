@@ -152,8 +152,9 @@ class DestinationConnector(BaseConnector):
         file_name: str,
         file_hash: FileHash,
         workflow: Workflow,
+        input_file_path: str,
         error: Optional[str] = None,
-        input_file_path: Optional[str] = None,
+        use_file_history: bool = True,
     ) -> None:
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
@@ -163,9 +164,12 @@ class DestinationConnector(BaseConnector):
             if connection_type == WorkflowEndpoint.ConnectionType.API:
                 self._handle_api_result(file_name=file_name, error=error, result=result)
             return
-        file_history = FileHistoryHelper.get_file_history(
-            workflow=workflow, cache_key=file_hash.file_hash
-        )
+
+        file_history = None
+        if use_file_history:
+            file_history = FileHistoryHelper.get_file_history(
+                workflow=workflow, cache_key=file_hash.file_hash
+            )
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
@@ -188,7 +192,7 @@ class DestinationConnector(BaseConnector):
             self.execution_service.publish_log(
                 message=f"File '{file_name}' processed successfully"
             )
-        if not file_history:
+        if use_file_history and not file_history:
             FileHistoryHelper.create_file_history(
                 cache_key=file_hash.file_hash,
                 workflow=workflow,
