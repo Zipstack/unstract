@@ -4,15 +4,17 @@ import os
 from pathlib import Path
 from typing import Any
 
+import google.api_core.exceptions as GoogleApiException
 from oauth2client.client import OAuth2Credentials
 from pydrive2.auth import GoogleAuth
 from pydrive2.fs import GDriveFileSystem
 
-from unstract.connectors.exceptions import ConnectorError
+from unstract.connectors.exceptions import ConnectorError, FSAccessDeniedError
 from unstract.connectors.filesystems.google_drive.constants import GDriveConstants
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.connectors.gcs_helper import GCSHelper
 
+logging.getLogger("gdrive").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
@@ -25,13 +27,20 @@ class GoogleDriveFS(UnstractFileSystem):
     # }
     def __init__(self, settings: dict[str, Any]):
         super().__init__("GoogleDrive")
-        client_secrets = json.loads(
-            GCSHelper().get_secret("google_drive_client_secret")
-        )
+        try:
+            self.client_secrets = json.loads(
+                GCSHelper().get_secret("google_drive_client_secret")
+            )
+        except GoogleApiException.PermissionDenied as e:
+            user_message = "Permission denied. Please check your credentials. "
+            raise FSAccessDeniedError(
+                user_message,
+                treat_as_user_message=True,
+            ) from e
         self.oauth2_credentials = {
-            "client_id": client_secrets["web"]["client_id"],
-            "client_secret": client_secrets["web"]["client_secret"],
-            "token_uri": client_secrets["web"]["token_uri"],
+            "client_id": self.client_secrets["web"]["client_id"],
+            "client_secret": self.client_secrets["web"]["client_secret"],
+            "token_uri": self.client_secrets["web"]["token_uri"],
             "user_agent": None,
             "invalid": False,
             "access_token": settings["access_token"],
@@ -40,7 +49,7 @@ class GoogleDriveFS(UnstractFileSystem):
         }
         gauth = GoogleAuth(
             settings_file=f"{os.path.dirname(__file__)}/static/settings.yaml",
-            settings={"client_config": client_secrets["web"]},
+            settings={"client_config": self.client_secrets["web"]},
         )
         gauth.credentials = OAuth2Credentials.from_json(
             json_data=json.dumps(self.oauth2_credentials)

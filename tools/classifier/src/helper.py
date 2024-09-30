@@ -101,12 +101,11 @@ class ClassifierHelper:
             str: page content
         """
         self.tool.stream_log(
-            "Creating text extraction adapter " f"using adapter_id: {adapter_id}"
+            f"Creating text extraction adapter using adapter_id: {adapter_id}"
         )
         x2text = X2Text(tool=self.tool, adapter_instance_id=adapter_id)
 
         self.tool.stream_log("Text extraction adapter has been created successfully.")
-        self.tool.stream_log("Adapter created")
 
         try:
             extraction_result: TextExtractionResult = x2text.process(

@@ -33,9 +33,10 @@ if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
 else:
     from connector.models import ConnectorInstance
 
+logger = logging.getLogger(__name__)
+
 
 class FileManagerHelper:
-    logger = logging.getLogger(__name__)
 
     @staticmethod
     def get_file_system(connector: ConnectorInstance) -> UnstractFileSystem:
@@ -46,9 +47,7 @@ class FileManagerHelper:
             connector_class: UnstractFileSystem = connector(metadata)
             return connector_class
         else:
-            FileManagerHelper.logger.error(
-                f"Class not Found for {connector.connector_id}"
-            )
+            logger.error(f"Class not Found for {connector.connector_id}")
             raise ConnectorClassNotFound
 
     @staticmethod
@@ -63,14 +62,15 @@ class FileManagerHelper:
             if hasattr(fs, "path") and fs.path and (not path or path == "/"):
                 file_path = fs.path
         except Exception:
-            FileManagerHelper.logger.error(f"Missing path Atribute in {fs}")
+            logger.error(f"Missing path Atribute in {fs}")
             raise MissingConnectorParams()
 
         try:
             return FileManagerHelper.get_files(fs, file_path)
         except Exception as e:
-            FileManagerHelper.logger.error(f"Error listing files: {e}")
-            raise FileListError()
+            msg = f"Error listing files. {e}"
+            logger.error(msg)
+            raise FileListError(msg)
 
     @staticmethod
     def get_files(fs: AbstractFileSystem, file_path: str) -> list[FileInformation]:
@@ -122,9 +122,7 @@ class FileManagerHelper:
             response["Content-Disposition"] = f"attachment; filename={base_name}"
             return response
         except ApiRequestError as exception:
-            FileManagerHelper.logger.error(
-                f"ApiRequestError from {file_info} {exception}"
-            )
+            logger.error(f"ApiRequestError from {file_info} {exception}")
             raise ConnectorApiRequestError
 
     @staticmethod
@@ -169,9 +167,7 @@ class FileManagerHelper:
                 file.close()
 
         except ApiRequestError as exception:
-            FileManagerHelper.logger.error(
-                f"ApiRequestError from {file_info} {exception}"
-            )
+            logger.error(f"ApiRequestError from {file_info} {exception}")
             raise ConnectorApiRequestError
         if file_content_type == "application/pdf":
             # Read contents of PDF file into a string
@@ -181,7 +177,7 @@ class FileManagerHelper:
 
         elif file_content_type == "text/plain":
             with fs.open(file_path, "r") as file:
-                FileManagerHelper.logger.info(f"Reading text file: {file_path}")
+                logger.info(f"Reading text file: {file_path}")
                 text_content = file.read()
                 return text_content
         else:
@@ -192,9 +188,9 @@ class FileManagerHelper:
         try:
             fs.rm(file_path)
         except FileNotFoundError:
-            FileManagerHelper.logger.info(f"File not found: {file_path}")
+            logger.info(f"File not found: {file_path}")
         except Exception as e:
-            FileManagerHelper.logger.info(f"Unable to delete file {e}")
+            logger.info(f"Unable to delete file {e}")
             raise FileDeletionFailed(f"Unable to delete file {e}")
 
     @staticmethod
@@ -266,6 +262,6 @@ class FileManagerHelper:
                 os.makedirs(extract_file_path, exist_ok=True)
                 os.makedirs(summarize_file_path, exist_ok=True)
             except OSError as e:
-                FileManagerHelper.logger.error(f"Error while creating {file_path}: {e}")
+                logger.error(f"Error while creating {file_path}: {e}")
                 raise TenantDirCreationError
         return str(file_path)

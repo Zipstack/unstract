@@ -4,6 +4,7 @@ from account.constants import Common
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from utils.local_context import StateStore
+from utils.user_session import UserSessionUtils
 
 from backend.constants import RequestHeader
 
@@ -34,8 +35,9 @@ class CustomAuthMiddleware:
             auth_service = AuthenticationService()
 
         is_authenticated = auth_service.is_authenticated(request)
+        is_authorized = UserSessionUtils.is_authorized_path(request)
 
-        if is_authenticated:
+        if is_authenticated and is_authorized:
             StateStore.set(Common.LOG_EVENTS_ID, request.session.session_key)
             response = self.get_response(request)
             StateStore.clear(Common.LOG_EVENTS_ID)

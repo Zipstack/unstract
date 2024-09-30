@@ -19,6 +19,7 @@ const defaultState = {
   isSimplePromptStudio: false,
   shareId: null,
   isPublicSource: false,
+  isChallengeEnabled: false,
   adapters: [],
 };
 

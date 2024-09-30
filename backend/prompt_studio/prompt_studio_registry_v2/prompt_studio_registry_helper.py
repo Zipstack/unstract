@@ -5,6 +5,8 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
 from django.db import IntegrityError
+from prompt_studio.modifier_loader import ModifierConfig
+from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
@@ -14,7 +16,7 @@ from prompt_studio.prompt_studio_output_manager_v2.models import (
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from unstract.tool_registry.dto import Properties, Spec, Tool
 
-from .constants import JsonSchemaKey
+from .constants import JsonSchemaKey, PromptStudioRegistryKeys
 from .exceptions import (
     EmptyToolExportError,
     InternalError,
@@ -25,6 +27,7 @@ from .models import PromptStudioRegistry
 from .serializers import PromptStudioRegistrySerializer
 
 logger = logging.getLogger(__name__)
+modifier_loader = load_modifier_plugins()
 
 
 class PromptStudioRegistryHelper:
@@ -121,30 +124,22 @@ class PromptStudioRegistryHelper:
                 f"ID {prompt_registry_id}: {e} "
             )
             return None
-        # The below properties are introduced after 0.20.0
-        # So defaulting to 0.20.0 if the properties are not found
-        image_url = prompt_registry_tool.tool_metadata.get(
-            JsonSchemaKey.IMAGE_URL, "docker:unstract/tool-structure:0.0.20"
-        )
-        image_name = prompt_registry_tool.tool_metadata.get(
-            JsonSchemaKey.IMAGE_NAME, "unstract/tool-structure"
-        )
-        image_tag = prompt_registry_tool.tool_metadata.get(
-            JsonSchemaKey.IMAGE_TAG, "0.0.20"
-        )
         return Tool(
             tool_uid=prompt_registry_tool.prompt_registry_id,
             properties=Properties.from_dict(prompt_registry_tool.tool_property),
             spec=Spec.from_dict(prompt_registry_tool.tool_spec),
             icon=prompt_registry_tool.icon,
-            image_url=image_url,
-            image_name=image_name,
-            image_tag=image_tag,
+            image_url=settings.STRUCTURE_TOOL_IMAGE_URL,
+            image_name=settings.STRUCTURE_TOOL_IMAGE_NAME,
+            image_tag=settings.STRUCTURE_TOOL_IMAGE_TAG,
         )
 
     @staticmethod
     def update_or_create_psr_tool(
-        custom_tool: CustomTool, shared_with_org: bool, user_ids: set[int]
+        custom_tool: CustomTool,
+        shared_with_org: bool,
+        user_ids: set[int],
+        force_export: bool,
     ) -> PromptStudioRegistry:
         """Updates or creates the PromptStudioRegistry record.
 
@@ -152,7 +147,13 @@ class PromptStudioRegistryHelper:
         1:1 with the `CustomTool`.
 
         Args:
-            tool_id (str): ID of the custom tool.
+            custom_tool (CustomTool): The instance of the custom tool to be updated
+                or created.
+            shared_with_org (bool): Flag indicating whether the tool is shared with
+                the organization.
+            user_ids (set[int]): A set of user IDs to whom the tool is shared.
+            force_export (bool): Indicates if the export is being forced.
+
 
         Raises:
             ToolSaveError
@@ -170,7 +171,7 @@ class PromptStudioRegistryHelper:
                 tool_id=custom_tool.tool_id
             )
             metadata = PromptStudioRegistryHelper.frame_export_json(
-                tool=custom_tool, prompts=prompts
+                tool=custom_tool, prompts=prompts, force_export=force_export
             )
 
             obj: PromptStudioRegistry
@@ -178,7 +179,6 @@ class PromptStudioRegistryHelper:
             obj, created = PromptStudioRegistry.objects.update_or_create(
                 custom_tool=custom_tool,
                 created_by=custom_tool.created_by,
-                modified_by=custom_tool.modified_by,
                 defaults={
                     "name": custom_tool.tool_name,
                     "tool_property": properties.to_dict(),
@@ -192,7 +192,7 @@ class PromptStudioRegistryHelper:
                 logger.info(f"PSR {obj.prompt_registry_id} was created")
             else:
                 logger.info(f"PSR {obj.prompt_registry_id} was updated")
-
+            obj.modified_by = custom_tool.modified_by
             obj.shared_to_org = shared_with_org
             if not shared_with_org:
                 obj.shared_users.clear()
@@ -217,7 +217,9 @@ class PromptStudioRegistryHelper:
 
     @staticmethod
     def frame_export_json(
-        tool: CustomTool, prompts: list[ToolStudioPrompt]
+        tool: CustomTool,
+        prompts: list[ToolStudioPrompt],
+        force_export: bool,
     ) -> dict[str, Any]:
         export_metadata = {}
 
@@ -244,9 +246,6 @@ class PromptStudioRegistryHelper:
         export_metadata[JsonSchemaKey.DESCRIPTION] = tool.description
         export_metadata[JsonSchemaKey.AUTHOR] = tool.author
         export_metadata[JsonSchemaKey.TOOL_ID] = str(tool.tool_id)
-        export_metadata[JsonSchemaKey.IMAGE_URL] = settings.STRUCTURE_TOOL_IMAGE_URL
-        export_metadata[JsonSchemaKey.IMAGE_NAME] = settings.STRUCTURE_TOOL_IMAGE_NAME
-        export_metadata[JsonSchemaKey.IMAGE_TAG] = settings.STRUCTURE_TOOL_IMAGE_TAG
 
         default_llm_profile = ProfileManager.get_default_llm_profile(tool)
         challenge_llm_instance: Optional[AdapterInstance] = tool.challenge_llm
@@ -282,27 +281,31 @@ class PromptStudioRegistryHelper:
         tool_settings[JsonSchemaKey.ENABLE_SINGLE_PASS_EXTRACTION] = (
             tool.single_pass_extraction_mode
         )
+        tool_settings[JsonSchemaKey.ENABLE_HIGHLIGHT] = tool.enable_highlight
+        tool_settings[JsonSchemaKey.PLATFORM_POSTAMBLE] = getattr(
+            settings, JsonSchemaKey.PLATFORM_POSTAMBLE.upper(), ""
+        )
 
         for prompt in prompts:
+            if prompt.prompt_type == JsonSchemaKey.NOTES or not prompt.active:
+                continue
 
             if not prompt.prompt:
                 invalidated_prompts.append(prompt.prompt_key)
                 continue
 
-            prompt_output = PromptStudioOutputManager.objects.filter(
-                tool_id=tool.tool_id,
-                prompt_id=prompt.prompt_id,
-                profile_manager=prompt.profile_manager,
-            ).all()
-
-            if not prompt_output:
-                invalidated_outputs.append(prompt.prompt_key)
-                continue
-
-            if prompt.prompt_type == JsonSchemaKey.NOTES:
-                continue
             if not prompt.profile_manager:
                 prompt.profile_manager = default_llm_profile
+
+            if not force_export:
+                prompt_output = PromptStudioOutputManager.objects.filter(
+                    tool_id=tool.tool_id,
+                    prompt_id=prompt.prompt_id,
+                    profile_manager=prompt.profile_manager,
+                ).all()
+                if not prompt_output:
+                    invalidated_outputs.append(prompt.prompt_key)
+                    continue
 
             vector_db = str(prompt.profile_manager.vector_store.id)
             embedding_model = str(prompt.profile_manager.embedding_model.id)
@@ -333,6 +336,19 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.SECTION] = prompt.profile_manager.section
             output[JsonSchemaKey.REINDEX] = prompt.profile_manager.reindex
             output[JsonSchemaKey.EMBEDDING_SUFFIX] = embedding_suffix
+
+            if prompt.enforce_type == PromptStudioRegistryKeys.TABLE:
+                for modifier_plugin in modifier_loader:
+                    cls = modifier_plugin[ModifierConfig.METADATA][
+                        ModifierConfig.METADATA_SERVICE_CLASS
+                    ]
+                    output = cls.update(
+                        output=output,
+                        tool_id=tool.tool_id,
+                        prompt_id=prompt.prompt_id,
+                        prompt=prompt.prompt,
+                    )
+
             outputs.append(output)
             output = {}
             vector_db = ""
@@ -341,15 +357,20 @@ class PromptStudioRegistryHelper:
             llm = ""
             embedding_model = ""
 
+        if not outputs:
+            raise EmptyToolExportError()
+
         if invalidated_prompts:
             raise InValidCustomToolError(
                 f"Cannot export tool. Prompt(s): {', '.join(invalidated_prompts)} "
                 "are empty. Please enter a valid prompt."
             )
-        if invalidated_outputs:
+        if not force_export and invalidated_outputs:
             raise InValidCustomToolError(
-                f"Cannot export tool. Prompt(s): {', '.join(invalidated_outputs)} "
-                "were not run. Please run them before exporting."
+                detail="Cannot export tool. Prompt(s):"
+                f" {', '.join(invalidated_outputs)}"
+                " were not run. Please run them before exporting.",
+                code="warning",
             )
         export_metadata[JsonSchemaKey.TOOL_SETTINGS] = tool_settings
         export_metadata[JsonSchemaKey.OUTPUTS] = outputs

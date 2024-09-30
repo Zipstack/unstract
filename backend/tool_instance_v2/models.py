@@ -96,4 +96,4 @@ class ToolInstance(BaseModel):
     class Meta:
         verbose_name = "Tool Instance"
         verbose_name_plural = "Tool Instances"
-        db_table = "tool_instance_v2"
+        db_table = "tool_instance"

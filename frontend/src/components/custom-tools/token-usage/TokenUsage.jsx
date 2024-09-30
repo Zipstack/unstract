@@ -1,6 +1,7 @@
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
+import { formatNumberWithCommas } from "../../../helpers/GetStaticData";
 
 /**
  * TokenUsage component displays token usage details in a tag with a tooltip.
@@ -8,7 +9,7 @@ import { useTokenUsageStore } from "../../../store/token-usage-store";
  * @param {string} tokenUsageId - The token usage ID to fetch token usage for.
  * @return {JSX.Element} - The TokenUsage component.
  */
-function TokenUsage({ tokenUsageId }) {
+function TokenUsage({ tokenUsageId, isLoading }) {
   const [tokens, setTokens] = useState({});
   const { tokenUsage } = useTokenUsageStore();
 
@@ -23,15 +24,16 @@ function TokenUsage({ tokenUsageId }) {
   }, [tokenUsage, tokenUsageId]);
 
   // If no tokens data is available, render nothing
-  if (!tokens || !Object.keys(tokens)?.length) {
-    return 0;
+  if (!tokens || !Object.keys(tokens)?.length || isLoading) {
+    return "NA";
   }
 
-  return tokens?.total_tokens;
+  return formatNumberWithCommas(tokens?.total_tokens);
 }
 
 TokenUsage.propTypes = {
   tokenUsageId: PropTypes.string.isRequired,
+  isLoading: PropTypes.bool.isRequired,
 };
 
 export { TokenUsage };
