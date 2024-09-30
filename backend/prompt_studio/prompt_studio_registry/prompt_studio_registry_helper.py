@@ -292,16 +292,6 @@ class PromptStudioRegistryHelper:
                 invalidated_prompts.append(prompt.prompt_key)
                 continue
 
-            if not force_export:
-                prompt_output = PromptStudioOutputManager.objects.filter(
-                    tool_id=tool.tool_id,
-                    prompt_id=prompt.prompt_id,
-                    profile_manager=prompt.profile_manager,
-                ).all()
-                if not prompt_output:
-                    invalidated_outputs.append(prompt.prompt_key)
-                    continue
-
             if not prompt.profile_manager:
                 prompt.profile_manager = default_llm_profile
 
