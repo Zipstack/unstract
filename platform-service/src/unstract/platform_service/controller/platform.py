@@ -499,7 +499,6 @@ def custom_tool_instance() -> Any:
 
         try:
             data_dict = PromptStudioRequestHelper.get_prompt_instance_from_db(
-                db_instance=db,
                 organization_id=organization_id,
                 prompt_registry_id=prompt_registry_id,
             )
