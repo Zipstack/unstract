@@ -94,6 +94,7 @@ class ToolStudioPromptKeys:
     PLATFORM_POSTAMBLE = "platform_postamble"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
     VARIABLE_MAP = "variable_map"
+    RECORD = "record"
 
 
 class FileViewTypes:

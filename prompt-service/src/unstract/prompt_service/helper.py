@@ -9,11 +9,16 @@ from dotenv import load_dotenv
 from flask import Flask, current_app, json
 from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
 from unstract.prompt_service.config import db
+from unstract.prompt_service.constants import DBTableV2, FeatureFlag
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
+from unstract.prompt_service.db_utils import DBUtils
+from unstract.prompt_service.env_manager import EnvLoader
 from unstract.prompt_service.exceptions import APIError, RateLimitError
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
 from unstract.sdk.exceptions import SdkError
 from unstract.sdk.llm import LLM
+
+from unstract.flags.feature_flag import check_feature_flag_status
 
 load_dotenv()
 
@@ -112,6 +117,8 @@ def initialize_plugin_endpoints(app: Flask) -> None:
 
 
 def query_usage_metadata(token: str, metadata: dict[str, Any]) -> dict[str, Any]:
+    if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
+        return query_usage_metadata_v2(token, metadata)
     org_id: str = AuthenticationMiddleware.get_account_from_bearer_token(token)
     run_id: str = metadata["run_id"]
     query: str = f"""
@@ -135,6 +142,45 @@ def query_usage_metadata(token: str, metadata: dict[str, Any]) -> dict[str, Any]
                 "Querying usage metadata for org_id: %s, run_id: %s", org_id, run_id
             )
             cursor = db.execute_sql(query, (run_id,))
+            results: list[tuple] = cursor.fetchall()
+            # Process results as needed
+            for row in results:
+                key, item = _get_key_and_item(row)
+                # Initialize the key as an empty list if it doesn't exist
+                if key not in metadata:
+                    metadata[key] = []
+                # Append the item to the list associated with the key
+                metadata[key].append(item)
+    except Exception as e:
+        logger.error(f"Error executing querying usage metadata: {e}")
+    return metadata
+
+
+def query_usage_metadata_v2(token: str, metadata: dict[str, Any]) -> dict[str, Any]:
+    DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract_v2")
+    organization_uid, org_id = DBUtils.get_organization_from_bearer_token(token)
+    run_id: str = metadata["run_id"]
+    query: str = f"""
+        SELECT
+            usage_type,
+            llm_usage_reason,
+            model_name,
+            SUM(prompt_tokens) AS input_tokens,
+            SUM(completion_tokens) AS output_tokens,
+            SUM(total_tokens) AS total_tokens,
+            SUM(embedding_tokens) AS embedding_tokens,
+            SUM(cost_in_dollars) AS cost_in_dollars
+        FROM "{DB_SCHEMA}"."{DBTableV2.TOKEN_USAGE}"
+        WHERE run_id = %s and organization_id = %s
+        GROUP BY usage_type, llm_usage_reason, model_name;
+    """
+    logger: Logger = current_app.logger
+    try:
+        with db.atomic():
+            logger.info(
+                "Querying usage metadata for org_id: %s, run_id: %s", org_id, run_id
+            )
+            cursor = db.execute_sql(query, (run_id, organization_uid))
             results: list[tuple] = cursor.fetchall()
             # Process results as needed
             for row in results:
@@ -307,6 +353,7 @@ def extract_table(
     plugins: dict[str, dict[str, Any]],
     structured_output: dict[str, Any],
     llm: LLM,
+    enforce_type: str,
 ) -> dict[str, Any]:
     table_settings = output[PSKeys.TABLE_SETTINGS]
     table_extractor: dict[str, Any] = plugins.get("table-extractor", {})
@@ -317,7 +364,7 @@ def extract_table(
         )
     try:
         answer = table_extractor["entrypoint_cls"].extract_large_table(
-            llm=llm, table_settings=table_settings
+            llm=llm, table_settings=table_settings, enforce_type=enforce_type
         )
         structured_output[output[PSKeys.NAME]] = answer
         # We do not support summary and eval for table.

@@ -9,8 +9,11 @@ from django.http import HttpRequest
 from file_management.exceptions import FileNotFound
 from file_management.file_management_helper import FileManagerHelper
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
-from prompt_studio.processor_loader import ProcessorConfig, load_plugins
-from prompt_studio.prompt_profile_manager_v2.constants import ProfileManagerErrors
+from prompt_studio.processor_loader import get_plugin_class_by_name, load_plugins
+from prompt_studio.prompt_profile_manager_v2.constants import (
+    ProfileManagerErrors,
+    ProfileManagerKeys,
+)
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.serializers import ProfileManagerSerializer
 from prompt_studio.prompt_studio_core_v2.constants import (
@@ -24,6 +27,7 @@ from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
 )
 from prompt_studio.prompt_studio_core_v2.exceptions import (
     IndexingAPIError,
+    MaxProfilesReachedError,
     ToolDeleteError,
 )
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
@@ -46,7 +50,7 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
-from tool_instance.models import ToolInstance
+from tool_instance_v2.models import ToolInstance
 from unstract.sdk.utils.common_utils import CommonUtils
 from utils.user_session import UserSessionUtils
 
@@ -215,6 +219,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         )
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
+        text_processor = get_plugin_class_by_name(
+            name="text_processor",
+            plugins=self.processor_plugins,
+        )
         # Generate a run_id
         run_id = CommonUtils.generate_uuid()
         unique_id = PromptStudioHelper.index_document(
@@ -224,14 +232,16 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             user_id=tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
+            text_processor=text_processor,
         )
 
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[ToolStudioPromptKeys.RUN_ID] = run_id
-        for processor_plugin in self.processor_plugins:
-            cls = processor_plugin[ProcessorConfig.METADATA][
-                ProcessorConfig.METADATA_SERVICE_CLASS
-            ]
+        cls = get_plugin_class_by_name(
+            name="summarizer",
+            plugins=self.processor_plugins,
+        )
+        if cls:
             cls.process(
                 tool_id=str(tool.tool_id),
                 file_name=file_name,
@@ -272,7 +282,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()
-
+        text_processor = get_plugin_class_by_name(
+            name="text_processor",
+            plugins=self.processor_plugins,
+        )
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,
             tool_id=tool_id,
@@ -281,6 +294,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             document_id=document_id,
             run_id=run_id,
             profile_manager_id=profile_manager,
+            text_processor=text_processor,
         )
         return Response(response, status=status.HTTP_200_OK)
 
@@ -304,12 +318,17 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()
+        text_processor = get_plugin_class_by_name(
+            name="text_processor",
+            plugins=self.processor_plugins,
+        )
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             tool_id=tool_id,
             org_id=UserSessionUtils.get_organization_id(request),
             user_id=custom_tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
+            text_processor=text_processor,
         )
         return Response(response, status=status.HTTP_200_OK)
 
@@ -345,6 +364,16 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = ProfileManagerSerializer(data=request.data, context=context)
 
         serializer.is_valid(raise_exception=True)
+        # Check for the maximum number of profiles constraint
+        prompt_studio_tool = serializer.validated_data[
+            ProfileManagerKeys.PROMPT_STUDIO_TOOL
+        ]
+        profile_count = ProfileManager.objects.filter(
+            prompt_studio_tool=prompt_studio_tool
+        ).count()
+
+        if profile_count >= ProfileManagerKeys.MAX_PROFILE_COUNT:
+            raise MaxProfilesReachedError()
         try:
             self.perform_create(serializer)
         except IntegrityError:
@@ -477,7 +506,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             # Delete the files
             FileManagerHelper.delete_file(file_system, path, file_name)
             # Directories to delete the text files
-            directories = ["extract/", "summarize/"]
+            directories = ["extract/", "extract/metadata/", "summarize/"]
             FileManagerHelper.delete_related_files(
                 file_system, path, file_name, directories
             )
