@@ -305,6 +305,16 @@ class PromptStudioRegistryHelper:
             if not prompt.profile_manager:
                 prompt.profile_manager = default_llm_profile
 
+            if not force_export:
+                prompt_output = PromptStudioOutputManager.objects.filter(
+                    tool_id=tool.tool_id,
+                    prompt_id=prompt.prompt_id,
+                    profile_manager=prompt.profile_manager,
+                ).all()
+                if not prompt_output:
+                    invalidated_outputs.append(prompt.prompt_key)
+                    continue
+
             vector_db = str(prompt.profile_manager.vector_store.id)
             embedding_model = str(prompt.profile_manager.embedding_model.id)
             llm = str(prompt.profile_manager.llm.id)
