@@ -346,7 +346,7 @@ class WorkflowExecutionService:
             with self.redis_con as r:
                 r.delete(self.execution_id)
 
-        log_message = f"Executing workflow {self.workflow_id} Done."
+        log_message = f"Executed workflow {self.workflow_id} successfully."
         self.publish_log(log_message)
 
     def _handle_execution_type(self, execution_type: ExecutionType) -> None:

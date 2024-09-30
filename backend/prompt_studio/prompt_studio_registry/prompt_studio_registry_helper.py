@@ -25,7 +25,7 @@ from .models import PromptStudioRegistry
 from .serializers import PromptStudioRegistrySerializer
 
 logger = logging.getLogger(__name__)
-modifier_loader = load_modifier_plugins()
+modifier_plugins = load_modifier_plugins()
 
 
 class PromptStudioRegistryHelper:
@@ -305,6 +305,16 @@ class PromptStudioRegistryHelper:
             if not prompt.profile_manager:
                 prompt.profile_manager = default_llm_profile
 
+            if not force_export:
+                prompt_output = PromptStudioOutputManager.objects.filter(
+                    tool_id=tool.tool_id,
+                    prompt_id=prompt.prompt_id,
+                    profile_manager=prompt.profile_manager,
+                ).all()
+                if not prompt_output:
+                    invalidated_outputs.append(prompt.prompt_key)
+                    continue
+
             vector_db = str(prompt.profile_manager.vector_store.id)
             embedding_model = str(prompt.profile_manager.embedding_model.id)
             llm = str(prompt.profile_manager.llm.id)
@@ -335,8 +345,11 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.REINDEX] = prompt.profile_manager.reindex
             output[JsonSchemaKey.EMBEDDING_SUFFIX] = embedding_suffix
 
-            if prompt.enforce_type == PromptStudioRegistryKeys.TABLE:
-                for modifier_plugin in modifier_loader:
+            if (
+                prompt.enforce_type == PromptStudioRegistryKeys.TABLE
+                or prompt.enforce_type == PromptStudioRegistryKeys.RECORD
+            ):
+                for modifier_plugin in modifier_plugins:
                     cls = modifier_plugin[ModifierConfig.METADATA][
                         ModifierConfig.METADATA_SERVICE_CLASS
                     ]

@@ -34,7 +34,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         scheduled: bool = False,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
         workflow_execution: Optional[WorkflowExecution] = None,
-        include_metadata: bool = False,
+        use_file_history: bool = True,
     ) -> None:
         tool_instances_as_dto = []
         for tool_instance in tool_instances:
@@ -96,6 +96,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.project_settings = project_settings
         self.pipeline_id = pipeline_id
         self.execution_id = str(workflow_execution.id)
+        self.use_file_history = use_file_history
         logger.info(
             f"Executing for Pipeline ID: {pipeline_id}, "
             f"workflow ID: {self.workflow_id}, execution ID: {self.execution_id}, "
@@ -210,7 +211,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             )
             raise WorkflowExecutionError(self.compilation_result["problems"][0])
 
-    def execute(self, single_step: bool = False) -> None:
+    def execute(self, run_id: str, file_name: str, single_step: bool = False) -> None:
         execution_type = ExecutionType.COMPLETE
         if single_step:
             execution_type = ExecutionType.STEP
@@ -231,7 +232,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
         start_time = time.time()
         try:
-            self.execute_workflow(execution_type=execution_type)
+            self.execute_workflow(
+                run_id=run_id, file_name=file_name, execution_type=execution_type
+            )
             end_time = time.time()
             execution_time = end_time - start_time
         except StopExecution as exception:
@@ -302,30 +305,34 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
     def execute_input_file(
         self,
+        run_id: str,
         file_name: str,
         single_step: bool,
-    ) -> tuple[bool, bool]:
+    ) -> None:
         """Executes the input file.
 
         Args:
+            run_id (str): UUID for a single run of a file
             file_name (str): The name of the file to be executed.
             single_step (bool): Flag indicating whether to execute in
             single step mode.
-        Returns:
-            tuple[bool, bool]: Flag indicating whether the file was executed
-            and skipped.
         """
         execution_type = ExecutionType.COMPLETE
         if single_step:
             execution_type = ExecutionType.STEP
-        self.execute_uncached_input(file_name=file_name, single_step=single_step)
+        self.execute_uncached_input(
+            run_id=run_id, file_name=file_name, single_step=single_step
+        )
         self.publish_log(f"Tool executed successfully for '{file_name}'")
         self._handle_execution_type(execution_type)
 
-    def execute_uncached_input(self, file_name: str, single_step: bool) -> None:
+    def execute_uncached_input(
+        self, run_id: str, file_name: str, single_step: bool
+    ) -> None:
         """Executes the uncached input file.
 
         Args:
+            run_id (str): UUID for a single run of a file
             file_name (str): The name of the file to be executed.
             single_step (bool): Flag indicating whether to execute in
             single step mode.
@@ -333,13 +340,16 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         Returns:
             None
         """
-        self.publish_log("No entries found in cache, executing the tools")
+        self.publish_log(
+            "No entries found in cache, executing the tools"
+            f"running the tool(s) for {file_name}"
+        )
         self.publish_update_log(
             state=LogState.SUCCESS,
             message=f"{file_name} Sent for execution",
             component=LogComponent.SOURCE,
         )
-        self.execute(single_step)
+        self.execute(run_id, file_name, single_step)
 
     def initiate_tool_execution(
         self,

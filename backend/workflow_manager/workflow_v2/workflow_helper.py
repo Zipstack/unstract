@@ -3,6 +3,7 @@ import logging
 import os
 import traceback
 from typing import Any, Optional
+from uuid import uuid4
 
 from account_v2.constants import Common
 from api_v2.models import APIDeployment
@@ -91,6 +92,7 @@ class WorkflowHelper:
         scheduled: bool,
         execution_mode: tuple[str, str],
         workflow_execution: Optional[WorkflowExecution],
+        use_file_history: bool = True,  # Will be False for API deployment alone
     ) -> WorkflowExecutionServiceHelper:
         workflow_execution_service = WorkflowExecutionServiceHelper(
             organization_id=organization_id,
@@ -101,6 +103,7 @@ class WorkflowHelper:
             scheduled=scheduled,
             mode=execution_mode,
             workflow_execution=workflow_execution,
+            use_file_history=use_file_history,
         )
         workflow_execution_service.build()
         return workflow_execution_service
@@ -156,6 +159,7 @@ class WorkflowHelper:
             except Exception as e:
                 failed_files += 1
                 error_message = f"Error processing file '{file_path}'. {e}"
+                logger.error(error_message, stack_info=True, exc_info=True)
                 execution_service.publish_log(
                     message=error_message, level=LogLevel.ERROR
                 )
@@ -194,7 +198,11 @@ class WorkflowHelper:
                 current_file_idx, total_files, file_name, single_step
             )
             if not file_hash.is_executed:
+                # Multiple run_ids are linked to an execution_id
+                # Each run_id corresponds to workflow runs for a single file
+                run_id = str(uuid4())
                 execution_service.execute_input_file(
+                    run_id=run_id,
                     file_name=file_name,
                     single_step=single_step,
                 )
@@ -212,8 +220,9 @@ class WorkflowHelper:
             file_name=file_name,
             file_hash=file_hash,
             workflow=workflow,
-            error=error,
             input_file_path=input_file,
+            error=error,
+            use_file_history=execution_service.use_file_history,
         )
         execution_service.publish_update_log(
             LogState.SUCCESS,
@@ -243,6 +252,7 @@ class WorkflowHelper:
         single_step: bool = False,
         workflow_execution: Optional[WorkflowExecution] = None,
         execution_mode: Optional[tuple[str, str]] = None,
+        use_file_history: bool = True,
     ) -> ExecutionResponse:
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
@@ -261,6 +271,7 @@ class WorkflowHelper:
             scheduled=scheduled,
             execution_mode=execution_mode,
             workflow_execution=workflow_execution,
+            use_file_history=use_file_history,
         )
         execution_id = execution_service.execution_id
         source = SourceConnector(
@@ -385,6 +396,7 @@ class WorkflowHelper:
         timeout: int = -1,
         pipeline_id: Optional[str] = None,
         queue: Optional[str] = None,
+        use_file_history: bool = True,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
 
@@ -393,6 +405,9 @@ class WorkflowHelper:
             execution_id (str): Execution ID
             timeout (int):  Celery timeout (timeout -1 : async execution)
             pipeline_id (Optional[str], optional): Optional pipeline. Defaults to None.
+            queue (Optional[str]): Name of the celery queue to push into
+            use_file_history (bool): Use FileHistory table to return results on already
+                processed files. Defaults to True
 
         Returns:
             ExecutionResponse: Existing status of execution
@@ -415,6 +430,7 @@ class WorkflowHelper:
                     "execution_mode": None,
                     "pipeline_id": pipeline_id,
                     "log_events_id": log_events_id,
+                    "use_file_history": use_file_history,
                 },
                 queue=queue,
             )
@@ -476,6 +492,7 @@ class WorkflowHelper:
         scheduled: bool = False,
         execution_mode: Optional[tuple[str, str]] = None,
         pipeline_id: Optional[str] = None,
+        use_file_history: bool = True,
         **kwargs: dict[str, Any],
     ) -> Optional[list[Any]]:
         """Asynchronous Execution By celery.
@@ -489,6 +506,8 @@ class WorkflowHelper:
             execution_mode (Optional[WorkflowExecution.Mode]): WorkflowExecution Mode
                 Defaults to None
             pipeline_id (Optional[str], optional): Id of pipeline. Defaults to None
+            use_file_history (bool): Use FileHistory table to return results on already
+                processed files. Defaults to True
 
         Kwargs:
             log_events_id (str): Session ID of the user,
@@ -509,6 +528,7 @@ class WorkflowHelper:
             scheduled=scheduled,
             execution_mode=execution_mode,
             pipeline_id=pipeline_id,
+            use_file_history=use_file_history,
             **kwargs,
         )
 
@@ -547,6 +567,10 @@ class WorkflowHelper:
             dict[str, list[Any]]: Returns a dict with result from
                 workflow execution
         """
+        hash_values = {
+            key: FileHash.from_json(value)
+            for key, value in hash_values_of_files.items()
+        }
         workflow = Workflow.objects.get(id=workflow_id)
         try:
             workflow_execution = (
@@ -573,7 +597,7 @@ class WorkflowHelper:
                 scheduled=scheduled,
                 workflow_execution=workflow_execution,
                 execution_mode=execution_mode,
-                hash_values_of_files=hash_values_of_files,
+                hash_values_of_files=hash_values,
             )
         except Exception as error:
             error_message = traceback.format_exc()
@@ -682,8 +706,7 @@ class WorkflowHelper:
         workflow: Workflow,
         execution_action: str,
         execution_id: Optional[str] = None,
-        hash_values_of_files: dict[str, str] = {},
-        include_metadata: bool = False,
+        hash_values_of_files: dict[str, FileHash] = {},
     ) -> ExecutionResponse:
         if execution_action is Workflow.ExecutionAction.START.value:  # type: ignore
             if execution_id is None:
@@ -697,7 +720,6 @@ class WorkflowHelper:
                     single_step=True,
                     workflow_execution=workflow_execution,
                     hash_values_of_files=hash_values_of_files,
-                    include_metadata=include_metadata,
                 )
             except WorkflowExecution.DoesNotExist:
                 return WorkflowHelper.create_and_make_execution_response(
