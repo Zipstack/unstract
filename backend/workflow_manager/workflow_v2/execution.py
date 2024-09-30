@@ -242,14 +242,15 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution_time = end_time - start_time
             logger.info(f"Execution {self.execution_id} stopped")
             raise exception
-        except Exception as exc:
+        except Exception as exception:
             end_time = time.time()
             execution_time = end_time - start_time
-            message = str(exc)[:EXECUTION_ERROR_LENGTH]
+            message = str(exception)[:EXECUTION_ERROR_LENGTH]
             logger.error(
-                f"Execution {self.execution_id} ran for {execution_time:.4f}s, {exc}"
+                f"Execution {self.execution_id} ran for {execution_time:.4f}s, "
+                f" Error {exception}"
             )
-            raise WorkflowExecutionError(message) from exc
+            raise WorkflowExecutionError(message) from exception
 
     def publish_initial_workflow_logs(self, total_files: int) -> None:
         """Publishes the initial logs for the workflow.
@@ -320,26 +321,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         execution_type = ExecutionType.COMPLETE
         if single_step:
             execution_type = ExecutionType.STEP
-        self.execute_uncached_input(
-            run_id=run_id, file_name=file_name, single_step=single_step
-        )
-        self.publish_log(f"Tool executed successfully for '{file_name}'")
-        self._handle_execution_type(execution_type)
-
-    def execute_uncached_input(
-        self, run_id: str, file_name: str, single_step: bool
-    ) -> None:
-        """Executes the uncached input file.
-
-        Args:
-            run_id (str): UUID for a single run of a file
-            file_name (str): The name of the file to be executed.
-            single_step (bool): Flag indicating whether to execute in
-            single step mode.
-
-        Returns:
-            None
-        """
         self.publish_log(
             "No entries found in cache, executing the tools"
             f"running the tool(s) for {file_name}"
@@ -350,6 +331,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             component=LogComponent.SOURCE,
         )
         self.execute(run_id, file_name, single_step)
+        self.publish_log(f"Tool executed successfully for '{file_name}'")
+        self._handle_execution_type(execution_type)
 
     def initiate_tool_execution(
         self,

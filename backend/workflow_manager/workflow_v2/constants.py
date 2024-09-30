@@ -58,3 +58,4 @@ class WorkflowMessages:
     )
     FILE_MARKER_CLEAR_SUCCESS = "File marker cleared successfully."
     FILE_MARKER_CLEAR_FAILED = "Failed to clear file marker."
+    WORKFLOW_EXECUTION_NOT_FOUND = "Workflow execution not found."
