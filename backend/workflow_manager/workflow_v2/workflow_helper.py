@@ -542,6 +542,7 @@ class WorkflowHelper:
         scheduled: bool = False,
         execution_mode: Optional[tuple[str, str]] = None,
         pipeline_id: Optional[str] = None,
+        use_file_history: bool = True,
         **kwargs: dict[str, Any],
     ) -> Optional[list[Any]]:
         """Asynchronous Execution By celery.
@@ -557,7 +558,8 @@ class WorkflowHelper:
                 WorkflowExecution Mode. Defaults to None.
             pipeline_id (Optional[str], optional): Id of pipeline.
                 Defaults to None.
-            include_metadata (bool): Whether to include metadata in the prompt output
+            use_file_history (bool): Use FileHistory table to return results on already
+                processed files. Defaults to True
 
         Kwargs:
             log_events_id (str): Session ID of the user, helps establish
@@ -598,6 +600,7 @@ class WorkflowHelper:
                 workflow_execution=workflow_execution,
                 execution_mode=execution_mode,
                 hash_values_of_files=hash_values,
+                use_file_history=use_file_history,
             )
         except Exception as error:
             error_message = traceback.format_exc()

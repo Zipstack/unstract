@@ -18,6 +18,8 @@ from django.core.files.uploadedfile import UploadedFile
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
 from rest_framework.utils.serializer_helpers import ReturnDict
+from utils.constants import Account, CeleryQueue
+from utils.local_context import StateStore
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.source import SourceConnector
 from workflow_manager.workflow_v2.dto import ExecutionResponse
@@ -33,8 +35,11 @@ class DeploymentHelper(BaseAPIKeyValidator):
     def validate_parameters(request: Request, **kwargs: Any) -> None:
         """Validate api_name for API deployments."""
         api_name = kwargs.get("api_name") or request.data.get("api_name")
+        org_name = kwargs.get("org_name") or request.data.get("org_name")
         if not api_name:
             raise InvalidAPIRequest("Missing params api_name")
+        # Set organization in state store for API
+        StateStore.set(Account.ORGANIZATION_ID, org_name)
 
     @staticmethod
     def validate_and_process(
@@ -162,7 +167,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 hash_values_of_files=hash_values_of_files,
                 timeout=timeout,
                 execution_id=execution_id,
-                include_metadata=include_metadata,
+                queue=CeleryQueue.CELERY_API_DEPLOYMENTS,
                 use_file_history=use_file_history,
             )
             result.status_api = DeploymentHelper.construct_status_endpoint(
