@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
+import { RunAllPrompts } from "../prompt-card/RunAllPrompts";
 
 // Import single pass related components
 let RunSinglePassBtn;
@@ -34,7 +35,7 @@ try {
 
 function ToolsMainActionBtns() {
   const {
-    disableLlmOrDocChange,
+    isMultiPassExtractLoading,
     singlePassExtractMode,
     isSinglePassExtractLoading,
     isSimplePromptStudio,
@@ -72,13 +73,12 @@ function ToolsMainActionBtns() {
           tokenUsage={tokenUsage?.[tokenUsageId]}
         />
       )}
+      {!singlePassExtractMode && <RunAllPrompts />}
       <Tooltip title="Output Analyzer">
         <Button
           icon={<BarChartOutlined />}
           onClick={handleOutputAnalyzerBtnClick}
-          disabled={
-            disableLlmOrDocChange?.length > 0 || isSinglePassExtractLoading
-          }
+          disabled={isMultiPassExtractLoading || isSinglePassExtractLoading}
         />
       </Tooltip>
     </Space>
