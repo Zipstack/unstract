@@ -85,13 +85,16 @@ const usePromptRun = () => {
 
   const prepareApiRequests = (promptIds, profileIds, docIds) => {
     const apiRequestsToQueue = [];
-    const promptRunApiStatus = {};
+    const promptRunApiStatus = [];
+    const combinations = [];
 
-    const combinations = promptIds.flatMap((promptId) =>
-      profileIds.flatMap((profileId) =>
-        docIds.map((docId) => ({ promptId, profileId, docId }))
-      )
-    );
+    for (const promptId of promptIds) {
+      for (const profileId of profileIds) {
+        for (const docId of docIds) {
+          combinations.push({ promptId, profileId, docId });
+        }
+      }
+    }
 
     combinations.forEach(({ promptId, profileId, docId }) => {
       if (!promptRunApiStatus[promptId]) {
@@ -189,12 +192,10 @@ const usePromptRun = () => {
     const params = paramsMap[promptRunType];
     if (!params) return;
 
-    const missingParams = params.requiredParams.filter((param) => {
-      if (param === "promptId" && !promptId) return true;
-      if (param === "profileId" && !profileId) return true;
-      if (param === "docId" && !docId) return true;
-      return false;
-    });
+    const paramValues = { promptId, profileId, docId };
+    const missingParams = params.requiredParams.filter(
+      (param) => !paramValues[param]
+    );
 
     if (missingParams.length > 0) return;
 
