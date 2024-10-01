@@ -3,7 +3,7 @@ import base64
 import json
 import logging
 import os
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import fsspec
 import magic
@@ -35,6 +35,9 @@ from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelpe
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
+
+from backend.exceptions import UnstractFSException
+from unstract.connectors.exceptions import ConnectorError
 
 logger = logging.getLogger(__name__)
 
@@ -182,9 +185,9 @@ class DestinationConnector(BaseConnector):
                 self.insert_into_db(input_file_path=input_file_path)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
-            metadata = self.get_metadata(file_history)
+            exec_metadata = self.get_metadata(file_history)
             self._handle_api_result(
-                file_name=file_name, error=error, result=result, metadata=metadata
+                file_name=file_name, error=error, result=result, metadata=exec_metadata
             )
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
             self._push_data_to_queue(file_name, workflow, input_file_path)
@@ -192,6 +195,7 @@ class DestinationConnector(BaseConnector):
             self.execution_service.publish_log(
                 message=f"File '{file_name}' processed successfully"
             )
+
         if use_file_history and not file_history:
             FileHistoryHelper.create_file_history(
                 cache_key=file_hash.file_hash,
@@ -222,31 +226,33 @@ class DestinationConnector(BaseConnector):
         destination_volume_path = os.path.join(
             self.execution_dir, ToolExecKey.OUTPUT_DIR
         )
-        destination_fs.create_dir_if_not_exists(input_dir=output_directory)
-        destination_fsspec = destination_fs.get_fsspec_fs()
 
-        # Traverse local directory and create the same structure in the
-        # output_directory
-        for root, dirs, files in os.walk(destination_volume_path):
-            for dir_name in dirs:
-                destination_fsspec.mkdir(
-                    os.path.join(
+        try:
+            destination_fs.create_dir_if_not_exists(input_dir=output_directory)
+
+            # Traverse local directory and create the same structure in the
+            # output_directory
+            for root, dirs, files in os.walk(destination_volume_path):
+                for dir_name in dirs:
+                    current_dir = os.path.join(
                         output_directory,
                         os.path.relpath(root, destination_volume_path),
                         dir_name,
                     )
-                )
+                    destination_fs.create_dir_if_not_exists(input_dir=current_dir)
 
-            for file_name in files:
-                source_path = os.path.join(root, file_name)
-                destination_path = os.path.join(
-                    output_directory,
-                    os.path.relpath(root, destination_volume_path),
-                    file_name,
-                )
-                normalized_path = os.path.normpath(destination_path)
-                with open(source_path, "rb") as source_file:
-                    destination_fsspec.write_bytes(normalized_path, source_file.read())
+                for file_name in files:
+                    source_path = os.path.join(root, file_name)
+                    destination_path = os.path.join(
+                        output_directory,
+                        os.path.relpath(root, destination_volume_path),
+                        file_name,
+                    )
+                    destination_fs.upload_file_to_storage(
+                        source_path=source_path, destination_path=destination_path
+                    )
+        except ConnectorError as e:
+            raise UnstractFSException(core_err=e) from e
 
     def insert_into_db(self, input_file_path: str) -> None:
         """Insert data into the database."""
@@ -276,7 +282,10 @@ class DestinationConnector(BaseConnector):
         if not data:
             return
         # Remove metadata from result
-        data.pop("metadata", None)
+        # Tool text-extractor returns data in the form of string.
+        # Don't pop out metadata in this case.
+        if isinstance(data, dict):
+            data.pop("metadata", None)
         values = DatabaseUtils.get_columns_and_values(
             column_mode_str=column_mode,
             data=data,
@@ -401,7 +410,7 @@ class DestinationConnector(BaseConnector):
         output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         metadata: dict[str, Any] = self.get_workflow_metadata()
         output_type = self.get_output_type(metadata)
-        result: Optional[Any] = None
+        result: Union[dict[str, Any], str] = ""
         try:
             # TODO: SDK handles validation; consider removing here.
             mime = magic.Magic()
@@ -431,7 +440,7 @@ class DestinationConnector(BaseConnector):
         """Get metadata from the output file.
 
         Returns:
-            Union[dict[str, Any], str]: Meta data.
+            Union[dict[str, Any], str]: Metadata.
         """
         if file_history and file_history.metadata:
             return self.parse_string(file_history.metadata)
