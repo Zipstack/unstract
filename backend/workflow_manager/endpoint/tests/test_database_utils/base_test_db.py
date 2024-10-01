@@ -88,7 +88,7 @@ class BaseTestDB:
         bigquery_json_str = os.getenv("BIGQUERY_CREDS", "{}")
         self.bigquery_settings = json.loads(bigquery_json_str)
         self.bigquery_settings["json_credentials"] = bigquery_json_str
-        self.valid_bigquery_table_name = "pandoras-tamer.bigquery_test.bigquery_output"
+        self.valid_bigquery_table_name = "unstract.bigquery_test.bigquery_output"
         self.invalid_snowflake_db = {**self.snowflake_creds, "database": "invalid"}
         self.invalid_snowflake_schema = {**self.snowflake_creds, "schema": "invalid"}
         self.invalid_snowflake_warehouse = {

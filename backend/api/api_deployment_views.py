@@ -49,10 +49,9 @@ class DeploymentExecution(views.APIView):
         file_objs = request.FILES.getlist(ApiExecution.FILES_FORM_DATA)
         serializer = ExecutionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        timeout = serializer.get_timeout(serializer.validated_data)
-        include_metadata = (
-            request.data.get(ApiExecution.INCLUDE_METADATA, "false").lower() == "true"
-        )
+        timeout = serializer.validated_data.get(ApiExecution.TIMEOUT_FORM_DATA)
+        include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
+        use_file_history = serializer.validated_data.get(ApiExecution.USE_FILE_HISTORY)
         if not file_objs or len(file_objs) == 0:
             raise InvalidAPIRequest("File shouldn't be empty")
         response = DeploymentHelper.execute_workflow(
@@ -61,6 +60,7 @@ class DeploymentExecution(views.APIView):
             file_objs=file_objs,
             timeout=timeout,
             include_metadata=include_metadata,
+            use_file_history=use_file_history,
         )
         if "error" in response and response["error"]:
             return Response(
@@ -86,9 +86,7 @@ class DeploymentExecution(views.APIView):
         response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
         if response.execution_status == CeleryTaskState.COMPLETED.value:
             response_status = status.HTTP_200_OK
-            if include_metadata:
-                response.remove_result_metadata_keys(keys_to_remove=["highlight_data"])
-            else:
+            if not include_metadata:
                 response.remove_result_metadata_keys()
         return Response(
             data={

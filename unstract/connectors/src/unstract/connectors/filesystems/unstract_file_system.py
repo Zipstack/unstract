@@ -1,4 +1,5 @@
 import logging
+import os
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -77,8 +78,26 @@ class UnstractFileSystem(UnstractConnector, ABC):
         return f"{input_dir.strip('/')}/"
 
     def create_dir_if_not_exists(self, input_dir: str) -> None:
-        """Override to create dir of a connector if not exists."""
+        """Method to create dir of a connector if not exists.
+
+        Args:
+            input_dir (str): input directory of source connector
+        """
         fs_fsspec = self.get_fsspec_fs()
         is_dir = fs_fsspec.isdir(input_dir)
         if not is_dir:
             fs_fsspec.mkdir(input_dir)
+
+    def upload_file_to_storage(self, source_path: str, destination_path: str) -> None:
+        """Method to upload filepath from tool to destination connector
+        directory.
+
+        Args:
+            source_path (str): local path of file to be uploaded, coming from tool
+            destination_path (str): target path in the storage where the file will be
+            uploaded
+        """
+        normalized_path = os.path.normpath(destination_path)
+        fs = self.get_fsspec_fs()
+        with open(source_path, "rb") as source_file:
+            fs.write_bytes(normalized_path, source_file.read())

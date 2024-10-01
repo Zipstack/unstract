@@ -6,7 +6,6 @@ from file_management.exceptions import (
     ConnectorInstanceNotFound,
     ConnectorOAuthError,
     FileListError,
-    InternalServerError,
 )
 from file_management.file_management_helper import FileManagerHelper
 from file_management.serializer import (
@@ -73,16 +72,12 @@ class FileManagementViewSet(viewsets.ModelViewSet):
             raise ConnectorInstanceNotFound()
         except HttpAccessTokenRefreshError as error:
             logger.error(
-                f"HttpAccessTokenRefreshError thrown\
-                        from file list, error {error}"
+                f"HttpAccessTokenRefreshError thrown from file list, error {error}"
             )
             raise ConnectorOAuthError()
         except ConnectorError as error:
             logger.error(f"ConnectorError thrown during file list, error {error}")
             raise FileListError(core_err=error)
-        except Exception as error:
-            logger.error(f"Exception thrown from file list, error {error}")
-            raise InternalServerError()
 
     @action(detail=True, methods=["get"])
     def download(self, request: HttpRequest) -> Response:

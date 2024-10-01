@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class GoogleCloudStorageFS(UnstractFileSystem):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("GoogleCloudStorage")
+        self.bucket = settings.get("bucket", "")
         project_id = settings.get("project_id", "")
         json_credentials = json.loads(settings.get("json_credentials", "{}"))
         self.gcs_fs = GCSFileSystem(token=json_credentials, project=project_id)
@@ -63,7 +64,7 @@ class GoogleCloudStorageFS(UnstractFileSystem):
     def test_credentials(self) -> bool:
         """To test credentials for Google Cloud Storage."""
         try:
-            is_dir = bool(self.get_fsspec_fs().isdir(""))
+            is_dir = bool(self.get_fsspec_fs().isdir(self.bucket))
             if not is_dir:
                 raise RuntimeError("Could not access root directory.")
         except Exception as e:

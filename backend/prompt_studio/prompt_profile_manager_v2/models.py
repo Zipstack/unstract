@@ -97,7 +97,7 @@ class ProfileManager(BaseModel):
     class Meta:
         verbose_name = "Profile Manager"
         verbose_name_plural = "Profile Managers"
-        db_table = "profile_manager_v2"
+        db_table = "profile_manager"
         constraints = [
             models.UniqueConstraint(
                 fields=["prompt_studio_tool", "profile_name"],

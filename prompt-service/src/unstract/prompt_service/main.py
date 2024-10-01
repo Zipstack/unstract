@@ -7,7 +7,7 @@ from typing import Any, Optional
 from flask import json, jsonify, request
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
-from unstract.prompt_service.config import create_app
+from unstract.prompt_service.config import create_app, db
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.exceptions import APIError, ErrorResponse, NoPayloadError
@@ -46,6 +46,30 @@ NO_CONTEXT_ERROR = (
 app = create_app()
 # Load plugins
 plugin_loader(app)
+
+
+@app.before_request
+def before_request() -> None:
+    if db.is_closed():
+        db.connect(reuse_if_open=True)
+
+
+@app.teardown_request
+def after_request(exception: Any) -> None:
+    # Close the connection after each request
+    if not db.is_closed():
+        db.close()
+
+
+@app.before_request
+def log_request_info():
+    app.logger.info(f"Request Path: {request.path} | Method: {request.method}")
+
+
+@app.after_request
+def log_response_info(response):
+    app.logger.info(f"Response Status: {response.status}")
+    return response
 
 
 def _publish_log(
@@ -92,8 +116,9 @@ def prompt_processor() -> Any:
     doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
     structured_output: dict[str, Any] = {}
-    metadata: Optional[dict[str, Any]] = {
+    metadata: dict[str, Any] = {
         PSKeys.RUN_ID: run_id,
+        PSKeys.FILE_NAME: doc_name,
         PSKeys.CONTEXT: {},
     }
     variable_names: list[str] = []
@@ -128,14 +153,38 @@ def prompt_processor() -> Any:
         )
         try:
             variable_map = output[PSKeys.VARIABLE_MAP]
-            VariableExtractor.execute_variable_replacement(
+            promptx = VariableExtractor.execute_variable_replacement(
                 prompt=promptx, variable_map=variable_map
+            )
+            app.logger.info(f"[{tool_id}] Prompt after variable replacement: {promptx}")
+            _publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.DEBUG,
+                RunLevel.RUN,
+                f"Prompt after variable replacement:{promptx} ",
             )
         except KeyError:
             # Executed incase of structured tool and
             # APIs where we do not set the variable map
-            VariableExtractor.execute_variable_replacement(
+            promptx = VariableExtractor.execute_variable_replacement(
                 prompt=promptx, variable_map=structured_output
+            )
+            app.logger.info(f"[{tool_id}] Prompt after variable replacement: {promptx}")
+            _publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.DEBUG,
+                RunLevel.RUN,
+                f"Prompt after variable replacement:{promptx} ",
             )
         except APIError as api_error:
             raise api_error
@@ -219,13 +268,14 @@ def prompt_processor() -> Any:
             )
             return APIError(message=msg)
 
-        if output[PSKeys.TYPE] == PSKeys.TABLE:
+        if output[PSKeys.TYPE] == PSKeys.TABLE or output[PSKeys.TYPE] == PSKeys.RECORD:
             try:
                 structured_output = extract_table(
                     output=output,
                     plugins=plugins,
                     structured_output=structured_output,
                     llm=llm,
+                    enforce_type=output[PSKeys.TYPE],
                 )
                 metadata = query_usage_metadata(token=platform_key, metadata=metadata)
                 response = {
@@ -250,10 +300,9 @@ def prompt_processor() -> Any:
                     RunLevel.TABLE_EXTRACTION,
                     "Error while extracting table for the prompt",
                 )
+                raise api_error
 
         try:
-            vector_index = vector_db.get_vector_store_index()
-
             context = ""
             if output[PSKeys.CHUNK_SIZE] == 0:
                 # We can do this only for chunkless indexes
@@ -350,6 +399,7 @@ def prompt_processor() -> Any:
                 retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
 
                 if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
+                    vector_index = vector_db.get_vector_store_index()
                     answer, context = run_retrieval(
                         tool_settings=tool_settings,
                         output=output,
@@ -477,6 +527,7 @@ def prompt_processor() -> Any:
                             answer = run_completion(
                                 llm=llm,
                                 prompt=prompt,
+                                prompt_type=PSKeys.JSON,
                             )
                             structured_output[output[PSKeys.NAME]] = json.loads(answer)
                         except JSONDecodeError as e:
@@ -533,6 +584,7 @@ def prompt_processor() -> Any:
                             structured_output=structured_output,
                             logger=app.logger,
                             platform_key=platform_key,
+                            metadata=metadata,
                         )
                         # Will inline replace the structured output passed.
                         challenge.run()
@@ -669,28 +721,67 @@ def run_retrieval(  # type:ignore
     retrieval_type: str,
     metadata: dict[str, Any],
 ) -> tuple[str, str]:
+    context: str = ""
     prompt = output[PSKeys.PROMPTX]
     if retrieval_type == PSKeys.SUBQUESTION:
-        subq_prompt = (
-            f"Generate a sub-question from the following verbose prompt that will"
-            f" help extract relevant documents from a vector store:\n\n{prompt}"
+        subq_prompt: str = (
+            f"I am sending you a verbose prompt \n \n Prompt : {prompt} \n \n"
+            "Generate set of specific subquestions "
+            "from the prompt which can be used to retrive "
+            "relevant context from vector db. "
+            "Use your logical abilities to "
+            " only generate as many subquestions as necessary "
+            " — fewer subquestions if the prompt is simpler. "
+            "Decide the minimum limit for subquestions "
+            "based on the complexity input prompt and set the maximum limit"
+            "for the subquestions to 10."
+            "Ensure that each subquestion is distinct and relevant"
+            "to the the original query. "
+            "Do not add subquestions for details"
+            "not mentioned in the original prompt."
+            " The goal is to maximize retrieval accuracy"
+            " using these subquestions. Use your logical abilities to ensure "
+            " that each subquestion targets a distinct aspect of the original query."
+            " Please note that, there are cases where the "
+            "response might have a list of answers. The subquestions must not miss out "
+            "any values in these cases. "
+            "Output should be a list of comma seperated "
+            "subquestion prompts. Do not change this format. \n \n "
+            " Subquestions : "
         )
-        prompt = run_completion(
+        subquestions = run_completion(
             llm=llm,
             prompt=subq_prompt,
         )
-    context = _retrieve_context(output, doc_id, vector_index, prompt)
+        subquestion_list = subquestions.split(",")
+        raw_retrieved_context = ""
+        for each_subq in subquestion_list:
+            retrieved_context = _retrieve_context(
+                output, doc_id, vector_index, each_subq
+            )
+            # Not adding the potential for pinecode serverless
+            # inconsistency issue owing to risk of infinte loop
+            # and inablity to diffrentiate genuine cases of
+            # empty context.
+            raw_retrieved_context = "\f\n".join(
+                [raw_retrieved_context, retrieved_context]
+            )
+        context = _remove_duplicate_nodes(raw_retrieved_context)
 
-    if not context:
-        # UN-1288 For Pinecone, we are seeing an inconsistent case where
-        # query with doc_id fails even though indexing just happened.
-        # This causes the following retrieve to return no text.
-        # To rule out any lag on the Pinecone vector DB write,
-        # the following sleep is added
-        # Note: This will not fix the issue. Since this issue is inconsistent
-        # and not reproducible easily, this is just a safety net.
-        time.sleep(2)
+    if retrieval_type == PSKeys.SIMPLE:
+
         context = _retrieve_context(output, doc_id, vector_index, prompt)
+
+        if not context:
+            # UN-1288 For Pinecone, we are seeing an inconsistent case where
+            # query with doc_id fails even though indexing just happened.
+            # This causes the following retrieve to return no text.
+            # To rule out any lag on the Pinecone vector DB write,
+            # the following sleep is added
+            # Note: This will not fix the issue. Since this issue is inconsistent
+            # and not reproducible easily, this is just a safety net.
+            time.sleep(2)
+            context = _retrieve_context(output, doc_id, vector_index, prompt)
 
     answer = construct_and_run_prompt(  # type:ignore
         tool_settings=tool_settings,
@@ -702,6 +793,12 @@ def run_retrieval(  # type:ignore
     )
 
     return (answer, context)
+
+
+def _remove_duplicate_nodes(retrieved_context: str) -> str:
+    context_set: set[str] = set(retrieved_context.split("\f\n"))
+    fomatted_context = "\f\n".join(context_set)
+    return fomatted_context
 
 
 def _retrieve_context(output, doc_id, vector_index, answer) -> str:
@@ -722,9 +819,12 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
         # ToDo: May have to fine-tune this value for node score or keep it
         # configurable at the adapter level
         if node.score > 0:
-            text += node.get_content() + "\n"
+            text += node.get_content() + "\f\n"
         else:
-            app.logger.info("Node score is less than 0. " f"Ignored: {node.score}")
+            app.logger.info(
+                "Node score is less than 0. "
+                f"Ignored: {node.node_id} with score {node.score}"
+            )
     return text
 
 
@@ -784,8 +884,3 @@ def handle_uncaught_exception(e):
 
     log_exceptions(e)
     return handle_http_exception(APIError())
-
-
-# TODO: Review if below code is needed
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5003)

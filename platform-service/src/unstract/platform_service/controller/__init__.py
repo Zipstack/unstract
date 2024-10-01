@@ -3,11 +3,10 @@ import traceback
 from typing import Union
 
 from flask import Blueprint, Response, jsonify, request
+from unstract.platform_service.controller.health import health_bp
+from unstract.platform_service.controller.platform import platform_bp
 from unstract.platform_service.exceptions import APIError, ErrorResponse
 from werkzeug.exceptions import HTTPException
-
-from .health import health_bp
-from .platform import platform_bp
 
 api = Blueprint("api", __name__)
 api.register_blueprint(platform_bp)

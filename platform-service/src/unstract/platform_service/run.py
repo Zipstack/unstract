@@ -1,40 +1,19 @@
-from logging.config import dictConfig
+from typing import Any
 
-from dotenv import load_dotenv
-from flask import Flask
-from unstract.platform_service.controller import api
-
-load_dotenv()
-
-dictConfig(
-    {
-        "version": 1,
-        "formatters": {
-            "default": {
-                "format": "[%(asctime)s] %(levelname)s in %(module)s: %(message)s",
-            }
-        },
-        "handlers": {
-            "wsgi": {
-                "class": "logging.StreamHandler",
-                "stream": "ext://flask.logging.wsgi_errors_stream",
-                "formatter": "default",
-            }
-        },
-        "root": {"level": "INFO", "handlers": ["wsgi"]},
-    }
-)
-
-
-def create_app() -> Flask:
-    app = Flask("platform_service")
-
-    app.register_blueprint(api)
-    return app
-
+from unstract.platform_service.config import create_app
+from unstract.platform_service.extensions import db
 
 app = create_app()
 
-if __name__ == "__main__":
-    # Start the server
-    app.run(host="0.0.0.0", port=3001, load_dotenv=True)
+
+@app.before_request
+def before_request() -> None:
+    if db.is_closed():
+        db.connect(reuse_if_open=True)
+
+
+@app.teardown_request
+def after_request(exception: Any) -> None:
+    # Close the connection after each request
+    if not db.is_closed():
+        db.close()

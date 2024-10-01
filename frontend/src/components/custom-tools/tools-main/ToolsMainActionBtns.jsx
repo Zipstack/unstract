@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { useTokenUsageStore } from "../../../store/token-usage-store";
+import { RunAllPrompts } from "../prompt-card/RunAllPrompts";
 
 // Import single pass related components
 let RunSinglePassBtn;
@@ -23,15 +25,27 @@ try {
   // The variable will remain undefined if the component is not available
 }
 
+let ChallengeModal;
+try {
+  ChallengeModal =
+    require("../../../plugins/challenge-modal/ChallengeModal").ChallengeModal;
+} catch {
+  // The component will remain null of it is not available
+}
+
 function ToolsMainActionBtns() {
   const {
-    disableLlmOrDocChange,
+    isMultiPassExtractLoading,
     singlePassExtractMode,
     isSinglePassExtractLoading,
     isSimplePromptStudio,
+    defaultLlmProfile,
+    selectedDoc,
   } = useCustomToolStore();
   const navigate = useNavigate();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const { tokenUsage } = useTokenUsageStore();
+  const tokenUsageId = `single_pass__${defaultLlmProfile}__${selectedDoc?.document_id}`;
 
   const handleOutputAnalyzerBtnClick = () => {
     navigate("outputAnalyzer");
@@ -52,13 +66,19 @@ function ToolsMainActionBtns() {
   return (
     <Space>
       {singlePassExtractMode && RunSinglePassBtn && <RunSinglePassBtn />}
+      {singlePassExtractMode && ChallengeModal && (
+        <ChallengeModal
+          challengeData={tokenUsage?.[`${tokenUsageId}__challenge_data`]}
+          context={tokenUsage?.[`${tokenUsageId}__context`]}
+          tokenUsage={tokenUsage?.[tokenUsageId]}
+        />
+      )}
+      {!singlePassExtractMode && <RunAllPrompts />}
       <Tooltip title="Output Analyzer">
         <Button
           icon={<BarChartOutlined />}
           onClick={handleOutputAnalyzerBtnClick}
-          disabled={
-            disableLlmOrDocChange?.length > 0 || isSinglePassExtractLoading
-          }
+          disabled={isMultiPassExtractLoading || isSinglePassExtractLoading}
         />
       </Tooltip>
     </Space>

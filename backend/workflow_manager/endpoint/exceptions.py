@@ -1,9 +1,21 @@
+from typing import Optional
+
 from rest_framework.exceptions import APIException
 
 
 class InvalidInputDirectory(APIException):
     status_code = 400
-    default_detail = "The provided directory is invalid."
+    default_detail = "The provided path is not a valid directory."
+
+    def __init__(
+        self,
+        dir: Optional[str] = None,
+        detail: Optional[str] = None,
+        code: Optional[str] = None,
+    ):
+        if dir:
+            detail = self.default_detail.replace("path", f"path '{dir}'")
+        super().__init__(detail, code)
 
 
 class InvalidSourceConnectionType(APIException):
