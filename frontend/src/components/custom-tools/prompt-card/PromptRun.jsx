@@ -6,6 +6,12 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
 
 const MAX_ACTIVE_APIS = 5;
+/*
+  Change this to 'true' to allow persistence of the prompt run state
+  Right now, this feature cannot be support as the prompt studio details
+  are not persisted accoss the entire application.
+*/
+const PROMPT_RUN_STATE_PERSISTENCE = false;
 
 function PromptRun() {
   const activeApis = usePromptRunQueueStore((state) => state.activeApis);
@@ -31,6 +37,7 @@ function PromptRun() {
 
     // Setup the beforeunload event handler to store queue in cookies
     const handleBeforeUnload = () => {
+      if (!PROMPT_RUN_STATE_PERSISTENCE) return;
       const { queue } = usePromptRunQueueStore.getState(); // Get the latest state dynamically
       if (queue?.length) {
         Cookies.set("promptRunQueue", JSON.stringify(queue), {
