@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from functools import lru_cache
 from typing import Any
 
 from unstract.prompt_service.utils.request import HTTPMethod, make_http_request
@@ -96,9 +97,10 @@ class VariableService:
         return replaced_prompt
 
     @staticmethod
-    def extract_variables_from_prompt(prompt: str) -> list[str]:
+    @lru_cache(maxsize=128)
+    def extract_variables_from_prompt(prompt_text: str) -> list[str]:
         variable: list[str] = []
-        variable = re.findall(VariableConstants.VARIABLE_REGEX, prompt)
+        variable = re.findall(VariableConstants.VARIABLE_REGEX, prompt_text)
         return variable
 
     @staticmethod
