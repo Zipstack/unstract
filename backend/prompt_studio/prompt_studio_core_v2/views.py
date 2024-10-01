@@ -529,12 +529,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         is_shared_with_org: bool = serializer.validated_data.get("is_shared_with_org")
         user_ids = set(serializer.validated_data.get("user_id"))
+        force_export = serializer.validated_data.get("force_export")
 
         PromptStudioRegistryHelper.update_or_create_psr_tool(
             custom_tool=custom_tool,
             shared_with_org=is_shared_with_org,
             user_ids=user_ids,
+            force_export=force_export,
         )
+
         return Response(
             {"message": "Custom tool exported sucessfully."},
             status=status.HTTP_200_OK,

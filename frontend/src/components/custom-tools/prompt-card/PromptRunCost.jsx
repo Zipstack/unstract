@@ -16,8 +16,8 @@ const PromptRunCost = memo(({ tokenUsage, isLoading }) => {
 PromptRunCost.displayName = "PromptRunCost";
 
 PromptRunCost.propTypes = {
-  tokenUsage: PropTypes.number,
-  isLoading: PropTypes.bool.isRequired,
+  tokenUsage: PropTypes.object,
+  isLoading: PropTypes.bool,
 };
 
 export { PromptRunCost };

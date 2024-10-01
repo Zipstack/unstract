@@ -375,7 +375,7 @@ if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
     ROOT_URLCONF = "backend.base_urls"
 
     # DB Configuration
-    DB_ENGINE = "django.db.backends.postgresql"
+    DB_ENGINE = "backend.custom_db"
 
     # Models
     AUTH_USER_MODEL = "account_v2.User"
@@ -397,7 +397,6 @@ if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
             "PORT": f"{DB_PORT}",
             "ATOMIC_REQUESTS": ATOMIC_REQUESTS,
             "OPTIONS": {
-                "options": f"-c search_path={DB_SCHEMA}",
                 "application_name": os.environ.get("APPLICATION_NAME", ""),
             },
         }
