@@ -329,6 +329,8 @@ class SourceConnector(BaseConnector):
             workflow=workflow, cache_key=file_hash
         )
 
+        # In case of ETL pipelines, its necessary to skip files which have
+        # already been processed
         if (
             self.execution_service.use_file_history
             and file_history
