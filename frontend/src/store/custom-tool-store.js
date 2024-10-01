@@ -51,8 +51,7 @@ const useCustomToolStore = create((setState, getState) => ({
     setState(entireState);
   },
   updateCustomTool: (entireState) => {
-    const existingState = { ...getState() };
-    setState({ existingState, ...entireState });
+    setState((state) => ({ state, ...entireState }));
   },
   addNewInstance: (type) => {
     const newState = { ...getState() };

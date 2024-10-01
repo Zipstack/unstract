@@ -22,6 +22,7 @@ import CheckableTag from "antd/es/tag/CheckableTag";
 
 import {
   displayPromptResult,
+  generateApiRunStatusId,
   PROMPT_RUN_API_STATUSES,
   PROMPT_RUN_TYPES,
 } from "../../../helpers/GetStaticData";
@@ -153,6 +154,7 @@ function PromptOutput({
               enforceType={enforceType}
               displayLlmProfile={false}
               promptOutputs={promptOutputs}
+              promptRunStatus={promptRunStatus}
             />
           </div>
         </div>
@@ -184,18 +186,9 @@ function PromptOutput({
             }
           }
 
-          const promptKey = generatePromptOutputKey(
-            promptId,
-            docId,
-            profileId,
-            false,
-            false
-          );
-          const isPromptLoading = Object.keys(promptRunStatus).find(
-            (key) =>
-              key === promptKey &&
-              promptRunStatus[key] === PROMPT_RUN_API_STATUSES.RUNNING
-          );
+          const isPromptLoading =
+            promptRunStatus?.[generateApiRunStatusId(docId, profileId)] ===
+            PROMPT_RUN_API_STATUSES.RUNNING;
           return (
             <motion.div
               key={profileId}
@@ -319,9 +312,9 @@ function PromptOutput({
                     ) : (
                       <DisplayPromptResult
                         output={promptOutputData?.output}
-                        promptId={promptDetails?.prompt_id}
                         profileId={profileId}
                         docId={selectedDoc?.document_id}
+                        promptRunStatus={promptRunStatus}
                       />
                     )}
                     <div className="prompt-profile-run">
@@ -375,6 +368,7 @@ function PromptOutput({
                         enforceType={enforceType}
                         displayLlmProfile={true}
                         promptOutputs={promptOutputs}
+                        promptRunStatus={promptRunStatus}
                       />
                     </div>
                   </div>

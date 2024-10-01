@@ -30,7 +30,7 @@ function RunAllPrompts() {
           icon={<PlayCircleFilled className="prompt-card-actions-head" />}
           onClick={() =>
             handlePromptRunRequest(
-              PROMPT_RUN_TYPES.RUN_ALL_PROMPTS_ONE_LLM_ALL_DOCS,
+              PROMPT_RUN_TYPES.RUN_ALL_PROMPTS_ALL_LLMS_ALL_DOCS,
               null,
               null,
               null

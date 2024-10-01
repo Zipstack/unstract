@@ -1,3 +1,4 @@
+import React from "react";
 import PropTypes from "prop-types";
 import { useDrag, useDrop } from "react-dnd";
 import { useRef } from "react";
@@ -6,8 +7,10 @@ import { NotesCard } from "../notes-card/NotesCard";
 import { PromptCard } from "./PromptCard";
 import { promptType } from "../../../helpers/GetStaticData";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
+import usePromptRun from "../../../hooks/usePromptRun";
+import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
 
-function PromptDnd({
+const PromptDnd = React.memo(function PromptDnd({
   item,
   index,
   handleChangePromptCard,
@@ -16,10 +19,13 @@ function PromptDnd({
   outputs,
   enforceTypeList,
   setUpdatedPromptsCopy,
-  promptRunStatus,
 }) {
   const ref = useRef(null);
   const { isSimplePromptStudio } = useCustomToolStore();
+  const { handlePromptRunRequest } = usePromptRun();
+  const promptRunStatus = usePromptRunStatusStore(
+    (state) => state?.promptRunStatus?.[item?.prompt_id] || {}
+  );
 
   const [, drop] = useDrop({
     accept: "PROMPT_CARD",
@@ -35,6 +41,7 @@ function PromptDnd({
       isDragging: monitor.isDragging(),
     }),
   });
+
   drag(drop(ref));
 
   return (
@@ -48,6 +55,7 @@ function PromptDnd({
           promptOutputs={outputs}
           enforceTypeList={enforceTypeList}
           setUpdatedPromptsCopy={setUpdatedPromptsCopy}
+          handlePromptRunRequest={handlePromptRunRequest}
           promptRunStatus={promptRunStatus}
         />
       )}
@@ -62,7 +70,9 @@ function PromptDnd({
       )}
     </div>
   );
-}
+});
+
+PromptDnd.displayName = "PromptDnd";
 
 PromptDnd.propTypes = {
   item: PropTypes.object.isRequired,
@@ -73,7 +83,6 @@ PromptDnd.propTypes = {
   outputs: PropTypes.object.isRequired,
   enforceTypeList: PropTypes.array.isRequired,
   setUpdatedPromptsCopy: PropTypes.func.isRequired,
-  promptRunStatus: PropTypes.object.isRequired,
 };
 
 export { PromptDnd };

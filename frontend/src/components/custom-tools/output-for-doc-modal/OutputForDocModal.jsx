@@ -389,6 +389,7 @@ OutputForDocModal.propTypes = {
   promptKey: PropTypes.string,
   profileManagerId: PropTypes.string,
   docOutputs: PropTypes.object,
+  promptRunStatus: PropTypes.object.isRequired,
 };
 
 export { OutputForDocModal };

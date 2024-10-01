@@ -4,21 +4,18 @@ import { InfoCircleFilled } from "@ant-design/icons";
 
 import {
   displayPromptResult,
+  generateApiRunStatusId,
   PROMPT_RUN_API_STATUSES,
 } from "../../../helpers/GetStaticData";
 import "./PromptCard.css";
-import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useEffect, useState } from "react";
-import usePromptOutput from "../../../hooks/usePromptOutput";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
-function DisplayPromptResult({ output, promptId, profileId, docId }) {
+function DisplayPromptResult({ output, profileId, docId, promptRunStatus }) {
   const [isLoading, setIsLoading] = useState(false);
-  const { promptRunStatus } = usePromptRunStatusStore();
   const { singlePassExtractMode, isSinglePassExtractLoading } =
     useCustomToolStore();
-  const { generatePromptOutputKey } = usePromptOutput();
 
   useEffect(() => {
     if (singlePassExtractMode && isSinglePassExtractLoading) {
@@ -26,13 +23,7 @@ function DisplayPromptResult({ output, promptId, profileId, docId }) {
       return;
     }
 
-    const key = generatePromptOutputKey(
-      promptId,
-      docId,
-      profileId,
-      false,
-      false
-    );
+    const key = generateApiRunStatusId(docId, profileId);
     if (promptRunStatus?.[key] === PROMPT_RUN_API_STATUSES.RUNNING) {
       setIsLoading(true);
       return;
@@ -65,9 +56,9 @@ function DisplayPromptResult({ output, promptId, profileId, docId }) {
 
 DisplayPromptResult.propTypes = {
   output: PropTypes.any,
-  promptId: PropTypes.string,
   profileId: PropTypes.string,
   docId: PropTypes.string,
+  promptRunStatus: PropTypes.object,
 };
 
 export { DisplayPromptResult };

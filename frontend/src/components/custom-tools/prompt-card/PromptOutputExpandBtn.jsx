@@ -11,6 +11,7 @@ function PromptOutputExpandBtn({
   enforceType,
   displayLlmProfile,
   promptOutputs,
+  promptRunStatus,
 }) {
   const [openModal, setOpenModal] = useState(false);
 
@@ -34,6 +35,7 @@ function PromptOutputExpandBtn({
         enforceType={enforceType}
         displayLlmProfile={displayLlmProfile}
         promptOutputs={promptOutputs}
+        promptRunStatus={promptRunStatus}
       />
     </>
   );
@@ -45,6 +47,7 @@ PromptOutputExpandBtn.propTypes = {
   enforceType: PropTypes.string,
   displayLlmProfile: PropTypes.bool.isRequired,
   promptOutputs: PropTypes.object.isRequired,
+  promptRunStatus: PropTypes.object.isRequired,
 };
 
 export { PromptOutputExpandBtn };

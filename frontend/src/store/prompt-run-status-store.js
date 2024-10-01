@@ -10,18 +10,40 @@ const usePromptRunStatusStore = create((setState, getState) => ({
     setState({ promptRunStatus: {} });
   },
   addPromptStatus: (promptStatus) => {
-    const existingState = { ...getState() };
-    const newPromptStatus = {
-      ...(existingState?.promptRunStatus || {}),
-      ...promptStatus,
-    };
-    setState({ promptRunStatus: newPromptStatus });
+    setState((state) => {
+      const currentStatus = state.promptRunStatus || {};
+      const newStatus = { ...currentStatus };
+
+      for (const promptId in promptStatus) {
+        if (Object.hasOwn(promptStatus, promptId)) {
+          newStatus[promptId] = {
+            ...currentStatus[promptId],
+            ...promptStatus[promptId],
+          };
+        }
+      }
+
+      return { promptRunStatus: newStatus };
+    });
   },
-  removePromptStatus: (id) => {
-    const existingState = { ...getState() };
-    const newPromptStatus = { ...(existingState?.promptRunStatus || {}) };
-    delete newPromptStatus[id];
-    setState({ promptRunStatus: newPromptStatus });
+  removePromptStatus: (promptId, key) => {
+    setState((state) => {
+      const currentStatus = state.promptRunStatus || {};
+      const newStatus = { ...currentStatus };
+
+      if (Object.hasOwn(newStatus, promptId)) {
+        const promptStatus = { ...newStatus[promptId] };
+        delete promptStatus[key];
+
+        if (Object.keys(promptStatus).length === 0) {
+          delete newStatus[promptId];
+        } else {
+          newStatus[promptId] = promptStatus;
+        }
+      }
+
+      return { promptRunStatus: newStatus };
+    });
   },
 }));
 

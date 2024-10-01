@@ -13,7 +13,6 @@ import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { PromptDnd } from "../prompt-card/PrompDnd";
 import { usePromptOutputStore } from "../../../store/prompt-output-store";
-import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
 
 let promptPatchApiSps;
 let promptReorderApiSps;
@@ -44,7 +43,6 @@ function DocumentParser({
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { promptOutputs } = usePromptOutputStore();
-  const { promptRunStatus } = usePromptRunStatusStore();
 
   useEffect(() => {
     const outputTypeData = getDropdownItems("output_type") || {};
@@ -267,12 +265,6 @@ function DocumentParser({
     <div className="doc-parser-layout">
       <DndProvider backend={HTML5Backend}>
         {details?.prompts.map((item, index) => {
-          const promptStatus = {};
-          Object.keys(promptRunStatus).forEach((key) => {
-            if (key.startsWith(item?.prompt_id)) {
-              promptStatus[key] = promptRunStatus[key];
-            }
-          });
           return (
             <div key={item.prompt_id}>
               <div className="doc-parser-pad-top" />
@@ -285,7 +277,6 @@ function DocumentParser({
                 outputs={getPromptOutputs(item?.prompt_id)}
                 enforceTypeList={enforceTypeList}
                 setUpdatedPromptsCopy={setUpdatedPromptsCopy}
-                promptRunStatus={promptStatus}
               />
               <div ref={bottomRef} className="doc-parser-pad-bottom" />
             </div>
