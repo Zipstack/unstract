@@ -22,6 +22,7 @@ function PromptOutputsModal({
   enforceType,
   displayLlmProfile,
   promptOutputs,
+  promptRunStatus,
 }) {
   const { singlePassExtractMode, selectedDoc } = useCustomToolStore();
   const { generatePromptOutputKey } = usePromptOutput();
@@ -45,9 +46,10 @@ function PromptOutputsModal({
         <Row style={{ height: "85vh" }}>
           {llmProfiles.map((profile, index) => {
             const profileId = profile?.profile_id;
+            const docId = selectedDoc?.document_id;
             const promptOutputKey = generatePromptOutputKey(
               promptId,
-              selectedDoc?.document_id,
+              docId,
               profileId,
               singlePassExtractMode,
               true
@@ -87,7 +89,12 @@ function PromptOutputsModal({
                         pagination={10}
                       />
                     ) : (
-                      <DisplayPromptResult output={promptOutputData?.output} />
+                      <DisplayPromptResult
+                        output={promptOutputData?.output}
+                        profileId={profileId}
+                        docId={docId}
+                        promptRunStatus={promptRunStatus}
+                      />
                     )}
                   </div>
                 </div>
@@ -105,9 +112,10 @@ PromptOutputsModal.propTypes = {
   setOpen: PropTypes.func.isRequired,
   promptId: PropTypes.string.isRequired,
   llmProfiles: PropTypes.array.isRequired,
-  enforceType: PropTypes.string.isRequired,
+  enforceType: PropTypes.string,
   displayLlmProfile: PropTypes.bool.isRequired,
   promptOutputs: PropTypes.object.isRequired,
+  promptRunStatus: PropTypes.object.isRequired,
 };
 
 export { PromptOutputsModal };
