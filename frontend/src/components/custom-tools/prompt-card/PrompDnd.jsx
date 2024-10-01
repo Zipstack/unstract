@@ -1,7 +1,6 @@
-import React from "react";
 import PropTypes from "prop-types";
 import { useDrag, useDrop } from "react-dnd";
-import { useRef } from "react";
+import { memo, useRef } from "react";
 
 import { NotesCard } from "../notes-card/NotesCard";
 import { PromptCard } from "./PromptCard";
@@ -10,7 +9,7 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import usePromptRun from "../../../hooks/usePromptRun";
 import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
 
-const PromptDnd = React.memo(function PromptDnd({
+const PromptDnd = memo(function PromptDnd({
   item,
   index,
   handleChangePromptCard,
