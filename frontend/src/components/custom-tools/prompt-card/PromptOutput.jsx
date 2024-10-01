@@ -29,7 +29,7 @@ import {
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { TABLE_ENFORCE_TYPE } from "./constants";
+import { TABLE_ENFORCE_TYPE, RECORD_ENFORCE_TYPE } from "./constants";
 import { CopyPromptOutputBtn } from "./CopyPromptOutputBtn";
 import { useAlertStore } from "../../../store/alert-store";
 import { PromptOutputExpandBtn } from "./PromptOutputExpandBtn";
@@ -78,6 +78,8 @@ function PromptOutput({
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const { generatePromptOutputKey } = usePromptOutput();
+  const isTableExtraction =
+    enforceType === TABLE_ENFORCE_TYPE || enforceType === RECORD_ENFORCE_TYPE;
 
   const tooltipContent = (adapterConf) => (
     <div>
@@ -100,7 +102,7 @@ function PromptOutput({
   const getColSpan = () => (componentWidth < 1200 ? 24 : 6);
 
   const copyOutputToClipboard = (text) => {
-    if (!text || text === "undefined" || enforceType === TABLE_ENFORCE_TYPE) {
+    if (!text || text === "undefined" || isTableExtraction) {
       return;
     }
 
@@ -143,7 +145,7 @@ function PromptOutput({
           <DisplayPromptResult output={promptOutput} />
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
-              isDisabled={enforceType === TABLE_ENFORCE_TYPE}
+              isDisabled={isTableExtraction}
               copyToClipboard={() =>
                 copyOutputToClipboard(displayPromptResult(promptOutput, true))
               }
@@ -307,7 +309,7 @@ function PromptOutput({
                 <>
                   <Divider className="prompt-card-divider" />
                   <div className={"prompt-card-result prompt-card-div"}>
-                    {enforceType === TABLE_ENFORCE_TYPE ? (
+                    {isTableExtraction ? (
                       <div />
                     ) : (
                       <DisplayPromptResult
@@ -355,7 +357,7 @@ function PromptOutput({
                         </Button>
                       </Tooltip>
                       <CopyPromptOutputBtn
-                        isDisabled={enforceType === TABLE_ENFORCE_TYPE}
+                        isDisabled={isTableExtraction}
                         copyToClipboard={() =>
                           copyOutputToClipboard(
                             displayPromptResult(promptOutputData?.output, true)
@@ -372,7 +374,7 @@ function PromptOutput({
                       />
                     </div>
                   </div>
-                  {enforceType === TABLE_ENFORCE_TYPE && TableOutput && (
+                  {isTableExtraction && TableOutput && (
                     <TableOutput output={promptOutputData?.output} />
                   )}
                 </>

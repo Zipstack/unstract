@@ -61,4 +61,4 @@ class UsageHelper:
         except Exception as e:
             # Handle any other exceptions that might occur during the execution
             logger.error(f"An unexpected error occurred for run_id {run_id}: {str(e)}")
-            raise APIException("An unexpected error occurred")
+            raise APIException("Error while aggregating token counts")

@@ -57,7 +57,7 @@ function Header({
   } = useCustomToolStore();
   const [items, setItems] = useState([]);
 
-  const [isDisablePrompt, setIsDisablePrompt] = useState(promptDetails?.active);
+  const [isDisablePrompt, setIsDisablePrompt] = useState(null);
 
   const handleRunBtnClick = (promptRunType, docId = null) => {
     setExpandCard(true);
@@ -73,6 +73,9 @@ function Header({
       }
     );
   };
+  useEffect(() => {
+    setIsDisablePrompt(promptDetails?.active);
+  }, [promptDetails, details]);
 
   useEffect(() => {
     const dropdownItems = [
@@ -106,7 +109,7 @@ function Header({
     }
 
     setItems(dropdownItems);
-  }, [promptDetails, details]);
+  }, [isDisablePrompt]);
 
   return (
     <Row>
