@@ -61,6 +61,17 @@ def after_request(exception: Any) -> None:
         db.close()
 
 
+@app.before_request
+def log_request_info():
+    app.logger.info(f"Request Path: {request.path} | Method: {request.method}")
+
+
+@app.after_request
+def log_response_info(response):
+    app.logger.info(f"Response Status: {response.status}")
+    return response
+
+
 def _publish_log(
     log_events_id: str,
     component: dict[str, str],
@@ -257,13 +268,14 @@ def prompt_processor() -> Any:
             )
             return APIError(message=msg)
 
-        if output[PSKeys.TYPE] == PSKeys.TABLE:
+        if output[PSKeys.TYPE] == PSKeys.TABLE or output[PSKeys.TYPE] == PSKeys.RECORD:
             try:
                 structured_output = extract_table(
                     output=output,
                     plugins=plugins,
                     structured_output=structured_output,
                     llm=llm,
+                    enforce_type=output[PSKeys.TYPE],
                 )
                 metadata = query_usage_metadata(token=platform_key, metadata=metadata)
                 response = {
@@ -288,6 +300,7 @@ def prompt_processor() -> Any:
                     RunLevel.TABLE_EXTRACTION,
                     "Error while extracting table for the prompt",
                 )
+                raise api_error
 
         try:
             context = ""
@@ -808,7 +821,10 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
         if node.score > 0:
             text += node.get_content() + "\f\n"
         else:
-            app.logger.info("Node score is less than 0. " f"Ignored: {node.score}")
+            app.logger.info(
+                "Node score is less than 0. "
+                f"Ignored: {node.node_id} with score {node.score}"
+            )
     return text
 
 
@@ -868,8 +884,3 @@ def handle_uncaught_exception(e):
 
     log_exceptions(e)
     return handle_http_exception(APIError())
-
-
-# TODO: Review if below code is needed
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5003)

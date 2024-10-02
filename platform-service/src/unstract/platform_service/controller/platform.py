@@ -8,10 +8,10 @@ from cryptography.fernet import Fernet, InvalidToken
 from flask import Blueprint, Request
 from flask import current_app as app
 from flask import jsonify, make_response, request
-from peewee import PostgresqlDatabase
 from unstract.platform_service.constants import DBTable, DBTableV2, FeatureFlag
 from unstract.platform_service.env import Env
 from unstract.platform_service.exceptions import APIError
+from unstract.platform_service.extensions import db
 from unstract.platform_service.helper.adapter_instance import (
     AdapterInstanceRequestHelper,
 )
@@ -19,16 +19,6 @@ from unstract.platform_service.helper.cost_calculation import CostCalculationHel
 from unstract.platform_service.helper.prompt_studio import PromptStudioRequestHelper
 
 from unstract.flags.feature_flag import check_feature_flag_status
-
-be_db = PostgresqlDatabase(
-    Env.PG_BE_DATABASE,
-    user=Env.PG_BE_USERNAME,
-    password=Env.PG_BE_PASSWORD,
-    host=Env.PG_BE_HOST,
-    port=Env.PG_BE_PORT,
-    options=f"-c application_name={Env.APPLICATION_NAME}",
-)
-be_db.init(Env.PG_BE_DATABASE)
 
 platform_bp = Blueprint("platform", __name__)
 
@@ -75,9 +65,15 @@ def get_organization_from_bearer_token(token: str) -> tuple[Optional[int], str]:
         tuple[int, str]: organization uid and organization identifier
     """
     if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-        query = f"SELECT organization_id FROM {DBTableV2.PLATFORM_KEY} WHERE key=%s"
+        query = f"""
+            SELECT organization_id FROM "{Env.DB_SCHEMA}".{DBTableV2.PLATFORM_KEY}
+            WHERE key=%s
+        """
         organization_uid: int = execute_query(query, (token,))
-        query_org = f"SELECT organization_id FROM {DBTableV2.ORGANIZATION} WHERE id=%s"
+        query_org = f"""
+            SELECT organization_id FROM "{Env.DB_SCHEMA}".{DBTableV2.ORGANIZATION}
+            WHERE id=%s
+        """
         organization_identifier: str = execute_query(query_org, (organization_uid,))
         return organization_uid, organization_identifier
     else:
@@ -86,7 +82,7 @@ def get_organization_from_bearer_token(token: str) -> tuple[Optional[int], str]:
 
 
 def execute_query(query: str, params: tuple = ()) -> Any:
-    cursor = be_db.execute_sql(query, params)
+    cursor = db.execute_sql(query, params)
     result_row = cursor.fetchone()
     cursor.close()
     if not result_row or len(result_row) == 0:
@@ -102,11 +98,17 @@ def validate_bearer_token(token: Optional[str]) -> bool:
 
         if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
             platform_key_table = DBTableV2.PLATFORM_KEY
+            query = f"""
+                SELECT * FROM \"{Env.DB_SCHEMA}\".{platform_key_table}
+                WHERE key = '{token}'
+            """
         else:
             platform_key_table = "account_platformkey"
+            query = f"""
+                SELECT * FROM {platform_key_table} WHERE key = '{token}'
+            """
 
-        query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
-        cursor = be_db.execute_sql(query)
+        cursor = db.execute_sql(query)
         result_row = cursor.fetchone()
         cursor.close()
         if not result_row or len(result_row) == 0:
@@ -175,8 +177,8 @@ def page_usage() -> Any:
     )
 
     try:
-        with be_db.atomic() as transaction:
-            be_db.execute_sql(query, params)
+        with db.atomic() as transaction:
+            db.execute_sql(query, params)
             transaction.commit()
             app.logger.info("Entry created with id %s for %s", usage_id, org_id)
             result["status"] = "OK"
@@ -241,7 +243,8 @@ def usage() -> Any:
     current_time = datetime.now()
     if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
         query = f"""
-            INSERT INTO {DBTableV2.TOKEN_USAGE} (id, organization_id, workflow_id,
+            INSERT INTO \"{Env.DB_SCHEMA}\".{DBTableV2.TOKEN_USAGE} (
+            id, organization_id, workflow_id,
             execution_id, adapter_instance_id, run_id, usage_type,
             llm_usage_reason, model_name, embedding_tokens, prompt_tokens,
             completion_tokens, total_tokens, cost_in_dollars, created_at, modified_at)
@@ -295,8 +298,8 @@ def usage() -> Any:
             current_time,
         )
     try:
-        with be_db.atomic() as transaction:
-            be_db.execute_sql(query, params)
+        with db.atomic() as transaction:
+            db.execute_sql(query, params)
             transaction.commit()
             app.logger.info("Entry created with id %s for %s", usage_id, org_id)
             result["status"] = "OK"
@@ -440,7 +443,6 @@ def adapter_instance() -> Any:
 
         try:
             data_dict = AdapterInstanceRequestHelper.get_adapter_instance_from_db(
-                db_instance=be_db,
                 organization_id=organization_id,
                 adapter_instance_id=adapter_instance_id,
                 organization_uid=organization_uid,
@@ -497,7 +499,6 @@ def custom_tool_instance() -> Any:
 
         try:
             data_dict = PromptStudioRequestHelper.get_prompt_instance_from_db(
-                db_instance=be_db,
                 organization_id=organization_id,
                 prompt_registry_id=prompt_registry_id,
             )
@@ -509,8 +510,3 @@ def custom_tool_instance() -> Any:
             )
             return "Internal Server Error", 500
     return "Method Not Allowed", 405
-
-
-if __name__ == "__main__":
-    # Start the server
-    app.run(host="0.0.0.0", port="3001")

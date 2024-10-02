@@ -143,7 +143,7 @@ Tool settings are defined by default in `config/spec.json` file. This json schem
 the platform. The tool should collect all the information required for its working here. For example, if the tool
 requires a username and password to connect to a database, the tool should collect these details in the settings form.
 The settings form is displayed to the user when the tool is added to the workflow. You might also collect API keys and
-other sensitive information here. The platform will provide this infomation to the tool through command line arguments
+other sensitive information here. The platform will provide this information to the tool through command line arguments
 to the main tool script when it is called as part of the workflow or during debugging runs.
 
 The json schema should be a valid json schema. You can use [jsonschema.net](https://jsonschema.net/) to generate a json

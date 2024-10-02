@@ -49,10 +49,9 @@ class DeploymentExecution(views.APIView):
         file_objs = request.FILES.getlist(ApiExecution.FILES_FORM_DATA)
         serializer = ExecutionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        timeout = serializer.get_timeout(serializer.validated_data)
-        include_metadata = (
-            request.data.get(ApiExecution.INCLUDE_METADATA, "false").lower() == "true"
-        )
+        timeout = serializer.validated_data.get(ApiExecution.TIMEOUT_FORM_DATA)
+        include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
+        use_file_history = serializer.validated_data.get(ApiExecution.USE_FILE_HISTORY)
         if not file_objs or len(file_objs) == 0:
             raise InvalidAPIRequest("File shouldn't be empty")
         response = DeploymentHelper.execute_workflow(
@@ -61,6 +60,7 @@ class DeploymentExecution(views.APIView):
             file_objs=file_objs,
             timeout=timeout,
             include_metadata=include_metadata,
+            use_file_history=use_file_history,
         )
         if "error" in response and response["error"]:
             return Response(
@@ -74,22 +74,26 @@ class DeploymentExecution(views.APIView):
         self, request: Request, org_name: str, api_name: str, api: APIDeployment
     ) -> Response:
         execution_id = request.query_params.get("execution_id")
+        include_metadata = (
+            request.query_params.get(ApiExecution.INCLUDE_METADATA, "false").lower()
+            == "true"
+        )
         if not execution_id:
             raise InvalidAPIRequest("execution_id shouldn't be empty")
         response: ExecutionResponse = DeploymentHelper.get_execution_status(
             execution_id=execution_id
         )
-        if response.execution_status != CeleryTaskState.SUCCESS.value:
-            return Response(
-                {
-                    "status": response.execution_status,
-                    "message": response.result,
-                },
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            )
+        response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
+        if response.execution_status == CeleryTaskState.COMPLETED.value:
+            response_status = status.HTTP_200_OK
+            if not include_metadata:
+                response.remove_result_metadata_keys()
         return Response(
-            {"status": response.execution_status, "message": response.result},
-            status=status.HTTP_200_OK,
+            data={
+                "status": response.execution_status,
+                "message": response.result,
+            },
+            status=response_status,
         )
 
 
@@ -135,7 +139,7 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
     ) -> Response:
         """Downloads a Postman Collection of the API deployment instance."""
         instance = self.get_object()
-        api_key_inst = instance.apikey_set.filter(is_active=True).first()
+        api_key_inst = instance.api_keys.filter(is_active=True).first()
         if not api_key_inst:
             logger.error(f"No active API key set for deployment {instance.pk}")
             raise NoActiveAPIKeyError(deployment_name=instance.display_name)

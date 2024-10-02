@@ -50,7 +50,7 @@ function OutputForDocModal({
   promptId,
   promptKey,
   profileManagerId,
-  docOutputs,
+  docOutputs = [],
 }) {
   const [promptOutputs, setPromptOutputs] = useState([]);
   const [rows, setRows] = useState([]);
@@ -60,7 +60,7 @@ function OutputForDocModal({
     details,
     listOfDocs,
     selectedDoc,
-    disableLlmOrDocChange,
+    isMultiPassExtractLoading,
     singlePassExtractMode,
     isSinglePassExtractLoading,
     isPublicSource,
@@ -88,10 +88,6 @@ function OutputForDocModal({
     singlePassExtractMode,
     isSinglePassExtractLoading,
   ]);
-
-  useEffect(() => {
-    updatePromptOutput(docOutputs);
-  }, [docOutputs]);
 
   useEffect(() => {
     handleRowsGeneration(promptOutputs);
@@ -191,8 +187,13 @@ function OutputForDocModal({
     }
     let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/?tool_id=${details?.tool_id}&prompt_id=${promptId}&profile_manager=${profile}&is_single_pass_extract=${singlePassExtractMode}`;
     if (isPublicSource) {
-      url = publicOutputsApi(id, promptId, singlePassExtractMode);
-      url += `&profile_manager=${profile}`;
+      url = publicOutputsApi(
+        id,
+        promptId,
+        singlePassExtractMode,
+        null,
+        profile
+      );
     }
     const requestOptions = {
       method: "GET",
@@ -355,9 +356,7 @@ function OutputForDocModal({
           <Button
             size="small"
             onClick={() => navigate("outputAnalyzer")}
-            disabled={
-              disableLlmOrDocChange?.length > 0 || isSinglePassExtractLoading
-            }
+            disabled={isMultiPassExtractLoading || isSinglePassExtractLoading}
           >
             View in Output Analyzer
           </Button>
@@ -386,8 +385,8 @@ function OutputForDocModal({
 OutputForDocModal.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
-  promptId: PropTypes.string.isRequired,
-  promptKey: PropTypes.string.isRequired,
+  promptId: PropTypes.string,
+  promptKey: PropTypes.string,
   profileManagerId: PropTypes.string,
   docOutputs: PropTypes.object,
 };

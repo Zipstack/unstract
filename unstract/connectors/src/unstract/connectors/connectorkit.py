@@ -1,6 +1,8 @@
 import logging
 from typing import Any, Optional
 
+from singleton_decorator import singleton
+
 from unstract.connectors import ConnectorDict  # type: ignore
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.constants import Common
@@ -12,6 +14,7 @@ from unstract.connectors.queues import connectors as q_connectors
 logger = logging.getLogger(__name__)
 
 
+@singleton
 class Connectorkit:
     def __init__(self) -> None:
         self._connectors: ConnectorDict = fs_connectors | db_connectors | q_connectors

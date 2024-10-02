@@ -51,4 +51,4 @@ class WorkflowEndpoint(BaseModel):
     class Meta:
         verbose_name = "Workflow Endpoint"
         verbose_name_plural = "Workflow Endpoints"
-        db_table = "workflow_endpoints_v2"
+        db_table = "workflow_endpoints"

@@ -51,45 +51,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load default log from env
 DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "filters": {
-        "request_id": {"()": "log_request_id.filters.RequestIDFilter"},
-        "tenant_context": {"()": "django_tenants.log.TenantContextFilter"},
-    },
-    "formatters": {
-        "enriched": {
-            "format": (
-                "%(levelname)s : [%(asctime)s] [%(schema_name)s:%(domain_url)s]"
-                "{module:%(module)s process:%(process)d "
-                "thread:%(thread)d request_id:%(request_id)s} :- %(message)s"
-            ),
-        },
-        "verbose": {
-            "format": "[%(asctime)s] %(levelname)s %(name)s: %(message)s",
-            "datefmt": "%d/%b/%Y %H:%M:%S",
-        },
-        "simple": {
-            "format": "{levelname} {message}",
-            "style": "{",
-        },
-    },
-    "handlers": {
-        "console": {
-            "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
-            "class": "logging.StreamHandler",
-            "filters": ["request_id", "tenant_context"],
-            "formatter": "enriched",
-        },
-    },
-    "root": {
-        "handlers": ["console"],
-        "level": DEFAULT_LOG_LEVEL,
-        # Set the desired logging level here as well
-    },
-}
-
 
 ENV_FILE = find_dotenv()
 if ENV_FILE:
@@ -139,6 +100,7 @@ DB_USER = os.environ.get("DB_USER", "unstract_dev")
 DB_HOST = os.environ.get("DB_HOST", "backend-db-1")
 DB_PASSWORD = os.environ.get("DB_PASSWORD", "unstract_pass")
 DB_PORT = os.environ.get("DB_PORT", 5432)
+DB_SCHEMA = os.environ.get("DB_SCHEMA", "unstract_v2")
 
 DEFAULT_ORGANIZATION = "default_org"
 FLIPT_BASE_URL = os.environ.get("FLIPT_BASE_URL", "http://localhost:9005")
@@ -175,6 +137,9 @@ CELERY_BROKER_URL = get_required_setting(
 
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
 NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))
+ATOMIC_REQUESTS = CommonUtils.str_to_bool(
+    os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
+)
 # Flag to Enable django admin
 ADMIN_ENABLED = False
 
@@ -192,68 +157,193 @@ ALLOWED_HOSTS = ["*"]
 CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL]
 CORS_ALLOW_ALL_ORIGINS = False
 
-
-# Application definition
-SHARED_APPS = (
-    # Multitenancy
-    "corsheaders",
-    # For the organization model
-    "account",
-    "account_usage",
-    # Django apps should go below this line
-    "django.contrib.admin",
-    "django.contrib.auth",
-    "django.contrib.contenttypes",
-    "django.contrib.sessions",
-    "django.contrib.messages",
-    "django.contrib.staticfiles",
-    "django.contrib.admindocs",
-    # Third party apps should go below this line,
-    "rest_framework",
-    # Connector OAuth
-    "connector_auth",
-    "social_django",
-    # Doc generator
-    "drf_yasg",
-    "docs",
-    # Plugins
-    "plugins",
-    "feature_flag",
-    "django_celery_beat",
-)
-
 if not check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-    SHARED_APPS = ("django_tenants",) + SHARED_APPS
-
-TENANT_APPS = (
-    # your tenant-specific apps
-    "django.contrib.admin",
-    "django.contrib.auth",
-    "django.contrib.contenttypes",
-    "django.contrib.messages",
-    "django.contrib.staticfiles",
-    "tenant_account",
-    "project",
-    "prompt",
-    "connector",
-    "adapter_processor",
-    "file_management",
-    "workflow_manager.endpoint",
-    "workflow_manager.workflow",
-    "tool_instance",
-    "pipeline",
-    "platform_settings",
-    "api",
-    "prompt_studio.prompt_profile_manager",
-    "prompt_studio.prompt_studio",
-    "prompt_studio.prompt_studio_core",
-    "prompt_studio.prompt_studio_registry",
-    "prompt_studio.prompt_studio_output_manager",
-    "prompt_studio.prompt_studio_document_manager",
-    "prompt_studio.prompt_studio_index_manager",
-    "usage",
-    "notification",
-)
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "filters": {
+            "request_id": {"()": "log_request_id.filters.RequestIDFilter"},
+            "tenant_context": {"()": "django_tenants.log.TenantContextFilter"},
+        },
+        "formatters": {
+            "enriched": {
+                "format": (
+                    "%(levelname)s : [%(asctime)s] [%(schema_name)s:%(domain_url)s]"
+                    "{module:%(module)s process:%(process)d "
+                    "thread:%(thread)d request_id:%(request_id)s} :- %(message)s"
+                ),
+            },
+            "verbose": {
+                "format": "[%(asctime)s] %(levelname)s %(name)s: %(message)s",
+                "datefmt": "%d/%b/%Y %H:%M:%S",
+            },
+            "simple": {
+                "format": "{levelname} {message}",
+                "style": "{",
+            },
+        },
+        "handlers": {
+            "console": {
+                "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
+                "class": "logging.StreamHandler",
+                "filters": ["request_id", "tenant_context"],
+                "formatter": "enriched",
+            },
+        },
+        "root": {
+            "handlers": ["console"],
+            "level": DEFAULT_LOG_LEVEL,
+            # Set the desired logging level here as well
+        },
+    }
+    SHARED_APPS = (
+        # Multitenancy
+        "django_tenants",
+        "corsheaders",
+        # For the organization model
+        "account",
+        "account_usage",
+        # Django apps should go below this line
+        "django.contrib.admin",
+        "django.contrib.auth",
+        "django.contrib.contenttypes",
+        "django.contrib.sessions",
+        "django.contrib.messages",
+        "django.contrib.staticfiles",
+        "django.contrib.admindocs",
+        # Third party apps should go below this line,
+        "rest_framework",
+        # Connector OAuth
+        "connector_auth",
+        "social_django",
+        # Doc generator
+        "drf_yasg",
+        "docs",
+        # Plugins
+        "plugins",
+        "feature_flag",
+        "django_celery_beat",
+    )
+    TENANT_APPS = (
+        # your tenant-specific apps
+        "django.contrib.admin",
+        "django.contrib.auth",
+        "django.contrib.contenttypes",
+        "django.contrib.messages",
+        "django.contrib.staticfiles",
+        "tenant_account",
+        "project",
+        "prompt",
+        "connector",
+        "adapter_processor",
+        "file_management",
+        "workflow_manager.endpoint",
+        "workflow_manager.workflow",
+        "tool_instance",
+        "pipeline",
+        "platform_settings",
+        "api",
+        "prompt_studio.prompt_profile_manager",
+        "prompt_studio.prompt_studio",
+        "prompt_studio.prompt_studio_core",
+        "prompt_studio.prompt_studio_registry",
+        "prompt_studio.prompt_studio_output_manager",
+        "prompt_studio.prompt_studio_document_manager",
+        "prompt_studio.prompt_studio_index_manager",
+        "usage",
+        "notification",
+    )
+else:
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "filters": {
+            "request_id": {"()": "log_request_id.filters.RequestIDFilter"},
+        },
+        "formatters": {
+            "enriched": {
+                "format": (
+                    "%(levelname)s : [%(asctime)s]"
+                    "{module:%(module)s process:%(process)d "
+                    "thread:%(thread)d request_id:%(request_id)s} :- %(message)s"
+                ),
+            },
+            "verbose": {
+                "format": "[%(asctime)s] %(levelname)s %(name)s: %(message)s",
+                "datefmt": "%d/%b/%Y %H:%M:%S",
+            },
+            "simple": {
+                "format": "{levelname} {message}",
+                "style": "{",
+            },
+        },
+        "handlers": {
+            "console": {
+                "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
+                "class": "logging.StreamHandler",
+                "filters": ["request_id"],
+                "formatter": "enriched",
+            },
+        },
+        "root": {
+            "handlers": ["console"],
+            "level": DEFAULT_LOG_LEVEL,
+            # Set the desired logging level here as well
+        },
+    }
+    SHARED_APPS = (
+        # Multitenancy
+        # "django_tenants",
+        "corsheaders",
+        # For the organization model
+        "account_v2",
+        # Django apps should go below this line
+        "django.contrib.admin",
+        "django.contrib.auth",
+        "django.contrib.contenttypes",
+        "django.contrib.sessions",
+        "django.contrib.messages",
+        "django.contrib.staticfiles",
+        "django.contrib.admindocs",
+        # Third party apps should go below this line,
+        "rest_framework",
+        # Connector OAuth
+        # "connector_auth",
+        "social_django",
+        # Doc generator
+        "drf_yasg",
+        "docs",
+        # Plugins
+        "plugins",
+        "feature_flag",
+        "django_celery_beat",
+    )
+    v2_apps = (
+        "migrating.v2",
+        # "account_v2",
+        "connector_auth_v2",
+        "tenant_account_v2",
+        "connector_v2",
+        "adapter_processor_v2",
+        "file_management",
+        "workflow_manager.endpoint_v2",
+        "workflow_manager.workflow_v2",
+        "tool_instance_v2",
+        "pipeline_v2",
+        "platform_settings_v2",
+        "api_v2",
+        "usage_v2",
+        "notification_v2",
+        "prompt_studio.prompt_profile_manager_v2",
+        "prompt_studio.prompt_studio_v2",
+        "prompt_studio.prompt_studio_core_v2",
+        "prompt_studio.prompt_studio_registry_v2",
+        "prompt_studio.prompt_studio_output_manager_v2",
+        "prompt_studio.prompt_studio_document_manager_v2",
+        "prompt_studio.prompt_studio_index_manager_v2",
+    )
+    SHARED_APPS += v2_apps
+    TENANT_APPS = []
 
 INSTALLED_APPS = list(SHARED_APPS) + [
     app for app in TENANT_APPS if app not in SHARED_APPS
@@ -285,7 +375,7 @@ if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
     ROOT_URLCONF = "backend.base_urls"
 
     # DB Configuration
-    DB_ENGINE = "django.db.backends.postgresql"
+    DB_ENGINE = "backend.custom_db"
 
     # Models
     AUTH_USER_MODEL = "account_v2.User"
@@ -297,6 +387,20 @@ if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
     # Namespaces
     SOCIAL_AUTH_URL_NAMESPACE = "public:social"
     LOGIN_CALLBACK_URL_NAMESPACE = "public:callback"
+    DATABASES = {
+        "default": {
+            "ENGINE": DB_ENGINE,
+            "NAME": f"{DB_NAME}",
+            "USER": f"{DB_USER}",
+            "HOST": f"{DB_HOST}",
+            "PASSWORD": f"{DB_PASSWORD}",
+            "PORT": f"{DB_PORT}",
+            "ATOMIC_REQUESTS": ATOMIC_REQUESTS,
+            "OPTIONS": {
+                "application_name": os.environ.get("APPLICATION_NAME", ""),
+            },
+        }
+    }
 else:
     # Middleware Configuration
     TENANT_MIDDLEWARE = "django_tenants.middleware.TenantSubfolderMiddleware"
@@ -326,6 +430,20 @@ else:
     # Namespaces
     SOCIAL_AUTH_URL_NAMESPACE = "social"
     LOGIN_CALLBACK_URL_NAMESPACE = "callback"
+    DATABASES = {
+        "default": {
+            "ENGINE": DB_ENGINE,
+            "NAME": f"{DB_NAME}",
+            "USER": f"{DB_USER}",
+            "HOST": f"{DB_HOST}",
+            "PASSWORD": f"{DB_PASSWORD}",
+            "PORT": f"{DB_PORT}",
+            "ATOMIC_REQUESTS": ATOMIC_REQUESTS,
+            "OPTIONS": {
+                "application_name": os.environ.get("APPLICATION_NAME", ""),
+            },
+        }
+    }
 
 MIDDLEWARE = [
     "log_request_id.middleware.RequestIDMiddleware",
@@ -365,27 +483,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "backend.wsgi.application"
-
-ATOMIC_REQUESTS = CommonUtils.str_to_bool(
-    os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
-)
-# Database
-# https://docs.djangoproject.com/en/4.2/ref/settings/#databases
-
-DATABASES = {
-    "default": {
-        "ENGINE": DB_ENGINE,
-        "NAME": f"{DB_NAME}",
-        "USER": f"{DB_USER}",
-        "HOST": f"{DB_HOST}",
-        "PASSWORD": f"{DB_PASSWORD}",
-        "PORT": f"{DB_PORT}",
-        "ATOMIC_REQUESTS": ATOMIC_REQUESTS,
-        "OPTIONS": {
-            "application_name": os.environ.get("APPLICATION_NAME", ""),
-        },
-    }
-}
 
 # SocketIO connection manager
 SOCKET_IO_MANAGER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
