@@ -120,7 +120,6 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
     }
     setMenuItems(items);
     setComponents(listOfComponents);
-    console.log(listOfComponents);
   }, [llmItems]);
 
   useEffect(() => {
