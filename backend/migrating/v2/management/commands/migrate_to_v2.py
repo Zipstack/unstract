@@ -87,7 +87,7 @@ class DataMigrator:
             cur.execute(
                 f"""
                 SELECT COUNT(*) FROM {self.migration_tracking_table}
-                WHERE migration_name = %s;"
+                WHERE migration_name = %s;
                 """,
                 (migration_name,),
             )
@@ -153,7 +153,7 @@ class DataMigrator:
         dest_cursor: cursor,
         column_names: list[str],
         column_transformations: dict[str, dict[str, Any]],
-    ) -> tuple[Any, ...]:
+    ) -> Optional[tuple[Any, ...]]:
         """Prepares and migrates the relational keys of a single row from the
         source database to the destination database, updating specific column
         values based on provided transformations.
@@ -170,11 +170,15 @@ class DataMigrator:
                     - query (str): SQL query to fetch the corresponding new value.
                     - params (list[str]): List of column names to use as
                         parameters for the query.
+                    - none_action (str, optional): Action to take if the new value
+                        is None. Defaults to None.
+                        If set to "DELETE", the row will be removed.
                 This is used to migrate old column names from V1 to new column
                 names in V2.
 
         Returns:
-            tuple[Any, ...]: The row with updated relational keys.
+            Optional[tuple[Any, ...]]: The row with updated relational keys,
+                or None if the row should be deleted.
         """
         row = list(row)
 
@@ -182,16 +186,20 @@ class DataMigrator:
             if key in column_names:
                 query = transaction["query"]
                 params = transaction["params"]
-                param_values = [row[column_names.index(param)] for param in params]
+                none_action = transaction.get("none_action", None)
 
+                param_values = [row[column_names.index(param)] for param in params]
                 dest_cursor.execute(query, param_values)
                 new_key_value = dest_cursor.fetchone()
+
                 if new_key_value:
                     row[column_names.index(key)] = new_key_value[0]
+                elif none_action == "DELETE":
+                    # Row should be deleted
+                    return None
 
-        for i, value in enumerate(row):
-            if isinstance(value, dict):
-                row[i] = json.dumps(value)
+        # Handle serialization for dict objects
+        row = [json.dumps(value) if isinstance(value, dict) else value for value in row]
         return tuple(row)
 
     def _migrate_rows(
@@ -243,6 +251,9 @@ class DataMigrator:
                 converted_row = self._prepare_row_and_migrate_relations(
                     row, dest_cursor, column_names, column_transformations
                 )
+                if converted_row is None:
+                    logger.info(f"[{migration_name}] Skipping deleted row {row}.")
+                    continue
                 converted_rows.append(converted_row)
 
             start_time = time.time()
@@ -433,7 +444,7 @@ class Command(BaseCommand):
         # Public tables
         public_schema_migrations = migration_query.get_public_schema_migrations()
         migrator = DataMigrator(
-            src_db_config, dest_db_config, v2_schema, batch_size=1000
+            src_db_config, dest_db_config, v2_schema, batch_size=3000
         )
         migrator.migrate(public_schema_migrations)
 
