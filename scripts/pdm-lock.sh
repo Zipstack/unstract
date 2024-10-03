@@ -21,6 +21,9 @@ else
     directories=("$@")
 fi
 
+# To compare against main branch
+git fetch origin main
+
 for dir in "${directories[@]}"; do
     file_path="$dir/pyproject.toml"
 
@@ -31,7 +34,6 @@ for dir in "${directories[@]}"; do
     fi
 
     # Check if there are changes in pyproject.toml against the main branch
-    git fetch origin main
     if git diff --quiet origin/main -- "$file_path"; then
         echo "No changes detected in $file_path"
         continue
