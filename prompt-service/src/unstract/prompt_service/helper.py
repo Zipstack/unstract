@@ -241,10 +241,7 @@ def construct_prompt(
     context: str,
     platform_postamble: str,
 ) -> str:
-    prompt = (
-        f"{preamble}\n\nContext:\n---------------\n{context}\n"
-        f"-----------------\n\nQuestion or Instruction: {prompt}\n"
-    )
+    prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}"
     if grammar_list is not None and len(grammar_list) > 0:
         prompt += "\n"
         for grammar in grammar_list:
@@ -259,7 +256,10 @@ def construct_prompt(
                     {", ".join(synonyms)} in both the quesiton and the context.'  # noqa
     if platform_postamble:
         platform_postamble += "\n\n"
-    prompt += f"\n\n{postamble}\n\n{platform_postamble}Answer:"
+    prompt += (
+        f"\n\n{postamble}\n\nContext:\n---------------\n{context}\n"
+        f"-----------------\n\n{platform_postamble}Answer:"
+    )
     return prompt
 
 
