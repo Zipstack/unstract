@@ -106,11 +106,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       position++;
     }
     if (HighlightManager) {
-      items.splice(
-        position,
-        0,
-        getMenuItem("Highlight Manager", 8, <FileTextOutlined />)
-      );
+      items.push(getMenuItem("Highlight Manager", 8, <FileTextOutlined />));
       listOfComponents[8] = (
         <HighlightManager
           handleUpdateTool={handleUpdateTool}
