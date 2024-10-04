@@ -12,7 +12,7 @@ update_lockfile() {
 
     echo "[$dir] Checking $file_path for changes against origin/main..."
     if ! git diff --quiet origin/main -- "$file_path"; then
-        echo "[$dir] Changes detected in $file_path, updating pdm.lock for $dir..."
+        echo "[$dir] Changes detected in $file_path, updating pdm.lock for $dir ..."
 
         # Move to the directory if it's not root
         if [[ "$dir" != "." ]]; then
@@ -21,7 +21,7 @@ update_lockfile() {
 
         # Set up virtual environment if not exists
         if [[ ! -d ".venv" ]]; then
-            echo '[$dir] Creating virtual environment in directory: '"$dir"
+            echo "[$dir] Creating virtual environment in directory: $dir"
             pdm venv create -w virtualenv --with-pip
         else
             echo "[$dir] Virtual environment already exists in $dir"
@@ -30,12 +30,17 @@ update_lockfile() {
         # Activate virtual environment
         source .venv/bin/activate
 
-        # Perform lockfile update if required
-        if pdm lock --check; then
-            echo "[$dir] No changes required for pdm.lock in $dir"
+        # HACK: https://github.com/pdm-project/pdm/issues/3199
+        # Replace with checking the exit code directly once above issue is fixed
+        lock_output=$(pdm lock --check 2>&1)
+        if echo "$lock_output" | grep -q "WARNING: Lockfile is generated on an older version of PDM"; then
+            echo "[$dir] Updating pdm.lock in $dir due to outdated version..."
+            pdm lock -G :all -v 2>&1 | sed "s/^/[$dir] /"
+        elif [[ $? -ne 0 ]]; then
+            echo "[$dir] Updating pdm.lock in $dir due to detected changes..."
+            pdm lock -G :all -v 2>&1 | sed "s/^/[$dir] /"
         else
-            echo "[$dir] Updating pdm.lock in $dir..."
-            pdm lock -G :all -v
+            echo "[$dir] No changes required for pdm.lock in $dir."
         fi
 
         # Go back to root if moved to a subdirectory
