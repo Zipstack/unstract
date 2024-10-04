@@ -82,4 +82,6 @@ for dir in "${directories[@]}"; do
 done
 
 # Wait for all background processes to complete
-wait
+for job in $(jobs -p); do
+    wait "$job" || exit 1
+done
