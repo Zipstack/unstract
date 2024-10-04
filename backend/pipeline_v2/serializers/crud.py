@@ -13,6 +13,7 @@ from pipeline_v2.models import Pipeline
 from rest_framework import serializers
 from rest_framework.serializers import SerializerMethodField
 from scheduler.helper import SchedulerHelper
+from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from utils.serializer_utils import SerializerUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 
@@ -23,13 +24,26 @@ logger = logging.getLogger(__name__)
 DEPLOYMENT_ENDPOINT = settings.API_DEPLOYMENT_PATH_PREFIX + "/pipeline"
 
 
-class PipelineSerializer(AuditSerializer):
+class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
 
     api_endpoint = SerializerMethodField()
 
     class Meta:
         model = Pipeline
         fields = "__all__"
+
+    unique_error_message_map: dict[str, dict[str, str]] = {
+        "unique_pipeline_name": {
+            "field": "pipeline_name",
+            "message": (
+                "This Pipeline name is already in use. Please select a different name."
+            ),
+        },
+        "unique_pipeline_entity": {
+            "field": "pipeline_type",
+            "message": ("Duplicate pipeline"),
+        },
+    }
 
     def validate_cron_string(self, value: Optional[str] = None) -> Optional[str]:
         """Validate the cron string provided in the serializer data.
