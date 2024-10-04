@@ -1435,7 +1435,7 @@ files = [
 
 [[package]]
 name = "llama-cloud"
-version = "0.1.0"
+version = "0.1.2"
 requires_python = "<4,>=3.8"
 summary = ""
 groups = ["default"]
@@ -1444,8 +1444,8 @@ dependencies = [
     "pydantic>=1.10",
 ]
 files = [
-    {file = "llama_cloud-0.1.0-py3-none-any.whl", hash = "sha256:e315046d856780d996886864cd315d5f216cd398b3bd3f005fcae393c66f5494"},
-    {file = "llama_cloud-0.1.0.tar.gz", hash = "sha256:8b31e1fb87f48c397c1a6415816cf37afcb4abe9fe7a5eb4101a2dc6d5c6ebbc"},
+    {file = "llama_cloud-0.1.2-py3-none-any.whl", hash = "sha256:f0ec61b88be689895cc4708b13db4503760e29c67131ec76b4d4583d81d571c5"},
+    {file = "llama_cloud-0.1.2.tar.gz", hash = "sha256:7c80747e9a7f32d4b739c2d5d4add7351f836d92e633d6ac03fa401896d33097"},
 ]
 
 [[package]]

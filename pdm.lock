@@ -1448,7 +1448,7 @@ files = [
 
 [[package]]
 name = "google-cloud-aiplatform"
-version = "1.68.0"
+version = "1.69.0"
 requires_python = ">=3.8"
 summary = "Vertex AI API client library"
 groups = ["hook-check-django-migrations"]
@@ -1466,8 +1466,8 @@ dependencies = [
     "shapely<3.0.0dev",
 ]
 files = [
-    {file = "google-cloud-aiplatform-1.68.0.tar.gz", hash = "sha256:d74e9f33707c7a14c6a32a7cfe9acd32b90975dfba9fac487d105c8ba5197f40"},
-    {file = "google_cloud_aiplatform-1.68.0-py2.py3-none-any.whl", hash = "sha256:24dacc34457665ab6054bdf47e2475793dcf2d865b568420a909b452a477b3e6"},
+    {file = "google-cloud-aiplatform-1.69.0.tar.gz", hash = "sha256:08be3a4432fd87d9cc86db83ba626f988d13597197bc53c6808e1c4c65a25bb0"},
+    {file = "google_cloud_aiplatform-1.69.0-py2.py3-none-any.whl", hash = "sha256:6e21c29bf4506ed3bfb00cfe47ab1ad1788854b18f0ded2458016837c917e520"},
 ]
 
 [[package]]
@@ -1859,7 +1859,7 @@ files = [
 
 [[package]]
 name = "httpcore"
-version = "1.0.5"
+version = "1.0.6"
 requires_python = ">=3.8"
 summary = "A minimal low-level HTTP client."
 groups = ["hook-check-django-migrations"]
@@ -1868,8 +1868,8 @@ dependencies = [
     "h11<0.15,>=0.13",
 ]
 files = [
-    {file = "httpcore-1.0.5-py3-none-any.whl", hash = "sha256:421f18bac248b25d310f3cacd198d55b8e6125c107797b609ff9b7a6ba7991b5"},
-    {file = "httpcore-1.0.5.tar.gz", hash = "sha256:34a38e2f9291467ee3b44e89dd52615370e152954ba21721378a87b2960f7a61"},
+    {file = "httpcore-1.0.6-py3-none-any.whl", hash = "sha256:27b59625743b85577a8c0e10e55b50b5368a4f2cfe8cc7bcfa9cf00829c2682f"},
+    {file = "httpcore-1.0.6.tar.gz", hash = "sha256:73f6dbd6eb8c21bbf7ef8efad555481853f5f6acdeaff1edb0694289269ee17f"},
 ]
 
 [[package]]
@@ -2125,7 +2125,7 @@ files = [
 
 [[package]]
 name = "llama-cloud"
-version = "0.1.0"
+version = "0.1.2"
 requires_python = "<4,>=3.8"
 summary = ""
 groups = ["hook-check-django-migrations"]
@@ -2134,8 +2134,8 @@ dependencies = [
     "pydantic>=1.10",
 ]
 files = [
-    {file = "llama_cloud-0.1.0-py3-none-any.whl", hash = "sha256:e315046d856780d996886864cd315d5f216cd398b3bd3f005fcae393c66f5494"},
-    {file = "llama_cloud-0.1.0.tar.gz", hash = "sha256:8b31e1fb87f48c397c1a6415816cf37afcb4abe9fe7a5eb4101a2dc6d5c6ebbc"},
+    {file = "llama_cloud-0.1.2-py3-none-any.whl", hash = "sha256:f0ec61b88be689895cc4708b13db4503760e29c67131ec76b4d4583d81d571c5"},
+    {file = "llama_cloud-0.1.2.tar.gz", hash = "sha256:7c80747e9a7f32d4b739c2d5d4add7351f836d92e633d6ac03fa401896d33097"},
 ]
 
 [[package]]
@@ -2980,7 +2980,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.50.2"
+version = "1.51.0"
 requires_python = ">=3.7.1"
 summary = "The official Python library for the openai API"
 groups = ["hook-check-django-migrations"]
@@ -2995,8 +2995,8 @@ dependencies = [
     "typing-extensions<5,>=4.11",
 ]
 files = [
-    {file = "openai-1.50.2-py3-none-any.whl", hash = "sha256:822dd2051baa3393d0d5406990611975dd6f533020dc9375a34d4fe67e8b75f7"},
-    {file = "openai-1.50.2.tar.gz", hash = "sha256:3987ae027152fc8bea745d60b02c8f4c4a76e1b5c70e73565fa556db6f78c9e6"},
+    {file = "openai-1.51.0-py3-none-any.whl", hash = "sha256:d9affafb7e51e5a27dce78589d4964ce4d6f6d560307265933a94b2e3f3c5d2c"},
+    {file = "openai-1.51.0.tar.gz", hash = "sha256:8dc4f9d75ccdd5466fc8c99a952186eddceb9fd6ba694044773f3736a847149d"},
 ]
 
 [[package]]
@@ -4675,14 +4675,14 @@ files = [
 
 [[package]]
 name = "tomli"
-version = "2.0.1"
-requires_python = ">=3.7"
+version = "2.0.2"
+requires_python = ">=3.8"
 summary = "A lil' TOML parser"
 groups = ["lint"]
 marker = "python_version < \"3.11\""
 files = [
-    {file = "tomli-2.0.1-py3-none-any.whl", hash = "sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc"},
-    {file = "tomli-2.0.1.tar.gz", hash = "sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f"},
+    {file = "tomli-2.0.2-py3-none-any.whl", hash = "sha256:2ebe24485c53d303f690b0ec092806a085f07af5a5aa1464f3931eec36caaa38"},
+    {file = "tomli-2.0.2.tar.gz", hash = "sha256:d46d457a85337051c36524bc5349dd91b1877838e2979ac5ced3e710ed8a60ed"},
 ]
 
 [[package]]
@@ -4775,13 +4775,13 @@ files = [
 
 [[package]]
 name = "types-pytz"
-version = "2024.2.0.20240913"
+version = "2024.2.0.20241003"
 requires_python = ">=3.8"
 summary = "Typing stubs for pytz"
 groups = ["lint"]
 files = [
-    {file = "types-pytz-2024.2.0.20240913.tar.gz", hash = "sha256:4433b5df4a6fc587bbed41716d86a5ba5d832b4378e506f40d34bc9c81df2c24"},
-    {file = "types_pytz-2024.2.0.20240913-py3-none-any.whl", hash = "sha256:a1eebf57ebc6e127a99d2fa2ba0a88d2b173784ef9b3defcc2004ab6855a44df"},
+    {file = "types-pytz-2024.2.0.20241003.tar.gz", hash = "sha256:575dc38f385a922a212bac00a7d6d2e16e141132a3c955078f4a4fd13ed6cb44"},
+    {file = "types_pytz-2024.2.0.20241003-py3-none-any.whl", hash = "sha256:3e22df1336c0c6ad1d29163c8fda82736909eb977281cb823c57f8bae07118b7"},
 ]
 
 [[package]]
@@ -4797,7 +4797,7 @@ files = [
 
 [[package]]
 name = "types-redis"
-version = "4.6.0.20240903"
+version = "4.6.0.20241004"
 requires_python = ">=3.8"
 summary = "Typing stubs for redis"
 groups = ["lint"]
@@ -4806,8 +4806,8 @@ dependencies = [
     "types-pyOpenSSL",
 ]
 files = [
-    {file = "types-redis-4.6.0.20240903.tar.gz", hash = "sha256:4bab1a378dbf23c2c95c370dfdb89a8f033957c4fd1a53fee71b529c182fe008"},
-    {file = "types_redis-4.6.0.20240903-py3-none-any.whl", hash = "sha256:0e7537e5c085fe96b7d468d5edae0cf667b4ba4b62c6e4a5dfc340bd3b868c23"},
+    {file = "types-redis-4.6.0.20241004.tar.gz", hash = "sha256:5f17d2b3f9091ab75384153bfa276619ffa1cf6a38da60e10d5e6749cc5b902e"},
+    {file = "types_redis-4.6.0.20241004-py3-none-any.whl", hash = "sha256:ef5da68cb827e5f606c8f9c0b49eeee4c2669d6d97122f301d3a55dc6a63f6ed"},
 ]
 
 [[package]]
