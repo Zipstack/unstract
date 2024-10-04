@@ -5,39 +5,23 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, review_requested]
     branches: [main]
     paths:
-      - 'pyproject.toml'
-      - 'backend/pyproject.toml'
-      - 'prompt-service/pyproject.toml'
-      - 'worker/pyproject.toml'
-      - 'unstract/core/pyproject.toml'
-      - 'unstract/flags/pyproject.toml'
-      - 'platform-service/pyproject.toml'
-      - 'x2text-service/pyproject.toml'
-      - 'unstract/connectors/pyproject.toml'
-      # - 'unstract/tool-registry' # commenting due to transitive dependency on local libraries/pyproject.toml
-      - 'unstract/tool-sandbox/pyproject.toml'
-      # - 'unstract/workflow-execution/pyproject.toml' # commenting due to transitive dependency on local libraries
+      - '**/pyproject.toml'
   workflow_dispatch:
+    inputs:
+      directories:
+        description: 'Comma-separated list of directories to update'
+        required: false
+        default: ''  # Run for all dirs specified in scripts/pdm-lock.sh
 
 jobs:
-  check_pyproject_changes:
-    name: ${{ matrix.directory }} PDM lock update
+  update_pdm_lock:
+    name: Update PDM lock in all directories
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        directory:
-          - root
-          - backend
-          - prompt-service
-          - worker
-          - unstract/core
-          - unstract/flags
-          - platform-service
-          - x2text-service
-          - unstract/connectors
-          # - unstract/tool-registry # commenting due to transitive dependency on local libraries
-          - unstract/tool-sandbox
-          # - unstract/workflow-execution # commenting due to transitive dependency on local libraries
+
+    permissions:
+      # Give the default GITHUB_TOKEN write permission to commit and push the
+      # added or changed files to the repository.
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -45,87 +29,44 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
 
-
-      - name: Check file changes
-        id: check
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ "${{ matrix.directory }}" = "root" ]; then
-            file_path="pyproject.toml"
-          else
-            file_path="${{ matrix.directory }}/pyproject.toml"
-          fi
-          echo "checking changes for $file_path for origin/main branch"
-          echo "changed=false" >> $GITHUB_OUTPUT
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git fetch origin
-          if git diff --quiet origin/main -- "$file_path"; then
-            echo "No changes detected in $file_path against origin/main branch."
-          else
-            echo "Changes detected in $file_path against origin/main branch."
-            echo "changed=true" >> $GITHUB_OUTPUT
-          fi
-
       - name: Set up Python
-        if: steps.check.outputs.changed == 'true'
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
       - name: Install PDM
-        if: steps.check.outputs.changed == 'true'
         run: python -m pip install pdm==2.16.1
 
-      - name: Update and Push pdm.lock
-        if: steps.check.outputs.changed == 'true'
+      - name: Generate PDM lockfiles
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ matrix.directory }}" != "root" ]; then
-            cd ${{ matrix.directory }}
-          fi
+          chmod +x ./scripts/pdm-lock.sh
 
-          if [ ! -d ".venv" ]; then
-            echo 'Creating virtual environment inside "${{ matrix.directory }}".'
-            pdm venv create -w virtualenv --with-pip
+          # Get the input from the workflow or use the default value
+          dirs="${{ github.event.inputs.directories }}"
+
+          # Check if directories input is empty
+          if [[ -z "$dirs" ]]; then
+            # No directories input given, run the script without arguments (process all directories)
+            echo "No directories specified, running on all dirs listed in scripts/pdm-lock.sh"
+
+            ./scripts/pdm-lock.sh
           else
-            echo "Virtual environment already exists."
+            # Convert comma-separated list into an array of directories
+            IFS=',' read -r -a dir_array <<< "$dirs"
+
+            # Print directories being processed
+            echo "Processing specified directories: ${dir_array[@]}"
+
+            # Pass directories as command-line arguments to the script
+            ./scripts/pdm-lock.sh "${dir_array[@]}"
           fi
+        shell: bash
 
-          source .venv/bin/activate
-
-          echo "Generating/Updating pdm.lock..."
-          pdm lock -G :all -v
-
-          echo "Checking pdm lock..."
-          pdm lock --check
-
-          echo "Stashing changes if there are any..."
-          git stash || echo "No changes to stash, continuing..."
-
-          echo "Pulling remote ${{ github.head_ref }} branch..."
-          git pull origin ${{ github.head_ref }} --allow-unrelated-histories --no-rebase
-
-          echo "Trying to pop stash if any..."
-          if git stash list | grep -q 'stash@{0}'; then
-            echo "Popping stash..."
-            git stash pop || echo "Failed to pop stash. Continue with other changes."
-          else
-            echo "No stash found, skipping pop."
-          fi
-
-          if git diff --quiet; then
-            echo "No changes between the current branch and the ${{ github.head_ref }} branch."
-            echo "Nothing to commit"
-          else
-            echo "Changes detected between the current branch and the ${{ github.head_ref }} branch."
-
-            echo "Adding pdm lock changes..."
-            git add pdm.lock
-
-            echo "Committing and pushing pdm lock ..."
-            git commit -m "Update pdm.lock for ${{ matrix.directory }}"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
+      - name: Commit pdm.lock changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: Commit pdm.lock changes
+          commit_user_name: pdm-lock-automation[bot]
+          commit_user_email: pdm-lock-automation-bot@unstract.com
