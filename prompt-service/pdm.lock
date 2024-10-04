@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:70d6f9a92c33a4a34ffed7be52fefbecac99b1efb98cf133009c5cb0d9685e03"
+content_hash = "sha256:7031a7b4400f63d6a88fad7a938ae58cff8fc6889f49f5ae8e5bb73eaa1d4252"
 
 [[package]]
 name = "aiohappyeyeballs"
@@ -3663,7 +3663,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.49.0"
+version = "0.50.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3702,8 +3702,8 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.49.0-py3-none-any.whl", hash = "sha256:a005a8fc9df9a5cea04530653910f2ceb434eff739527bf2ca38e445b6dd9f17"},
-    {file = "unstract_sdk-0.49.0.tar.gz", hash = "sha256:1dda394714d3f07df8b6ed4a3f513e7c1fbdbeb05c818c77eb811eeebbbaa033"},
+    {file = "unstract_sdk-0.50.0-py3-none-any.whl", hash = "sha256:91fbbdeba510c4306bca425e2964622a24e06ae7204ee53e7065366b695462f5"},
+    {file = "unstract_sdk-0.50.0.tar.gz", hash = "sha256:9600d033bbff2ded3785ad917110d6798f6535d6658a615547141fdb7d76d94b"},
 ]
 
 [[package]]
