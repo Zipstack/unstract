@@ -3,7 +3,8 @@ import warnings
 from typing import Optional
 
 from flask import current_app
-from unstract.prompt_service.constants import LogLevel, PromptServiceContants
+from unstract.prompt_service.constants import PromptServiceContants
+from unstract.sdk.constants import LogLevel
 from unstract.sdk.tool.stream import StreamMixin
 from unstract.sdk.utils.common_utils import PY_TO_UNSTRACT_LOG_LEVEL
 

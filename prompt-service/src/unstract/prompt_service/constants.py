@@ -70,14 +70,6 @@ class PromptServiceContants:
     TEXT = "text"
 
 
-class LogLevel(Enum):
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARN = "WARN"
-    ERROR = "ERROR"
-    FATAL = "FATAL"
-
-
 class RunLevel(Enum):
     """Different stages of prompt execution.
 
