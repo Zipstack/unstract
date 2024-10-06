@@ -76,12 +76,19 @@ fi
 git fetch origin main
 
 
+# Array to store the job PIDs
+pids=()
+
 # Run lockfile updates in parallel
 for dir in "${directories[@]}"; do
     update_lockfile "$dir" &
+    pids+=($!)  # Add the PID of the background job to the array
 done
 
-# Wait for all background processes to complete
-for job in $(jobs -p); do
-    wait "$job" || exit 1
+# Wait for any background process to complete, exit on the first failure
+while (( ${#pids[@]} )); do
+    if ! wait -n; then
+        echo "A lock file generation failed. Exiting..."
+        exit 1
+    fi
 done

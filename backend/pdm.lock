@@ -21,10 +21,6 @@ dependencies = [
     "azure-storage-blob>=12.12.0",
     "fsspec>=2021.10.1",
 ]
-files = [
-    {file = "adlfs-2023.8.0-py3-none-any.whl", hash = "sha256:3eb248a3c2a30b419f1147bd7676d156b5219f96ef7f11d47166afd2a3bdb07e"},
-    {file = "adlfs-2023.8.0.tar.gz", hash = "sha256:07e804f6df4593acfcaf01025b162e30ac13e523d3570279c98b2d91a18026d9"},
-]
 
 [[package]]
 name = "aiobotocore"
