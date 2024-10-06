@@ -4,17 +4,21 @@
     "type": "object",
     "required": [],
     "properties": {
-        "rootFolder": {
-            "type": "string",
-            "title": "Folder to process",
-            "default": "",
-            "description": "The root folder to start processing files from. Leave it empty to use the root folder"
+        "folders": {
+            "type": "array",
+            "title": "Folders to process",
+            "description": "Folders in the connected filesystem to start processing files from. Leave it empty or pass '/' to specify the root folder. Separate inputs with ⏎ Enter.",
+            "items": {
+                "type": "string",
+                "title": "Folder Path"
+            },
+            "uniqueItems": true
         },
         "processSubDirectories": {
             "type": "boolean",
-            "title": "Process sub directories",
+            "title": "Process sub-folders",
             "default": true,
-            "description": "Process sub directories recursively"
+            "description": "Process sub folders recursively"
         },
         "fileExtensions": {
             "type": "array",
