@@ -90,7 +90,7 @@ function TopNavBar() {
     }
   }, [location]);
 
-  const cascadeOptions = allOrganization.map((org) => {
+  const cascadeOptions = allOrganization?.map((org) => {
     return {
       key: org?.id,
       label:
@@ -146,7 +146,7 @@ function TopNavBar() {
         </Button>
       ),
     },
-    allOrganization.length > 1 && {
+    allOrganization?.length > 1 && {
       key: "3",
       label: (
         <Dropdown
