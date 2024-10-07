@@ -95,6 +95,7 @@ class ToolStudioPromptKeys:
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
     VARIABLE_MAP = "variable_map"
     RECORD = "record"
+    ENABLE_HIGHLIGHT = "enable_highlight"
 
 
 class FileViewTypes:

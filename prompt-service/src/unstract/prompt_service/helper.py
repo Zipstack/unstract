@@ -260,7 +260,9 @@ def construct_and_run_prompt(
     metadata: dict[str, Any],
 ) -> str:
     platform_postamble = tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, "")
-    if tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE):
+    summarize_as_source = tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE)
+    enable_highlight = tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False)
+    if not enable_highlight or summarize_as_source:
         platform_postamble = ""
     prompt = construct_prompt(
         preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
@@ -276,6 +278,7 @@ def construct_and_run_prompt(
         metadata=metadata,
         prompt_key=output[PSKeys.NAME],
         prompt_type=output.get(PSKeys.TYPE, PSKeys.TEXT),
+        enable_highlight=enable_highlight,
     )
 
 
@@ -315,6 +318,7 @@ def run_completion(
     metadata: Optional[dict[str, str]] = None,
     prompt_key: Optional[str] = None,
     prompt_type: Optional[str] = PSKeys.TEXT,
+    enable_highlight: bool = False,
 ) -> str:
     logger: Logger = current_app.logger
     try:
@@ -322,7 +326,7 @@ def run_completion(
             PSKeys.EXTRACT_EPILOGUE, {}
         )
         extract_epilogue = None
-        if extract_epilogue_plugin:
+        if extract_epilogue_plugin and enable_highlight:
             extract_epilogue = extract_epilogue_plugin["entrypoint_cls"].run
         completion = llm.complete(
             prompt=prompt,

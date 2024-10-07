@@ -14,6 +14,7 @@ import {
   Space,
   Tooltip,
   Typography,
+  Modal,
 } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
@@ -319,6 +320,16 @@ function DsSettingsCard({ type, endpointDetails, message }) {
           updatedData["source"] = data;
         } else {
           updatedData["destination"] = data;
+        }
+        if (
+          type === "output" &&
+          updatedData?.destination?.connection_type === "MANUALREVIEW"
+        ) {
+          Modal.warning({
+            title: "Warning",
+            content:
+              "Please ensure that the tool in use is has highlight enabled in the tool settings.",
+          });
         }
         updateWorkflow(updatedData);
         if (showSuccess) {
