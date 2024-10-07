@@ -23,23 +23,23 @@ update_lockfile() {
         # Set up virtual environment if not exists
         if [[ ! -d ".venv" ]]; then
             echo "[$dir] Creating virtual environment in directory: '$dir'"
-            pdm venv create -w virtualenv --with-pip 2>&1 | sed "s/^/[$dir] /" || return 1
+            pdm venv create -w virtualenv --with-pip 2>&1 | sed "s|^|[$dir] |" || return 1
         else
-            echo "[$dir] Virtual environment already exists in '$dir'"
+            echo "[$dir] Virtual environment already exists in $dir"
         fi
 
         # Activate virtual environment
-        source .venv/bin/activate 2>&1 | sed "s/^/[$dir] /" || return 1
+        source .venv/bin/activate 2>&1 | sed "s|^|[$dir] |" || return 1
 
         # HACK: https://github.com/pdm-project/pdm/issues/3199
         # Replace with checking the exit code directly once above issue is fixed
         lock_output=$(pdm lock --check 2>&1)
         if echo "$lock_output" | grep -q "WARNING: Lockfile is generated on an older version of PDM"; then
             echo "[$dir] Updating pdm.lock in '$dir' due to outdated version..."
-            pdm lock -G :all -v 2>&1 | sed "s/^/[$dir] /" || return 1
+            pdm lock -G :all -v 2>&1 | sed "s|^|[$dir] |" || return 1
         elif [[ $? -ne 0 ]]; then
             echo "[$dir] Updating pdm.lock in '$dir' due to detected changes..."
-            pdm lock -G :all -v 2>&1 | sed "s/^/[$dir] /" || return 1
+            pdm lock -G :all -v 2>&1 | sed "s|^|[$dir] |" || return 1
         else
             echo "[$dir] No changes required for pdm.lock in '$dir'."
         fi
