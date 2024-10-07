@@ -108,10 +108,10 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 
         Raises: WorkflowGenerationError
         """
+        workflow = serializer.save(
+            is_active=True,
+        )
         try:
-            workflow = serializer.save(
-                is_active=True,
-            )
             WorkflowEndpointUtils.create_endpoints_for_workflow(workflow)
             # NOTE: Add default connector here if needed
         except Exception as e:
