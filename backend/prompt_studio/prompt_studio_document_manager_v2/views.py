@@ -16,7 +16,6 @@ from .models import DocumentManager
 
 class PromptStudioDocumentManagerView(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
-    queryset = DocumentManager.objects.all()
     serializer_class = PromptStudioDocumentManagerSerializer
 
     def get_queryset(self) -> Optional[QuerySet]:
