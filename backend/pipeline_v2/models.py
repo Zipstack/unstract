@@ -2,12 +2,13 @@ import uuid
 
 from account_v2.models import User
 from django.conf import settings
-from django.db import connection, models
+from django.db import models
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
 )
+from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from backend.constants import FieldLengthConstants as FieldLength
@@ -38,13 +39,11 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
         PAUSED = "PAUSED", "Paused"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    pipeline_name = models.CharField(
-        max_length=PIPELINE_NAME_LENGTH, default="", unique=True
-    )
+    pipeline_name = models.CharField(max_length=PIPELINE_NAME_LENGTH, default="")
     workflow = models.ForeignKey(
         Workflow,
         on_delete=models.CASCADE,
-        related_name="pipeline_workflows",
+        related_name="pipelines",
         null=False,
         blank=False,
     )
@@ -81,17 +80,20 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
-        related_name="created_pipeline",
+        related_name="pipelines_created",
         null=True,
         blank=True,
     )
     modified_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
-        related_name="modified_pipeline",
+        related_name="pipelines_modified",
         null=True,
         blank=True,
     )
+
+    # Manager
+    objects = PipelineModelManager()
 
     @property
     def api_key_data(self):
@@ -99,9 +101,9 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
 
     @property
     def api_endpoint(self):
-        org_schema = connection.get_tenant().schema_name
+        organization_id = UserContext.get_organization_identifier()
         deployment_endpoint = settings.API_DEPLOYMENT_PATH_PREFIX + "/pipeline/api"
-        api_endpoint = f"{deployment_endpoint}/{org_schema}/{self.id}/"
+        api_endpoint = f"{deployment_endpoint}/{organization_id}/{self.id}/"
         return api_endpoint
 
     def __str__(self) -> str:
@@ -120,7 +122,11 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["id", "pipeline_type"],
-                name="unique_pipeline",
+                name="unique_pipeline_entity",
+            ),
+            models.UniqueConstraint(
+                fields=["pipeline_name", "organization"],
+                name="unique_pipeline_name",
             ),
         ]
 
