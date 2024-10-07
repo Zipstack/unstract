@@ -5,7 +5,7 @@ import { Pipelines } from "../components/pipelines-or-deployments/pipelines/Pipe
 
 function DeploymentsPage({ type }) {
   if (type === "api") {
-    return <ApiDeployment />;
+    return <ApiDeployment type="api" />;
   } else {
     return <Pipelines type={type} />;
   }

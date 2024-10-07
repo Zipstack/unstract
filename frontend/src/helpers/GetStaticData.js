@@ -233,6 +233,11 @@ const deploymentsStaticContent = {
     addBtn: "App Deployment",
     isLogsRequired: false,
   },
+  mrq: {
+    title: "MRQ Deployments",
+    addBtn: "MRQ Deployment",
+    isLogsRequired: false,
+  },
 };
 
 const endpointType = {

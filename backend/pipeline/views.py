@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from account.custom_exceptions import DuplicateData
 from api.exceptions import NoActiveAPIKeyError
@@ -36,6 +36,8 @@ class PipelineViewSet(viewsets.ModelViewSet):
     def get_queryset(self) -> Optional[QuerySet]:
         type = self.request.query_params.get(PipelineConstants.TYPE)
         if type is not None:
+            if type == "MRQ":
+                type = "ETL"
             queryset = Pipeline.objects.filter(
                 created_by=self.request.user, pipeline_type=type
             )
@@ -49,6 +51,30 @@ class PipelineViewSet(viewsets.ModelViewSet):
             return ExecuteSerializer
         else:
             return PipelineSerializer
+
+    def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        data = serializer.data
+
+        # Check if the request is for 'MRQ'
+        etl_type = request.query_params.get(PipelineConstants.TYPE)
+        if etl_type == "MRQ":
+            # Filter the data based on 'destination_name'
+            filtered_data = [
+                item for item in data if item["destination_name"] == "Manual Review"
+            ]
+            return Response(filtered_data)
+
+        if etl_type == "ETL":
+            # Filter the data to exclude those with
+            # 'destination_name' == "Manual Review"
+            filtered_data = [
+                item for item in data if item["destination_name"] != "Manual Review"
+            ]
+            return Response(filtered_data)
+        # If 'type' is not 'MRQ', return the default list
+        return super().list(request, *args, **kwargs)
 
     # TODO: Refactor to perform an action with explicit arguments
     # For eg, passing pipeline ID and with_log=False -> executes pipeline

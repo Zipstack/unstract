@@ -1,3 +1,4 @@
+import PropTypes from "prop-types";
 import {
   CodeOutlined,
   CopyOutlined,
@@ -30,7 +31,7 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
 
-function ApiDeployment() {
+function ApiDeployment({ type }) {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const navigate = useNavigate();
@@ -378,7 +379,7 @@ function ApiDeployment() {
   return (
     <>
       <Layout
-        type="api"
+        type={type}
         columns={columns}
         tableData={tableData}
         isTableLoading={isTableLoading}
@@ -431,5 +432,9 @@ function ApiDeployment() {
     </>
   );
 }
+
+ApiDeployment.propTypes = {
+  type: PropTypes.string.isRequired,
+};
 
 export { ApiDeployment };

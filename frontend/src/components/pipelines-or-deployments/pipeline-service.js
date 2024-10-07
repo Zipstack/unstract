@@ -1,7 +1,7 @@
 import { useAxiosPrivate } from "../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../store/session-store";
 
-function pipelineService() {
+function pipelineService(mrq = false) {
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
   const path = `/api/v1/unstract/${sessionDetails?.orgId.replaceAll('"', "")}`;
@@ -14,34 +14,46 @@ function pipelineService() {
 
   return {
     getApiKeys: (id) => {
+      const basePipelineUrl = mrq
+        ? `${path}/manual_review/api/keys/`
+        : `${path}/api/keys/pipeline/${id}/`;
       const requestOptions = {
-        url: `${path}/api/keys/pipeline/${id}/`,
+        url: basePipelineUrl,
         method: "GET",
       };
       return axiosPrivate(requestOptions);
     },
     createApiKey: (apiId, record) => {
+      const basePipelineUrl = mrq
+        ? `${path}/manual_review/api/key/`
+        : `${path}/api/keys/pipeline/${apiId}/`;
       const requestOptions = {
         method: "POST",
-        url: `${path}/api/keys/pipeline/${apiId}/`,
+        url: basePipelineUrl,
         headers: requestHeaders,
         data: record,
       };
       return axiosPrivate(requestOptions);
     },
     updateApiKey: (keyId, record) => {
+      const basePipelineUrl = mrq
+        ? `${path}/manual_review/api/key/${keyId}/`
+        : `${path}/api/keys/${keyId}/`;
       const requestOptions = {
-        method: "PUT",
-        url: `${path}/api/keys/${keyId}/`,
+        method: mrq ? "PATCH" : "PUT",
+        url: basePipelineUrl,
         headers: requestHeaders,
         data: record,
       };
       return axiosPrivate(requestOptions);
     },
     deleteApiKey: (keyId) => {
+      const basePipelineUrl = mrq
+        ? `${path}/manual_review/api/key/${keyId}/`
+        : `${path}/api/keys/${keyId}/`;
       const requestOptions = {
         method: "DELETE",
-        url: `${path}/api/keys/${keyId}/`,
+        url: basePipelineUrl,
         headers: requestHeaders,
       };
       return axiosPrivate(requestOptions);

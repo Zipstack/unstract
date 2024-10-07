@@ -40,6 +40,7 @@ let SimpleManualReviewPage;
 let ReviewLayout;
 let PublicPromptStudioHelper;
 let ManualReviewSettings;
+let ManualReviewDeployment;
 
 try {
   TrialRoutes =
@@ -70,6 +71,8 @@ try {
     require("../plugins/manual-review/review-layout/ReviewLayout.jsx").ReviewLayout;
   ManualReviewSettings =
     require("../plugins/manual-review/settings/Settings.jsx").ManualReviewSettings;
+  ManualReviewDeployment =
+    require("../plugins/manual-review/components/deployment/ManualReviewDeployment.jsx").ManualReviewDeployment;
   SimpleManualReviewPage =
     require("../plugins/manual-review/page/simple/SimpleManualReviewPage.jsx").SimpleManualReviewPage;
 } catch (err) {
@@ -165,6 +168,12 @@ function Router() {
             />
             {AppDeployments && (
               <Route path="app" element={<AppDeployments type="app" />} />
+            )}
+            {ManualReviewDeployment && (
+              <Route
+                path="mrq"
+                element={<ManualReviewDeployment type="mrq" />}
+              />
             )}
             <Route path="workflows" element={<WorkflowsPage />} />
             <Route path="workflows/:id" element={<ProjectHelper />}>

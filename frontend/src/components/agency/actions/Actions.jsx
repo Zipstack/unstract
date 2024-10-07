@@ -63,7 +63,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
   const axiosPrivate = useAxiosPrivate();
   const { posthogWfDeploymentEventText, setPostHogCustomEvent } =
     usePostHogEvents();
-
+  const isManualReview = destination?.connection_type === "MANUALREVIEW";
   useEffect(() => {
     // Enable Deploy as API only when
     // Source & Destination connection_type are selected as API
@@ -84,7 +84,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
       source?.connector_instance &&
         ((destination?.connection_type === "DATABASE" &&
           destination.connector_instance) ||
-          destination.connection_type === "MANUALREVIEW")
+          isManualReview)
     );
   }, [source, destination]);
   useEffect(() => {
@@ -307,10 +307,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
     ) {
       return false;
     }
-    if (
-      source?.connection_type === "FILESYSTEM" &&
-      destination?.connection_type === "MANUALREVIEW"
-    ) {
+    if (source?.connection_type === "FILESYSTEM" && isManualReview) {
       return false;
     }
     return !source?.connector_instance || !destination?.connector_instance;
@@ -497,7 +494,9 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
               <ApiOutlined />
             </Button>
           </Tooltip>
-          <Tooltip title="Deploy as ETL Pipeline">
+          <Tooltip
+            title={`Deploy as ${isManualReview ? "MRQ" : ""} ETL Pipeline`}
+          >
             <Button
               disabled={isIncompleteWorkflow() || !canAddETLPipeline}
               onClick={() => handleDeployBtnClick("ETL")}

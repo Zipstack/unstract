@@ -62,7 +62,7 @@ function Pipelines({ type }) {
   const { fetchExecutionLogs } = require("../log-modal/fetchExecutionLogs.js");
   const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
   const [apiKeys, setApiKeys] = useState([]);
-  const pipelineApiService = pipelineService();
+  const pipelineApiService = pipelineService(type === "mrq");
   const { getApiKeys, downloadPostmanCollection, copyUrl } =
     usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
