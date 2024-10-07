@@ -36,7 +36,7 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         "unique_pipeline_name": {
             "field": "pipeline_name",
             "message": (
-                "This Pipeline name is already in use. Please select a different name."
+                "This pipeline name is already in use. Please select a different name."
             ),
         },
         "unique_pipeline_entity": {
