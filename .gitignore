@@ -661,8 +661,7 @@ unstract/unstract-sdk/
 backend/requirements.txt
 
 # Backend cloud urls
-backend/backend/cloud_public_urls.py
-backend/backend/cloud_urls.py
+backend/backend/cloud*_urls*.py
 
 # Backend onboardig static directory
 backend/onboarding_static/
