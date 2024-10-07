@@ -7,13 +7,13 @@ update_lockfile() {
     file_path="$dir/pyproject.toml"
 
     if [[ ! -f "$file_path" ]]; then
-        echo "[$dir] No pyproject.toml found in $dir"
+        echo "[$dir] No pyproject.toml found in '$dir'"
         return 0
     fi
 
-    echo "[$dir] Checking $file_path for changes against origin/main..."
+    echo "[$dir] Checking '$file_path' for changes against origin/main..."
     if ! git diff --quiet origin/main -- "$file_path"; then
-        echo "[$dir] Changes detected in $file_path, updating pdm.lock for $dir ..."
+        echo "[$dir] Changes detected in '$file_path', updating pdm.lock for '$dir' ..."
 
         # Move to the directory if it's not root
         if [[ "$dir" != "." ]]; then
@@ -22,10 +22,10 @@ update_lockfile() {
 
         # Set up virtual environment if not exists
         if [[ ! -d ".venv" ]]; then
-            echo "[$dir] Creating virtual environment in directory: $dir"
+            echo "[$dir] Creating virtual environment in directory: '$dir'"
             pdm venv create -w virtualenv --with-pip 2>&1 | sed "s/^/[$dir] /" || return 1
         else
-            echo "[$dir] Virtual environment already exists in $dir"
+            echo "[$dir] Virtual environment already exists in '$dir'"
         fi
 
         # Activate virtual environment
@@ -35,13 +35,13 @@ update_lockfile() {
         # Replace with checking the exit code directly once above issue is fixed
         lock_output=$(pdm lock --check 2>&1)
         if echo "$lock_output" | grep -q "WARNING: Lockfile is generated on an older version of PDM"; then
-            echo "[$dir] Updating pdm.lock in $dir due to outdated version..."
+            echo "[$dir] Updating pdm.lock in '$dir' due to outdated version..."
             pdm lock -G :all -v 2>&1 | sed "s/^/[$dir] /" || return 1
         elif [[ $? -ne 0 ]]; then
-            echo "[$dir] Updating pdm.lock in $dir due to detected changes..."
+            echo "[$dir] Updating pdm.lock in '$dir' due to detected changes..."
             pdm lock -G :all -v 2>&1 | sed "s/^/[$dir] /" || return 1
         else
-            echo "[$dir] No changes required for pdm.lock in $dir."
+            echo "[$dir] No changes required for pdm.lock in '$dir'."
         fi
 
         # Go back to root if moved to a subdirectory
@@ -49,7 +49,7 @@ update_lockfile() {
             cd - || return 1
         fi
     else
-        echo "[$dir] No changes detected in $file_path"
+        echo "[$dir] No changes detected in '$file_path'"
     fi
 }
 
