@@ -112,6 +112,3 @@ docker run -it \
     --log-level DEBUG
 
 ```
-
-License
-This project is licensed under the Zipstack Inc.

@@ -28,21 +28,23 @@ class AdapterInstanceRequestHelper:
         """
         if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
             query = (
-                "SELECT id, adapter_id, adapter_metadata_b FROM "
-                f'"{DB_SCHEMA}".{DBTableV2.ADAPTER_INSTANCE} x '
+                "SELECT id, adapter_id, adapter_name, adapter_type, adapter_metadata_b"
+                f' FROM "{DB_SCHEMA}".{DBTableV2.ADAPTER_INSTANCE} x '
                 f"WHERE id='{adapter_instance_id}' and "
                 f"organization_id='{organization_uid}'"
             )
         else:
             query = (
-                f"SELECT id, adapter_id, adapter_metadata_b FROM "
-                f'"{organization_id}".adapter_adapterinstance x '
+                f"SELECT id, adapter_id, adapter_name, adapter_type, adapter_metadata_b"
+                f' FROM "{organization_id}".adapter_adapterinstance x '
                 f"WHERE id='{adapter_instance_id}'"
             )
         cursor = db.execute_sql(query)
         result_row = cursor.fetchone()
         if not result_row:
-            raise APIError(message="Adapter not found", code=404)
+            raise APIError(
+                message=f"Adapter '{adapter_instance_id}' not found", code=404
+            )
         columns = [desc[0] for desc in cursor.description]
         data_dict: dict[str, Any] = dict(zip(columns, result_row))
         cursor.close()
