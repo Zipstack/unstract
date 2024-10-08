@@ -44,7 +44,7 @@ class VariableExtractor:
             prompt (str): Prompt to check
 
         Returns:
-            bool: True if variables are presentm else False
+            bool: True if variables are present else False
         """
         return bool(len(VariableService.extract_variables_from_prompt(prompt_text)))
 
@@ -60,11 +60,13 @@ class VariableExtractor:
         """Replaces variables in prompt.
 
         Args:
+            prompt (dict[str, Any]): Dict representing the prompt card
+            structured_output (dict[str, Any]): Structured data used for variable
+                replacement when variable map is not present in `prompt`.
             log_events_id (str): UUID for the WS communication
             tool_id (str): UUID for the prompt studio project
             prompt_name (str): Name of the prompt being run
             doc_name (str): Name of the document being run with
-            prompt (dict[str, Any]): Dict representing the prompt card
         Returns:
             prompt_text (str): Prompt with variables replaced
         """
