@@ -11,7 +11,6 @@ from workflow_manager.workflow_v2.serializers import WorkflowEndpointSerializer
 
 
 class WorkflowEndpointViewSet(viewsets.ModelViewSet):
-    queryset = WorkflowEndpoint.objects.all()
     serializer_class = WorkflowEndpointSerializer
 
     def get_queryset(self) -> QuerySet:
