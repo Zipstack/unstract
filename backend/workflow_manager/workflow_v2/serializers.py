@@ -13,6 +13,7 @@ from rest_framework.serializers import (
 )
 from tool_instance_v2.serializers import ToolInstanceSerializer
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
+from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.constants import WorkflowExecutionKey, WorkflowKey
 from workflow_manager.workflow_v2.exceptions import WorkflowGenerationError
@@ -27,7 +28,7 @@ from backend.serializers import AuditSerializer
 logger = logging.getLogger(__name__)
 
 
-class WorkflowSerializer(AuditSerializer):
+class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
     tool_instances = ToolInstanceSerializer(many=True, read_only=True)
 
     class Meta:
@@ -38,6 +39,13 @@ class WorkflowSerializer(AuditSerializer):
                 "required": False,
             },
         }
+
+    unique_error_message_map: dict[str, dict[str, str]] = {
+        "unique_workflow_name": {
+            "field": "workflow_name",
+            "message": "A workflow with this name already exists.",
+        }
+    }
 
     def to_representation(self, instance: Workflow) -> dict[str, str]:
         representation: dict[str, str] = super().to_representation(instance)
