@@ -79,7 +79,7 @@ function ManageDocsModal({
     updateCustomTool,
     details,
     defaultLlmProfile,
-    disableLlmOrDocChange,
+    isMultiPassExtractLoading,
     indexDocs,
     rawIndexStatus,
     summarizeIndexStatus,
@@ -392,7 +392,7 @@ function ManageDocsModal({
                     icon={<ReloadOutlined />}
                     onClick={() => handleReIndexBtnClick(item)}
                     disabled={
-                      disableLlmOrDocChange?.length > 0 ||
+                      isMultiPassExtractLoading ||
                       isSinglePassExtractLoading ||
                       indexDocs.includes(item?.document_id) ||
                       isUploading ||
@@ -418,7 +418,7 @@ function ManageDocsModal({
                 size="small"
                 className="display-flex-align-center"
                 disabled={
-                  disableLlmOrDocChange?.length > 0 ||
+                  isMultiPassExtractLoading ||
                   isSinglePassExtractLoading ||
                   indexDocs.includes(item?.document_id) ||
                   isUploading ||
@@ -435,7 +435,7 @@ function ManageDocsModal({
             checked={selectedDoc?.document_id === item?.document_id}
             onClick={() => handleDocChange(item)}
             disabled={
-              disableLlmOrDocChange?.length > 0 ||
+              isMultiPassExtractLoading ||
               isSinglePassExtractLoading ||
               indexDocs.includes(item?.document_id)
             }
@@ -447,7 +447,7 @@ function ManageDocsModal({
   }, [
     listOfDocs,
     selectedDoc,
-    disableLlmOrDocChange,
+    isMultiPassExtractLoading,
     rawIndexStatus,
     summarizeIndexStatus,
     indexDocs,
@@ -602,7 +602,7 @@ function ManageDocsModal({
                   loading={isUploading}
                   disabled={
                     !defaultLlmProfile ||
-                    disableLlmOrDocChange?.length > 0 ||
+                    isMultiPassExtractLoading ||
                     isSinglePassExtractLoading ||
                     isPublicSource
                   }

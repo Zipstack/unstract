@@ -14,7 +14,6 @@ from .models import IndexManager
 
 class IndexManagerView(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
-    queryset = IndexManager.objects.all()
     serializer_class = IndexManagerSerializer
 
     def get_queryset(self) -> Optional[QuerySet]:

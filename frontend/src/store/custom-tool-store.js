@@ -15,6 +15,7 @@ const defaultState = {
   rawIndexStatus: [],
   summarizeIndexStatus: [],
   singlePassExtractMode: false,
+  isMultiPassExtractLoading: false,
   isSinglePassExtractLoading: false,
   isSimplePromptStudio: false,
   shareId: null,
@@ -50,8 +51,7 @@ const useCustomToolStore = create((setState, getState) => ({
     setState(entireState);
   },
   updateCustomTool: (entireState) => {
-    const existingState = { ...getState() };
-    setState({ existingState, ...entireState });
+    setState((state) => ({ state, ...entireState }));
   },
   addNewInstance: (type) => {
     const newState = { ...getState() };

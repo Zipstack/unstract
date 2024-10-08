@@ -14,15 +14,18 @@ import {
   Image,
   Radio,
   Space,
-  Spin,
   Tooltip,
   Typography,
 } from "antd";
 import { motion, AnimatePresence } from "framer-motion";
 import CheckableTag from "antd/es/tag/CheckableTag";
 
-import { displayPromptResult } from "../../../helpers/GetStaticData";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
+import {
+  displayPromptResult,
+  generateApiRunStatusId,
+  PROMPT_RUN_API_STATUSES,
+  PROMPT_RUN_TYPES,
+} from "../../../helpers/GetStaticData";
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -51,12 +54,9 @@ try {
 
 function PromptOutput({
   promptDetails,
-  isRunLoading,
   handleRun,
   selectedLlmProfileId,
   handleSelectDefaultLLM,
-  timers,
-  spsLoading,
   llmProfileDetails,
   setOpenIndexProfile,
   enabledProfiles,
@@ -65,13 +65,13 @@ function PromptOutput({
   setIsIndexOpen,
   enforceType,
   promptOutputs,
+  promptRunStatus,
 }) {
   const { width: windowWidth } = useWindowDimensions();
   const componentWidth = windowWidth * 0.4;
   const {
     selectedDoc,
     singlePassExtractMode,
-    isSinglePassExtractLoading,
     isSimplePromptStudio,
     isPublicSource,
     defaultLlmProfile,
@@ -142,16 +142,7 @@ function PromptOutput({
       <>
         <Divider className="prompt-card-divider" />
         <div className="prompt-card-result prompt-card-div">
-          {isSinglePassExtractLoading ||
-          spsLoading[selectedDoc?.document_id] ? (
-            <Spin indicator={<SpinnerLoader size="small" />} />
-          ) : (
-            <Typography.Paragraph className="prompt-card-res font-size-12">
-              <div className="expanded-output">
-                <DisplayPromptResult output={promptOutput} />
-              </div>
-            </Typography.Paragraph>
-          )}
+          <DisplayPromptResult output={promptOutput} />
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
               isDisabled={isTableExtraction}
@@ -165,6 +156,7 @@ function PromptOutput({
               enforceType={enforceType}
               displayLlmProfile={false}
               promptOutputs={promptOutputs}
+              promptRunStatus={promptRunStatus}
             />
           </div>
         </div>
@@ -195,6 +187,10 @@ function PromptOutput({
               promptOutputData = promptOutputs[promptOutputKey];
             }
           }
+
+          const isPromptLoading =
+            promptRunStatus?.[generateApiRunStatusId(docId, profileId)] ===
+            PROMPT_RUN_API_STATUSES.RUNNING;
           return (
             <motion.div
               key={profileId}
@@ -230,32 +226,20 @@ function PromptOutput({
                       {!singlePassExtractMode && (
                         <TokenUsage
                           tokenUsageId={tokenUsageId}
-                          isLoading={
-                            isRunLoading[
-                              `${selectedDoc?.document_id}_${profileId}`
-                            ]
-                          }
+                          isLoading={isPromptLoading}
                         />
                       )}
                     </Typography.Text>
                     <Typography.Text className="prompt-cost-item">
                       <PromptRunTimer
-                        timer={timers[profileId]}
-                        isLoading={
-                          isRunLoading[
-                            `${selectedDoc?.document_id}_${profileId}`
-                          ]
-                        }
+                        timer={promptOutputData?.timer}
+                        isLoading={isPromptLoading}
                       />
                     </Typography.Text>
                     <Typography.Text className="prompt-cost-item">
                       <PromptRunCost
                         tokenUsage={promptOutputData?.tokenUsage}
-                        isLoading={
-                          isRunLoading[
-                            `${selectedDoc?.document_id}_${profileId}`
-                          ]
-                        }
+                        isLoading={isPromptLoading}
                       />
                     </Typography.Text>
                   </div>
@@ -328,21 +312,12 @@ function PromptOutput({
                     {isTableExtraction ? (
                       <div />
                     ) : (
-                      <>
-                        {isRunLoading[
-                          `${selectedDoc?.document_id}_${profileId}`
-                        ] ? (
-                          <Spin indicator={<SpinnerLoader size="small" />} />
-                        ) : (
-                          <Typography.Paragraph className="prompt-card-res font-size-12">
-                            <div className="expanded-output">
-                              <DisplayPromptResult
-                                output={promptOutputData?.output}
-                              />
-                            </div>
-                          </Typography.Paragraph>
-                        )}
-                      </>
+                      <DisplayPromptResult
+                        output={promptOutputData?.output}
+                        profileId={profileId}
+                        docId={selectedDoc?.document_id}
+                        promptRunStatus={promptRunStatus}
+                      />
                     )}
                     <div className="prompt-profile-run">
                       <Tooltip title="Run LLM for current document">
@@ -350,12 +325,15 @@ function PromptOutput({
                           size="small"
                           type="text"
                           className="prompt-card-action-button"
-                          onClick={() => handleRun(profileId, false)}
-                          disabled={
-                            isRunLoading[
-                              `${selectedDoc?.document_id}_${profileId}`
-                            ] || isPublicSource
+                          onClick={() =>
+                            handleRun(
+                              PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ONE_DOC,
+                              promptDetails?.prompt_id,
+                              profileId,
+                              selectedDoc?.document_id
+                            )
                           }
+                          disabled={isPromptLoading || isPublicSource}
                         >
                           <PlayCircleOutlined className="prompt-card-actions-head" />
                         </Button>
@@ -365,12 +343,15 @@ function PromptOutput({
                           size="small"
                           type="text"
                           className="prompt-card-action-button"
-                          onClick={() => handleRun(profileId, true)}
-                          disabled={
-                            isRunLoading[
-                              `${selectedDoc?.document_id}_${profileId}`
-                            ] || isPublicSource
+                          onClick={() =>
+                            handleRun(
+                              PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ALL_DOCS,
+                              promptDetails?.prompt_id,
+                              profileId,
+                              null
+                            )
                           }
+                          disabled={isPromptLoading || isPublicSource}
                         >
                           <PlayCircleFilled className="prompt-card-actions-head" />
                         </Button>
@@ -389,6 +370,7 @@ function PromptOutput({
                         enforceType={enforceType}
                         displayLlmProfile={true}
                         promptOutputs={promptOutputs}
+                        promptRunStatus={promptRunStatus}
                       />
                     </div>
                   </div>
@@ -406,20 +388,18 @@ function PromptOutput({
 
 PromptOutput.propTypes = {
   promptDetails: PropTypes.object.isRequired,
-  isRunLoading: PropTypes.object,
   handleRun: PropTypes.func.isRequired,
   handleSelectDefaultLLM: PropTypes.func.isRequired,
   selectedLlmProfileId: PropTypes.string,
-  timers: PropTypes.object.isRequired,
-  spsLoading: PropTypes.object,
   llmProfileDetails: PropTypes.array.isRequired,
   setOpenIndexProfile: PropTypes.func.isRequired,
   enabledProfiles: PropTypes.array.isRequired,
   setEnabledProfiles: PropTypes.func.isRequired,
   isNotSingleLlmProfile: PropTypes.bool.isRequired,
   setIsIndexOpen: PropTypes.func.isRequired,
-  enforceType: PropTypes.string.isRequired,
+  enforceType: PropTypes.string,
   promptOutputs: PropTypes.object.isRequired,
+  promptRunStatus: PropTypes.object.isRequired,
 };
 
 export { PromptOutput };

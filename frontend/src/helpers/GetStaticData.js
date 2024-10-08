@@ -527,6 +527,24 @@ const isValidJsonKey = (key) => {
   return regex.test(key);
 };
 
+const PROMPT_RUN_TYPES = {
+  RUN_ONE_PROMPT_ONE_LLM_ONE_DOC: "RUN_ONE_PROMPT_ONE_LLM_ONE_DOC",
+  RUN_ONE_PROMPT_ONE_LLM_ALL_DOCS: "RUN_ONE_PROMPT_ONE_LLM_ALL_DOCS",
+  RUN_ONE_PROMPT_ALL_LLMS_ONE_DOC: "RUN_ONE_PROMPT_ALL_LLMS_ONE_DOC",
+  RUN_ONE_PROMPT_ALL_LLMS_ALL_DOCS: "RUN_ONE_PROMPT_ALL_LLMS_ALL_DOCS",
+  RUN_ALL_PROMPTS_ALL_LLMS_ONE_DOC: "RUN_ALL_PROMPTS_ALL_LLMS_ONE_DOC",
+  RUN_ALL_PROMPTS_ALL_LLMS_ALL_DOCS: "RUN_ALL_PROMPTS_ALL_LLMS_ALL_DOCS",
+};
+
+const PROMPT_RUN_API_STATUSES = {
+  RUNNING: "RUNNING",
+  COMPLETED: "COMPLETED",
+};
+
+const generateApiRunStatusId = (docId, profileId) => {
+  return `${docId}__${profileId}`;
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -573,4 +591,7 @@ export {
   displayURL,
   formatNumberWithCommas,
   isValidJsonKey,
+  PROMPT_RUN_TYPES,
+  PROMPT_RUN_API_STATUSES,
+  generateApiRunStatusId,
 };
