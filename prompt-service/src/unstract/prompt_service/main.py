@@ -128,11 +128,12 @@ def prompt_processor() -> Any:
 
         if VariableExtractor.is_variables_present(prompt_text=prompt_text):
             prompt_text = VariableExtractor.replace_variables_in_prompt(
+                prompt=output,
+                structured_output=structured_output,
                 log_events_id=log_events_id,
                 tool_id=tool_id,
                 prompt_name=prompt_name,
                 doc_name=doc_name,
-                prompt=output,
             )
 
         app.logger.info(f"[{tool_id}] Executing prompt: {prompt_name}")
