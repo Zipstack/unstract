@@ -1,5 +1,6 @@
 import json
 import logging
+import traceback
 from typing import Any, Optional
 
 from celery import shared_task
@@ -125,7 +126,10 @@ def execute_pipeline_task(
             logger.info(f"Execution response: {execution_response}")
         logger.info(f"Execution completed for pipeline: {name}")
     except Exception as e:
-        logger.error(f"Failed to execute pipeline: {name}. Error: {e}")
+        logger.error(
+            f"Failed to execute pipeline: {name}. Error: {e}"
+            f"\n\n'''{traceback.format_exc()}```"
+        )
 
 
 def execute_pipeline_task_v2(
@@ -144,7 +148,8 @@ def execute_pipeline_task_v2(
     """
     try:
         logger.info(
-            f"Executing workflow id: {workflow_id} for pipeline {pipeline_name}"
+            f"Executing pipeline: {pipeline_id}, "
+            f"workflow: {workflow_id}, pipeline name: {pipeline_name}"
         )
         # Set organization in state store for execution
         UserContext.set_organization_identifier(organization_id)
@@ -154,13 +159,15 @@ def execute_pipeline_task_v2(
             and not validate_etl_run(organization_id)
         ):
             try:
-                logger.info(f"Disabling ETL task: {pipeline_id}")
+                logger.info(
+                    f"Subscription expired for '{organization_id}', "
+                    f"disabling pipeline: {pipeline_id}"
+                )
                 disable_task(pipeline_id)
             except Exception as e:
                 logger.warning(f"Failed to disable task: {pipeline_id}. Error: {e}")
             return
         workflow = WorkflowHelper.get_workflow_by_id(id=workflow_id)
-        logger.info(f"Executing workflow: {workflow}")
         PipelineProcessor.update_pipeline(
             pipeline_id, Pipeline.PipelineStatus.INPROGRESS
         )
@@ -177,7 +184,10 @@ def execute_pipeline_task_v2(
             f"{organization_id}"
         )
     except Exception as e:
-        logger.error(f"Failed to execute pipeline: {pipeline_name}. Error: {e}")
+        logger.error(
+            f"Failed to execute pipeline: {pipeline_name}. Error: {e}"
+            f"\n\n'''{traceback.format_exc()}```"
+        )
 
 
 def delete_periodic_task(task_name: str) -> None:
