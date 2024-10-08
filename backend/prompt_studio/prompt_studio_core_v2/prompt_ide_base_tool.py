@@ -1,7 +1,8 @@
 import os
 
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
-from prompt_studio.prompt_studio_core_v2.constants import LogLevel, ToolStudioKeys
+from prompt_studio.prompt_studio_core_v2.constants import ToolStudioKeys
+from unstract.sdk.constants import LogLevel
 from unstract.sdk.tool.stream import StreamMixin
 
 
