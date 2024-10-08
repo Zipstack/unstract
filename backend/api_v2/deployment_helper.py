@@ -109,7 +109,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             return None
 
     @staticmethod
-    def create_api_key(serializer: Serializer) -> APIKey:
+    def create_api_key(serializer: Serializer, request: Request) -> APIKey:
         """To make API key for an API.
 
         Args:
@@ -120,7 +120,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         """
         api_deployment: APIDeployment = serializer.instance
         try:
-            api_key: APIKey = KeyHelper.create_api_key(api_deployment)
+            api_key: APIKey = KeyHelper.create_api_key(api_deployment, request)
             return api_key
         except Exception as error:
             logger.error(f"Error while creating API key error: {str(error)}")

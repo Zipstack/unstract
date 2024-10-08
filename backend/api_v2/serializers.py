@@ -144,6 +144,7 @@ class APIKeyListSerializer(ModelSerializer):
             "is_active",
             "description",
             "api",
+            "pipeline",
         ]
 
 
