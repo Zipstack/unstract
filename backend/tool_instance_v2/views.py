@@ -63,7 +63,6 @@ def get_tool_list(request: Request) -> Response:
 
 class ToolInstanceViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
-    queryset = ToolInstance.objects.all()
     serializer_class = ToolInstanceSerializer
 
     def get_queryset(self) -> QuerySet:
