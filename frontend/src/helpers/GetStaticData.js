@@ -27,13 +27,17 @@ const getBaseUrl = () => {
   return url;
 };
 
-const getOrgNameFromPathname = (pathname) => {
+const getOrgNameFromPathname = (pathname, isUnstract = true) => {
   if (!pathname) {
     return null;
   }
 
   if (publicRoutes.includes(pathname)) {
     return null;
+  }
+
+  if (!isUnstract) {
+    return pathname?.split("/")[2];
   }
   return pathname?.split("/")[1];
 };
