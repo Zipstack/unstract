@@ -79,7 +79,6 @@ def execute_pipeline_task(
 ) -> None:
     if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
         execute_pipeline_task_v2(
-            workflow_id=workflow_id,
             organization_id=org_schema,
             pipeline_id=pipepline_id,
             pipeline_name=name,
@@ -133,7 +132,6 @@ def execute_pipeline_task(
 
 
 def execute_pipeline_task_v2(
-    workflow_id: Any,
     organization_id: Any,
     pipeline_id: Any,
     pipeline_name: Any,
@@ -147,12 +145,16 @@ def execute_pipeline_task_v2(
         name (Any): pipeline name
     """
     try:
-        logger.info(
-            f"Executing pipeline: {pipeline_id}, "
-            f"workflow: {workflow_id}, pipeline name: {pipeline_name}"
-        )
         # Set organization in state store for execution
         UserContext.set_organization_identifier(organization_id)
+        pipeline = PipelineProcessor.fetch_pipeline(
+            pipeline_id=pipeline_id, check_active=True
+        )
+        workflow = pipeline.workflow
+        logger.info(
+            f"Executing pipeline: {pipeline_id}, "
+            f"workflow: {workflow}, pipeline name: {pipeline_name}"
+        )
         if (
             subscription_loader
             and subscription_loader[0]
@@ -167,7 +169,6 @@ def execute_pipeline_task_v2(
             except Exception as e:
                 logger.warning(f"Failed to disable task: {pipeline_id}. Error: {e}")
             return
-        workflow = WorkflowHelper.get_workflow_by_id(id=workflow_id)
         PipelineProcessor.update_pipeline(
             pipeline_id, Pipeline.PipelineStatus.INPROGRESS
         )
