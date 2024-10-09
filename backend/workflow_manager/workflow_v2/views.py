@@ -52,7 +52,6 @@ def make_execution_response(response: ExecutionResponse) -> Any:
 class WorkflowViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     permission_classes = [IsOwner]
-    queryset = Workflow.objects.all()
 
     def get_queryset(self) -> QuerySet:
         filter_args = FilterHelper.build_filter_args(

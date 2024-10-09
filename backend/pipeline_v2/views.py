@@ -85,7 +85,7 @@ class PipelineViewSet(viewsets.ModelViewSet):
         try:
             pipeline_instance = serializer.save()
             # Create API key using the created instance
-            KeyHelper.create_api_key(pipeline_instance)
+            KeyHelper.create_api_key(pipeline_instance, request)
         except IntegrityError:
             raise DuplicateData(
                 f"{PipelineErrors.PIPELINE_EXISTS}, " f"{PipelineErrors.DUPLICATE_API}"
