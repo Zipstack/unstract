@@ -121,7 +121,9 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         serializer: Serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
-        api_key = DeploymentHelper.create_api_key(serializer=serializer)
+        api_key = DeploymentHelper.create_api_key(
+            serializer=serializer, request=request
+        )
         response_serializer = DeploymentResponseSerializer(
             {"api_key": api_key.api_key, **serializer.data}
         )

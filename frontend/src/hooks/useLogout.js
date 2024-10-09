@@ -15,6 +15,7 @@ function useLogout() {
 
   return () => {
     setSessionDetails(getSessionData(null));
+    localStorage.removeItem("selectedProduct");
     posthog.reset();
     clearSessionCookies();
     const baseUrl = getBaseUrl();

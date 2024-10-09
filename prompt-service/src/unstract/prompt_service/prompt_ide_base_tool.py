@@ -1,23 +1,38 @@
 import os
+import warnings
+from typing import Optional
 
 from flask import current_app
-from unstract.prompt_service.constants import LogLevel, PromptServiceContants
+from unstract.prompt_service.constants import PromptServiceContants
+from unstract.sdk.constants import LogLevel
 from unstract.sdk.tool.stream import StreamMixin
+from unstract.sdk.utils.common_utils import PY_TO_UNSTRACT_LOG_LEVEL
 
 
 class PromptServiceBaseTool(StreamMixin):
+    # TODO: Remove unused log_level arg
     def __init__(
-        self, log_level: LogLevel = LogLevel.INFO, platform_key: str = ""
+        self, log_level: Optional[LogLevel] = None, platform_key: str = ""
     ) -> None:
         """
         Args:
-            tool (UnstractAbstractTool): Instance of UnstractAbstractTool
+            tool (UnstractAbstractTool): Instance of UnstractAbstractTool.
+                 Deprecated, will be removed in future versions
         Notes:
             - PLATFORM_SERVICE_API_KEY environment variable is required.
         """
-        self.log_level = log_level
+        if log_level:
+            warnings.warn(
+                "The 'log_level' argument is deprecated and will be "
+                "removed in a future version.",
+                DeprecationWarning,
+                stacklevel=2,  # ensures the warning points to the caller of the method
+            )
+        self.log_level = PY_TO_UNSTRACT_LOG_LEVEL.get(
+            current_app.logger.getEffectiveLevel(), LogLevel.INFO
+        )
         self.platform_key = platform_key
-        super().__init__(log_level=log_level)
+        super().__init__(log_level=self.log_level)
 
     def get_env_or_die(self, env_key: str) -> str:
         """Returns the value of an env variable.

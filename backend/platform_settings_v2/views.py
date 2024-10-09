@@ -21,8 +21,10 @@ logger = logging.getLogger(__name__)
 
 
 class PlatformKeyViewSet(viewsets.ModelViewSet):
-    queryset = PlatformKey.objects.all()
     serializer_class = PlatformKeySerializer
+
+    def get_queryset(self):
+        return PlatformKey.objects.all()
 
     def validate_user_role(func: Any) -> Any:
         def wrapper(
