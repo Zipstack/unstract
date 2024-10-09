@@ -488,8 +488,9 @@ class Command(BaseCommand):
 
         # Public tables
         public_schema_migrations = migration_query.get_public_schema_migrations()
+        migration_batch_size = int(os.getenv("DB_MIGRATION_BATCH_SIZE", 3000))
         migrator = DataMigrator(
-            src_db_config, dest_db_config, v2_schema, batch_size=3000
+            src_db_config, dest_db_config, v2_schema, batch_size=migration_batch_size
         )
         migrator.migrate(public_schema_migrations)
 
