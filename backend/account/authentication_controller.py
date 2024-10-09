@@ -161,7 +161,6 @@ class AuthenticationController:
                 self.auth_service.get_organizations_by_user_id(user.user_id)
             )
             organization_ids = {org.id for org in z_organizations}
-
         if organization_id and organization_id in organization_ids:
             organization = OrganizationService.get_organization_by_org_id(
                 organization_id
@@ -195,23 +194,16 @@ class AuthenticationController:
                 except MethodNotImplemented:
                     Logger.info("hubspot_signup_api not implemented")
 
-            with transaction.atomic():
-                if new_organization:
-                    try:
-                        self.auth_service.hubspot_signup_api(request=request)
-                    except MethodNotImplemented:
-                        Logger.info("hubspot_signup_api not implemented")
-
-                    try:
-                        self.auth_service.frictionless_onboarding(
-                            organization=organization, user=user
-                        )
-                    except MethodNotImplemented:
-                        Logger.info("frictionless_onboarding not implemented")
-
-                    self.authentication_helper.create_initial_platform_key(
-                        user=user, organization=organization
+                try:
+                    self.auth_service.frictionless_onboarding(
+                        organization=organization, user=user
                     )
+                except MethodNotImplemented:
+                    Logger.info("frictionless_onboarding not implemented")
+
+                self.authentication_helper.create_initial_platform_key(
+                    user=user, organization=organization
+                )
 
             user_info: Optional[UserInfo] = self.get_user_info(request)
             serialized_user_info = SetOrganizationsResponseSerializer(user_info).data
