@@ -30,6 +30,7 @@ const EtlTaskDeploy = ({
   workflowId,
   isEdit,
   selectedRow = {},
+  setSelectedRow,
   setDeploymentName,
 }) => {
   const [form] = Form.useForm();
@@ -43,9 +44,7 @@ const EtlTaskDeploy = ({
 
   const { Option } = Select;
   const [workflowList, setWorkflowList] = useState([]);
-  const [formDetails, setFormDetails] = useState(
-    isEdit ? { ...selectedRow } : { ...defaultFromDetails }
-  );
+  const [formDetails, setFormDetails] = useState({});
   const [isLoading, setLoading] = useState(false);
   const [openCronGenerator, setOpenCronGenerator] = useState(false);
   const [backendErrors, setBackendErrors] = useState(null);
@@ -54,16 +53,25 @@ const EtlTaskDeploy = ({
     usePostHogEvents();
 
   useEffect(() => {
+    console.log(selectedRow);
+    if (isEdit) {
+      setFormDetails(selectedRow);
+      handleSummary(selectedRow?.cron_string);
+    } else {
+      setFormDetails(defaultFromDetails);
+      handleSummary(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    form.resetFields();
+  }, [formDetails]);
+
+  useEffect(() => {
     if (workflowId) {
       setFormDetails({ ...formDetails, workflow: workflowId });
     }
   }, [workflowId]);
-
-  useEffect(() => {
-    if (formDetails?.cron_string) {
-      setSummary(cronstrue.toString(formDetails.cron_string));
-    }
-  }, [formDetails]);
 
   const getWorkflowList = () => {
     workflowApiService
@@ -77,7 +85,6 @@ const EtlTaskDeploy = ({
   };
 
   const handleInputChange = (changedValues, allValues) => {
-    setFormDetails({ ...formDetails, ...allValues });
     const changedFieldName = Object.keys(changedValues)[0];
     form.setFields([
       {
@@ -130,10 +137,6 @@ const EtlTaskDeploy = ({
     }
   }, [type]);
 
-  const clearFormDetails = () => {
-    setFormDetails({ ...defaultFromDetails });
-  };
-
   const showCronGenerator = () => {
     setOpenCronGenerator(true);
   };
@@ -141,10 +144,15 @@ const EtlTaskDeploy = ({
   const setCronValue = (value) => {
     const updatedValues = { ["cron_string"]: value };
     setFormDetails({ ...formDetails, ...updatedValues });
+    handleSummary(value);
   };
 
-  const handleCancel = () => {
-    setOpen(false);
+  const handleSummary = (cronString) => {
+    if (!cronString) {
+      setSummary(null);
+      return;
+    }
+    setSummary(cronstrue.toString(cronString));
   };
 
   const addPipeline = (pipeline) => {
@@ -158,17 +166,16 @@ const EtlTaskDeploy = ({
   const updatePipelineTable = (pipeline) => {
     setTableData((prev) => {
       const index = prev.findIndex((item) => item?.id === pipeline?.id);
-      if (index !== -1) {
-        const newData = [...prev];
-        newData[index] = { ...newData[index], ...pipeline };
-        return newData;
-      }
-      return prev;
+      if (index === -1) return prev;
+
+      const newData = [...prev];
+      newData[index] = { ...newData[index], ...pipeline };
+      return newData;
     });
   };
 
-  const updatePipeline = () => {
-    const body = formDetails;
+  const updatePipeline = (formValues) => {
+    const body = { ...formDetails, ...formValues };
     body["pipeline_type"] = type.toUpperCase();
 
     const requestOptions = {
@@ -183,9 +190,10 @@ const EtlTaskDeploy = ({
     setLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        updatePipelineTable(res?.data);
+        const data = res?.data || {};
+        updatePipelineTable(data);
+        setSelectedRow(data);
         setOpen(false);
-        clearFormDetails();
         setAlertDetails({
           type: "success",
           content: "Pipeline Updated Successfully",
@@ -199,21 +207,19 @@ const EtlTaskDeploy = ({
       });
   };
 
-  const createPipeline = () => {
+  const createPipeline = (formValues) => {
     try {
-      const wf = workflowList.find(
-        (item) => item?.id === formDetails?.workflow
-      );
+      const wf = workflowList.find((item) => item?.id === formValues?.workflow);
       setPostHogCustomEvent(posthogDeploymentEventText[`${type}_success`], {
         info: "Clicked on 'Save and Deploy' button",
-        deployment_name: formDetails?.pipeline_name,
+        deployment_name: formValues?.pipeline_name,
         workflow_name: wf?.workflow_name,
       });
     } catch (err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
-    const body = formDetails;
+    const body = { ...formDetails, ...formValues };
     body["pipeline_type"] = type.toUpperCase();
 
     const requestOptions = {
@@ -237,7 +243,6 @@ const EtlTaskDeploy = ({
           addPipeline(res?.data);
         }
         setOpen(false);
-        clearFormDetails();
         setAlertDetails({
           type: "success",
           content: "New Pipeline Created Successfully",
@@ -251,21 +256,25 @@ const EtlTaskDeploy = ({
       });
   };
 
+  const handleSubmit = (formValues) => {
+    if (isEdit) {
+      updatePipeline(formValues);
+    } else {
+      createPipeline(formValues);
+    }
+  };
+
   return (
     <>
       <Modal
         title={isEdit ? `Update ${title}` : `Add ${title}`}
         centered
         open={open}
-        onOk={isEdit ? updatePipeline : createPipeline}
-        onCancel={handleCancel}
-        okText={isEdit ? "Update and Deploy" : "Save and Deploy"}
-        okButtonProps={{
-          loading: isLoading,
-        }}
         width={400}
         closable={true}
         maskClosable={false}
+        footer={null}
+        onCancel={() => setOpen(false)}
       >
         <Form
           form={form}
@@ -273,6 +282,7 @@ const EtlTaskDeploy = ({
           layout="vertical"
           initialValues={formDetails}
           onValuesChange={handleInputChange}
+          onFinish={handleSubmit}
         >
           <Form.Item
             label="Display Name"
@@ -341,6 +351,12 @@ const EtlTaskDeploy = ({
               </Typography.Text>
             </div>
           </Space>
+          <Space className="display-flex-right">
+            <Button onClick={() => setOpen(false)}>Cancel</Button>
+            <Button type="primary" loading={isLoading} htmlType="submit">
+              {isEdit ? "Update and Deploy" : "Save and Deploy"}
+            </Button>
+          </Space>
         </Form>
       </Modal>
       {openCronGenerator && (
@@ -363,6 +379,7 @@ EtlTaskDeploy.propTypes = {
   workflowId: PropTypes.string,
   isEdit: PropTypes.bool,
   selectedRow: PropTypes.object,
+  setSelectedRow: PropTypes.func,
   setDeploymentName: PropTypes.func,
 };
 
