@@ -378,21 +378,6 @@ class MigrationQuery:
                 "dest_table": "api_deployment",
             },
             {
-                "name": f"migration_{schema}_api_key",
-                "src_query": f"""
-                    SELECT id, api_key, api_id, pipeline_id, description, is_active,
-                    created_by_id, modified_by_id, created_at, modified_at
-                    FROM "{schema}".api_apikey;
-                """,
-                "dest_query": f"""
-                    INSERT INTO "{self.v2_schema}".api_deployment_key (
-                        id, api_key, api_id, pipeline_id, description, is_active,
-                        created_by_id, modified_by_id, created_at, modified_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
-                """,
-                "dest_table": "api_deployment_key",
-            },
-            {
                 "name": f"migration_{schema}_pipeline",
                 "src_query": f"""
                     SELECT id, pipeline_name, workflow_id, app_id, active, scheduled,
@@ -413,6 +398,21 @@ class MigrationQuery:
                     %s, %s, %s, %s, {organization_id});
                 """,
                 "dest_table": "pipeline",
+            },
+            {
+                "name": f"migration_{schema}_api_key",
+                "src_query": f"""
+                    SELECT id, api_key, api_id, pipeline_id, description, is_active,
+                    created_by_id, modified_by_id, created_at, modified_at
+                    FROM "{schema}".api_apikey;
+                """,
+                "dest_query": f"""
+                    INSERT INTO "{self.v2_schema}".api_deployment_key (
+                        id, api_key, api_id, pipeline_id, description, is_active,
+                        created_by_id, modified_by_id, created_at, modified_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                """,
+                "dest_table": "api_deployment_key",
             },
             {
                 "name": f"migration_{schema}_usage",
