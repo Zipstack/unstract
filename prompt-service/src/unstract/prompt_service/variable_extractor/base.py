@@ -17,7 +17,7 @@ class VariableExtractor:
         prompt_text: str, variable_map: dict[str, Any]
     ) -> str:
         variables: list[str] = VariableService.extract_variables_from_prompt(
-            prompt=prompt_text
+            prompt_text=prompt_text
         )
         for variable in variables:
             variable_type = VariableService.identify_variable_type(variable=variable)
@@ -82,6 +82,9 @@ class VariableExtractor:
             RunLevel.RUN,
             "Replacing variables in prompt",
         )
+        # Initialized with the prompt because
+        # it is used in finally block
+        prompt_text = prompt[PSKeys.PROMPT]
         try:
             variable_map = prompt[PSKeys.VARIABLE_MAP]
             prompt_text = VariableExtractor.execute_variable_replacement(
