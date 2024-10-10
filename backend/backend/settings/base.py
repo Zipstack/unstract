@@ -87,10 +87,10 @@ SESSION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "SESSION_EXPIRATION_TIME_IN_SECOND", 3600
 )
 SESSION_COOKIE_SECURE = CommonUtils.str_to_bool(
-    os.environ.get("SESSION_COOKIE_SECURE", "True")
+    os.environ.get("SESSION_COOKIE_SECURE", "False")
 )
 CSRF_COOKIE_SECURE = CommonUtils.str_to_bool(
-    os.environ.get("CSRF_COOKIE_SECURE", "True")
+    os.environ.get("CSRF_COOKIE_SECURE", "False")
 )
 
 PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
