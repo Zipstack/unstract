@@ -57,7 +57,7 @@ jobs:
             IFS=',' read -r -a dir_array <<< "$dirs"
 
             # Print directories being processed
-            echo "Processing specified directories: ${dir_array[@]}"
+            echo "Processing specified directories: ${dir_array[*]}"
 
             # Pass directories as command-line arguments to the script
             ./scripts/pdm-lock.sh "${dir_array[@]}"

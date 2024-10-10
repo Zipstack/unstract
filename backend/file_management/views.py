@@ -44,7 +44,9 @@ class FileManagementViewSet(viewsets.ModelViewSet):
     """
 
     versioning_class = URLPathVersioning
-    queryset = ConnectorInstance.objects.all()
+
+    def get_queryset(self):
+        return ConnectorInstance.objects.all()
 
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action == "upload":

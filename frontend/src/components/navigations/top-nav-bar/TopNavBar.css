@@ -70,3 +70,8 @@
   font-weight: 600;
   margin-left: 10px;
 }
+
+.platform-switch-container {
+  display: flex;
+  align-items: center;
+}
