@@ -1,27 +1,47 @@
-import { useEffect, useState } from "react";
-
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { OutputAnalyzerHeader } from "../output-analyzer-header/OutputAnalyzerHeader";
 import "./OutputAnalyzer.css";
 import { OutputAnalyzerCard } from "../output-analyzer-card/OutputAnalyzerCard";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { promptType } from "../../../helpers/GetStaticData";
+import { FilterPromptFields } from "./FilterPromptFields";
+import { Drawer } from "antd";
 
 function OutputAnalyzer() {
-  const [totalFields, setTotalFields] = useState(0);
   const [currentDocIndex, setCurrentDocIndex] = useState(0);
   const { listOfDocs, details, isPublicSource } = useCustomToolStore();
+  const [selectedPrompts, setSelectedPrompts] = useState({});
+  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
 
   useEffect(() => {
-    handleTotalFields();
-  }, []);
-
-  const handleTotalFields = () => {
-    const prompts = [...(details?.prompts || [])];
-    const promptsFiltered = prompts.filter(
+    const allPrompts = details?.prompts || [];
+    const promptFields = allPrompts.filter(
       (item) => item?.prompt_type === promptType.prompt
     );
-    setTotalFields(promptsFiltered.length || 0);
-  };
+
+    const initialSelectedPrompts = promptFields.reduce((acc, item) => {
+      acc[item?.prompt_key] = true;
+      return acc;
+    }, {});
+
+    setSelectedPrompts(initialSelectedPrompts);
+  }, []);
+
+  const totalFields = useMemo(() => {
+    return Object.values(selectedPrompts).filter(Boolean).length;
+  }, [selectedPrompts]);
+
+  const openFilterDrawer = useCallback(() => {
+    setIsFilterDrawerOpen(true);
+  }, []);
+
+  const closeFilterDrawer = useCallback(() => {
+    setIsFilterDrawerOpen(false);
+  }, []);
+
+  const currentDoc = useMemo(() => {
+    return listOfDocs[currentDocIndex];
+  }, [listOfDocs, currentDocIndex]);
 
   return (
     <div className="output-analyzer-layout">
@@ -30,6 +50,8 @@ function OutputAnalyzer() {
           docs={listOfDocs}
           currentDocIndex={currentDocIndex}
           setCurrentDocIndex={setCurrentDocIndex}
+          selectedPrompts={selectedPrompts}
+          openFilterDrawer={openFilterDrawer}
         />
       </div>
       <div
@@ -39,16 +61,25 @@ function OutputAnalyzer() {
             : "output-analyzer-body"
         }
       >
-        <div
-          className="height-100"
-          key={listOfDocs[currentDocIndex]?.document_id}
-        >
+        <div className="height-100" key={currentDoc?.document_id}>
           <OutputAnalyzerCard
-            doc={listOfDocs[currentDocIndex]}
+            doc={currentDoc}
+            selectedPrompts={selectedPrompts}
             totalFields={totalFields}
           />
         </div>
       </div>
+      <Drawer
+        title="Filter Prompt Fields"
+        open={isFilterDrawerOpen}
+        onClose={closeFilterDrawer}
+      >
+        <FilterPromptFields
+          isOpen={isFilterDrawerOpen}
+          selectedPrompts={selectedPrompts}
+          setSelectedPrompts={setSelectedPrompts}
+        />
+      </Drawer>
     </div>
   );
 }

@@ -15,7 +15,6 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { JsonView } from "./JsonView";
@@ -45,7 +44,7 @@ try {
   // The component will remain null if it is not available
 }
 
-function CombinedOutput({ docId, setFilledFields }) {
+function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
   const {
     details,
     defaultLlmProfile,
@@ -63,6 +62,7 @@ function CombinedOutput({ docId, setFilledFields }) {
     singlePassExtractMode ? defaultLlmProfile : "0"
   );
   const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
+  const [filteredCombinedOutput, setFilteredCombinedOutput] = useState({});
 
   const { id } = useParams();
   const { sessionDetails } = useSessionStore();
@@ -70,9 +70,9 @@ function CombinedOutput({ docId, setFilledFields }) {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
 
-  // Fetch adapter info on mount
   useEffect(() => {
     if (isSimplePromptStudio) return;
+
     const fetchAdapterInfo = async () => {
       let url = `/api/v1/unstract/${sessionDetails?.orgId}/adapter/?adapter_type=LLM`;
       if (isPublicSource) {
@@ -91,21 +91,18 @@ function CombinedOutput({ docId, setFilledFields }) {
     fetchAdapterInfo();
   }, []);
 
-  // Update activeKey and selectedProfile when singlePassExtractMode changes
   useEffect(() => {
     const key = singlePassExtractMode ? defaultLlmProfile : "0";
     setActiveKey(key);
     setSelectedProfile(singlePassExtractMode ? defaultLlmProfile : null);
   }, [singlePassExtractMode]);
 
-  // Fetch combined output when dependencies change
   useEffect(() => {
     if (!docId || isSinglePassExtractLoading) return;
 
     const fetchCombinedOutput = async () => {
       setIsOutputLoading(true);
       setCombinedOutput({});
-      let filledFields = 0;
 
       try {
         const res = await handleOutputApiRequest();
@@ -115,8 +112,7 @@ function CombinedOutput({ docId, setFilledFields }) {
         if (activeKey === "0" && !isSimplePromptStudio) {
           const output = {};
           for (const key in data) {
-            if (Object.hasOwn(data, key)) {
-              filledFields++;
+            if (Object.prototype.hasOwnProperty.call(data, key)) {
               output[key] = displayPromptResult(data[key], false);
             }
           }
@@ -134,7 +130,6 @@ function CombinedOutput({ docId, setFilledFields }) {
             );
 
             if (outputDetails && outputDetails?.output?.length > 0) {
-              filledFields++;
               output[item?.prompt_key] = displayPromptResult(
                 outputDetails.output,
                 false
@@ -144,10 +139,6 @@ function CombinedOutput({ docId, setFilledFields }) {
             }
           });
           setCombinedOutput(output);
-        }
-
-        if (setFilledFields) {
-          setFilledFields(filledFields);
         }
       } catch (err) {
         setAlertDetails(
@@ -159,9 +150,8 @@ function CombinedOutput({ docId, setFilledFields }) {
     };
 
     fetchCombinedOutput();
-  }, [docId, isSinglePassExtractLoading, activeKey]);
+  }, [docId, activeKey]);
 
-  // Memoized function to handle API request for output
   const handleOutputApiRequest = useCallback(async () => {
     let url;
     if (isSimplePromptStudio) {
@@ -196,8 +186,6 @@ function CombinedOutput({ docId, setFilledFields }) {
     const res = await axiosPrivate(requestOptions);
     return res;
   }, [
-    isSimplePromptStudio,
-    isPublicSource,
     singlePassExtractMode,
     docId,
     selectedProfile,
@@ -205,35 +193,56 @@ function CombinedOutput({ docId, setFilledFields }) {
     activeKey,
   ]);
 
-  const handleTabChange = (key) => {
-    setActiveKey(key);
-    setSelectedProfile(key === "0" ? defaultLlmProfile : key);
-  };
+  const handleTabChange = useCallback(
+    (key) => {
+      setActiveKey(key);
+      setSelectedProfile(key === "0" ? defaultLlmProfile : key);
+    },
+    [defaultLlmProfile]
+  );
 
-  if (isOutputLoading) {
-    return <SpinnerLoader />;
-  }
+  // Filter combined output based on selectedPrompts
+  useEffect(() => {
+    const filteredCombinedOutput = Object.fromEntries(
+      Object.entries(combinedOutput).filter(
+        ([key]) => !selectedPrompts || selectedPrompts[key]
+      )
+    );
+
+    const filledFields = Object.values(filteredCombinedOutput).filter(
+      (value) => value === 0 || (value && value.length > 0)
+    ).length;
+
+    if (setFilledFields) {
+      setFilledFields(filledFields);
+    }
+    setFilteredCombinedOutput(filteredCombinedOutput);
+  }, [selectedPrompts, combinedOutput]);
 
   if (isSimplePromptStudio && TableView) {
-    return <TableView combinedOutput={combinedOutput} />;
+    return (
+      <TableView combinedOutput={combinedOutput} isLoading={isOutputLoading} />
+    );
   }
 
   return (
     <JsonView
-      combinedOutput={combinedOutput}
+      combinedOutput={filteredCombinedOutput}
       handleTabChange={handleTabChange}
       selectedProfile={selectedProfile}
       llmProfiles={llmProfiles}
       activeKey={activeKey}
       adapterData={adapterData}
       isSinglePass={singlePassExtractMode}
+      isLoading={isOutputLoading}
     />
   );
 }
 
 CombinedOutput.propTypes = {
-  docId: PropTypes.string,
+  docId: PropTypes.string.isRequired,
   setFilledFields: PropTypes.func,
+  selectedPrompts: PropTypes.object.isRequired,
 };
 
 export { CombinedOutput };

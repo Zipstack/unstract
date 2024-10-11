@@ -1,9 +1,9 @@
 import PropTypes from "prop-types";
 import Prism from "prismjs";
 import { useEffect } from "react";
-import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 import TabPane from "antd/es/tabs/TabPane";
 import { Tabs } from "antd";
+import { JsonViewBody } from "./JsonViewBody";
 
 function JsonView({
   combinedOutput,
@@ -13,6 +13,7 @@ function JsonView({
   selectedProfile,
   llmProfiles,
   isSinglePass,
+  isLoading,
 }) {
   useEffect(() => {
     Prism.highlightAll();
@@ -35,18 +36,13 @@ function JsonView({
         <div className="combined-op-segment"></div>
       </div>
       <div className="combined-op-divider" />
-      {activeKey !== "0" && (
-        <ProfileInfoBar profileId={selectedProfile} profiles={llmProfiles} />
-      )}
-      <div className="combined-op-body code-snippet">
-        {combinedOutput && (
-          <pre className="line-numbers width-100">
-            <code className="language-javascript width-100">
-              {JSON.stringify(combinedOutput, null, 2)}
-            </code>
-          </pre>
-        )}
-      </div>
+      <JsonViewBody
+        activeKey={activeKey}
+        selectedProfile={selectedProfile}
+        llmProfiles={llmProfiles}
+        combinedOutput={combinedOutput}
+        isLoading={isLoading}
+      />
       <div className="gap" />
     </div>
   );
@@ -60,6 +56,7 @@ JsonView.propTypes = {
   llmProfiles: PropTypes.array,
   activeKey: PropTypes.string,
   isSinglePass: PropTypes.bool,
+  isLoading: PropTypes.bool.isRequired,
 };
 
 export { JsonView };
