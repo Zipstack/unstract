@@ -75,7 +75,8 @@ function OutputAnalyzerCard({ doc, totalFields }) {
           </div>
           <div>
             <Typography.Text>
-              Fill rate: <strong>NA</strong>
+              Fill rate:{" "}
+              <strong>{`${(filledFields / totalFields) * 100}%`}</strong>
             </Typography.Text>
             <Divider type="vertical" />
           </div>
@@ -96,6 +97,14 @@ function OutputAnalyzerCard({ doc, totalFields }) {
         <Row className="height-100">
           <Col span={12} className="height-100">
             <div className="output-analyzer-left-box">
+              <CombinedOutput
+                docId={doc?.document_id}
+                setFilledFields={setFilledFields}
+              />
+            </div>
+          </Col>
+          <Col span={12} className="height-100">
+            <div className="output-analyzer-right-box">
               <DocumentViewer
                 doc={doc}
                 isLoading={isDocLoading}
@@ -103,14 +112,6 @@ function OutputAnalyzerCard({ doc, totalFields }) {
               >
                 <PdfViewer fileUrl={fileUrl} />
               </DocumentViewer>
-            </div>
-          </Col>
-          <Col span={12} className="height-100">
-            <div className="output-analyzer-right-box">
-              <CombinedOutput
-                docId={doc?.document_id}
-                setFilledFields={setFilledFields}
-              />
             </div>
           </Col>
         </Row>
