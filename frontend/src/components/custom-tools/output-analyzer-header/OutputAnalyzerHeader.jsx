@@ -2,6 +2,7 @@ import { Button, Drawer, Menu, Space, Typography } from "antd";
 import {
   ArrowLeftOutlined,
   FilePdfOutlined,
+  FilterOutlined,
   LeftOutlined,
   RightOutlined,
 } from "@ant-design/icons";
@@ -9,7 +10,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import PropTypes from "prop-types";
 import { useSessionStore } from "../../../store/session-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { useMemo, useState } from "react";
+import { useMemo, useCallback, useState } from "react";
 
 let HeaderPublic;
 try {
@@ -24,7 +25,13 @@ const PAGINATION_ACTIONS = {
   NEXT: "NEXT",
 };
 
-function OutputAnalyzerHeader({ docs, currentDocIndex, setCurrentDocIndex }) {
+function OutputAnalyzerHeader({
+  docs,
+  currentDocIndex,
+  setCurrentDocIndex,
+  selectedPrompts,
+  openFilterDrawer,
+}) {
   const { sessionDetails } = useSessionStore();
   const { id } = useParams();
   const navigate = useNavigate();
@@ -32,6 +39,10 @@ function OutputAnalyzerHeader({ docs, currentDocIndex, setCurrentDocIndex }) {
   const [openDocListDrawer, setOpenDocListDrawer] = useState(false);
 
   const docsLength = docs?.length || 0;
+
+  const selectedPromptFields = useMemo(() => {
+    return Object.values(selectedPrompts).filter(Boolean).length;
+  }, [selectedPrompts]);
 
   const menuItems = useMemo(
     () =>
@@ -42,29 +53,34 @@ function OutputAnalyzerHeader({ docs, currentDocIndex, setCurrentDocIndex }) {
     [docs]
   );
 
-  const handleNavigate = () => {
+  const handleNavigate = useCallback(() => {
     const path = isPublicSource
       ? `/promptStudio/share/${id}`
       : `/${sessionDetails?.orgName}/tools/${id}`;
     navigate(path);
-  };
+  }, [isPublicSource, id, sessionDetails?.orgName, navigate]);
 
-  const handlePagination = (action) => {
-    setCurrentDocIndex((prev) => {
-      const delta =
-        action === PAGINATION_ACTIONS.PREV
-          ? -1
-          : action === PAGINATION_ACTIONS.NEXT
-          ? 1
-          : 0;
-      // Calculate the new index, ensuring it stays within valid bounds
-      return Math.max(0, Math.min(prev + delta, docsLength - 1));
-    });
-  };
+  const handlePagination = useCallback(
+    (action) => {
+      setCurrentDocIndex((prevIndex) => {
+        const delta =
+          action === PAGINATION_ACTIONS.PREV
+            ? -1
+            : action === PAGINATION_ACTIONS.NEXT
+            ? 1
+            : 0;
+        return Math.max(0, Math.min(prevIndex + delta, docsLength - 1));
+      });
+    },
+    [setCurrentDocIndex, docsLength]
+  );
 
-  const handleSelectionOfDoc = (selectedDoc) => {
-    setCurrentDocIndex(parseInt(selectedDoc.key, 10));
-  };
+  const handleSelectionOfDoc = useCallback(
+    (selectedDoc) => {
+      setCurrentDocIndex(parseInt(selectedDoc.key, 10));
+    },
+    [setCurrentDocIndex]
+  );
 
   return (
     <div>
@@ -82,6 +98,13 @@ function OutputAnalyzerHeader({ docs, currentDocIndex, setCurrentDocIndex }) {
         </div>
         <div>
           <Space>
+            <Button
+              type="text"
+              icon={<FilterOutlined />}
+              onClick={openFilterDrawer}
+            >{`${selectedPromptFields} of ${
+              Object.keys(selectedPrompts).length
+            } fields selected`}</Button>
             <Button
               type="primary"
               icon={<FilePdfOutlined />}
@@ -110,7 +133,7 @@ function OutputAnalyzerHeader({ docs, currentDocIndex, setCurrentDocIndex }) {
         onClose={() => setOpenDocListDrawer(false)}
       >
         <Menu
-          defaultSelectedKeys={[currentDocIndex.toString()]}
+          selectedKeys={[currentDocIndex.toString()]}
           items={menuItems}
           onSelect={handleSelectionOfDoc}
         />
@@ -123,6 +146,8 @@ OutputAnalyzerHeader.propTypes = {
   docs: PropTypes.array.isRequired,
   currentDocIndex: PropTypes.number.isRequired,
   setCurrentDocIndex: PropTypes.func.isRequired,
+  selectedPrompts: PropTypes.object.isRequired,
+  openFilterDrawer: PropTypes.func.isRequired,
 };
 
 export { OutputAnalyzerHeader };
