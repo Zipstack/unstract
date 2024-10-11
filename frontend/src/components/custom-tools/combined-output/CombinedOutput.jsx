@@ -112,7 +112,7 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
         if (activeKey === "0" && !isSimplePromptStudio) {
           const output = {};
           for (const key in data) {
-            if (Object.prototype.hasOwnProperty.call(data, key)) {
+            if (Object.hasOwn(data, key)) {
               output[key] = displayPromptResult(data[key], false);
             }
           }

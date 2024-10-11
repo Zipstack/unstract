@@ -62,12 +62,14 @@ function OutputAnalyzerHeader({
 
   const handlePagination = useCallback((action) => {
     setCurrentDocIndex((prevIndex) => {
-      const delta =
-        action === PAGINATION_ACTIONS.PREV
-          ? -1
-          : action === PAGINATION_ACTIONS.NEXT
-          ? 1
-          : 0;
+      let delta = 0;
+
+      if (action === PAGINATION_ACTIONS.PREV) {
+        delta = -1;
+      } else if (action === PAGINATION_ACTIONS.NEXT) {
+        delta = 1;
+      }
+
       return Math.max(0, Math.min(prevIndex + delta, docsLength - 1));
     });
   }, []);
