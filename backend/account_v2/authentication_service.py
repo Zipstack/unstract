@@ -165,7 +165,6 @@ class AuthenticationService:
             name=DefaultOrg.ORGANIZATION_NAME,
             display_name=DefaultOrg.ORGANIZATION_NAME,
             organization_id=DefaultOrg.ORGANIZATION_NAME,
-            schema_name=DefaultOrg.ORGANIZATION_NAME,
         )
 
     def handle_invited_user_while_callback(
