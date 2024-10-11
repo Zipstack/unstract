@@ -1,4 +1,4 @@
-import { OutputAnalyzer } from "../components/custom-tools/output-analyzer-list/OutputAnalyzer";
+import { OutputAnalyzer } from "../components/custom-tools/output-analyzer/OutputAnalyzer";
 
 function OutputAnalyzerPage() {
   return <OutputAnalyzer />;

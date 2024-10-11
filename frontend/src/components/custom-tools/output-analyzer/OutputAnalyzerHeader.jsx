@@ -58,29 +58,23 @@ function OutputAnalyzerHeader({
       ? `/promptStudio/share/${id}`
       : `/${sessionDetails?.orgName}/tools/${id}`;
     navigate(path);
-  }, [isPublicSource, id, sessionDetails?.orgName, navigate]);
+  }, []);
 
-  const handlePagination = useCallback(
-    (action) => {
-      setCurrentDocIndex((prevIndex) => {
-        const delta =
-          action === PAGINATION_ACTIONS.PREV
-            ? -1
-            : action === PAGINATION_ACTIONS.NEXT
-            ? 1
-            : 0;
-        return Math.max(0, Math.min(prevIndex + delta, docsLength - 1));
-      });
-    },
-    [setCurrentDocIndex, docsLength]
-  );
+  const handlePagination = useCallback((action) => {
+    setCurrentDocIndex((prevIndex) => {
+      const delta =
+        action === PAGINATION_ACTIONS.PREV
+          ? -1
+          : action === PAGINATION_ACTIONS.NEXT
+          ? 1
+          : 0;
+      return Math.max(0, Math.min(prevIndex + delta, docsLength - 1));
+    });
+  }, []);
 
-  const handleSelectionOfDoc = useCallback(
-    (selectedDoc) => {
-      setCurrentDocIndex(parseInt(selectedDoc.key, 10));
-    },
-    [setCurrentDocIndex]
-  );
+  const handleSelectionOfDoc = useCallback((selectedDoc) => {
+    setCurrentDocIndex(parseInt(selectedDoc.key, 10));
+  }, []);
 
   return (
     <div>

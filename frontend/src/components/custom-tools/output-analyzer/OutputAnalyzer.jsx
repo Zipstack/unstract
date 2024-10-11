@@ -1,15 +1,16 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { OutputAnalyzerHeader } from "../output-analyzer-header/OutputAnalyzerHeader";
+import { OutputAnalyzerHeader } from "./OutputAnalyzerHeader";
 import "./OutputAnalyzer.css";
-import { OutputAnalyzerCard } from "../output-analyzer-card/OutputAnalyzerCard";
+import { OutputAnalyzerCard } from "./OutputAnalyzerCard";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { promptType } from "../../../helpers/GetStaticData";
 import { FilterPromptFields } from "./FilterPromptFields";
 import { Drawer } from "antd";
 
 function OutputAnalyzer() {
-  const [currentDocIndex, setCurrentDocIndex] = useState(0);
-  const { listOfDocs, details, isPublicSource } = useCustomToolStore();
+  const [currentDocIndex, setCurrentDocIndex] = useState(-1);
+  const { listOfDocs, details, isPublicSource, selectedDoc } =
+    useCustomToolStore();
   const [selectedPrompts, setSelectedPrompts] = useState({});
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
 
@@ -25,6 +26,12 @@ function OutputAnalyzer() {
     }, {});
 
     setSelectedPrompts(initialSelectedPrompts);
+
+    const selectedDocIndex =
+      listOfDocs.findIndex(
+        (doc) => doc?.document_id === selectedDoc?.document_id
+      ) || 0;
+    setCurrentDocIndex(selectedDocIndex);
   }, []);
 
   const totalFields = useMemo(() => {
@@ -40,6 +47,7 @@ function OutputAnalyzer() {
   }, []);
 
   const currentDoc = useMemo(() => {
+    if (currentDocIndex === -1) return null;
     return listOfDocs[currentDocIndex];
   }, [listOfDocs, currentDocIndex]);
 
