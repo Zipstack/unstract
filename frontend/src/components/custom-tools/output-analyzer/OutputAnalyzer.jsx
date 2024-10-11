@@ -1,11 +1,12 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { Drawer } from "antd";
+
 import { OutputAnalyzerHeader } from "./OutputAnalyzerHeader";
 import "./OutputAnalyzer.css";
 import { OutputAnalyzerCard } from "./OutputAnalyzerCard";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { promptType } from "../../../helpers/GetStaticData";
 import { FilterPromptFields } from "./FilterPromptFields";
-import { Drawer } from "antd";
 
 function OutputAnalyzer() {
   const [currentDocIndex, setCurrentDocIndex] = useState(-1);
