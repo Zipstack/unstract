@@ -415,6 +415,10 @@ def prompt_processor() -> Any:
                             LogLevel.ERROR,
                         )
                         structured_output[output[PSKeys.NAME]] = None
+                        if llm.is_no_op(
+                            llm.get_llm(adapter_instance_id=adapter_instance_id)
+                        ):
+                            structured_output[output[PSKeys.NAME]] = answer
             elif output[PSKeys.TYPE] == PSKeys.EMAIL:
                 if answer.lower() == "na":
                     structured_output[output[PSKeys.NAME]] = None
