@@ -27,7 +27,7 @@ const getBaseUrl = () => {
   return url;
 };
 
-const getOrgNameFromPathname = (pathname, isUnstract = true) => {
+const getOrgNameFromPathname = (pathname, isLlmWhisperer) => {
   if (!pathname) {
     return null;
   }
@@ -35,8 +35,7 @@ const getOrgNameFromPathname = (pathname, isUnstract = true) => {
   if (publicRoutes.includes(pathname)) {
     return null;
   }
-
-  if (!isUnstract) {
+  if (isLlmWhisperer) {
     return pathname?.split("/")[2];
   }
   return pathname?.split("/")[1];
