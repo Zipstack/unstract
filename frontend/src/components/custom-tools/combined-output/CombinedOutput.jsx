@@ -110,34 +110,28 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
         const prompts = details?.prompts || [];
 
         if (activeKey === "0" && !isSimplePromptStudio) {
-          const output = {};
-          for (const key in data) {
-            if (Object.hasOwn(data, key)) {
-              output[key] = displayPromptResult(data[key], false);
-            }
-          }
+          const output = Object.entries(data).reduce((acc, [key, value]) => {
+            acc[key] = displayPromptResult(value, false);
+            return acc;
+          }, {});
           setCombinedOutput(output);
         } else {
-          const output = {};
-          prompts.forEach((item) => {
-            if (item?.prompt_type === promptType.notes) return;
-
-            const profileManager = selectedProfile || item?.profile_manager;
-            const outputDetails = data.find(
-              (outputValue) =>
-                outputValue?.prompt_id === item?.prompt_id &&
-                outputValue?.profile_manager === profileManager
-            );
-
-            if (outputDetails && outputDetails?.output?.length > 0) {
-              output[item?.prompt_key] = displayPromptResult(
-                outputDetails.output,
-                false
+          const output = prompts.reduce((acc, item) => {
+            if (item?.prompt_type !== promptType.notes) {
+              const profileManager = selectedProfile || item?.profile_manager;
+              const outputDetails = data.find(
+                (outputValue) =>
+                  outputValue?.prompt_id === item?.prompt_id &&
+                  outputValue?.profile_manager === profileManager
               );
-            } else {
-              output[item?.prompt_key] = "";
+
+              acc[item?.prompt_key] =
+                outputDetails?.output?.length > 0
+                  ? displayPromptResult(outputDetails?.output, false)
+                  : "";
             }
-          });
+            return acc;
+          }, {});
           setCombinedOutput(output);
         }
       } catch (err) {
