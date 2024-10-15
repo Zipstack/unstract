@@ -88,7 +88,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const {
     selectedDoc,
     listOfDocs,
-    disableLlmOrDocChange,
+    isMultiPassExtractLoading,
     details,
     indexDocs,
     isSinglePassExtractLoading,
@@ -353,7 +353,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
                 size="small"
                 disabled={
                   !selectedDoc ||
-                  disableLlmOrDocChange?.length > 0 ||
+                  isMultiPassExtractLoading ||
                   isSinglePassExtractLoading ||
                   page <= 1
                 }
@@ -366,7 +366,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
                 size="small"
                 disabled={
                   !selectedDoc ||
-                  disableLlmOrDocChange?.length > 0 ||
+                  isMultiPassExtractLoading ||
                   isSinglePassExtractLoading ||
                   page >= listOfDocs?.length
                 }

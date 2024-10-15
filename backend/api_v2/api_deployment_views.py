@@ -86,9 +86,7 @@ class DeploymentExecution(views.APIView):
         response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
         if response.execution_status == CeleryTaskState.COMPLETED.value:
             response_status = status.HTTP_200_OK
-            if include_metadata:
-                response.remove_result_metadata_keys(keys_to_remove=["highlight_data"])
-            else:
+            if not include_metadata:
                 response.remove_result_metadata_keys()
         return Response(
             data={
@@ -123,7 +121,9 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         serializer: Serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
-        api_key = DeploymentHelper.create_api_key(serializer=serializer)
+        api_key = DeploymentHelper.create_api_key(
+            serializer=serializer, request=request
+        )
         response_serializer = DeploymentResponseSerializer(
             {"api_key": api_key.api_key, **serializer.data}
         )

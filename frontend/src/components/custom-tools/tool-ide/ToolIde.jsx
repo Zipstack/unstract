@@ -53,7 +53,7 @@ function ToolIde() {
   const {
     details,
     updateCustomTool,
-    disableLlmOrDocChange,
+    isMultiPassExtractLoading,
     selectedDoc,
     indexDocs,
     pushIndexDoc,
@@ -197,7 +197,7 @@ function ToolIde() {
   };
 
   const handleDocChange = (doc) => {
-    if (disableLlmOrDocChange?.length > 0) {
+    if (isMultiPassExtractLoading) {
       setAlertDetails({
         type: "error",
         content: "Please wait for the run to complete",
