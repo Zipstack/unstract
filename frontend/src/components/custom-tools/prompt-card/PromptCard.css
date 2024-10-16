@@ -75,11 +75,8 @@
 
 .prompt-card-result {
   padding-top: 12px;
+  position: relative;
   background-color: #fff8e6;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: -webkit-fill-available;
 }
 
 .prompt-card-result .ant-typography {
@@ -128,6 +125,29 @@
 .llm-info {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+}
+
+.llm-info-left {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.llm-info-right {
+  flex-shrink: 0;
+}
+
+.prompt-card-llm-icon {
+  flex-shrink: 0;
+}
+
+.prompt-card-llm-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-left: 8px; /* Optional: Add some space between the icon and text */
 }
 
 .prompt-card-llm-title {
@@ -146,11 +166,8 @@
 
 .prompt-info {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-}
-
-.llm-info-container > * {
-  margin-left: 10px;
 }
 
 .prompt-card-llm-container {
@@ -181,8 +198,16 @@
 }
 
 .prompt-profile-run {
-  align-self: flex-end;
-  margin-left: 10px;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+/* Show the copy button when hovering over the parent div */
+.prompt-card-result:hover .prompt-profile-run {
+  opacity: 1;
 }
 
 .index-output-tab {
@@ -220,6 +245,8 @@
 .prompt-output-llm-bg {
   background-color: #dddddd;
   padding: 10px;
+  display: flex;
+  align-items: center;
 }
 
 .prompt-output-title {
