@@ -91,6 +91,10 @@ backend.help = "Runs the Unstract backend"
 migrate_db.cmd = "python manage.py migrate"
 migrate_db.env_file = ".env"
 migrate_db.help = "Performs DB migrations for Unstract backend"
+# Commands for backend db migration
+create_schema.cmd = "python manage.py create_v2_schema"
+create_schema.env_file = ".env"
+create_schema.help = "Create schema"
 # Commands for execution consumer
 worker.cmd = "celery -A backend worker --loglevel=info -Q celery --autoscale 4,1"
 worker.env_file = ".env"
