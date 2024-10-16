@@ -6,10 +6,10 @@
 default_language_version:
   python: python3.9
 default_stages:
-  - commit
+  - pre-commit
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v5.0.0
     hooks:
       - id: trailing-whitespace
         exclude_types:
