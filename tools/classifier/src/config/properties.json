@@ -64,6 +64,8 @@
   },
   "restrictions": {
     "maxFileSize": "50MB",
-    "allowedFileTypes": ["*"]
+    "allowedFileTypes": [
+      "*"
+    ]
   }
 }
