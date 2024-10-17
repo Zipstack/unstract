@@ -20,15 +20,9 @@ function PersistentLogin() {
   const { sessionDetails } = useSessionStore();
   const checkSessionValidity = useSessionValid();
 
-  try {
-    if (selectedProductStore?.useSelectedProductStore) {
-      selectedProduct = selectedProductStore?.useSelectedProductStore(
-        (state) => state?.selectedProduct
-      );
-    }
-  } catch (error) {
-    // Do nothing
-  }
+  const selectedProduct = useSelectedProductStore
+    ? useSelectedProductStore((state) => state?.selectedProduct)
+    : null;
   useEffect(() => {
     let isMounted = true;
     setIsLoading(true);
