@@ -30,6 +30,11 @@ RUN set -e; \
     # source command may not be availble in sh
     . .venv/bin/activate; \
     \
+    # Install opentelemetry for instrumentation.
+    pip install opentelemetry-distro opentelemetry-exporter-otlp; \
+    \
+    opentelemetry-bootstrap -a install; \
+    \
     pdm sync --prod --no-editable; \
     \
     # REF: https://docs.gunicorn.org/en/stable/deploy.html#using-virtualenv
