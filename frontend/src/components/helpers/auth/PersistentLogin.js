@@ -7,10 +7,10 @@ import { SocketMessages } from "../socket-messages/SocketMessages";
 import { GenericLoader } from "../../generic-loader/GenericLoader";
 import { PromptRun } from "../../custom-tools/prompt-card/PromptRun";
 
-let useSelectedProductStore;
+let selectedProductStore;
+let selectedProduct;
 try {
-  useSelectedProductStore =
-    require("../../../plugins/llm-whisperer/store/select-product-store.js").useSelectedProductStore;
+  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
 } catch {
   // Ignore if hook not available
 }
@@ -20,9 +20,15 @@ function PersistentLogin() {
   const { sessionDetails } = useSessionStore();
   const checkSessionValidity = useSessionValid();
 
-  const selectedProduct = useSelectedProductStore
-    ? useSelectedProductStore((state) => state?.selectedProduct)
-    : null;
+  try {
+    if (selectedProductStore?.useSelectedProductStore) {
+      selectedProduct = selectedProductStore?.useSelectedProductStore(
+        (state) => state?.selectedProduct
+      );
+    }
+  } catch (error) {
+    // Do nothing
+  }
   useEffect(() => {
     let isMounted = true;
     setIsLoading(true);
