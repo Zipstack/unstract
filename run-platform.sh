@@ -13,6 +13,9 @@ yellow_text='\033[33m'
 # set -x/xtrace uses PS4 for more info
 PS4="$blue_text""${0}:${LINENO}: ""$default_text"
 
+# TODO: Change to commit where v2 feature flag is removed
+V2_WARNING_VERSION="v0.90.3"
+
 debug() {
   if [ "$opt_verbose" = true ]; then
     echo $1
@@ -298,6 +301,18 @@ run_services() {
   popd 1>/dev/null
 }
 
+show_migration_warning() {
+  # TODO: Avoid showing warning if migration is done / not required
+  echo -e "\n########################## IMPORTANT NOTICE ##########################"
+  echo -e "From ${yellow_text}$V2_WARNING_VERSION${default_text} onwards, a ${red_text}data migration${default_text} is required to"
+  echo -e "continue using the platform with your existing data."
+  echo -e "For detailed instructions on how to perform this migration, "
+  echo -e "please check the following guide:"
+  echo -e "    ${blue_text}backend/migrating/v2/README.md${default_text}"
+  echo -e "\nPlease ignore this warning if you've migrated already."
+  echo -e "#######################################################################"
+}
+
 #
 # Run Unstract platform - BEGIN
 #
@@ -322,6 +337,7 @@ do_git_pull
 setup_env
 build_services
 run_services
+show_migration_warning
 #
 # Run Unstract platform - END
 #
