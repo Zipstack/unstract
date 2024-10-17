@@ -21,7 +21,6 @@ import {
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { TokenUsage } from "../token-usage/TokenUsage";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 
@@ -42,7 +41,7 @@ const outputStatus = {
   fail: "FAIL",
 };
 
-const errorTypes = ["null", "undefined", "false"];
+const errorTypes = [null, undefined, false];
 
 function OutputForDocModal({
   open,
@@ -243,6 +242,7 @@ function OutputForDocModal({
         status = outputStatus.success;
         message = displayPromptResult(output?.output, true);
       }
+      const promptTokenUsage = output?.token_usage?.total_tokens;
 
       if (output?.output === undefined) {
         status = outputStatus.yet_to_process;
@@ -253,17 +253,7 @@ function OutputForDocModal({
       const result = {
         key: item?.document_id,
         document: item?.document_name,
-        token_count: !singlePassExtractMode && (
-          <TokenUsage
-            tokenUsageId={
-              promptId +
-              "__" +
-              item?.document_id +
-              "__" +
-              (selectedProfile || profileManagerId)
-            }
-          />
-        ),
+        token_count: !singlePassExtractMode && (promptTokenUsage || "NA"),
         value: (
           <>
             {isLoading ? (
