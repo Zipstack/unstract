@@ -3,7 +3,7 @@ from typing import Any, Optional
 
 from werkzeug.exceptions import HTTPException
 
-DEFAULT_ERR_MESSAGE = "Something went wrong"
+DEFAULT_ERR_MESSAGE = "Error from platform service"
 
 
 @dataclass
