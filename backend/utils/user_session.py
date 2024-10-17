@@ -3,24 +3,16 @@ from typing import Optional
 from django.conf import settings
 from django.db import connection
 from django.http import HttpRequest
-from utils.constants import FeatureFlag
-
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-    from tenant_account_v2.models import OrganizationMember
-else:
-    from tenant_account.models import OrganizationMember
+from tenant_account_v2.models import OrganizationMember
 
 
 class UserSessionUtils:
     @staticmethod
     def get_organization_id(request: HttpRequest) -> Optional[str]:
         session_org_id = request.session.get("organization")
-        if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-            requested_org_id = request.organization_id
-            if requested_org_id and (session_org_id != requested_org_id):
-                return None
+        requested_org_id = request.organization_id
+        if requested_org_id and (session_org_id != requested_org_id):
+            return None
         return session_org_id
 
     @staticmethod
