@@ -31,7 +31,7 @@ function PersistentLogin() {
   }
   useEffect(() => {
     let isMounted = true;
-    setIsLoading(true);
+
     const verifySession = async () => {
       try {
         await checkSessionValidity();
@@ -40,7 +40,12 @@ function PersistentLogin() {
       }
     };
 
-    !sessionDetails?.isLoggedIn ? verifySession() : setIsLoading(false);
+    if (!sessionDetails?.isLoggedIn) {
+      setIsLoading(true); // Only trigger loading if session is invalid
+      verifySession();
+    } else {
+      setIsLoading(false);
+    }
 
     return () => (isMounted = false);
   }, [selectedProduct]);
