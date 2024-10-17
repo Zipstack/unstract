@@ -9,8 +9,8 @@ import { PromptRun } from "../../custom-tools/prompt-card/PromptRun";
 
 let useSelectedProductStore;
 try {
-  useSelectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js")
-    .useSelectedProductStore;
+  useSelectedProductStore =
+    require("../../../plugins/llm-whisperer/store/select-product-store.js").useSelectedProductStore;
 } catch {
   // Ignore if hook not available
 }
