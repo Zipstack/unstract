@@ -1,10 +1,10 @@
 import logging
 import os
-from datetime import timezone
 from importlib import import_module
 from typing import Any
 
 from django.apps import apps
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 

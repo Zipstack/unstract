@@ -17,7 +17,7 @@ class VariableExtractor:
         prompt_text: str, variable_map: dict[str, Any]
     ) -> str:
         variables: list[str] = VariableService.extract_variables_from_prompt(
-            prompt=prompt_text
+            prompt_text=prompt_text
         )
         for variable in variables:
             variable_type = VariableService.identify_variable_type(variable=variable)
@@ -44,7 +44,7 @@ class VariableExtractor:
             prompt (str): Prompt to check
 
         Returns:
-            bool: True if variables are presentm else False
+            bool: True if variables are present else False
         """
         return bool(len(VariableService.extract_variables_from_prompt(prompt_text)))
 
@@ -60,11 +60,13 @@ class VariableExtractor:
         """Replaces variables in prompt.
 
         Args:
+            prompt (dict[str, Any]): Dict representing the prompt card
+            structured_output (dict[str, Any]): Structured data used for variable
+                replacement when variable map is not present in `prompt`.
             log_events_id (str): UUID for the WS communication
             tool_id (str): UUID for the prompt studio project
             prompt_name (str): Name of the prompt being run
             doc_name (str): Name of the document being run with
-            prompt (dict[str, Any]): Dict representing the prompt card
         Returns:
             prompt_text (str): Prompt with variables replaced
         """
@@ -80,6 +82,9 @@ class VariableExtractor:
             RunLevel.RUN,
             "Replacing variables in prompt",
         )
+        # Initialized with the prompt because
+        # it is used in finally block
+        prompt_text = prompt[PSKeys.PROMPT]
         try:
             variable_map = prompt[PSKeys.VARIABLE_MAP]
             prompt_text = VariableExtractor.execute_variable_replacement(

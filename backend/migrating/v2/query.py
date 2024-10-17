@@ -302,6 +302,19 @@ class MigrationQuery:
                 "dest_table": "adapter_instance",
             },
             {
+                "name": f"migration_{schema}_adapter_instance_shared_users",
+                "src_query": f"""
+                    SELECT adapterinstance_id, user_id
+                    FROM "{schema}".adapter_adapterinstance_shared_users;
+                """,
+                "dest_query": f"""
+                    INSERT INTO "{self.v2_schema}".adapter_instance_shared_users (
+                        adapterinstance_id, user_id
+                    ) VALUES (%s, %s);
+                """,
+                "dest_table": "adapter_instance_shared_users",
+            },
+            {
                 "name": f"migration_{schema}_003_workflow",
                 "src_query": f"""
                     SELECT id, prompt_name, description, workflow_name, prompt_text,
@@ -343,6 +356,28 @@ class MigrationQuery:
                 "dest_table": "connector_instance",
             },
             {
+                "name": f"migration_{schema}_tool_instance",
+                "src_query": f"""
+                    SELECT id, tool_id, workflow_id, input, output, version, metadata,
+                        step, status, created_by_id, modified_by_id,
+                        input_file_connector_id, output_file_connector_id,
+                        input_db_connector_id, output_db_connector_id,
+                        created_at, modified_at
+                    FROM "{schema}".tool_instance_toolinstance;
+                """,
+                "dest_query": f"""
+                    INSERT INTO "{self.v2_schema}".tool_instance (
+                        id, tool_id, workflow_id, input, output, version, metadata,
+                        step, status, created_by_id, modified_by_id,
+                        input_file_connector_id, output_file_connector_id,
+                        input_db_connector_id, output_db_connector_id,
+                        created_at, modified_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s);
+                """,
+                "dest_table": "tool_instance",
+            },
+            {
                 "name": f"migration_{schema}_workflow_endpoint",
                 "src_query": f"""
                     SELECT id, workflow_id, endpoint_type, connection_type,
@@ -378,21 +413,6 @@ class MigrationQuery:
                 "dest_table": "api_deployment",
             },
             {
-                "name": f"migration_{schema}_api_key",
-                "src_query": f"""
-                    SELECT id, api_key, api_id, pipeline_id, description, is_active,
-                    created_by_id, modified_by_id, created_at, modified_at
-                    FROM "{schema}".api_apikey;
-                """,
-                "dest_query": f"""
-                    INSERT INTO "{self.v2_schema}".api_deployment_key (
-                        id, api_key, api_id, pipeline_id, description, is_active,
-                        created_by_id, modified_by_id, created_at, modified_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
-                """,
-                "dest_table": "api_deployment_key",
-            },
-            {
                 "name": f"migration_{schema}_pipeline",
                 "src_query": f"""
                     SELECT id, pipeline_name, workflow_id, app_id, active, scheduled,
@@ -413,6 +433,21 @@ class MigrationQuery:
                     %s, %s, %s, %s, {organization_id});
                 """,
                 "dest_table": "pipeline",
+            },
+            {
+                "name": f"migration_{schema}_api_key",
+                "src_query": f"""
+                    SELECT id, api_key, api_id, pipeline_id, description, is_active,
+                    created_by_id, modified_by_id, created_at, modified_at
+                    FROM "{schema}".api_apikey;
+                """,
+                "dest_query": f"""
+                    INSERT INTO "{self.v2_schema}".api_deployment_key (
+                        id, api_key, api_id, pipeline_id, description, is_active,
+                        created_by_id, modified_by_id, created_at, modified_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                """,
+                "dest_table": "api_deployment_key",
             },
             {
                 "name": f"migration_{schema}_usage",

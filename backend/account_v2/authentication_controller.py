@@ -408,7 +408,7 @@ class AuthenticationController:
             )
             if current_roles:
                 self.save_organization_user_role(
-                    user_uid=user.user.user.id, role=current_roles[0]
+                    user_uid=user.user.id, role=current_roles[0]
                 )
             return current_roles[0]
         else:
