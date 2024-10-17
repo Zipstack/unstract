@@ -175,7 +175,7 @@ function TopNavBar({ isSimpleLayout }) {
 
   // Profile Dropdown items
   const items = [
-    {
+    isUnstract && {
       key: "1",
       label: (
         <Button
