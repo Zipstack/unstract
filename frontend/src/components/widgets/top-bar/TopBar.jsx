@@ -8,9 +8,9 @@ import { useNavigate } from "react-router-dom";
 function TopBar({
   title,
   enableSearch,
-  CustomButtons,
   searchData,
   setFilteredUserList,
+  children,
 }) {
   const navigate = useNavigate();
   const onSearchDebounce = debounce(({ target: { value } }) => {
@@ -41,7 +41,7 @@ function TopBar({
           {enableSearch && (
             <Input placeholder="Search Users" onChange={onSearchDebounce} />
           )}
-          {CustomButtons && <CustomButtons />}
+          {children}
         </div>
       </Col>
     </Row>
@@ -51,9 +51,9 @@ function TopBar({
 TopBar.propTypes = {
   title: PropTypes.string.isRequired,
   enableSearch: PropTypes.bool.isRequired,
-  CustomButtons: PropTypes.func,
   searchData: PropTypes.array,
   setFilteredUserList: PropTypes.func,
+  children: PropTypes.element,
 };
 
 export { TopBar };
