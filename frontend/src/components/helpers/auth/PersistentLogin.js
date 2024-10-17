@@ -7,10 +7,10 @@ import { SocketMessages } from "../socket-messages/SocketMessages";
 import { GenericLoader } from "../../generic-loader/GenericLoader";
 import { PromptRun } from "../../custom-tools/prompt-card/PromptRun";
 
-let selectedProductStore;
-let selectedProduct;
+let useSelectedProductStore;
 try {
-  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
+  useSelectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js")
+    .useSelectedProductStore;
 } catch {
   // Ignore if hook not available
 }
