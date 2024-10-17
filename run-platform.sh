@@ -63,6 +63,13 @@ display_banner() {
   fi
 }
 
+display_commands_help() {
+  echo -e "Available commands for -c:"
+  echo -e "   create_v2_schema    Calls migrate-to-v2.sh script"
+  echo -e "   migrate             Runs database migration"
+  echo -e "   migrate_to_v2       Handles v2 migration"
+}
+
 display_help() {
   printf "Run Unstract platform in docker containers\n"
   echo
@@ -76,7 +83,35 @@ display_help() {
   echo -e "   -x, --trace         Enables trace mode"
   echo -e "   -V, --verbose       Print verbose logs"
   echo -e "   -v, --version       Docker images version tag (default \"latest\")"
+  echo -e "   -c, --commands      Choose from the following commands:"
+  display_commands_help
   echo -e ""
+}
+
+handle_commands() {
+  case $1 in
+    create_v2_schema)
+      echo -e "$blue_text""Running create_v2_schema...""$default_text"
+      # bash backend/migrating/v2/migrate-to-v2.sh
+      ;;
+    migrate)
+      echo -e "$blue_text""Running database migration...""$default_text"
+      # Add the migration command here
+      ;;
+    migrate_to_v2)
+      echo -e "$blue_text""Running migrate_to_v2...""$default_text"
+      # Add the migrate_to_v2 command here
+      ;;
+    -h | --help)
+      display_commands_help
+      exit
+      ;;
+    *)
+      echo -e "$red_text""Unknown command: $1""$default_text"
+      display_help
+      exit 1
+      ;;
+  esac
 }
 
 parse_args() {
@@ -115,6 +150,16 @@ parse_args() {
           opt_version="$2"
         fi
         shift
+        ;;
+      -c | --commands)
+        if [ -z "${2-}" ]; then
+          echo "No command specified for -c."
+          display_help
+          exit
+        else
+          handle_commands "$2"
+        fi
+        shift 2
         ;;
       *)
         echo "'$1' is not a known command."
@@ -313,6 +358,19 @@ show_migration_warning() {
   echo -e "#######################################################################"
 }
 
+create_schema() {
+  echo -e "$blue_text""Executing schema creation commands...""$default_text"
+  # # Add your actual commands here
+  # echo "Running: create_v2_schema"
+  # create_v2_schema
+
+  # echo "Running: migrate"
+  # migrate
+
+  # echo "Running: migrate_to_v2"
+  # migrate_to_v2
+}
+
 #
 # Run Unstract platform - BEGIN
 #
@@ -324,6 +382,7 @@ opt_build_local=false
 opt_update=false
 opt_verbose=false
 opt_version="latest"
+opt_create_schema=false
 
 script_dir=$(dirname "$(readlink -f "$BASH_SOURCE")")
 first_setup=false
@@ -336,6 +395,10 @@ parse_args $*
 do_git_pull
 setup_env
 build_services
+if [ "$opt_create_schema" = true ]; then
+  create_schema
+  exit 0
+fi
 run_services
 show_migration_warning
 #
