@@ -8,9 +8,9 @@ import { useNavigate } from "react-router-dom";
 function TopBar({
   title,
   enableSearch,
-  CustomButtons,
   searchData,
   setFilteredUserList,
+  children,
 }) {
   const navigate = useNavigate();
   const onSearchDebounce = debounce(({ target: { value } }) => {
@@ -31,29 +31,31 @@ function TopBar({
     setFilteredUserList(filteredList);
   };
   return (
-    <Row align="middle" justify="space-between" className="search-nav">
-      <Col>
-        <ArrowLeftOutlined onClick={() => navigate(-1)} />
-        <Typography className="topbar-title">{title}</Typography>
-      </Col>
-      <Col>
-        <div className="invite-user-search">
-          {enableSearch && (
-            <Input placeholder="Search Users" onChange={onSearchDebounce} />
-          )}
-          {CustomButtons && <CustomButtons />}
-        </div>
-      </Col>
-    </Row>
+    <>
+      <Row align="middle" justify="space-between" className="search-nav">
+        <Col>
+          <ArrowLeftOutlined onClick={() => navigate(-1)} />
+          <Typography className="topbar-title">{title}</Typography>
+        </Col>
+        <Col>
+          <div className="invite-user-search">
+            {enableSearch && (
+              <Input placeholder="Search Users" onChange={onSearchDebounce} />
+            )}
+            {children}
+          </div>
+        </Col>
+      </Row>
+    </>
   );
 }
 
 TopBar.propTypes = {
   title: PropTypes.string.isRequired,
   enableSearch: PropTypes.bool.isRequired,
-  CustomButtons: PropTypes.func,
   searchData: PropTypes.array,
   setFilteredUserList: PropTypes.func,
+  children: PropTypes.element,
 };
 
 export { TopBar };
