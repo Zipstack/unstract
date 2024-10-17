@@ -44,7 +44,7 @@ psql -h localhost -p 5432 -U unstract_dev -d unstract_db_v2 -f unstract-backup-<
 
 ## Performing the migration
 
-The script `migrate-to-v2.sh` in this directory can help perform the migration
+Run the `migrate-to-v2.sh` script to perform both schema and data migrations in one shot.
 
 ```shell
 ./migrate-to-v2.sh
@@ -101,7 +101,7 @@ python manage.py migrate_to_v2
 
 - Test to see if the applied migrations work as expected.
 
-## Commands Reference
+## Django Commands Reference
 
 The commands provided here help you manage the migration process, including creating and dropping schemas and applying the necessary migrations to transition from v1 to v2.
 
@@ -149,7 +149,7 @@ This command performs the migration, updating your database to the v2 schema and
 
 ## Notes
 
-- Ensure you have backups of your data before running migration commands.
+- Ensure you have backed up your data before attempting any migration.
 - Verify your database configuration and environment variables are correctly set.
 - Review the migration logs for any issues or errors during the migration process.
 
