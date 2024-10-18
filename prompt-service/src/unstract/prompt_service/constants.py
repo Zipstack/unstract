@@ -85,7 +85,7 @@ class RunLevel(Enum):
 class FeatureFlag:
     """Temporary feature flags."""
 
-    MULTI_TENANCY_V2 = "multi_tenancy_v2"
+    pass
 
 
 class DBTableV2:
