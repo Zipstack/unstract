@@ -1,4 +1,4 @@
-import React from "react";
+import { StrictMode } from "react"; // eslint-disable-line no-unused-vars
 import ReactDOM from "react-dom/client";
 import posthog from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
@@ -24,15 +24,16 @@ if (enablePosthog !== "false") {
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
-  <React.StrictMode>
-    <PostHogProvider client={posthog}>
-      <SocketProvider>
-        <LazyLoader
-          loader={<GenericLoader />}
-          component={() => import("./App.jsx")}
-          componentName="App"
-        />
-      </SocketProvider>
-    </PostHogProvider>
-  </React.StrictMode>
+  // Uncomment the following <StrictMode> tags to enable React Strict Mode for additional development checks
+  // <StrictMode>
+  <PostHogProvider client={posthog}>
+    <SocketProvider>
+      <LazyLoader
+        loader={<GenericLoader />}
+        component={() => import("./App.jsx")}
+        componentName="App"
+      />
+    </SocketProvider>
+  </PostHogProvider>
+  // </StrictMode>
 );
