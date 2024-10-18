@@ -244,6 +244,16 @@
   font-size: 18px;
 }
 
+.prompt-output-icon-enabled {
+  color: #52c41a;
+  margin-left: 5px;
+}
+
+.prompt-output-icon-disabled {
+  color: #babbbc;
+  margin-left: 5px;
+}
+
 .chunk-highlight {
   background-color: yellow;
 }

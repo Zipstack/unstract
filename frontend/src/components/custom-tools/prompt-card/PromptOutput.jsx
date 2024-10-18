@@ -295,22 +295,12 @@ function PromptOutput({
                         {isChecked ? (
                           <span>
                             Enabled
-                            <CheckCircleOutlined
-                              style={{
-                                color: "#52c41a",
-                                marginLeft: "5px",
-                              }}
-                            />
+                            <CheckCircleOutlined className="prompt-output-icon-enabled" />
                           </span>
                         ) : (
                           <span>
                             Disabled
-                            <ExclamationCircleFilled
-                              style={{
-                                color: "#BABBBC",
-                                marginLeft: "5px",
-                              }}
-                            />
+                            <ExclamationCircleFilled className="prompt-output-icon-disabled" />
                           </span>
                         )}
                       </CheckableTag>
@@ -366,30 +356,32 @@ function PromptOutput({
                 <>
                   <Divider className="prompt-card-divider" />
                   <div className="prompt-card-result prompt-card-div">
-                    {isTableExtraction ? (
-                      <div />
+                    {isTableExtraction && TableOutput ? (
+                      <TableOutput output={promptOutputData?.output} />
                     ) : (
-                      <DisplayPromptResult
-                        output={promptOutputData?.output}
-                        profileId={profileId}
-                        docId={selectedDoc?.document_id}
-                        promptRunStatus={promptRunStatus}
-                      />
+                      <>
+                        <DisplayPromptResult
+                          output={promptOutputData?.output}
+                          profileId={profileId}
+                          docId={selectedDoc?.document_id}
+                          promptRunStatus={promptRunStatus}
+                        />
+                        <div className="prompt-profile-run">
+                          <CopyPromptOutputBtn
+                            isDisabled={isTableExtraction}
+                            copyToClipboard={() =>
+                              copyOutputToClipboard(
+                                displayPromptResult(
+                                  promptOutputData?.output,
+                                  true
+                                )
+                              )
+                            }
+                          />
+                        </div>
+                      </>
                     )}
-                    <div className="prompt-profile-run">
-                      <CopyPromptOutputBtn
-                        isDisabled={isTableExtraction}
-                        copyToClipboard={() =>
-                          copyOutputToClipboard(
-                            displayPromptResult(promptOutputData?.output, true)
-                          )
-                        }
-                      />
-                    </div>
                   </div>
-                  {isTableExtraction && TableOutput && (
-                    <TableOutput output={promptOutputData?.output} />
-                  )}
                 </>
               </Col>
             </motion.div>
