@@ -1,0 +1,5 @@
+{
+  "v0.90.2": "This is a test warning",
+  "v0.91.4": "A data migration is required to continue using the platform with your existing data.\n For detailed instructions on how to perform this migration, please check \n\t`backend/migrating/v2/README.md`",
+  "v0.92.0": "This is also a test warning"
+}
