@@ -16,11 +16,10 @@ yellow_text='\033[33m'
 PS4="$blue_text""${0}:${LINENO}: ""$default_text"
 
 # Function to check and create virtual environment
-setup_venv() {
+activate_venv() {
     if [[ ! -d ".venv" ]]; then
-        echo "Virtual environment not found. Creating one..."
-        pdm venv create -w virtualenv --with-pip || { echo "Failed to create virtual environment"; exit 1; }
-        pdm install || { echo "Failed to install dependencies"; exit 1; }
+        echo "No .venv found, please create one and install dependencies. Refer 'run-platform.sh' or 'dev-env-cli.sh";
+        exit 1;
     else
         echo "Virtual environment found. Activating..."
         source .venv/bin/activate || { echo "Failed to activate virtual environment"; exit 1; }
@@ -36,7 +35,7 @@ echo -e "${blue_text}Configuring environment variables for the migration${defaul
 "$root_dir/run-platform.sh" -e || { echo "Failed to configure environment"; exit 1; }
 
 cd $manage_script_dir
-setup_venv
+activate_venv
 
 echo -e "${blue_text}Running schema creation command...${default_text}"
 python manage.py create_v2_schema || { echo "Schema creation failed"; exit 1; }
@@ -45,4 +44,4 @@ echo -e "${blue_text}Running schema migration command...${default_text}"
 python manage.py migrate || { echo "Schema migration failed"; exit 1; }
 
 echo -e "${blue_text}Running data migration command...${default_text}"
-python manage.py migrate_to_v2 || { echo "Data migration failed"; exit 1; }
+SCHEMAS_TO_MIGRATE=_ALL_ python manage.py migrate_to_v2 || { echo "Data migration failed"; exit 1; }

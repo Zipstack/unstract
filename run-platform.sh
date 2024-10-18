@@ -13,8 +13,6 @@ yellow_text='\033[33m'
 # set -x/xtrace uses PS4 for more info
 PS4="$blue_text""${0}:${LINENO}: ""$default_text"
 
-# TODO: Change to commit where v2 feature flag is removed
-V2_WARNING_VERSION="v0.90.3"
 
 debug() {
   if [ "$opt_verbose" = true ]; then
@@ -143,9 +141,9 @@ do_git_pull() {
   git fetch --quiet --tags
 
   if [[ "$opt_version" == "latest" ]]; then
-    branch=`git describe --tags --abbrev=0`
+    target_branch=`git describe --tags --abbrev=0`
   elif [[ "$opt_version" == "main" ]]; then
-    branch="main"
+    target_branch="main"
     opt_build_local=true
     echo -e "Choosing ""$blue_text""local build""$default_text"" of Docker images from ""$blue_text""main""$default_text"" branch."
   elif [ -z $(git tag -l "$opt_version") ]; then
@@ -155,14 +153,14 @@ do_git_pull() {
     fi
     exit 1
   else
-    branch="$opt_version"
+    target_branch="$opt_version"
   fi
 
-  echo -e "Performing ""$blue_text""git checkout""$default_text"" to ""$blue_text""$branch""$default_text""."
-  git checkout --quiet $branch
+  echo -e "Performing ""$blue_text""git checkout""$default_text"" to ""$blue_text""$target_branch""$default_text""."
+  git checkout --quiet $target_branch
 
-  echo -e "Performing ""$blue_text""git pull""$default_text"" on ""$blue_text""$branch""$default_text""."
-  git pull --quiet $(git remote) $branch
+  echo -e "Performing ""$blue_text""git pull""$default_text"" on ""$blue_text""$target_branch""$default_text""."
+  git pull --quiet $(git remote) $target_branch
 }
 
 copy_or_merge_envs() {
@@ -280,6 +278,9 @@ run_services() {
     else
       echo -e "$green_text""Updated platform to $opt_version version.""$default_text"
     fi
+
+    # TODO: Uncomment below after script/release-warnings/warnings.json is correctly populated
+    # show_release_warnings
   fi
   echo -e "\nOnce the services are up, visit ""$blue_text""http://frontend.unstract.localhost""$default_text"" in your browser."
   echo -e "\nSee logs with:"
@@ -301,16 +302,14 @@ run_services() {
   popd 1>/dev/null
 }
 
-show_migration_warning() {
-  # TODO: Avoid showing warning if migration is done / not required
-  echo -e "\n########################## IMPORTANT NOTICE ##########################"
-  echo -e "From ${yellow_text}$V2_WARNING_VERSION${default_text} onwards, a ${red_text}data migration${default_text} is required to"
-  echo -e "continue using the platform with your existing data."
-  echo -e "For detailed instructions on how to perform this migration, "
-  echo -e "please check the following guide:"
-  echo -e "    ${blue_text}backend/migrating/v2/README.md${default_text}"
-  echo -e "\nPlease ignore this warning if you've migrated already."
-  echo -e "#######################################################################"
+show_release_warnings() {
+  if [[ "$opt_version" == "latest" ]]; then
+    target_version=`git describe --tags --abbrev=0`
+  else
+    target_version=$opt_version
+  fi
+
+  python3 $script_dir/scripts/release-warnings/print_warnings.py $current_version $target_version
 }
 
 #
@@ -330,6 +329,9 @@ first_setup=false
 # Extract service names from docker compose file.
 services=($(VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.build.yaml config --services))
 
+# TODO: Resolve current semantic version correctly to display warnings
+current_version=$(git rev-parse --abbrev-ref HEAD)
+
 display_banner
 parse_args $*
 
@@ -337,7 +339,6 @@ do_git_pull
 setup_env
 build_services
 run_services
-show_migration_warning
 #
 # Run Unstract platform - END
 #

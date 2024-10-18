@@ -1,7 +1,7 @@
 # V2 Migration Guide
 
 This folder contains scripts and management commands for performing data migrations from v1 to v2 for the Unstract Multitenancy system.
-From version `v0.90.3` onwards, there have been signifcant changes in how data is stored. This warrants a data migration and the below steps can come in handy.
+From version `[TODO: Mark v2 version]` onwards, there have been signifcant changes in how data is stored. This warrants a data migration and the below steps can come in handy.
 
 ## Preparing for the migration
 
@@ -36,11 +36,6 @@ docker exec -it unstract-db /bin/bash
 ```shell
 psql -h localhost -p 5432 -U unstract_dev -d unstract_db_v2 -f unstract-backup-<DateTime>.sql
 ```
-
-### Using a feature flag
-
-- Check if this migration is used in combination with a feature flag. You can check the code for occurrences of any relevant [FeatureFlag](https://github.com/Zipstack/unstract/blob/0b9981514654634f8b198cdb416b1c9bcd6d423e/backend/backend/constants.py#L33) to confirm
-- If that is the case, head to Flipt configured at `http://localhost:8082` and add a new flag with the same name - in this example of `v2` it is `multi_tenancy_v2`
 
 ## Performing the migration
 
