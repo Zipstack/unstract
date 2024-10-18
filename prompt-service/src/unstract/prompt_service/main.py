@@ -417,6 +417,12 @@ def prompt_processor() -> Any:
                             LogLevel.ERROR,
                         )
                         structured_output[output[PSKeys.NAME]] = None
+                        # No-op adapter always returns a string data and
+                        # to keep this response unform
+                        # through all enforce types
+                        # we add this check, if not for this,
+                        # type casting to float raises
+                        # an error and we return None.
                         if isinstance(
                             llm.get_llm(adapter_instance_id=adapter_instance_id),
                             NoOpCustomLLM,
