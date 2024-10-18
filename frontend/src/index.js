@@ -1,4 +1,6 @@
-import { StrictMode } from "react"; // eslint-disable-line no-unused-vars
+// Uncomment the line below to enable the import for React Strict Mode
+// import { StrictMode } from "react";
+
 import ReactDOM from "react-dom/client";
 import posthog from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
