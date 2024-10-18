@@ -29,6 +29,7 @@ class ToolStudioPromptKeys:
     UNIQUE_FILE_ID = "unique_file_id"
     ID = "id"
     FILE_NAME = "file_name"
+    FILE_PATH = "file_path"
     FILE_HASH = "file_hash"
     TOOL_ID = "tool_id"
     NAME = "name"
