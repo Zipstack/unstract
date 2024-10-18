@@ -4,7 +4,6 @@ from typing import Any, Optional
 from connector.connector_instance_helper import ConnectorInstanceHelper
 from django.conf import settings
 from django.db.models.query import QuerySet
-from numpy import deprecate_with_doc
 from permissions.permission import IsOwner
 from pipeline.models import Pipeline
 from pipeline.pipeline_processor import PipelineProcessor
@@ -13,8 +12,6 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
-from tool_instance.tool_processor import ToolProcessor
-from unstract.tool_registry.dto import Tool
 from utils.filtering import FilterHelper
 from workflow_manager.endpoint.destination import DestinationConnector
 from workflow_manager.endpoint.dto import FileHash
@@ -29,7 +26,6 @@ from workflow_manager.workflow.exceptions import (
     WorkflowGenerationError,
     WorkflowRegenerationError,
 )
-from workflow_manager.workflow.generator import WorkflowGenerator
 from workflow_manager.workflow.models.execution import WorkflowExecution
 from workflow_manager.workflow.models.workflow import Workflow
 from workflow_manager.workflow.serializers import (
@@ -81,14 +77,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             return ExecuteWorkflowSerializer
         else:
             return WorkflowSerializer
-
-    @deprecate_with_doc("Not using with the latest UX chnages")
-    def _generate_workflow(self, workflow_id: str) -> WorkflowGenerator:
-        registry_tools: list[Tool] = ToolProcessor.get_registry_tools()
-        generator = WorkflowGenerator(workflow_id=workflow_id)
-        generator.set_request(self.request)
-        generator.generate_workflow(registry_tools)
-        return generator
 
     def perform_update(self, serializer: WorkflowSerializer) -> Workflow:
         """To edit a workflow.

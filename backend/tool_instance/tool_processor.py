@@ -128,10 +128,3 @@ class ToolProcessor:
         tool_list: list[dict[str, Any]] = tool_registry.fetch_tools_descriptions()
         tool_list = tool_list + prompt_studio_tools
         return tool_list
-
-    @staticmethod
-    def get_registry_tools() -> list[Tool]:
-        """Function to get a list of tools."""
-        tool_registry = ToolRegistry()
-        tool_list: list[Tool] = tool_registry.fetch_all_tools()
-        return tool_list
