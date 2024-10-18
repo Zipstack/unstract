@@ -19,6 +19,7 @@ import { Header } from "./Header";
 import { OutputForIndex } from "./OutputForIndex";
 import { PromptOutput } from "./PromptOutput";
 import { TABLE_ENFORCE_TYPE, RECORD_ENFORCE_TYPE } from "./constants";
+import { usePromptOutputStore } from "../../../store/prompt-output-store";
 
 let TableExtractionSettingsBtn;
 try {
@@ -60,13 +61,14 @@ function PromptCardItems({
     isSimplePromptStudio,
     isPublicSource,
     adapters,
+    defaultLlmProfile,
   } = useCustomToolStore();
+  const { promptOutputs: promptOutput } = usePromptOutputStore();
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [expandCard, setExpandCard] = useState(true);
   const [llmProfileDetails, setLlmProfileDetails] = useState([]);
   const [openIndexProfile, setOpenIndexProfile] = useState(null);
-  const [coverageCount] = useState(0);
   const [enabledProfiles, setEnabledProfiles] = useState(
     llmProfiles.map((profile) => profile.profile_id)
   );
@@ -74,6 +76,9 @@ function PromptCardItems({
   const isNotSingleLlmProfile = llmProfiles.length > 1;
   const divRef = useRef(null);
   const [enforceType, setEnforceType] = useState("");
+  const coverageKey = `coverage_${
+    promptDetails.profile_manager || defaultLlmProfile
+  }_${promptDetails?.prompt_id}`;
 
   useEffect(() => {
     if (enforceType !== promptDetails?.enforce_type) {
@@ -205,7 +210,7 @@ function PromptCardItems({
                             <SearchOutlined className="font-size-12" />
                           )}
                           <Typography.Link className="font-size-12">
-                            Coverage: {coverageCount} of{" "}
+                            Coverage: {promptOutput[coverageKey] || 0} of{" "}
                             {listOfDocs?.length || 0} docs
                           </Typography.Link>
                         </Space>
