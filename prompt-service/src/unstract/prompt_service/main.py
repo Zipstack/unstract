@@ -418,7 +418,7 @@ def prompt_processor() -> Any:
                         )
                         structured_output[output[PSKeys.NAME]] = None
                         # No-op adapter always returns a string data and
-                        # to keep this response unform
+                        # to keep this response uniform
                         # through all enforce types
                         # we add this check, if not for this,
                         # type casting to float raises
