@@ -32,6 +32,11 @@ RUN set -e; \
     # source command may not be availble in sh
     . .venv/bin/activate; \
     \
+    # Install opentelemetry for instrumentation.
+    pip install opentelemetry-distro opentelemetry-exporter-otlp; \
+    \
+    opentelemetry-bootstrap -a install; \
+    \
     pdm sync --prod --no-editable; \
     \
     [ -f cloud_requirements.txt ] && pip install -r cloud_requirements.txt || { echo "cloud_requirements.txt does not exist";}; \
