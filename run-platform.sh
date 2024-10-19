@@ -219,7 +219,7 @@ setup_env() {
       fi
       echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
     elif [ "$opt_only_env" = true ] || [ "$opt_update" = true ]; then
-      python3 "$script_dir/docker/scripts/merge_env.py" $sample_env_path $env_path
+      python3 "$script_dir/docker/scripts/merge_env.py" "$sample_env_path" "$env_path"
       if [ $? -ne 0 ]; then
         exit 1
       fi
