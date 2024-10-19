@@ -172,7 +172,7 @@ copy_or_merge_envs() {
     cp "$src_file" "$dest_file"
     echo -e "Created env for ""$blue_text""$displayed_reason""$default_text"" at ""$blue_text""$dest_file""$default_text""."
   elif [ "$opt_only_env" = true ] || [ "$opt_update" = true ]; then
-    python3 $script_dir/docker/scripts/merge_env.py "$src_file" "$dest_file"
+    python3 "$script_dir/docker/scripts/merge_env.py" "$src_file" "$dest_file"
     if [ $? -ne 0 ]; then
       exit 1
     fi
@@ -219,7 +219,7 @@ setup_env() {
       fi
       echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
     elif [ "$opt_only_env" = true ] || [ "$opt_update" = true ]; then
-      python3 $script_dir/docker/scripts/merge_env.py $sample_env_path $env_path
+      python3 "$script_dir/docker/scripts/merge_env.py" $sample_env_path $env_path
       if [ $? -ne 0 ]; then
         exit 1
       fi
@@ -237,19 +237,19 @@ setup_env() {
 }
 
 build_services() {
-  pushd ${script_dir}/docker 1>/dev/null
+  pushd "$script_dir/docker" 1>/dev/null
 
   if [ "$opt_build_local" = true ]; then
     echo -e "$blue_text""Building""$default_text"" docker images ""$blue_text""$opt_version""$default_text"" locally."
-    VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.build.yaml build || {
+    VERSION=$opt_version $docker_compose_cmd -f "$script_dir/docker/docker-compose.build.yaml" build || {
       echo -e "$red_text""Failed to build docker images.""$default_text"
       exit 1
     }
   elif [ "$first_setup" = true ] || [ "$opt_update" = true ]; then
     echo -e "$blue_text""Pulling""$default_text"" docker images tag ""$blue_text""$opt_version""$default_text""."
     # Try again on a slow network.
-    VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.yaml pull ||
-    VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.yaml pull || {
+    VERSION=$opt_version $docker_compose_cmd -f "$script_dir/docker/docker-compose.yaml" pull ||
+    VERSION=$opt_version $docker_compose_cmd -f "$script_dir/docker/docker-compose.yaml" pull || {
       echo -e "$red_text""Failed to pull docker images.""$default_text"
       echo -e "$red_text""Either version not found or docker is not running.""$default_text"
       echo -e "$red_text""Please check and try again.""$default_text"
@@ -265,7 +265,7 @@ build_services() {
 }
 
 run_services() {
-  pushd ${script_dir}/docker 1>/dev/null
+  pushd "$script_dir/docker" 1>/dev/null
 
   echo -e "$blue_text""Starting docker containers in detached mode""$default_text"
   VERSION=$opt_version $docker_compose_cmd up -d
@@ -313,7 +313,7 @@ opt_version="latest"
 script_dir=$(dirname "$(readlink -f "$BASH_SOURCE")")
 first_setup=false
 # Extract service names from docker compose file.
-services=($(VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.build.yaml config --services))
+services=($(VERSION=$opt_version $docker_compose_cmd -f "$script_dir/docker/docker-compose.build.yaml" config --services))
 
 display_banner
 parse_args $*
