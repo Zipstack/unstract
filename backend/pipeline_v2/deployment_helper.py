@@ -7,6 +7,7 @@ from api_v2.key_helper import KeyHelper
 from pipeline_v2.exceptions import PipelineNotFound
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from rest_framework.request import Request
+from utils.user_context import UserContext
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +17,12 @@ class DeploymentHelper(BaseAPIKeyValidator):
     def validate_parameters(request: Request, **kwargs: Any) -> None:
         """Validate pipeline_id for pipeline deployments."""
         pipeline_id = kwargs.get("pipeline_id") or request.data.get("pipeline_id")
+        org_name = kwargs.get("org_name") or request.data.get("org_name")
         if not pipeline_id:
             raise InvalidAPIRequest("Missing params pipeline_id")
+        if not org_name:
+            raise InvalidAPIRequest("Missing params org_name")
+        UserContext.set_organization_identifier(org_name)
 
     @staticmethod
     def validate_and_process(

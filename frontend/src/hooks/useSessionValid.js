@@ -8,7 +8,6 @@ import { useSessionStore } from "../store/session-store";
 import { useUserSession } from "./useUserSession.js";
 import { listFlags } from "../helpers/FeatureFlagsData.js";
 import { useAlertStore } from "../store/alert-store";
-import useLogout from "./useLogout.js";
 
 let getTrialDetails;
 let isPlatformAdmin;
@@ -29,17 +28,43 @@ try {
   // Ignore if hook not available
 }
 
+let selectedProduct;
+let selectedProductStore;
+
+try {
+  selectedProductStore = require("../plugins/llm-whisperer/store/select-product-store.js");
+} catch {
+  // Ignore if hook not available
+}
 function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
   const handleException = useExceptionHandler();
   const { setAlertDetails } = useAlertStore();
   const navigate = useNavigate();
   const userSession = useUserSession();
-  const logout = useLogout();
 
+  try {
+    if (selectedProductStore?.useSelectedProductStore) {
+      selectedProduct = selectedProductStore?.useSelectedProductStore(
+        (state) => state?.selectedProduct
+      );
+    }
+  } catch (error) {
+    // Do nothing
+  }
+  const navToSelectProduct = (
+    userSessionData,
+    selectedProductStore,
+    selectedProduct
+  ) => {
+    if (userSessionData && selectedProductStore && !selectedProduct) {
+      navigate("/selectProduct");
+      return true; // Indicate that navigation has occurred
+    }
+    return false;
+  };
   return async () => {
     try {
-      const timestamp = new Date().getTime();
       const userSessionData = await userSession();
 
       // Return if the user is not authenticated
@@ -48,11 +73,20 @@ function useSessionValid() {
       }
 
       const signedInOrgId = userSessionData?.organization_id;
+      const shouldNavigate = navToSelectProduct(
+        userSessionData,
+        selectedProductStore,
+        selectedProduct
+      );
+      if (shouldNavigate) {
+        return; // Exit early, don't run the remaining steps
+      }
+      const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
 
       // API to get the list of organizations
       const requestOptions = {
         method: "GET",
-        url: `/api/v1/organization?q=${timestamp}`,
+        url: "/api/v1/organization",
       };
       const getOrgsRes = await axios(requestOptions);
       const orgs = getOrgsRes?.data?.organizations;
@@ -67,15 +101,9 @@ function useSessionValid() {
       const orgId = signedInOrgId || orgs[0].id;
       const csrfToken = Cookies.get("csrftoken");
 
-      if (!orgId || !csrfToken) {
-        throw Error("Required fields are missing.");
-      }
-
       // API to set the organization and get the user details
       requestOptions["method"] = "POST";
-      requestOptions[
-        "url"
-      ] = `/api/v1/organization/${orgId}/set?q=${timestamp}`;
+      requestOptions["url"] = `/api/v1/organization/${orgId}/set`;
       requestOptions["headers"] = {
         "X-CSRFToken": csrfToken,
       };
@@ -99,9 +127,7 @@ function useSessionValid() {
 
       requestOptions["method"] = "GET";
 
-      requestOptions[
-        "url"
-      ] = `/api/v1/unstract/${orgId}/users/profile/?q=${timestamp}`;
+      requestOptions["url"] = `/api/v1/unstract/${orgId}/users/profile/`;
       requestOptions["headers"] = {
         "X-CSRFToken": csrfToken,
       };
@@ -117,24 +143,25 @@ function useSessionValid() {
         .pop()
         .split(";")[0];
       userAndOrgDetails["zCode"] = zCode;
+      if (isUnstract) {
+        requestOptions["method"] = "GET";
 
-      requestOptions["method"] = "GET";
+        requestOptions["url"] = `/api/v1/unstract/${orgId}/adapter/`;
+        requestOptions["headers"] = {
+          "X-CSRFToken": csrfToken,
+        };
+        const getAdapterDetails = await axios(requestOptions);
+        const adapterTypes = [
+          ...new Set(
+            getAdapterDetails?.data?.map((obj) =>
+              obj.adapter_type.toLowerCase()
+            )
+          ),
+        ];
+        userAndOrgDetails["adapters"] = adapterTypes;
+      }
 
-      requestOptions[
-        "url"
-      ] = `/api/v1/unstract/${orgId}/adapter/?q=${timestamp}`;
-      requestOptions["headers"] = {
-        "X-CSRFToken": csrfToken,
-      };
-      const getAdapterDetails = await axios(requestOptions);
-      const adapterTypes = [
-        ...new Set(
-          getAdapterDetails?.data?.map((obj) => obj.adapter_type.toLowerCase())
-        ),
-      ];
-      userAndOrgDetails["adapters"] = adapterTypes;
-
-      if (getTrialDetails) {
+      if (getTrialDetails && isUnstract) {
         const remainingTrialDays = await getTrialDetails.fetchTrialDetails(
           orgId,
           csrfToken
@@ -143,8 +170,10 @@ function useSessionValid() {
           userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
       }
 
-      const flags = await listFlags(orgId, csrfToken);
-      userAndOrgDetails["flags"] = flags;
+      if (isUnstract) {
+        const flags = await listFlags(orgId, csrfToken);
+        userAndOrgDetails["flags"] = flags;
+      }
 
       userAndOrgDetails["allOrganization"] = orgs;
       if (isPlatformAdmin) {
@@ -154,10 +183,10 @@ function useSessionValid() {
       // Set the session details
       setSessionDetails(getSessionData(userAndOrgDetails));
     } catch (err) {
-      setAlertDetails(handleException(err));
+      // TODO: Throw popup error message
+      // REVIEW: Add condition to check for trial period status
       if (err.response?.status === 402) {
         handleException(err);
-        return;
       }
 
       if (err.request?.status === 412) {
@@ -166,10 +195,8 @@ function useSessionValid() {
         const code = response.code;
         window.location.href = `/error?code=${code}&domain=${domainName}`;
         // May be need a logout button there or auto logout
-        return;
       }
-
-      logout();
+      setAlertDetails(handleException(err));
     }
   };
 }

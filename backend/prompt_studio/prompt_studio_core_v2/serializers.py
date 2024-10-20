@@ -12,6 +12,7 @@ from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
 from rest_framework import serializers
 from utils.FileValidator import FileValidator
+from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 
 from backend.serializers import AuditSerializer
 
@@ -20,7 +21,7 @@ from .models import CustomTool
 logger = logging.getLogger(__name__)
 
 
-class CustomToolSerializer(AuditSerializer):
+class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
     shared_users = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(), required=False, allow_null=True, many=True
     )
@@ -28,6 +29,15 @@ class CustomToolSerializer(AuditSerializer):
     class Meta:
         model = CustomTool
         fields = "__all__"
+
+    unique_error_message_map: dict[str, dict[str, str]] = {
+        "unique_tool_name": {
+            "field": "tool_name",
+            "message": (
+                "This tool name is already in use. Please select a different name."
+            ),
+        }
+    }
 
     def to_representation(self, instance):  # type: ignore
         data = super().to_representation(instance)

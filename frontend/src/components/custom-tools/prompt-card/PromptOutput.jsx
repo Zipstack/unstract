@@ -209,16 +209,55 @@ function PromptOutput({
                 <Divider className="prompt-card-divider" />
                 <Space direction="vertical" className="prompt-card-llm-layout">
                   <div className="llm-info">
-                    <Image
-                      src={profile?.icon}
-                      width={15}
-                      height={15}
-                      preview={false}
-                      className="prompt-card-llm-icon"
-                    />
-                    <Typography.Text className="prompt-card-llm-title">
-                      {profile?.conf?.LLM}
-                    </Typography.Text>
+                    <div className="llm-info-left">
+                      <Image
+                        src={profile?.icon}
+                        width={15}
+                        height={15}
+                        preview={false}
+                        className="prompt-card-llm-icon"
+                      />
+                      <Typography.Text
+                        className="prompt-card-llm-title"
+                        ellipsis={{ tooltip: profile?.conf?.LLM }}
+                      >
+                        {profile?.conf?.LLM}
+                      </Typography.Text>
+                    </div>
+                    <div className="llm-info-right">
+                      <Space>
+                        <Tooltip title={tooltipContent(profile?.conf)}>
+                          <InfoCircleOutlined className="prompt-card-actions-head" />
+                        </Tooltip>
+                        <Tooltip title="Chunk used">
+                          <DatabaseOutlined
+                            onClick={() => {
+                              setIsIndexOpen(true);
+                              setOpenIndexProfile(promptOutputData?.context);
+                            }}
+                            className="prompt-card-actions-head"
+                          />
+                        </Tooltip>
+                        {ChallengeModal && (
+                          <ChallengeModal
+                            challengeData={
+                              promptOutputData?.challengeData || {}
+                            }
+                            context={promptOutputData?.context || ""}
+                            tokenUsage={promptOutputData?.tokenUsage || {}}
+                          />
+                        )}
+                        {isNotSingleLlmProfile && (
+                          <Tooltip title="Select Default">
+                            <Radio
+                              checked={profileId === selectedLlmProfileId}
+                              onChange={() => handleSelectDefaultLLM(profileId)}
+                              disabled={isPublicSource}
+                            />
+                          </Tooltip>
+                        )}
+                      </Space>
+                    </div>
                   </div>
                   <div className="prompt-cost">
                     <Typography.Text className="prompt-cost-item">
@@ -244,82 +283,29 @@ function PromptOutput({
                     </Typography.Text>
                   </div>
                   <div className="prompt-info">
-                    <CheckableTag
-                      checked={isChecked}
-                      onChange={(checked) =>
-                        handleTagChange(checked, profileId)
-                      }
-                      disabled={isPublicSource}
-                      className={isChecked ? "checked" : "unchecked"}
-                    >
-                      {isChecked ? (
-                        <span>
-                          Enabled
-                          <CheckCircleOutlined
-                            style={{
-                              color: "#52c41a",
-                              marginLeft: "5px",
-                            }}
-                          />
-                        </span>
-                      ) : (
-                        <span>
-                          Disabled
-                          <ExclamationCircleFilled
-                            style={{
-                              color: "#BABBBC",
-                              marginLeft: "5px",
-                            }}
-                          />
-                        </span>
-                      )}
-                    </CheckableTag>
-                    <div className="llm-info-container">
-                      <Tooltip title={tooltipContent(profile?.conf)}>
-                        <InfoCircleOutlined className="prompt-card-actions-head" />
-                      </Tooltip>
-                      <Tooltip title="Chunk used">
-                        <DatabaseOutlined
-                          onClick={() => {
-                            setIsIndexOpen(true);
-                            setOpenIndexProfile(promptOutputData?.context);
-                          }}
-                          className="prompt-card-actions-head"
-                        />
-                      </Tooltip>
-                      {ChallengeModal && (
-                        <ChallengeModal
-                          challengeData={promptOutputData?.challengeData || {}}
-                          context={promptOutputData?.context || ""}
-                          tokenUsage={promptOutputData?.tokenUsage || {}}
-                        />
-                      )}
-                      {isNotSingleLlmProfile && (
-                        <Radio
-                          checked={profileId === selectedLlmProfileId}
-                          onChange={() => handleSelectDefaultLLM(profileId)}
-                          disabled={isPublicSource}
-                        >
-                          Default
-                        </Radio>
-                      )}
+                    <div>
+                      <CheckableTag
+                        checked={isChecked}
+                        onChange={(checked) =>
+                          handleTagChange(checked, profileId)
+                        }
+                        disabled={isPublicSource}
+                        className={isChecked ? "checked" : "unchecked"}
+                      >
+                        {isChecked ? (
+                          <span>
+                            Enabled
+                            <CheckCircleOutlined className="prompt-output-icon-enabled" />
+                          </span>
+                        ) : (
+                          <span>
+                            Disabled
+                            <ExclamationCircleFilled className="prompt-output-icon-disabled" />
+                          </span>
+                        )}
+                      </CheckableTag>
                     </div>
-                  </div>
-                </Space>
-                <>
-                  <Divider className="prompt-card-divider" />
-                  <div className={"prompt-card-result prompt-card-div"}>
-                    {isTableExtraction ? (
-                      <div />
-                    ) : (
-                      <DisplayPromptResult
-                        output={promptOutputData?.output}
-                        profileId={profileId}
-                        docId={selectedDoc?.document_id}
-                        promptRunStatus={promptRunStatus}
-                      />
-                    )}
-                    <div className="prompt-profile-run">
+                    <div>
                       <Tooltip title="Run LLM for current document">
                         <Button
                           size="small"
@@ -356,14 +342,6 @@ function PromptOutput({
                           <PlayCircleFilled className="prompt-card-actions-head" />
                         </Button>
                       </Tooltip>
-                      <CopyPromptOutputBtn
-                        isDisabled={isTableExtraction}
-                        copyToClipboard={() =>
-                          copyOutputToClipboard(
-                            displayPromptResult(promptOutputData?.output, true)
-                          )
-                        }
-                      />
                       <PromptOutputExpandBtn
                         promptId={promptDetails?.prompt_id}
                         llmProfiles={llmProfileDetails}
@@ -374,9 +352,36 @@ function PromptOutput({
                       />
                     </div>
                   </div>
-                  {isTableExtraction && TableOutput && (
-                    <TableOutput output={promptOutputData?.output} />
-                  )}
+                </Space>
+                <>
+                  <Divider className="prompt-card-divider" />
+                  <div className="prompt-card-result prompt-card-div">
+                    {isTableExtraction && TableOutput ? (
+                      <TableOutput output={promptOutputData?.output} />
+                    ) : (
+                      <>
+                        <DisplayPromptResult
+                          output={promptOutputData?.output}
+                          profileId={profileId}
+                          docId={selectedDoc?.document_id}
+                          promptRunStatus={promptRunStatus}
+                        />
+                        <div className="prompt-profile-run">
+                          <CopyPromptOutputBtn
+                            isDisabled={isTableExtraction}
+                            copyToClipboard={() =>
+                              copyOutputToClipboard(
+                                displayPromptResult(
+                                  promptOutputData?.output,
+                                  true
+                                )
+                              )
+                            }
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </>
               </Col>
             </motion.div>

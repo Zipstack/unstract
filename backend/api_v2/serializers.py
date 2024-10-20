@@ -14,14 +14,30 @@ from rest_framework.serializers import (
     Serializer,
     ValidationError,
 )
+from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 
 from backend.serializers import AuditSerializer
 
 
-class APIDeploymentSerializer(AuditSerializer):
+class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
     class Meta:
         model = APIDeployment
         fields = "__all__"
+
+    unique_error_message_map: dict[str, dict[str, str]] = {
+        "unique_api_name": {
+            "field": "api_name",
+            "message": (
+                "This API name is already in use. Please select a different name."
+            ),
+        },
+        "api_deployment_api_endpoint_key": {
+            "field": "api_name",
+            "message": (
+                "This API name is already in use. Please select a different name."
+            ),
+        },
+    }
 
     def validate_api_name(self, value: str) -> str:
         api_name_validator = RegexValidator(
@@ -128,6 +144,7 @@ class APIKeyListSerializer(ModelSerializer):
             "is_active",
             "description",
             "api",
+            "pipeline",
         ]
 
 

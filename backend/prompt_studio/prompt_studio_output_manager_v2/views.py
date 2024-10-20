@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 
 class PromptStudioOutputView(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
-    queryset = PromptStudioOutputManager.objects.all()
     serializer_class = PromptStudioOutputSerializer
 
     def get_queryset(self) -> Optional[QuerySet]:
@@ -56,6 +55,8 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
 
         if filter_args:
             queryset = PromptStudioOutputManager.objects.filter(**filter_args)
+        else:
+            queryset = PromptStudioOutputManager.objects.all()
 
         return queryset
 

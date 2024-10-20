@@ -297,6 +297,7 @@ else:
         "corsheaders",
         # For the organization model
         "account_v2",
+        "account_usage",
         # Django apps should go below this line
         "django.contrib.admin",
         "django.contrib.auth",
@@ -320,7 +321,6 @@ else:
     )
     v2_apps = (
         "migrating.v2",
-        # "account_v2",
         "connector_auth_v2",
         "tenant_account_v2",
         "connector_v2",
