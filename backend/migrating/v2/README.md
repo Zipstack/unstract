@@ -1,9 +1,28 @@
 # V2 Migration Guide
 
 This folder contains scripts and management commands for performing data migrations from v1 to v2 for the Unstract Multitenancy system.
-From version `[TODO: Mark v2 version]` onwards, there have been signifcant changes in how data is stored. This warrants a data migration and the below steps can come in handy.
+From version `v0.93.0` onwards, there have been signifcant changes in how data is stored. This warrants a data migration and the below steps can come in handy.
 
-## Preparing for the migration
+> [!WARNING]
+> If you're updating from a very old version of Unstract and you face issues, its recommended to update to `v0.92.1` with 
+`./run-platform.sh -u -v v0.92.1` first and then perform this data migration.
+
+## Performing the migration
+
+> [!TIP]
+> If the existing data is important to you, consider [backing up and restoring to a new database](/backend/migrating/v2/README.md#preparing-for-the-migration-safest-approach) beforehand.
+
+Run the `migrate-to-v2.sh` script to perform schema and data migrations in one shot.
+
+```shell
+./migrate-to-v2.sh
+```
+
+If you prefer explicitly executing the migration commands, refer [these steps below](/backend/migrating/v2/README.md#manually-performing-V2-migration)
+
+## Preparing for the migration (safest approach)
+
+Follow below steps to backup existing data in case of any issues during the migration
 
 ### Backup existing data
 
@@ -37,15 +56,7 @@ docker exec -it unstract-db /bin/bash
 psql -h localhost -p 5432 -U unstract_dev -d unstract_db_v2 -f unstract-backup-<DateTime>.sql
 ```
 
-## Performing the migration
-
-Run the `migrate-to-v2.sh` script to perform both schema and data migrations in one shot.
-
-```shell
-./migrate-to-v2.sh
-```
-
-Follow the below steps to run each command necessary for the migration explicitly
+## Manually performing V2 migration
 
 ### Configuring the env
 
@@ -140,7 +151,6 @@ python manage.py migrate_to_v2
 ```
 
 This command performs the migration, updating your database to the v2 schema and transforming the data accordingly.
-
 
 ## Notes
 

@@ -1,0 +1,6 @@
+{
+  "v0.93.0": {
+    "message": "A data migration is required to continue using the platform with your existing data.\n For detailed instructions on how to perform this migration, please check \n\t`backend/migrating/v2/README.md`",
+    "warning": true
+  }
+}

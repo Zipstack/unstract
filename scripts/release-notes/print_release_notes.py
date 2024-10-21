@@ -9,11 +9,17 @@ from packaging import version
 
 # Sample JSON data (in a separate file 'warnings.json')
 # {
-#   "v0.91.5": "Warning message for version v0.91.5",
-#   "v1.2.0": "Warning message for version v1.2.0"
+#   "v0.93.0": {
+#     "message": "This a WARNING note",
+#     "warning": true
+#   },
+#   "v0.95.0": {
+#     "message": "This is an INFO note",
+#     "warning": false
+#   }
 # }
 
-WARNINGS_FILE_PATH = Path(__file__).with_name("warnings.json").absolute()
+RELEASE_NOTES_FILE_PATH = Path(__file__).with_name("release_notes.json").absolute()
 
 
 class Colour:
@@ -28,7 +34,7 @@ def colour(text, colour: Colour):
     return f"{colour}{text}{Colour.DEFAULT}"
 
 
-def load_warnings(json_file):
+def load_release_notes(json_file):
     """Load warnings from a JSON file."""
     with open(json_file) as file:
         return json.load(file)
@@ -40,21 +46,35 @@ def is_valid_semver(ver):
     return re.match(semver_pattern, ver) is not None
 
 
-def print_warnings(current_version, target_version, warnings):
+def print_release_notes(current_version, target_version, release_notes):
     """Print relevant warnings if current_version < warning_version <=
     target_version."""
-    print("\n######################## RELEASE WARNINGS ########################")
-    for warning_version, warning_message in warnings.items():
+    messages_to_print = []
+    for note_version, release_note in release_notes.items():
         if (
             version.parse(current_version)
-            < version.parse(warning_version)
+            < version.parse(note_version)
             <= version.parse(target_version)
         ):
-            print(
-                f"{colour('WARNING', Colour.YELLOW)}: [from "
-                f"{colour(warning_version, Colour.BLUE)}] {warning_message}"
+            # Check release note and display warning in yellow release_note
+            message = (
+                f"{colour('WARNING', Colour.YELLOW)}: "
+                if release_note["warning"]
+                else ""
             )
-    print("###################################################################")
+            message += (
+                f"[from {colour(note_version, Colour.BLUE)}] "
+                f"{release_note['message']}\n"
+            )
+            messages_to_print.append(message)
+
+    if not messages_to_print:
+        return
+
+    print("\n########################## RELEASE NOTES ##########################")
+    for message in messages_to_print:
+        print(message)
+    print("###################################################################\n")
 
 
 def main():
@@ -65,7 +85,7 @@ def main():
     parser.add_argument(
         "current_version",
         type=str,
-        help="Current version of the software (e.g., v0.85.0)",
+        help="Current version of Unstract (e.g., v0.85.0)",
     )
     parser.add_argument(
         "target_version",
@@ -79,20 +99,19 @@ def main():
     target_version = args.target_version
 
     # Load the warnings from the JSON file
-    warnings = load_warnings(WARNINGS_FILE_PATH)
+    release_notes = load_release_notes(RELEASE_NOTES_FILE_PATH)
 
     # Validate the current_version and target_version
     if not is_valid_semver(current_version) or not is_valid_semver(target_version):
         print(
-            f"{colour('WARNING', Colour.YELLOW)}: You are trying to update between "
+            f"\n{colour('WARNING', Colour.YELLOW)}: You are trying to update between "
             f"versions\n\t({colour(current_version, Colour.BLUE)} -> "
             f"{colour(target_version, Colour.BLUE)})\nPlease check for applicable "
-            f"warnings in '{colour(WARNINGS_FILE_PATH, Colour.BLUE)}'"
+            f"warnings in '{colour(RELEASE_NOTES_FILE_PATH, Colour.BLUE)}'\n"
         )
         sys.exit(1)
 
-    # Print relevant warnings
-    print_warnings(current_version, target_version, warnings)
+    print_release_notes(current_version, target_version, release_notes)
 
 
 if __name__ == "__main__":
