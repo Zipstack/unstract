@@ -6,10 +6,10 @@
 default_language_version:
   python: python3.9
 default_stages:
-  - commit
+  - pre-commit
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v5.0.0
     hooks:
       - id: trailing-whitespace
         exclude_types:
@@ -84,10 +84,10 @@ repos:
     hooks:
       - id: pycln
         args: [--config=pyproject.toml]
-  - repo: https://github.com/pycqa/docformatter
-    rev: v1.7.5
-    hooks:
-      - id: docformatter
+  # - repo: https://github.com/pycqa/docformatter
+  #   rev: v1.7.5
+  #   hooks:
+  #     - id: docformatter
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.16.0
     hooks:

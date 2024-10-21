@@ -23,6 +23,7 @@ from unstract.prompt_service.helper import (
 from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.prompt_service.utils.log import publish_log
 from unstract.prompt_service.variable_extractor.base import VariableExtractor
+from unstract.sdk.adapters.llm.no_op.src.no_op_custom_llm import NoOpCustomLLM
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import Embedding
 from unstract.sdk.exceptions import SdkError
@@ -416,6 +417,17 @@ def prompt_processor() -> Any:
                             LogLevel.ERROR,
                         )
                         structured_output[output[PSKeys.NAME]] = None
+                        # No-op adapter always returns a string data and
+                        # to keep this response uniform
+                        # through all enforce types
+                        # we add this check, if not for this,
+                        # type casting to float raises
+                        # an error and we return None.
+                        if isinstance(
+                            llm.get_llm(adapter_instance_id=adapter_instance_id),
+                            NoOpCustomLLM,
+                        ):
+                            structured_output[output[PSKeys.NAME]] = answer
             elif output[PSKeys.TYPE] == PSKeys.EMAIL:
                 if answer.lower() == "na":
                     structured_output[output[PSKeys.NAME]] = None
