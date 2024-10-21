@@ -42,7 +42,7 @@ pg_dump -h localhost -p 5432 -U unstract_dev -d unstract_db -f unstract-backup-$
 
 - Create a new database, for example `unstract_db_v2`
 
-### Dump existing data to this new database
+### Restore backup to the new database
 
 - Exec into the DB if required (from [/docker](/docker/))
 

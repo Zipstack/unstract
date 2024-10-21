@@ -63,7 +63,7 @@ def print_release_notes(current_version, target_version, release_notes):
                 else ""
             )
             message += (
-                f"[from {colour(note_version, Colour.BLUE)}] "
+                f"[from {colour(note_version, Colour.BLUE)}]\n"
                 f"{release_note['message']}\n"
             )
             messages_to_print.append(message)
@@ -74,7 +74,7 @@ def print_release_notes(current_version, target_version, release_notes):
     print("\n########################## RELEASE NOTES ##########################")
     for message in messages_to_print:
         print(message)
-    print("###################################################################\n")
+    print("###################################################################")
 
 
 def main():
@@ -104,10 +104,10 @@ def main():
     # Validate the current_version and target_version
     if not is_valid_semver(current_version) or not is_valid_semver(target_version):
         print(
-            f"\n{colour('WARNING', Colour.YELLOW)}: You are trying to update between "
-            f"versions\n\t({colour(current_version, Colour.BLUE)} -> "
-            f"{colour(target_version, Colour.BLUE)})\nPlease check for applicable "
-            f"warnings in '{colour(RELEASE_NOTES_FILE_PATH, Colour.BLUE)}'\n"
+            f"\n{colour('WARNING', Colour.YELLOW)}: "
+            "You are trying to update between versions\n"
+            f"\t({colour(current_version, Colour.BLUE)} -> {colour(target_version, Colour.BLUE)})\n"
+            f"Please check release notes at '{colour(RELEASE_NOTES_FILE_PATH, Colour.BLUE)}'\n"
         )
         sys.exit(1)
 
