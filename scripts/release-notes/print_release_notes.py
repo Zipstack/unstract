@@ -64,7 +64,7 @@ def print_release_notes(current_version, target_version, release_notes):
             )
             message += (
                 f"[from {colour(note_version, Colour.BLUE)}]\n"
-                f"{release_note['message']}\n"
+                f"{release_note['message']}"
             )
             messages_to_print.append(message)
 
@@ -73,7 +73,7 @@ def print_release_notes(current_version, target_version, release_notes):
 
     print("\n########################## RELEASE NOTES ##########################")
     for message in messages_to_print:
-        print(message)
+        print("\n" + message + "\n")
     print("###################################################################")
 
 
@@ -106,8 +106,10 @@ def main():
         print(
             f"\n{colour('WARNING', Colour.YELLOW)}: "
             "You are trying to update between versions\n"
-            f"\t({colour(current_version, Colour.BLUE)} -> {colour(target_version, Colour.BLUE)})\n"
-            f"Please check release notes at '{colour(RELEASE_NOTES_FILE_PATH, Colour.BLUE)}'\n"
+            f"\t({colour(current_version, Colour.BLUE)} -> "
+            f"{colour(target_version, Colour.BLUE)})\n"
+            f"Please check release notes at "
+            f"'{colour(RELEASE_NOTES_FILE_PATH, Colour.BLUE)}'\n"
         )
         sys.exit(1)
 
