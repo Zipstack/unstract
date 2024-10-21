@@ -179,10 +179,22 @@ function Users() {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
+  useEffect(() => {
+    getAllUsers();
+  }, []);
 
-  const inviteUserButtons = () => {
-    return (
-      <>
+  useEffect(() => {
+    setFilteredUserList(userList);
+  }, [userList]);
+
+  return (
+    <>
+      <TopBar
+        enableSearch={true}
+        title="Manage Users"
+        searchData={userList}
+        setFilteredUserList={setFilteredUserList}
+      >
         <CustomButton
           type="primary"
           icon={<PlusOutlined />}
@@ -196,25 +208,7 @@ function Users() {
           onClick={getAllUsers}
           className="user-reload-button"
         />
-      </>
-    );
-  };
-  useEffect(() => {
-    getAllUsers();
-  }, []);
-
-  useEffect(() => {
-    setFilteredUserList(userList);
-  }, [userList]);
-  return (
-    <>
-      <TopBar
-        CustomButtons={inviteUserButtons}
-        enableSearch={true}
-        title="Manage Users"
-        searchData={userList}
-        setFilteredUserList={setFilteredUserList}
-      />
+      </TopBar>
       <div className="user-bg-col">
         <IslandLayout>
           <div className="user-table">
