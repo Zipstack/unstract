@@ -307,9 +307,6 @@ def cache() -> Any:
     """
     bearer_token = get_token_from_auth_header(request)
     _, account_id = get_organization_from_bearer_token(bearer_token)
-    if not Env.REDIS_HOST:
-        app.logger.error("Env.REDIS_HOST not set")
-        return "Internal Server Error", 500
     if request.method == "POST":
         payload: Optional[dict[Any, Any]] = request.json
         if not payload:
@@ -329,8 +326,7 @@ def cache() -> Any:
             r.set(redis_key, value)
             r.close()
         except Exception as e:
-            app.logger.error(f"Error while caching data: {e}")
-            return "Internal Server Error", 500
+            raise APIError(message=f"Error while caching data: {e}") from e
     elif request.method == "GET":
         key = request.args.get("key")
         try:
@@ -349,8 +345,7 @@ def cache() -> Any:
             else:
                 return value, 200
         except Exception as e:
-            app.logger.error(f"Error while getting cached data: {e}")
-            return "Internal Server Error", 500
+            raise APIError(message=f"Error while getting cached data: {e}") from e
     elif request.method == "DELETE":
         key = request.args.get("key")
         try:
@@ -366,8 +361,9 @@ def cache() -> Any:
             r.close()
             return "OK", 200
         except Exception as e:
-            app.logger.error(f"Error while deleting cached data: {e}")
-            return "Internal Server Error", 500
+            raise APIError(message=f"Error while deleting cached data: {e}") from e
+    else:
+        raise APIError(message="Method Not Allowed", code=405)
 
     return "OK", 200
 
@@ -391,41 +387,39 @@ def adapter_instance() -> Any:
     if not organization_id:
         return Env.INVALID_ORGANIZATOIN, 403
 
-    if request.method == "GET":
-        adapter_instance_id = request.args.get("adapter_instance_id")
+    adapter_instance_id = request.args.get("adapter_instance_id")
 
-        try:
-            data_dict = AdapterInstanceRequestHelper.get_adapter_instance_from_db(
-                organization_id=organization_id,
-                adapter_instance_id=adapter_instance_id,
-                organization_uid=organization_uid,
-            )
+    try:
+        data_dict = AdapterInstanceRequestHelper.get_adapter_instance_from_db(
+            organization_id=organization_id,
+            adapter_instance_id=adapter_instance_id,
+            organization_uid=organization_uid,
+        )
 
-            f: Fernet = Fernet(Env.ENCRYPTION_KEY.encode("utf-8"))
+        f: Fernet = Fernet(Env.ENCRYPTION_KEY.encode("utf-8"))
 
-            data_dict["adapter_metadata"] = json.loads(
-                f.decrypt(bytes(data_dict.pop("adapter_metadata_b")).decode("utf-8"))
-            )
+        data_dict["adapter_metadata"] = json.loads(
+            f.decrypt(bytes(data_dict.pop("adapter_metadata_b")).decode("utf-8"))
+        )
 
-            return jsonify(data_dict)
-        except InvalidToken:
-            msg = (
-                "Platform encryption key for storing adapter credentials has "
-                "changed! All adapters are inaccessible. Please inform "
-                "the platform admin immediately."
-            )
-            app.logger.error(
-                f"Error while getting db adapter settings for: "
-                f"{adapter_instance_id}, Error: {msg}"
-            )
-            raise APIError(message=msg, code=403)
-        except Exception as e:
-            app.logger.error(
-                f"Error while getting db adapter settings for: "
-                f"{adapter_instance_id}, Error: {str(e)}"
-            )
-            return "Internal Server Error", 500
-    return "Method Not Allowed", 405
+        return jsonify(data_dict)
+    except InvalidToken:
+        msg = (
+            "Platform encryption key for storing adapter credentials has "
+            "changed! All adapters are inaccessible. Please inform "
+            "the platform admin immediately."
+        )
+        app.logger.error(
+            f"Error while getting db adapter settings for: "
+            f"{adapter_instance_id}, Error: {msg}"
+        )
+        raise APIError(message=msg, code=403)
+    except Exception as e:
+        msg = (
+            f"Error while getting db adapter settings for "
+            f"{adapter_instance_id}: {e}"
+        )
+        raise APIError(message=msg)
 
 
 @platform_bp.route(
@@ -447,19 +441,17 @@ def custom_tool_instance() -> Any:
     if not organization_id:
         return Env.INVALID_ORGANIZATOIN, 403
 
-    if request.method == "GET":
-        prompt_registry_id = request.args.get("prompt_registry_id")
+    prompt_registry_id = request.args.get("prompt_registry_id")
 
-        try:
-            data_dict = PromptStudioRequestHelper.get_prompt_instance_from_db(
-                organization_id=organization_id,
-                prompt_registry_id=prompt_registry_id,
-            )
-            return jsonify(data_dict)
-        except Exception as e:
-            app.logger.error(
-                f"Error while getting db adapter settings for: "
-                f"{prompt_registry_id} Error: {str(e)}"
-            )
-            return "Internal Server Error", 500
-    return "Method Not Allowed", 405
+    try:
+        data_dict = PromptStudioRequestHelper.get_prompt_instance_from_db(
+            organization_id=organization_id,
+            prompt_registry_id=prompt_registry_id,
+        )
+        return jsonify(data_dict)
+    except Exception as e:
+        msg = (
+            f"Error while getting data for Prompt Studio project "
+            f"{prompt_registry_id}: {e}"
+        )
+        raise APIError(message=msg) from e
