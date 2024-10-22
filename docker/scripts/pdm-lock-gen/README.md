@@ -1,6 +1,4 @@
-# Developer Scripts
-
-## pdm-lock.sh
+# Generate pdm.lock file
 
 Helps generate pdm's lockfiles by running the command `pdm lock -G :all -v` on all necessary packages and services.
 
@@ -11,7 +9,7 @@ Helps generate pdm's lockfiles by running the command `pdm lock -G :all -v` on a
 - `unstract/core`
 - `unstract/flags`
 - `platform-service`
-- `x2text-service"`
+- `x2text-service`
 - `unstract/connectors`
 - `unstract/tool-sandbox`
 
