@@ -1,7 +1,6 @@
 class WorkflowKey:
     """Dict keys related to workflows."""
 
-    PROMPT_TEXT = "prompt_text"
     LLM_RESPONSE = "llm_response"
     WF_STEPS = "steps"
     WF_TOOL = "tool"
