@@ -163,7 +163,7 @@ function SharePermission({
                 onChange={(e) => handleShareWithEveryone(e.target.checked)}
                 className="share-per-checkbox"
               >
-                Share with everyone
+                Share with everyone in current org
               </Checkbox>
             )}
             {permissionEdit && !shareWithEveryone && (
