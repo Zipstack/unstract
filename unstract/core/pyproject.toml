@@ -25,7 +25,13 @@ classifiers = [
   "Programming Language :: Python"
 ]
 # license = {text = "MIT"}
-
+[tool.pdm.dev-dependencies]
+test = [
+    "parameterized==0.9.0",
+    "pytest==8.3.3",
+    "pytest-mock",
+    "gcsfs"
+]
 [tool.pdm.build]
 includes = ["src"]
 package-dir = "src"
