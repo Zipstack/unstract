@@ -1,6 +1,5 @@
 import PropTypes from "prop-types";
-import { useDrag, useDrop } from "react-dnd";
-import { memo, useRef } from "react";
+import { memo } from "react";
 
 import { NotesCard } from "../notes-card/NotesCard";
 import { PromptCard } from "./PromptCard";
@@ -9,42 +8,22 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import usePromptRun from "../../../hooks/usePromptRun";
 import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
 
-const PromptDnd = memo(function PromptDnd({
+const PromptCardWrapper = memo(function PromptCardWrapper({
   item,
-  index,
   handleChangePromptCard,
   handleDelete,
-  moveItem,
   outputs,
   enforceTypeList,
   setUpdatedPromptsCopy,
 }) {
-  const ref = useRef(null);
   const { isSimplePromptStudio } = useCustomToolStore();
   const { handlePromptRunRequest } = usePromptRun();
   const promptRunStatus = usePromptRunStatusStore(
     (state) => state?.promptRunStatus?.[item?.prompt_id] || {}
   );
 
-  const [, drop] = useDrop({
-    accept: "PROMPT_CARD",
-    drop: (draggedItem) => {
-      moveItem(/* Start Index*/ draggedItem?.index, /* Drop Index*/ index);
-    },
-  });
-
-  const [, drag] = useDrag({
-    type: "PROMPT_CARD",
-    item: { index },
-    collect: (monitor) => ({
-      isDragging: monitor.isDragging(),
-    }),
-  });
-
-  drag(drop(ref));
-
   return (
-    <div ref={ref}>
+    <div>
       {(item.prompt_type === promptType.prompt || isSimplePromptStudio) && (
         <PromptCard
           promptDetails={item}
@@ -71,17 +50,15 @@ const PromptDnd = memo(function PromptDnd({
   );
 });
 
-PromptDnd.displayName = "PromptDnd";
+PromptCardWrapper.displayName = "PromptCardWrapper";
 
-PromptDnd.propTypes = {
+PromptCardWrapper.propTypes = {
   item: PropTypes.object.isRequired,
-  index: PropTypes.number.isRequired,
   handleChangePromptCard: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
-  moveItem: PropTypes.func.isRequired,
   outputs: PropTypes.object.isRequired,
   enforceTypeList: PropTypes.array.isRequired,
   setUpdatedPromptsCopy: PropTypes.func.isRequired,
 };
 
-export { PromptDnd };
+export { PromptCardWrapper };
