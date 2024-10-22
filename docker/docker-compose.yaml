@@ -149,7 +149,7 @@ services:
       - ENVIRONMENT=development
     labels:
       - traefik.enable=true
-      - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`)
+      - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`)  && !PathPrefix(`/api/v1`, `/deployment`)
 
   platform-service:
     image: unstract/platform-service:${VERSION}
