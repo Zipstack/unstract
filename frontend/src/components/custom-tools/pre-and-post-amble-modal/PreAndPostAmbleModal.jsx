@@ -25,13 +25,13 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
 
   useEffect(() => {
     if (type === fieldNames.preamble) {
-      setTitle("Preamble");
+      setTitle("Preamble Settings");
       setText(details?.preamble || "");
       return;
     }
 
     if (type === fieldNames.postamble) {
-      setTitle("Postamble");
+      setTitle("Postamble Settings");
       setText(details?.postamble || "");
     }
   }, [type]);

@@ -226,7 +226,7 @@ function ManageLlmProfiles() {
       <SpaceWrapper>
         <div>
           <Typography.Text className="add-cus-tool-header">
-            LLM Profiles Manager
+            LLM Profile Settings
           </Typography.Text>
         </div>
         <div>

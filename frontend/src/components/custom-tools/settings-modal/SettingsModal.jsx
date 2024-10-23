@@ -37,8 +37,8 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
 
   useEffect(() => {
     const items = [
-      getMenuItem("Manage LLM Profiles", 1, <CodeOutlined />),
-      getMenuItem("Manage Grammar", 5, <MessageOutlined />),
+      getMenuItem("LLM Profiles", 1, <CodeOutlined />),
+      getMenuItem("Grammar", 5, <MessageOutlined />),
       getMenuItem("Preamble", 6, <DiffOutlined />),
       getMenuItem("Postamble", 7, <DiffOutlined />),
     ];
@@ -65,7 +65,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       items.splice(
         position,
         0,
-        getMenuItem("Summary Manager", 2, <FileTextOutlined />)
+        getMenuItem("SummarizedExtraction", 2, <FileTextOutlined />)
       );
       listOfComponents[2] = (
         <SummarizeManager
@@ -92,7 +92,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       items.splice(
         position,
         0,
-        getMenuItem("Challenge Manager", 4, <FileTextOutlined />)
+        getMenuItem("LLMChallenge", 4, <FileTextOutlined />)
       );
       listOfComponents[4] = (
         <ChallengeManager handleUpdateTool={handleUpdateTool} />
