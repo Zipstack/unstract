@@ -23,6 +23,8 @@ from file_management.exceptions import (
 from file_management.file_management_dto import FileInformation
 from fsspec import AbstractFileSystem
 from pydrive2.files import ApiRequestError
+from utils.constants import FileStorageType
+from utils.file_storage_helper import FileStorageUtil
 
 from unstract.connectors.filesystems import connectors as fs_connectors
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
@@ -31,7 +33,6 @@ logger = logging.getLogger(__name__)
 
 
 class FileManagerHelper:
-
     @staticmethod
     def get_file_system(connector: ConnectorInstance) -> UnstractFileSystem:
         """Creates the `UnstractFileSystem` for the corresponding connector."""
@@ -141,15 +142,15 @@ class FileManagerHelper:
             remote_file.write(file.read())
 
     @staticmethod
-    def fetch_file_contents(file_system: UnstractFileSystem, file_path: str) -> Any:
-        fs = file_system.get_fsspec_fs()
-        try:
-            file_info = fs.info(file_path)
-        except FileNotFoundError:
+    def fetch_file_contents(file_path: str) -> Any:
+        file_storage = FileStorageUtil.initialize_file_storage(
+            FileStorageType.PERMANENT
+        )
+        if not file_storage.exists(file_path):
             raise FileNotFound
 
-        file_content_type = file_info.get("ContentType")
-        file_type = file_info.get("type")
+        # file_content_type = file_info.get("ContentType")
+        # file_type = file_info.get("type")
         if file_type != "file":
             raise InvalidFileType
         try:

@@ -1,4 +1,5 @@
 import os
+from enum import Enum
 
 from django.conf import settings
 from utils.common_utils import CommonUtils
@@ -78,3 +79,14 @@ class ExecutionLogConstants:
     PERIODIC_TASK_NAME_V2 = "workflow_log_history_v2"
     TASK = "workflow_manager.workflow.execution_log_utils.consume_log_history"
     TASK_V2 = "consume_log_history"
+
+
+class FileStorageKeys:
+    FILE_STORAGE_PROVIDER = "FILE_STORAGE_PROVIDER"
+    FILE_STORAGE_CREDENTIALS = "FILE_STORAGE_CREDENTIALS"
+
+
+class FileStorageType(Enum):
+    PERMANENT = "permanent"
+    DEFAULT = "default"
+    TEMPORARY = "temporary"
