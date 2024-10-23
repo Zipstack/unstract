@@ -23,18 +23,18 @@ jobs:
     steps:
       - name: Checkout code for release
         if: github.event_name == 'release'
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.release.tag_name }}
 
 
       - name: Checkout code for branch
         if: github.event_name != 'release'
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v1
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
