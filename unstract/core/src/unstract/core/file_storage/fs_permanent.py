@@ -11,12 +11,13 @@ class PermanentFileStorage(FileStorage):
         FileStorageProvider.GCS.value,
         FileStorageProvider.S3.value,
         FileStorageProvider.Azure.value,
+        FileStorageProvider.Local.value,
     ]
 
     def __init__(
         self,
         provider: FileStorageProvider,
-        credentials: dict[str, Any] = {},
+        credentials: Union[dict[str, Any], None] = None,
     ):
         if provider.value not in self.SUPPORTED_FILE_STORAGE_TYPES:
             raise FileStorageError(
@@ -25,14 +26,15 @@ class PermanentFileStorage(FileStorage):
             )
         if provider == FileStorageProvider.GCS:
             super().__init__(provider, credentials)
+        elif provider == FileStorageProvider.Local:
+            super().__init__(provider)
         else:
             raise NotImplementedError
 
     def _copy_on_write(self, path):
-        """Copies the file to the lazily. Checks if the file
-        is present in the Local File system. If yes, copies the file
-        to the mentioned path using the remote file system.
-        This is a silent copy done on need basis.
+        """Copies the file to the lazily. Checks if the file is present in the
+        Local File system. If yes, copies the file to the mentioned path using
+        the remote file system. This is a silent copy done on need basis.
 
         Args:
             path (str): Path to the file
