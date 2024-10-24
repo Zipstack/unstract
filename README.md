@@ -106,12 +106,12 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 
 ### Text Extractors
 
-|| Provider | Status |
-|---|---|---|
-|<img src="docs/assets/unstract_u_logo.png" width="32"/>| Unstract LLMWhisperer | ✅ Working |
-|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Community | ✅ Working |
-|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Enterprise | ✅ Working |
-|<img src="docs/assets/3rd_party/llamaindex.png" width="32"/>| LlamaIndex Parse | ✅ Working |
+|| Provider | Status | Version Compatibility |
+|---|---|---|---|
+|<img src="docs/assets/unstract_u_logo.png" width="32"/>| Unstract LLMWhisperer | ✅ Working | [v1](https://docs.unstract.com/llm_whisperer/apis/llm_whisperer_apis_intro), `v2` |
+|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Community | ✅ Working | [All](https://github.com/Unstructured-IO/unstructured/releases) |
+|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Enterprise | ✅ Working | All |
+|<img src="docs/assets/3rd_party/llamaindex.png" width="32"/>| LlamaIndex Parse | ✅ Working | [All](https://github.com/run-llama/llama_parse/releases) |
 
 ### ETL Sources
 
@@ -138,6 +138,12 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |<img src="docs/assets/3rd_party/mysql.png" width="32"/>| MySQL | ✅ Working |
 |<img src="docs/assets/3rd_party/mariadb.png" width="32"/>| MariaDB | ✅ Working |
 |<img src="docs/assets/3rd_party/ms_sql.png" width="32"/>| Microsoft SQL Server | ✅ Working |
+
+### Unstract SDK
+
+| Component | Version Compatibility |
+|---|---|
+| `backend`, `prompt-service`, `tool-registry`, All tools | [0.52.0](https://github.com/Zipstack/unstract-sdk/releases/tag/v0.52.0) |
 
 ## 🙌 Contributing
 
