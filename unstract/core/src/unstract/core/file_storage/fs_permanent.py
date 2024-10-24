@@ -1,9 +1,8 @@
 from typing import Any, Union
 
 from unstract.sdk.exceptions import FileOperationError, FileStorageError
+from unstract.sdk.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk.file_storage.constants import Common
-from unstract.sdk.file_storage.fs_impl import FileStorage
-from unstract.sdk.file_storage.fs_provider import FileStorageProvider
 
 
 class PermanentFileStorage(FileStorage):
