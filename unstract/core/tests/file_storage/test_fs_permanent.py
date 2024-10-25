@@ -3,7 +3,8 @@ import os.path
 
 import pytest
 from dotenv import load_dotenv
-from unstract.sdk.file_storage import FileStorageProvider, PermanentFileStorage
+from unstract.sdk.file_storage import FileStorageProvider
+from unstract.sdk.file_storage.fs_permanent import PermanentFileStorage
 
 load_dotenv()
 

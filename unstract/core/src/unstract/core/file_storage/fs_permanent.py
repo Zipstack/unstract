@@ -44,7 +44,7 @@ class PermanentFileStorage(FileStorage):
         if not self.exists(path):
             local_file_storage = FileStorage(provider=FileStorageProvider.Local)
             if local_file_storage.exists(path):
-                self.cp(path, path)
+                self.fs.put(path, path)
 
     def read(
         self,
