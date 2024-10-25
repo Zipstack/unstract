@@ -273,7 +273,6 @@ ListView.propTypes = {
   idProp: PropTypes.string.isRequired,
   centered: PropTypes.bool,
   isClickable: PropTypes.bool,
-  showOwner: PropTypes.bool,
   type: PropTypes.string,
 };
 
@@ -283,7 +282,6 @@ ListView.defaultProps = {
   iconProp: "",
   centered: false,
   isClickable: true,
-  showOwner: false,
   type: "",
 };
 

@@ -74,7 +74,6 @@ WorkflowModal.propTypes = {
   handleAddItem: PropTypes.func.isRequired,
   loading: PropTypes.bool.isRequired,
   backendErrors: PropTypes.any,
-  setBackendErrors: PropTypes.func.isRequired,
 };
 
 export default WorkflowModal;
