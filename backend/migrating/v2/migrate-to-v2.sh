@@ -34,10 +34,6 @@ echo -e "${blue_text}Configuring environment variables for the migration${defaul
 cd $manage_script_dir
 activate_venv
 
-DB_HOST='localhost'
-REDIS_HOST="localhost"
-CELERY_BROKER_URL="redis://localhost:6379"
-
 # TODO: Update to support running from container instead of setting these envs
 # VERSION=test docker compose -f docker-compose.yaml run backend .venv/bin/python manage.py create_schema
 echo -e "${blue_text}Running schema creation command...${default_text}"
