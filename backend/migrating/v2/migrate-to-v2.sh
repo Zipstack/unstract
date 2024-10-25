@@ -12,9 +12,6 @@ red_text='\033[31m'
 default_text='\033[39m'
 yellow_text='\033[33m'
 
-# set -x/xtrace uses PS4 for more info
-PS4="$blue_text""${0}:${LINENO}: ""$default_text"
-
 # Function to check and create virtual environment
 activate_venv() {
     if [[ ! -d ".venv" ]]; then
@@ -37,11 +34,20 @@ echo -e "${blue_text}Configuring environment variables for the migration${defaul
 cd $manage_script_dir
 activate_venv
 
+DB_HOST='localhost'
+REDIS_HOST="localhost"
+CELERY_BROKER_URL="redis://localhost:6379"
+
+# TODO: Update to support running from container instead of setting these envs
+# VERSION=test docker compose -f docker-compose.yaml run backend .venv/bin/python manage.py create_schema
 echo -e "${blue_text}Running schema creation command...${default_text}"
-python manage.py create_v2_schema || { echo "Schema creation failed"; exit 1; }
+DB_HOST="localhost" REDIS_HOST="localhost" CELERY_BROKER_URL="redis://localhost:6379" \
+python manage.py create_schema || { echo "Schema creation failed"; exit 1; }
 
 echo -e "${blue_text}Running schema migration command...${default_text}"
+DB_HOST="localhost" REDIS_HOST="localhost" CELERY_BROKER_URL="redis://localhost:6379" \
 python manage.py migrate || { echo "Schema migration failed"; exit 1; }
 
 echo -e "${blue_text}Running data migration command...${default_text}"
+DB_HOST="localhost" REDIS_HOST="localhost" CELERY_BROKER_URL="redis://localhost:6379" \
 SCHEMAS_TO_MIGRATE=_ALL_ python manage.py migrate_to_v2 || { echo "Data migration failed"; exit 1; }

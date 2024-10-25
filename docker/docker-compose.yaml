@@ -7,6 +7,7 @@ services:
     image: unstract/backend:${VERSION}
     container_name: unstract-backend
     restart: unless-stopped
+    entrypoint: ./entrypoint.sh
     command: migrate
     ports:
       - "8000:8000"
@@ -24,6 +25,7 @@ services:
       - prompt_studio_data:/app/prompt-studio-data
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+      - ../backend/entrypoint.sh:/app/entrypoint.sh
     environment:
       - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-backend
