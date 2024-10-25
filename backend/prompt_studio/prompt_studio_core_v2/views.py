@@ -358,6 +358,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    # TODO: Move to prompt_profile_manager app and move validation to serializer
     @action(detail=True, methods=["post"])
     def create_profile_manager(self, request: HttpRequest, pk: Any = None) -> Response:
         context = super().get_serializer_context()
