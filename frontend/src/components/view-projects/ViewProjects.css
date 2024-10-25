@@ -1,0 +1,52 @@
+/* Styles for ListOfTools */
+
+.list-of-tools-layout {
+  height: 100%;
+  background-color: var(--page-bg-2);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: hidden;
+}
+
+.list-of-tools-island {
+  background-color: var(--page-bg-1);
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.list-of-tools-wrap {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.list-of-tools-header {
+  display: grid;
+  grid-template-columns: auto 1fr;
+}
+
+.list-of-tools-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.list-of-tools-header2 {
+  display: grid;
+  grid-auto-flow: column;
+  column-gap: 10px;
+  justify-self: end;
+}
+
+.list-of-tools-divider {
+  margin-top: 12px;
+}
+
+.list-of-tools-body {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}

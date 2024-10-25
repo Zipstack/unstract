@@ -9,7 +9,7 @@ function NewWorkflow({
   description = "",
   onDone = () => {},
   onClose = () => {},
-  loading = {},
+  loading,
   toggleModal = () => {},
   openModal = {},
   backendErrors,

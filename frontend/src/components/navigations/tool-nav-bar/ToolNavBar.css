@@ -29,3 +29,10 @@
 .tool-bar-segment {
   background-color: #0000000f;
 }
+
+.tool-nav-title {
+  font-weight: 600;
+  font-size: 18px;
+  display: inline;
+  line-height: 24px;
+}
