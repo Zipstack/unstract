@@ -219,7 +219,7 @@ SHARED_APPS = (
     "feature_flag",
     "django_celery_beat",
     # For additional helper commands
-    "utils",
+    "commands",
 )
 v2_apps = (
     "migrating.v2",

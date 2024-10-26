@@ -268,14 +268,16 @@ build_services() {
   fi
 }
 
-prepare_for_first_setup() {
+create_backend_schema() {
+
+  if [ "$first_setup" = false ]; then
+    return
+  fi
+
   pushd ${script_dir}/docker 1>/dev/null
 
-  echo -e "$blue_text""Preparing for initial setup""$default_text"
-  VERSION=$opt_version $docker_compose_cmd up -d db redis
-
-  echo -e "Creating a schema for Unstract in the database"
-  VERSION=$opt_version $docker_compose_cmd run backend .venv/bin/python manage.py create_schema
+  echo -e "$blue_text""Creating a schema for Unstract in the database""$default_text"
+  VERSION=$opt_version $docker_compose_cmd run backend prepare_and_migrate
   # TODO: Run migrations here once its removed from backend's entrypoint
 
   popd 1>/dev/null
@@ -283,10 +285,6 @@ prepare_for_first_setup() {
 
 run_services() {
   pushd ${script_dir}/docker 1>/dev/null
-
-  if [ "$first_setup" = true ]; then
-    prepare_for_first_setup
-  fi
 
   echo -e "$blue_text""Starting docker containers in detached mode""$default_text"
   VERSION=$opt_version $docker_compose_cmd up -d
@@ -347,6 +345,7 @@ parse_args $*
 do_git_pull
 setup_env
 build_services
+create_backend_schema
 run_services
 #
 # Run Unstract platform - END

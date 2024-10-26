@@ -56,4 +56,4 @@ RUN set -e; \
 
 EXPOSE 8000
 
-CMD [ "./entrypoint.sh" ]
+ENTRYPOINT [ "./entrypoint.sh" ]
