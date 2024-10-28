@@ -298,7 +298,7 @@ run_services() {
     fi
 
     # Show release notes on version update if applicable
-    python3 "$script_dir/scripts/release-notes/print_release_notes.py" "$current_version" "$target_branch"
+    python3 "$script_dir/docker/scripts/release-notes/print_release_notes.py" "$current_version" "$target_branch"
   fi
   echo -e "\nOnce the services are up, visit ""$blue_text""http://frontend.unstract.localhost""$default_text"" in your browser."
   echo -e "\nSee logs with:"
