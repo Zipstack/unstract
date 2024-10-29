@@ -66,7 +66,7 @@ function PromptOutputsModal({
                 <div className="flex-dir-col">
                   <div>
                     {displayLlmProfile && (
-                      <div className="prompt-output-llm-bg">
+                      <div className="llm-info prompt-output-llm-bg">
                         <Image
                           src={profile?.icon}
                           width={15}
