@@ -250,10 +250,10 @@ def prompt_processor() -> Any:
                 raise api_error
 
         try:
-            context = ""
+            context: set[str] = set()
             if output[PSKeys.CHUNK_SIZE] == 0:
                 # We can do this only for chunkless indexes
-                context: Optional[str] = index.query_index(
+                retrieved_context: Optional[str] = index.query_index(
                     embedding_instance_id=output[PSKeys.EMBEDDING],
                     vector_db_instance_id=output[PSKeys.VECTOR_DB],
                     doc_id=doc_id,
@@ -269,13 +269,13 @@ def prompt_processor() -> Any:
                     # inconsistent, and not reproducible easily,
                     # this is just a safety net.
                     time.sleep(2)
-                    context: Optional[str] = index.query_index(
+                    retrieved_context: Optional[str] = index.query_index(
                         embedding_instance_id=output[PSKeys.EMBEDDING],
                         vector_db_instance_id=output[PSKeys.VECTOR_DB],
                         doc_id=doc_id,
                         usage_kwargs=usage_kwargs,
                     )
-                    if context is None:
+                    if retrieved_context is None:
                         # TODO: Obtain user set name for vector DB
                         msg = NO_CONTEXT_ERROR
                         app.logger.error(
@@ -293,6 +293,7 @@ def prompt_processor() -> Any:
                             msg,
                         )
                         raise APIError(message=msg)
+                context.add(retrieved_context)
                 # TODO: Use vectorDB name when available
                 publish_log(
                     log_events_id,
@@ -322,7 +323,7 @@ def prompt_processor() -> Any:
                     tool_settings=tool_settings,
                     output=output,
                     llm=llm,
-                    context=context,
+                    context="\n".join(context),
                     prompt="promptx",
                     metadata=metadata,
                 )
@@ -525,7 +526,7 @@ def prompt_processor() -> Any:
                             llm=llm,
                             challenge_llm=challenge_llm,
                             run_id=run_id,
-                            context=context,
+                            context="\n".join(context),
                             tool_settings=tool_settings,
                             output=output,
                             structured_output=structured_output,
@@ -581,7 +582,7 @@ def prompt_processor() -> Any:
                     try:
                         evaluator = eval_plugin["entrypoint_cls"](
                             "",
-                            context,
+                            "\n".join(context),
                             "",
                             "",
                             output,
@@ -668,7 +669,7 @@ def run_retrieval(  # type:ignore
     retrieval_type: str,
     metadata: dict[str, Any],
 ) -> tuple[str, str]:
-    context: str = ""
+    context: set[str] = set()
     prompt = output[PSKeys.PROMPTX]
     if retrieval_type == PSKeys.SUBQUESTION:
         subq_prompt: str = (
@@ -701,7 +702,6 @@ def run_retrieval(  # type:ignore
             prompt=subq_prompt,
         )
         subquestion_list = subquestions.split(",")
-        raw_retrieved_context = ""
         for each_subq in subquestion_list:
             retrieved_context = _retrieve_context(
                 output, doc_id, vector_index, each_subq
@@ -710,10 +710,7 @@ def run_retrieval(  # type:ignore
             # inconsistency issue owing to risk of infinte loop
             # and inablity to diffrentiate genuine cases of
             # empty context.
-            raw_retrieved_context = "\f\n".join(
-                [raw_retrieved_context, retrieved_context]
-            )
-        context = _remove_duplicate_nodes(raw_retrieved_context)
+            context.update(retrieved_context)
 
     if retrieval_type == PSKeys.SIMPLE:
 
@@ -734,7 +731,7 @@ def run_retrieval(  # type:ignore
         tool_settings=tool_settings,
         output=output,
         llm=llm,
-        context=context,
+        context="\n".join(context),
         prompt="promptx",
         metadata=metadata,
     )
@@ -742,13 +739,7 @@ def run_retrieval(  # type:ignore
     return (answer, context)
 
 
-def _remove_duplicate_nodes(retrieved_context: str) -> str:
-    context_set: set[str] = set(retrieved_context.split("\f\n"))
-    fomatted_context = "\f\n".join(context_set)
-    return fomatted_context
-
-
-def _retrieve_context(output, doc_id, vector_index, answer) -> str:
+def _retrieve_context(output, doc_id, vector_index, answer) -> set[str]:
     retriever = vector_index.as_retriever(
         similarity_top_k=output[PSKeys.SIMILARITY_TOP_K],
         filters=MetadataFilters(
@@ -761,18 +752,18 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
         ),
     )
     nodes = retriever.retrieve(answer)
-    text = ""
+    context: set[str] = set()
     for node in nodes:
         # ToDo: May have to fine-tune this value for node score or keep it
         # configurable at the adapter level
         if node.score > 0:
-            text += node.get_content() + "\f\n"
+            context.add(node.get_content())
         else:
             app.logger.info(
                 "Node score is less than 0. "
                 f"Ignored: {node.node_id} with score {node.score}"
             )
-    return text
+    return context
 
 
 def log_exceptions(e: HTTPException):

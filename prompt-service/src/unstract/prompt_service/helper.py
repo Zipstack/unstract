@@ -86,11 +86,11 @@ def plugin_loader(app: Flask) -> None:
     initialize_plugin_endpoints(app=app)
 
 
-def get_cleaned_context(context: str) -> str:
+def get_cleaned_context(context: set[str]) -> list[str]:
     clean_context_plugin: dict[str, Any] = plugins.get(PSKeys.CLEAN_CONTEXT, {})
     if clean_context_plugin:
         return clean_context_plugin["entrypoint_cls"].run(context=context)
-    return context
+    return list(context)
 
 
 def initialize_plugin_endpoints(app: Flask) -> None:
