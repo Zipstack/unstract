@@ -70,7 +70,7 @@ psql -h localhost -p 5432 -U unstract_dev -d unstract_db_v2 -f unstract-backup-<
 - Run the command supported from [/backend/manage.py](/backend/manage.py), for example in case of `v2`
 
 ```shell
-python manage.py create_v2_schema
+python manage.py create_schema
 ```
 
 ### Run schema migrations
@@ -127,7 +127,7 @@ python manage.py help
 To set up the v2 schema in your database, execute:
 
 ```bash
-python manage.py create_v2_schema
+python manage.py create_schema
 ```
 
 This command initializes the schema required for v2 migrations.
@@ -137,7 +137,7 @@ This command initializes the schema required for v2 migrations.
 To remove the v2 schema from your database, run:
 
 ```bash
-python manage.py drop_v2_schema
+python manage.py drop_schema
 ```
 
 Note: Use this command with caution as it will permanently delete the v2 schema and its associated data.
