@@ -1,27 +1,15 @@
 import json
 import logging
+import traceback
 from typing import Any, Optional
 
+from account_v2.subscription_loader import load_plugins, validate_etl_run
 from celery import shared_task
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
-from django_tenants.utils import get_tenant_model, tenant_context
-
-from backend.constants import FeatureFlag
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-    from account_v2.subscription_loader import load_plugins, validate_etl_run
-    from pipeline_v2.models import Pipeline
-    from pipeline_v2.pipeline_processor import PipelineProcessor
-    from utils.user_context import UserContext
-    from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
-else:
-    from account.models import Organization
-    from account.subscription_loader import load_plugins, validate_etl_run
-    from pipeline.models import Pipeline
-    from pipeline.pipeline_processor import PipelineProcessor
-    from workflow_manager.workflow.workflow_helper import WorkflowHelper
-
+from pipeline_v2.models import Pipeline
+from pipeline_v2.pipeline_processor import PipelineProcessor
+from utils.user_context import UserContext
+from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
 
 logger = logging.getLogger(__name__)
 subscription_loader = load_plugins()
@@ -76,63 +64,15 @@ def execute_pipeline_task(
     with_logs: Any,
     name: Any,
 ) -> None:
-    if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-        execute_pipeline_task_v2(
-            workflow_id=workflow_id,
-            organization_id=org_schema,
-            execution_id=execution_id,
-            pipeline_id=pipepline_id,
-            pipeline_name=name,
-        )
-        return
-    logger.info(f"Executing pipeline name: {name}")
-    try:
-        tenant: Organization = (
-            get_tenant_model().objects.filter(schema_name=org_schema).first()
-        )
-        with tenant_context(tenant):
-            pipeline = PipelineProcessor.fetch_pipeline(
-                pipeline_id=pipepline_id, check_active=True
-            )
-            workflow = pipeline.workflow
-            logger.info(
-                f"Executing pipeline: {pipeline}, "
-                f"workflow: {workflow}, pipeline name: {name}"
-            )
-            if (
-                subscription_loader
-                and subscription_loader[0]
-                and not validate_etl_run(org_schema)
-            ):
-                try:
-                    logger.info(
-                        f"Subscription expired for '{org_schema}', "
-                        f"disabling pipeline: {pipepline_id}"
-                    )
-                    disable_task(pipepline_id)
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to disable task: {pipepline_id}. Error: {e}"
-                    )
-                return
-            PipelineProcessor.initialize_pipeline_sync(pipeline_id=pipepline_id)
-            PipelineProcessor.update_pipeline(
-                pipepline_id, Pipeline.PipelineStatus.INPROGRESS
-            )
-            execution_response = WorkflowHelper.complete_execution(
-                workflow, execution_id, pipepline_id
-            )
-            execution_response.remove_result_metadata_keys()
-            logger.info(f"Execution response: {execution_response}")
-        logger.info(f"Execution completed for pipeline: {name}")
-    except Exception as e:
-        logger.error(f"Failed to execute pipeline: {name}. Error: {e}")
+    execute_pipeline_task_v2(
+        organization_id=org_schema,
+        pipeline_id=pipepline_id,
+        pipeline_name=name,
+    )
 
 
 def execute_pipeline_task_v2(
-    workflow_id: Any,
     organization_id: Any,
-    execution_id: Any,
     pipeline_id: Any,
     pipeline_name: Any,
 ) -> None:
@@ -141,36 +81,39 @@ def execute_pipeline_task_v2(
     Args:
         workflow_id (Any): UID of workflow entity
         org_schema (Any): Organization Identifier
-        execution_id (Any): UID of execution entity
         pipeline_id (Any): UID of pipeline entity
         name (Any): pipeline name
     """
     try:
-        logger.info(
-            f"Executing workflow id: {workflow_id} for pipeline {pipeline_name}"
-        )
         # Set organization in state store for execution
         UserContext.set_organization_identifier(organization_id)
+        pipeline = PipelineProcessor.fetch_pipeline(
+            pipeline_id=pipeline_id, check_active=True
+        )
+        workflow = pipeline.workflow
+        logger.info(
+            f"Executing pipeline: {pipeline_id}, "
+            f"workflow: {workflow}, pipeline name: {pipeline_name}"
+        )
         if (
             subscription_loader
             and subscription_loader[0]
             and not validate_etl_run(organization_id)
         ):
             try:
-                logger.info(f"Disabling ETL task: {pipeline_id}")
+                logger.info(
+                    f"Subscription expired for '{organization_id}', "
+                    f"disabling pipeline: {pipeline_id}"
+                )
                 disable_task(pipeline_id)
             except Exception as e:
                 logger.warning(f"Failed to disable task: {pipeline_id}. Error: {e}")
             return
-        workflow = WorkflowHelper.get_workflow_by_id(
-            id=workflow_id, organization_id=organization_id
-        )
-        logger.info(f"Executing workflow: {workflow}")
         PipelineProcessor.update_pipeline(
             pipeline_id, Pipeline.PipelineStatus.INPROGRESS
         )
         execution_response = WorkflowHelper.complete_execution(
-            workflow, execution_id, pipeline_id
+            workflow=workflow, pipeline_id=pipeline_id
         )
         execution_response.remove_result_metadata_keys()
         logger.info(
@@ -182,7 +125,10 @@ def execute_pipeline_task_v2(
             f"{organization_id}"
         )
     except Exception as e:
-        logger.error(f"Failed to execute pipeline: {pipeline_name}. Error: {e}")
+        logger.error(
+            f"Failed to execute pipeline: {pipeline_name}. Error: {e}"
+            f"\n\n'''{traceback.format_exc()}```"
+        )
 
 
 def delete_periodic_task(task_name: str) -> None:

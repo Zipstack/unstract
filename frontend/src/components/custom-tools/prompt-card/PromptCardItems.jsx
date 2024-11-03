@@ -18,10 +18,7 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { Header } from "./Header";
 import { OutputForIndex } from "./OutputForIndex";
 import { PromptOutput } from "./PromptOutput";
-import { TABLE_ENFORCE_TYPE } from "./constants";
-
-const EvalBtn = null;
-const EvalMetrics = null;
+import { TABLE_ENFORCE_TYPE, RECORD_ENFORCE_TYPE } from "./constants";
 
 let TableExtractionSettingsBtn;
 try {
@@ -34,13 +31,10 @@ try {
 function PromptCardItems({
   promptDetails,
   enforceTypeList,
-  isRunLoading,
   promptKey,
   setPromptKey,
   promptText,
   setPromptText,
-  result,
-  coverage,
   progressMsg,
   handleRun,
   handleChange,
@@ -49,34 +43,30 @@ function PromptCardItems({
   updateStatus,
   updatePlaceHolder,
   isCoverageLoading,
-  setOpenEval,
   setOpenOutputForDoc,
   selectedLlmProfileId,
   handleSelectDefaultLLM,
-  timers,
   spsLoading,
   handleSpsLoading,
-  handleGetOutput,
+  promptOutputs,
+  promptRunStatus,
 }) {
   const {
     llmProfiles,
     selectedDoc,
     listOfDocs,
-    disableLlmOrDocChange,
-    singlePassExtractMode,
     isSinglePassExtractLoading,
     indexDocs,
     isSimplePromptStudio,
     isPublicSource,
     adapters,
-    defaultLlmProfile,
   } = useCustomToolStore();
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [expandCard, setExpandCard] = useState(true);
   const [llmProfileDetails, setLlmProfileDetails] = useState([]);
   const [openIndexProfile, setOpenIndexProfile] = useState(null);
-  const [coverageCount, setCoverageCount] = useState(0);
+  const [coverageCount] = useState(0);
   const [enabledProfiles, setEnabledProfiles] = useState(
     llmProfiles.map((profile) => profile.profile_id)
   );
@@ -142,22 +132,9 @@ function PromptCardItems({
     );
   };
 
-  const getCoverageData = () => {
-    const profileId = singlePassExtractMode
-      ? defaultLlmProfile
-      : selectedLlmProfileId;
-    const keySuffix = `${promptDetails?.prompt_id}_${profileId}`;
-    const key = singlePassExtractMode ? `singlepass_${keySuffix}` : keySuffix;
-    return coverage[key]?.docs_covered?.length || 0;
-  };
-
   useEffect(() => {
     setExpandCard(true);
   }, [isSinglePassExtractLoading]);
-
-  useEffect(() => {
-    setCoverageCount(getCoverageData());
-  }, [singlePassExtractMode, coverage]);
 
   useEffect(() => {
     getAdapterInfo(adapters);
@@ -185,7 +162,6 @@ function PromptCardItems({
             enabledProfiles={enabledProfiles}
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
-            handleGetOutput={handleGetOutput}
           />
         </Space>
       </div>
@@ -206,28 +182,16 @@ function PromptCardItems({
               handleChange={handleChange}
               isTextarea={true}
               placeHolder={updatePlaceHolder}
+              isCoverageLoading={isCoverageLoading}
             />
           </div>
           <>
             {!isSimplePromptStudio && (
               <>
                 <Divider className="prompt-card-divider" />
-                <Space
-                  direction="vertical"
-                  className={`prompt-card-comp-layout ${
-                    !(isRunLoading || result?.output || result?.output === 0) &&
-                    "prompt-card-comp-layout-border"
-                  }`}
-                >
+                <Space direction="vertical" className="prompt-card-comp-layout">
                   <div className="prompt-card-llm-profiles">
                     <Space direction="horizontal">
-                      {EvalBtn && !singlePassExtractMode && (
-                        <EvalBtn
-                          btnText={promptDetails?.evaluate ? "On" : "Off"}
-                          promptId={promptDetails?.prompt_id}
-                          setOpenEval={setOpenEval}
-                        />
-                      )}
                       <Button
                         size="small"
                         type="link"
@@ -248,10 +212,12 @@ function PromptCardItems({
                       </Button>
                     </Space>
                     <Space>
-                      {enforceType === TABLE_ENFORCE_TYPE &&
+                      {(enforceType === TABLE_ENFORCE_TYPE ||
+                        enforceType === RECORD_ENFORCE_TYPE) &&
                         TableExtractionSettingsBtn && (
                           <TableExtractionSettingsBtn
                             promptId={promptDetails?.prompt_id}
+                            enforceType={enforceType}
                           />
                         )}
                       <Select
@@ -262,9 +228,7 @@ function PromptCardItems({
                         options={enforceTypeList}
                         value={promptDetails?.enforce_type || null}
                         disabled={
-                          disableLlmOrDocChange.includes(
-                            promptDetails?.prompt_id
-                          ) ||
+                          isCoverageLoading ||
                           isSinglePassExtractLoading ||
                           indexDocs.includes(selectedDoc?.document_id) ||
                           isPublicSource
@@ -273,7 +237,6 @@ function PromptCardItems({
                       />
                     </Space>
                   </div>
-                  {EvalMetrics && <EvalMetrics result={result} />}
                 </Space>
               </>
             )}
@@ -281,12 +244,9 @@ function PromptCardItems({
           <Row>
             <PromptOutput
               promptDetails={promptDetails}
-              isRunLoading={isRunLoading}
-              result={result}
               handleRun={handleRun}
               selectedLlmProfileId={selectedLlmProfileId}
               handleSelectDefaultLLM={handleSelectDefaultLLM}
-              timers={timers}
               spsLoading={spsLoading}
               llmProfileDetails={llmProfileDetails}
               setOpenIndexProfile={setOpenIndexProfile}
@@ -295,6 +255,8 @@ function PromptCardItems({
               isNotSingleLlmProfile={isNotSingleLlmProfile}
               setIsIndexOpen={setIsIndexOpen}
               enforceType={enforceType}
+              promptOutputs={promptOutputs}
+              promptRunStatus={promptRunStatus}
             />
           </Row>
         </Collapse.Panel>
@@ -311,13 +273,10 @@ function PromptCardItems({
 PromptCardItems.propTypes = {
   promptDetails: PropTypes.object.isRequired,
   enforceTypeList: PropTypes.array,
-  isRunLoading: PropTypes.object,
   promptKey: PropTypes.text,
   setPromptKey: PropTypes.func.isRequired,
   promptText: PropTypes.text,
   setPromptText: PropTypes.func.isRequired,
-  result: PropTypes.object.isRequired,
-  coverage: PropTypes.number.isRequired,
   progressMsg: PropTypes.object.isRequired,
   handleRun: PropTypes.func.isRequired,
   handleChange: PropTypes.func.isRequired,
@@ -327,13 +286,12 @@ PromptCardItems.propTypes = {
   updateStatus: PropTypes.object.isRequired,
   updatePlaceHolder: PropTypes.string,
   isCoverageLoading: PropTypes.bool.isRequired,
-  setOpenEval: PropTypes.func.isRequired,
   setOpenOutputForDoc: PropTypes.func.isRequired,
   selectedLlmProfileId: PropTypes.string,
-  timers: PropTypes.object.isRequired,
   spsLoading: PropTypes.object,
   handleSpsLoading: PropTypes.func.isRequired,
-  handleGetOutput: PropTypes.func.isRequired,
+  promptOutputs: PropTypes.object.isRequired,
+  promptRunStatus: PropTypes.object.isRequired,
 };
 
 export { PromptCardItems };

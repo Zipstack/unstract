@@ -1,22 +1,30 @@
 import PropTypes from "prop-types";
 import { useDrag, useDrop } from "react-dnd";
-import { useRef } from "react";
+import { memo, useRef } from "react";
 
 import { NotesCard } from "../notes-card/NotesCard";
 import { PromptCard } from "./PromptCard";
 import { promptType } from "../../../helpers/GetStaticData";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
+import usePromptRun from "../../../hooks/usePromptRun";
+import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
 
-function PromptDnd({
+const PromptDnd = memo(function PromptDnd({
   item,
   index,
-  handleChange,
+  handleChangePromptCard,
   handleDelete,
-  updateStatus,
   moveItem,
+  outputs,
+  enforceTypeList,
+  setUpdatedPromptsCopy,
 }) {
   const ref = useRef(null);
   const { isSimplePromptStudio } = useCustomToolStore();
+  const { handlePromptRunRequest } = usePromptRun();
+  const promptRunStatus = usePromptRunStatusStore(
+    (state) => state?.promptRunStatus?.[item?.prompt_id] || {}
+  );
 
   const [, drop] = useDrop({
     accept: "PROMPT_CARD",
@@ -32,6 +40,7 @@ function PromptDnd({
       isDragging: monitor.isDragging(),
     }),
   });
+
   drag(drop(ref));
 
   return (
@@ -39,32 +48,40 @@ function PromptDnd({
       {(item.prompt_type === promptType.prompt || isSimplePromptStudio) && (
         <PromptCard
           promptDetails={item}
-          handleChange={handleChange}
+          handleChangePromptCard={handleChangePromptCard}
           handleDelete={handleDelete}
-          updateStatus={updateStatus}
           updatePlaceHolder="Enter Prompt"
+          promptOutputs={outputs}
+          enforceTypeList={enforceTypeList}
+          setUpdatedPromptsCopy={setUpdatedPromptsCopy}
+          handlePromptRunRequest={handlePromptRunRequest}
+          promptRunStatus={promptRunStatus}
         />
       )}
       {item.prompt_type === promptType.notes && (
         <NotesCard
-          details={item}
-          handleChange={handleChange}
+          promptDetails={item}
+          handleChangePromptCard={handleChangePromptCard}
           handleDelete={handleDelete}
-          updateStatus={updateStatus}
           updatePlaceHolder="Enter Notes"
+          setUpdatedPromptsCopy={setUpdatedPromptsCopy}
         />
       )}
     </div>
   );
-}
+});
+
+PromptDnd.displayName = "PromptDnd";
 
 PromptDnd.propTypes = {
   item: PropTypes.object.isRequired,
   index: PropTypes.number.isRequired,
-  handleChange: PropTypes.func.isRequired,
+  handleChangePromptCard: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
-  updateStatus: PropTypes.object.isRequired,
   moveItem: PropTypes.func.isRequired,
+  outputs: PropTypes.object.isRequired,
+  enforceTypeList: PropTypes.array.isRequired,
+  setUpdatedPromptsCopy: PropTypes.func.isRequired,
 };
 
 export { PromptDnd };

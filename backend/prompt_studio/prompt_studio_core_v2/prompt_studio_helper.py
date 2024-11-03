@@ -1,9 +1,10 @@
 import json
 import logging
 import os
+import time
 import uuid
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from account_v2.constants import Common
 from account_v2.models import User
@@ -12,6 +13,8 @@ from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
 from django.db.models.manager import BaseManager
 from file_management.file_management_helper import FileManagerHelper
+from prompt_studio.modifier_loader import ModifierConfig
+from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
@@ -29,11 +32,15 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     EmptyPromptError,
     IndexingAPIError,
     NoPromptsFound,
+    OperationNotSupported,
     PermissionError,
     ToolNotValid,
 )
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import PromptIdeBaseTool
+from prompt_studio.prompt_studio_core_v2.prompt_variable_service import (
+    PromptStudioVariableService,
+)
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
 from prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper import (  # noqa: E501
     PromptStudioIndexHelper,
@@ -55,6 +62,8 @@ CHOICES_JSON = "/static/select_choices.json"
 ERROR_MSG = "User %s doesn't have access to adapter %s"
 
 logger = logging.getLogger(__name__)
+
+modifier_plugins = load_modifier_plugins()
 
 
 class PromptStudioHelper:
@@ -254,6 +263,11 @@ class PromptStudioHelper:
         choices = f.read()
         f.close()
         response: dict[str, Any] = json.loads(choices)
+        for modifier_plugin in modifier_plugins:
+            cls = modifier_plugin[ModifierConfig.METADATA][
+                ModifierConfig.METADATA_SERVICE_CLASS
+            ]
+            response = cls.update_select_choices(default_choices=response)
         return response
 
     @staticmethod
@@ -293,6 +307,7 @@ class PromptStudioHelper:
         document_id: str,
         is_summary: bool = False,
         run_id: str = None,
+        text_processor: Optional[type[Any]] = None,
     ) -> Any:
         """Method to index a document.
 
@@ -329,6 +344,7 @@ class PromptStudioHelper:
             logger.error(f"No tool instance found for the ID {tool_id}")
             raise ToolNotValid()
 
+        start_time = time.time()
         logger.info(f"[{tool_id}] Indexing started for doc: {file_name}")
         PromptStudioHelper._publish_log(
             {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
@@ -342,7 +358,9 @@ class PromptStudioHelper:
         # Need to check the user who created profile manager
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
-
+        process_text = None
+        if text_processor:
+            process_text = text_processor.process
         doc_id = PromptStudioHelper.dynamic_indexer(
             profile_manager=default_profile,
             tool_id=tool_id,
@@ -353,14 +371,20 @@ class PromptStudioHelper:
             reindex=True,
             run_id=run_id,
             user_id=user_id,
+            process_text=process_text,
         )
 
+        elapsed_time = time.time() - start_time
+        logger.info(
+            f"[{tool_id}] Indexing successful for doc: {file_name},"
+            f" took {elapsed_time:.3f}s"
+        )
         logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
         PromptStudioHelper._publish_log(
             {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
             LogLevels.INFO,
             LogLevels.RUN,
-            "Indexing successful",
+            f"Indexing successful, took {elapsed_time:.3f}s",
         )
 
         return doc_id.get("output")
@@ -374,6 +398,7 @@ class PromptStudioHelper:
         id: Optional[str] = None,
         run_id: str = None,
         profile_manager_id: Optional[str] = None,
+        text_processor: Optional[type[Any]] = None,
     ) -> Any:
         """Execute chain/single run of the prompts. Makes a call to prompt
         service and returns the dict of response.
@@ -400,19 +425,27 @@ class PromptStudioHelper:
 
         if id:
             return PromptStudioHelper._execute_single_prompt(
-                id,
-                doc_path,
-                doc_name,
-                tool_id,
-                org_id,
-                user_id,
-                document_id,
-                run_id,
-                profile_manager_id,
+                id=id,
+                doc_path=doc_path,
+                doc_name=doc_name,
+                tool_id=tool_id,
+                org_id=org_id,
+                user_id=user_id,
+                document_id=document_id,
+                run_id=run_id,
+                profile_manager_id=profile_manager_id,
+                text_processor=text_processor,
             )
         else:
             return PromptStudioHelper._execute_prompts_in_single_pass(
-                doc_path, tool_id, org_id, user_id, document_id, run_id
+                doc_path=doc_path,
+                doc_name=doc_name,
+                tool_id=tool_id,
+                org_id=org_id,
+                user_id=user_id,
+                document_id=document_id,
+                run_id=run_id,
+                text_processor=text_processor,
             )
 
     @staticmethod
@@ -426,8 +459,16 @@ class PromptStudioHelper:
         document_id,
         run_id,
         profile_manager_id,
+        text_processor: Optional[type[Any]] = None,
     ):
         prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
+
+        if (
+            prompt_instance.enforce_type == TSPKeys.TABLE
+            or prompt_instance.enforce_type == TSPKeys.RECORD
+        ) and not modifier_plugins:
+            raise OperationNotSupported()
+
         prompt_name = prompt_instance.prompt_key
         PromptStudioHelper._publish_log(
             {
@@ -460,7 +501,9 @@ class PromptStudioHelper:
             LogLevels.RUN,
             "Invoking prompt service",
         )
-
+        process_text = None
+        if text_processor:
+            process_text = text_processor.process
         try:
             response = PromptStudioHelper._fetch_response(
                 doc_path=doc_path,
@@ -472,9 +515,15 @@ class PromptStudioHelper:
                 run_id=run_id,
                 profile_manager_id=profile_manager_id,
                 user_id=user_id,
+                process_text=process_text,
             )
             return PromptStudioHelper._handle_response(
-                response, run_id, prompts, document_id, False, profile_manager_id
+                response=response,
+                run_id=run_id,
+                prompts=prompts,
+                document_id=document_id,
+                is_single_pass=False,
+                profile_manager_id=profile_manager_id,
             )
         except Exception as e:
             logger.error(
@@ -497,10 +546,24 @@ class PromptStudioHelper:
 
     @staticmethod
     def _execute_prompts_in_single_pass(
-        doc_path, tool_id, org_id, user_id, document_id, run_id
+        doc_path,
+        doc_name,
+        tool_id,
+        org_id,
+        user_id,
+        document_id,
+        run_id,
+        text_processor: Optional[type[Any]] = None,
     ):
         prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
-        prompts = [prompt for prompt in prompts if prompt.prompt_type != TSPKeys.NOTES]
+        prompts = [
+            prompt
+            for prompt in prompts
+            if prompt.prompt_type != TSPKeys.NOTES
+            and prompt.active
+            and prompt.enforce_type != TSPKeys.TABLE
+            and prompt.enforce_type != TSPKeys.RECORD
+        ]
         if not prompts:
             logger.error(f"[{tool_id or 'NA'}] No prompts found for id: {id}")
             raise NoPromptsFound()
@@ -511,20 +574,28 @@ class PromptStudioHelper:
             LogLevels.RUN,
             "Executing prompts in single pass",
         )
-
+        process_text = None
+        if text_processor:
+            process_text = text_processor.process
         try:
             tool = prompts[0].tool_id
             response = PromptStudioHelper._fetch_single_pass_response(
                 file_path=doc_path,
+                doc_name=doc_name,
                 tool=tool,
                 prompts=prompts,
                 org_id=org_id,
                 document_id=document_id,
                 run_id=run_id,
                 user_id=user_id,
+                process_text=process_text,
             )
             return PromptStudioHelper._handle_response(
-                response, run_id, prompts, document_id, True
+                response=response,
+                run_id=run_id,
+                prompts=prompts,
+                document_id=document_id,
+                is_single_pass=True,
             )
         except Exception as e:
             logger.error(
@@ -553,8 +624,26 @@ class PromptStudioHelper:
         return str(Path(doc_path) / doc_name)
 
     @staticmethod
+    def _get_extract_or_summary_document_path(
+        org_id, user_id, tool_id, doc_name, doc_type
+    ) -> str:
+        doc_path = FileManagerHelper.handle_sub_directory_for_tenants(
+            org_id=org_id,
+            user_id=user_id,
+            tool_id=tool_id,
+            is_create=False,
+        )
+        extracted_doc_name = Path(doc_name).stem + TSPKeys.TXT_EXTENTION
+        return str(Path(doc_path) / doc_type / extracted_doc_name)
+
+    @staticmethod
     def _handle_response(
-        response, run_id, prompts, document_id, is_single_pass, profile_manager_id=None
+        response,
+        run_id,
+        prompts,
+        document_id,
+        is_single_pass,
+        profile_manager_id=None,
     ):
         if response.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
@@ -562,16 +651,15 @@ class PromptStudioHelper:
                 "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
             }
 
-        OutputManagerHelper.handle_prompt_output_update(
+        return OutputManagerHelper.handle_prompt_output_update(
             run_id=run_id,
             prompts=prompts,
             outputs=response["output"],
             document_id=document_id,
             is_single_pass_extract=is_single_pass,
             profile_manager_id=profile_manager_id,
-            context=response["metadata"].get("context"),
+            metadata=response["metadata"],
         )
-        return response
 
     @staticmethod
     def _fetch_response(
@@ -584,6 +672,7 @@ class PromptStudioHelper:
         run_id: str,
         user_id: str,
         profile_manager_id: Optional[str] = None,
+        process_text: Optional[Callable[[str], str]] = None,
     ) -> Any:
         """Utility function to invoke prompt service. Used internally.
 
@@ -654,13 +743,14 @@ class PromptStudioHelper:
             is_summary=tool.summarize_as_source,
             run_id=run_id,
             user_id=user_id,
+            process_text=process_text,
         )
         if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
                 "status": IndexingStatus.PENDING_STATUS.value,
                 "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
             }
-
+        tool_id = str(tool.tool_id)
         output: dict[str, Any] = {}
         outputs: list[dict[str, Any]] = []
         grammer_dict = {}
@@ -700,6 +790,14 @@ class PromptStudioHelper:
                 attr_val = getattr(prompt, attr)
                 output[TSPKeys.EVAL_SETTINGS][attr] = attr_val
 
+        output = PromptStudioHelper.fetch_table_settings_if_enabled(
+            doc_name, prompt, org_id, user_id, tool_id, output
+        )
+        variable_map = PromptStudioVariableService.frame_variable_replacement_map(
+            doc_id=document_id, prompt_object=prompt
+        )
+        if variable_map:
+            output[TSPKeys.VARIABLE_MAP] = variable_map
         outputs.append(output)
 
         tool_settings = {}
@@ -708,11 +806,13 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.SINGLE_PASS_EXTRACTION_MODE] = (
             tool.single_pass_extraction_mode
         )
+        tool_settings[TSPKeys.SUMMARIZE_AS_SOURCE] = tool.summarize_as_source
         tool_settings[TSPKeys.PREAMBLE] = tool.preamble
         tool_settings[TSPKeys.POSTAMBLE] = tool.postamble
         tool_settings[TSPKeys.GRAMMAR] = grammar_list
-
-        tool_id = str(tool.tool_id)
+        tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
+            settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
+        )
 
         file_hash = ToolUtils.get_hash_from_file(file_path=doc_path)
 
@@ -733,8 +833,9 @@ class PromptStudioHelper:
             prompt_host=settings.PROMPT_HOST,
             prompt_port=settings.PROMPT_PORT,
         )
+        include_metadata = {TSPKeys.INCLUDE_METADATA: True}
 
-        answer = responder.answer_prompt(payload)
+        answer = responder.answer_prompt(payload, include_metadata)
         # TODO: Make use of dataclasses
         if answer["status"] == "ERROR":
             # TODO: Publish to FE logs from here
@@ -747,6 +848,40 @@ class PromptStudioHelper:
         return output_response
 
     @staticmethod
+    def fetch_table_settings_if_enabled(
+        doc_name: str,
+        prompt: ToolStudioPrompt,
+        org_id: str,
+        user_id: str,
+        tool_id: str,
+        output: dict[str, Any],
+    ) -> dict[str, Any]:
+
+        if (
+            prompt.enforce_type == TSPKeys.TABLE
+            or prompt.enforce_type == TSPKeys.RECORD
+        ):
+            extract_doc_path: str = (
+                PromptStudioHelper._get_extract_or_summary_document_path(
+                    org_id, user_id, tool_id, doc_name, TSPKeys.EXTRACT
+                )
+            )
+            for modifier_plugin in modifier_plugins:
+                cls = modifier_plugin[ModifierConfig.METADATA][
+                    ModifierConfig.METADATA_SERVICE_CLASS
+                ]
+                output = cls.update(
+                    output=output,
+                    tool_id=tool_id,
+                    prompt_id=str(prompt.prompt_id),
+                    prompt=prompt.prompt,
+                    input_file=extract_doc_path,
+                    clean_pages=True,
+                )
+
+        return output
+
+    @staticmethod
     def dynamic_indexer(
         profile_manager: ProfileManager,
         tool_id: str,
@@ -757,6 +892,7 @@ class PromptStudioHelper:
         is_summary: bool = False,
         reindex: bool = False,
         run_id: str = None,
+        process_text: Optional[Callable[[str], str]] = None,
     ) -> Any:
         """Used to index a file based on the passed arguments.
 
@@ -780,9 +916,8 @@ class PromptStudioHelper:
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
         extract_file_path: Optional[str] = None
-
+        directory, filename = os.path.split(file_path)
         if not is_summary:
-            directory, filename = os.path.split(file_path)
             extract_file_path = os.path.join(
                 directory, "extract", os.path.splitext(filename)[0] + ".txt"
             )
@@ -792,6 +927,8 @@ class PromptStudioHelper:
         try:
 
             usage_kwargs = {"run_id": run_id}
+            # Orginal file name with which file got uploaded in prompt studio
+            usage_kwargs["file_name"] = filename
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = Index(tool=util)
             doc_id_key = tool_index.generate_index_key(
@@ -836,6 +973,7 @@ class PromptStudioHelper:
                 reindex=reindex,
                 output_file_path=extract_file_path,
                 usage_kwargs=usage_kwargs.copy(),
+                process_text=process_text,
             )
 
             PromptStudioIndexHelper.handle_index_manager(
@@ -849,6 +987,7 @@ class PromptStudioHelper:
             )
             return {"status": IndexingStatus.COMPLETED_STATUS.value, "output": doc_id}
         except (IndexingError, IndexingAPIError, SdkError) as e:
+            logger.error(f"Indexing failed : {e} ", stack_info=True, exc_info=True)
             doc_name = os.path.split(file_path)[1]
             PromptStudioHelper._publish_log(
                 {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
@@ -864,11 +1003,13 @@ class PromptStudioHelper:
     def _fetch_single_pass_response(
         tool: CustomTool,
         file_path: str,
+        doc_name: str,
         prompts: list[ToolStudioPrompt],
         org_id: str,
         user_id: str,
         document_id: str,
         run_id: str = None,
+        process_text: Optional[Callable[[str], str]] = None,
     ) -> Any:
         tool_id: str = str(tool.tool_id)
         outputs: list[dict[str, Any]] = []
@@ -904,6 +1045,7 @@ class PromptStudioHelper:
             document_id=document_id,
             run_id=run_id,
             user_id=user_id,
+            process_text=process_text,
         )
         if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
@@ -949,6 +1091,7 @@ class PromptStudioHelper:
             TSPKeys.TOOL_ID: tool_id,
             TSPKeys.RUN_ID: run_id,
             TSPKeys.FILE_HASH: file_hash,
+            TSPKeys.FILE_NAME: doc_name,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
         }
 
@@ -959,13 +1102,22 @@ class PromptStudioHelper:
             prompt_host=settings.PROMPT_HOST,
             prompt_port=settings.PROMPT_PORT,
         )
+        include_metadata = {TSPKeys.INCLUDE_METADATA: True}
 
-        answer = responder.single_pass_extraction(payload)
+        answer = responder.single_pass_extraction(payload, include_metadata)
         # TODO: Make use of dataclasses
         if answer["status"] == "ERROR":
             error_message = answer.get("error", None)
             raise AnswerFetchError(
-                f"Error while fetching response for prompt. {error_message}"
+                f"Error while fetching response for prompt(s). {error_message}"
             )
         output_response = json.loads(answer["structure_output"])
         return output_response
+
+    @staticmethod
+    def get_tool_from_tool_id(tool_id: str) -> Optional[CustomTool]:
+        try:
+            tool: CustomTool = CustomTool.objects.get(tool_id=tool_id)
+            return tool
+        except CustomTool.DoesNotExist:
+            return None

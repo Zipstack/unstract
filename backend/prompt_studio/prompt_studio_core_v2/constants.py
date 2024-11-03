@@ -62,7 +62,6 @@ class ToolStudioPromptKeys:
     WORD = "word"
     SYNONYMS = "synonyms"
     OUTPUTS = "outputs"
-    ASSERT_PROMPT = "assert_prompt"
     SECTION = "section"
     DEFAULT = "default"
     REINDEX = "reindex"
@@ -88,6 +87,13 @@ class ToolStudioPromptKeys:
     PROFILE_MANAGER_ID = "profile_manager"
     CONTEXT = "context"
     METADATA = "metadata"
+    INCLUDE_METADATA = "include_metadata"
+    TXT_EXTENTION = ".txt"
+    TABLE = "table"
+    PLATFORM_POSTAMBLE = "platform_postamble"
+    SUMMARIZE_AS_SOURCE = "summarize_as_source"
+    VARIABLE_MAP = "variable_map"
+    RECORD = "record"
 
 
 class FileViewTypes:
@@ -101,14 +107,6 @@ class LogLevels:
     ERROR = "ERROR"
     DEBUG = "DEBUG"
     RUN = "RUN"
-
-
-class LogLevel(Enum):
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARN = "WARN"
-    ERROR = "ERROR"
-    FATAL = "FATAL"
 
 
 class IndexingStatus(Enum):

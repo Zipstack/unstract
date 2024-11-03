@@ -75,11 +75,8 @@
 
 .prompt-card-result {
   padding-top: 12px;
+  position: relative;
   background-color: #fff8e6;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: -webkit-fill-available;
 }
 
 .prompt-card-result .ant-typography {
@@ -128,15 +125,29 @@
 .llm-info {
   display: flex;
   align-items: center;
+  justify-content: space-between;
 }
 
-.prompt-card-llm-title {
-  margin: 0 0 0 10px !important;
+.llm-info-left {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.llm-info-right {
+  flex-shrink: 0;
 }
 
 .prompt-card-llm-icon {
-  display: flex;
-  justify-content: center;
+  flex-shrink: 0;
+}
+
+.prompt-card-llm-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-left: 8px;
 }
 
 .prompt-cost-item {
@@ -146,11 +157,8 @@
 
 .prompt-info {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-}
-
-.llm-info-container > * {
-  margin-left: 10px;
 }
 
 .prompt-card-llm-container {
@@ -169,20 +177,28 @@
 }
 
 .collapsed-output {
-  max-height: 20px; /* Adjust height as necessary */
+  max-height: 20px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .expanded-output {
-  max-height: 250px; /* Adjust height as necessary */
+  max-height: 250px;
   overflow-y: auto;
 }
 
 .prompt-profile-run {
-  align-self: flex-end;
-  margin-left: 10px;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+/* Show the copy button when hovering over the parent div */
+.prompt-card-result:hover .prompt-profile-run {
+  opacity: 1;
 }
 
 .index-output-tab {
@@ -218,10 +234,60 @@
 }
 
 .prompt-output-llm-bg {
-  background-color: #DDDDDD;
+  background-color: #dddddd;
   padding: 10px;
+  display: flex;
+  align-items: center;
 }
 
 .prompt-output-title {
   font-size: 18px;
+}
+
+.prompt-output-icon-enabled {
+  color: #52c41a;
+  margin-left: 5px;
+}
+
+.prompt-output-icon-disabled {
+  color: #babbbc;
+  margin-left: 5px;
+}
+
+.chunk-highlight {
+  background-color: yellow;
+}
+
+.active-chunk-highlight {
+  background-color: orange;
+  border: 1px solid red;
+}
+
+.chunk-container {
+  margin-bottom: 20px;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: #f9f9f9;
+}
+
+.chunk-search-container {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.search-control-container {
+  min-width: 120px;
+  align-self: center;
+}
+
+.page-count-container {
+  background-color: #f9f9f9;
+  border-radius: 10px;
+  padding: 5px 10px;
+}
+
+.info-circle-colored {
+  color: #f0ad4e;
 }

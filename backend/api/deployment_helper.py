@@ -20,6 +20,7 @@ from django.db import connection
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
 from rest_framework.utils.serializer_helpers import ReturnDict
+from utils.constants import CeleryQueue
 from workflow_manager.endpoint.destination import DestinationConnector
 from workflow_manager.endpoint.source import SourceConnector
 from workflow_manager.workflow.dto import ExecutionResponse
@@ -88,7 +89,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         Returns:
         - str: The complete API endpoint URL.
         """
-        org_schema = connection.get_tenant().schema_name
+        org_schema = connection.tenant.schema_name
         return f"{ApiExecution.PATH}/{org_schema}/{api_name}/"
 
     @staticmethod
@@ -147,6 +148,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         file_objs: list[UploadedFile],
         timeout: int,
         include_metadata: bool = False,
+        use_file_history: bool = False,
     ) -> ReturnDict:
         """Execute workflow by api.
 
@@ -154,6 +156,8 @@ class DeploymentHelper(BaseAPIKeyValidator):
             organization_name (str): organization name
             api (APIDeployment): api model object
             file_obj (UploadedFile): input file
+            use_file_history (bool): Use FileHistory table to return results on already
+                processed files. Defaults to False
 
         Returns:
             ReturnDict: execution status/ result
@@ -166,6 +170,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             workflow_id=workflow_id,
             execution_id=execution_id,
             file_objs=file_objs,
+            use_file_history=use_file_history,
         )
         try:
             result = WorkflowHelper.execute_workflow_async(
@@ -174,6 +179,8 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 hash_values_of_files=hash_values_of_files,
                 timeout=timeout,
                 execution_id=execution_id,
+                queue=CeleryQueue.CELERY_API_DEPLOYMENTS,
+                use_file_history=use_file_history,
             )
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id

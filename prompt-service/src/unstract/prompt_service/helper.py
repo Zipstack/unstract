@@ -7,9 +7,11 @@ from typing import Any, Optional
 
 from dotenv import load_dotenv
 from flask import Flask, current_app, json
-from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
 from unstract.prompt_service.config import db
+from unstract.prompt_service.constants import DBTableV2
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
+from unstract.prompt_service.db_utils import DBUtils
+from unstract.prompt_service.env_manager import EnvLoader
 from unstract.prompt_service.exceptions import APIError, RateLimitError
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
 from unstract.sdk.exceptions import SdkError
@@ -112,7 +114,8 @@ def initialize_plugin_endpoints(app: Flask) -> None:
 
 
 def query_usage_metadata(token: str, metadata: dict[str, Any]) -> dict[str, Any]:
-    org_id: str = AuthenticationMiddleware.get_account_from_bearer_token(token)
+    DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract_v2")
+    organization_uid, org_id = DBUtils.get_organization_from_bearer_token(token)
     run_id: str = metadata["run_id"]
     query: str = f"""
         SELECT
@@ -124,8 +127,8 @@ def query_usage_metadata(token: str, metadata: dict[str, Any]) -> dict[str, Any]
             SUM(total_tokens) AS total_tokens,
             SUM(embedding_tokens) AS embedding_tokens,
             SUM(cost_in_dollars) AS cost_in_dollars
-        FROM "{org_id}"."token_usage"
-        WHERE run_id = %s
+        FROM "{DB_SCHEMA}"."{DBTableV2.TOKEN_USAGE}"
+        WHERE run_id = %s and organization_id = %s
         GROUP BY usage_type, llm_usage_reason, model_name;
     """
     logger: Logger = current_app.logger
@@ -134,7 +137,7 @@ def query_usage_metadata(token: str, metadata: dict[str, Any]) -> dict[str, Any]
             logger.info(
                 "Querying usage metadata for org_id: %s, run_id: %s", org_id, run_id
             )
-            cursor = db.execute_sql(query, (run_id,))
+            cursor = db.execute_sql(query, (run_id, organization_uid))
             results: list[tuple] = cursor.fetchall()
             # Process results as needed
             for row in results:
@@ -229,6 +232,7 @@ def construct_and_run_prompt(
         prompt=prompt,
         metadata=metadata,
         prompt_key=output[PSKeys.NAME],
+        prompt_type=output.get(PSKeys.TYPE, PSKeys.TEXT),
     )
 
 
@@ -240,10 +244,7 @@ def construct_prompt(
     context: str,
     platform_postamble: str,
 ) -> str:
-    prompt = (
-        f"{preamble}\n\nContext:\n---------------\n{context}\n"
-        f"-----------------\n\nQuestion or Instruction: {prompt}\n"
-    )
+    prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}"
     if grammar_list is not None and len(grammar_list) > 0:
         prompt += "\n"
         for grammar in grammar_list:
@@ -258,7 +259,10 @@ def construct_prompt(
                     {", ".join(synonyms)} in both the quesiton and the context.'  # noqa
     if platform_postamble:
         platform_postamble += "\n\n"
-    prompt += f"\n\n{postamble}\n\n{platform_postamble}Answer:"
+    prompt += (
+        f"\n\n{postamble}\n\nContext:\n---------------\n{context}\n"
+        f"-----------------\n\n{platform_postamble}Answer:"
+    )
     return prompt
 
 
@@ -267,6 +271,7 @@ def run_completion(
     prompt: str,
     metadata: Optional[dict[str, str]] = None,
     prompt_key: Optional[str] = None,
+    prompt_type: Optional[str] = PSKeys.TEXT,
 ) -> str:
     logger: Logger = current_app.logger
     try:
@@ -279,6 +284,7 @@ def run_completion(
         completion = llm.complete(
             prompt=prompt,
             process_text=extract_epilogue,
+            extract_json=prompt_type.lower() != PSKeys.TEXT,
         )
         answer: str = completion[PSKeys.RESPONSE].text
         epilogue = completion.get(PSKeys.EPILOGUE)
@@ -304,6 +310,7 @@ def extract_table(
     plugins: dict[str, dict[str, Any]],
     structured_output: dict[str, Any],
     llm: LLM,
+    enforce_type: str,
 ) -> dict[str, Any]:
     table_settings = output[PSKeys.TABLE_SETTINGS]
     table_extractor: dict[str, Any] = plugins.get("table-extractor", {})
@@ -314,7 +321,7 @@ def extract_table(
         )
     try:
         answer = table_extractor["entrypoint_cls"].extract_large_table(
-            llm=llm, table_settings=table_settings
+            llm=llm, table_settings=table_settings, enforce_type=enforce_type
         )
         structured_output[output[PSKeys.NAME]] = answer
         # We do not support summary and eval for table.

@@ -28,6 +28,14 @@ try {
   // Ignore if hook not available
 }
 
+let selectedProduct;
+let selectedProductStore;
+
+try {
+  selectedProductStore = require("../plugins/llm-whisperer/store/select-product-store.js");
+} catch {
+  // Ignore if hook not available
+}
 function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
   const handleException = useExceptionHandler();
@@ -35,6 +43,26 @@ function useSessionValid() {
   const navigate = useNavigate();
   const userSession = useUserSession();
 
+  try {
+    if (selectedProductStore?.useSelectedProductStore) {
+      selectedProduct = selectedProductStore?.useSelectedProductStore(
+        (state) => state?.selectedProduct
+      );
+    }
+  } catch (error) {
+    // Do nothing
+  }
+  const navToSelectProduct = (
+    userSessionData,
+    selectedProductStore,
+    selectedProduct
+  ) => {
+    if (userSessionData && selectedProductStore && !selectedProduct) {
+      navigate("/selectProduct");
+      return true; // Indicate that navigation has occurred
+    }
+    return false;
+  };
   return async () => {
     try {
       const userSessionData = await userSession();
@@ -45,6 +73,15 @@ function useSessionValid() {
       }
 
       const signedInOrgId = userSessionData?.organization_id;
+      const shouldNavigate = navToSelectProduct(
+        userSessionData,
+        selectedProductStore,
+        selectedProduct
+      );
+      if (shouldNavigate) {
+        return; // Exit early, don't run the remaining steps
+      }
+      const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
 
       // API to get the list of organizations
       const requestOptions = {
@@ -106,22 +143,25 @@ function useSessionValid() {
         .pop()
         .split(";")[0];
       userAndOrgDetails["zCode"] = zCode;
+      if (isUnstract) {
+        requestOptions["method"] = "GET";
 
-      requestOptions["method"] = "GET";
+        requestOptions["url"] = `/api/v1/unstract/${orgId}/adapter/`;
+        requestOptions["headers"] = {
+          "X-CSRFToken": csrfToken,
+        };
+        const getAdapterDetails = await axios(requestOptions);
+        const adapterTypes = [
+          ...new Set(
+            getAdapterDetails?.data?.map((obj) =>
+              obj.adapter_type.toLowerCase()
+            )
+          ),
+        ];
+        userAndOrgDetails["adapters"] = adapterTypes;
+      }
 
-      requestOptions["url"] = `/api/v1/unstract/${orgId}/adapter/`;
-      requestOptions["headers"] = {
-        "X-CSRFToken": csrfToken,
-      };
-      const getAdapterDetails = await axios(requestOptions);
-      const adapterTypes = [
-        ...new Set(
-          getAdapterDetails?.data?.map((obj) => obj.adapter_type.toLowerCase())
-        ),
-      ];
-      userAndOrgDetails["adapters"] = adapterTypes;
-
-      if (getTrialDetails) {
+      if (getTrialDetails && isUnstract) {
         const remainingTrialDays = await getTrialDetails.fetchTrialDetails(
           orgId,
           csrfToken
@@ -130,8 +170,10 @@ function useSessionValid() {
           userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
       }
 
-      const flags = await listFlags(orgId, csrfToken);
-      userAndOrgDetails["flags"] = flags;
+      if (isUnstract) {
+        const flags = await listFlags(orgId, csrfToken);
+        userAndOrgDetails["flags"] = flags;
+      }
 
       userAndOrgDetails["allOrganization"] = orgs;
       if (isPlatformAdmin) {

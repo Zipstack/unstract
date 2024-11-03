@@ -1,8 +1,7 @@
 import logging
-import uuid
 from typing import Any
 
-from django.db import connection
+from pipeline_v2.models import Pipeline
 from rest_framework.serializers import ValidationError
 from scheduler.constants import SchedulerConstants as SC
 from scheduler.exceptions import JobDeletionError, JobSchedulingError
@@ -13,19 +12,10 @@ from scheduler.tasks import (
     disable_task,
     enable_task,
 )
+from utils.user_context import UserContext
+from workflow_manager.workflow_v2.constants import WorkflowKey
+from workflow_manager.workflow_v2.serializers import ExecuteWorkflowSerializer
 
-from backend.constants import FeatureFlag
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-    from pipeline_v2.models import Pipeline
-    from utils.user_context import UserContext
-    from workflow_manager.workflow_v2.constants import WorkflowExecutionKey, WorkflowKey
-    from workflow_manager.workflow_v2.serializers import ExecuteWorkflowSerializer
-else:
-    from pipeline.models import Pipeline
-    from workflow_manager.workflow.constants import WorkflowExecutionKey, WorkflowKey
-    from workflow_manager.workflow.serializers import ExecuteWorkflowSerializer
 logger = logging.getLogger(__name__)
 
 
@@ -46,17 +36,12 @@ class SchedulerHelper:
         task_data = job_kwargs.get("data", {})
 
         task_data[WorkflowKey.WF_ID] = pipeline.workflow.id
-        execution_id = str(uuid.uuid4())
-        task_data[WorkflowExecutionKey.EXECUTION_ID] = execution_id
         serializer = ExecuteWorkflowSerializer(data=task_data)
         serializer.is_valid(raise_exception=True)
         workflow_id = serializer.get_workflow_id(serializer.validated_data)
         # TODO: Remove unused argument in execute_pipeline_task
         execution_action = serializer.get_execution_action(serializer.validated_data)
-        if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-            organization_id = UserContext.get_organization_identifier()
-        else:
-            organization_id = connection.tenant.schema_name
+        organization_id = UserContext.get_organization_identifier()
 
         create_or_update_periodic_task(
             cron_string=cron_string,
@@ -66,7 +51,8 @@ class SchedulerHelper:
                 str(workflow_id),
                 organization_id,
                 execution_action or "",
-                execution_id,
+                # TODO: execution_id parameter cannot be removed without a migration.
+                "",
                 str(pipeline.pk),
                 # Added to remain backward compatible - remove after data migration
                 # which removes unused args in execute_pipeline_task
