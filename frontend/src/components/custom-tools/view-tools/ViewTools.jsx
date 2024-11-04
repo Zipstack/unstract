@@ -10,19 +10,19 @@ import { EmptyState } from "../../widgets/empty-state/EmptyState";
 function ViewTools({
   isLoading,
   isEmpty,
-  listOfTools,
-  setOpenAddTool,
+  listOfTools = [],
+  setOpenAddTool = () => {},
   handleEdit,
   handleDelete,
   titleProp,
-  descriptionProp,
-  iconProp,
+  descriptionProp = "",
+  iconProp = "",
   idProp,
   centered = false,
   isClickable = true,
-  handleShare,
+  handleShare = null,
   showOwner = false,
-  type,
+  type = "",
 }) {
   const handleEmptyStateClick = useCallback(() => {
     setOpenAddTool(true);
@@ -91,18 +91,6 @@ ViewTools.propTypes = {
   isClickable: PropTypes.bool,
   showOwner: PropTypes.bool,
   type: PropTypes.string,
-};
-
-ViewTools.defaultProps = {
-  listOfTools: [],
-  setOpenAddTool: () => {},
-  descriptionProp: "",
-  iconProp: "",
-  centered: false,
-  isClickable: true,
-  handleShare: null,
-  showOwner: false,
-  type: "",
 };
 
 export { ViewTools };

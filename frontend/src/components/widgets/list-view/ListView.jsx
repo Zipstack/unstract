@@ -1,5 +1,3 @@
-// ListView.jsx
-
 import {
   Avatar,
   Image,
@@ -28,14 +26,14 @@ function ListView({
   listOfTools,
   handleEdit,
   handleDelete,
-  handleShare,
+  handleShare = null,
   titleProp,
-  descriptionProp,
-  iconProp,
+  descriptionProp = "",
+  iconProp = "",
   idProp,
-  centered,
+  centered = false,
   isClickable = true,
-  type,
+  type = "",
 }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
@@ -274,15 +272,6 @@ ListView.propTypes = {
   centered: PropTypes.bool,
   isClickable: PropTypes.bool,
   type: PropTypes.string,
-};
-
-ListView.defaultProps = {
-  handleShare: null,
-  descriptionProp: "",
-  iconProp: "",
-  centered: false,
-  isClickable: true,
-  type: "",
 };
 
 export { ListView };
