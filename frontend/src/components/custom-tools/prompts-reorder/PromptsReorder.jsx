@@ -20,7 +20,6 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
 
-  // Update list of prompts when modal is opened or details change
   useEffect(() => {
     if (!isOpen) {
       setListOfPrompts([]);
@@ -56,60 +55,81 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
     [listOfPrompts]
   );
 
-  const onDrop = useCallback((fromIndex, toIndex) => {
-    if (fromIndex === toIndex) return;
+  const handleDropSuccess = useCallback((data) => {
+    const responseData = data || [];
+    const sequenceMap = responseData.reduce((acc, item) => {
+      acc[item.id] = item.sequence_number;
+      return acc;
+    }, {});
 
-    updateReorderedStatus(true);
-
-    const body = {
-      start_sequence_number:
-        previousListOfPrompts.current[fromIndex]?.sequence_number,
-      end_sequence_number:
-        previousListOfPrompts.current[toIndex]?.sequence_number,
-      prompt_id: previousListOfPrompts.current[fromIndex]?.prompt_id,
-    };
-
-    const requestOptions = {
-      method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/reorder/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json",
-      },
-      data: body,
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data || [];
-        // Update listOfPrompts with new sequence_numbers
-        setListOfPrompts((prevPrompts) => {
-          const sequenceMap = {};
-          data.forEach((item) => {
-            sequenceMap[item.id] = item.sequence_number;
-          });
-          const updatedPrompts = prevPrompts.map((prompt) => {
-            if (sequenceMap[prompt.prompt_id] !== undefined) {
-              return {
-                ...prompt,
-                sequence_number: sequenceMap[prompt.prompt_id],
-              };
-            }
-            return prompt;
-          });
-          // Sort the prompts based on new sequence numbers
-          updatedPrompts.sort((a, b) => a.sequence_number - b.sequence_number);
-          return updatedPrompts;
-        });
-        previousListOfPrompts.current = [];
-      })
-      .catch((err) => {
-        // Revert back the listOfPrompts state
-        setListOfPrompts(previousListOfPrompts.current);
-        previousListOfPrompts.current = [];
-        setAlertDetails(handleException(err, "Failed to reorder the prompts"));
+    setListOfPrompts((prevPrompts) => {
+      const updatedPrompts = prevPrompts.map((prompt) => {
+        const newSequenceNumber = sequenceMap[prompt.prompt_id];
+        if (newSequenceNumber !== undefined) {
+          return { ...prompt, sequence_number: newSequenceNumber };
+        }
+        return prompt;
       });
+
+      // Sort the prompts based on new sequence numbers
+      updatedPrompts.sort((a, b) => a.sequence_number - b.sequence_number);
+      return updatedPrompts;
+    });
+
+    previousListOfPrompts.current = [];
   }, []);
+
+  const handleDropError = useCallback(
+    (err) => {
+      // Revert back the listOfPrompts state
+      setListOfPrompts(previousListOfPrompts.current);
+      previousListOfPrompts.current = [];
+      setAlertDetails(handleException(err, "Failed to reorder the prompts"));
+    },
+    [handleException, setAlertDetails]
+  );
+
+  const onDrop = useCallback(
+    async (fromIndex, toIndex) => {
+      if (fromIndex === toIndex) return;
+
+      updateReorderedStatus(true);
+
+      const body = {
+        start_sequence_number:
+          previousListOfPrompts.current[fromIndex]?.sequence_number,
+        end_sequence_number:
+          previousListOfPrompts.current[toIndex]?.sequence_number,
+        prompt_id: previousListOfPrompts.current[fromIndex]?.prompt_id,
+      };
+
+      const requestOptions = {
+        method: "POST",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/reorder/`,
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: body,
+      };
+
+      try {
+        const res = await axiosPrivate(requestOptions);
+        handleDropSuccess(res?.data);
+      } catch (err) {
+        handleDropError(err);
+      }
+    },
+    [
+      axiosPrivate,
+      handleDropError,
+      handleDropSuccess,
+      previousListOfPrompts,
+      sessionDetails?.csrfToken,
+      sessionDetails?.orgId,
+      updateReorderedStatus,
+    ]
+  );
 
   const cancelDrag = useCallback(() => {
     if (previousListOfPrompts.current?.length) {
@@ -118,7 +138,6 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
     }
   }, []);
 
-  // Memoize the rendered list to prevent unnecessary re-renders
   const renderedPrompts = useMemo(
     () =>
       listOfPrompts.map((prompt, index) => (
@@ -131,7 +150,7 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
           cancelDrag={cancelDrag}
         />
       )),
-    [listOfPrompts]
+    [listOfPrompts, movePrompt, onDrop, cancelDrag]
   );
 
   return (
