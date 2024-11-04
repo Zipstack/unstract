@@ -4,7 +4,7 @@ import { AddCustomToolFormModal } from "../add-custom-tool-form-modal/AddCustomT
 
 function ListOfToolsModal({ open, setOpen, editItem, isEdit, handleAddItem }) {
   const handleAddNewTool = useCallback(
-    (itemData) => handleAddItem(itemData, isEdit, editItem?.tool_id),
+    (itemData) => handleAddItem(itemData, editItem?.tool_id, isEdit),
     [handleAddItem, isEdit, editItem?.tool_id]
   );
 

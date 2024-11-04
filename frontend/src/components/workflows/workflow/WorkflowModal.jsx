@@ -25,7 +25,7 @@ function WorkflowModal({
   const orgName = sessionDetails?.orgName ?? "";
 
   const handleOnDone = (name, description) => {
-    handleAddItem({ name, description }, isEdit, editItem?.id)
+    handleAddItem({ name, description }, editItem?.id, isEdit)
       .then((project) => {
         if (!isEdit) {
           updateWorkflow({ projectName: project?.workflow_name ?? "" });

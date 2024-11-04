@@ -54,7 +54,7 @@ export function useListManager({
       });
   };
 
-  const updateList = (itemData, isEdit = false, itemId) => {
+  const updateList = (itemData, itemId, isEdit = false) => {
     let updatedList = [];
 
     if (isEdit) {
@@ -82,7 +82,7 @@ export function useListManager({
     setFilteredList(filtered);
   };
 
-  const handleAddItem = (itemData, isEdit = false, itemId) => {
+  const handleAddItem = (itemData, itemId, isEdit = false) => {
     const apiCall = isEdit ? editItemApiCall : addItemApiCall;
     if (!apiCall) return Promise.reject(new Error("API call is not defined"));
 

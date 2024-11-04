@@ -12,7 +12,7 @@ function ToolSettingsModal({
 }) {
   const handleAddNewItem = useCallback(
     (itemData) => {
-      updateList(itemData, isEdit, editItem?.id);
+      updateList(itemData, editItem?.id, isEdit);
       setOpen(false);
     },
     [isEdit, editItem?.id]
@@ -35,7 +35,6 @@ ToolSettingsModal.propTypes = {
   setOpen: PropTypes.func.isRequired,
   editItem: PropTypes.object,
   isEdit: PropTypes.bool.isRequired,
-  handleAddItem: PropTypes.func.isRequired,
   type: PropTypes.string.isRequired,
   updateList: PropTypes.func.isRequired,
 };
