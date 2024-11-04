@@ -1,15 +1,16 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import PropTypes from "prop-types";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
-import DraggablePrompt from "./DraggablePrompt";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
+import { Space } from "antd";
+
+import { useCustomToolStore } from "../../../store/custom-tool-store";
+import DraggablePrompt from "./DraggablePrompt";
 import "./PromptsReorder.css";
 import { useSessionStore } from "../../../store/session-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { Space } from "antd";
 
 function PromptsReorder({ isOpen, updateReorderedStatus }) {
   const [listOfPrompts, setListOfPrompts] = useState([]);
