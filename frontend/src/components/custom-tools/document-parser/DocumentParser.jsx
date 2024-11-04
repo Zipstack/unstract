@@ -41,7 +41,7 @@ function DocumentParser({
 
   useEffect(() => {
     const outputTypeData = getDropdownItems("output_type") || {};
-    const dropdownList1 = Object.keys(outputTypeData).map((item) => {
+    const dropdownList1 = Object.keys(outputTypeData)?.map((item) => {
       return { value: outputTypeData[item] };
     });
     setEnforceTypeList(dropdownList1);
@@ -49,7 +49,7 @@ function DocumentParser({
     return () => {
       // Set the prompts with updated changes when the component is unmounted
       const modifiedDetails = { ...details };
-      const modifiedPrompts = [...(modifiedDetails?.prompts || [])].map(
+      const modifiedPrompts = [...(modifiedDetails?.prompts || [])]?.map(
         (item) => {
           const itemPromptId = item?.prompt_id;
           if (itemPromptId && updatedPromptsCopy[itemPromptId]) {
@@ -185,7 +185,7 @@ function DocumentParser({
 
   return (
     <div className="doc-parser-layout">
-      {details?.prompts.map((item) => {
+      {details?.prompts?.map((item) => {
         return (
           <div key={item.prompt_id}>
             <div className="doc-parser-pad-top" />

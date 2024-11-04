@@ -29,7 +29,7 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
 
     const prompts = details?.prompts || [];
     setListOfPrompts(
-      prompts.map((prompt) => ({
+      prompts?.map((prompt) => ({
         prompt_key: prompt.prompt_key,
         prompt_id: prompt.prompt_id,
         sequence_number: prompt.sequence_number,
@@ -64,7 +64,7 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
     }, {});
 
     setListOfPrompts((prevPrompts) => {
-      const updatedPrompts = prevPrompts.map((prompt) => {
+      const updatedPrompts = prevPrompts?.map((prompt) => {
         const newSequenceNumber = sequenceMap[prompt.prompt_id];
         if (newSequenceNumber !== undefined) {
           return { ...prompt, sequence_number: newSequenceNumber };
@@ -141,7 +141,7 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
 
   const renderedPrompts = useMemo(
     () =>
-      listOfPrompts.map((prompt, index) => (
+      listOfPrompts?.map((prompt, index) => (
         <DraggablePrompt
           key={prompt.prompt_key}
           index={index}
