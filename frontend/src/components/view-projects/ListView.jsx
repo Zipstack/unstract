@@ -27,6 +27,7 @@ function ListView({
     handleSearch,
     handleAddItem,
     handleDeleteItem: deleteItem,
+    updateList,
   } = useListManagerHook;
 
   const [openModal, setOpenModal] = useState(false);
@@ -114,6 +115,7 @@ function ListView({
           editItem={editingItem}
           isEdit={isEdit}
           handleAddItem={handleAddItem}
+          updateList={updateList}
           type={type}
         />
       )}
@@ -131,6 +133,7 @@ ListView.propTypes = {
     handleSearch: PropTypes.func.isRequired,
     handleAddItem: PropTypes.func.isRequired,
     handleDeleteItem: PropTypes.func.isRequired,
+    updateList: PropTypes.func.isRequired,
   }).isRequired,
   CustomModalComponent: PropTypes.oneOfType([
     PropTypes.func,

@@ -1,7 +1,5 @@
 import PropTypes from "prop-types";
 import { useCallback } from "react";
-import { useAlertStore } from "../../../store/alert-store";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
 
 function ToolSettingsModal({
@@ -9,21 +7,13 @@ function ToolSettingsModal({
   setOpen,
   editItem,
   isEdit,
-  handleAddItem,
   type,
+  updateList,
 }) {
-  const { setAlertDetails } = useAlertStore();
-  const handleException = useExceptionHandler();
-
   const handleAddNewItem = useCallback(
     (itemData) => {
-      handleAddItem(itemData, isEdit, editItem?.id)
-        .then(() => {
-          setOpen(false);
-        })
-        .catch((err) => {
-          setAlertDetails(handleException(err, "Failed to add/edit adapter"));
-        });
+      updateList(itemData, isEdit, editItem?.id);
+      setOpen(false);
     },
     [isEdit, editItem?.id]
   );
@@ -47,6 +37,7 @@ ToolSettingsModal.propTypes = {
   isEdit: PropTypes.bool.isRequired,
   handleAddItem: PropTypes.func.isRequired,
   type: PropTypes.string.isRequired,
+  updateList: PropTypes.func.isRequired,
 };
 
 export default ToolSettingsModal;

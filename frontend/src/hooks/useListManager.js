@@ -54,6 +54,23 @@ export function useListManager({
       });
   };
 
+  const updateList = (itemData, isEdit = false, itemId) => {
+    let updatedList = [];
+
+    if (isEdit) {
+      updatedList = list.map((item) =>
+        item?.[itemIdProp] === itemId ? itemData : item
+      );
+      onEditSuccess?.(itemData);
+    } else {
+      updatedList = [itemData, ...list];
+      onAddSuccess?.(itemData);
+    }
+
+    setList(updatedList);
+    setFilteredList(updatedList);
+  };
+
   const handleSearch = (searchText = "") => {
     if (!searchText.trim()) {
       setFilteredList(list);
@@ -123,6 +140,7 @@ export function useListManager({
   return {
     list,
     filteredList,
+    updateList,
     loading,
     fetchList,
     handleSearch,
