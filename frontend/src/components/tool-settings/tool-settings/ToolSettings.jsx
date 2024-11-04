@@ -42,24 +42,25 @@ function ToolSettings({ type }) {
     useState(false);
   const [isPermissionEdit, setIsPermissionEdit] = useState(false);
 
+  const adapterBaseUrl = `/api/v1/unstract/${sessionDetails?.orgId}/adapter`;
+  const userBaseUrl = `/api/v1/unstract/${sessionDetails?.orgId}/users`;
+
   const getListApiCall = useCallback(
     ({ axiosPrivate, sessionDetails }) => {
       const requestOptions = {
         method: "GET",
-        url: `/api/v1/unstract/${
-          sessionDetails?.orgId
-        }/adapter?adapter_type=${type.toUpperCase()}`,
+        url: `${adapterBaseUrl}?adapter_type=${type.toUpperCase()}`,
       };
       return axiosPrivate(requestOptions);
     },
-    [type]
+    [type, adapterBaseUrl]
   );
 
   const addItemApiCall = useCallback(
     ({ axiosPrivate, sessionDetails, itemData }) => {
       const requestOptions = {
         method: "POST",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
+        url: `${adapterBaseUrl}/`,
         headers: {
           "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
@@ -68,14 +69,14 @@ function ToolSettings({ type }) {
       };
       return axiosPrivate(requestOptions);
     },
-    []
+    [adapterBaseUrl]
   );
 
   const editItemApiCall = useCallback(
     ({ axiosPrivate, sessionDetails, itemData, itemId }) => {
       const requestOptions = {
         method: "PATCH",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${itemId}/`,
+        url: `${adapterBaseUrl}/${itemId}/`,
         headers: {
           "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
@@ -84,21 +85,21 @@ function ToolSettings({ type }) {
       };
       return axiosPrivate(requestOptions);
     },
-    []
+    [adapterBaseUrl]
   );
 
   const deleteItemApiCall = useCallback(
     ({ axiosPrivate, sessionDetails, itemId }) => {
       const requestOptions = {
         method: "DELETE",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${itemId}/`,
+        url: `${adapterBaseUrl}/${itemId}/`,
         headers: {
           "X-CSRFToken": sessionDetails?.csrfToken,
         },
       };
       return axiosPrivate(requestOptions);
     },
-    []
+    [adapterBaseUrl]
   );
 
   const useListManagerHook = useListManager({
@@ -117,7 +118,7 @@ function ToolSettings({ type }) {
     setIsShareLoading(true);
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
+      url: `${userBaseUrl}/`,
     };
 
     axiosPrivate(requestOptions)
@@ -136,14 +137,13 @@ function ToolSettings({ type }) {
       .finally(() => {
         setIsShareLoading(false);
       });
-  }, []);
+  }, [userBaseUrl]);
 
-  // Memoized handleShare function
   const handleShare = useCallback(
     (adapter, isEdit) => {
       const requestOptions = {
         method: "GET",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/users/${adapter.id}/`,
+        url: `${adapterBaseUrl}/users/${adapter.id}/`,
         headers: {
           "X-CSRFToken": sessionDetails?.csrfToken,
         },
@@ -168,6 +168,7 @@ function ToolSettings({ type }) {
       setOpenSharePermissionModal,
       setAdapterDetails,
       setIsPermissionEdit,
+      adapterBaseUrl,
     ]
   );
 
@@ -175,7 +176,7 @@ function ToolSettings({ type }) {
     (userIds, adapter) => {
       const requestOptions = {
         method: "PATCH",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter.id}/`,
+        url: `${adapterBaseUrl}/${adapter.id}/`,
         headers: {
           "X-CSRFToken": sessionDetails?.csrfToken,
         },
@@ -189,7 +190,7 @@ function ToolSettings({ type }) {
           setAlertDetails(handleException(err, "Failed to load"));
         });
     },
-    [setOpenSharePermissionModal]
+    [setOpenSharePermissionModal, adapterBaseUrl]
   );
 
   const itemProps = useMemo(

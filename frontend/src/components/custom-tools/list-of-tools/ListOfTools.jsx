@@ -8,10 +8,15 @@ import { ListView } from "../../view-projects/ListView";
 function ListOfTools() {
   const { setPostHogCustomEvent } = usePostHogEvents();
 
+  const getBaseUrl = (sessionDetails) =>
+    `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/`;
+
   const getListApiCall = useCallback(({ axiosPrivate, sessionDetails }) => {
+    const baseUrl = getBaseUrl(sessionDetails);
+
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/`,
+      url: baseUrl,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -21,9 +26,11 @@ function ListOfTools() {
 
   const addItemApiCall = useCallback(
     ({ axiosPrivate, sessionDetails, itemData }) => {
+      const baseUrl = getBaseUrl(sessionDetails);
+
       const requestOptions = {
         method: "POST",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/`,
+        url: baseUrl,
         headers: {
           "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
@@ -37,9 +44,11 @@ function ListOfTools() {
 
   const editItemApiCall = useCallback(
     ({ axiosPrivate, sessionDetails, itemData, itemId }) => {
+      const baseUrl = getBaseUrl(sessionDetails);
+
       const requestOptions = {
         method: "PATCH",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${itemId}/`,
+        url: `${baseUrl}${itemId}/`,
         headers: {
           "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
@@ -53,9 +62,11 @@ function ListOfTools() {
 
   const deleteItemApiCall = useCallback(
     ({ axiosPrivate, sessionDetails, itemId }) => {
+      const baseUrl = getBaseUrl(sessionDetails);
+
       const requestOptions = {
         method: "DELETE",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${itemId}`,
+        url: `${baseUrl}${itemId}`,
         headers: {
           "X-CSRFToken": sessionDetails?.csrfToken,
         },
