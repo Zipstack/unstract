@@ -37,7 +37,6 @@ class Workflow(BaseModel):
     workflow_name = models.CharField(max_length=WORKFLOW_NAME_SIZE, unique=True)
     is_active = models.BooleanField(default=False)
     status = models.CharField(max_length=WORKFLOW_STATUS_LENGTH, default="")
-    llm_response = models.TextField()
     workflow_owner = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
