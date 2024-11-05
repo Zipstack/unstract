@@ -48,28 +48,28 @@ class PromptStudioRegistryHelper:
         properties = {
             "challenge_llm": {
                 "type": "string",
-                "title": "Challenge LLM",
+                "title": "Challenger LLM",
                 "adapterType": "LLM",
-                "description": "LLM to use for challenge",
+                "description": "LLM to use for LLMChallenge",
                 "adapterIdKey": "challenge_llm_adapter_id",
             },
             "enable_challenge": {
                 "type": "boolean",
-                "title": "Enable challenge",
+                "title": "Enable LLMChallenge",
                 "default": False,
-                "description": "Enables Challenge",
+                "description": "Enables LLMChallenge",
             },
             "summarize_as_source": {
                 "type": "boolean",
-                "title": "Summarize and use summary as source",
+                "title": "Enable SummarizedExtraction",
                 "default": False,
-                "description": "Enables summary and use summarized content as source",
+                "description": "Enables SummarizedExtraction",
             },
             "single_pass_extraction_mode": {
                 "type": "boolean",
-                "title": "Enable Single pass extraction",
+                "title": "Enable SinglePass Extraction",
                 "default": False,
-                "description": "Enables single pass extraction",
+                "description": "Enables SinglePass Extraction",
             },
         }
 
