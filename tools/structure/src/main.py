@@ -218,10 +218,16 @@ class StructureTool(BaseTool):
             epilogue = metadata.pop(SettingsKeys.EPILOGUE, None)
             if epilogue:
                 try:
-                    from helper import transform_dict  # type: ignore [attr-defined]
+                    from helper import (  # type: ignore [attr-defined]
+                        get_confidence_data,
+                        transform_dict,
+                    )
 
                     highlight_data = transform_dict(epilogue, tool_data_dir)
                     metadata[SettingsKeys.HIGHLIGHT_DATA] = highlight_data
+                    metadata[SettingsKeys.CONFIDENCE_DATA] = get_confidence_data(
+                        epilogue, tool_data_dir
+                    )
                 except ImportError:
                     self.stream_log(
                         f"Highlight metadata is not added. {PAID_FEATURE_MSG}",
