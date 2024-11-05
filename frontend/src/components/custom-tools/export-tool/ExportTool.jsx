@@ -94,7 +94,9 @@ function ExportTool({
 
   const shareWithUsers = () => {
     if (sharingOption === SHARE_ALL) {
-      return <Typography.Text>Shared with everyone</Typography.Text>;
+      return (
+        <Typography.Text>Shared with everyone in current org</Typography.Text>
+      );
     }
     return (
       <>
@@ -177,7 +179,9 @@ function ExportTool({
                 value={sharingOption}
                 className="export-per-radio"
               >
-                <Radio value={SHARE_ALL}>Share with everyone</Radio>
+                <Radio value={SHARE_ALL}>
+                  Share with everyone in current org
+                </Radio>
                 <Radio value={SHARE_CUSTOM}>Custom share</Radio>
               </Radio.Group>
             )}

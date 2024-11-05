@@ -11,7 +11,7 @@ on:
       directories:
         description: 'Comma-separated list of directories to update'
         required: false
-        default: ''  # Run for all dirs specified in scripts/pdm-lock.sh
+        default: ''  # Run for all dirs specified in docker/scripts/pdm-lock-gen/pdm-lock.sh
 
 jobs:
   update_pdm_lock:
@@ -25,12 +25,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
 
@@ -41,7 +41,7 @@ jobs:
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          chmod +x ./scripts/pdm-lock.sh
+          chmod +x ./docker/scripts/pdm-lock-gen/pdm-lock.sh
 
           # Get the input from the workflow or use the default value
           dirs="${{ github.event.inputs.directories }}"
@@ -49,9 +49,9 @@ jobs:
           # Check if directories input is empty
           if [[ -z "$dirs" ]]; then
             # No directories input given, run the script without arguments (process all directories)
-            echo "No directories specified, running on all dirs listed in scripts/pdm-lock.sh"
+            echo "No directories specified, running on all dirs listed in docker/scripts/pdm-lock-gen/pdm-lock.sh"
 
-            ./scripts/pdm-lock.sh
+            ./docker/scripts/pdm-lock-gen/pdm-lock.sh
           else
             # Convert comma-separated list into an array of directories
             IFS=',' read -r -a dir_array <<< "$dirs"
@@ -60,7 +60,7 @@ jobs:
             echo "Processing specified directories: ${dir_array[*]}"
 
             # Pass directories as command-line arguments to the script
-            ./scripts/pdm-lock.sh "${dir_array[@]}"
+            ./docker/scripts/pdm-lock-gen/pdm-lock.sh "${dir_array[@]}"
           fi
         shell: bash
 

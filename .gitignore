@@ -134,7 +134,8 @@ celerybeat.pid
 
 # Environments
 test*.env
-.env
+*.env
+!sample.env
 .env.export
 .venv*
 env/
@@ -603,6 +604,7 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+
 ### Unstract ###
 
 # Authentication Plugins
@@ -653,3 +655,11 @@ unstract/unstract-sdk/
 
 # Backend requirements.txt
 backend/requirements.txt
+
+# Backend URLs
+backend/backend/*_urls.py
+!backend/backend/base_urls.py
+!backend/backend/public_urls.py
+# TODO: Remove after v2 migration is completed
+backend/backend/*_urls_v2.py
+!backend/backend/public_urls_v2.py
