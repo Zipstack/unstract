@@ -12,7 +12,6 @@ from adapter_processor.constants import AdapterKeys
 from adapter_processor.models import AdapterInstance
 from django.conf import settings
 from django.db.models.manager import BaseManager
-from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.modifier_loader import ModifierConfig
 from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
 from prompt_studio.prompt_profile_manager.models import ProfileManager
@@ -46,12 +45,12 @@ from prompt_studio.prompt_studio_index_manager.prompt_studio_index_helper import
 from prompt_studio.prompt_studio_output_manager.output_manager_helper import (
     OutputManagerHelper,
 )
-from unstract.core.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import IndexingError, SdkError
 from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
+from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
 from unstract.core.pubsub_helper import LogPublisher
