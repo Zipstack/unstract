@@ -5,6 +5,7 @@ from django.db import models
 from project.models import Project
 from utils.models.base_model import BaseModel
 
+PROMPT_NAME_LENGTH = 32
 WORKFLOW_STATUS_LENGTH = 16
 DESCRIPTION_FIELD_LENGTH = 490
 WORKFLOW_NAME_SIZE = 128
@@ -33,10 +34,14 @@ class Workflow(BaseModel):
         null=True,
         blank=True,
     )
+    # TODO: Move prompt fields as a One-One relationship/into Prompt instead
+    prompt_name = models.CharField(max_length=PROMPT_NAME_LENGTH, default="")
     description = models.TextField(max_length=DESCRIPTION_FIELD_LENGTH, default="")
     workflow_name = models.CharField(max_length=WORKFLOW_NAME_SIZE, unique=True)
+    prompt_text = models.TextField(default="")
     is_active = models.BooleanField(default=False)
     status = models.CharField(max_length=WORKFLOW_STATUS_LENGTH, default="")
+    llm_response = models.TextField()
     workflow_owner = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
