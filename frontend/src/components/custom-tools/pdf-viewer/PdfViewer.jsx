@@ -22,8 +22,8 @@ function PdfViewer({ fileUrl, highlightData }) {
   const parentRef = useRef(null);
   function removeZerosAndDeleteIfAllZero(highlightData) {
     return highlightData.filter(
-      (innerArray) => !innerArray.every((value) => value === 0)
-    ); // Remove arrays where all values are 0
+      (innerArray) => innerArray.some((value) => value !== 0)
+    ); // Keep arrays that contain at least one non-zero value
   }
   let highlightPluginInstance = "";
   if (RenderHighlights && highlightData) {
