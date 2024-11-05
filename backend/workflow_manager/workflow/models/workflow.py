@@ -6,7 +6,6 @@ from project.models import Project
 from utils.models.base_model import BaseModel
 
 WORKFLOW_STATUS_LENGTH = 16
-EXECUTION_ERROR_LENGTH = 256
 DESCRIPTION_FIELD_LENGTH = 490
 WORKFLOW_NAME_SIZE = 128
 

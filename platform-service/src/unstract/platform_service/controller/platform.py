@@ -3,33 +3,20 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-import peewee
 import redis
 from cryptography.fernet import Fernet, InvalidToken
 from flask import Blueprint, Request
 from flask import current_app as app
 from flask import jsonify, make_response, request
-from unstract.platform_service.constants import DBTable, DBTableV2, FeatureFlag
+from unstract.platform_service.constants import DBTable, DBTableV2
 from unstract.platform_service.env import Env
 from unstract.platform_service.exceptions import APIError
+from unstract.platform_service.extensions import db
 from unstract.platform_service.helper.adapter_instance import (
     AdapterInstanceRequestHelper,
 )
 from unstract.platform_service.helper.cost_calculation import CostCalculationHelper
 from unstract.platform_service.helper.prompt_studio import PromptStudioRequestHelper
-
-from unstract.flags.feature_flag import check_feature_flag_status
-
-be_db = peewee.PostgresqlDatabase(
-    Env.PG_BE_DATABASE,
-    user=Env.PG_BE_USERNAME,
-    password=Env.PG_BE_PASSWORD,
-    host=Env.PG_BE_HOST,
-    port=Env.PG_BE_PORT,
-)
-be_db.init(Env.PG_BE_DATABASE)
-be_db.connect()
-
 
 platform_bp = Blueprint("platform", __name__)
 
@@ -58,14 +45,6 @@ def authentication_middleware(func: Any) -> Any:
     return wrapper
 
 
-def get_account_from_bearer_token(token: Optional[str]) -> str:
-    query = "SELECT organization_id FROM account_platformkey WHERE key=%s"
-    organization = execute_query(query, (token,))
-    query_org = "SELECT schema_name FROM account_organization WHERE id=%s"
-    schema_name: str = execute_query(query_org, (organization,))
-    return schema_name
-
-
 def get_organization_from_bearer_token(token: str) -> tuple[Optional[int], str]:
     """Fetch organization by platform key.
 
@@ -75,19 +54,21 @@ def get_organization_from_bearer_token(token: str) -> tuple[Optional[int], str]:
     Returns:
         tuple[int, str]: organization uid and organization identifier
     """
-    if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-        query = f"SELECT organization_id FROM {DBTableV2.PLATFORM_KEY} WHERE key=%s"
-        organization_uid: int = execute_query(query, (token,))
-        query_org = f"SELECT organization_id FROM {DBTableV2.ORGANIZATION} WHERE id=%s"
-        organization_identifier: str = execute_query(query_org, (organization_uid,))
-        return organization_uid, organization_identifier
-    else:
-        organization_identifier = get_account_from_bearer_token(token=token)
-        return None, organization_identifier
+    query = f"""
+        SELECT organization_id FROM "{Env.DB_SCHEMA}".{DBTableV2.PLATFORM_KEY}
+        WHERE key=%s
+    """
+    organization_uid: int = execute_query(query, (token,))
+    query_org = f"""
+        SELECT organization_id FROM "{Env.DB_SCHEMA}".{DBTableV2.ORGANIZATION}
+        WHERE id=%s
+    """
+    organization_identifier: str = execute_query(query_org, (organization_uid,))
+    return organization_uid, organization_identifier
 
 
 def execute_query(query: str, params: tuple = ()) -> Any:
-    cursor = be_db.execute_sql(query, params)
+    cursor = db.execute_sql(query, params)
     result_row = cursor.fetchone()
     cursor.close()
     if not result_row or len(result_row) == 0:
@@ -101,13 +82,13 @@ def validate_bearer_token(token: Optional[str]) -> bool:
             app.logger.error("Authentication failed. Empty bearer token")
             return False
 
-        if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-            platform_key_table = DBTableV2.PLATFORM_KEY
-        else:
-            platform_key_table = "account_platformkey"
+        platform_key_table = DBTableV2.PLATFORM_KEY
+        query = f"""
+            SELECT * FROM \"{Env.DB_SCHEMA}\".{platform_key_table}
+            WHERE key = '{token}'
+        """
 
-        query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
-        cursor = be_db.execute_sql(query)
+        cursor = db.execute_sql(query)
         result_row = cursor.fetchone()
         cursor.close()
         if not result_row or len(result_row) == 0:
@@ -176,8 +157,8 @@ def page_usage() -> Any:
     )
 
     try:
-        with be_db.atomic() as transaction:
-            be_db.execute_sql(query, params)
+        with db.atomic() as transaction:
+            db.execute_sql(query, params)
             transaction.commit()
             app.logger.info("Entry created with id %s for %s", usage_id, org_id)
             result["status"] = "OK"
@@ -240,64 +221,38 @@ def usage() -> Any:
         )
     usage_id = uuid.uuid4()
     current_time = datetime.now()
-    if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-        query = f"""
-            INSERT INTO {DBTableV2.TOKEN_USAGE} (id, organization_id, workflow_id,
-            execution_id, adapter_instance_id, run_id, usage_type,
-            llm_usage_reason, model_name, embedding_tokens, prompt_tokens,
-            completion_tokens, total_tokens, cost_in_dollars, created_at, modified_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        usage_id = uuid.uuid4()
-        current_time = datetime.now()
-        params = (
-            usage_id,
-            organization_uid,
-            workflow_id,
-            execution_id,
-            adapter_instance_id,
-            run_id,
-            usage_type,
-            llm_usage_reason,
-            model_name,
-            embedding_tokens,
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            cost_in_dollars,
-            current_time,
-            current_time,
-        )
-    else:
-        query = f"""
-            INSERT INTO "{org_id}"."token_usage" (id, workflow_id,
-            execution_id, adapter_instance_id, run_id, usage_type,
-            llm_usage_reason, model_name, embedding_tokens, prompt_tokens,
-            completion_tokens, total_tokens, cost_in_dollars, created_at, modified_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        usage_id = uuid.uuid4()
-        current_time = datetime.now()
-        params = (
-            usage_id,
-            workflow_id,
-            execution_id,
-            adapter_instance_id,
-            run_id,
-            usage_type,
-            llm_usage_reason,
-            model_name,
-            embedding_tokens,
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            cost_in_dollars,
-            current_time,
-            current_time,
-        )
+    query = f"""
+        INSERT INTO \"{Env.DB_SCHEMA}\".{DBTableV2.TOKEN_USAGE} (
+        id, organization_id, workflow_id,
+        execution_id, adapter_instance_id, run_id, usage_type,
+        llm_usage_reason, model_name, embedding_tokens, prompt_tokens,
+        completion_tokens, total_tokens, cost_in_dollars, created_at, modified_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+    usage_id = uuid.uuid4()
+    current_time = datetime.now()
+    params = (
+        usage_id,
+        organization_uid,
+        workflow_id,
+        execution_id,
+        adapter_instance_id,
+        run_id,
+        usage_type,
+        llm_usage_reason,
+        model_name,
+        embedding_tokens,
+        prompt_tokens,
+        completion_tokens,
+        total_tokens,
+        cost_in_dollars,
+        current_time,
+        current_time,
+    )
+
     try:
-        with be_db.atomic() as transaction:
-            be_db.execute_sql(query, params)
+        with db.atomic() as transaction:
+            db.execute_sql(query, params)
             transaction.commit()
             app.logger.info("Entry created with id %s for %s", usage_id, org_id)
             result["status"] = "OK"
@@ -352,9 +307,6 @@ def cache() -> Any:
     """
     bearer_token = get_token_from_auth_header(request)
     _, account_id = get_organization_from_bearer_token(bearer_token)
-    if not Env.REDIS_HOST:
-        app.logger.error("Env.REDIS_HOST not set")
-        return "Internal Server Error", 500
     if request.method == "POST":
         payload: Optional[dict[Any, Any]] = request.json
         if not payload:
@@ -374,8 +326,7 @@ def cache() -> Any:
             r.set(redis_key, value)
             r.close()
         except Exception as e:
-            app.logger.error(f"Error while caching data: {e}")
-            return "Internal Server Error", 500
+            raise APIError(message=f"Error while caching data: {e}") from e
     elif request.method == "GET":
         key = request.args.get("key")
         try:
@@ -394,8 +345,7 @@ def cache() -> Any:
             else:
                 return value, 200
         except Exception as e:
-            app.logger.error(f"Error while getting cached data: {e}")
-            return "Internal Server Error", 500
+            raise APIError(message=f"Error while getting cached data: {e}") from e
     elif request.method == "DELETE":
         key = request.args.get("key")
         try:
@@ -411,8 +361,9 @@ def cache() -> Any:
             r.close()
             return "OK", 200
         except Exception as e:
-            app.logger.error(f"Error while deleting cached data: {e}")
-            return "Internal Server Error", 500
+            raise APIError(message=f"Error while deleting cached data: {e}") from e
+    else:
+        raise APIError(message="Method Not Allowed", code=405)
 
     return "OK", 200
 
@@ -436,42 +387,39 @@ def adapter_instance() -> Any:
     if not organization_id:
         return Env.INVALID_ORGANIZATOIN, 403
 
-    if request.method == "GET":
-        adapter_instance_id = request.args.get("adapter_instance_id")
+    adapter_instance_id = request.args.get("adapter_instance_id")
 
-        try:
-            data_dict = AdapterInstanceRequestHelper.get_adapter_instance_from_db(
-                db_instance=be_db,
-                organization_id=organization_id,
-                adapter_instance_id=adapter_instance_id,
-                organization_uid=organization_uid,
-            )
+    try:
+        data_dict = AdapterInstanceRequestHelper.get_adapter_instance_from_db(
+            organization_id=organization_id,
+            adapter_instance_id=adapter_instance_id,
+            organization_uid=organization_uid,
+        )
 
-            f: Fernet = Fernet(Env.ENCRYPTION_KEY.encode("utf-8"))
+        f: Fernet = Fernet(Env.ENCRYPTION_KEY.encode("utf-8"))
 
-            data_dict["adapter_metadata"] = json.loads(
-                f.decrypt(bytes(data_dict.pop("adapter_metadata_b")).decode("utf-8"))
-            )
+        data_dict["adapter_metadata"] = json.loads(
+            f.decrypt(bytes(data_dict.pop("adapter_metadata_b")).decode("utf-8"))
+        )
 
-            return jsonify(data_dict)
-        except InvalidToken:
-            msg = (
-                "Platform encryption key for storing adapter credentials has "
-                "changed! All adapters are inaccessible. Please inform "
-                "the platform admin immediately."
-            )
-            app.logger.error(
-                f"Error while getting db adapter settings for: "
-                f"{adapter_instance_id}, Error: {msg}"
-            )
-            raise APIError(message=msg, code=403)
-        except Exception as e:
-            app.logger.error(
-                f"Error while getting db adapter settings for: "
-                f"{adapter_instance_id}, Error: {str(e)}"
-            )
-            return "Internal Server Error", 500
-    return "Method Not Allowed", 405
+        return jsonify(data_dict)
+    except InvalidToken:
+        msg = (
+            "Platform encryption key for storing adapter credentials has "
+            "changed! All adapters are inaccessible. Please inform "
+            "the platform admin immediately."
+        )
+        app.logger.error(
+            f"Error while getting db adapter settings for: "
+            f"{adapter_instance_id}, Error: {msg}"
+        )
+        raise APIError(message=msg, code=403)
+    except Exception as e:
+        msg = (
+            f"Error while getting db adapter settings for "
+            f"{adapter_instance_id}: {e}"
+        )
+        raise APIError(message=msg)
 
 
 @platform_bp.route(
@@ -493,25 +441,17 @@ def custom_tool_instance() -> Any:
     if not organization_id:
         return Env.INVALID_ORGANIZATOIN, 403
 
-    if request.method == "GET":
-        prompt_registry_id = request.args.get("prompt_registry_id")
+    prompt_registry_id = request.args.get("prompt_registry_id")
 
-        try:
-            data_dict = PromptStudioRequestHelper.get_prompt_instance_from_db(
-                db_instance=be_db,
-                organization_id=organization_id,
-                prompt_registry_id=prompt_registry_id,
-            )
-            return jsonify(data_dict)
-        except Exception as e:
-            app.logger.error(
-                f"Error while getting db adapter settings for: "
-                f"{prompt_registry_id} Error: {str(e)}"
-            )
-            return "Internal Server Error", 500
-    return "Method Not Allowed", 405
-
-
-if __name__ == "__main__":
-    # Start the server
-    app.run(host="0.0.0.0", port="3001")
+    try:
+        data_dict = PromptStudioRequestHelper.get_prompt_instance_from_db(
+            organization_id=organization_id,
+            prompt_registry_id=prompt_registry_id,
+        )
+        return jsonify(data_dict)
+    except Exception as e:
+        msg = (
+            f"Error while getting data for Prompt Studio project "
+            f"{prompt_registry_id}: {e}"
+        )
+        raise APIError(message=msg) from e

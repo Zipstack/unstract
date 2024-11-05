@@ -1,12 +1,14 @@
 import uuid
 
 from account_v2.models import User
+from django.conf import settings
 from django.db import models
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
 )
+from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from backend.constants import FieldLengthConstants as FieldLength
@@ -47,12 +49,16 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
     )
     # Added as text field until a model for App is included.
     app_id = models.TextField(null=True, blank=True, max_length=APP_ID_LENGTH)
-    active = models.BooleanField(default=False)  # TODO: Add dbcomment
-    scheduled = models.BooleanField(default=False)  # TODO: Add dbcomment
+    active = models.BooleanField(
+        default=False, db_comment="Indicates whether the pipeline is active"
+    )
+    scheduled = models.BooleanField(
+        default=False, db_comment="Indicates whether the pipeline is scheduled"
+    )
     cron_string = models.TextField(
         db_comment="UNIX cron string",
-        null=False,
-        blank=False,
+        null=True,
+        blank=True,
         max_length=FieldLength.CRON_LENGTH,
     )
     pipeline_type = models.CharField(
@@ -89,13 +95,30 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
     # Manager
     objects = PipelineModelManager()
 
+    @property
+    def api_key_data(self):
+        return {"pipeline": self.id, "description": f"API Key for {self.pipeline_name}"}
+
+    @property
+    def api_endpoint(self):
+        organization_id = UserContext.get_organization_identifier()
+        deployment_endpoint = settings.API_DEPLOYMENT_PATH_PREFIX + "/pipeline/api"
+        api_endpoint = f"{deployment_endpoint}/{organization_id}/{self.id}/"
+        return api_endpoint
+
     def __str__(self) -> str:
-        return f"Pipeline({self.id})"
+        return (
+            f"Pipeline({self.id}) ("
+            f"name: {self.pipeline_name}, "
+            f"cron string: {self.cron_string}, "
+            f"is active: {self.active}, "
+            f"is scheduled: {self.scheduled}"
+        )
 
     class Meta:
         verbose_name = "Pipeline"
         verbose_name_plural = "Pipelines"
-        db_table = "pipeline_v2"
+        db_table = "pipeline"
         constraints = [
             models.UniqueConstraint(
                 fields=["id", "pipeline_type"],

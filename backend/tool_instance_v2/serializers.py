@@ -68,6 +68,11 @@ class ToolInstanceSerializer(AuditSerializer):
             raise ValidationError(f"Workflow with ID {workflow_id} does not exist.")
         validated_data[TIKey.WORKFLOW] = workflow
 
+        if workflow.tool_instances.count() > 0:
+            raise ValidationError(
+                f"Workflow with ID {workflow_id} can't have more than one tool."
+            )
+
         tool_uid = validated_data.get(TIKey.TOOL_ID)
         if not tool_uid:
             raise ToolDoesNotExist()

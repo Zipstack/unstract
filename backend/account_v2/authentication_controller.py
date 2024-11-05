@@ -186,7 +186,9 @@ class AuthenticationController:
                         f"{ErrorMessage.ORGANIZATION_EXIST}, \
                             {ErrorMessage.DUPLICATE_API}"
                     )
-            self.create_tenant_user(organization=organization, user=user)
+            organization_member = self.create_tenant_user(
+                organization=organization, user=user
+            )
 
             if new_organization:
                 try:
@@ -214,6 +216,7 @@ class AuthenticationController:
             response: Response = Response(
                 status=status.HTTP_200_OK,
                 data={
+                    "is_new_org": new_organization,
                     "user": serialized_user_info,
                     "organization": organization_info,
                     f"{Common.LOG_EVENTS_ID}": StateStore.get(Common.LOG_EVENTS_ID),
@@ -226,6 +229,7 @@ class AuthenticationController:
                     organization_id=current_organization_id,
                 )
             UserSessionUtils.set_organization_id(request, organization_id)
+            UserSessionUtils.set_organization_member_role(request, organization_member)
             OrganizationMemberService.set_user_membership_in_organization_cache(
                 user_id=user.user_id, organization_id=organization_id
             )
@@ -404,7 +408,7 @@ class AuthenticationController:
             )
             if current_roles:
                 self.save_organization_user_role(
-                    user_uid=user.user.user.id, role=current_roles[0]
+                    user_uid=user.user.id, role=current_roles[0]
                 )
             return current_roles[0]
         else:
@@ -435,11 +439,13 @@ class AuthenticationController:
             organization_user.role = role
             organization_user.save()
 
-    def create_tenant_user(self, organization: Organization, user: User) -> None:
+    def create_tenant_user(
+        self, organization: Organization, user: User
+    ) -> OrganizationMember:
         existing_tenant_user = OrganizationMemberService.get_user_by_id(id=user.id)
 
         if existing_tenant_user:
-            return None
+            return existing_tenant_user
 
         account_user = self.get_or_create_user(user=user)
         if not account_user:
@@ -463,6 +469,7 @@ class AuthenticationController:
                 f"{tenant_user.user.email} added in to the organization "
                 f"{organization.organization_id}"
             )
+            return tenant_user
         except IntegrityError:
             logger.warning(f"Account already exists for {user.email}")
 

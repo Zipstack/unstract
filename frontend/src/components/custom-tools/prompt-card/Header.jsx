@@ -11,7 +11,10 @@ import { useEffect, useState } from "react";
 import { Button, Checkbox, Col, Dropdown, Row, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 
-import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";
+import {
+  PROMPT_RUN_TYPES,
+  promptStudioUpdateStatus,
+} from "../../../helpers/GetStaticData";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EditableText } from "../editable-text/EditableText";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -40,14 +43,11 @@ function Header({
   setIsEditingTitle,
   expandCard,
   setExpandCard,
-  enabledProfiles,
   spsLoading,
   handleSpsLoading,
-  handleGetOutput,
 }) {
   const {
     selectedDoc,
-    disableLlmOrDocChange,
     singlePassExtractMode,
     isSinglePassExtractLoading,
     indexDocs,
@@ -57,11 +57,11 @@ function Header({
   } = useCustomToolStore();
   const [items, setItems] = useState([]);
 
-  const [isDisablePrompt, setIsDisablePrompt] = useState(promptDetails?.active);
+  const [isDisablePrompt, setIsDisablePrompt] = useState(null);
 
-  const handleRunBtnClick = (profileManager = null, coverAllDoc = true) => {
+  const handleRunBtnClick = (promptRunType, docId = null) => {
     setExpandCard(true);
-    handleRun(profileManager, coverAllDoc, enabledProfiles, true);
+    handleRun(promptRunType, promptDetails?.prompt_id, null, docId);
   };
 
   const handleDisablePrompt = (event) => {
@@ -73,6 +73,9 @@ function Header({
       }
     );
   };
+  useEffect(() => {
+    setIsDisablePrompt(promptDetails?.active);
+  }, [promptDetails, details]);
 
   useEffect(() => {
     const dropdownItems = [
@@ -95,7 +98,7 @@ function Header({
         ),
         key: "delete",
         disabled:
-          disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
+          isCoverageLoading ||
           isSinglePassExtractLoading ||
           indexDocs?.includes(selectedDoc?.document_id) ||
           isPublicSource,
@@ -106,7 +109,7 @@ function Header({
     }
 
     setItems(dropdownItems);
-  }, [promptDetails, details]);
+  }, [isDisablePrompt]);
 
   return (
     <Row>
@@ -120,6 +123,7 @@ function Header({
           defaultText={promptDetails?.prompt_key}
           handleChange={handleChange}
           placeHolder={updatePlaceHolder}
+          isCoverageLoading={isCoverageLoading}
         />
       </Col>
       <Col span={12} className="display-flex-right">
@@ -184,13 +188,16 @@ function Header({
                 type="text"
                 className="prompt-card-action-button"
                 onClick={() =>
-                  handleRunBtnClick(promptDetails?.profile_manager, false)
+                  handleRunBtnClick(
+                    PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ALL_LLMS_ONE_DOC,
+                    selectedDoc?.document_id
+                  )
                 }
                 disabled={
                   (updateStatus?.promptId === promptDetails?.prompt_id &&
                     updateStatus?.status ===
                       promptStudioUpdateStatus?.isUpdating) ||
-                  disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
+                  isCoverageLoading ||
                   indexDocs?.includes(selectedDoc?.document_id) ||
                   isPublicSource ||
                   spsLoading[selectedDoc?.document_id]
@@ -204,12 +211,16 @@ function Header({
                 size="small"
                 type="text"
                 className="prompt-card-action-button"
-                onClick={handleRunBtnClick}
+                onClick={() =>
+                  handleRunBtnClick(
+                    PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ALL_LLMS_ALL_DOCS
+                  )
+                }
                 disabled={
                   (updateStatus?.promptId === promptDetails?.prompt_id &&
                     updateStatus?.status ===
                       promptStudioUpdateStatus?.isUpdating) ||
-                  disableLlmOrDocChange?.includes(promptDetails?.prompt_id) ||
+                  isCoverageLoading ||
                   indexDocs?.includes(selectedDoc?.document_id) ||
                   isPublicSource
                 }
@@ -224,7 +235,7 @@ function Header({
           <PromptRunBtnSps
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
-            handleGetOutput={handleGetOutput}
+            handleGetOutput={() => {}}
             promptDetails={promptDetails}
           />
         )}
@@ -257,10 +268,8 @@ Header.propTypes = {
   setIsEditingTitle: PropTypes.func.isRequired,
   expandCard: PropTypes.bool.isRequired,
   setExpandCard: PropTypes.func.isRequired,
-  enabledProfiles: PropTypes.array.isRequired,
   spsLoading: PropTypes.object,
   handleSpsLoading: PropTypes.func.isRequired,
-  handleGetOutput: PropTypes.func.isRequired,
 };
 
 export { Header };

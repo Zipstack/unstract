@@ -10,7 +10,6 @@ from utils.models.organization_mixin import (
 
 PROMPT_NAME_LENGTH = 32
 WORKFLOW_STATUS_LENGTH = 16
-EXECUTION_ERROR_LENGTH = 256
 DESCRIPTION_FIELD_LENGTH = 490
 WORKFLOW_NAME_SIZE = 128
 
@@ -86,7 +85,7 @@ class Workflow(DefaultOrganizationMixin, BaseModel):
     class Meta:
         verbose_name = "Workflow"
         verbose_name_plural = "Workflows"
-        db_table = "workflow_v2"
+        db_table = "workflow"
         constraints = [
             models.UniqueConstraint(
                 fields=["workflow_name", "organization"],

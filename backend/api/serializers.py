@@ -6,6 +6,7 @@ from api.models import APIDeployment, APIKey
 from django.core.validators import RegexValidator
 from pipeline.models import Pipeline
 from rest_framework.serializers import (
+    BooleanField,
     CharField,
     IntegerField,
     JSONField,
@@ -80,26 +81,22 @@ class APIKeySerializer(AuditSerializer):
 
 
 class ExecutionRequestSerializer(Serializer):
-    """Execution request serializer
-    timeout: 0: maximum value of timeout, -1: async execution
+    """Execution request serializer.
+
+    Attributes:
+        timeout (int): Timeout for the API deployment, maximum value can be 300s.
+            If -1 it corresponds to async execution. Defaults to -1
+        include_metadata (bool): Flag to include metadata in API response
+        use_file_history (bool): Flag to use FileHistory to save and retrieve
+            responses quickly. This is undocumented to the user and can be
+            helpful for demos.
     """
 
     timeout = IntegerField(
         min_value=-1, max_value=ApiExecution.MAXIMUM_TIMEOUT_IN_SEC, default=-1
     )
-
-    def validate_timeout(self, value: Any) -> int:
-        if not isinstance(value, int):
-            raise ValidationError("timeout must be a integer.")
-        if value == 0:
-            value = ApiExecution.MAXIMUM_TIMEOUT_IN_SEC
-        return value
-
-    def get_timeout(self, validated_data: dict[str, Union[int, None]]) -> int:
-        value = validated_data.get(ApiExecution.TIMEOUT_FORM_DATA, -1)
-        if not isinstance(value, int):
-            raise ValidationError("timeout must be a integer.")
-        return value
+    include_metadata = BooleanField(default=False)
+    use_file_history = BooleanField(default=False)
 
 
 class APIDeploymentListSerializer(ModelSerializer):

@@ -25,7 +25,7 @@ from .models import PromptStudioRegistry
 from .serializers import PromptStudioRegistrySerializer
 
 logger = logging.getLogger(__name__)
-modifier_loader = load_modifier_plugins()
+modifier_plugins = load_modifier_plugins()
 
 
 class PromptStudioRegistryHelper:
@@ -48,28 +48,28 @@ class PromptStudioRegistryHelper:
         properties = {
             "challenge_llm": {
                 "type": "string",
-                "title": "Challenge LLM",
+                "title": "Challenger LLM",
                 "adapterType": "LLM",
-                "description": "LLM to use for challenge",
+                "description": "LLM to use for LLMChallenge",
                 "adapterIdKey": "challenge_llm_adapter_id",
             },
             "enable_challenge": {
                 "type": "boolean",
-                "title": "Enable challenge",
+                "title": "Enable LLMChallenge",
                 "default": False,
-                "description": "Enables Challenge",
+                "description": "Enables LLMChallenge",
             },
             "summarize_as_source": {
                 "type": "boolean",
-                "title": "Summarize and use summary as source",
+                "title": "Enable SummarizedExtraction",
                 "default": False,
-                "description": "Enables summary and use summarized content as source",
+                "description": "Enables SummarizedExtraction",
             },
             "single_pass_extraction_mode": {
                 "type": "boolean",
-                "title": "Enable Single pass extraction",
+                "title": "Enable SinglePass Extraction",
                 "default": False,
-                "description": "Enables single pass extraction",
+                "description": "Enables SinglePass Extraction",
             },
         }
 
@@ -134,7 +134,10 @@ class PromptStudioRegistryHelper:
 
     @staticmethod
     def update_or_create_psr_tool(
-        custom_tool: CustomTool, shared_with_org: bool, user_ids: set[int]
+        custom_tool: CustomTool,
+        shared_with_org: bool,
+        user_ids: set[int],
+        force_export: bool,
     ) -> PromptStudioRegistry:
         """Updates or creates the PromptStudioRegistry record.
 
@@ -142,7 +145,13 @@ class PromptStudioRegistryHelper:
         1:1 with the `CustomTool`.
 
         Args:
-            tool_id (str): ID of the custom tool.
+            custom_tool (CustomTool): The instance of the custom tool to be updated
+                or created.
+            shared_with_org (bool): Flag indicating whether the tool is shared with
+                the organization.
+            user_ids (set[int]): A set of user IDs to whom the tool is shared.
+            force_export (bool): Indicates if the export is being forced.
+
 
         Raises:
             ToolSaveError
@@ -160,7 +169,7 @@ class PromptStudioRegistryHelper:
                 tool_id=custom_tool.tool_id
             )
             metadata = PromptStudioRegistryHelper.frame_export_json(
-                tool=custom_tool, prompts=prompts
+                tool=custom_tool, prompts=prompts, force_export=force_export
             )
 
             obj: PromptStudioRegistry
@@ -206,7 +215,9 @@ class PromptStudioRegistryHelper:
 
     @staticmethod
     def frame_export_json(
-        tool: CustomTool, prompts: list[ToolStudioPrompt]
+        tool: CustomTool,
+        prompts: list[ToolStudioPrompt],
+        force_export: bool,
     ) -> dict[str, Any]:
         export_metadata = {}
 
@@ -281,18 +292,18 @@ class PromptStudioRegistryHelper:
                 invalidated_prompts.append(prompt.prompt_key)
                 continue
 
-            prompt_output = PromptStudioOutputManager.objects.filter(
-                tool_id=tool.tool_id,
-                prompt_id=prompt.prompt_id,
-                profile_manager=prompt.profile_manager,
-            ).all()
-
-            if not prompt_output:
-                invalidated_outputs.append(prompt.prompt_key)
-                continue
-
             if not prompt.profile_manager:
                 prompt.profile_manager = default_llm_profile
+
+            if not force_export:
+                prompt_output = PromptStudioOutputManager.objects.filter(
+                    tool_id=tool.tool_id,
+                    prompt_id=prompt.prompt_id,
+                    profile_manager=prompt.profile_manager,
+                ).all()
+                if not prompt_output:
+                    invalidated_outputs.append(prompt.prompt_key)
+                    continue
 
             vector_db = str(prompt.profile_manager.vector_store.id)
             embedding_model = str(prompt.profile_manager.embedding_model.id)
@@ -324,8 +335,11 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.REINDEX] = prompt.profile_manager.reindex
             output[JsonSchemaKey.EMBEDDING_SUFFIX] = embedding_suffix
 
-            if prompt.enforce_type == PromptStudioRegistryKeys.TABLE:
-                for modifier_plugin in modifier_loader:
+            if (
+                prompt.enforce_type == PromptStudioRegistryKeys.TABLE
+                or prompt.enforce_type == PromptStudioRegistryKeys.RECORD
+            ):
+                for modifier_plugin in modifier_plugins:
                     cls = modifier_plugin[ModifierConfig.METADATA][
                         ModifierConfig.METADATA_SERVICE_CLASS
                     ]
@@ -352,10 +366,12 @@ class PromptStudioRegistryHelper:
                 f"Cannot export tool. Prompt(s): {', '.join(invalidated_prompts)} "
                 "are empty. Please enter a valid prompt."
             )
-        if invalidated_outputs:
+        if not force_export and invalidated_outputs:
             raise InValidCustomToolError(
-                f"Cannot export tool. Prompt(s): {', '.join(invalidated_outputs)} "
-                "were not run. Please run them before exporting."
+                detail="Cannot export tool. Prompt(s):"
+                f" {', '.join(invalidated_outputs)}"
+                " were not run. Please run them before exporting.",
+                code="warning",
             )
         export_metadata[JsonSchemaKey.TOOL_SETTINGS] = tool_settings
         export_metadata[JsonSchemaKey.OUTPUTS] = outputs

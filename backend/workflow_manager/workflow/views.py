@@ -161,11 +161,16 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         execution_action = serializer.get_execution_action(serializer.validated_data)
         file_objs = request.FILES.getlist("files")
         hashes_of_files: dict[str, FileHash] = {}
+        use_file_history: bool = True
+
+        # API based execution
         if file_objs and execution_id and workflow_id:
+            use_file_history = False
             hashes_of_files = SourceConnector.add_input_file_to_api_storage(
                 workflow_id=workflow_id,
                 execution_id=execution_id,
                 file_objs=file_objs,
+                use_file_history=False,
             )
 
         try:
@@ -178,6 +183,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 execution_id=execution_id,
                 pipeline_guid=pipeline_guid,
                 hash_values_of_files=hashes_of_files,
+                use_file_history=use_file_history,
             )
             if (
                 execution_response.execution_status == "ERROR"
@@ -204,6 +210,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         execution_id: Optional[str] = None,
         pipeline_guid: Optional[str] = None,
         hash_values_of_files: dict[str, FileHash] = {},
+        use_file_history: bool = True,
     ) -> ExecutionResponse:
         if execution_action is not None:
             # Step execution
@@ -224,6 +231,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 pipeline_id=pipeline_guid,
                 execution_mode=WorkflowExecution.Mode.INSTANT,
                 hash_values_of_files=hash_values_of_files,
+                use_file_history=use_file_history,
             )
         else:
             execution_response = WorkflowHelper.complete_execution(
@@ -231,6 +239,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 execution_id=execution_id,
                 execution_mode=WorkflowExecution.Mode.INSTANT,
                 hash_values_of_files=hash_values_of_files,
+                use_file_history=use_file_history,
             )
         return execution_response
 

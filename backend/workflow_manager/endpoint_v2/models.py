@@ -3,7 +3,15 @@ import uuid
 from connector_v2.models import ConnectorInstance
 from django.db import models
 from utils.models.base_model import BaseModel
+from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
+
+
+class WorkflowEndpointModelManager(models.Manager):
+    def get_queryset(self):
+        # Validating organization
+        organization = UserContext.get_organization()
+        return super().get_queryset().filter(workflow__organization=organization)
 
 
 class WorkflowEndpoint(BaseModel):
@@ -39,6 +47,10 @@ class WorkflowEndpoint(BaseModel):
     configuration = models.JSONField(
         blank=True, null=True, db_comment="Configuration in JSON format"
     )
+
+    # Manager
+    objects = WorkflowEndpointModelManager()
+
     connector_instance = models.ForeignKey(
         ConnectorInstance,
         on_delete=models.CASCADE,
@@ -51,4 +63,4 @@ class WorkflowEndpoint(BaseModel):
     class Meta:
         verbose_name = "Workflow Endpoint"
         verbose_name_plural = "Workflow Endpoints"
-        db_table = "workflow_endpoints_v2"
+        db_table = "workflow_endpoints"
