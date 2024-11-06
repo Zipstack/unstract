@@ -118,7 +118,7 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/3rd_party/s3.png" width="32"/>| AWS S3 | ✅ Working |
-|<img src="docs/assets/3rd_party/minio.png" width="32"/>| Minio | ✅ Working |
+|<img src="docs/assets/3rd_party/minio.png" width="32"/>| MinIO | ✅ Working |
 |<img src="docs/assets/3rd_party/gcp.png" width="32"/>| Google Cloud Storage | ✅ Working |
 |<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure Cloud Storage | ✅ Working |
 |<img src="docs/assets/3rd_party/google_drive.png" width="32"/>| Google Drive | ✅ Working |
@@ -133,7 +133,7 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |---|---|---|
 |<img src="docs/assets/3rd_party/snowflake.png" width="32"/>| Snowflake | ✅ Working |
 |<img src="docs/assets/3rd_party/amazon_redshift.png" width="32"/>| Amazon Redshift | ✅ Working |
-|<img src="docs/assets/3rd_party/google_bigquery.png" width="32"/>| Google Bigquery | ✅ Working |
+|<img src="docs/assets/3rd_party/google_bigquery.png" width="32"/>| Google BigQuery | ✅ Working |
 |<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | ✅ Working |
 |<img src="docs/assets/3rd_party/mysql.png" width="32"/>| MySQL | ✅ Working |
 |<img src="docs/assets/3rd_party/mariadb.png" width="32"/>| MariaDB | ✅ Working |
@@ -141,7 +141,7 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 
 ## 🙌 Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for further details on setting up the development environment, etc. It also points you to other detailed documents as needed.
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for further details to get started easily.
 
 ## 👋 Join the LLM-powered automation community
 
