@@ -202,6 +202,43 @@ class DataMigrator:
         row = [json.dumps(value) if isinstance(value, dict) else value for value in row]
         return tuple(row)
 
+    def _convert_lists_to_json(
+        self,
+        row: tuple[Any, ...],
+        key: str,
+        column_names: list[str],
+    ) -> tuple[Any, ...]:
+        """Convert specified field in the row to JSON format if it is a
+        list."""
+        if key not in column_names:
+            return row
+
+        index = column_names.index(key)  # Index of the key
+        row_as_list = list(row)
+        if isinstance(row[index], list):
+            row_as_list[index] = json.dumps(row_as_list[index])
+            return tuple(row_as_list)
+        row = [
+            json.dumps(value) if isinstance(value, dict) else value
+            for value in row_as_list
+        ]
+        return row
+
+    def _process_type_transfer(
+        self,
+        row: tuple[Any, ...],
+        type_transformations: dict[str, dict[str, str]],
+        column_names: list[str],
+    ) -> tuple[Any, ...]:
+        """Process type transformations for specified fields in the row."""
+        for key, transaction in type_transformations.items():
+            data_type = transaction.get("type")
+
+            if data_type == "list":
+                row = self._convert_lists_to_json(row, key, column_names)
+
+        return row
+
     def _migrate_rows(
         self,
         migration_name: str,
@@ -211,6 +248,7 @@ class DataMigrator:
         dest_query: str,
         column_names: list[str],
         column_transformations: dict[str, dict[str, Any]],
+        type_transformations: dict[str, Any],
     ) -> None:
         """Migrates rows in batches from the source to the destination
         database.
@@ -254,6 +292,11 @@ class DataMigrator:
                 if converted_row is None:
                     logger.info(f"[{migration_name}] Skipping deleted row {row}.")
                     continue
+                # Process type transformations for the converted row
+                converted_row = self._process_type_transfer(
+                    converted_row, type_transformations, column_names
+                )
+
                 converted_rows.append(converted_row)
 
             start_time = time.time()
@@ -370,6 +413,7 @@ class DataMigrator:
                 dest_table = migration.get("dest_table")
                 clear_table = migration.get("clear_table", False)
                 column_transformations = migration.get("new_key_transaction", {})
+                type_transformations = migration.get("type_transformations", {})
 
                 # Clear the destination table if specified
                 if clear_table and dest_table:
@@ -398,6 +442,7 @@ class DataMigrator:
                     dest_query,
                     column_names,
                     column_transformations,
+                    type_transformations,
                 )
 
                 # Adjust the auto-increment value
@@ -443,13 +488,17 @@ class Command(BaseCommand):
 
         # Public tables
         public_schema_migrations = migration_query.get_public_schema_migrations()
+        migration_batch_size = int(os.getenv("DB_MIGRATION_BATCH_SIZE", 3000))
         migrator = DataMigrator(
-            src_db_config, dest_db_config, v2_schema, batch_size=3000
+            src_db_config, dest_db_config, v2_schema, batch_size=migration_batch_size
         )
         migrator.migrate(public_schema_migrations)
 
         if not schemas_to_migrate:
-            logger.info("Migration not run since SCHEMAS_TO_MIGRATE env seems empty.")
+            logger.info(
+                "Migration not run since SCHEMAS_TO_MIGRATE env seems empty."
+                "Set the value as `_ALL_` to migrate complete data"
+            )
             return
         else:
             schemas_to_migrate = schemas_to_migrate.split(",")

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -338,6 +339,7 @@ class PromptStudioHelper:
             )
             file_path = str(Path(file_path) / file_name)
 
+        start_time = time.time()
         logger.info(f"[{tool_id}] Indexing started for doc: {file_name}")
         PromptStudioHelper._publish_log(
             {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
@@ -367,12 +369,16 @@ class PromptStudioHelper:
             process_text=process_text,
         )
 
-        logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
+        elapsed_time = time.time() - start_time
+        logger.info(
+            f"[{tool_id}] Indexing successful for doc: {file_name},"
+            f" took {elapsed_time:.3f}s"
+        )
         PromptStudioHelper._publish_log(
             {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
             LogLevels.INFO,
             LogLevels.RUN,
-            "Indexing successful",
+            f"Indexing successful, took {elapsed_time:.3f}s",
         )
 
         return doc_id.get("output")

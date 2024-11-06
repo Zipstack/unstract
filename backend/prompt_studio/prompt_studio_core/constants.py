@@ -111,14 +111,6 @@ class LogLevels:
     RUN = "RUN"
 
 
-class LogLevel(Enum):
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARN = "WARN"
-    ERROR = "ERROR"
-    FATAL = "FATAL"
-
-
 class IndexingStatus(Enum):
     PENDING_STATUS = "pending"
     COMPLETED_STATUS = "completed"

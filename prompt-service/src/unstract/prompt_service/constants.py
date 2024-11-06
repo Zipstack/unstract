@@ -71,14 +71,6 @@ class PromptServiceContants:
     ENABLE_HIGHLIGHT = "enable_highlight"
 
 
-class LogLevel(Enum):
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARN = "WARN"
-    ERROR = "ERROR"
-    FATAL = "FATAL"
-
-
 class RunLevel(Enum):
     """Different stages of prompt execution.
 
@@ -94,7 +86,7 @@ class RunLevel(Enum):
 class FeatureFlag:
     """Temporary feature flags."""
 
-    MULTI_TENANCY_V2 = "multi_tenancy_v2"
+    pass
 
 
 class DBTableV2:

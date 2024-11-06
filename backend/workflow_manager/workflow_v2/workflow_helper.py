@@ -620,6 +620,7 @@ class WorkflowHelper:
         pipeline_id: Optional[str] = None,
         execution_mode: Optional[WorkflowExecution] = WorkflowExecution.Mode.QUEUE,
         hash_values_of_files: dict[str, FileHash] = {},
+        use_file_history: bool = False,
     ) -> ExecutionResponse:
         if pipeline_id:
             logger.info(f"Executing pipeline: {pipeline_id}")
@@ -643,6 +644,7 @@ class WorkflowHelper:
                     pipeline_id=pipeline_id,
                     execution_id=execution_id,
                     hash_values_of_files=hash_values_of_files,
+                    use_file_history=use_file_history,
                 )
                 return response
             else:
@@ -655,6 +657,7 @@ class WorkflowHelper:
                     execution_mode=execution_mode,
                     pipeline_id=pipeline_id,
                     log_events_id=log_events_id,
+                    use_file_history=use_file_history,
                 )
 
             updated_execution = WorkflowExecution.objects.get(id=execution_id)
@@ -683,6 +686,7 @@ class WorkflowHelper:
                 workflow=workflow,
                 workflow_execution=workflow_execution,
                 hash_values_of_files=hash_values_of_files,
+                use_file_history=use_file_history,
             )
         except WorkflowExecution.DoesNotExist:
             return WorkflowHelper.create_and_make_execution_response(

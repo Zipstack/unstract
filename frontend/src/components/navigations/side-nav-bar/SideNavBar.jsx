@@ -24,12 +24,23 @@ try {
   // Plugin unavailable.
 }
 
+let sideMenu;
+try {
+  sideMenu = require("../../../plugins/hooks/useSideMenu");
+} catch (err) {
+  // Plugin unavailable.
+}
+
 const SideNavBar = ({ collapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const { orgName, flags } = sessionDetails;
+  let menu;
+  if (sideMenu) {
+    menu = sideMenu.useSideMenu();
+  }
 
-  const data = [
+  const data = menu || [
     {
       id: 1,
       mainTitle: "MANAGE",
@@ -144,8 +155,8 @@ const SideNavBar = ({ collapsed }) => {
     },
   ];
 
-  if (getMenuItem && flags.app_deployment) {
-    data[0].subMenu.splice(1, 0, getMenuItem.default(orgName));
+  if (getMenuItem && flags?.app_deployment) {
+    data[0]?.subMenu?.splice(1, 0, getMenuItem?.default(orgName));
   }
 
   return (
