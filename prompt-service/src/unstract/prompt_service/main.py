@@ -718,10 +718,6 @@ def run_retrieval(  # type:ignore
             retrieved_context = _retrieve_context(
                 output, doc_id, vector_index, each_subq
             )
-            # Not adding the potential for pinecode serverless
-            # inconsistency issue owing to risk of infinte loop
-            # and inablity to diffrentiate genuine cases of
-            # empty context.
             context.update(retrieved_context)
 
     if retrieval_type == PSKeys.SIMPLE:
