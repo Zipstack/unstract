@@ -28,8 +28,7 @@ class PromptStudioOutputSerializer(AuditSerializer):
         data["token_usage"] = token_usage
         # Convert string to list
         try:
-            context = json.loads(data["context"])
-            data["context"] = context
+            data["context"] = json.loads(data["context"])
         except json.JSONDecodeError:
             # Convert the old value of data["context"] to a list
             data["context"] = [data["context"]]
