@@ -4,10 +4,14 @@ from typing import Any
 from account_v2.models import User
 from account_v2.serializer import UserSerializer
 from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import Count
 from file_management.constants import FileInformationKey
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.constants import ToolStudioKeys as TSKeys
 from prompt_studio.prompt_studio_core_v2.exceptions import DefaultProfileError
+from prompt_studio.prompt_studio_output_manager_v2.models import (
+    PromptStudioOutputManager,
+)
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
 from rest_framework import serializers
@@ -69,7 +73,26 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             if prompt_instance.count() != 0:
                 for prompt in prompt_instance:
                     prompt_serializer = ToolStudioPromptSerializer(prompt)
-                    output.append(prompt_serializer.data)
+                    prompt_outputs = (
+                        PromptStudioOutputManager.objects.filter(
+                            tool_id=data.get(TSKeys.TOOL_ID),
+                            profile_manager_id=profile_manager.profile_id,
+                            prompt_id=prompt.prompt_id,
+                        )
+                        .values("prompt_id", "profile_manager_id")
+                        .annotate(document_count=Count("document_manager_id"))
+                    )
+                    coverage = {}
+                    for prompt_output in prompt_outputs:
+                        prompt_key = str(prompt_output["prompt_id"])
+                        profile_key = str(prompt_output["profile_manager_id"])
+                        coverage[f"coverage_{prompt_key}_{profile_key}"] = (
+                            prompt_output["document_count"]
+                        )
+                        # Add coverage to the serialized data
+                    serialized_data = prompt_serializer.data
+                    serialized_data["coverage"] = coverage
+                    output.append(serialized_data)
                 data[TSKeys.PROMPTS] = output
         except Exception as e:
             logger.error(f"Error occured while appending prompts {e}")
