@@ -109,7 +109,7 @@ const usePromptOutput = () => {
         isSinglePass,
         true
       );
-      const coverageKey = `coverage_${llmProfile}_${item?.prompt_id}`;
+      const coverageKey = `coverage_${item?.prompt_id}_${llmProfile}`;
       outputs[key] = {
         runId: item?.run_id,
         promptOutputId: item?.prompt_output_id,

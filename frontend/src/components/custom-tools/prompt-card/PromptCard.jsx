@@ -26,6 +26,7 @@ const PromptCard = memo(
     setUpdatedPromptsCopy,
     handlePromptRunRequest,
     promptRunStatus,
+    coverageCountData,
   }) => {
     const [promptDetailsState, setPromptDetailsState] = useState({});
     const [isPromptDetailsStateUpdated, setIsPromptDetailsStateUpdated] =
@@ -258,6 +259,7 @@ const PromptCard = memo(
           handleSpsLoading={handleSpsLoading}
           promptOutputs={promptOutputs}
           promptRunStatus={promptRunStatus}
+          coverageCountData={coverageCountData}
         />
         <OutputForDocModal
           open={openOutputForDoc}
@@ -283,6 +285,7 @@ PromptCard.propTypes = {
   setUpdatedPromptsCopy: PropTypes.func.isRequired,
   handlePromptRunRequest: PropTypes.func.isRequired,
   promptRunStatus: PropTypes.object.isRequired,
+  coverageCountData: PropTypes.object.isRequired,
 };
 
 export { PromptCard };

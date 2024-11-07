@@ -15,6 +15,7 @@ const PromptCardWrapper = memo(function PromptCardWrapper({
   outputs,
   enforceTypeList,
   setUpdatedPromptsCopy,
+  coverageCountData,
 }) {
   const { isSimplePromptStudio } = useCustomToolStore();
   const { handlePromptRunRequest } = usePromptRun();
@@ -35,6 +36,7 @@ const PromptCardWrapper = memo(function PromptCardWrapper({
           setUpdatedPromptsCopy={setUpdatedPromptsCopy}
           handlePromptRunRequest={handlePromptRunRequest}
           promptRunStatus={promptRunStatus}
+          coverageCountData={coverageCountData}
         />
       )}
       {item.prompt_type === promptType.notes && (
@@ -59,6 +61,7 @@ PromptCardWrapper.propTypes = {
   outputs: PropTypes.object.isRequired,
   enforceTypeList: PropTypes.array.isRequired,
   setUpdatedPromptsCopy: PropTypes.func.isRequired,
+  coverageCountData: PropTypes.object.isRequired,
 };
 
 export { PromptCardWrapper };
