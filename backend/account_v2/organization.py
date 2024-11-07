@@ -6,6 +6,7 @@ from django.db import IntegrityError
 
 Logger = logging.getLogger(__name__)
 
+
 class OrganizationService:
     def __init__(self):  # type: ignore
         pass
