@@ -175,7 +175,16 @@ class APIKey(BaseModel):
     )
 
     def __str__(self) -> str:
-        return f"{self.api.api_name} - {self.id} - {self.api_key}"
+        if self.api:
+            api_name = self.api.api_name
+        elif self.pipeline:
+            api_name = self.pipeline.pipeline_name
+        else:
+            api_name = None
+
+        api_key = self.api_key if self.api_key else None
+
+        return f"{api_name} - {self.id} - {api_key}"
 
     class Meta:
         verbose_name = "Api Deployment key"

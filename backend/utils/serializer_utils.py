@@ -1,15 +1,8 @@
 from typing import Any
 
+from account_v2.models import User
 from rest_framework.request import Request
 from utils.constants import Account
-
-from backend.constants import FeatureFlag
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-    from account_v2.models import User
-else:
-    from account.models import User
 
 
 class SerializerUtils:

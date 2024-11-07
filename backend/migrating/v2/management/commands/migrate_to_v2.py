@@ -488,13 +488,17 @@ class Command(BaseCommand):
 
         # Public tables
         public_schema_migrations = migration_query.get_public_schema_migrations()
+        migration_batch_size = int(os.getenv("DB_MIGRATION_BATCH_SIZE", 3000))
         migrator = DataMigrator(
-            src_db_config, dest_db_config, v2_schema, batch_size=3000
+            src_db_config, dest_db_config, v2_schema, batch_size=migration_batch_size
         )
         migrator.migrate(public_schema_migrations)
 
         if not schemas_to_migrate:
-            logger.info("Migration not run since SCHEMAS_TO_MIGRATE env seems empty.")
+            logger.info(
+                "Migration not run since SCHEMAS_TO_MIGRATE env seems empty."
+                "Set the value as `_ALL_` to migrate complete data"
+            )
             return
         else:
             schemas_to_migrate = schemas_to_migrate.split(",")

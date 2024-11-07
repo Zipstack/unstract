@@ -1,10 +1,7 @@
 # TODO:V2 class
 from account_v2.models import Organization
 from django.db import models
-from utils.constants import FeatureFlag
 from utils.user_context import UserContext
-
-from unstract.flags.feature_flag import check_feature_flag_status
 
 
 class DefaultOrganizationMixin(models.Model):
@@ -28,7 +25,5 @@ class DefaultOrganizationMixin(models.Model):
 
 class DefaultOrganizationManagerMixin(models.Manager):
     def get_queryset(self):
-        if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-            organization = UserContext.get_organization()
-            return super().get_queryset().filter(organization=organization)
-        return super().get_queryset()
+        organization = UserContext.get_organization()
+        return super().get_queryset().filter(organization=organization)

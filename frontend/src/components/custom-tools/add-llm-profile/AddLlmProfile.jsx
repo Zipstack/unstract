@@ -237,7 +237,7 @@ function AddLlmProfile({
         setAlertDetails(
           handleException(
             err,
-            "Failed to get the dropdown list for LLM Adaptors"
+            "Failed to get the dropdown list for LLM Adapters"
           )
         );
       });
