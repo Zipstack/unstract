@@ -1,0 +1,14 @@
+.prompts-container {
+  max-height: 80vh;
+  width: 100%;
+  overflow-y: auto;
+}
+
+.draggable-prompt {
+  cursor: grab;
+  transition: transform 0.2s ease-in-out;
+}
+
+.draggable-prompt.dragging {
+  opacity: 0.5;
+}
