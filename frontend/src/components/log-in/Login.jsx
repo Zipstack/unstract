@@ -7,13 +7,18 @@ import { getBaseUrl } from "../../helpers/GetStaticData";
 import "./Login.css";
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { useSelectedProductStore } from "../../plugins/llm-whisperer/store/select-product-store";
 
 let LoginForm = null;
 let PRODUCT_NAMES = {};
+let SELECTED_PRODUCT;
+let selectedProductStore;
+let setSelectedProduct;
 try {
   LoginForm = require("../../plugins/login-form/LoginForm").LoginForm;
   PRODUCT_NAMES = require("../../plugins/llm-whisperer/helper").PRODUCT_NAMES;
+  SELECTED_PRODUCT =
+    require("../../plugins/llm-whisperer/helper").SELECTED_PRODUCT;
+  selectedProductStore = require("../../plugins/llm-whisperer/store/select-product-store.js");
 } catch {
   // The components will remain null of it is not available
 }
@@ -21,13 +26,22 @@ try {
 function Login() {
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
-  const selectedProduct = queryParams.get("selectedProduct");
+  const selectedProduct = queryParams.get(SELECTED_PRODUCT);
   const baseUrl = getBaseUrl();
   const newURL = baseUrl + "/api/v1/login";
   const handleLogin = () => {
     window.location.href = newURL;
   };
-  const { setSelectedProduct } = useSelectedProductStore();
+
+  try {
+    if (selectedProductStore?.useSelectedProductStore) {
+      setSelectedProduct = selectedProductStore.useSelectedProductStore(
+        (state) => state?.setSelectedProduct
+      );
+    }
+  } catch (error) {
+    // Do nothing
+  }
 
   useEffect(() => {
     if (
