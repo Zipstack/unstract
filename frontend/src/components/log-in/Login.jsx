@@ -5,19 +5,38 @@ import logo from "../../assets/UnstractLogoBlack.svg";
 import loginRightBanner from "../../assets/login-right-panel.svg";
 import { getBaseUrl } from "../../helpers/GetStaticData";
 import "./Login.css";
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
+import { useSelectedProductStore } from "../../plugins/llm-whisperer/store/select-product-store";
 
 let LoginForm = null;
+let PRODUCT_NAMES = {};
 try {
   LoginForm = require("../../plugins/login-form/LoginForm").LoginForm;
+  PRODUCT_NAMES = require("../../plugins/llm-whisperer/helper").PRODUCT_NAMES;
 } catch {
   // The components will remain null of it is not available
 }
+
 function Login() {
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const selectedProduct = queryParams.get("selectedProduct");
   const baseUrl = getBaseUrl();
   const newURL = baseUrl + "/api/v1/login";
   const handleLogin = () => {
     window.location.href = newURL;
   };
+  const { setSelectedProduct } = useSelectedProductStore();
+
+  useEffect(() => {
+    if (
+      selectedProduct &&
+      Object.values(PRODUCT_NAMES).includes(selectedProduct)
+    ) {
+      setSelectedProduct(selectedProduct);
+    }
+  }, [selectedProduct]);
 
   return (
     <div className="login-main">
