@@ -211,11 +211,8 @@ function PromptCardItems({
                             <SearchOutlined className="font-size-12" />
                           )}
                           <Typography.Link className="font-size-12">
-                            Coverage:{" "}
-                            {(coverageCountData &&
-                              coverageCountData[coverageKey]) ||
-                              0}{" "}
-                            of {listOfDocs?.length || 0} docs
+                            Coverage: {coverageCountData[coverageKey] || 0} of{" "}
+                            {listOfDocs?.length || 0} docs
                           </Typography.Link>
                         </Space>
                       </Button>
