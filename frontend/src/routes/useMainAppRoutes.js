@@ -28,6 +28,8 @@ let AppDeployments;
 let ChatAppPage;
 let ChatAppLayout;
 let ManualReviewSettings;
+let OnboardProduct;
+let PRODUCT_NAMES = {};
 
 try {
   RequirePlatformAdmin =
@@ -56,8 +58,16 @@ try {
   // Do nothing, Not-found Page will be triggered.
 }
 
+try {
+  OnboardProduct =
+    require("../plugins/llm-whisperer/components/onboard-product/OnboardProduct.jsx").OnboardProduct;
+  PRODUCT_NAMES = require("../plugins/llm-whisperer/helper.js").PRODUCT_NAMES;
+} catch (err) {
+  // Do nothing.
+}
+
 function useMainAppRoutes() {
-  return (
+  const routes = (
     <Route path="" element={<RequireAuth />}>
       <Route path=":orgName" element={<FullPageLayout />}>
         <Route path="onboard" element={<OnBoardPage />} />
@@ -132,6 +142,19 @@ function useMainAppRoutes() {
       </Route>
     </Route>
   );
+
+  if (OnboardProduct && Object.keys(PRODUCT_NAMES)?.length) {
+    return (
+      <Route
+        path=""
+        element={<OnboardProduct type={PRODUCT_NAMES?.unstract} />}
+      >
+        {routes}
+      </Route>
+    );
+  } else {
+    return routes;
+  }
 }
 
 export { useMainAppRoutes };
