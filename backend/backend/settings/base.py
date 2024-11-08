@@ -12,7 +12,6 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os
 from pathlib import Path
 from typing import Optional
-from urllib.parse import quote_plus
 
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
