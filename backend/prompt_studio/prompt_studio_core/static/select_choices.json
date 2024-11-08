@@ -13,7 +13,9 @@
         "email":"email",
         "date":"date",
         "boolean":"boolean",
-        "json":"json"
+        "json":"json",
+        "table":"table",
+        "record":"record"
     },
     "output_processing":{
         "DEFAULT":"Default"

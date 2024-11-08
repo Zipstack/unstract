@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import magic
+from connector_v2.models import ConnectorInstance
 from django.conf import settings
 from django.http import StreamingHttpResponse
 from file_management.exceptions import (
@@ -23,19 +24,13 @@ from file_management.file_management_dto import FileInformation
 from fsspec import AbstractFileSystem
 from pydrive2.files import ApiRequestError
 
-from backend.constants import FeatureFlag
 from unstract.connectors.filesystems import connectors as fs_connectors
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
-from unstract.flags.feature_flag import check_feature_flag_status
 
-if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-    from connector_v2.models import ConnectorInstance
-else:
-    from connector.models import ConnectorInstance
+logger = logging.getLogger(__name__)
 
 
 class FileManagerHelper:
-    logger = logging.getLogger(__name__)
 
     @staticmethod
     def get_file_system(connector: ConnectorInstance) -> UnstractFileSystem:
@@ -46,9 +41,7 @@ class FileManagerHelper:
             connector_class: UnstractFileSystem = connector(metadata)
             return connector_class
         else:
-            FileManagerHelper.logger.error(
-                f"Class not Found for {connector.connector_id}"
-            )
+            logger.error(f"Class not Found for {connector.connector_id}")
             raise ConnectorClassNotFound
 
     @staticmethod
@@ -63,14 +56,15 @@ class FileManagerHelper:
             if hasattr(fs, "path") and fs.path and (not path or path == "/"):
                 file_path = fs.path
         except Exception:
-            FileManagerHelper.logger.error(f"Missing path Atribute in {fs}")
+            logger.error(f"Missing path Atribute in {fs}")
             raise MissingConnectorParams()
 
         try:
             return FileManagerHelper.get_files(fs, file_path)
         except Exception as e:
-            FileManagerHelper.logger.error(f"Error listing files: {e}")
-            raise FileListError()
+            msg = f"Error listing files. {e}"
+            logger.error(msg)
+            raise FileListError(msg)
 
     @staticmethod
     def get_files(fs: AbstractFileSystem, file_path: str) -> list[FileInformation]:
@@ -122,9 +116,7 @@ class FileManagerHelper:
             response["Content-Disposition"] = f"attachment; filename={base_name}"
             return response
         except ApiRequestError as exception:
-            FileManagerHelper.logger.error(
-                f"ApiRequestError from {file_info} {exception}"
-            )
+            logger.error(f"ApiRequestError from {file_info} {exception}")
             raise ConnectorApiRequestError
 
     @staticmethod
@@ -169,9 +161,7 @@ class FileManagerHelper:
                 file.close()
 
         except ApiRequestError as exception:
-            FileManagerHelper.logger.error(
-                f"ApiRequestError from {file_info} {exception}"
-            )
+            logger.error(f"ApiRequestError from {file_info} {exception}")
             raise ConnectorApiRequestError
         if file_content_type == "application/pdf":
             # Read contents of PDF file into a string
@@ -181,7 +171,7 @@ class FileManagerHelper:
 
         elif file_content_type == "text/plain":
             with fs.open(file_path, "r") as file:
-                FileManagerHelper.logger.info(f"Reading text file: {file_path}")
+                logger.info(f"Reading text file: {file_path}")
                 text_content = file.read()
                 return text_content
         else:
@@ -192,9 +182,9 @@ class FileManagerHelper:
         try:
             fs.rm(file_path)
         except FileNotFoundError:
-            FileManagerHelper.logger.info(f"File not found: {file_path}")
+            logger.info(f"File not found: {file_path}")
         except Exception as e:
-            FileManagerHelper.logger.info(f"Unable to delete file {e}")
+            logger.info(f"Unable to delete file {e}")
             raise FileDeletionFailed(f"Unable to delete file {e}")
 
     @staticmethod
@@ -223,14 +213,21 @@ class FileManagerHelper:
     ) -> bool:
         fs = file_system.get_fsspec_fs()
         base_path = FileManagerHelper._get_base_path(file_system, path)
-
         base_file_name, _ = os.path.splitext(file_name)
-        file_name_txt = base_file_name + ".txt"
-
-        for directory in directories:
-            file_path = str(Path(base_path) / directory / file_name_txt)
+        pattern = f"{base_file_name}.*"
+        file_paths = FileManagerHelper._find_files(fs, base_path, directories, pattern)
+        for file_path in file_paths:
             FileManagerHelper._delete_file(fs, file_path)
         return True
+
+    @staticmethod
+    def _find_files(fs, base_path: str, directories: list[str], pattern: str):
+        file_paths = []
+        for directory in directories:
+            directory_path = str(Path(base_path) / directory)
+            for file in fs.glob(f"{directory_path}/{pattern}"):
+                file_paths.append(file)
+        return file_paths
 
     @staticmethod
     def handle_sub_directory_for_tenants(
@@ -259,6 +256,6 @@ class FileManagerHelper:
                 os.makedirs(extract_file_path, exist_ok=True)
                 os.makedirs(summarize_file_path, exist_ok=True)
             except OSError as e:
-                FileManagerHelper.logger.error(f"Error while creating {file_path}: {e}")
+                logger.error(f"Error while creating {file_path}: {e}")
                 raise TenantDirCreationError
         return str(file_path)

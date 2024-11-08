@@ -24,6 +24,9 @@ class PromptStudioOutputManager(BaseModel):
     context = models.TextField(
         db_comment="Field to store chunks used", editable=True, null=True, blank=True
     )
+    challenge_data = models.JSONField(
+        db_comment="Field to store challenge data", editable=True, null=True, blank=True
+    )
     eval_metrics = models.JSONField(
         db_column="eval_metrics",
         null=False,

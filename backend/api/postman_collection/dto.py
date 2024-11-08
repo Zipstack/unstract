@@ -136,7 +136,10 @@ class APIDeploymentDto(APIBase):
 
     def _get_status_api_request(self) -> RequestItem:
         header_list = [HeaderItem(key="Authorization", value=f"Bearer {self.api_key}")]
-        status_query_param = {"execution_id": CollectionKey.STATUS_EXEC_ID_DEFAULT}
+        status_query_param = {
+            "execution_id": CollectionKey.STATUS_EXEC_ID_DEFAULT,
+            ApiExecution.INCLUDE_METADATA: "False",
+        }
         status_query_str = urlencode(status_query_param)
         abs_api_endpoint = urljoin(settings.WEB_APP_ORIGIN_URL, self.api_endpoint)
         status_url = urljoin(abs_api_endpoint, "?" + status_query_str)

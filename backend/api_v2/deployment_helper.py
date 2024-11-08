@@ -1,95 +1,56 @@
 import logging
 import uuid
-from functools import wraps
 from typing import Any, Optional
 from urllib.parse import urlencode
 
-from api_v2.constants import ApiExecution
+from api_v2.api_key_validator import BaseAPIKeyValidator
 from api_v2.exceptions import (
     ApiKeyCreateException,
     APINotFound,
-    Forbidden,
     InactiveAPI,
-    UnauthorizedKey,
+    InvalidAPIRequest,
 )
 from api_v2.key_helper import KeyHelper
 from api_v2.models import APIDeployment, APIKey
 from api_v2.serializers import APIExecutionResponseSerializer
+from api_v2.utils import APIDeploymentUtils
 from django.core.files.uploadedfile import UploadedFile
-from django.db import connection
-from rest_framework import status
 from rest_framework.request import Request
-from rest_framework.response import Response
 from rest_framework.serializers import Serializer
 from rest_framework.utils.serializer_helpers import ReturnDict
-from utils.constants import Account
+from utils.constants import Account, CeleryQueue
 from utils.local_context import StateStore
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.source import SourceConnector
 from workflow_manager.workflow_v2.dto import ExecutionResponse
+from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
 
 logger = logging.getLogger(__name__)
 
 
-class DeploymentHelper:
+class DeploymentHelper(BaseAPIKeyValidator):
     @staticmethod
-    def validate_api_key(func: Any) -> Any:
-        """Decorator that validates the API key.
+    def validate_parameters(request: Request, **kwargs: Any) -> None:
+        """Validate api_name for API deployments."""
+        api_name = kwargs.get("api_name") or request.data.get("api_name")
+        org_name = kwargs.get("org_name") or request.data.get("org_name")
+        if not api_name:
+            raise InvalidAPIRequest("Missing params api_name")
+        # Set organization in state store for API
+        StateStore.set(Account.ORGANIZATION_ID, org_name)
 
-        Sample header:
-            Authorization: Bearer 123e4567-e89b-12d3-a456-426614174001
-        Args:
-            func (Any): Function to wrap for validation
-        """
-
-        @wraps(func)
-        def wrapper(self: Any, request: Request, *args: Any, **kwargs: Any) -> Any:
-            """Wrapper to validate the inputs and key.
-
-            Args:
-                request (Request): Request context
-
-            Raises:
-                Forbidden: _description_
-                APINotFound: _description_
-
-            Returns:
-                Any: _description_
-            """
-            try:
-                authorization_header = request.headers.get("Authorization")
-                api_key = None
-                if authorization_header and authorization_header.startswith("Bearer "):
-                    api_key = authorization_header.split(" ")[1]
-                if not api_key:
-                    raise Forbidden("Missing api key")
-                org_name = kwargs.get("org_name") or request.data.get("org_name")
-                api_name = kwargs.get("api_name") or request.data.get("api_name")
-                if not api_name:
-                    raise Forbidden("Missing api_name")
-                # Set organization in state store for API
-                StateStore.set(Account.ORGANIZATION_ID, org_name)
-
-                api_deployment = DeploymentHelper.get_deployment_by_api_name(
-                    api_name=api_name
-                )
-                DeploymentHelper.validate_api(
-                    api_deployment=api_deployment, api_key=api_key
-                )
-                kwargs["api"] = api_deployment
-                return func(self, request, *args, **kwargs)
-
-            except (UnauthorizedKey, InactiveAPI, APINotFound):
-                raise
-            except Exception as exception:
-                logger.error(f"Exception: {exception}")
-                return Response(
-                    {"error": str(exception)}, status=status.HTTP_403_FORBIDDEN
-                )
-
-        return wrapper
+    @staticmethod
+    def validate_and_process(
+        self: Any, request: Request, func: Any, api_key: str, *args: Any, **kwargs: Any
+    ) -> Any:
+        """Fetch API deployment and validate API key."""
+        api_name = kwargs.get("api_name") or request.data.get("api_name")
+        api_deployment = DeploymentHelper.get_deployment_by_api_name(api_name=api_name)
+        DeploymentHelper.validate_api(api_deployment=api_deployment, api_key=api_key)
+        kwargs["api"] = api_deployment
+        return func(self, request, *args, **kwargs)
 
     @staticmethod
     def validate_api(api_deployment: Optional[APIDeployment], api_key: str) -> None:
@@ -107,7 +68,7 @@ class DeploymentHelper:
             raise APINotFound()
         if not api_deployment.is_active:
             raise InactiveAPI()
-        KeyHelper.validate_api_key(api_key=api_key, api_instance=api_deployment)
+        KeyHelper.validate_api_key(api_key=api_key, instance=api_deployment)
 
     @staticmethod
     def validate_and_get_workflow(workflow_id: str) -> Workflow:
@@ -117,25 +78,7 @@ class DeploymentHelper:
 
     @staticmethod
     def get_api_by_id(api_id: str) -> Optional[APIDeployment]:
-        try:
-            api_deployment: APIDeployment = APIDeployment.objects.get(pk=api_id)
-            return api_deployment
-        except APIDeployment.DoesNotExist:
-            return None
-
-    @staticmethod
-    def construct_complete_endpoint(api_name: str) -> str:
-        """Constructs the complete API endpoint by appending organization
-        schema, endpoint path, and Django app backend URL.
-
-        Parameters:
-        - endpoint (str): The endpoint path to be appended to the complete URL.
-
-        Returns:
-        - str: The complete API endpoint URL.
-        """
-        org_schema = connection.get_tenant().schema_name
-        return f"{ApiExecution.PATH}/{org_schema}/{api_name}/"
+        return APIDeploymentUtils.get_api_by_id(api_id=api_id)
 
     @staticmethod
     def construct_status_endpoint(api_endpoint: str, execution_id: str) -> str:
@@ -166,7 +109,7 @@ class DeploymentHelper:
             return None
 
     @staticmethod
-    def create_api_key(serializer: Serializer) -> APIKey:
+    def create_api_key(serializer: Serializer, request: Request) -> APIKey:
         """To make API key for an API.
 
         Args:
@@ -177,7 +120,7 @@ class DeploymentHelper:
         """
         api_deployment: APIDeployment = serializer.instance
         try:
-            api_key: APIKey = KeyHelper.create_api_key(api_deployment)
+            api_key: APIKey = KeyHelper.create_api_key(api_deployment, request)
             return api_key
         except Exception as error:
             logger.error(f"Error while creating API key error: {str(error)}")
@@ -185,12 +128,15 @@ class DeploymentHelper:
             logger.info("Deleted the deployment instance")
             raise ApiKeyCreateException()
 
-    @staticmethod
+    @classmethod
     def execute_workflow(
+        cls,
         organization_name: str,
         api: APIDeployment,
         file_objs: list[UploadedFile],
         timeout: int,
+        include_metadata: bool = False,
+        use_file_history: bool = False,
     ) -> ReturnDict:
         """Execute workflow by api.
 
@@ -198,6 +144,8 @@ class DeploymentHelper:
             organization_name (str): organization name
             api (APIDeployment): api model object
             file_obj (UploadedFile): input file
+            use_file_history (bool): Use FileHistory table to return results on already
+                processed files. Defaults to False
 
         Returns:
             ReturnDict: execution status/ result
@@ -205,10 +153,12 @@ class DeploymentHelper:
         workflow_id = api.workflow.id
         pipeline_id = api.id
         execution_id = str(uuid.uuid4())
+
         hash_values_of_files = SourceConnector.add_input_file_to_api_storage(
             workflow_id=workflow_id,
             execution_id=execution_id,
             file_objs=file_objs,
+            use_file_history=use_file_history,
         )
         try:
             result = WorkflowHelper.execute_workflow_async(
@@ -217,15 +167,26 @@ class DeploymentHelper:
                 hash_values_of_files=hash_values_of_files,
                 timeout=timeout,
                 execution_id=execution_id,
+                queue=CeleryQueue.CELERY_API_DEPLOYMENTS,
+                use_file_history=use_file_history,
             )
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id
             )
-        except Exception:
+            if include_metadata:
+                result.remove_result_metadata_keys(keys_to_remove=["highlight_data"])
+            else:
+                result.remove_result_metadata_keys()
+        except Exception as error:
             DestinationConnector.delete_api_storage_dir(
                 workflow_id=workflow_id, execution_id=execution_id
             )
-            raise
+            result = ExecutionResponse(
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                execution_status=ExecutionStatus.ERROR.value,
+                error=str(error),
+            )
         return APIExecutionResponseSerializer(result).data
 
     @staticmethod

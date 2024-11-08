@@ -40,6 +40,7 @@ from workflow_manager.workflow.models.workflow import Workflow
 logger = logging.getLogger(__name__)
 
 
+# TODO: Inherit from SourceConnector for different sources - File, API .etc.
 class SourceConnector(BaseConnector):
     """A class representing a source connector for a workflow.
 
@@ -61,10 +62,18 @@ class SourceConnector(BaseConnector):
         organization_id: Optional[str] = None,
         execution_service: Optional[WorkflowExecutionServiceHelper] = None,
     ) -> None:
-        """Initialize a SourceConnector object.
+        """Create a SourceConnector.
 
         Args:
-            workflow (Workflow): _description_
+            workflow (Workflow): Associated workflow instance
+            execution_id (str): UUID of the current execution
+            organization_id (Optional[str]): Organization ID. Defaults to None.
+            execution_service (Optional[WorkflowExecutionServiceHelper]): Instance of
+                WorkflowExecutionServiceHelper that helps with WF execution.
+                Defaults to None. This is not used in case of execution by API.
+
+        Raises:
+            OrganizationIdNotFound: _description_
         """
         organization_id = organization_id or connection.tenant.schema_name
         if not organization_id:
@@ -143,7 +152,9 @@ class SourceConnector(BaseConnector):
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
         source_configurations: dict[str, Any] = self.endpoint.configuration
-        required_patterns = source_configurations.get(SourceKey.FILE_EXTENSIONS, [])
+        required_patterns = list(
+            source_configurations.get(SourceKey.FILE_EXTENSIONS, [])
+        )
         recursive = bool(
             source_configurations.get(SourceKey.PROCESS_SUB_DIRECTORIES, False)
         )
@@ -153,37 +164,79 @@ class SourceConnector(BaseConnector):
             )
         )
         root_dir_path = connector_settings.get(ConnectorKeys.PATH, "")
-
-        input_directory = str(source_configurations.get(SourceKey.ROOT_FOLDER, ""))
+        folders_to_process = list(source_configurations.get(SourceKey.FOLDERS, ["/"]))
+        # Process from root in case its user provided list is empty
+        if not folders_to_process:
+            folders_to_process = ["/"]
+        patterns = self.valid_file_patterns(required_patterns=required_patterns)
+        self.publish_user_sys_log(
+            f"Matching for patterns '{', '.join(patterns)}' from "
+            f"'{', '.join(folders_to_process)}'"
+        )
 
         source_fs = self.get_fs_connector(
             settings=connector_settings, connector_id=connector.connector_id
         )
-        input_directory = source_fs.get_connector_root_dir(
-            input_dir=input_directory, root_path=root_dir_path
-        )
-        logger.debug(f"source input directory {input_directory}")
-        if not isinstance(required_patterns, list):
-            required_patterns = [required_patterns]
-
         source_fs_fsspec = source_fs.get_fsspec_fs()
+        # Checking if folders exist at source before processing
+        # TODO: Validate while receiving this input configuration as well
+        for input_directory in folders_to_process:
+            # TODO: Move to connector class for better error handling
+            try:
+                input_directory = source_fs.get_connector_root_dir(
+                    input_dir=input_directory, root_path=root_dir_path
+                )
+                if not source_fs_fsspec.isdir(input_directory):
+                    raise InvalidInputDirectory(dir=input_directory)
+            except Exception as e:
+                msg = f"Error while validating path '{input_directory}'. {str(e)}"
+                self.publish_user_sys_log(msg)
+                if isinstance(e, InvalidInputDirectory):
+                    raise
+                raise InvalidInputDirectory(detail=msg)
 
-        patterns = self.valid_file_patterns(required_patterns=required_patterns)
-        is_directory = source_fs_fsspec.isdir(input_directory)
-        if not is_directory:
-            raise InvalidInputDirectory()
-        matched_files, count = self._get_matched_files(
-            source_fs_fsspec, input_directory, patterns, recursive, limit
+        total_files_to_process = 0
+        total_matched_files = {}
+
+        for input_directory in folders_to_process:
+            input_directory = source_fs.get_connector_root_dir(
+                input_dir=input_directory, root_path=root_dir_path
+            )
+            logger.debug(f"Listing files from:  {input_directory}")
+            matched_files, count = self._get_matched_files(
+                source_fs_fsspec, input_directory, patterns, recursive, limit
+            )
+            self.publish_user_sys_log(
+                f"Matched '{count}' files from '{input_directory}'"
+            )
+            total_matched_files.update(matched_files)
+            total_files_to_process += count
+        self.publish_input_output_list_file_logs(
+            folders_to_process, total_matched_files, total_files_to_process
         )
-        self.publish_input_output_list_file_logs(input_directory, matched_files, count)
-        return matched_files, count
+        return total_matched_files, total_files_to_process
+
+    def publish_user_sys_log(self, msg: str) -> None:
+        """Publishes log to the user and system.
+
+        Pushes logs messages to the configured logger and to the
+        websocket channel if the `execution_service` is configured.
+
+        Args:
+            msg (str): Message to log
+        """
+        logger.info(msg)
+        if self.execution_service:
+            self.execution_service.publish_log(msg)
 
     def publish_input_output_list_file_logs(
-        self, input_directory: str, matched_files: dict[str, FileHash], count: int
+        self, folders: list[str], matched_files: dict[str, FileHash], count: int
     ) -> None:
         if not self.execution_service:
             return None
-        input_log = f"##Input folder:\n\n `{os.path.basename(input_directory)}`\n\n"
+
+        folders_list = "\n".join(f"- `{folder.strip()}`" for folder in folders)
+        input_log = f"##Folders to process:\n\n{folders_list}\n\n"
         self.execution_service.publish_update_log(
             state=LogState.INPUT_UPDATE, message=input_log
         )
@@ -193,25 +246,25 @@ class SourceConnector(BaseConnector):
         )
 
     def publish_input_file_content(self, input_file_path: str, input_text: str) -> None:
-        if self.execution_service:
-            output_log_message = f"##Input text:\n\n```text\n{input_text}\n```\n\n"
-            input_log_message = (
-                "##Input file:\n\n```text\n"
-                f"{os.path.basename(input_file_path)}\n```\n\n"
-            )
-            self.execution_service.publish_update_log(
-                state=LogState.INPUT_UPDATE, message=input_log_message
-            )
-            self.execution_service.publish_update_log(
-                state=LogState.OUTPUT_UPDATE, message=output_log_message
-            )
+        if not self.execution_service:
+            return None
+        output_log_message = f"##Input text:\n\n```text\n{input_text}\n```\n\n"
+        input_log_message = (
+            "##Input file:\n\n```text\n" f"{os.path.basename(input_file_path)}\n```\n\n"
+        )
+        self.execution_service.publish_update_log(
+            state=LogState.INPUT_UPDATE, message=input_log_message
+        )
+        self.execution_service.publish_update_log(
+            state=LogState.OUTPUT_UPDATE, message=output_log_message
+        )
 
     def _matched_files_component_log(
         self, matched_files: dict[str, FileHash], count: int
     ) -> str:
         output_log = "### Matched files \n```text\n\n\n"
         for file_path in islice(matched_files.keys(), 20):
-            output_log += f"{file_path}\n"
+            output_log += f"- {file_path}\n"
         output_log += "```\n\n"
         output_log += f"""Total matched files: {count}
             \n\nPlease note that only the first 20 files are shown.\n\n"""
@@ -276,10 +329,16 @@ class SourceConnector(BaseConnector):
             workflow=workflow, cache_key=file_hash
         )
 
-        if file_history and file_history.is_completed():
+        # In case of ETL pipelines, its necessary to skip files which have
+        # already been processed
+        if (
+            self.execution_service.use_file_history
+            and file_history
+            and file_history.is_completed()
+        ):
             self.execution_service.publish_log(
                 f"Skipping file {file_path} as it has already been processed. "
-                "Clear the cache to process it again."
+                "Clear the file markers to process it again."
             )
             return False
 
@@ -299,6 +358,7 @@ class SourceConnector(BaseConnector):
             file_hash=file_hash,
         )
 
+    # TODO: Get file count from len of dict instead of returning tuple
     def list_files_from_source(
         self, file_hashes: dict[str, FileHash] = {}
     ) -> tuple[dict[str, FileHash], int]:
@@ -432,9 +492,7 @@ class SourceConnector(BaseConnector):
         shutil.copyfile(input_file_path, infile_path)
         shutil.copyfile(input_file_path, source_path)
 
-    def add_file_to_volume(
-        self, input_file_path: str, file_hash: FileHash
-    ) -> tuple[str, str]:
+    def add_file_to_volume(self, input_file_path: str, file_hash: FileHash) -> str:
         """Add input file to execution directory.
 
         Args:
@@ -502,16 +560,22 @@ class SourceConnector(BaseConnector):
 
     @classmethod
     def add_input_file_to_api_storage(
-        cls, workflow_id: str, execution_id: str, file_objs: list[UploadedFile]
+        cls,
+        workflow_id: str,
+        execution_id: str,
+        file_objs: list[UploadedFile],
+        use_file_history: bool = False,
     ) -> dict[str, FileHash]:
         """Add input file to api storage.
 
         Args:
-            workflow_id (str): workflow id
-            execution_id (str): execution_id
-            file_objs (list[UploadedFile]): api file objects
+            workflow_id (str): UUID of the worklfow
+            execution_id (str): UUID of the execution
+            file_objs (list[UploadedFile]): List of uploaded files
+            use_file_history (bool): Use FileHistory table to return results on already
+                processed files. Defaults to False
         returns:
-            dict[str, FileHash]: file hashes
+            dict[str, FileHash]: Dict containing file name and its corresponding hash
         """
         api_storage_dir = cls.get_api_storage_dir_path(
             workflow_id=workflow_id, execution_id=execution_id
@@ -529,9 +593,12 @@ class SourceConnector(BaseConnector):
                 f.write(buffer)
             file_hash = cls.hash_str(buffer)
             connection_type = WorkflowEndpoint.ConnectionType.API
-            file_history = FileHistoryHelper.get_file_history(
-                workflow=workflow, cache_key=file_hash
-            )
+
+            file_history = None
+            if use_file_history:
+                file_history = FileHistoryHelper.get_file_history(
+                    workflow=workflow, cache_key=file_hash
+                )
             is_executed = (
                 True if file_history and file_history.is_completed() else False
             )

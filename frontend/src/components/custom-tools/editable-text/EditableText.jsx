@@ -15,22 +15,17 @@ function EditableText({
   handleChange,
   isTextarea,
   placeHolder,
+  isCoverageLoading,
 }) {
   const name = isTextarea ? "prompt" : "prompt_key";
   const [triggerHandleChange, setTriggerHandleChange] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const divRef = useRef(null);
-  const {
-    disableLlmOrDocChange,
-    indexDocs,
-    selectedDoc,
-    isSinglePassExtractLoading,
-    isPublicSource,
-  } = useCustomToolStore();
+  const { isSinglePassExtractLoading, isPublicSource } = useCustomToolStore();
 
   useEffect(() => {
     setText(defaultText);
-  }, []);
+  }, [defaultText]);
 
   useEffect(() => {
     // Attach the event listener when the component mounts
@@ -91,9 +86,7 @@ function EditableText({
         onBlur={handleBlur}
         onClick={() => setIsEditing(true)}
         disabled={
-          disableLlmOrDocChange.includes(promptId) ||
-          isSinglePassExtractLoading ||
-          isPublicSource
+          isCoverageLoading || isSinglePassExtractLoading || isPublicSource
         }
       />
     );
@@ -101,7 +94,7 @@ function EditableText({
 
   return (
     <Input
-      className="font-size-14 width-100 input-header-text"
+      className="width-100 input-header-text"
       value={text}
       onChange={handleTextChange}
       placeholder="Enter Key"
@@ -115,10 +108,7 @@ function EditableText({
       onBlur={handleBlur}
       onClick={() => setIsEditing(true)}
       disabled={
-        disableLlmOrDocChange.includes(promptId) ||
-        indexDocs.includes(selectedDoc?.document_id) ||
-        isSinglePassExtractLoading ||
-        isPublicSource
+        isCoverageLoading || isSinglePassExtractLoading || isPublicSource
       }
     />
   );
@@ -129,11 +119,12 @@ EditableText.propTypes = {
   setIsEditing: PropTypes.func.isRequired,
   text: PropTypes.string,
   setText: PropTypes.func.isRequired,
-  promptId: PropTypes.string.isRequired,
-  defaultText: PropTypes.string.isRequired,
+  promptId: PropTypes.string,
+  defaultText: PropTypes.string,
   handleChange: PropTypes.func.isRequired,
   isTextarea: PropTypes.bool,
   placeHolder: PropTypes.string,
+  isCoverageLoading: PropTypes.bool.isRequired,
 };
 
 export { EditableText };

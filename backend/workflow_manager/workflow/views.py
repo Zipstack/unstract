@@ -4,7 +4,6 @@ from typing import Any, Optional
 from connector.connector_instance_helper import ConnectorInstanceHelper
 from django.conf import settings
 from django.db.models.query import QuerySet
-from numpy import deprecate_with_doc
 from permissions.permission import IsOwner
 from pipeline.models import Pipeline
 from pipeline.pipeline_processor import PipelineProcessor
@@ -13,8 +12,6 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
-from tool_instance.tool_processor import ToolProcessor
-from unstract.tool_registry.dto import Tool
 from utils.filtering import FilterHelper
 from workflow_manager.endpoint.destination import DestinationConnector
 from workflow_manager.endpoint.dto import FileHash
@@ -29,7 +26,7 @@ from workflow_manager.workflow.exceptions import (
     WorkflowGenerationError,
     WorkflowRegenerationError,
 )
-from workflow_manager.workflow.generator import WorkflowGenerator
+from workflow_manager.workflow.models.execution import WorkflowExecution
 from workflow_manager.workflow.models.workflow import Workflow
 from workflow_manager.workflow.serializers import (
     ExecuteWorkflowResponseSerializer,
@@ -80,14 +77,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             return ExecuteWorkflowSerializer
         else:
             return WorkflowSerializer
-
-    @deprecate_with_doc("Not using with the latest UX chnages")
-    def _generate_workflow(self, workflow_id: str) -> WorkflowGenerator:
-        registry_tools: list[Tool] = ToolProcessor.get_registry_tools()
-        generator = WorkflowGenerator(workflow_id=workflow_id)
-        generator.set_request(self.request)
-        generator.generate_workflow(registry_tools)
-        return generator
 
     def perform_update(self, serializer: WorkflowSerializer) -> Workflow:
         """To edit a workflow.
@@ -171,15 +160,17 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         execution_id = serializer.get_execution_id(serializer.validated_data)
         execution_action = serializer.get_execution_action(serializer.validated_data)
         file_objs = request.FILES.getlist("files")
-        include_metadata = (
-            request.data.get("include_metadata", "false").lower() == "true"
-        )
         hashes_of_files: dict[str, FileHash] = {}
+        use_file_history: bool = True
+
+        # API based execution
         if file_objs and execution_id and workflow_id:
+            use_file_history = False
             hashes_of_files = SourceConnector.add_input_file_to_api_storage(
                 workflow_id=workflow_id,
                 execution_id=execution_id,
                 file_objs=file_objs,
+                use_file_history=False,
             )
 
         try:
@@ -192,7 +183,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 execution_id=execution_id,
                 pipeline_guid=pipeline_guid,
                 hash_values_of_files=hashes_of_files,
-                include_metadata=include_metadata,
+                use_file_history=use_file_history,
             )
             if (
                 execution_response.execution_status == "ERROR"
@@ -219,7 +210,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         execution_id: Optional[str] = None,
         pipeline_guid: Optional[str] = None,
         hash_values_of_files: dict[str, FileHash] = {},
-        include_metadata: bool = False,
+        use_file_history: bool = True,
     ) -> ExecutionResponse:
         if execution_action is not None:
             # Step execution
@@ -228,7 +219,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 execution_action,
                 execution_id=execution_id,
                 hash_values_of_files=hash_values_of_files,
-                include_metadata=include_metadata,
             )
         elif pipeline_guid:
             # pipeline execution
@@ -239,14 +229,17 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 workflow=workflow,
                 execution_id=execution_id,
                 pipeline_id=pipeline_guid,
+                execution_mode=WorkflowExecution.Mode.INSTANT,
                 hash_values_of_files=hash_values_of_files,
+                use_file_history=use_file_history,
             )
         else:
             execution_response = WorkflowHelper.complete_execution(
                 workflow=workflow,
                 execution_id=execution_id,
+                execution_mode=WorkflowExecution.Mode.INSTANT,
                 hash_values_of_files=hash_values_of_files,
-                include_metadata=include_metadata,
+                use_file_history=use_file_history,
             )
         return execution_response
 

@@ -1,12 +1,12 @@
 import logging
 from typing import Any
 
+from connector_v2.models import ConnectorInstance
 from django.http import HttpRequest
 from file_management.exceptions import (
     ConnectorInstanceNotFound,
     ConnectorOAuthError,
     FileListError,
-    InternalServerError,
 )
 from file_management.file_management_helper import FileManagerHelper
 from file_management.serializer import (
@@ -16,24 +16,15 @@ from file_management.serializer import (
     FileUploadSerializer,
 )
 from oauth2client.client import HttpAccessTokenRefreshError
+from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.user_session import UserSessionUtils
 
-from backend.constants import FeatureFlag
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.local_storage.local_storage import LocalStorageFS
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-    from connector_v2.models import ConnectorInstance
-    from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
-
-else:
-    from connector.models import ConnectorInstance
-    from prompt_studio.prompt_studio_document_manager.models import DocumentManager
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +36,9 @@ class FileManagementViewSet(viewsets.ModelViewSet):
     """
 
     versioning_class = URLPathVersioning
-    queryset = ConnectorInstance.objects.all()
+
+    def get_queryset(self):
+        return ConnectorInstance.objects.all()
 
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action == "upload":
@@ -73,16 +66,12 @@ class FileManagementViewSet(viewsets.ModelViewSet):
             raise ConnectorInstanceNotFound()
         except HttpAccessTokenRefreshError as error:
             logger.error(
-                f"HttpAccessTokenRefreshError thrown\
-                        from file list, error {error}"
+                f"HttpAccessTokenRefreshError thrown from file list, error {error}"
             )
             raise ConnectorOAuthError()
         except ConnectorError as error:
             logger.error(f"ConnectorError thrown during file list, error {error}")
             raise FileListError(core_err=error)
-        except Exception as error:
-            logger.error(f"Exception thrown from file list, error {error}")
-            raise InternalServerError()
 
     @action(detail=True, methods=["get"])
     def download(self, request: HttpRequest) -> Response:

@@ -8,17 +8,16 @@ import CodeSnippet from "./CodeSnippet.jsx";
 import "./DisplayCode.css";
 
 const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
-  const handleCloseDialog = () => {
-    setDialogOpen(false);
-  };
   const [copied, setCopied] = useState(false);
   const [language, setLanguage] = useState("python");
   const [code, setCode] = useState("");
   const [activeTabKey, setActiveTabKey] = useState("POST");
+  const params =
+    "?execution_id=REPLACE_WITH_EXECUTION_ID&include_metadata=False";
 
-  useEffect(() => {
-    generateCode();
-  }, [url, language, activeTabKey]);
+  const handleCloseDialog = () => {
+    setDialogOpen(false);
+  };
 
   const generateCode = () => {
     if (language === "python") {
@@ -51,7 +50,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
         files=[('files',('file',open(filepath,'rb'),'application/octet-stream'))]
         response = requests.request("POST", api_url, headers=headers, data=payload, files=files)
       {{else}}
-        api_url = '{{url}}?execution_id=REPLACE_WITH_EXECUTION_ID'
+        api_url = '{{url}}{{{params}}}'
         headers = {
           'Authorization': 'Bearer REPLACE_WITH_API_KEY'
         }
@@ -62,7 +61,11 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
     code = trimIndent(code);
     const template = Handlebars.compile(code);
 
-    const pythonCode = template({ url, isPost: activeTabKey === "POST" });
+    const pythonCode = template({
+      url,
+      params,
+      isPost: activeTabKey === "POST",
+    });
     setCode(pythonCode);
   };
 
@@ -74,7 +77,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
     --form 'timeout=300' \\
     --form 'include_metadata=false'
     {{else}}
-    curl --location '{{url}}?execution_id=REPLACE_WITH_EXECUTION_ID' \\
+    curl --location '{{url}}{{{params}}}' \\
     --header 'Authorization: Bearer REPLACE_WITH_API_KEY'
     {{/if}}
   `;
@@ -82,6 +85,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
     const template = Handlebars.compile(code);
     const curlCode = template({
       url,
+      params,
       isPost: activeTabKey === "POST",
       pathToFile: "/path/to/file",
     });
@@ -100,7 +104,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
     fetch("{{url}}", requestOptions)
     {{else}}
     var requestOptions = { method: 'GET', redirect: 'follow', headers: myHeaders};
-    fetch("{{url}}?execution_id=REPLACE_WITH_EXECUTION_ID", requestOptions)
+    fetch("{{url}}{{{params}}}", requestOptions)
     {{/if}}
     .then(response => response.text())
     .then(result => console.log(result))
@@ -109,7 +113,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
     code = trimIndent(code);
     const template = Handlebars.compile(code);
 
-    const jsCode = template({ url, isPost: activeTabKey === "POST" });
+    const jsCode = template({ url, params, isPost: activeTabKey === "POST" });
     setCode(jsCode);
   };
 
@@ -154,6 +158,10 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
       label: "JavaScript",
     },
   ];
+
+  useEffect(() => {
+    generateCode();
+  }, [url, language, activeTabKey]);
 
   return (
     <Modal

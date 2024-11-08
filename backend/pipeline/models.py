@@ -91,7 +91,7 @@ class Pipeline(BaseModel):
 
     @property
     def api_endpoint(self):
-        org_schema = connection.get_tenant().schema_name
+        org_schema = connection.tenant.schema_name
         deployment_endpoint = settings.API_DEPLOYMENT_PATH_PREFIX + "/pipeline/api"
         api_endpoint = f"{deployment_endpoint}/{org_schema}/{self.id}/"
         return api_endpoint
@@ -99,6 +99,7 @@ class Pipeline(BaseModel):
     def __str__(self) -> str:
         return (
             f"Pipeline({self.id}) ("
+            f"name: {self.pipeline_name}, "
             f"cron string: {self.cron_string}, "
             f"is active: {self.active}, "
             f"is scheduled: {self.scheduled}"

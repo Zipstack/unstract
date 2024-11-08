@@ -11,7 +11,7 @@ class Account:
 class FeatureFlag:
     """Temporary feature flags."""
 
-    MULTI_TENANCY_V2 = "multi_tenancy_v2"
+    pass
 
 
 class Common:
@@ -33,6 +33,17 @@ class Pagination:
     PAGE_SIZE = 50
     PAGE_SIZE_QUERY_PARAM = "page_size"
     MAX_PAGE_SIZE = 1000
+
+
+class CeleryQueue:
+    """Constants for Celery Queue.
+
+    Attributes:
+        CELERY_API_DEPLOYMENTS (str): The name of the Celery queue for API
+            deployments.
+    """
+
+    CELERY_API_DEPLOYMENTS = "celery_api_deployments"
 
 
 class ExecutionLogConstants:

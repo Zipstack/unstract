@@ -11,7 +11,8 @@ default_text='\033[39m'
 yellow_text='\033[33m'
 
 # set -x/xtrace uses PS4 for more info
-PS4="$blue_text""${0}:${LINENO}: ""$default_text"
+PS4="$blue_text"'${0}:${LINENO}: '"$default_text"
+
 
 debug() {
   if [ "$opt_verbose" = true ]; then
@@ -137,32 +138,31 @@ do_git_pull() {
   fi
 
   echo "Fetching release tags."
+  current_version=$(git describe --tags --abbrev=0)
   git fetch --quiet --tags
 
   if [[ "$opt_version" == "latest" ]]; then
-    branch=`git describe --tags --abbrev=0`
-  elif [[ $opt_version == v* ]]; then
-    if [ -z $(git tag -l "$opt_version") ]; then
-      echo -e "$red_text""Version not found.""$default_text"
-      exit 1
-    fi
-    branch="$opt_version"
+    target_branch=`git ls-remote --tags origin | awk -F/ '{print $3}' | sort -V | tail -n1`
   elif [[ "$opt_version" == "current" ]]; then
-    branch=`git branch --show-current`
+    target_branch=`git branch --show-current`
     opt_build_local=true
     echo -e "Opting ""$blue_text""local build""$default_text"" of Docker images from ""$blue_text""$branch""$default_text"" branch."
-  else
-    echo -e "$red_text""Version must be one of {latest, vX.Y.Z (e.g. v0.47.0), current}.""$default_text"
+  elif [ -z $(git tag -l "$opt_version") ]; then
+    echo -e "$red_text""Version not found.""$default_text"
+    version_regex="^v([0-9]+)\.([0-9]+)\.([0-9]+)(-[a-zA-Z0-9]+(\.[0-9]+)?)?$"
+    if [[ ! $opt_version =~ $version_regex ]]; then
+      echo -e "$red_text""Version must be prefixed with 'v' and follow SemVer (e.g. v0.47.0).""$default_text"
+    fi
     exit 1
+  else
+    target_branch="$opt_version"
   fi
 
-  if [[ "$opt_version" == "latest" ]] || [[ $opt_version == v* ]]; then
-    echo -e "Performing ""$blue_text""git checkout""$default_text"" to ""$blue_text""$branch""$default_text""."
-    git checkout --quiet $branch
+  echo -e "Performing ""$blue_text""git checkout""$default_text"" to ""$blue_text""$target_branch""$default_text""."
+  git checkout --quiet $target_branch
 
-    echo -e "Performing ""$blue_text""git pull""$default_text"" on ""$blue_text""$branch""$default_text""."
-    git pull --quiet $(git remote) $branch
-  fi
+  echo -e "Performing ""$blue_text""git pull""$default_text"" on ""$blue_text""$target_branch""$default_text""."
+  git pull --quiet $(git remote) $target_branch
 }
 
 _copy_or_merge_envs() {
@@ -258,6 +258,21 @@ build_services() {
   fi
 }
 
+create_backend_schema() {
+
+  if [ "$first_setup" = false ]; then
+    return
+  fi
+
+  pushd ${script_dir}/docker 1>/dev/null
+
+  echo -e "$blue_text""Creating a schema for Unstract in the database""$default_text"
+  VERSION=$opt_version $docker_compose_cmd run backend prepare_and_migrate
+  # TODO: Run migrations here once its removed from backend's entrypoint
+
+  popd 1>/dev/null
+}
+
 run_services() {
   pushd ${script_dir}/docker 1>/dev/null
 
@@ -271,6 +286,9 @@ run_services() {
     else
       echo -e "$green_text""Updated platform to $opt_version version.""$default_text"
     fi
+
+    # Show release notes on version update if applicable
+    python3 "$script_dir/docker/scripts/release-notes/print_release_notes.py" "$current_version" "$target_branch"
   fi
   echo -e "\nOnce the services are up, visit ""$blue_text""http://frontend.unstract.localhost""$default_text"" in your browser."
   echo -e "\nSee logs with:"
@@ -308,6 +326,8 @@ script_dir=$(dirname "$(readlink -f "$BASH_SOURCE")")
 first_setup=false
 # Extract service names from docker compose file.
 services=($(VERSION=$opt_version $docker_compose_cmd -f $script_dir/docker/docker-compose.build.yaml config --services))
+current_version=""
+target_branch=""
 
 display_banner
 parse_args $*
@@ -315,6 +335,7 @@ parse_args $*
 do_git_pull
 setup_env
 build_services
+create_backend_schema
 run_services
 #
 # Run Unstract platform - END

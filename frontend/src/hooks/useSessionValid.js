@@ -7,6 +7,7 @@ import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
 import { useSessionStore } from "../store/session-store";
 import { useUserSession } from "./useUserSession.js";
 import { listFlags } from "../helpers/FeatureFlagsData.js";
+import { useAlertStore } from "../store/alert-store";
 
 let getTrialDetails;
 let isPlatformAdmin;
@@ -27,16 +28,66 @@ try {
   // Ignore if hook not available
 }
 
+let selectedProduct;
+let selectedProductStore;
+let PRODUCT_NAMES = {};
+
+try {
+  selectedProductStore = require("../plugins/llm-whisperer/store/select-product-store.js");
+  PRODUCT_NAMES = require("../plugins/llm-whisperer/helper").PRODUCT_NAMES;
+} catch {
+  // Ignore if hook not available
+}
 function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
   const handleException = useExceptionHandler();
+  const { setAlertDetails } = useAlertStore();
   const navigate = useNavigate();
   const userSession = useUserSession();
 
+  try {
+    if (selectedProductStore?.useSelectedProductStore) {
+      selectedProduct = selectedProductStore?.useSelectedProductStore(
+        (state) => state?.selectedProduct
+      );
+    }
+  } catch (error) {
+    // Do nothing
+  }
+  const navToSelectProduct = (
+    userSessionData,
+    selectedProductStore,
+    selectedProduct
+  ) => {
+    if (
+      userSessionData &&
+      selectedProductStore &&
+      !Object.values(PRODUCT_NAMES).includes(selectedProduct)
+    ) {
+      navigate("/selectProduct");
+      return true; // Indicate that navigation has occurred
+    }
+    return false;
+  };
   return async () => {
     try {
       const userSessionData = await userSession();
+
+      // Return if the user is not authenticated
+      if (!userSessionData) {
+        return;
+      }
+
       const signedInOrgId = userSessionData?.organization_id;
+      const shouldNavigate = navToSelectProduct(
+        userSessionData,
+        selectedProductStore,
+        selectedProduct
+      );
+      if (shouldNavigate) {
+        return; // Exit early, don't run the remaining steps
+      }
+      const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
 
       // API to get the list of organizations
       const requestOptions = {
@@ -98,22 +149,25 @@ function useSessionValid() {
         .pop()
         .split(";")[0];
       userAndOrgDetails["zCode"] = zCode;
+      if (isUnstract) {
+        requestOptions["method"] = "GET";
 
-      requestOptions["method"] = "GET";
+        requestOptions["url"] = `/api/v1/unstract/${orgId}/adapter/`;
+        requestOptions["headers"] = {
+          "X-CSRFToken": csrfToken,
+        };
+        const getAdapterDetails = await axios(requestOptions);
+        const adapterTypes = [
+          ...new Set(
+            getAdapterDetails?.data?.map((obj) =>
+              obj.adapter_type.toLowerCase()
+            )
+          ),
+        ];
+        userAndOrgDetails["adapters"] = adapterTypes;
+      }
 
-      requestOptions["url"] = `/api/v1/unstract/${orgId}/adapter/`;
-      requestOptions["headers"] = {
-        "X-CSRFToken": csrfToken,
-      };
-      const getAdapterDetails = await axios(requestOptions);
-      const adapterTypes = [
-        ...new Set(
-          getAdapterDetails?.data?.map((obj) => obj.adapter_type.toLowerCase())
-        ),
-      ];
-      userAndOrgDetails["adapters"] = adapterTypes;
-
-      if (getTrialDetails) {
+      if (getTrialDetails && isUnstract) {
         const remainingTrialDays = await getTrialDetails.fetchTrialDetails(
           orgId,
           csrfToken
@@ -122,8 +176,10 @@ function useSessionValid() {
           userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
       }
 
-      const flags = await listFlags(orgId, csrfToken);
-      userAndOrgDetails["flags"] = flags;
+      if (isUnstract) {
+        const flags = await listFlags(orgId, csrfToken);
+        userAndOrgDetails["flags"] = flags;
+      }
 
       userAndOrgDetails["allOrganization"] = orgs;
       if (isPlatformAdmin) {
@@ -134,6 +190,7 @@ function useSessionValid() {
       setSessionDetails(getSessionData(userAndOrgDetails));
     } catch (err) {
       // TODO: Throw popup error message
+      // REVIEW: Add condition to check for trial period status
       if (err.response?.status === 402) {
         handleException(err);
       }
@@ -145,6 +202,7 @@ function useSessionValid() {
         window.location.href = `/error?code=${code}&domain=${domainName}`;
         // May be need a logout button there or auto logout
       }
+      setAlertDetails(handleException(err));
     }
   };
 }

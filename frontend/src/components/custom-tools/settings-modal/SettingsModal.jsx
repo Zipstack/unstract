@@ -14,18 +14,20 @@ import { ManageLlmProfiles } from "../manage-llm-profiles/ManageLlmProfiles";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { CustomSynonyms } from "../custom-synonyms/CustomSynonyms";
 import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
-import { HighLightMetaData } from "../highlight-metadata/HighLightMetaData.jsx";
 
 import "./SettingsModal.css";
 
 let SummarizeManager = null;
 const EvaluationManager = null;
 let ChallengeManager = null;
+let HighlightManager = null;
 try {
   SummarizeManager =
     require("../../../plugins/summarize-manager/SummarizeManager").SummarizeManager;
   ChallengeManager =
     require("../../../plugins/challenge-manager/ChallengeManager").ChallengeManager;
+  HighlightManager =
+    require("../../../plugins/highlight-manager/HighlightManager").HighlightManager;
 } catch {
   // Component will remain null if it is not present.
 }
@@ -38,11 +40,10 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
 
   useEffect(() => {
     const items = [
-      getMenuItem("Manage LLM Profiles", 1, <CodeOutlined />),
-      getMenuItem("Manage Grammar", 5, <MessageOutlined />),
+      getMenuItem("LLM Profiles", 1, <CodeOutlined />),
+      getMenuItem("Grammar", 5, <MessageOutlined />),
       getMenuItem("Preamble", 6, <DiffOutlined />),
       getMenuItem("Postamble", 7, <DiffOutlined />),
-      getMenuItem("Manage Highlighting", 8, <CodeOutlined />),
     ];
 
     const listOfComponents = {
@@ -60,7 +61,6 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
           handleUpdateTool={handleUpdateTool}
         />
       ),
-      8: <HighLightMetaData handleUpdateTool={handleUpdateTool} />,
     };
 
     let position = 1;
@@ -68,7 +68,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       items.splice(
         position,
         0,
-        getMenuItem("Summary Manager", 2, <FileTextOutlined />)
+        getMenuItem("SummarizedExtraction", 2, <FileTextOutlined />)
       );
       listOfComponents[2] = (
         <SummarizeManager
@@ -95,13 +95,25 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       items.splice(
         position,
         0,
-        getMenuItem("Challenge Manager", 4, <FileTextOutlined />)
+        getMenuItem("LLMChallenge", 4, <FileTextOutlined />)
       );
       listOfComponents[4] = (
-        <ChallengeManager handleUpdateTool={handleUpdateTool} />
+        <ChallengeManager
+          handleUpdateTool={handleUpdateTool}
+          type="challenge"
+        />
+      );
+      position++;
+    }
+    if (HighlightManager) {
+      items.push(getMenuItem("Highlight Manager", 8, <FileTextOutlined />));
+      listOfComponents[8] = (
+        <HighlightManager
+          handleUpdateTool={handleUpdateTool}
+          type="highlight"
+        />
       );
     }
-
     setMenuItems(items);
     setComponents(listOfComponents);
   }, [llmItems]);

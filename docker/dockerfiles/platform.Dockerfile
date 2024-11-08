@@ -34,6 +34,11 @@ RUN set -e; \
     # source command may not be availble in sh
     . .venv/bin/activate; \
     \
+    # Install opentelemetry for instrumentation.
+    pip install opentelemetry-distro opentelemetry-exporter-otlp; \
+    \
+    opentelemetry-bootstrap -a install; \
+    \
     pdm sync --prod --no-editable; \
     \
     # REF: https://docs.gunicorn.org/en/stable/deploy.html#using-virtualenv
@@ -42,4 +47,4 @@ RUN set -e; \
 EXPOSE 3001
 
 # During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
-CMD [".venv/bin/gunicorn", "--bind", "0.0.0.0:3001", "--timeout", "300", "unstract.platform_service.main:app"]
+CMD [".venv/bin/gunicorn", "--bind", "0.0.0.0:3001", "--timeout", "300", "unstract.platform_service.run:app"]

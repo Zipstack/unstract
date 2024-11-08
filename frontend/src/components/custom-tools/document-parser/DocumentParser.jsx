@@ -1,29 +1,22 @@
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
-import { DndProvider } from "react-dnd";
-import { HTML5Backend } from "react-dnd-html5-backend";
 
 import "./DocumentParser.css";
-import {
-  promptStudioUpdateStatus,
-  promptType,
-} from "../../../helpers/GetStaticData";
+import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { PromptDnd } from "../prompt-card/PrompDnd";
+import { PromptCardWrapper } from "../prompt-card/PromptCardWrapper";
+import { usePromptOutputStore } from "../../../store/prompt-output-store";
 
 let promptPatchApiSps;
-let promptReorderApiSps;
 let SpsPromptsEmptyState;
 try {
   promptPatchApiSps =
     require("../../../plugins/simple-prompt-studio/helper").promptPatchApiSps;
-  promptReorderApiSps =
-    require("../../../plugins/simple-prompt-studio/helper").promptReorderApiSps;
   SpsPromptsEmptyState =
     require("../../../plugins/simple-prompt-studio/SpsPromptsEmptyState").SpsPromptsEmptyState;
 } catch {
@@ -35,17 +28,40 @@ function DocumentParser({
   scrollToBottom,
   setScrollToBottom,
 }) {
-  const [updateStatus, setUpdateStatus] = useState({
-    promptId: null,
-    status: null,
-  });
+  const [enforceTypeList, setEnforceTypeList] = useState([]);
+  const [updatedPromptsCopy, setUpdatedPromptsCopy] = useState({});
   const bottomRef = useRef(null);
-  const { details, isSimplePromptStudio, updateCustomTool } =
+  const { details, isSimplePromptStudio, updateCustomTool, getDropdownItems } =
     useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const { promptOutputs } = usePromptOutputStore();
+
+  useEffect(() => {
+    const outputTypeData = getDropdownItems("output_type") || {};
+    const dropdownList1 = Object.keys(outputTypeData)?.map((item) => {
+      return { value: outputTypeData[item] };
+    });
+    setEnforceTypeList(dropdownList1);
+
+    return () => {
+      // Set the prompts with updated changes when the component is unmounted
+      const modifiedDetails = { ...details };
+      const modifiedPrompts = [...(modifiedDetails?.prompts || [])]?.map(
+        (item) => {
+          const itemPromptId = item?.prompt_id;
+          if (itemPromptId && updatedPromptsCopy[itemPromptId]) {
+            return updatedPromptsCopy[itemPromptId];
+          }
+          return item;
+        }
+      );
+      modifiedDetails["prompts"] = modifiedPrompts;
+      updateCustomTool({ details: modifiedDetails });
+    };
+  }, []);
 
   useEffect(() => {
     if (scrollToBottom) {
@@ -59,45 +75,14 @@ function DocumentParser({
     return `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/${urlPath}`;
   };
 
-  const handleChange = async (
-    event,
-    promptId,
-    dropdownItem,
-    isUpdateStatus = false,
-    isPromptUpdate = false
-  ) => {
+  const handleChangePromptCard = async (name, value, promptId) => {
     const promptsAndNotes = details?.prompts || [];
-    let name = "";
-    let value = "";
-    if (dropdownItem?.length) {
-      name = dropdownItem;
-      value = event;
-    } else {
-      name = event.target.name;
-      value = event.target.value;
-    }
 
     if (name === "prompt_key") {
       // Return if the prompt or the prompt key is empty
       if (!value) {
         return;
       }
-      if (!isValidJsonKey(value)) {
-        handleUpdateStatus(
-          isUpdateStatus,
-          promptId,
-          promptStudioUpdateStatus.validationError
-        );
-        return;
-      }
-    }
-
-    function isValidJsonKey(key) {
-      // Check for Prompt-Key
-      // Allowed case, contains alphanumeric characters and underscores,
-      // and doesn't start with a number.
-      const regex = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-      return regex.test(key);
     }
 
     const index = promptsAndNotes.findIndex(
@@ -132,70 +117,11 @@ function DocumentParser({
       data: body,
     };
 
-    const modifiedDetails = { ...details };
-    const modifiedPrompts = [...(modifiedDetails?.prompts || [])].map(
-      (item) => {
-        if (item?.prompt_id === promptId) {
-          return {
-            ...item,
-            [name]: value, // Update the specific field instantly
-          };
-        }
-        return item;
-      }
-    );
-    modifiedDetails["prompts"] = modifiedPrompts;
-    updateCustomTool({ details: modifiedDetails });
-
-    handleUpdateStatus(
-      isUpdateStatus,
-      promptId,
-      promptStudioUpdateStatus.isUpdating
-    );
-
     return axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        const modifiedPrompts = [...(modifiedDetails?.prompts || [])].map(
-          (item) => {
-            if (item?.prompt_id === data?.prompt_id) {
-              return data;
-            }
-            return item;
-          }
-        );
-        modifiedDetails["prompts"] = modifiedPrompts;
-        if (!isPromptUpdate) {
-          updateCustomTool({ details: modifiedDetails });
-        }
-        handleUpdateStatus(
-          isUpdateStatus,
-          promptId,
-          promptStudioUpdateStatus.done
-        );
-      })
+      .then((res) => res)
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to update"));
-        updateCustomTool({ details });
-        handleUpdateStatus(isUpdateStatus, promptId, null);
-      })
-      .finally(() => {
-        if (isUpdateStatus) {
-          setTimeout(() => {
-            handleUpdateStatus(true, promptId, null);
-          }, 3000);
-        }
       });
-  };
-
-  const handleUpdateStatus = (isUpdate, promptId, value) => {
-    if (!isUpdate) {
-      return;
-    }
-    setUpdateStatus({
-      promptId: promptId,
-      status: value,
-    });
   };
 
   const handleDelete = (promptId) => {
@@ -229,77 +155,18 @@ function DocumentParser({
       });
   };
 
-  const moveItem = (startIndex, endIndex) => {
-    if (startIndex === endIndex) {
-      return;
-    }
+  const getPromptOutputs = (promptId) => {
+    const keys = Object.keys(promptOutputs || {});
 
-    // Clone details and prompts
-    const updatedPrompts = [...(details?.prompts || [])];
+    if (!keys?.length) return {};
 
-    // Move the item within the updated prompts array
-    const [movedStep] = updatedPrompts.splice(startIndex, 1);
-    updatedPrompts.splice(endIndex, 0, movedStep);
-
-    // Modify the prompts order and update
-    const modifiedDetails = { ...details, prompts: updatedPrompts };
-    updateCustomTool({ details: modifiedDetails });
-
-    // Prepare the body for the POST request
-    const body = {
-      start_sequence_number: details.prompts[startIndex]?.sequence_number,
-      end_sequence_number: details.prompts[endIndex]?.sequence_number,
-      prompt_id: details.prompts[startIndex]?.prompt_id,
-    };
-
-    let url = promptUrl("reorder/");
-    if (isSimplePromptStudio) {
-      url = promptReorderApiSps;
-    }
-
-    const requestOptions = {
-      method: "POST",
-      url,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json",
-      },
-      data: body,
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data || [];
-
-        // Update sequence numbers based on the response
-        handleMoveItemSuccess(updatedPrompts, data);
-      })
-      .catch((err) => {
-        // Revert to the original prompts on error
-        updateCustomTool({
-          details: { ...details, prompts: details?.prompts },
-        });
-        setAlertDetails(handleException(err, "Failed to re-order the prompts"));
-      });
-  };
-
-  const handleMoveItemSuccess = (updatedPrompts, updatedSequenceNums) => {
-    const updatedPromptSequenceNum = updatedPrompts.map((promptItem) => {
-      const newPromptSeqNum = updatedSequenceNums.find(
-        (item) => item?.id === promptItem?.prompt_id
-      );
-      if (newPromptSeqNum) {
-        return {
-          ...promptItem,
-          sequence_number: newPromptSeqNum.sequence_number,
-        };
+    const outputs = {};
+    keys.forEach((key) => {
+      if (key.startsWith(promptId)) {
+        outputs[key] = promptOutputs[key];
       }
-      return promptItem;
     });
-
-    updateCustomTool({
-      details: { ...details, prompts: updatedPromptSequenceNum },
-    });
+    return outputs;
   };
 
   if (!details?.prompts?.length) {
@@ -318,24 +185,22 @@ function DocumentParser({
 
   return (
     <div className="doc-parser-layout">
-      <DndProvider backend={HTML5Backend}>
-        {details?.prompts.map((item, index) => {
-          return (
-            <div key={item.prompt_id}>
-              <div className="doc-parser-pad-top" />
-              <PromptDnd
-                item={item}
-                index={index}
-                handleChange={handleChange}
-                handleDelete={handleDelete}
-                updateStatus={updateStatus}
-                moveItem={moveItem}
-              />
-              <div ref={bottomRef} className="doc-parser-pad-bottom" />
-            </div>
-          );
-        })}
-      </DndProvider>
+      {details?.prompts?.map((item) => {
+        return (
+          <div key={item.prompt_id}>
+            <div className="doc-parser-pad-top" />
+            <PromptCardWrapper
+              item={item}
+              handleChangePromptCard={handleChangePromptCard}
+              handleDelete={handleDelete}
+              outputs={getPromptOutputs(item?.prompt_id)}
+              enforceTypeList={enforceTypeList}
+              setUpdatedPromptsCopy={setUpdatedPromptsCopy}
+            />
+            <div ref={bottomRef} className="doc-parser-pad-bottom" />
+          </div>
+        );
+      })}
     </div>
   );
 }

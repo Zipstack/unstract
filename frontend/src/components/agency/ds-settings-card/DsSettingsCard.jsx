@@ -321,9 +321,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         } else {
           updatedData["destination"] = data;
         }
-
-        // Remove the below code once new highlight feature implemented
-        // Show warning message to user when MRQ selected as destination to enable highlight
         if (
           type === "output" &&
           updatedData?.destination?.connection_type === "MANUALREVIEW"
@@ -331,11 +328,9 @@ function DsSettingsCard({ type, endpointDetails, message }) {
           Modal.warning({
             title: "Warning",
             content:
-              "Please ensure that the tool in use is exported with Highlighting enabled.",
+              "Please ensure that the tool in use is has highlight enabled in the tool settings.",
           });
         }
-        // Warning message section.
-
         updateWorkflow(updatedData);
         if (showSuccess) {
           setAlertDetails({

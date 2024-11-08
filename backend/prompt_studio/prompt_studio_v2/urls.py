@@ -22,7 +22,7 @@ urlpatterns = format_suffix_patterns(
             name="tool-studio-prompt-detail",
         ),
         path(
-            "prompt/reorder",
+            "prompt/reorder/",
             reorder_prompts,
             name="reorder_prompts",
         ),
