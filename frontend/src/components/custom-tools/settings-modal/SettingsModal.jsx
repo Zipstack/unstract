@@ -20,11 +20,14 @@ import "./SettingsModal.css";
 let SummarizeManager = null;
 const EvaluationManager = null;
 let ChallengeManager = null;
+let HighlightManager = null;
 try {
   SummarizeManager =
     require("../../../plugins/summarize-manager/SummarizeManager").SummarizeManager;
   ChallengeManager =
     require("../../../plugins/challenge-manager/ChallengeManager").ChallengeManager;
+  HighlightManager =
+    require("../../../plugins/highlight-manager/HighlightManager").HighlightManager;
 } catch {
   // Component will remain null if it is not present.
 }
@@ -95,10 +98,22 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
         getMenuItem("LLMChallenge", 4, <FileTextOutlined />)
       );
       listOfComponents[4] = (
-        <ChallengeManager handleUpdateTool={handleUpdateTool} />
+        <ChallengeManager
+          handleUpdateTool={handleUpdateTool}
+          type="challenge"
+        />
+      );
+      position++;
+    }
+    if (HighlightManager) {
+      items.push(getMenuItem("Highlight Manager", 8, <FileTextOutlined />));
+      listOfComponents[8] = (
+        <HighlightManager
+          handleUpdateTool={handleUpdateTool}
+          type="highlight"
+        />
       );
     }
-
     setMenuItems(items);
     setComponents(listOfComponents);
   }, [llmItems]);

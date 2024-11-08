@@ -30,9 +30,11 @@ try {
 
 let selectedProduct;
 let selectedProductStore;
+let PRODUCT_NAMES = {};
 
 try {
   selectedProductStore = require("../plugins/llm-whisperer/store/select-product-store.js");
+  PRODUCT_NAMES = require("../plugins/llm-whisperer/helper").PRODUCT_NAMES;
 } catch {
   // Ignore if hook not available
 }
@@ -57,7 +59,11 @@ function useSessionValid() {
     selectedProductStore,
     selectedProduct
   ) => {
-    if (userSessionData && selectedProductStore && !selectedProduct) {
+    if (
+      userSessionData &&
+      selectedProductStore &&
+      !Object.values(PRODUCT_NAMES).includes(selectedProduct)
+    ) {
       navigate("/selectProduct");
       return true; // Indicate that navigation has occurred
     }
