@@ -317,16 +317,16 @@ class MigrationQuery:
             {
                 "name": f"migration_{schema}_003_workflow",
                 "src_query": f"""
-                    SELECT id, prompt_name, description, workflow_name, prompt_text,
-                           is_active, status, llm_response, workflow_owner_id,
+                    SELECT id, description, workflow_name,
+                           is_active, status, workflow_owner_id,
                            deployment_type, source_settings, destination_settings,
                            created_by_id, modified_by_id, modified_at, created_at
                     FROM "{schema}".workflow_workflow;
                 """,
                 "dest_query": f"""
                     INSERT INTO "{self.v2_schema}".workflow (
-                        id, prompt_name, description, workflow_name, prompt_text,
-                        is_active, status, llm_response, workflow_owner_id,
+                        id, description, workflow_name,
+                        is_active, status, workflow_owner_id,
                         deployment_type, source_settings, destination_settings,
                         created_by_id, modified_by_id, modified_at, created_at,
                         organization_id
