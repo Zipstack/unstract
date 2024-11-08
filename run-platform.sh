@@ -146,7 +146,7 @@ do_git_pull() {
   elif [[ "$opt_version" == "current" ]]; then
     target_branch=`git branch --show-current`
     opt_build_local=true
-    echo -e "Opting ""$blue_text""local build""$default_text"" of Docker images from ""$blue_text""$branch""$default_text"" branch."
+    echo -e "Opting ""$blue_text""local build""$default_text"" of Docker images from ""$blue_text""$target_branch""$default_text"" branch."
   elif [ -z $(git tag -l "$opt_version") ]; then
     echo -e "$red_text""Version not found.""$default_text"
     version_regex="^v([0-9]+)\.([0-9]+)\.([0-9]+)(-[a-zA-Z0-9]+(\.[0-9]+)?)?$"
@@ -165,7 +165,7 @@ do_git_pull() {
   git pull --quiet $(git remote) $target_branch
 }
 
-_copy_or_merge_envs() {
+_copy_or_merge_env() {
   local src_file_path="$1"
   local dest_file_path="$2"
   local service="$3"
@@ -192,7 +192,7 @@ setup_env() {
     sample_env_path="$script_dir/$service/sample.env"
     env_path="$script_dir/$service/.env"
 
-    _copy_or_merge_envs $sample_env_path $env_path $service
+    _copy_or_merge_env $sample_env_path $env_path $service
 
     if [ "$first_setup" = true ]; then
       # Add encryption secret for backend and platform-service.
@@ -222,8 +222,8 @@ setup_env() {
     fi
   done
 
-  _copy_or_merge_envs "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env" "essential services"
-  _copy_or_merge_envs "$script_dir/docker/sample.env" "$script_dir/docker/.env" "docker compose"
+  _copy_or_merge_env "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env" "essential services"
+  _copy_or_merge_env "$script_dir/docker/sample.env" "$script_dir/docker/.env" "docker compose"
 
   if [ "$opt_only_env" = true ]; then
     echo -e "$green_text""Done.""$default_text" && exit 0
