@@ -15,8 +15,6 @@ from tool_instance.serializers import ToolInstanceSerializer
 from tool_instance.tool_instance_helper import ToolInstanceHelper
 from workflow_manager.endpoint.models import WorkflowEndpoint
 from workflow_manager.workflow.constants import WorkflowExecutionKey, WorkflowKey
-from workflow_manager.workflow.exceptions import WorkflowGenerationError
-from workflow_manager.workflow.generator import WorkflowGenerator
 from workflow_manager.workflow.models.execution import WorkflowExecution
 from workflow_manager.workflow.models.execution_log import ExecutionLog
 from workflow_manager.workflow.models.workflow import Workflow
@@ -58,33 +56,6 @@ class WorkflowSerializer(AuditSerializer):
                 RequestKey.REQUEST
             ).user
         return super().create(validated_data)
-
-    def update(self, instance: Any, validated_data: dict[str, Any]) -> Any:
-        if validated_data.get(WorkflowKey.PROMPT_TEXT):
-            instance.workflow_tool.all().delete()
-        return super().update(instance, validated_data)
-
-    def save(self, **kwargs: Any) -> Workflow:
-        workflow: Workflow = super().save(**kwargs)
-        if self.validated_data.get(WorkflowKey.PROMPT_TEXT):
-            try:
-                tool_serializer = ToolInstanceSerializer(
-                    data=WorkflowGenerator.get_tool_instance_data_from_llm(
-                        workflow=workflow
-                    ),
-                    many=True,
-                    context=self.context,
-                )
-                tool_serializer.is_valid(raise_exception=True)
-                tool_serializer.save()
-            except Exception as exc:
-                logger.error(f"Error while generating tool instances: {exc}")
-                raise WorkflowGenerationError
-
-        request = self.context.get("request")
-        if not request:
-            return workflow
-        return workflow
 
 
 class ExecuteWorkflowSerializer(Serializer):
