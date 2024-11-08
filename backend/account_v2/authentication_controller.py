@@ -192,11 +192,6 @@ class AuthenticationController:
 
             if new_organization:
                 try:
-                    self.auth_service.hubspot_signup_api(request=request)
-                except MethodNotImplemented:
-                    logger.info("hubspot_signup_api not implemented")
-
-                try:
                     self.auth_service.frictionless_onboarding(
                         organization=organization, user=user
                     )
