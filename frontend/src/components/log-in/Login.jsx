@@ -5,19 +5,52 @@ import logo from "../../assets/UnstractLogoBlack.svg";
 import loginRightBanner from "../../assets/login-right-panel.svg";
 import { getBaseUrl } from "../../helpers/GetStaticData";
 import "./Login.css";
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 
 let LoginForm = null;
+let PRODUCT_NAMES = {};
+let SELECTED_PRODUCT;
+let selectedProductStore;
+let setSelectedProduct;
 try {
   LoginForm = require("../../plugins/login-form/LoginForm").LoginForm;
+  PRODUCT_NAMES = require("../../plugins/llm-whisperer/helper").PRODUCT_NAMES;
+  SELECTED_PRODUCT =
+    require("../../plugins/llm-whisperer/helper").SELECTED_PRODUCT;
+  selectedProductStore = require("../../plugins/llm-whisperer/store/select-product-store.js");
 } catch {
   // The components will remain null of it is not available
 }
+
 function Login() {
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const selectedProduct = queryParams.get(SELECTED_PRODUCT);
   const baseUrl = getBaseUrl();
   const newURL = baseUrl + "/api/v1/login";
   const handleLogin = () => {
     window.location.href = newURL;
   };
+
+  try {
+    if (selectedProductStore?.useSelectedProductStore) {
+      setSelectedProduct = selectedProductStore.useSelectedProductStore(
+        (state) => state?.setSelectedProduct
+      );
+    }
+  } catch (error) {
+    // Do nothing
+  }
+
+  useEffect(() => {
+    if (
+      selectedProduct &&
+      Object.values(PRODUCT_NAMES).includes(selectedProduct)
+    ) {
+      setSelectedProduct(selectedProduct);
+    }
+  }, [selectedProduct]);
 
   return (
     <div className="login-main">

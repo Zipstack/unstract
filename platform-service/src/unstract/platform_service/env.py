@@ -1,5 +1,6 @@
 import os
 
+from unstract.platform_service.constants import LogLevel
 from unstract.platform_service.utils import EnvManager
 
 
@@ -25,6 +26,8 @@ class Env:
     APPLICATION_NAME = EnvManager.get_required_setting(
         "APPLICATION_NAME", "unstract-platform-service"
     )
+    DB_SCHEMA = EnvManager.get_required_setting("DB_SCHEMA", "unstract_v2")
+    LOG_LEVEL = EnvManager.get_required_setting("LOG_LEVEL", LogLevel.INFO)
 
 
 EnvManager.raise_for_missing_envs()

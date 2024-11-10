@@ -34,6 +34,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         scheduled: bool = False,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
         workflow_execution: Optional[WorkflowExecution] = None,
+        use_file_history: bool = True,
     ) -> None:
         tool_instances_as_dto = []
         for tool_instance in tool_instances:
@@ -95,6 +96,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.project_settings = project_settings
         self.pipeline_id = pipeline_id
         self.execution_id = str(workflow_execution.id)
+        self.use_file_history = use_file_history
         logger.info(
             f"Executing for Pipeline ID: {pipeline_id}, "
             f"workflow ID: {self.workflow_id}, execution ID: {self.execution_id}, "
@@ -244,7 +246,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             end_time = time.time()
             execution_time = end_time - start_time
             message = str(exception)[:EXECUTION_ERROR_LENGTH]
-            logger.info(
+            logger.error(
                 f"Execution {self.execution_id} ran for {execution_time:.4f}s, "
                 f" Error {exception}"
             )

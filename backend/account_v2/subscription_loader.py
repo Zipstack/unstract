@@ -4,6 +4,7 @@ from importlib import import_module
 from typing import Any
 
 from django.apps import apps
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -75,3 +76,32 @@ def load_plugins() -> list[Any]:
         logger.info("No subscription plugins found.")
 
     return subscription_plugins
+
+
+def validate_etl_run(org_id: str) -> bool:
+    """Method to check subscription status before ETL runs.
+
+    Args:
+        org_id: The ID of the organization.
+
+    Returns:
+        A boolean indicating whether the pre-run check passed or not.
+    """
+    try:
+        from pluggable_apps.subscription.subscription_helper import SubscriptionHelper
+    except ModuleNotFoundError:
+        logger.error("Subscription plugin not found.")
+        return False
+
+    org_plans = SubscriptionHelper.get_subscription(org_id)
+    if not org_plans or not org_plans.is_active:
+        return False
+
+    if org_plans.is_paid:
+        return True
+
+    if timezone.now() >= org_plans.end_date:
+        logger.debug(f"Trial expired for org {org_id}")
+        return False
+
+    return True

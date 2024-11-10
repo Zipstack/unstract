@@ -66,15 +66,9 @@ class PromptServiceContants:
     CLEAN_CONTEXT = "clean-context"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
     VARIABLE_MAP = "variable_map"
+    RECORD = "record"
     TEXT = "text"
-
-
-class LogLevel(Enum):
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARN = "WARN"
-    ERROR = "ERROR"
-    FATAL = "FATAL"
+    ENABLE_HIGHLIGHT = "enable_highlight"
 
 
 class RunLevel(Enum):
@@ -92,14 +86,14 @@ class RunLevel(Enum):
 class FeatureFlag:
     """Temporary feature flags."""
 
-    MULTI_TENANCY_V2 = "multi_tenancy_v2"
+    pass
 
 
 class DBTableV2:
     """Database tables."""
 
-    ORGANIZATION = "organization_v2"
-    ADAPTER_INSTANCE = "adapter_instance_v2"
-    PROMPT_STUDIO_REGISTRY = "prompt_studio_registry_v2"
-    PLATFORM_KEY = "platform_key_v2"
-    TOKEN_USAGE = "token_usage_v2"
+    ORGANIZATION = "organization"
+    ADAPTER_INSTANCE = "adapter_instance"
+    PROMPT_STUDIO_REGISTRY = "prompt_studio_registry"
+    PLATFORM_KEY = "platform_key"
+    TOKEN_USAGE = "usage"

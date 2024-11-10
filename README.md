@@ -58,11 +58,12 @@ Next, either download a release or clone this repo and do the following:
 
 That's all there is to it!
 
+See [user guide](https://docs.unstract.com/unstract/unstract_platform/user_guides/run_platform) for more details on managing the platform.  
 Another really quick way to experience Unstract is by signing up for our [hosted version](https://us-central.unstract.com/).
 
 ## ⏩ Quick Start Guide
 
-Unstract comes well documented. You can get introduced to the [basics of Unstract](https://docs.unstract.com/), and [learn how to connect](https://docs.unstract.com/unstract_platform/setup_accounts/whats_needed) various systems like LLMs, Vector Databases, Embedding Models and Text Extractors to it. The easiest way to wet your feet is to go through our [Quick Start Guide](https://docs.unstract.com/unstract_platform/quick_start) where you actually get to do some prompt engineering in Prompt Studio and launch an API to structure varied credit card statements!
+Unstract comes well documented. You can get introduced to the [basics of Unstract](https://docs.unstract.com/unstract/), and [learn how to connect](https://docs.unstract.com/unstract/unstract_platform/setup_accounts/whats_needed) various systems like LLMs, Vector Databases, Embedding Models and Text Extractors to it. The easiest way to wet your feet is to go through our [Quick Start Guide](https://docs.unstract.com/unstract/unstract_platform/quick_start) where you actually get to do some prompt engineering in Prompt Studio and launch an API to structure varied credit card statements!
 
 ## 🤝 Ecosystem support
 
@@ -72,12 +73,13 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |----------------------------------------------------------------|-----------------------------|---|
 | <img src="docs/assets/3rd_party/openai.png" width="32"/>       | OpenAI                      | ✅ Working |
 | <img src="docs/assets/3rd_party/vertex_ai.png" width="32"/>    | Google VertexAI, Gemini Pro | ✅ Working |
-| <img src="docs/assets/3rd_party/azure_openai.png" width="32"/> | Azure OpenAI                | ✅ Working  |
-| <img src="docs/assets/3rd_party/palm.png" width="32"/>         | Google PaLM                 | ✅ Working  |
-| <img src="docs/assets/3rd_party/anyscale.png" width="32"/>     | Anyscale                    | ✅ Working |
-| <img src="docs/assets/3rd_party/mistral_ai.png" width="32"/>   | Mistral AI                  | ✅ Working |
+| <img src="docs/assets/3rd_party/azure_openai.png" width="32"/> | Azure OpenAI                | ✅ Working |
 | <img src="docs/assets/3rd_party/anthropic.png" width="32"/>    | Anthropic                   | ✅ Working |
 | <img src="docs/assets/3rd_party/ollama.png" width="32"/>       | Ollama                      | ✅ Working |
+| <img src="docs/assets/3rd_party/bedrock.png" width="32"/>      | Bedrock                     | ✅ Working |
+| <img src="docs/assets/3rd_party/palm.png" width="32"/>         | Google PaLM                 | ✅ Working |
+| <img src="docs/assets/3rd_party/anyscale.png" width="32"/>     | Anyscale                    | ✅ Working |
+| <img src="docs/assets/3rd_party/mistral_ai.png" width="32"/>   | Mistral AI                  | ✅ Working |
 | <img src="docs/assets/3rd_party/replicate.png" width="32"/>    | Replicate                   | 🗓️ Coming soon! |
 
 
@@ -100,27 +102,29 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |<img src="docs/assets/3rd_party/openai.png" width="32"/>| OpenAI | ✅ Working |
 |<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure OpenAI | ✅ Working  |
 |<img src="docs/assets/3rd_party/palm.png" width="32"/>| Google PaLM | ✅ Working  |
+|<img src="docs/assets/3rd_party/ollama.png" width="32"/>| Ollama | ✅ Working |
 
 ### Text Extractors
 
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/unstract_u_logo.png" width="32"/>| Unstract LLMWhisperer | ✅ Working |
-|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Community | 🗓️ Coming soon!  |
-|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Enterprise | 🗓️ Coming soon!  |
-|<img src="docs/assets/3rd_party/llamaindex.png" width="32"/>| LlamaIndex Parse | 🗓️ Coming soon! |
+|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Community | ✅ Working |
+|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Enterprise | ✅ Working |
+|<img src="docs/assets/3rd_party/llamaindex.png" width="32"/>| LlamaIndex Parse | ✅ Working |
 
 ### ETL Sources
 
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/3rd_party/s3.png" width="32"/>| AWS S3 | ✅ Working |
-|<img src="docs/assets/3rd_party/minio.png" width="32"/>| Minio | ✅ Working |
+|<img src="docs/assets/3rd_party/minio.png" width="32"/>| MinIO | ✅ Working |
+|<img src="docs/assets/3rd_party/gcp.png" width="32"/>| Google Cloud Storage | ✅ Working |
+|<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure Cloud Storage | ✅ Working |
+|<img src="docs/assets/3rd_party/google_drive.png" width="32"/>| Google Drive | ✅ Working |
 |<img src="docs/assets/3rd_party/dropbox.png" width="32"/>| Dropbox | ✅ Working |
-|<img src="docs/assets/3rd_party/google_drive.png" width="32"/>| Google Drive | 🗓️ Coming soon! |
+|<img src="docs/assets/3rd_party/sftp.png" width="32"/>| SFTP | ✅ Working |
 |<img src="docs/assets/3rd_party/box.png" width="32"/>| Box | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/gcp.png" width="32"/>| Google Cloud Storage | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure Cloud Storage | 🗓️ Coming soon! |
 |<img src="docs/assets/3rd_party/http.png" width="32"/>| HTTP/HTTPS | 🗓️ Coming soon! |
 
 ### ETL Destinations
@@ -129,21 +133,27 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |---|---|---|
 |<img src="docs/assets/3rd_party/snowflake.png" width="32"/>| Snowflake | ✅ Working |
 |<img src="docs/assets/3rd_party/amazon_redshift.png" width="32"/>| Amazon Redshift | ✅ Working |
-|<img src="docs/assets/3rd_party/google_bigquery.png" width="32"/>| Google Bigquery | ✅ Working |
+|<img src="docs/assets/3rd_party/google_bigquery.png" width="32"/>| Google BigQuery | ✅ Working |
 |<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | ✅ Working |
-|<img src="docs/assets/3rd_party/mysql.png" width="32"/>| MySQL | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/mariadb.png" width="32"/>| MariaDB | 🗓️ Coming soon! |
-|<img src="docs/assets/3rd_party/ms_sql.png" width="32"/>| Microsoft SQL Server | 🗓️ Coming soon! |
+|<img src="docs/assets/3rd_party/mysql.png" width="32"/>| MySQL | ✅ Working |
+|<img src="docs/assets/3rd_party/mariadb.png" width="32"/>| MariaDB | ✅ Working |
+|<img src="docs/assets/3rd_party/ms_sql.png" width="32"/>| Microsoft SQL Server | ✅ Working |
 
 ## 🙌 Contributing
 
-Contributions are welcome! Please read [CONTRIBUTE.md](CONTRIBUTE.md) for further details on setting up the development environment, etc. It also points you to other detailed documents as needed.
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for further details to get started easily.
 
 ## 👋 Join the LLM-powered automation community
 
 - On Slack, [join great conversations](https://join-slack.unstract.com) around LLMs, their ecosystem and leveraging them to automate the previously unautomatable!
 - [Follow us on X/Twitter](https://twitter.com/GetUnstract)
 - [Follow us on LinkedIn](https://www.linkedin.com/showcase/unstract/)
+
+## 🚨 Backup encryption key
+
+Do copy the value of `ENCRYPTION_KEY` config in either `backend/.env` or `platform-service/.env` file to a secure location.  
+
+Adapter credentials are encrypted by the platform using this key. Its loss or change will make all existing adapters inaccessible!  
 
 ## 📊 A note on analytics
 

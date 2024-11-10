@@ -4,6 +4,11 @@ cmd=$1
 if [ "$cmd" = "migrate" ]; then
     echo "Migration initiated"
     .venv/bin/python manage.py migrate
+elif [ "$cmd" = "prepare_and_migrate" ]; then
+    echo "Creating schema in database"
+    .venv/bin/python manage.py create_schema
+    echo "Migration initiated"
+    .venv/bin/python manage.py migrate
 fi
 
 # NOTE: Leaving below for reference incase required in the future
@@ -16,5 +21,4 @@ fi
     --log-level debug \
     --timeout 600 \
     --access-logfile - \
-    --reload \
     backend.wsgi:application
