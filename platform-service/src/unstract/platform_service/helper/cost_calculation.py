@@ -34,7 +34,7 @@ class CostCalculationHelper:
             # Not creating constants for now for the keywords below as this
             # logic ought to change in the near future to maintain unformity
             # across services
-            file_storage = json.loads(os.environ.get("FILE_STORAGE"))
+            file_storage = json.loads(os.environ.get("FILE_STORAGE_CREDENTIALS"))
             provider = FileStorageProvider(file_storage["provider"])
             credentials = file_storage["credentials"]
             file_path = file_storage["file_path"]
