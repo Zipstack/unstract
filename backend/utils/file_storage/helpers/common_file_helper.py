@@ -29,6 +29,12 @@ class FileStorageHelper:
         return file_storage
 
     @staticmethod
+    def initialize_local_file_storage() -> FileStorage:
+        provider_data = FileStorageHelper.load_file_storage_envs()
+        credentials = provider_data[FileStorageKeys.FILE_STORAGE_CREDENTIALS]
+        return FileStorage(provider=FileStorageProvider.Local, credentials=credentials)
+
+    @staticmethod
     def load_file_storage_envs() -> dict[str, Any]:
         provider: str = FileStorageUtil.get_env_or_die(
             env_key=FileStorageKeys.FILE_STORAGE_PROVIDER
