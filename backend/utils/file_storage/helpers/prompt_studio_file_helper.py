@@ -95,3 +95,18 @@ class PromptStudioFileHelper:
             text_content = fs_instance.read(path=file_path, mode="r")
 
         return text_content
+
+    @staticmethod
+    def upload_file(
+        org_id: str, user_id: str, tool_id: str, uploaded_file: Any, file_system: Any
+    ) -> None:
+        file_system_path = (
+            PromptStudioFileHelper.handle_sub_directory_for_prompt_studio(
+                org_id=org_id,
+                is_create=True,
+                user_id=user_id,
+                tool_id=str(tool_id),
+            )
+        )
+        file_path = f"{file_system_path}/{uploaded_file.name}"
+        file_system.write(path=file_path, mode="wb", data=uploaded_file.read())
