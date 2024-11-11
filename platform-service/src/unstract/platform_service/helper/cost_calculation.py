@@ -5,10 +5,13 @@ from typing import Any, Optional
 
 import requests
 from flask import current_app as app
+from unstract.platform_service.constants import FeatureFlag
 from unstract.platform_service.env import Env
 from unstract.platform_service.utils import format_float_positional
 from unstract.sdk.exceptions import FileStorageError
 from unstract.sdk.file_storage import FileStorageProvider, PermanentFileStorage
+
+from unstract.flags.feature_flag import check_feature_flag_status
 
 
 class CostCalculationHelper:
@@ -21,15 +24,21 @@ class CostCalculationHelper:
         self.ttl_days = ttl_days
         self.url = url
         self.file_path = file_path
-        self.file_storage = self.__get_storage_crdentials()
+
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            self.file_storage, self.file_path = self.__get_storage_crdentials()
         self.model_token_data = self._get_model_token_data()
 
-    def __get_storage_crdentials(self) -> PermanentFileStorage:
+    def __get_storage_crdentials(self) -> tuple[PermanentFileStorage, str]:
         try:
+            # Not creating constants for now for the keywords below as this
+            # logic ought to change in the near future to maintain unformity
+            # across services
             file_storage = json.loads(os.environ.get("FILE_STORAGE"))
             provider = FileStorageProvider(file_storage["provider"])
             credentials = file_storage["credentials"]
-            return PermanentFileStorage(provider, **credentials)
+            file_path = file_storage["file_path"]
+            return PermanentFileStorage(provider, **credentials), file_path
         except FileStorageError as e:
             app.logger.error(
                 "Error while initialising storage: %s",
@@ -45,7 +54,10 @@ class CostCalculationHelper:
         item = None
 
         if not self.model_token_data:
-            return json.loads(format_float_positional(cost))
+            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+                return json.loads(format_float_positional(cost))
+            else:
+                return format_float_positional(cost)
         # Filter the model objects by model name
         filtered_models = {
             k: v for k, v in self.model_token_data.items() if k.endswith(model_name)
@@ -64,25 +76,43 @@ class CostCalculationHelper:
 
     def _get_model_token_data(self) -> Optional[dict[str, Any]]:
         try:
-            # File does not exist, fetch JSON data from API
-            if not self.file_storage.exists(self.file_path):
-                return self._fetch_and_save_json()
+            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+                # File does not exist, fetch JSON data from API
+                if not self.file_storage.exists(self.file_path):
+                    return self._fetch_and_save_json()
 
-            file_mtime = self.file_storage.modification_time(self.file_path)
-            file_expiry_date = file_mtime + timedelta(days=self.ttl_days)
-            file_expiry_date_utc = file_expiry_date.replace(tzinfo=timezone.utc)
-            now_utc = datetime.now().replace(tzinfo=timezone.utc)
+                file_mtime = self.file_storage.modification_time(self.file_path)
+                file_expiry_date = file_mtime + timedelta(days=self.ttl_days)
+                file_expiry_date_utc = file_expiry_date.replace(tzinfo=timezone.utc)
+                now_utc = datetime.now().replace(tzinfo=timezone.utc)
 
-            if now_utc < file_expiry_date_utc:
-                app.logger.info(f"Reading model token data from {self.file_path}")
-                # File exists and TTL has not expired, read and return content
-                file_contents = self.file_storage.read(
-                    self.file_path, mode="r", encoding="utf-8"
-                )
-                return json.loads(file_contents)
+                if now_utc < file_expiry_date_utc:
+                    app.logger.info(f"Reading model token data from {self.file_path}")
+                    # File exists and TTL has not expired, read and return content
+                    file_contents = self.file_storage.read(
+                        self.file_path, mode="r", encoding="utf-8"
+                    )
+                    return json.loads(file_contents)
+                else:
+                    # TTL expired, fetch updated JSON data from API
+                    return self._fetch_and_save_json()
             else:
-                # TTL expired, fetch updated JSON data from API
-                return self._fetch_and_save_json()
+                # File does not exist, fetch JSON data from API
+                if not os.path.exists(self.file_path):
+                    return self._fetch_and_save_json()
+
+                file_mtime = os.path.getmtime(self.file_path)
+                file_expiry_date = datetime.fromtimestamp(file_mtime) + timedelta(
+                    days=self.ttl_days
+                )
+                if datetime.now() < file_expiry_date:
+                    app.logger.info(f"Reading model token data from {self.file_path}")
+                    # File exists and TTL has not expired, read and return content
+                    with open(self.file_path, encoding="utf-8") as f:
+                        return json.load(f)
+                else:
+                    # TTL expired, fetch updated JSON data from API
+                    return self._fetch_and_save_json()
         except Exception as e:
             app.logger.error(
                 "Error in calculate_cost: %s", e, stack_info=True, exc_info=True
@@ -103,14 +133,23 @@ class CostCalculationHelper:
             response.raise_for_status()
             json_data = response.json()
             # Save JSON data to file
-            self.file_storage.json_dump(
-                path=self.file_path,
-                mode="w",
-                encoding="utf-8",
-                data=json_data,
-                ensure_ascii=False,
-                indent=4,
-            )
+            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+                self.file_storage.json_dump(
+                    path=self.file_path,
+                    mode="w",
+                    encoding="utf-8",
+                    data=json_data,
+                    ensure_ascii=False,
+                    indent=4,
+                )
+            else:
+                with open(self.file_path, "w", encoding="utf-8") as f:
+                    json.dump(json_data, f, ensure_ascii=False, indent=4)
+                # Set the file's modification time to indicate TTL
+                expiry_date = datetime.now() + timedelta(days=self.ttl_days)
+                expiry_timestamp = expiry_date.timestamp()
+                os.utime(self.file_path, (expiry_timestamp, expiry_timestamp))
+
             app.logger.info(
                 "File '%s' updated successfully with TTL set to %d days.",
                 self.file_path,

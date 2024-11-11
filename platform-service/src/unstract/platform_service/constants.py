@@ -1,7 +1,8 @@
 class FeatureFlag:
     """Temporary feature flags."""
 
-    pass
+    # For enabling remote storage feature
+    REMOTE_FILE_STORAGE = "remote_file_storage"
 
 
 class DBTable:
