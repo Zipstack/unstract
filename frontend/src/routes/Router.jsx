@@ -12,43 +12,16 @@ import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 
-let TrialRoutes;
-let ManualReviewPage;
-let SimpleManualReviewPage;
-let ReviewLayout;
 let PublicPromptStudioHelper;
-let PaymentSuccessful;
-let SelectProduct;
 
-try {
-  TrialRoutes =
-    require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
-} catch (err) {
-  // Do nothing, Not-found Page will be triggered.
-}
-
-try {
-  PaymentSuccessful =
-    require("../plugins/payment-successful/PaymentSuccessful.jsx").PaymentSuccessful;
-} catch (err) {
-  // Do nothing, Not-found Page will be triggered.
-}
-
-try {
-  ManualReviewPage =
-    require("../plugins/manual-review/page/ManualReviewPage.jsx").ManualReviewPage;
-  ReviewLayout =
-    require("../plugins/manual-review/review-layout/ReviewLayout.jsx").ReviewLayout;
-  SimpleManualReviewPage =
-    require("../plugins/manual-review/page/simple/SimpleManualReviewPage.jsx").SimpleManualReviewPage;
-} catch (err) {
-  // Do nothing, Not-found Page will be triggered.
-}
 // Import pages/components related to Simple Prompt Studio.
 let SimplePromptStudioHelper;
 let SimplePromptStudio;
 let SpsLanding;
 let SpsUpload;
+let TrialRoutes;
+let PaymentSuccessful;
+let SelectProduct;
 try {
   SimplePromptStudioHelper =
     require("../plugins/simple-prompt-studio/SimplePromptStudioHelper.jsx").SimplePromptStudioHelper;
@@ -82,6 +55,21 @@ try {
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
+
+try {
+  TrialRoutes =
+    require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+
+try {
+  PaymentSuccessful =
+    require("../plugins/payment-successful/PaymentSuccessful.jsx").PaymentSuccessful;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+
 function Router() {
   const MainAppRoute = useMainAppRoutes();
   return (
@@ -125,48 +113,25 @@ function Router() {
 
         {/* protected routes */}
         <Route path="setOrg" element={<SetOrgPage />} />
-        <Route path="">{MainAppRoute}</Route>
-        {llmWhispererRouter && (
-          <Route path="llm-whisperer">{llmWhispererRouter()}</Route>
-        )}
         <Route path="" element={<RequireAuth />}>
-          {ReviewLayout && ManualReviewPage && (
-            <Route path=":orgName" element={<ReviewLayout />}>
-              <Route
-                path="review"
-                element={<ManualReviewPage type="review" />}
-              ></Route>
-              <Route
-                path="simple_review/review"
-                element={<SimpleManualReviewPage type="simple_review" />}
-              ></Route>
-              <Route
-                path="simple_review/approve"
-                element={<SimpleManualReviewPage type="simple_approve" />}
-              ></Route>
-              <Route
-                path="review/download_and_sync"
-                element={<ManualReviewPage type="download" />}
-              />
-              <Route
-                path="review/approve"
-                element={<ManualReviewPage type="approve" />}
-              />
-            </Route>
+          <Route path="">{MainAppRoute}</Route>
+          {llmWhispererRouter && (
+            <Route path="llm-whisperer">{llmWhispererRouter()}</Route>
+          )}
+          {TrialRoutes && (
+            <Route path="/trial-expired" element={<TrialRoutes />} />
+          )}
+          {SelectProduct && (
+            <Route path="selectProduct" element={<SelectProduct />} />
+          )}
+          {PaymentSuccessful && (
+            <Route path="/payment/success" element={<PaymentSuccessful />} />
           )}
         </Route>
-        {TrialRoutes && (
-          <Route path="/trial-expired" element={<TrialRoutes />} />
-        )}
-        <Route path="*" element={<NotFound />} />
       </Route>
+
+      <Route path="*" element={<NotFound />} />
       <Route path="oauth-status" element={<OAuthStatus />} />
-      {SelectProduct && (
-        <Route path="selectProduct" element={<SelectProduct />} />
-      )}
-      {PaymentSuccessful && (
-        <Route path="/payment/success" element={<PaymentSuccessful />} />
-      )}
     </Routes>
   );
 }
