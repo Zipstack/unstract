@@ -41,6 +41,7 @@ class StructureTool(BaseTool):
             SettingsKeys.SINGLE_PASS_EXTRACTION_MODE, False
         )
         challenge_llm: str = settings.get(SettingsKeys.CHALLENGE_LLM_ADAPTER_ID, "")
+        enable_highlight: bool = settings.get(SettingsKeys.ENABLE_HIGHLIGHT, False)
         responder: PromptTool = PromptTool(
             tool=self,
             prompt_port=self.get_env_or_die(SettingsKeys.PROMPT_PORT),
@@ -67,13 +68,13 @@ class StructureTool(BaseTool):
         tool_id = tool_metadata[SettingsKeys.TOOL_ID]
         tool_settings = tool_metadata[SettingsKeys.TOOL_SETTINGS]
         outputs = tool_metadata[SettingsKeys.OUTPUTS]
-        enable_highlight: bool = tool_settings.get(SettingsKeys.ENABLE_HIGHLIGHT, False)
         tool_settings[SettingsKeys.CHALLENGE_LLM] = challenge_llm
         tool_settings[SettingsKeys.ENABLE_CHALLENGE] = enable_challenge
         tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION] = (
             single_pass_extraction_mode
         )
         tool_settings[SettingsKeys.SUMMARIZE_AS_SOURCE] = summarize_as_source
+        tool_settings[SettingsKeys.ENABLE_HIGHLIGHT] = enable_highlight
         prompt_service_resp = None
         _, file_name = os.path.split(input_file)
         if summarize_as_source:
@@ -122,7 +123,6 @@ class StructureTool(BaseTool):
                 output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
                 reindex=True,
                 usage_kwargs=usage_kwargs,
-                enable_highlight=enable_highlight,
                 process_text=process_text,
             )
             if summarize_as_source:
@@ -134,7 +134,6 @@ class StructureTool(BaseTool):
                     outputs=outputs,
                     index=index,
                     usage_kwargs=usage_kwargs,
-                    enable_highlight=enable_highlight,
                 )
                 payload[SettingsKeys.FILE_HASH] = summarize_file_hash
             self.stream_log("Fetching response for single pass extraction")
@@ -160,7 +159,6 @@ class StructureTool(BaseTool):
                             output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
                             reindex=reindex,
                             usage_kwargs=usage_kwargs,
-                            enable_highlight=enable_highlight,
                             process_text=process_text,
                         )
 
@@ -268,7 +266,6 @@ class StructureTool(BaseTool):
         outputs: dict[str, Any],
         index: Index,
         usage_kwargs: dict[Any, Any] = {},
-        enable_highlight: bool = False,
     ) -> str:
         """Summarizes the context of the file and indexes the summarized
         content.
@@ -342,7 +339,6 @@ class StructureTool(BaseTool):
             chunk_size=0,
             chunk_overlap=0,
             usage_kwargs=usage_kwargs,
-            enable_highlight=enable_highlight,
         )
         return summarize_file_hash
 
