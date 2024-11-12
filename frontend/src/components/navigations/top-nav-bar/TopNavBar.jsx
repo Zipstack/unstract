@@ -67,7 +67,8 @@ try {
 
 let WhispererLogo;
 try {
-  WhispererLogo = require("../../../plugins/assets/index.js").WhispererLogo;
+  WhispererLogo =
+    require("../../../plugins/assets/llmWhisperer/index.js").WhispererLogo;
 } catch {
   // Ignore if hook not available
 }
