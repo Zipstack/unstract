@@ -7,7 +7,7 @@ import {
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
-import { Button, Image, Space, Tabs, Tooltip, Typography } from "antd";
+import { Button, Space, Tabs, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -23,7 +23,6 @@ import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { TextViewer } from "../text-viewer/TextViewer";
-import { DocxViewer } from "../docx-viewer/DocxViewer";
 
 let items = [
   {
@@ -42,7 +41,7 @@ const viewTypes = {
 };
 
 const base64toBlob = (data, mimeType) => {
-  const byteCharacters = atob(data); // Decode base64
+  const byteCharacters = atob(data?.data); // Decode base64
   const byteArrays = [];
 
   for (let offset = 0; offset < byteCharacters.length; offset += 512) {
@@ -54,7 +53,6 @@ const base64toBlob = (data, mimeType) => {
     const byteArray = new Uint8Array(byteNumbers);
     byteArrays.push(byteArray);
   }
-
   return new Blob(byteArrays, { type: mimeType });
 };
 
@@ -363,16 +361,9 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     switch (fileType) {
       case "pdf":
         return <PdfViewer fileUrl={fileUrl} />;
-      case "jpg":
-      case "jpeg":
-      case "png":
-      case "gif":
-        return <Image src={fileUrl} />;
       case "txt":
       case "md":
         return <TextViewer fileUrl={fileUrl} />;
-      case "docx":
-        return <DocxViewer fileUrl={fileUrl} />;
       default:
         return <div>Unsupported file type: {fileType}</div>;
     }

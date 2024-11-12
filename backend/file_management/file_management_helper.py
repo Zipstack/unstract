@@ -138,7 +138,10 @@ class FileManagerHelper:
         # adding filename with path
         file_path += file_name
         with fs.open(file_path, mode="wb") as remote_file:
-            remote_file.write(file.read())
+            if isinstance(file, bytes):
+                remote_file.write(file)
+            else:
+                remote_file.write(file.read())
 
     @staticmethod
     def fetch_file_contents(file_system: UnstractFileSystem, file_path: str) -> Any:

@@ -4,7 +4,6 @@ from typing import Any
 from account_v2.models import User
 from account_v2.serializer import UserSerializer
 from django.core.exceptions import ObjectDoesNotExist
-from file_management.constants import FileInformationKey
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.constants import ToolStudioKeys as TSKeys
 from prompt_studio.prompt_studio_core_v2.exceptions import DefaultProfileError
@@ -19,6 +18,13 @@ from backend.serializers import AuditSerializer
 from .models import CustomTool
 
 logger = logging.getLogger(__name__)
+
+try:
+    from plugins.processor.file_converter.constants import (
+        ExtentedFileInformationKey as FileKey,
+    )
+except ImportError:
+    from file_management.constants import FileInformationKey as FileKey
 
 
 class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
@@ -117,10 +123,10 @@ class FileUploadIdeSerializer(serializers.Serializer):
         required=True,
         validators=[
             FileValidator(
-                allowed_extensions=FileInformationKey.FILE_UPLOAD_ALLOWED_EXT,
-                allowed_mimetypes=FileInformationKey.FILE_UPLOAD_ALLOWED_MIME,
+                allowed_extensions=FileKey.FILE_UPLOAD_ALLOWED_EXT,
+                allowed_mimetypes=FileKey.FILE_UPLOAD_ALLOWED_MIME,
                 min_size=0,
-                max_size=FileInformationKey.FILE_UPLOAD_MAX_SIZE,
+                max_size=FileKey.FILE_UPLOAD_MAX_SIZE,
             )
         ],
     )

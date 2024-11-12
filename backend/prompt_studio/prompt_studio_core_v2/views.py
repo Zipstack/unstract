@@ -1,4 +1,6 @@
+import io
 import logging
+import os
 import uuid
 from typing import Any, Optional
 
@@ -438,6 +440,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = FileUploadIdeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         uploaded_files: Any = serializer.validated_data.get("file")
+        file_converter = get_plugin_class_by_name(
+            name="file_converter",
+            plugins=self.processor_plugins,
+        )
 
         file_path = FileManagerHelper.handle_sub_directory_for_tenants(
             UserSessionUtils.get_organization_id(request),
@@ -450,6 +456,14 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         documents = []
         for uploaded_file in uploaded_files:
             file_name = uploaded_file.name
+            file_data = uploaded_file
+            file_type = uploaded_file.content_type
+            # Convert non-PDF files
+            if file_converter and file_type != "application/pdf":
+                file_data_bytes = uploaded_file.read()
+                with io.BytesIO(file_data_bytes) as file_stream:
+                    file_data = file_converter.convert_to_pdf(file_stream, file_name)
+                file_name = f"{os.path.splitext(file_name)[0]}.pdf"
 
             # Create a record in the db for the file
             document = PromptStudioDocumentHelper.create(
@@ -468,7 +482,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             FileManagerHelper.upload_file(
                 file_system,
                 file_path,
-                uploaded_file,
+                file_data,
                 file_name,
             )
             documents.append(doc)
