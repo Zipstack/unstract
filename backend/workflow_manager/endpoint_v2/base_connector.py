@@ -9,9 +9,11 @@ from utils.user_context import UserContext
 
 from unstract.connectors.filesystems import connectors
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
-from unstract.filesystem import FileStorageType
-from unstract.filesystem.filesystem import FileSystem
 from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+    from unstract.filesystem import FileStorageType
+    from unstract.filesystem.filesystem import FileSystem
 
 
 class BaseConnector(ExecutionFileHandler):

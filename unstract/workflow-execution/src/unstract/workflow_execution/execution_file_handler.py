@@ -13,10 +13,11 @@ from unstract.workflow_execution.constants import (
     WorkflowFileType,
 )
 from unstract.workflow_execution.exceptions import ToolMetadataNotFound
-
-from unstract.filesystem import FileStorageType
-from unstract.filesystem.filesystem import FileSystem
 from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+    from unstract.filesystem import FileStorageType
+    from unstract.filesystem.filesystem import FileSystem
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +50,13 @@ class ExecutionFileHandler:
             dict[str, Any]: Workflow metadata.
         """
         if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            with open(self.metadata_file) as file:
-                metadata: dict[str, Any] = json.load(file)
-        else:
             file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
             file_storage = file_system.get_file_storage()
             metadata_content = file_storage.read(path=self.metadata_file, mode="r")
             metadata = json.loads(metadata_content)
+        else:
+            with open(self.metadata_file) as file:
+                metadata: dict[str, Any] = json.load(file)
         return metadata
 
     def get_list_of_tool_metadata(

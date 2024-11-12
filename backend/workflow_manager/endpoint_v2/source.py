@@ -37,10 +37,11 @@ from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.workflow import Workflow
-
-from unstract.filesystem import FileStorageType
-from unstract.filesystem.filesystem import FileSystem
 from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+    from unstract.filesystem import FileStorageType
+    from unstract.filesystem.filesystem import FileSystem
 
 logger = logging.getLogger(__name__)
 
