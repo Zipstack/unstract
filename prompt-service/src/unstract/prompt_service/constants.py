@@ -68,6 +68,7 @@ class PromptServiceContants:
     VARIABLE_MAP = "variable_map"
     RECORD = "record"
     TEXT = "text"
+    ENABLE_HIGHLIGHT = "enable_highlight"
 
 
 class RunLevel(Enum):

@@ -7,11 +7,15 @@ import { getBaseUrl } from "../../helpers/GetStaticData";
 import "./Login.css";
 
 let LoginForm = null;
+let UnstractCloudLogo;
 try {
   LoginForm = require("../../plugins/login-form/LoginForm").LoginForm;
+  UnstractCloudLogo =
+    require("../../plugins/assets/llmWhisperer/index.js").UnstractCloudLogo;
 } catch {
   // The components will remain null of it is not available
 }
+
 function Login() {
   const baseUrl = getBaseUrl();
   const newURL = baseUrl + "/api/v1/login";
@@ -24,9 +28,14 @@ function Login() {
       <Row>
         <Col xs={24} md={12} className="login-left-section">
           <div className="button-wraper">
-            <img src={logo} alt="Logo" className="logo" />
-            {LoginForm && <LoginForm handleLogin={handleLogin} />}
-            {!LoginForm && (
+            {UnstractCloudLogo ? (
+              <UnstractCloudLogo />
+            ) : (
+              <img src={logo} alt="Logo" className="logo" />
+            )}
+            {LoginForm ? (
+              <LoginForm handleLogin={handleLogin} />
+            ) : (
               <div>
                 <Button
                   className="login-button button-margin"
