@@ -11,6 +11,7 @@ from connector_v2.models import ConnectorInstance
 from fsspec.implementations.local import LocalFileSystem
 from unstract.sdk.constants import ToolExecKey
 from unstract.workflow_execution.constants import ToolOutputType
+from utils.constants import FeatureFlag
 from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.base_connector import BaseConnector
 from workflow_manager.endpoint_v2.constants import (
@@ -38,6 +39,9 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from backend.exceptions import UnstractFSException
 from unstract.connectors.exceptions import ConnectorError
+from unstract.filesystem import FileStorageType
+from unstract.filesystem.filesystem import FileSystem
+from unstract.flags.feature_flag import check_feature_flag_status
 
 logger = logging.getLogger(__name__)
 
@@ -454,8 +458,13 @@ class DestinationConnector(BaseConnector):
         Returns:
             None
         """
-        fs: LocalFileSystem = fsspec.filesystem("file")
-        fs.rm(self.execution_dir, recursive=True)
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            file_storage = file_system.get_file_storage()
+            file_storage.rm(self.execution_dir, recursive=True)
+        else:
+            fs: LocalFileSystem = fsspec.filesystem("file")
+            fs.rm(self.execution_dir, recursive=True)
         self.delete_api_storage_dir(self.workflow_id, self.execution_id)
 
     @classmethod
@@ -468,8 +477,13 @@ class DestinationConnector(BaseConnector):
         api_storage_dir = cls.get_api_storage_dir_path(
             workflow_id=workflow_id, execution_id=execution_id
         )
-        fs: LocalFileSystem = fsspec.filesystem("file")
-        fs.rm(api_storage_dir, recursive=True)
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            file_system = FileSystem(FileStorageType.API_EXECUTION)
+            file_storage = file_system.get_file_storage()
+            file_storage.rm(api_storage_dir, recursive=True)
+        else:
+            fs: LocalFileSystem = fsspec.filesystem("file")
+            fs.rm(api_storage_dir, recursive=True)
 
     @classmethod
     def create_endpoint_for_workflow(

@@ -4,11 +4,14 @@ from typing import Any
 from django.conf import settings
 from fsspec import AbstractFileSystem
 from unstract.workflow_execution.execution_file_handler import ExecutionFileHandler
-from utils.constants import Common
+from utils.constants import Common, FeatureFlag
 from utils.user_context import UserContext
 
 from unstract.connectors.filesystems import connectors
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+from unstract.filesystem import FileStorageType
+from unstract.filesystem.filesystem import FileSystem
+from unstract.flags.feature_flag import check_feature_flag_status
 
 
 class BaseConnector(ExecutionFileHandler):
@@ -22,13 +25,14 @@ class BaseConnector(ExecutionFileHandler):
         This class serves as a base for connectors and provides common
         utilities.
         """
-        if not (settings.API_STORAGE_DIR and settings.WORKFLOW_DATA_DIR):
-            raise ValueError("Missed env API_STORAGE_DIR or WORKFLOW_DATA_DIR")
         super().__init__(workflow_id, execution_id, organization_id)
-        # Directory path for storing execution-related files for API
-        self.api_storage_dir: str = self.create_execution_dir_path(
-            workflow_id, execution_id, organization_id, settings.API_STORAGE_DIR
-        )
+        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            if not (settings.API_STORAGE_DIR and settings.WORKFLOW_DATA_DIR):
+                raise ValueError("Missed env API_STORAGE_DIR or WORKFLOW_DATA_DIR")
+            # Directory path for storing execution-related files for API
+            self.api_storage_dir: str = self.create_execution_dir_path(
+                workflow_id, execution_id, organization_id, settings.API_STORAGE_DIR
+            )
 
     def get_fsspec(
         self, settings: dict[str, Any], connector_id: str
@@ -80,8 +84,14 @@ class BaseConnector(ExecutionFileHandler):
         json.JSONDecodeError: If there is an issue decoding the JSON file.
         """
         try:
-            with open(file_path, encoding="utf-8") as file:
+            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+                file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+                file_storage = file_system.get_file_storage()
+                file = file_storage.read(path=file_path, encoding="utf-8")
                 schema: dict[str, Any] = json.load(file)
+            else:
+                with open(file_path, encoding="utf-8") as file:
+                    schema: dict[str, Any] = json.load(file)
         except OSError:
             schema = {}
         return schema
@@ -100,7 +110,12 @@ class BaseConnector(ExecutionFileHandler):
         str: The directory path for the execution.
         """
         organization_id = UserContext.get_organization_identifier()
-        api_storage_dir: str = cls.create_execution_dir_path(
-            workflow_id, execution_id, organization_id, settings.API_STORAGE_DIR
-        )
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            api_storage_dir: str = cls.get_api_execution_dir(
+                workflow_id, execution_id, organization_id
+            )
+        else:
+            api_storage_dir: str = cls.create_execution_dir_path(
+                workflow_id, execution_id, organization_id, settings.API_STORAGE_DIR
+            )
         return api_storage_dir

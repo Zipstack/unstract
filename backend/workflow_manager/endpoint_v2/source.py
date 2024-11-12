@@ -12,6 +12,7 @@ from connector_processor.constants import ConnectorKeys
 from connector_v2.models import ConnectorInstance
 from django.core.files.uploadedfile import UploadedFile
 from unstract.workflow_execution.enums import LogState
+from utils.constants import FeatureFlag
 from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.base_connector import BaseConnector
 from workflow_manager.endpoint_v2.constants import (
@@ -36,6 +37,10 @@ from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.workflow import Workflow
+
+from unstract.filesystem import FileStorageType
+from unstract.filesystem.filesystem import FileSystem
+from unstract.flags.feature_flag import check_feature_flag_status
 
 logger = logging.getLogger(__name__)
 
@@ -475,11 +480,17 @@ class SourceConnector(BaseConnector):
         )
         self.publish_input_file_content(input_file_path, input_log)
 
-        with fsspec.open(source_file, "wb") as local_file:
-            local_file.write(file_content)
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            file_storage = file_system.get_file_storage()
+            file_storage.write(path=source_file_path, mode="wb", data=file_content)
+            file_storage.write(path=infile_path, mode="wb", data=file_content)
+        else:
+            with fsspec.open(source_file, "wb") as local_file:
+                local_file.write(file_content)
 
-        # Copy file to infile directory
-        self.copy_file_to_infile_dir(source_file_path, infile_path)
+            # Copy file to infile directory
+            self.copy_file_to_infile_dir(source_file_path, infile_path)
 
         logger.info(f"{input_file_path} is added to execution directory")
         return hash_value_of_file_content
@@ -488,8 +499,50 @@ class SourceConnector(BaseConnector):
         """Add input file to execution directory from api storage."""
         infile_path = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         source_path = os.path.join(self.execution_dir, WorkflowFileType.SOURCE)
-        shutil.copyfile(input_file_path, infile_path)
-        shutil.copyfile(input_file_path, source_path)
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            api_file_system = FileSystem(FileStorageType.API_EXECUTION)
+            api_file_storage = api_file_system.get_file_storage()
+            workflow_file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            workflow_file_storage = workflow_file_system.get_file_storage()
+
+            chunk_size = 4096  # You can adjust the chunk size based on file size
+            seek_position = 0  # Start from the beginning
+            end_of_file = False
+
+            # Loop to read and write in chunks until the end of the file
+            while not end_of_file:
+                # Read a chunk from the source file
+                chunk = api_file_storage.read(
+                    path=input_file_path,
+                    mode="rb",
+                    seek_position=seek_position,
+                    length=chunk_size,
+                )
+
+                if (
+                    not chunk
+                ):  # If no chunk is returned, we have reached the end of the file
+                    end_of_file = True
+                else:
+                    # Write the chunk to both destination paths
+                    workflow_file_storage.write(
+                        path=infile_path,
+                        mode="ab",
+                        seek_position=seek_position,
+                        data=chunk,
+                    )
+                    workflow_file_storage.write(
+                        path=source_path,
+                        mode="ab",
+                        seek_position=seek_position,
+                        data=chunk,
+                    )
+
+                    # Update seek_position for the next read
+                    seek_position += len(chunk)
+        else:
+            shutil.copyfile(input_file_path, infile_path)
+            shutil.copyfile(input_file_path, source_path)
 
     def add_file_to_volume(self, input_file_path: str, file_hash: FileHash) -> str:
         """Add input file to execution directory.
@@ -584,12 +637,20 @@ class SourceConnector(BaseConnector):
         for file in file_objs:
             file_name = file.name
             destination_path = os.path.join(api_storage_dir, file_name)
-            os.makedirs(os.path.dirname(destination_path), exist_ok=True)
-            with open(destination_path, "wb") as f:
+            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+                file_system = FileSystem(FileStorageType.API_EXECUTION)
+                file_storage = file_system.get_file_storage()
                 buffer = bytearray()
                 for chunk in file.chunks():
                     buffer.extend(chunk)
-                f.write(buffer)
+                    file_storage.write(path=destination_path, mode="wb", data=buffer)
+            else:
+                os.makedirs(os.path.dirname(destination_path), exist_ok=True)
+                with open(destination_path, "wb") as f:
+                    buffer = bytearray()
+                    for chunk in file.chunks():
+                        buffer.extend(chunk)
+                    f.write(buffer)
             file_hash = cls.hash_str(buffer)
             connection_type = WorkflowEndpoint.ConnectionType.API
 

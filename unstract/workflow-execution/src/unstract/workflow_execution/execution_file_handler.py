@@ -6,12 +6,17 @@ from typing import Any, Optional
 
 import fsspec
 from unstract.workflow_execution.constants import (
+    FeatureFlag,
     MetaDataKey,
     ToolMetadataKey,
     ToolOutputType,
     WorkflowFileType,
 )
 from unstract.workflow_execution.exceptions import ToolMetadataNotFound
+
+from unstract.filesystem import FileStorageType
+from unstract.filesystem.filesystem import FileSystem
+from unstract.flags.feature_flag import check_feature_flag_status
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +28,14 @@ class ExecutionFileHandler:
         self.organization_id = organization_id
         self.workflow_id = workflow_id
         self.execution_id = execution_id
-        self.execution_dir = self.create_execution_dir_path(
-            workflow_id, execution_id, organization_id
-        )
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            self.execution_dir = self.get_execution_dir(
+                workflow_id, execution_id, organization_id
+            )
+        else:
+            self.execution_dir = self.create_execution_dir_path(
+                workflow_id, execution_id, organization_id
+            )
         self.source_file = os.path.join(self.execution_dir, WorkflowFileType.SOURCE)
         self.infile = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         self.metadata_file = os.path.join(
@@ -38,8 +48,14 @@ class ExecutionFileHandler:
         Returns:
             dict[str, Any]: Workflow metadata.
         """
-        with open(self.metadata_file) as file:
-            metadata: dict[str, Any] = json.load(file)
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            with open(self.metadata_file) as file:
+                metadata: dict[str, Any] = json.load(file)
+        else:
+            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            file_storage = file_system.get_file_storage()
+            metadata_content = file_storage.read(path=self.metadata_file, mode="r")
+            metadata = json.loads(metadata_content)
         return metadata
 
     def get_list_of_tool_metadata(
@@ -100,9 +116,7 @@ class ExecutionFileHandler:
         Raises:
             None
         """
-        destination_path = os.path.join(
-            self.execution_dir, WorkflowFileType.METADATA_JSON
-        )
+        metadata_path = os.path.join(self.execution_dir, WorkflowFileType.METADATA_JSON)
         filename = os.path.basename(input_file_path)
         content = {
             MetaDataKey.SOURCE_NAME: filename,
@@ -111,8 +125,14 @@ class ExecutionFileHandler:
             MetaDataKey.WORKFLOW_ID: str(self.workflow_id),
             MetaDataKey.EXECUTION_ID: str(self.execution_id),
         }
-        with fsspec.open(f"file://{destination_path}", "w") as local_file:
-            json.dump(content, local_file)
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            file_storage = file_system.get_file_storage()
+            file_storage.write(path=metadata_path, mode="w", data=json.dumps(content))
+        else:
+            with fsspec.open(f"file://{metadata_path}", "w") as local_file:
+                json.dump(content, local_file)
+
         logger.info(
             f"metadata for {input_file_path} is " "added in to execution directory"
         )
@@ -145,3 +165,41 @@ class ExecutionFileHandler:
         )
         execution_dir.mkdir(parents=True, exist_ok=True)
         return str(execution_dir)
+
+    @classmethod
+    def get_execution_dir(
+        cls, workflow_id: str, execution_id: str, organization_id: str
+    ) -> str:
+        """Create the directory path for storing execution-related files.
+
+        Parameters:
+        - workflow_id (str): Identifier for the workflow.
+        - execution_id (str): Identifier for the execution.
+        - organization_id (Optional[str]):
+            Identifier for the organization (default: None).
+
+        Returns:
+        str: The directory path for the execution.
+        """
+        execution_dir = f"/execution/{organization_id}/{workflow_id}/{execution_id}"
+
+        return execution_dir
+
+    @classmethod
+    def get_api_execution_dir(
+        cls, workflow_id: str, execution_id: str, organization_id: str
+    ) -> str:
+        """Create the directory path for storing execution-related files.
+
+        Parameters:
+        - workflow_id (str): Identifier for the workflow.
+        - execution_id (str): Identifier for the execution.
+        - organization_id (Optional[str]):
+            Identifier for the organization (default: None).
+
+        Returns:
+        str: The directory path for the execution.
+        """
+
+        execution_dir = f"/api/{organization_id}/{workflow_id}/{execution_id}"
+        return execution_dir
