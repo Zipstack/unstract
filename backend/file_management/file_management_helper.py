@@ -27,6 +27,13 @@ from pydrive2.files import ApiRequestError
 from unstract.connectors.filesystems import connectors as fs_connectors
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
+try:
+    from plugins.processor.file_converter.constants import (
+        ExtentedFileInformationKey as FileKey,
+    )
+except ImportError:
+    from file_management.constants import FileInformationKey as FileKey
+
 logger = logging.getLogger(__name__)
 
 
@@ -148,15 +155,7 @@ class FileManagerHelper:
         fs = file_system.get_fsspec_fs()
 
         # Define allowed content types
-        allowed_content_types = [
-            "application/pdf",
-            "text/plain",
-            "image/jpeg",
-            "image/png",
-            "application/msword",  # .doc files
-            "application/vnd.openxmlformats-officedocument.wordprocessingml."
-            "document",  # .docx files
-        ]
+        allowed_content_types = FileKey.FILE_UPLOAD_ALLOWED_MIME
 
         try:
             file_info = fs.info(file_path)
@@ -188,7 +187,6 @@ class FileManagerHelper:
 
         # Handle allowed file types
         if file_content_type == "application/pdf":
-            # Read contents of PDF file into a string
             with fs.open(file_path, "rb") as file:
                 data = base64.b64encode(file.read())
 
@@ -196,18 +194,6 @@ class FileManagerHelper:
             with fs.open(file_path, "r") as file:
                 logger.info(f"Reading text file: {file_path}")
                 data = file.read()
-
-        elif file_content_type.startswith("image/"):
-            with fs.open(file_path, "rb") as file:
-                data = base64.b64encode(file.read())
-
-        # Handle Word files (.doc and .docx)
-        elif file_content_type in [
-            "application/msword",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ]:
-            with fs.open(file_path, "rb") as file:
-                data = base64.b64encode(file.read())
 
         else:
             raise InvalidFileType(f"File type '{file_content_type}' is not handled.")

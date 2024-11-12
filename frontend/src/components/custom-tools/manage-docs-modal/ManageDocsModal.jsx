@@ -477,6 +477,16 @@ function ManageDocsModal({
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
+    const isFileAlreadyExist = (listOfDocs, fileName) => {
+      const fileNameWithoutExtension = fileName?.replace(/\.[^/.]+$/, ""); // Remove extension from file name
+
+      return [...listOfDocs]?.find(
+        (item) =>
+          item?.document_name?.replace(/\.[^/.]+$/, "") ===
+          fileNameWithoutExtension
+      );
+    };
+
     return new Promise((resolve, reject) => {
       setResolveUpload(() => resolve); // Save the resolve function
       setRejectUpload(() => reject); // Save the reject function
@@ -487,13 +497,7 @@ function ManageDocsModal({
       reader.onload = () => {
         const fileName = file.name;
         const fileType = file.type;
-        const fileNameWithoutExtension = fileName.replace(/\.[^/.]+$/, ""); // Remove extension from file name
-
-        const fileAlreadyExists = [...listOfDocs].find(
-          (item) =>
-            item?.document_name.replace(/\.[^/.]+$/, "") ===
-            fileNameWithoutExtension
-        );
+        const fileAlreadyExists = isFileAlreadyExist(listOfDocs, fileName);
 
         // Check if file name already exists
         if (fileAlreadyExists) {
