@@ -268,6 +268,21 @@ build_services() {
   fi
 }
 
+create_backend_schema() {
+
+  if [ "$first_setup" = false ]; then
+    return
+  fi
+
+  pushd ${script_dir}/docker 1>/dev/null
+
+  echo -e "$blue_text""Creating a schema for Unstract in the database""$default_text"
+  VERSION=$opt_version $docker_compose_cmd run backend prepare_and_migrate
+  # TODO: Run migrations here once its removed from backend's entrypoint
+
+  popd 1>/dev/null
+}
+
 run_services() {
   pushd ${script_dir}/docker 1>/dev/null
 
@@ -283,7 +298,7 @@ run_services() {
     fi
 
     # Show release notes on version update if applicable
-    python3 "$script_dir/scripts/release-notes/print_release_notes.py" "$current_version" "$target_branch"
+    python3 "$script_dir/docker/scripts/release-notes/print_release_notes.py" "$current_version" "$target_branch"
   fi
   echo -e "\nOnce the services are up, visit ""$blue_text""http://frontend.unstract.localhost""$default_text"" in your browser."
   echo -e "\nSee logs with:"
@@ -330,6 +345,7 @@ parse_args $*
 do_git_pull
 setup_env
 build_services
+create_backend_schema
 run_services
 #
 # Run Unstract platform - END
