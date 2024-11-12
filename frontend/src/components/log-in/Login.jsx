@@ -9,15 +9,15 @@ import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 
 let LoginForm = null;
-let UnstractAndLlmWhispererLogo;
+let UnstractCloudLogo;
 let PRODUCT_NAMES = {};
 let SELECTED_PRODUCT;
 let selectedProductStore;
 let setSelectedProduct;
 try {
   LoginForm = require("../../plugins/login-form/LoginForm").LoginForm;
-  UnstractAndLlmWhispererLogo =
-    require("../../plugins/assets/llmWhisperer/index.js").UnstractAndLlmWhispererLogo;
+  UnstractCloudLogo =
+    require("../../plugins/assets/llmWhisperer/index.js").UnstractCloudLogo;
   PRODUCT_NAMES = require("../../plugins/llm-whisperer/helper").PRODUCT_NAMES;
   SELECTED_PRODUCT =
     require("../../plugins/llm-whisperer/helper").SELECTED_PRODUCT;
@@ -60,8 +60,8 @@ function Login() {
       <Row>
         <Col xs={24} md={12} className="login-left-section">
           <div className="button-wraper">
-            {UnstractAndLlmWhispererLogo ? (
-              <UnstractAndLlmWhispererLogo />
+            {UnstractCloudLogo ? (
+              <UnstractCloudLogo />
             ) : (
               <img src={logo} alt="Logo" className="logo" />
             )}
