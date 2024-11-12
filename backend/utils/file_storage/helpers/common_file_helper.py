@@ -1,8 +1,8 @@
 from typing import Any
 
-from unstract.sdk.file_storage import FileStorageProvider
 from unstract.sdk.file_storage.fs_impl import FileStorage
 from unstract.sdk.file_storage.fs_permanent import PermanentFileStorage
+from unstract.sdk.file_storage.fs_provider import FileStorageProvider
 from unstract.sdk.file_storage.fs_shared_temporary import SharedTemporaryFileStorage
 from utils.file_storage.common_utils import FileStorageUtil
 from utils.file_storage.constants import FileStorageKeys, FileStorageType
@@ -30,8 +30,10 @@ class FileStorageHelper:
 
     @staticmethod
     def load_file_storage_envs() -> dict[str, Any]:
-        provider: str = FileStorageUtil.get_env_or_die(
-            env_key=FileStorageKeys.FILE_STORAGE_PROVIDER
+        provider: FileStorageProvider = FileStorageProvider(
+            FileStorageUtil.get_env_or_die(
+                env_key=FileStorageKeys.FILE_STORAGE_PROVIDER
+            )
         )
         credentials: str = FileStorageUtil.get_env_or_die(
             env_key=FileStorageKeys.FILE_STORAGE_CREDENTIALS

@@ -54,6 +54,7 @@ class PromptStudioFileHelper:
                 tool_id=str(tool_id),
             )
         )
+
         file_path = f"{file_system_path}/{uploaded_file.name}"
         fs_instance.write(path=file_path, mode="wb", data=uploaded_file.read())
 

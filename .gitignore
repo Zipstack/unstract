@@ -662,9 +662,16 @@ unstract/unstract-sdk/
 # Backend requirements.txt
 backend/requirements.txt
 
+# Backend URLs
+backend/backend/*_urls.py
+!backend/backend/base_urls.py
+!backend/backend/public_urls.py
+# TODO: Remove after v2 migration is completed
+backend/backend/*_urls_v2.py
+!backend/backend/public_urls_v2.py
+
 # Backend cloud urls
-backend/backend/cloud_public_urls.py
-backend/backend/cloud_urls.py
+backend/backend/cloud*_urls*.py
 
 # Backend onboardig static directory
 backend/onboarding_static/
