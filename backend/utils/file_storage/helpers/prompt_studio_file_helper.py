@@ -5,6 +5,8 @@ from utils.file_storage.common_utils import FileStorageUtil
 from utils.file_storage.constants import FileStorageConstants, FileStorageType
 from utils.file_storage.helpers.common_file_helper import FileStorageHelper
 
+from unstract.connectors.filesystems.local_storage.local_storage import LocalStorageFS
+
 
 class PromptStudioFileHelper:
     @staticmethod
@@ -59,6 +61,34 @@ class PromptStudioFileHelper:
         fs_instance.write(path=file_path, mode="wb", data=uploaded_file.read())
 
     @staticmethod
+    def upload_file(
+        org_id: str, user_id: str, tool_id: str, uploaded_file: Any
+    ) -> None:
+        # file_system = FileStorageHelper.initialize_file_storage(
+        #     type=FileStorageType.PERMANENT
+        # )
+
+        file_system_path = (
+            PromptStudioFileHelper.handle_sub_directory_for_prompt_studio(
+                org_id=org_id,
+                is_create=True,
+                user_id=user_id,
+                tool_id=str(tool_id),
+            )
+        )
+        print("***** file_system_path ***** ", file_system_path)
+
+        file_system = LocalStorageFS(settings={"path": file_system_path})
+        fs = file_system.get_fsspec_fs()
+
+        file_path = f"{file_system_path}/{uploaded_file.name}"
+        # file_system.write(path=file_path, mode="wb", data=uploaded_file.read())
+        with fs.open(file_path, mode="wb") as remote_file:
+            print("***** uploaded_file ***** ", uploaded_file)
+            print("***** remote_file ***** ", remote_file)
+            remote_file.write(uploaded_file.read())
+
+    @staticmethod
     def fetch_file_contents(
         org_id: str, user_id: str, tool_id: str, file_name: str
     ) -> Union[bytes, str]:
@@ -95,18 +125,3 @@ class PromptStudioFileHelper:
             text_content = fs_instance.read(path=file_path, mode="r")
 
         return text_content
-
-    @staticmethod
-    def upload_file(
-        org_id: str, user_id: str, tool_id: str, uploaded_file: Any, file_system: Any
-    ) -> None:
-        file_system_path = (
-            PromptStudioFileHelper.handle_sub_directory_for_prompt_studio(
-                org_id=org_id,
-                is_create=True,
-                user_id=user_id,
-                tool_id=str(tool_id),
-            )
-        )
-        file_path = f"{file_system_path}/{uploaded_file.name}"
-        file_system.write(path=file_path, mode="wb", data=uploaded_file.read())
