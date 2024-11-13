@@ -114,7 +114,7 @@ class CostCalculationHelper:
                     # TTL expired, fetch updated JSON data from API
                     return self._fetch_and_save_json()
         except Exception as e:
-            app.logger.error(
+            app.logger.warning(
                 "Error in calculate_cost: %s", e, stack_info=True, exc_info=True
             )
             return None
