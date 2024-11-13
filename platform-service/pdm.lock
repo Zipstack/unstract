@@ -4,8 +4,8 @@
 [metadata]
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
-lock_version = "4.4.1"
-content_hash = "sha256:a3f10f8adb4932ae509cbef13daee89f77b3214d187706a826f13ed8fc459a5e"
+lock_version = "4.4.2"
+content_hash = "sha256:046ced414ed4ac29999bf64975e1d4f39bf77fb4e3a426ec665f1ac76cf999fc"
 
 [[package]]
 name = "aiohappyeyeballs"
