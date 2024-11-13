@@ -30,8 +30,10 @@ class FileStorageHelper:
 
     @staticmethod
     def load_file_storage_envs() -> dict[str, Any]:
-        provider: str = FileStorageUtil.get_env_or_die(
-            env_key=FileStorageKeys.FILE_STORAGE_PROVIDER
+        provider: FileStorageProvider = FileStorageProvider(
+            FileStorageUtil.get_env_or_die(
+                env_key=FileStorageKeys.FILE_STORAGE_PROVIDER
+            )
         )
         credentials: str = FileStorageUtil.get_env_or_die(
             env_key=FileStorageKeys.FILE_STORAGE_CREDENTIALS
