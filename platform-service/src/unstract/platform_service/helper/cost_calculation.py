@@ -29,7 +29,7 @@ class CostCalculationHelper:
             self.file_storage, self.file_path = self.__get_storage_crdentials()
         self.model_token_data = self._get_model_token_data()
 
-    def __get_storage_crdentials(self) -> tuple[PermanentFileStorage, str]:
+    def __get_storage_credentials(self) -> tuple[PermanentFileStorage, str]:
         try:
             # Not creating constants for now for the keywords below as this
             # logic ought to change in the near future to maintain unformity
