@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Optional
 
 import requests
@@ -8,10 +8,14 @@ from flask import current_app as app
 from unstract.platform_service.constants import FeatureFlag
 from unstract.platform_service.env import Env
 from unstract.platform_service.utils import format_float_positional
-from unstract.sdk.exceptions import FileStorageError
-from unstract.sdk.file_storage import FileStorageProvider, PermanentFileStorage
 
 from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+    from datetime import timezone
+
+    from unstract.sdk.exceptions import FileStorageError
+    from unstract.sdk.file_storage import FileStorageProvider, PermanentFileStorage
 
 
 class CostCalculationHelper:
@@ -26,26 +30,28 @@ class CostCalculationHelper:
         self.file_path = file_path
 
         if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            self.file_storage, self.file_path = self.__get_storage_crdentials()
+            self.file_storage, self.file_path = self.__get_storage_credentials()
         self.model_token_data = self._get_model_token_data()
 
-    def __get_storage_credentials(self) -> tuple[PermanentFileStorage, str]:
-        try:
-            # Not creating constants for now for the keywords below as this
-            # logic ought to change in the near future to maintain unformity
-            # across services
-            file_storage = json.loads(os.environ.get("FILE_STORAGE_CREDENTIALS"))
-            provider = FileStorageProvider(file_storage["provider"])
-            credentials = file_storage["credentials"]
-            file_path = file_storage["file_path"]
-            return PermanentFileStorage(provider, **credentials), file_path
-        except FileStorageError as e:
-            app.logger.error(
-                "Error while initialising storage: %s",
-                e,
-                stack_info=True,
-                exc_info=True,
-            )
+    if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+
+        def __get_storage_credentials(self) -> tuple[PermanentFileStorage, str]:
+            try:
+                # Not creating constants for now for the keywords below as this
+                # logic ought to change in the near future to maintain unformity
+                # across services
+                file_storage = json.loads(os.environ.get("FILE_STORAGE_CREDENTIALS"))
+                provider = FileStorageProvider(file_storage["provider"])
+                credentials = file_storage["credentials"]
+                file_path = file_storage["file_path"]
+                return PermanentFileStorage(provider, **credentials), file_path
+            except FileStorageError as e:
+                app.logger.error(
+                    "Error while initialising storage: %s",
+                    e,
+                    stack_info=True,
+                    exc_info=True,
+                )
 
     def calculate_cost(
         self, model_name: str, provider: str, input_tokens: int, output_tokens: int
