@@ -19,15 +19,6 @@ try {
   // Plugin not available
 }
 
-// Import useGoogleTagManager hook
-let hsSignupEvent;
-try {
-  hsSignupEvent =
-    require("../plugins/hooks/useGoogleTagManager.js").useGoogleTagManager();
-} catch {
-  // Ignore if hook not available
-}
-
 let selectedProduct;
 let selectedProductStore;
 let PRODUCT_NAMES = {};
@@ -119,11 +110,6 @@ function useSessionValid() {
           window.location.reload();
         }
       });
-
-      const isNewOrg = setOrgRes?.data?.is_new_org || false;
-      if (isNewOrg && hsSignupEvent) {
-        hsSignupEvent();
-      }
 
       userAndOrgDetails = setOrgRes?.data?.user;
       userAndOrgDetails["orgName"] = setOrgRes?.data?.organization?.name;
