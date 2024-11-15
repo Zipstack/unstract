@@ -19,8 +19,7 @@ from unstract.workflow_execution.tools_utils import ToolsUtils
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-    from unstract.filesystem import FileStorageType
-    from unstract.filesystem.filesystem import FileSystem
+    from unstract.filesystem import FileStorageType, FileSystem
 
 logger = logging.getLogger(__name__)
 

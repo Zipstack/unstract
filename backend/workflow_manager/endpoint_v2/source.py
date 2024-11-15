@@ -12,7 +12,6 @@ from connector_processor.constants import ConnectorKeys
 from connector_v2.models import ConnectorInstance
 from django.core.files.uploadedfile import UploadedFile
 from unstract.workflow_execution.enums import LogState
-from utils.constants import FeatureFlag
 from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.base_connector import BaseConnector
 from workflow_manager.endpoint_v2.constants import (
@@ -38,11 +37,11 @@ from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelpe
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
+from backend.constants import FeatureFlag
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-    from unstract.filesystem import FileStorageType
-    from unstract.filesystem.filesystem import FileSystem
+    from unstract.filesystem import FileStorageType, FileSystem
 
 logger = logging.getLogger(__name__)
 
@@ -506,45 +505,71 @@ class SourceConnector(BaseConnector):
             api_file_storage = api_file_system.get_file_storage()
             workflow_file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
             workflow_file_storage = workflow_file_system.get_file_storage()
-
-            chunk_size = 4096  # You can adjust the chunk size based on file size
-            seek_position = 0  # Start from the beginning
-            end_of_file = False
-
-            # Loop to read and write in chunks until the end of the file
-            while not end_of_file:
-                # Read a chunk from the source file
-                chunk = api_file_storage.read(
-                    path=input_file_path,
-                    mode="rb",
-                    seek_position=seek_position,
-                    length=chunk_size,
-                )
-
-                if (
-                    not chunk
-                ):  # If no chunk is returned, we have reached the end of the file
-                    end_of_file = True
-                else:
-                    # Write the chunk to both destination paths
-                    workflow_file_storage.write(
-                        path=infile_path,
-                        mode="ab",
-                        seek_position=seek_position,
-                        data=chunk,
-                    )
-                    workflow_file_storage.write(
-                        path=source_path,
-                        mode="ab",
-                        seek_position=seek_position,
-                        data=chunk,
-                    )
-
-                    # Update seek_position for the next read
-                    seek_position += len(chunk)
+            self._copy_file_to_destination(
+                source_storage=api_file_storage,
+                destination_storage=workflow_file_storage,
+                source_path=input_file_path,
+                destination_paths=[infile_path, source_path],
+            )
         else:
             shutil.copyfile(input_file_path, infile_path)
             shutil.copyfile(input_file_path, source_path)
+
+    # TODO: replace it with method from SDK Utils
+    def _copy_file_to_destination(
+        self,
+        source_storage: Any,
+        destination_storage: Any,
+        source_path: str,
+        destination_paths: list[str],
+        chunk_size: int = 4096,
+    ) -> None:
+        """
+        Copy a file from a source storage to one or more paths in a
+        destination storage.
+
+        This function reads the source file in chunks and writes each chunk to
+        the specified destination paths. The function will continue until the
+        entire source file is copied.
+
+        Args:
+            source_storage (FileStorage): The storage object from which
+                the file is read.
+            destination_storage (FileStorage): The storage object to which
+                the file is written.
+            source_path (str): The path of the file in the source storage.
+            destination_paths (list[str]): A list of paths where the file will be
+                copied in the destination storage.
+            chunk_size (int, optional): The number of bytes to read per chunk.
+                Default is 4096 bytes.
+        """
+        seek_position = 0  # Start from the beginning
+        end_of_file = False
+
+        # Loop to read and write in chunks until the end of the file
+        while not end_of_file:
+            # Read a chunk from the source file
+            chunk = source_storage.read(
+                path=source_path,
+                mode="rb",
+                seek_position=seek_position,
+                length=chunk_size,
+            )
+            # Check if the end of the file has been reached
+            if not chunk:
+                end_of_file = True
+            else:
+                # Write the chunk to each destination path
+                for destination_file in destination_paths:
+                    destination_storage.write(
+                        path=destination_file,
+                        mode="ab",
+                        seek_position=seek_position,
+                        data=chunk,
+                    )
+
+                # Update the seek position
+                seek_position += len(chunk)
 
     def add_file_to_volume(self, input_file_path: str, file_hash: FileHash) -> str:
         """Add input file to execution directory.

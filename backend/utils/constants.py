@@ -15,12 +15,6 @@ class Account:
     ORGANIZATION_ID = "organization_id"
 
 
-class FeatureFlag:
-    """Temporary feature flags."""
-
-    REMOTE_FILE_STORAGE = "remote_file_storage"
-
-
 class Common:
     METADATA = "metadata"
     MODULE = "module"

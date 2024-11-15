@@ -12,7 +12,6 @@ from fsspec.implementations.local import LocalFileSystem
 from unstract.sdk.constants import ToolExecKey
 from unstract.sdk.tool.mime_types import EXT_MIME_MAP
 from unstract.workflow_execution.constants import ToolOutputType
-from utils.constants import FeatureFlag
 from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.base_connector import BaseConnector
 from workflow_manager.endpoint_v2.constants import (
@@ -38,13 +37,13 @@ from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
+from backend.constants import FeatureFlag
 from backend.exceptions import UnstractFSException
 from unstract.connectors.exceptions import ConnectorError
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-    from unstract.filesystem import FileStorageType
-    from unstract.filesystem.filesystem import FileSystem
+    from unstract.filesystem import FileStorageType, FileSystem
 
 logger = logging.getLogger(__name__)
 

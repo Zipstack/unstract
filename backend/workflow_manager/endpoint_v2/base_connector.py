@@ -4,16 +4,16 @@ from typing import Any
 from django.conf import settings
 from fsspec import AbstractFileSystem
 from unstract.workflow_execution.execution_file_handler import ExecutionFileHandler
-from utils.constants import Common, FeatureFlag
+from utils.constants import Common
 from utils.user_context import UserContext
 
+from backend.constants import FeatureFlag
 from unstract.connectors.filesystems import connectors
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-    from unstract.filesystem import FileStorageType
-    from unstract.filesystem.filesystem import FileSystem
+    from unstract.filesystem import FileStorageType, FileSystem
 
 
 class BaseConnector(ExecutionFileHandler):
