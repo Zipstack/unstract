@@ -73,6 +73,12 @@ class PromptStudioRegistryHelper:
                 "default": False,
                 "description": "Enables SinglePass Extraction",
             },
+            "enable_highlight": {
+                "type": "boolean",
+                "title": "Enable highlight",
+                "default": False,
+                "description": "Enables highlight",
+            },
         }
 
         spec = Spec(
