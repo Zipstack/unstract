@@ -43,7 +43,7 @@ class CostCalculationHelper:
                 file_storage = json.loads(os.environ.get("FILE_STORAGE_CREDENTIALS"))
                 provider = FileStorageProvider(file_storage["provider"])
                 credentials = file_storage["credentials"]
-                file_path = file_storage["file_path"]
+                file_path = file_storage["model_prices_file_path"]
                 return PermanentFileStorage(provider, **credentials), file_path
             except FileStorageError as e:
                 app.logger.error(
