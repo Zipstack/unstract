@@ -96,6 +96,7 @@ class ToolStudioPromptKeys:
     RECORD = "record"
     ENABLE_HIGHLIGHT = "enable_highlight"
 
+
 class FileViewTypes:
     ORIGINAL = "ORIGINAL"
     EXTRACT = "EXTRACT"
