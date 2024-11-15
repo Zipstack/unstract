@@ -10,9 +10,11 @@ from unstract.workflow_execution.constants import (
     MetaDataKey,
     ToolMetadataKey,
     ToolOutputType,
+    ToolRuntimeVariable,
     WorkflowFileType,
 )
 from unstract.workflow_execution.exceptions import ToolMetadataNotFound
+from unstract.workflow_execution.tools_utils import ToolsUtils
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
@@ -183,9 +185,12 @@ class ExecutionFileHandler:
         Returns:
         str: The directory path for the execution.
         """
-        execution_dir = f"/execution/{organization_id}/{workflow_id}/{execution_id}"
+        path_prefix = ToolsUtils.get_env(
+            ToolRuntimeVariable.WORKFLOW_EXECUTION_DIR_PREFIX
+        )
+        execution_dir = Path(path_prefix) / organization_id / workflow_id / execution_id
 
-        return execution_dir
+        return str(execution_dir)
 
     @classmethod
     def get_api_execution_dir(
@@ -202,6 +207,6 @@ class ExecutionFileHandler:
         Returns:
         str: The directory path for the execution.
         """
-
-        execution_dir = f"/api/{organization_id}/{workflow_id}/{execution_id}"
-        return execution_dir
+        path_prefix = ToolsUtils.get_env(ToolRuntimeVariable.API_EXECUTION_DIR_PREFIX)
+        execution_dir = Path(path_prefix) / organization_id / workflow_id / execution_id
+        return str(execution_dir)

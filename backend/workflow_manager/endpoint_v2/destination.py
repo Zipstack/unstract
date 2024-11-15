@@ -10,6 +10,7 @@ import magic
 from connector_v2.models import ConnectorInstance
 from fsspec.implementations.local import LocalFileSystem
 from unstract.sdk.constants import ToolExecKey
+from unstract.sdk.tool.mime_types import EXT_MIME_MAP
 from unstract.workflow_execution.constants import ToolOutputType
 from utils.constants import FeatureFlag
 from utils.user_context import UserContext
@@ -411,6 +412,8 @@ class DestinationConnector(BaseConnector):
         Returns:
             Union[dict[str, Any], str]: Result data.
         """
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            return self.get_result_with_file_storage(file_history=file_history)
         if file_history and file_history.result:
             return self.parse_string(file_history.result)
         output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
@@ -434,6 +437,43 @@ class DestinationConnector(BaseConnector):
                 with open(output_file) as file:
                     result = file.read()
                     result = result.encode("utf-8").decode("unicode-escape")
+            else:
+                raise InvalidToolOutputType()
+        except (FileNotFoundError, json.JSONDecodeError) as err:
+            logger.error(f"Error while getting result {err}")
+        return result
+
+    def get_result_with_file_storage(
+        self, file_history: Optional[FileHistory] = None
+    ) -> Optional[Any]:
+        """Get result data from the output file.
+
+        Returns:
+            Union[dict[str, Any], str]: Result data.
+        """
+        if file_history and file_history.result:
+            return self.parse_string(file_history.result)
+        output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
+        metadata: dict[str, Any] = self.get_workflow_metadata()
+        output_type = self.get_output_type(metadata)
+        result: Union[dict[str, Any], str] = ""
+        file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+        file_storage = file_system.get_file_storage()
+        try:
+            # TODO: SDK handles validation; consider removing here.
+            file_type = file_storage.mime_type(output_file)
+            if output_type == ToolOutputType.JSON:
+                if file_type != EXT_MIME_MAP[ToolOutputType.JSON.lower()]:
+                    logger.error(f"Output type json mismatched {file_type}")
+                    raise ToolOutputTypeMismatch()
+                file_content = file_storage.read(output_file, mode="r")
+                result = json.loads(file_content)
+            elif output_type == ToolOutputType.TXT:
+                if file_type == EXT_MIME_MAP[ToolOutputType.JSON.lower()]:
+                    logger.error(f"Output type txt mismatched {file_type}")
+                    raise ToolOutputTypeMismatch()
+                file_content = file_storage.read(output_file, mode="r")
+                result = file_content.encode("utf-8").decode("unicode-escape")
             else:
                 raise InvalidToolOutputType()
         except (FileNotFoundError, json.JSONDecodeError) as err:
