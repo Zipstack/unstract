@@ -8,7 +8,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from flask import Blueprint, Request
 from flask import current_app as app
 from flask import jsonify, make_response, request
-from unstract.platform_service.constants import DBTable, DBTableV2
+from unstract.platform_service.constants import DBTable
 from unstract.platform_service.env import Env
 from unstract.platform_service.exceptions import APIError
 from unstract.platform_service.extensions import db
@@ -55,12 +55,12 @@ def get_organization_from_bearer_token(token: str) -> tuple[Optional[int], str]:
         tuple[int, str]: organization uid and organization identifier
     """
     query = f"""
-        SELECT organization_id FROM "{Env.DB_SCHEMA}".{DBTableV2.PLATFORM_KEY}
+        SELECT organization_id FROM "{Env.DB_SCHEMA}".{DBTable.PLATFORM_KEY}
         WHERE key=%s
     """
     organization_uid: int = execute_query(query, (token,))
     query_org = f"""
-        SELECT organization_id FROM "{Env.DB_SCHEMA}".{DBTableV2.ORGANIZATION}
+        SELECT organization_id FROM "{Env.DB_SCHEMA}".{DBTable.ORGANIZATION}
         WHERE id=%s
     """
     organization_identifier: str = execute_query(query_org, (organization_uid,))
@@ -82,7 +82,7 @@ def validate_bearer_token(token: Optional[str]) -> bool:
             app.logger.error("Authentication failed. Empty bearer token")
             return False
 
-        platform_key_table = DBTableV2.PLATFORM_KEY
+        platform_key_table = DBTable.PLATFORM_KEY
         query = f"""
             SELECT * FROM \"{Env.DB_SCHEMA}\".{platform_key_table}
             WHERE key = '{token}'
@@ -139,10 +139,10 @@ def page_usage() -> Any:
     run_id = payload.get("run_id", "")
 
     query = f"""
-            INSERT INTO {DBTable.PAGE_USAGE} (id, organization_id, pages_processed,
-            file_name, file_size, file_type, run_id, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """
+        INSERT INTO \"{Env.DB_SCHEMA}\".{DBTable.PAGE_USAGE} (id, organization_id,
+        pages_processed, file_name, file_size, file_type, run_id, created_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """
     usage_id = uuid.uuid4()
     current_time = datetime.now()
     params = (
@@ -160,7 +160,7 @@ def page_usage() -> Any:
         with db.atomic() as transaction:
             db.execute_sql(query, params)
             transaction.commit()
-            app.logger.info("Entry created with id %s for %s", usage_id, org_id)
+            app.logger.info("Page usage recorded with id %s for %s", usage_id, org_id)
             result["status"] = "OK"
             result["unique_id"] = usage_id
             return make_response(result, 200)
@@ -222,7 +222,7 @@ def usage() -> Any:
     usage_id = uuid.uuid4()
     current_time = datetime.now()
     query = f"""
-        INSERT INTO \"{Env.DB_SCHEMA}\".{DBTableV2.TOKEN_USAGE} (
+        INSERT INTO \"{Env.DB_SCHEMA}\".{DBTable.TOKEN_USAGE} (
         id, organization_id, workflow_id,
         execution_id, adapter_instance_id, run_id, usage_type,
         llm_usage_reason, model_name, embedding_tokens, prompt_tokens,
@@ -254,7 +254,9 @@ def usage() -> Any:
         with db.atomic() as transaction:
             db.execute_sql(query, params)
             transaction.commit()
-            app.logger.info("Entry created with id %s for %s", usage_id, org_id)
+            app.logger.info(
+                "Adapter usage recorded with id %s for %s", usage_id, org_id
+            )
             result["status"] = "OK"
             result["unique_id"] = usage_id
             return make_response(result, 200)
