@@ -114,7 +114,7 @@ def initialize_plugin_endpoints(app: Flask) -> None:
 
 
 def query_usage_metadata(token: str, metadata: dict[str, Any]) -> dict[str, Any]:
-    DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract_v2")
+    DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract")
     organization_uid, org_id = DBUtils.get_organization_from_bearer_token(token)
     run_id: str = metadata["run_id"]
     query: str = f"""
