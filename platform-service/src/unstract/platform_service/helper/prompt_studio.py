@@ -1,11 +1,11 @@
 from typing import Any
 
-from unstract.platform_service.constants import DBTableV2
+from unstract.platform_service.constants import DBTable
 from unstract.platform_service.exceptions import APIError
 from unstract.platform_service.extensions import db
 from unstract.platform_service.utils import EnvManager
 
-DB_SCHEMA = EnvManager.get_required_setting("DB_SCHEMA", "unstract_v2")
+DB_SCHEMA = EnvManager.get_required_setting("DB_SCHEMA", "unstract")
 
 
 class PromptStudioRequestHelper:
@@ -26,7 +26,7 @@ class PromptStudioRequestHelper:
         query = (
             "SELECT prompt_registry_id, tool_spec, "
             "tool_metadata, tool_property FROM "
-            f'"{DB_SCHEMA}".{DBTableV2.PROMPT_STUDIO_REGISTRY} x '
+            f'"{DB_SCHEMA}".{DBTable.PROMPT_STUDIO_REGISTRY} x '
             f"WHERE prompt_registry_id='{prompt_registry_id}'"
         )
         cursor = db.execute_sql(query)
