@@ -1,3 +1,4 @@
+import json
 import logging
 
 from usage.helper import UsageHelper
@@ -25,4 +26,10 @@ class PromptStudioOutputSerializer(AuditSerializer):
             )
             token_usage = {}
         data["token_usage"] = token_usage
+        # Convert string to list
+        try:
+            data["context"] = json.loads(data["context"])
+        except json.JSONDecodeError:
+            # Convert the old value of data["context"] to a list
+            data["context"] = [data["context"]]
         return data
