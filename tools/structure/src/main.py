@@ -224,7 +224,7 @@ class StructureTool(BaseTool):
                     )
                 except ImportError:
                     self.stream_log(
-                        f"Highlight metadata is not added. {PAID_FEATURE_MSG}",
+                        f"Confidence data is not added. {PAID_FEATURE_MSG}",
                         level=LogLevel.WARN,
                     )
             # Update the dictionary with modified metadata
