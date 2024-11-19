@@ -6,7 +6,7 @@ from unstract.prompt_service.constants import DBTableV2
 from unstract.prompt_service.db_utils import DBUtils
 from unstract.prompt_service.env_manager import EnvLoader
 
-DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract_v2")
+DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract")
 
 
 class AuthenticationMiddleware:
