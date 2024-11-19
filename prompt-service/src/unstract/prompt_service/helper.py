@@ -287,7 +287,7 @@ def run_completion(
         highlight_data = None
         if highlight_data_plugin and enable_highlight:
             highlight_data = highlight_data_plugin["entrypoint_cls"](
-                file_path=file_path
+                logger=current_app.logger, file_path=file_path
             ).run
         completion = llm.complete(
             prompt=prompt,
