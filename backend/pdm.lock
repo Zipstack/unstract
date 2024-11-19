@@ -1448,7 +1448,7 @@ files = [
 
 [[package]]
 name = "google-cloud-aiplatform"
-version = "1.72.0"
+version = "1.73.0"
 requires_python = ">=3.8"
 summary = "Vertex AI API client library"
 groups = ["default", "dev"]
@@ -1466,8 +1466,8 @@ dependencies = [
     "shapely<3.0.0dev",
 ]
 files = [
-    {file = "google_cloud_aiplatform-1.72.0-py2.py3-none-any.whl", hash = "sha256:a75dbeda47eaecb7bb2b1801b9c8dfe72a14f76a649525cdff496646214a7afb"},
-    {file = "google_cloud_aiplatform-1.72.0.tar.gz", hash = "sha256:50611d3d51ff92d80f866e5e0f145daac9d943499c6d715250a9947eca4774f2"},
+    {file = "google_cloud_aiplatform-1.73.0-py2.py3-none-any.whl", hash = "sha256:6f9aebc1cb2277048093f17214c5f4ec9129fa347b8b22d784f780b12b8865a9"},
+    {file = "google_cloud_aiplatform-1.73.0.tar.gz", hash = "sha256:687d4d6dd26439db42d38b835ea0da7ebb75c20ca8e17666669536b253637e74"},
 ]
 
 [[package]]
