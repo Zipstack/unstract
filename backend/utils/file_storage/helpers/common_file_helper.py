@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from unstract.sdk.file_storage import FileStorageProvider
@@ -16,28 +17,21 @@ class FileStorageHelper:
         provider = provider_data[FileStorageKeys.FILE_STORAGE_PROVIDER]
         credentials = provider_data[FileStorageKeys.FILE_STORAGE_CREDENTIALS]
         if type.value == FileStorageType.PERMANENT.value:
-            file_storage = PermanentFileStorage(
-                provider=provider, credentials=credentials
-            )
-        if type.value == FileStorageType.TEMPORARY.value:
-            file_storage = SharedTemporaryFileStorage(
-                provider=provider, credentials=credentials
-            )
-        file_storage = FileStorage(
-            provider=FileStorageProvider.Local, credentials=credentials
-        )
+            file_storage = PermanentFileStorage(provider, **credentials)
+        elif type.value == FileStorageType.TEMPORARY.value:
+            file_storage = SharedTemporaryFileStorage(provider, **credentials)
+        else:
+            file_storage = FileStorage(FileStorageProvider.LOCAL, **credentials)
         return file_storage
 
     @staticmethod
     def load_file_storage_envs() -> dict[str, Any]:
-        provider: FileStorageProvider = FileStorageProvider(
-            FileStorageUtil.get_env_or_die(
-                env_key=FileStorageKeys.FILE_STORAGE_PROVIDER
-            )
+        file_storage = json.loads(
+            FileStorageUtil.get_env_or_die(env_key="FILE_STORAGE_CREDENTIALS")
         )
-        credentials: str = FileStorageUtil.get_env_or_die(
-            env_key=FileStorageKeys.FILE_STORAGE_CREDENTIALS
-        )
+        provider = FileStorageProvider(file_storage["provider"])
+        credentials = file_storage["credentials"]
+
         provider_data: dict[str, Any] = {}
         provider_data[FileStorageKeys.FILE_STORAGE_PROVIDER] = provider
         provider_data[FileStorageKeys.FILE_STORAGE_CREDENTIALS] = credentials

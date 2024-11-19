@@ -52,9 +52,12 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance_v2.models import ToolInstance
 from unstract.sdk.utils.common_utils import CommonUtils
+from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.user_session import UserSessionUtils
 
+from backend.constants import FeatureFlag
 from unstract.connectors.filesystems.local_storage.local_storage import LocalStorageFS
+from unstract.flags.feature_flag import check_feature_flag_status
 
 from .models import CustomTool
 from .serializers import (
@@ -393,7 +396,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         view_type: str = serializer.validated_data.get("view_type")
-
         filename_without_extension = file_name.rsplit(".", 1)[0]
         if view_type == FileViewTypes.EXTRACT:
             file_name = (
@@ -404,32 +406,40 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 f"{FileViewTypes.SUMMARIZE.lower()}/"
                 f"{filename_without_extension}.txt"
             )
-
-        file_path = file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            UserSessionUtils.get_organization_id(request),
-            is_create=True,
-            user_id=custom_tool.created_by.user_id,
-            tool_id=str(custom_tool.tool_id),
-        )
-        file_system = LocalStorageFS(settings={"path": file_path})
-        if not file_path.endswith("/"):
-            file_path += "/"
-        file_path += file_name
-        # Temporary Hack for frictionless onboarding as the user id will be empty
-        try:
-            contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
-        except FileNotFound:
+        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
             file_path = file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                 UserSessionUtils.get_organization_id(request),
                 is_create=True,
-                user_id="",
+                user_id=custom_tool.created_by.user_id,
                 tool_id=str(custom_tool.tool_id),
             )
+            file_system = LocalStorageFS(settings={"path": file_path})
             if not file_path.endswith("/"):
                 file_path += "/"
-                file_path += file_name
-            contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
-
+            file_path += file_name
+            # Temporary Hack for frictionless onboarding as the user id will be empty
+            try:
+                contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
+            except FileNotFound:
+                file_path = file_path = (
+                    FileManagerHelper.handle_sub_directory_for_tenants(
+                        UserSessionUtils.get_organization_id(request),
+                        is_create=True,
+                        user_id="",
+                        tool_id=str(custom_tool.tool_id),
+                    )
+                )
+                if not file_path.endswith("/"):
+                    file_path += "/"
+                    file_path += file_name
+                contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
+        else:
+            contents = PromptStudioFileHelper.fetch_file_contents(
+                file_name=file_name,
+                org_id=UserSessionUtils.get_organization_id(request),
+                user_id=custom_tool.created_by.user_id,
+                tool_id=str(custom_tool.tool_id),
+            )
         return Response({"data": contents}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])

@@ -435,7 +435,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     file_path += file_name
                 contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
         else:
-            PromptStudioFileHelper.fetch_file_contents(
+            contents = PromptStudioFileHelper.fetch_file_contents(
                 file_name=file_name,
                 org_id=UserSessionUtils.get_organization_id(request),
                 user_id=custom_tool.created_by.user_id,
