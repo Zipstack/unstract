@@ -1,17 +1,14 @@
 import { Typography, Button } from "antd";
 import { Row, Col } from "antd";
 
-import logo from "../../assets/UnstractLogoBlack.svg";
 import loginRightBanner from "../../assets/login-right-panel.svg";
 import { getBaseUrl } from "../../helpers/GetStaticData";
 import "./Login.css";
+import { UnstractBlackLogo } from "../../assets";
 
 let LoginForm = null;
-let UnstractCloudLogo;
 try {
   LoginForm = require("../../plugins/login-form/LoginForm").LoginForm;
-  UnstractCloudLogo =
-    require("../../plugins/assets/llmWhisperer/index.js").UnstractCloudLogo;
 } catch {
   // The components will remain null of it is not available
 }
@@ -28,22 +25,20 @@ function Login() {
       <Row>
         <Col xs={24} md={12} className="login-left-section">
           <div className="button-wraper">
-            {UnstractCloudLogo ? (
-              <UnstractCloudLogo />
-            ) : (
-              <img src={logo} alt="Logo" className="logo" />
-            )}
             {LoginForm ? (
               <LoginForm handleLogin={handleLogin} />
             ) : (
-              <div>
-                <Button
-                  className="login-button button-margin"
-                  onClick={handleLogin}
-                >
-                  Login
-                </Button>
-              </div>
+              <>
+                <UnstractBlackLogo className="logo" />
+                <div>
+                  <Button
+                    className="login-button button-margin"
+                    onClick={handleLogin}
+                  >
+                    Login
+                  </Button>
+                </div>
+              </>
             )}
           </div>
         </Col>
