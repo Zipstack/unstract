@@ -226,7 +226,12 @@ class StructureTool(BaseTool):
                         transform_dict,
                     )
 
-                    highlight_data = transform_dict(epilogue, tool_data_dir)
+                    if hasattr(self, "workflow_filestorage"):
+                        highlight_data = transform_dict(
+                            epilogue, tool_data_dir, self.workflow_filestorage
+                        )
+                    else:
+                        highlight_data = transform_dict(epilogue, tool_data_dir)
                     metadata[SettingsKeys.HIGHLIGHT_DATA] = highlight_data
                     metadata[SettingsKeys.CONFIDENCE_DATA] = get_confidence_data(
                         epilogue, tool_data_dir
