@@ -102,6 +102,7 @@ class StructureTool(BaseTool):
             self.get_env_or_die(SettingsKeys.EXECUTION_RUN_DATA_FOLDER)
         )
         run_id = CommonUtils.generate_uuid()
+        extracted_input_file = str(execution_run_data_folder / SettingsKeys.EXTRACT)
         # TODO : Resolve and pass log events ID
         payload = {
             SettingsKeys.RUN_ID: run_id,
@@ -110,6 +111,7 @@ class StructureTool(BaseTool):
             SettingsKeys.TOOL_ID: tool_id,
             SettingsKeys.FILE_HASH: file_hash,
             SettingsKeys.FILE_NAME: file_name,
+            SettingsKeys.FILE_PATH: extracted_input_file,
         }
         # TODO: Need to split extraction and indexing
         # to avoid unwanted indexing
@@ -203,10 +205,7 @@ class StructureTool(BaseTool):
             for output in outputs:
                 if SettingsKeys.TABLE_SETTINGS in output:
                     table_settings = output[SettingsKeys.TABLE_SETTINGS]
-                    extracted_input_file = (
-                        execution_run_data_folder / SettingsKeys.EXTRACT
-                    )
-                    table_settings[SettingsKeys.INPUT_FILE] = str(extracted_input_file)
+                    table_settings[SettingsKeys.INPUT_FILE] = extracted_input_file
                     output.update({SettingsKeys.TABLE_SETTINGS: table_settings})
 
             self.stream_log(f"Fetching responses for {len(outputs)} prompt(s)...")
@@ -237,17 +236,14 @@ class StructureTool(BaseTool):
                 try:
                     from helper import (  # type: ignore [attr-defined]
                         get_confidence_data,
-                        transform_dict,
                     )
 
-                    highlight_data = transform_dict(epilogue, tool_data_dir)
-                    metadata[SettingsKeys.HIGHLIGHT_DATA] = highlight_data
                     metadata[SettingsKeys.CONFIDENCE_DATA] = get_confidence_data(
                         epilogue, tool_data_dir
                     )
                 except ImportError:
                     self.stream_log(
-                        f"Highlight metadata is not added. {PAID_FEATURE_MSG}",
+                        f"Confidence data is not added. {PAID_FEATURE_MSG}",
                         level=LogLevel.WARN,
                     )
             # Update the dictionary with modified metadata
