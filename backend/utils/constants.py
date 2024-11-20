@@ -18,6 +18,8 @@ class Account:
 class FeatureFlag:
     """Temporary feature flags."""
 
+    REMOTE_FILE_STORAGE = "remote_file_storage"
+
     pass
 
 

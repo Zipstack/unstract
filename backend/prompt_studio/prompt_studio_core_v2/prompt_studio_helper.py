@@ -54,9 +54,14 @@ from unstract.sdk.exceptions import IndexingError, SdkError
 from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
+from utils.constants import FeatureFlag
+from utils.file_storage.constants import FileStorageType
+from utils.file_storage.helpers.common_file_helper import FileStorageHelper
+from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
 from unstract.core.pubsub_helper import LogPublisher
+from unstract.flags.feature_flag import check_feature_flag_status
 
 CHOICES_JSON = "/static/select_choices.json"
 ERROR_MSG = "User %s doesn't have access to adapter %s"
@@ -332,12 +337,22 @@ class PromptStudioHelper:
             file_path = file_name
         else:
             default_profile = ProfileManager.get_default_llm_profile(tool)
-            file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-                org_id,
-                is_create=False,
-                user_id=user_id,
-                tool_id=tool_id,
-            )
+            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+                file_path = FileManagerHelper.handle_sub_directory_for_tenants(
+                    org_id,
+                    is_create=False,
+                    user_id=user_id,
+                    tool_id=tool_id,
+                )
+            else:
+                file_path = (
+                    PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+                        org_id,
+                        is_create=False,
+                        user_id=user_id,
+                        tool_id=tool_id,
+                    )
+                )
             file_path = str(Path(file_path) / file_name)
 
         if not tool:
@@ -615,24 +630,40 @@ class PromptStudioHelper:
 
     @staticmethod
     def _get_document_path(org_id, user_id, tool_id, doc_name):
-        doc_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            org_id=org_id,
-            user_id=user_id,
-            tool_id=tool_id,
-            is_create=False,
-        )
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            doc_path = FileManagerHelper.handle_sub_directory_for_tenants(
+                org_id=org_id,
+                user_id=user_id,
+                tool_id=tool_id,
+                is_create=False,
+            )
+        else:
+            doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+                org_id=org_id,
+                user_id=user_id,
+                tool_id=tool_id,
+                is_create=False,
+            )
         return str(Path(doc_path) / doc_name)
 
     @staticmethod
     def _get_extract_or_summary_document_path(
         org_id, user_id, tool_id, doc_name, doc_type
     ) -> str:
-        doc_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            org_id=org_id,
-            user_id=user_id,
-            tool_id=tool_id,
-            is_create=False,
-        )
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            doc_path = FileManagerHelper.handle_sub_directory_for_tenants(
+                org_id=org_id,
+                user_id=user_id,
+                tool_id=tool_id,
+                is_create=False,
+            )
+        else:
+            doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+                org_id=org_id,
+                user_id=user_id,
+                tool_id=tool_id,
+                is_create=False,
+            )
         extracted_doc_name = Path(doc_name).stem + TSPKeys.TXT_EXTENTION
         return str(Path(doc_path) / doc_type / extracted_doc_name)
 
@@ -918,6 +949,9 @@ class PromptStudioHelper:
         x2text_adapter = str(profile_manager.x2text.id)
         extract_file_path: Optional[str] = None
         directory, filename = os.path.split(file_path)
+        fs_instance = FileStorageHelper.initialize_file_storage(
+            FileStorageType.PERMANENT
+        )
         if not is_summary:
             extract_file_path = os.path.join(
                 directory, "extract", os.path.splitext(filename)[0] + ".txt"
@@ -940,6 +974,7 @@ class PromptStudioHelper:
                 chunk_overlap=str(profile_manager.chunk_overlap),
                 file_path=file_path,
                 file_hash=None,
+                fs=fs_instance,
             )
             if not reindex:
                 indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
@@ -975,6 +1010,7 @@ class PromptStudioHelper:
                 output_file_path=extract_file_path,
                 usage_kwargs=usage_kwargs.copy(),
                 process_text=process_text,
+                fs=fs_instance,
             )
 
             PromptStudioIndexHelper.handle_index_manager(

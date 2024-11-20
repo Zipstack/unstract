@@ -110,7 +110,7 @@ PLATFORM_PORT = os.environ.get("PLATFORM_SERVICE_PORT", 3001)
 PROMPT_HOST = os.environ.get("PROMPT_HOST", "http://localhost")
 PROMPT_PORT = os.environ.get("PROMPT_PORT", 3003)
 PROMPT_STUDIO_FILE_PATH = os.environ.get(
-    "PROMPT_STUDIO_FILE_PATH", "/app/prompt-studio-data"
+    "PROMPT_STUDIO_FILE_PATH", "fsspec-test/prompt-studio-data/"
 )
 X2TEXT_HOST = os.environ.get("X2TEXT_HOST", "http://localhost")
 X2TEXT_PORT = os.environ.get("X2TEXT_PORT", 3004)

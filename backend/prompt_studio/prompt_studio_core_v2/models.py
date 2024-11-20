@@ -7,8 +7,8 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from django.db import models
 from django.db.models import QuerySet
-from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.prompt_studio_core_v2.constants import DefaultPrompts
+from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
@@ -133,7 +133,7 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
 
     def delete(self, organization_id=None, *args, **kwargs):
         # Delete the documents associated with the tool
-        file_path = FileManagerHelper.handle_sub_directory_for_tenants(
+        file_path = PromptStudioFileHelper.handle_sub_directory_for_prompt_studio(
             organization_id,
             is_create=False,
             user_id=self.created_by.user_id,

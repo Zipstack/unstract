@@ -52,10 +52,10 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance.models import ToolInstance
 from unstract.sdk.utils.common_utils import CommonUtils
+from utils.constants import FeatureFlag
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.user_session import UserSessionUtils
 
-from backend.constants import FeatureFlag
 from unstract.connectors.filesystems.local_storage.local_storage import LocalStorageFS
 from unstract.flags.feature_flag import check_feature_flag_status
 
@@ -406,7 +406,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 f"{FileViewTypes.SUMMARIZE.lower()}/"
                 f"{filename_without_extension}.txt"
             )
-        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
             file_path = file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                 UserSessionUtils.get_organization_id(request),
                 is_create=True,
@@ -489,7 +489,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         user_id = custom_tool.created_by.user_id
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
-        file_path = PromptStudioFileHelper.handle_sub_directory_for_prompt_studio(
+        file_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
             org_id=org_id,
             is_create=False,
             user_id=user_id,
