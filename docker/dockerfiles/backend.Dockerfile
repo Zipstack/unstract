@@ -23,6 +23,8 @@ RUN apt-get update; \
     apt-get --no-install-recommends install -y \
         # unstract sdk
         build-essential libmagic-dev pandoc pkg-config tesseract-ocr \
+        # pymssql
+        freetds-dev libssl-dev libkrb5-dev \
         # git url
         git; \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
