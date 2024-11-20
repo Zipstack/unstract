@@ -331,7 +331,7 @@ class PromptStudioHelper:
             file_path = file_name
         else:
             default_profile = ProfileManager.get_default_llm_profile(tool)
-            file_path = PromptStudioFileHelper.handle_sub_directory_for_prompt_studio(
+            file_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
                 org_id,
                 is_create=False,
                 user_id=user_id,
@@ -609,7 +609,7 @@ class PromptStudioHelper:
 
     @staticmethod
     def _get_document_path(org_id, user_id, tool_id, doc_name):
-        doc_path = PromptStudioFileHelper.handle_sub_directory_for_prompt_studio(
+        doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
             org_id=org_id,
             user_id=user_id,
             tool_id=tool_id,
@@ -621,7 +621,7 @@ class PromptStudioHelper:
     def _get_extract_or_summary_document_path(
         org_id, user_id, tool_id, doc_name, doc_type
     ) -> str:
-        doc_path = PromptStudioFileHelper.handle_sub_directory_for_prompt_studio(
+        doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
             org_id=org_id,
             user_id=user_id,
             tool_id=tool_id,
