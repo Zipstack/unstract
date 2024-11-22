@@ -11,11 +11,12 @@ from unstract.worker.clients.interface import (
     ContainerClientInterface,
     ContainerInterface,
 )
-from unstract.worker.constants import Env, LogLevel, LogType, ToolKey
+from unstract.worker.constants import Env, FeatureFlag, LogLevel, LogType, ToolKey
 from unstract.worker.exception import ToolRunException
 
 from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
+from unstract.flags.feature_flag import check_feature_flag_status
 
 load_dotenv()
 # Loads the container clinet class.
@@ -182,7 +183,22 @@ class UnstractWorker:
             Optional[Any]: _description_
         """
         tool_data_dir = os.getenv(Env.TOOL_DATA_DIR, "/data")
-        envs[Env.TOOL_DATA_DIR] = tool_data_dir
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            envs[Env.EXECUTION_DATA_DIR] = os.path.join(
+                os.getenv(Env.WORKFLOW_EXECUTION_DIR_PREFIX, ""),
+                organization_id,
+                workflow_id,
+                execution_id,
+            )
+            envs[Env.WORKFLOW_EXECUTION_FS_PROVIDER] = os.getenv(
+                Env.WORKFLOW_EXECUTION_FS_PROVIDER, ""
+            )
+            envs[Env.WORKFLOW_EXECUTION_FS_CREDENTIAL] = os.getenv(
+                Env.WORKFLOW_EXECUTION_FS_CREDENTIAL, "{}"
+            )
+        else:
+            envs[Env.TOOL_DATA_DIR] = tool_data_dir
+
         container_config = self.client.get_container_run_config(
             command=[
                 "--command",
