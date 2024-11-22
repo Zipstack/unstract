@@ -15,12 +15,6 @@ class Account:
     ORGANIZATION_ID = "organization_id"
 
 
-class FeatureFlag:
-    """Temporary feature flags."""
-
-    pass
-
-
 class Common:
     METADATA = "metadata"
     MODULE = "module"
