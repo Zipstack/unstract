@@ -101,7 +101,7 @@ DB_USER = os.environ.get("DB_USER", "unstract_dev")
 DB_HOST = os.environ.get("DB_HOST", "backend-db-1")
 DB_PASSWORD = os.environ.get("DB_PASSWORD", "unstract_pass")
 DB_PORT = os.environ.get("DB_PORT", 5432)
-DB_SCHEMA = os.environ.get("DB_SCHEMA", "unstract_v2")
+DB_SCHEMA = os.environ.get("DB_SCHEMA", "unstract")
 
 DEFAULT_ORGANIZATION = "default_org"
 FLIPT_BASE_URL = os.environ.get("FLIPT_BASE_URL", "http://localhost:9005")

@@ -1,17 +1,14 @@
-import { Typography, Button } from "antd";
+import { Button } from "antd";
 import { Row, Col } from "antd";
 
-import logo from "../../assets/UnstractLogoBlack.svg";
-import loginRightBanner from "../../assets/login-right-panel.svg";
 import { getBaseUrl } from "../../helpers/GetStaticData";
 import "./Login.css";
+import { UnstractBlackLogo } from "../../assets";
+import { ProductContentLayout } from "./ProductContentLayout";
 
 let LoginForm = null;
-let UnstractCloudLogo;
 try {
   LoginForm = require("../../plugins/login-form/LoginForm").LoginForm;
-  UnstractCloudLogo =
-    require("../../plugins/assets/llmWhisperer/index.js").UnstractCloudLogo;
 } catch {
   // The components will remain null of it is not available
 }
@@ -26,50 +23,28 @@ function Login() {
   return (
     <div className="login-main">
       <Row>
-        <Col xs={24} md={12} className="login-left-section">
-          <div className="button-wraper">
-            {UnstractCloudLogo ? (
-              <UnstractCloudLogo />
-            ) : (
-              <img src={logo} alt="Logo" className="logo" />
-            )}
-            {LoginForm ? (
-              <LoginForm handleLogin={handleLogin} />
-            ) : (
-              <div>
-                <Button
-                  className="login-button button-margin"
-                  onClick={handleLogin}
-                >
-                  Login
-                </Button>
+        {LoginForm ? (
+          <LoginForm handleLogin={handleLogin} />
+        ) : (
+          <>
+            <Col xs={24} md={12} className="login-left-section">
+              <div className="button-wraper">
+                <UnstractBlackLogo className="logo" />
+                <div>
+                  <Button
+                    className="login-button button-margin"
+                    onClick={handleLogin}
+                  >
+                    Login
+                  </Button>
+                </div>
               </div>
-            )}
-          </div>
-        </Col>
-        <Col xs={24} md={12} className="login-right-section">
-          <div className="right-section-text-wrapper">
-            <div className="right-title-cover">
-              <Typography.Title className="right-section-title">
-                UNLOCK VALUE FROM UNSTRUCTURED DATA.
-              </Typography.Title>
-            </div>
-            <div className="right-subtitle-cover">
-              <Typography align="center" className="right-subtitle">
-                Unstract is a no-code LLM platform that lets you automate even
-                the most complex workflows involving unstructured data, saving
-                you time, money, and automation headaches.
-              </Typography>
-            </div>
-            <div>
-              <img
-                src={loginRightBanner}
-                alt="login background"
-                className="login-background"
-              />
-            </div>
-          </div>
-        </Col>
+            </Col>
+            <Col xs={24} md={12} className="login-right-section">
+              <ProductContentLayout />
+            </Col>
+          </>
+        )}
       </Row>
     </div>
   );

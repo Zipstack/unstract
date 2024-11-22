@@ -9,10 +9,8 @@ import { useUserSession } from "./useUserSession.js";
 import { listFlags } from "../helpers/FeatureFlagsData.js";
 import { useAlertStore } from "../store/alert-store";
 
-let getTrialDetails;
 let isPlatformAdmin;
 try {
-  getTrialDetails = require("../plugins/subscription/trial-helper/fetchTrialDetails.jsx");
   isPlatformAdmin =
     require("../plugins/hooks/usePlatformAdmin.js").usePlatformAdmin();
 } catch (err) {
@@ -151,15 +149,6 @@ function useSessionValid() {
           ),
         ];
         userAndOrgDetails["adapters"] = adapterTypes;
-      }
-
-      if (getTrialDetails && isUnstract) {
-        const remainingTrialDays = await getTrialDetails.fetchTrialDetails(
-          orgId,
-          csrfToken
-        );
-        if (remainingTrialDays)
-          userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
       }
 
       if (isUnstract) {
