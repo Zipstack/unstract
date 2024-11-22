@@ -18,7 +18,7 @@ function PageLayout({ sideBarOptions, topNavBarOptions }) {
 
   return (
     <div className="landingPage">
-      <TopNavBar {...topNavBarOptions} />
+      <TopNavBar topNavBarOptions={topNavBarOptions} />
       <Layout>
         <SideNavBar collapsed={collapsed} {...sideBarOptions} />
         <Layout>
