@@ -1,6 +1,7 @@
 import { Table, Modal, Button } from "antd";
 import PropTypes from "prop-types";
 import { useState } from "react";
+import ReactMarkdown from "markdown-to-jsx";
 
 import { useSessionStore } from "../../../store/session-store.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
@@ -40,7 +41,7 @@ const LogsModal = ({
       .then((res) => {
         const logDetails = res.data.results.map((item) => ({
           id: item.id,
-          log: item.data?.log,
+          log: <ReactMarkdown>{item.data?.log}</ReactMarkdown>,
           type: item.data?.type,
           stage: item.data?.stage,
           level: item.data?.level,
