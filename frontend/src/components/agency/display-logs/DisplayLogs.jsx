@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Col, Row, Typography } from "antd";
+import ReactMarkdown from "markdown-to-jsx";
 
 import "./DisplayLogs.css";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
@@ -38,7 +39,7 @@ function DisplayLogs() {
               </Col>
               <Col span={8}>
                 <Typography className="display-logs-col">
-                  {log?.message}
+                  <ReactMarkdown>{log?.message}</ReactMarkdown>
                 </Typography>
               </Col>
               <Col span={2}>
