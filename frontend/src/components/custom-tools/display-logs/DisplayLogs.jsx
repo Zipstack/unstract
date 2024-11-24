@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
 import { Col, Row, Typography } from "antd";
-import ReactMarkdown from "markdown-to-jsx";
 
 import "../../agency/display-logs/DisplayLogs.css";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { getDateTimeString } from "../../../helpers/GetStaticData";
+import CustomMarkdown from "../../helpers/custom-markdown/CustomMarkdown";
 
 function DisplayLogs() {
   const bottomRef = useRef(null);
@@ -49,9 +49,11 @@ function DisplayLogs() {
                 </Typography>
               </Col>
               <Col span={8}>
-                <Typography className="display-logs-col">
-                  <ReactMarkdown>{message?.message}</ReactMarkdown>
-                </Typography>
+                <CustomMarkdown
+                  text={message?.message}
+                  renderNewLines={false}
+                  styleClassName="display-logs-col"
+                />
               </Col>
             </Row>
             <div ref={bottomRef} />

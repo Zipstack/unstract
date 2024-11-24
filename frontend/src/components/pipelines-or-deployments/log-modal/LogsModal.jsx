@@ -1,13 +1,13 @@
 import { Table, Modal, Button } from "antd";
 import PropTypes from "prop-types";
 import { useState } from "react";
-import ReactMarkdown from "markdown-to-jsx";
 
 import { useSessionStore } from "../../../store/session-store.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import "./LogsModel.css";
+import CustomMarkdown from "../../helpers/custom-markdown/CustomMarkdown.jsx";
 
 const LogsModal = ({
   open,
@@ -41,7 +41,7 @@ const LogsModal = ({
       .then((res) => {
         const logDetails = res.data.results.map((item) => ({
           id: item.id,
-          log: <ReactMarkdown>{item.data?.log}</ReactMarkdown>,
+          log: <CustomMarkdown text={item.data?.log} renderNewLines={false} />,
           type: item.data?.type,
           stage: item.data?.stage,
           level: item.data?.level,

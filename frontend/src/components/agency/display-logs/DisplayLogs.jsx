@@ -1,9 +1,9 @@
 import { useEffect, useRef } from "react";
 import { Col, Row, Typography } from "antd";
-import ReactMarkdown from "markdown-to-jsx";
 
 import "./DisplayLogs.css";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
+import CustomMarkdown from "../../helpers/custom-markdown/CustomMarkdown";
 
 function DisplayLogs() {
   const bottomRef = useRef(null);
@@ -38,9 +38,11 @@ function DisplayLogs() {
                 </Typography>
               </Col>
               <Col span={8}>
-                <Typography className="display-logs-col">
-                  <ReactMarkdown>{log?.message}</ReactMarkdown>
-                </Typography>
+                <CustomMarkdown
+                  text={log?.message}
+                  renderNewLines={false}
+                  styleClassName="display-logs-col"
+                />
               </Col>
               <Col span={2}>
                 <Typography className="display-logs-col">
