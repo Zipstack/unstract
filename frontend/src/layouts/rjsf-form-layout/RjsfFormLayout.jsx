@@ -17,6 +17,10 @@ import { SelectWidget } from "../../components/rjsf-custom-widgets/select-widget
 import { TimeWidget } from "../../components/rjsf-custom-widgets/time-widget/TimeWidget.jsx";
 import { URLWidget } from "../../components/rjsf-custom-widgets/url-widget/URLWidget.jsx";
 import { SpinnerLoader } from "../../components/widgets/spinner-loader/SpinnerLoader.jsx";
+import { TextWidget } from "../../components/rjsf-custom-widgets/text-widget/TextWidget.jsx";
+import { PasswordWidget } from "../../components/rjsf-custom-widgets/password-widget/PasswordWidget.jsx";
+import { UpDownWidget } from "../../components/rjsf-custom-widgets/up-down-widget/UpDownWidget.jsx";
+import { CustomFieldTemplate } from "./CustomFieldTemplate.jsx";
 import "./RjsfFormLayout.css";
 
 function RjsfFormLayout({
@@ -32,23 +36,26 @@ function RjsfFormLayout({
   schema.title = "";
   schema.description = "";
   const widgets = {
-    CheckboxWidget: CheckboxWidget,
-    DateWidget: DateWidget,
-    AltDateTimeWidget: AltDateTimeWidget,
-    AltDateWidget: AltDateWidget,
-    CheckboxesWidget: CheckboxesWidget,
-    ColorWidget: ColorWidget,
-    DateTimeWidget: DateTimeWidget,
-    EmailWidget: EmailWidget,
-    FileWidget: FileWidget,
-    HiddenWidget: HiddenWidget,
-    TimeWidget: TimeWidget,
-    URLWidget: URLWidget,
-    SelectWidget: SelectWidget,
+    AltDateTimeWidget,
+    AltDateWidget,
+    CheckboxWidget,
+    CheckboxesWidget,
+    ColorWidget,
+    DateTimeWidget,
+    DateWidget,
+    EmailWidget,
+    FileWidget,
+    HiddenWidget,
+    PasswordWidget,
+    SelectWidget,
+    TextWidget,
+    TimeWidget,
+    UpDownWidget,
+    URLWidget,
   };
 
   const fields = {
-    ArrayField: ArrayField,
+    ArrayField,
   };
 
   const uiSchema = {
@@ -116,11 +123,11 @@ function RjsfFormLayout({
           transformErrors={transformErrors}
           onError={() => {}}
           onSubmit={(e) => validateAndSubmit(e.formData)}
-          formContext={{
-            descriptionLocation: "tooltip",
-          }}
           showErrorList={false}
           onChange={handleChange}
+          templates={{
+            FieldTemplate: CustomFieldTemplate,
+          }}
         >
           {children}
         </Form>
