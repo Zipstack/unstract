@@ -131,7 +131,7 @@ class ExecutionFileHandler:
         if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
             file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
             file_storage = file_system.get_file_storage()
-            file_storage.json_dump(path=metadata_path, mode="w", data=content)
+            file_storage.json_dump(path=metadata_path, data=content)
         else:
             with fsspec.open(f"file://{metadata_path}", "w") as local_file:
                 json.dump(content, local_file)
