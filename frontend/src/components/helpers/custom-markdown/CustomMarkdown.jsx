@@ -4,17 +4,63 @@ import PropTypes from "prop-types";
 
 const { Text, Link } = Typography;
 
-const parseMarkdown = (input, renderNewLines, isSecondary, styleClassName) => {
-  const elements = [];
-  let index = 0;
-
-  // Define style and type for text elements
+const CustomMarkdown = ({
+  text = "",
+  renderNewLines = true,
+  isSecondary = false,
+  styleClassName,
+}) => {
   const textType = isSecondary ? "secondary" : undefined;
-  const className = styleClassName ? styleClassName : "";
+  const className = styleClassName || "";
 
-  while (index < input?.length) {
-    if (input?.startsWith("**", index)) {
-      // Handle bold text
+  const parseMarkdown = React.useCallback(() => {
+    const elements = [];
+    let index = 0;
+    const input = text;
+
+    // Helper functions for parsing different markdown elements
+    const parseCodeBlock = () => {
+      const endIndex = input.indexOf("```", index + 3);
+      if (endIndex !== -1) {
+        const codeText = input.substring(index + 3, endIndex);
+        elements.push(
+          <Text
+            code
+            key={elements.length}
+            type={textType}
+            className={className}
+            style={{ display: "block", whiteSpace: "pre-wrap" }}
+          >
+            {codeText}
+          </Text>
+        );
+        index = endIndex + 3;
+        return true;
+      }
+      return false;
+    };
+
+    const parseInlineCode = () => {
+      const endIndex = input.indexOf("`", index + 1);
+      if (endIndex !== -1) {
+        const codeText = input.substring(index + 1, endIndex);
+        elements.push(
+          <Text
+            code
+            key={elements.length}
+            type={textType}
+            className={className}
+          >
+            {codeText}
+          </Text>
+        );
+        index = endIndex + 1;
+        return true;
+      }
+      return false;
+    };
+
+    const parseBoldText = () => {
       const endIndex = input.indexOf("**", index + 2);
       if (endIndex !== -1) {
         const boldText = input.substring(index + 2, endIndex);
@@ -29,13 +75,12 @@ const parseMarkdown = (input, renderNewLines, isSecondary, styleClassName) => {
           </Text>
         );
         index = endIndex + 2;
-      } else {
-        // No closing '**', treat as regular text
-        elements.push(input.substring(index, index + 2));
-        index += 2;
+        return true;
       }
-    } else if (input?.[index] === "[") {
-      // Handle links
+      return false;
+    };
+
+    const parseLink = () => {
       const endLinkTextIndex = input.indexOf("]", index);
       const startUrlIndex = input.indexOf("(", endLinkTextIndex);
       const endUrlIndex = input.indexOf(")", startUrlIndex);
@@ -59,59 +104,59 @@ const parseMarkdown = (input, renderNewLines, isSecondary, styleClassName) => {
           </Link>
         );
         index = endUrlIndex + 1;
-      } else {
-        // Not a valid link syntax, treat as regular text
-        elements.push(input?.[index]);
+        return true;
+      }
+      return false;
+    };
+
+    while (index < input.length) {
+      const char = input[index];
+
+      if (input.startsWith("```", index)) {
+        if (parseCodeBlock()) continue;
+      } else if (input.startsWith("`", index)) {
+        if (parseInlineCode()) continue;
+      } else if (input.startsWith("**", index)) {
+        if (parseBoldText()) continue;
+      } else if (char === "[") {
+        if (parseLink()) continue;
+      } else if (char === "\n") {
+        // Handle new lines
+        if (renderNewLines) {
+          elements.push(<br key={elements.length} />);
+        } else {
+          elements.push("\n");
+        }
         index += 1;
+        continue;
       }
-    } else if (input?.[index] === "\n") {
-      // Handle new lines based on the renderNewLines prop
-      if (renderNewLines) {
-        elements.push(<br key={elements.length} />);
-      } else {
-        elements.push("\n");
-      }
-      index += 1;
-    } else {
+
       // Handle regular text
-      let nextIndex = input.indexOf("**", index);
-      const linkIndex = input.indexOf("[", index);
-      const newLineIndex = input.indexOf("\n", index);
+      let nextIndex = input.length;
+      const nextSpecialIndices = [
+        input.indexOf("```", index),
+        input.indexOf("`", index),
+        input.indexOf("**", index),
+        input.indexOf("[", index),
+        input.indexOf("\n", index),
+      ].filter((i) => i !== -1);
 
-      // Find the next markdown syntax or end of string
-      const indices = [nextIndex, linkIndex, newLineIndex].filter(
-        (i) => i !== -1
-      );
-      nextIndex = indices.length > 0 ? Math.min(...indices) : -1;
-
-      if (nextIndex === -1) {
-        elements.push(input.substring(index));
-        break;
-      } else {
-        elements.push(input.substring(index, nextIndex));
-        index = nextIndex;
+      if (nextSpecialIndices.length > 0) {
+        nextIndex = Math.min(...nextSpecialIndices);
       }
+
+      const textSegment = input.substring(index, nextIndex);
+      elements.push(textSegment);
+      index = nextIndex;
     }
-  }
 
-  return elements;
-};
+    return elements;
+  }, [text, renderNewLines, textType, className]);
 
-const CustomMarkdown = ({
-  text = "",
-  renderNewLines = true,
-  isSecondary = false,
-  styleClassName,
-}) => {
-  const content = React.useMemo(
-    () => parseMarkdown(text, renderNewLines, isSecondary, styleClassName),
-    [text, renderNewLines, isSecondary]
-  );
-
-  const textType = isSecondary ? "secondary" : undefined;
+  const content = React.useMemo(() => parseMarkdown(), [parseMarkdown]);
 
   return (
-    <Text type={textType} className={styleClassName}>
+    <Text type={textType} className={className}>
       {content}
     </Text>
   );
