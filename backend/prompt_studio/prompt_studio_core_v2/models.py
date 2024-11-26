@@ -9,7 +9,6 @@ from django.db import models
 from django.db.models import QuerySet
 from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.prompt_studio_core_v2.constants import DefaultPrompts
-from utils.constants import FeatureFlag
 from utils.file_storage.constants import FileStorageType
 from utils.file_storage.helpers.common_file_helper import FileStorageHelper
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
@@ -19,6 +18,7 @@ from utils.models.organization_mixin import (
     DefaultOrganizationMixin,
 )
 
+from backend.constants import FeatureFlag
 from unstract.flags.feature_flag import check_feature_flag_status
 
 logger = logging.getLogger(__name__)

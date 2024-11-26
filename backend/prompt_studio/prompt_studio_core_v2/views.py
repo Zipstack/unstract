@@ -52,11 +52,11 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance_v2.models import ToolInstance
 from unstract.sdk.utils.common_utils import CommonUtils
-from utils.constants import FeatureFlag
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.user_session import UserSessionUtils
 
 from unstract.connectors.filesystems.local_storage.local_storage import LocalStorageFS
+from backend.constants import FeatureFlag
 from unstract.flags.feature_flag import check_feature_flag_status
 
 from .models import CustomTool

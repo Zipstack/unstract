@@ -55,13 +55,13 @@ from unstract.sdk.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
-from utils.constants import FeatureFlag
 from utils.file_storage.constants import FileStorageType
 from utils.file_storage.helpers.common_file_helper import FileStorageHelper
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
 from unstract.core.pubsub_helper import LogPublisher
+from backend.constants import FeatureFlag
 from unstract.flags.feature_flag import check_feature_flag_status
 
 CHOICES_JSON = "/static/select_choices.json"

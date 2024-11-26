@@ -49,7 +49,7 @@ class PromptStudioFileHelper:
     def upload_for_ide(
         org_id: str, user_id: str, tool_id: str, uploaded_file: Any
     ) -> None:
-         """ Uploads the file to a remote storage
+        """ Uploads the file to a remote storage
 
         Args:
             org_id (str): Organization ID
