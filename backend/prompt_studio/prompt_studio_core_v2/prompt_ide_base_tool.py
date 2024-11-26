@@ -5,6 +5,9 @@ from prompt_studio.prompt_studio_core_v2.constants import ToolStudioKeys
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.tool.stream import StreamMixin
 
+from backend.constants import FeatureFlag
+from unstract.flags.feature_flag import check_feature_flag_status
+
 
 class PromptIdeBaseTool(StreamMixin):
     def __init__(self, log_level: LogLevel = LogLevel.INFO, org_id: str = "") -> None:
@@ -16,6 +19,13 @@ class PromptIdeBaseTool(StreamMixin):
         """
         self.log_level = log_level
         self.org_id = org_id
+        self.workflow_filestorage = None
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            from unstract.filesystem import FileStorageType, FileSystem
+
+            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            self.workflow_filestorage = file_system.get_file_storage()
+
         super().__init__(log_level=log_level)
 
     def get_env_or_die(self, env_key: str) -> str:
