@@ -338,7 +338,7 @@ class PromptStudioHelper:
             file_path = file_name
         else:
             default_profile = ProfileManager.get_default_llm_profile(tool)
-            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
                 file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                     org_id,
                     is_create=False,
@@ -631,7 +631,7 @@ class PromptStudioHelper:
 
     @staticmethod
     def _get_document_path(org_id, user_id, tool_id, doc_name):
-        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
             doc_path = FileManagerHelper.handle_sub_directory_for_tenants(
                 org_id=org_id,
                 user_id=user_id,
@@ -651,7 +651,7 @@ class PromptStudioHelper:
     def _get_extract_or_summary_document_path(
         org_id, user_id, tool_id, doc_name, doc_type
     ) -> str:
-        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
             doc_path = FileManagerHelper.handle_sub_directory_for_tenants(
                 org_id=org_id,
                 user_id=user_id,

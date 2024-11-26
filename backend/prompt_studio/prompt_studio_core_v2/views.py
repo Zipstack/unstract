@@ -408,7 +408,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 f"{filename_without_extension}.txt"
             )
 
-        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
 
             file_path = file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                 UserSessionUtils.get_organization_id(request),
@@ -518,7 +518,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             document.delete()
             # Delete the files
             file_name: str = document.document_name
-            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
                 file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                     org_id=org_id,
                     is_create=False,

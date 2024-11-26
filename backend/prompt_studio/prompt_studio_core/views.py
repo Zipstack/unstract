@@ -52,12 +52,9 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance.models import ToolInstance
 from unstract.sdk.utils.common_utils import CommonUtils
-from utils.constants import FeatureFlag
-from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.user_session import UserSessionUtils
 
 from unstract.connectors.filesystems.local_storage.local_storage import LocalStorageFS
-from unstract.flags.feature_flag import check_feature_flag_status
 
 from .models import CustomTool
 from .serializers import (
@@ -406,41 +403,31 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 f"{FileViewTypes.SUMMARIZE.lower()}/"
                 f"{filename_without_extension}.txt"
             )
-        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+
+        file_path = file_path = FileManagerHelper.handle_sub_directory_for_tenants(
+            UserSessionUtils.get_organization_id(request),
+            is_create=True,
+            user_id=custom_tool.created_by.user_id,
+            tool_id=str(custom_tool.tool_id),
+        )
+        file_system = LocalStorageFS(settings={"path": file_path})
+        if not file_path.endswith("/"):
+            file_path += "/"
+        file_path += file_name
+        # Temporary Hack for frictionless onboarding as the user id will be empty
+        try:
+            contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
+        except FileNotFound:
             file_path = file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                 UserSessionUtils.get_organization_id(request),
                 is_create=True,
-                user_id=custom_tool.created_by.user_id,
+                user_id="",
                 tool_id=str(custom_tool.tool_id),
             )
-            file_system = LocalStorageFS(settings={"path": file_path})
             if not file_path.endswith("/"):
                 file_path += "/"
-            file_path += file_name
-            # TODO : Handle this with proper fix
-            # Temporary Hack for frictionless onboarding as the user id will be empty
-            try:
-                contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
-            except FileNotFound:
-                file_path = file_path = (
-                    FileManagerHelper.handle_sub_directory_for_tenants(
-                        UserSessionUtils.get_organization_id(request),
-                        is_create=True,
-                        user_id="",
-                        tool_id=str(custom_tool.tool_id),
-                    )
-                )
-                if not file_path.endswith("/"):
-                    file_path += "/"
-                    file_path += file_name
-                contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
-        else:
-            PromptStudioFileHelper.fetch_file_contents(
-                file_name=file_name,
-                org_id=UserSessionUtils.get_organization_id(request),
-                user_id=custom_tool.created_by.user_id,
-                tool_id=str(custom_tool.tool_id),
-            )
+                file_path += file_name
+            contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
 
         return Response({"data": contents}, status=status.HTTP_200_OK)
 
@@ -450,6 +437,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = FileUploadIdeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         uploaded_files: Any = serializer.validated_data.get("file")
+
+        file_path = FileManagerHelper.handle_sub_directory_for_tenants(
+            UserSessionUtils.get_organization_id(request),
+            is_create=True,
+            user_id=custom_tool.created_by.user_id,
+            tool_id=str(custom_tool.tool_id),
+        )
+        file_system = LocalStorageFS(settings={"path": file_path})
+
         documents = []
         for uploaded_file in uploaded_files:
             file_name = uploaded_file.name
@@ -468,11 +464,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             logger.info(
                 f"Uploading file: {file_name}" if file_name else "Uploading file"
             )
-            PromptStudioFileHelper.upload_for_ide(
-                org_id=UserSessionUtils.get_organization_id(request),
-                user_id=custom_tool.created_by.user_id,
-                tool_id=str(custom_tool.tool_id),
-                uploaded_file=uploaded_file,
+            FileManagerHelper.upload_file(
+                file_system,
+                file_path,
+                uploaded_file,
+                file_name,
             )
             documents.append(doc)
         return Response({"data": documents})
@@ -489,7 +485,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         user_id = custom_tool.created_by.user_id
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
-        file_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+        file_path = FileManagerHelper.handle_sub_directory_for_tenants(
             org_id=org_id,
             is_create=False,
             user_id=user_id,
