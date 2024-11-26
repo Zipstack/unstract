@@ -102,6 +102,7 @@ class StructureTool(BaseTool):
             self.get_env_or_die(SettingsKeys.EXECUTION_RUN_DATA_FOLDER)
         )
         run_id = CommonUtils.generate_uuid()
+        extracted_input_file = str(execution_run_data_folder / SettingsKeys.EXTRACT)
         # TODO : Resolve and pass log events ID
         payload = {
             SettingsKeys.RUN_ID: run_id,
@@ -110,6 +111,7 @@ class StructureTool(BaseTool):
             SettingsKeys.TOOL_ID: tool_id,
             SettingsKeys.FILE_HASH: file_hash,
             SettingsKeys.FILE_NAME: file_name,
+            SettingsKeys.FILE_PATH: extracted_input_file,
         }
         # TODO: Need to split extraction and indexing
         # to avoid unwanted indexing
@@ -126,7 +128,7 @@ class StructureTool(BaseTool):
                 f"Function to higlight context is not found. {PAID_FEATURE_MSG}",
                 level=LogLevel.WARN,
             )
-
+        workflow_filestorage = getattr(self, "workflow_filestorage", None)
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             index.index(
                 tool_id=tool_id,
@@ -141,6 +143,11 @@ class StructureTool(BaseTool):
                 reindex=True,
                 usage_kwargs=usage_kwargs,
                 process_text=process_text,
+                **(
+                    {"fs": workflow_filestorage}
+                    if workflow_filestorage is not None
+                    else {}
+                ),
             )
             if summarize_as_source:
                 summarize_file_hash = self._summarize_and_index(
@@ -203,10 +210,7 @@ class StructureTool(BaseTool):
             for output in outputs:
                 if SettingsKeys.TABLE_SETTINGS in output:
                     table_settings = output[SettingsKeys.TABLE_SETTINGS]
-                    extracted_input_file = (
-                        execution_run_data_folder / SettingsKeys.EXTRACT
-                    )
-                    table_settings[SettingsKeys.INPUT_FILE] = str(extracted_input_file)
+                    table_settings[SettingsKeys.INPUT_FILE] = extracted_input_file
                     output.update({SettingsKeys.TABLE_SETTINGS: table_settings})
 
             self.stream_log(f"Fetching responses for {len(outputs)} prompt(s)...")
@@ -237,17 +241,14 @@ class StructureTool(BaseTool):
                 try:
                     from helper import (  # type: ignore [attr-defined]
                         get_confidence_data,
-                        transform_dict,
                     )
 
-                    highlight_data = transform_dict(epilogue, tool_data_dir)
-                    metadata[SettingsKeys.HIGHLIGHT_DATA] = highlight_data
                     metadata[SettingsKeys.CONFIDENCE_DATA] = get_confidence_data(
                         epilogue, tool_data_dir
                     )
                 except ImportError:
                     self.stream_log(
-                        f"Highlight metadata is not added. {PAID_FEATURE_MSG}",
+                        f"Confidence data is not added. {PAID_FEATURE_MSG}",
                         level=LogLevel.WARN,
                     )
             # Update the dictionary with modified metadata
@@ -309,13 +310,23 @@ class StructureTool(BaseTool):
         summarize_file_path = tool_data_dir / SettingsKeys.SUMMARIZE
 
         summarized_context = ""
-        if summarize_file_path.exists():
+        if hasattr(self, "workflow_filestorage"):
+            if self.workflow_filestorage.exists(summarize_file_path):
+                summarized_context = self.workflow_filestorage.read(
+                    path=summarize_file_path, mode="r"
+                )
+        elif summarize_file_path.exists():
             with open(summarize_file_path, encoding="utf-8") as f:
                 summarized_context = f.read()
         if not summarized_context:
             context = ""
-            with open(extract_file_path, encoding="utf-8") as file:
-                context = file.read()
+            if hasattr(self, "workflow_filestorage"):
+                context = self.workflow_filestorage.read(
+                    path=extract_file_path, mode="r"
+                )
+            else:
+                with open(extract_file_path, encoding="utf-8") as file:
+                    context = file.read()
             prompt_keys = []
             for output in outputs:
                 prompt_keys.append(output[SettingsKeys.NAME])
@@ -347,6 +358,7 @@ class StructureTool(BaseTool):
         summarize_file_hash: str = ToolUtils.get_hash_from_file(
             file_path=summarize_file_path
         )
+        workflow_filestorage = getattr(self, "workflow_filestorage", None)
         index.index(
             tool_id=tool_id,
             embedding_instance_id=embedding_instance_id,
@@ -357,6 +369,9 @@ class StructureTool(BaseTool):
             chunk_size=0,
             chunk_overlap=0,
             usage_kwargs=usage_kwargs,
+            **(
+                {"fs": workflow_filestorage} if workflow_filestorage is not None else {}
+            ),
         )
         return summarize_file_hash
 

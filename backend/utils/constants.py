@@ -20,9 +20,6 @@ class FeatureFlag:
 
     REMOTE_FILE_STORAGE = "remote_file_storage"
 
-    pass
-
-
 class Common:
     METADATA = "metadata"
     MODULE = "module"

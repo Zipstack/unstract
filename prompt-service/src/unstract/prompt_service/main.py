@@ -100,6 +100,7 @@ def prompt_processor() -> Any:
     tool_id: str = payload.get(PSKeys.TOOL_ID, "")
     run_id: str = payload.get(PSKeys.RUN_ID, "")
     file_hash = payload.get(PSKeys.FILE_HASH)
+    file_path = payload.get(PSKeys.FILE_PATH)
     doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
     structured_output: dict[str, Any] = {}
@@ -327,6 +328,7 @@ def prompt_processor() -> Any:
                     context="\n".join(context),
                     prompt="promptx",
                     metadata=metadata,
+                    file_path=file_path,
                 )
                 metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = get_cleaned_context(
                     context

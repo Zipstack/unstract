@@ -74,3 +74,4 @@ class SettingsKeys:
     HIGHLIGHT_DATA = "highlight_data"
     CONFIDENCE_DATA = "confidence_data"
     EXECUTION_RUN_DATA_FOLDER = "EXECUTION_RUN_DATA_FOLDER"
+    FILE_PATH = "file_path"
