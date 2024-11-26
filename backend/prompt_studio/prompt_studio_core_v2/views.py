@@ -454,19 +454,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         uploaded_files: Any = serializer.validated_data.get("file")
         documents = []
         for uploaded_file in uploaded_files:
-            file_name = uploaded_file.name
-
-            # Create a record in the db for the file
-            document = PromptStudioDocumentHelper.create(
-                tool_id=str(custom_tool.tool_id), document_name=file_name
-            )
-            # Create a dictionary to store document data
-            doc = {
-                "document_id": document.document_id,
-                "document_name": document.document_name,
-                "tool": document.tool.tool_id,
-            }
             # Store file
+            file_name = uploaded_file.name
             logger.info(
                 f"Uploading file: {file_name}" if file_name else "Uploading file"
             )
@@ -491,6 +480,17 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     tool_id=str(custom_tool.tool_id),
                     uploaded_file=uploaded_file,
                 )
+
+            # Create a record in the db for the file
+            document = PromptStudioDocumentHelper.create(
+                tool_id=str(custom_tool.tool_id), document_name=file_name
+            )
+            # Create a dictionary to store document data
+            doc = {
+                "document_id": document.document_id,
+                "document_name": document.document_name,
+                "tool": document.tool.tool_id,
+            }
             documents.append(doc)
         return Response({"data": documents})
 

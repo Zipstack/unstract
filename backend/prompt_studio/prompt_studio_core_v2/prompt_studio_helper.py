@@ -51,6 +51,7 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import 
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import IndexingError, SdkError
+from unstract.sdk.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
@@ -737,7 +738,9 @@ class PromptStudioHelper:
         monitor_llm: Optional[str] = None
         challenge_llm_instance: Optional[AdapterInstance] = tool.challenge_llm
         challenge_llm: Optional[str] = None
-
+        fs_instance = FileStorageHelper.initialize_file_storage(
+            type=FileStorageType.PERMANENT
+        )
         if monitor_llm_instance:
             monitor_llm = str(monitor_llm_instance.id)
         else:
@@ -775,6 +778,7 @@ class PromptStudioHelper:
             run_id=run_id,
             user_id=user_id,
             process_text=process_text,
+            fs=fs_instance,
         )
         if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
@@ -846,7 +850,7 @@ class PromptStudioHelper:
             settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
         )
 
-        file_hash = ToolUtils.get_hash_from_file(file_path=doc_path)
+        file_hash = ToolUtils.get_hash_from_file(file_path=doc_path, fs=fs_instance)
 
         payload = {
             TSPKeys.TOOL_SETTINGS: tool_settings,
@@ -925,6 +929,7 @@ class PromptStudioHelper:
         reindex: bool = False,
         run_id: str = None,
         process_text: Optional[Callable[[str], str]] = None,
+        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
     ) -> Any:
         """Used to index a file based on the passed arguments.
 
@@ -949,9 +954,6 @@ class PromptStudioHelper:
         x2text_adapter = str(profile_manager.x2text.id)
         extract_file_path: Optional[str] = None
         directory, filename = os.path.split(file_path)
-        fs_instance = FileStorageHelper.initialize_file_storage(
-            FileStorageType.PERMANENT
-        )
         if not is_summary:
             extract_file_path = os.path.join(
                 directory, "extract", os.path.splitext(filename)[0] + ".txt"
@@ -974,7 +976,7 @@ class PromptStudioHelper:
                 chunk_overlap=str(profile_manager.chunk_overlap),
                 file_path=file_path,
                 file_hash=None,
-                fs=fs_instance,
+                fs=fs,
             )
             if not reindex:
                 indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
@@ -1010,7 +1012,7 @@ class PromptStudioHelper:
                 output_file_path=extract_file_path,
                 usage_kwargs=usage_kwargs.copy(),
                 process_text=process_text,
-                fs=fs_instance,
+                fs=fs,
             )
 
             PromptStudioIndexHelper.handle_index_manager(

@@ -1,11 +1,17 @@
+import base64
+import logging
+import os
 from pathlib import Path
 from typing import Any, Union
 
 from file_management.file_management_helper import FileManagerHelper
+from unstract.sdk.file_storage import FileStorage
 from utils.file_storage.constants import FileStorageConstants, FileStorageType
 from utils.file_storage.helpers.common_file_helper import FileStorageHelper
 
 from unstract.core.utilities import UnstractUtils
+
+logger = logging.getLogger(__name__)
 
 
 class PromptStudioFileHelper:
@@ -96,19 +102,27 @@ class PromptStudioFileHelper:
         file_path = str(Path(file_system_path) / file_name)
         legacy_file_path = str(Path(legacy_file_system_path) / file_name)
         file_content_type = fs_instance.mime_type(file_path)
-        text_content: Union[bytes, str]
         if file_content_type == "application/pdf":
             # Read contents of PDF file into a string
-            text_content = fs_instance.read(
-                path=file_path, mode="rb", legacy_storage_path=legacy_file_path
+            text_content_bytes: bytes = fs_instance.read(
+                path=file_path,
+                mode="rb",
+                legacy_storage_path=legacy_file_path,
+                encoding="utf-8",
             )
+            encoded_string = base64.b64encode(bytes(text_content_bytes))
+            return encoded_string
 
         elif file_content_type == "text/plain":
-            text_content = fs_instance.read(
-                path=file_path, mode="r", legacy_storage_path=legacy_file_path
+            text_content_string: str = fs_instance.read(
+                path=file_path,
+                mode="r",
+                legacy_storage_path=legacy_file_path,
+                encoding="utf-8",
             )
-
-        return text_content
+            return text_content_string
+        else:
+            raise ValueError(f"Unsupported file type: {file_content_type}")
 
     @staticmethod
     def delete_for_ide(org_id: str, user_id: str, tool_id: str, file_name: str) -> bool:
@@ -118,7 +132,7 @@ class PromptStudioFileHelper:
         file_system_path = (
             PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
                 org_id=org_id,
-                is_create=True,
+                is_create=False,
                 user_id=user_id,
                 tool_id=str(tool_id),
             )
@@ -126,7 +140,27 @@ class PromptStudioFileHelper:
         # Delete the source file
         fs_instance.rm(str(Path(file_system_path) / file_name))
         # Delete all related files for cascade delete
-        # directories = ["extract/", "extract/metadata/", "summarize/"]
-        # base_file_name = f"{file_system_path}/{file_name}"
-        # TODO : Delete related files
+        directories = ["extract/", "extract/metadata/", "summarize/"]
+        base_file_name, _ = os.path.splitext(file_name)
+        # Delete related files
+        file_paths = PromptStudioFileHelper._find_files(
+            fs=fs_instance,
+            base_file_name=base_file_name,
+            base_path=file_system_path,
+            directories=directories,
+        )
+        for file_path in file_paths:
+            fs_instance.rm(file_path)
         return True
+
+    @staticmethod
+    def _find_files(
+        fs: FileStorage, base_file_name: str, base_path: str, directories: list[str]
+    ) -> list[str]:
+        file_paths = []
+        pattern = f"{base_file_name}.*"
+        for directory in directories:
+            directory_path = str(Path(base_path) / directory)
+            for file in fs.glob(f"{directory_path}/{pattern}"):
+                file_paths.append(file)
+        return file_paths
