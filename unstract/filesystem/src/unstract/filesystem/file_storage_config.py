@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def get_provider(var_name: str, default: str = "minio") -> FileStorageProvider:
     """Retrieve the file storage provider based on an environment variable."""
-    provider_name = os.environ.get(var_name, default).capitalize()
+    provider_name = os.environ.get(var_name, default).upper()
     try:
         # Attempt to map the provider name to an enum value, case-insensitively
         return FileStorageProvider[provider_name]
