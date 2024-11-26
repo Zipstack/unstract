@@ -738,9 +738,6 @@ class PromptStudioHelper:
         monitor_llm: Optional[str] = None
         challenge_llm_instance: Optional[AdapterInstance] = tool.challenge_llm
         challenge_llm: Optional[str] = None
-        fs_instance = FileStorageHelper.initialize_file_storage(
-            type=FileStorageType.PERMANENT
-        )
         if monitor_llm_instance:
             monitor_llm = str(monitor_llm_instance.id)
         else:
@@ -768,18 +765,34 @@ class PromptStudioHelper:
         x2text = str(profile_manager.x2text.id)
         if not profile_manager:
             raise DefaultProfileError()
-        index_result = PromptStudioHelper.dynamic_indexer(
-            profile_manager=profile_manager,
-            file_path=doc_path,
-            tool_id=str(tool.tool_id),
-            org_id=org_id,
-            document_id=document_id,
-            is_summary=tool.summarize_as_source,
-            run_id=run_id,
-            user_id=user_id,
-            process_text=process_text,
-            fs=fs_instance,
-        )
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            fs_instance = FileStorageHelper.initialize_file_storage(
+                type=FileStorageType.PERMANENT
+            )
+            index_result = PromptStudioHelper.dynamic_indexer(
+                profile_manager=profile_manager,
+                file_path=doc_path,
+                tool_id=str(tool.tool_id),
+                org_id=org_id,
+                document_id=document_id,
+                is_summary=tool.summarize_as_source,
+                run_id=run_id,
+                user_id=user_id,
+                process_text=process_text,
+                fs=fs_instance,
+            )
+        else:
+            index_result = PromptStudioHelper.dynamic_indexer(
+                profile_manager=profile_manager,
+                file_path=doc_path,
+                tool_id=str(tool.tool_id),
+                org_id=org_id,
+                document_id=document_id,
+                is_summary=tool.summarize_as_source,
+                run_id=run_id,
+                user_id=user_id,
+                process_text=process_text,
+            )
         if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
                 "status": IndexingStatus.PENDING_STATUS.value,
@@ -849,8 +862,10 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
             settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
         )
-
-        file_hash = ToolUtils.get_hash_from_file(file_path=doc_path, fs=fs_instance)
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            file_hash = ToolUtils.get_hash_from_file(file_path=doc_path, fs=fs_instance)
+        else:
+            file_hash = ToolUtils.get_hash_from_file(file_path=doc_path)
 
         payload = {
             TSPKeys.TOOL_SETTINGS: tool_settings,
