@@ -21,6 +21,8 @@ class ToolRuntimeVariable:
     ADAPTER_LLMW_POLL_INTERVAL = "ADAPTER_LLMW_POLL_INTERVAL"
     ADAPTER_LLMW_MAX_POLLS = "ADAPTER_LLMW_MAX_POLLS"
     EXECUTION_BY_TOOL = "EXECUTION_BY_TOOL"
+    WORKFLOW_EXECUTION_DIR_PREFIX = "WORKFLOW_EXECUTION_DIR_PREFIX"
+    API_EXECUTION_DIR_PREFIX = "API_EXECUTION_DIR_PREFIX"
 
 
 class WorkflowFileType:
@@ -47,3 +49,9 @@ class ToolMetadataKey:
 class ToolOutputType:
     TXT = "TXT"
     JSON = "JSON"
+
+
+class FeatureFlag:
+    """Temporary feature flags."""
+
+    REMOTE_FILE_STORAGE = "remote_file_storage"
