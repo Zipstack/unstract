@@ -765,7 +765,19 @@ class PromptStudioHelper:
         x2text = str(profile_manager.x2text.id)
         if not profile_manager:
             raise DefaultProfileError()
-        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            index_result = PromptStudioHelper.dynamic_indexer(
+                profile_manager=profile_manager,
+                file_path=doc_path,
+                tool_id=str(tool.tool_id),
+                org_id=org_id,
+                document_id=document_id,
+                is_summary=tool.summarize_as_source,
+                run_id=run_id,
+                user_id=user_id,
+                process_text=process_text,
+            )
+        else:
             fs_instance = FileStorageHelper.initialize_file_storage(
                 type=FileStorageType.PERMANENT
             )
@@ -780,18 +792,6 @@ class PromptStudioHelper:
                 user_id=user_id,
                 process_text=process_text,
                 fs=fs_instance,
-            )
-        else:
-            index_result = PromptStudioHelper.dynamic_indexer(
-                profile_manager=profile_manager,
-                file_path=doc_path,
-                tool_id=str(tool.tool_id),
-                org_id=org_id,
-                document_id=document_id,
-                is_summary=tool.summarize_as_source,
-                run_id=run_id,
-                user_id=user_id,
-                process_text=process_text,
             )
         if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
@@ -862,10 +862,10 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
             settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
         )
-        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            file_hash = ToolUtils.get_hash_from_file(file_path=doc_path, fs=fs_instance)
-        else:
+        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
             file_hash = ToolUtils.get_hash_from_file(file_path=doc_path)
+        else:
+            file_hash = ToolUtils.get_hash_from_file(file_path=doc_path, fs=fs_instance)
 
         payload = {
             TSPKeys.TOOL_SETTINGS: tool_settings,
@@ -984,7 +984,8 @@ class PromptStudioHelper:
             usage_kwargs["file_name"] = filename
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = Index(tool=util)
-            doc_id_key = tool_index.generate_index_key(
+            if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+                doc_id_key = tool_index.generate_index_key(
                 vector_db=vector_db,
                 embedding=embedding_model,
                 x2text=x2text_adapter,
@@ -992,8 +993,18 @@ class PromptStudioHelper:
                 chunk_overlap=str(profile_manager.chunk_overlap),
                 file_path=file_path,
                 file_hash=None,
-                fs=fs,
             )
+            else:
+                doc_id_key = tool_index.generate_index_key(
+                    vector_db=vector_db,
+                    embedding=embedding_model,
+                    x2text=x2text_adapter,
+                    chunk_size=str(profile_manager.chunk_size),
+                    chunk_overlap=str(profile_manager.chunk_overlap),
+                    file_path=file_path,
+                    file_hash=None,
+                    fs=fs,
+                )
             if not reindex:
                 indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
                     org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
@@ -1016,20 +1027,35 @@ class PromptStudioHelper:
             DocumentIndexingService.set_document_indexing(
                 org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
             )
-            doc_id: str = tool_index.index(
-                tool_id=tool_id,
-                embedding_instance_id=embedding_model,
-                vector_db_instance_id=vector_db,
-                x2text_instance_id=x2text_adapter,
-                file_path=file_path,
-                chunk_size=profile_manager.chunk_size,
-                chunk_overlap=profile_manager.chunk_overlap,
-                reindex=reindex,
-                output_file_path=extract_file_path,
-                usage_kwargs=usage_kwargs.copy(),
-                process_text=process_text,
-                fs=fs,
-            )
+            if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+                doc_id: str = tool_index.index(
+                    tool_id=tool_id,
+                    embedding_instance_id=embedding_model,
+                    vector_db_instance_id=vector_db,
+                    x2text_instance_id=x2text_adapter,
+                    file_path=file_path,
+                    chunk_size=profile_manager.chunk_size,
+                    chunk_overlap=profile_manager.chunk_overlap,
+                    reindex=reindex,
+                    output_file_path=extract_file_path,
+                    usage_kwargs=usage_kwargs.copy(),
+                    process_text=process_text,
+                )
+            else:
+                doc_id: str = tool_index.index(
+                    tool_id=tool_id,
+                    embedding_instance_id=embedding_model,
+                    vector_db_instance_id=vector_db,
+                    x2text_instance_id=x2text_adapter,
+                    file_path=file_path,
+                    chunk_size=profile_manager.chunk_size,
+                    chunk_overlap=profile_manager.chunk_overlap,
+                    reindex=reindex,
+                    output_file_path=extract_file_path,
+                    usage_kwargs=usage_kwargs.copy(),
+                    process_text=process_text,
+                    fs=fs,
+                )
 
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
