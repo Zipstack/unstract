@@ -986,14 +986,14 @@ class PromptStudioHelper:
             tool_index = Index(tool=util)
             if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
                 doc_id_key = tool_index.generate_index_key(
-                vector_db=vector_db,
-                embedding=embedding_model,
-                x2text=x2text_adapter,
-                chunk_size=str(profile_manager.chunk_size),
-                chunk_overlap=str(profile_manager.chunk_overlap),
-                file_path=file_path,
-                file_hash=None,
-            )
+                    vector_db=vector_db,
+                    embedding=embedding_model,
+                    x2text=x2text_adapter,
+                    chunk_size=str(profile_manager.chunk_size),
+                    chunk_overlap=str(profile_manager.chunk_overlap),
+                    file_path=file_path,
+                    file_hash=None,
+                )
             else:
                 doc_id_key = tool_index.generate_index_key(
                     vector_db=vector_db,
