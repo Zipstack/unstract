@@ -8,8 +8,8 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data_oss:/var/lib/postgresql/data/
-      - ./scripts/db-init/db_init.sh:/docker-entrypoint-initdb.d/db_init.sh
+      - postgres_data:/var/lib/postgresql/data/
+      - ./scripts/db-setup/db_setup.sh:/docker-entrypoint-initdb.d/db_setup.sh
     env_file:
       - ./essentials.env
     labels:
@@ -123,6 +123,6 @@ services:
 volumes:
   flipt_data:
   minio_data:
-  postgres_data_oss:
+  postgres_data:
   qdrant_data:
   redis_data:
