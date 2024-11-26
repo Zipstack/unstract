@@ -74,20 +74,30 @@ python manage.py runserver localhost:8000
 
 The default username is `unstract` and the default password is `unstract`.
 
+### Initial Setup
+
 To customize the username or password:
 
 1. Navigate to `/backend/.env` created from [/backend/sample.env](/backend/sample.env)
-1. Update the values for `DEFAULT_AUTH_USERNAME` and `DEFAULT_AUTH_PASSWORD` with strong, unique credentials of your choosing
-1. Save the `/backend/.env` file and restart the server to apply changes
+2. Update the values for `DEFAULT_AUTH_USERNAME` and `DEFAULT_AUTH_PASSWORD` with strong, unique credentials of your choosing
+3. Save the `/backend/.env` file and restart the server to apply changes
 
-> **NOTE**: The username `admin` is reserved for Django admin, hence cannot be used
+### Updating Credentials
 
-To update the username or password after it's been set:
+To update the username or password after initial setup:
 
-1. Modify the username and password in the same `/backend/.env`
-1. Restart server to apply updates
-1. Login with the new credentials
+1. Modify the credentials in `/backend/.env`
+   1. **DEFAULT_AUTH_USERNAME**=`your_new_username`
+   2. **DEFAULT_AUTH_PASSWORD**=`your_new_password`
+2. Save the `/backend/.env` file
+3. Restart the server to apply changes
+4. Login with the new credentials
 
+### Important Notes
+
+- **DEFAULT_AUTH_USERNAME** must not match the `username` of any `Django superuser` or `admin` account. Keeping them distinct ensures security and avoids potential conflicts.
+- Use strong and unique credentials to protect your system.
+- The authentication system validates credentials against the values specified in the `/backend/.env` file.
 
 ## Asynchronous Execution
 
