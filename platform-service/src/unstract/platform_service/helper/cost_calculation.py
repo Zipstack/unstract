@@ -30,21 +30,29 @@ class CostCalculationHelper:
         self.file_path = file_path
 
         if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            self.file_storage, self.file_path = self.__get_storage_credentials()
+            self.file_storage, self.file_path = self._get_storage_credentials()
         self.model_token_data = self._get_model_token_data()
 
     if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
 
-        def __get_storage_credentials(self) -> tuple[PermanentFileStorage, str]:
+        def _get_storage_credentials(self) -> tuple[PermanentFileStorage, str]:
             try:
                 # Not creating constants for now for the keywords below as this
                 # logic ought to change in the near future to maintain unformity
                 # across services
                 file_storage = json.loads(os.environ.get("FILE_STORAGE_CREDENTIALS"))
                 provider = FileStorageProvider(file_storage["provider"])
-                credentials = file_storage["credentials"]
+                if "credentials" in file_storage:
+                    credentials = file_storage["credentials"]
+                else:
+                    credentials = {}
                 file_path = file_storage["model_prices_file_path"]
                 return PermanentFileStorage(provider, **credentials), file_path
+            except KeyError as e:
+                app.logger.error(
+                    f"Required credentials is " f"missing in the env: {str(e)}"
+                )
+                raise e
             except FileStorageError as e:
                 app.logger.error(
                     "Error while initialising storage: %s",
@@ -142,8 +150,6 @@ class CostCalculationHelper:
             if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
                 self.file_storage.json_dump(
                     path=self.file_path,
-                    mode="w",
-                    encoding="utf-8",
                     data=json_data,
                     ensure_ascii=False,
                     indent=4,
