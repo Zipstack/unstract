@@ -295,8 +295,8 @@ def run_completion(
             extract_json=prompt_type.lower() != PSKeys.TEXT,
         )
         answer: str = completion[PSKeys.RESPONSE].text
-        highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA)
-        if all([metadata, highlight_data, prompt_key]):
+        highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA, [])
+        if all([metadata, prompt_key]):
             metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = highlight_data
         return answer
     # TODO: Catch and handle specific exception here
