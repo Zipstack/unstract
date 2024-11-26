@@ -49,7 +49,7 @@ class PromptStudioFileHelper:
     def upload_for_ide(
         org_id: str, user_id: str, tool_id: str, uploaded_file: Any
     ) -> None:
-        """ Uploads the file to a remote storage
+        """Uploads the file to a remote storage
 
         Args:
             org_id (str): Organization ID
@@ -75,8 +75,8 @@ class PromptStudioFileHelper:
     def fetch_file_contents(
         org_id: str, user_id: str, tool_id: str, file_name: str
     ) -> Union[bytes, str]:
-        """ Method to fetch file contents from the remote location.
-        The path is constructed in runtime based on the args """
+        """Method to fetch file contents from the remote location.
+        The path is constructed in runtime based on the args"""
         fs_instance = FileStorageHelper.initialize_file_storage(
             type=FileStorageType.PERMANENT
         )
@@ -136,7 +136,7 @@ class PromptStudioFileHelper:
 
     @staticmethod
     def delete_for_ide(org_id: str, user_id: str, tool_id: str, file_name: str) -> bool:
-        """ Method to delete file in remote while the corresponsing prompt
+        """Method to delete file in remote while the corresponsing prompt
         studio project is deleted or the file is removed from the file manager.
         This method handles deleted for related files as well."""
         fs_instance = FileStorageHelper.initialize_file_storage(
@@ -170,7 +170,7 @@ class PromptStudioFileHelper:
     def _find_files(
         fs: FileStorage, base_file_name: str, base_path: str, directories: list[str]
     ) -> list[str]:
-        """ This method is used to file files with the specific pattern
+        """This method is used to file files with the specific pattern
         determined using the list of directories passed and the base path.
         This is used to delete related(extract, metadata etc.) files generated
         for a specific prompt studio project."""
