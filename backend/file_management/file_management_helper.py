@@ -27,6 +27,13 @@ from pydrive2.files import ApiRequestError
 from unstract.connectors.filesystems import connectors as fs_connectors
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
+try:
+    from plugins.processor.file_converter.constants import (
+        ExtentedFileInformationKey as FileKey,
+    )
+except ImportError:
+    from file_management.constants import FileInformationKey as FileKey
+
 logger = logging.getLogger(__name__)
 
 
@@ -138,11 +145,18 @@ class FileManagerHelper:
         # adding filename with path
         file_path += file_name
         with fs.open(file_path, mode="wb") as remote_file:
-            remote_file.write(file.read())
+            if isinstance(file, bytes):
+                remote_file.write(file)
+            else:
+                remote_file.write(file.read())
 
     @staticmethod
     def fetch_file_contents(file_system: UnstractFileSystem, file_path: str) -> Any:
         fs = file_system.get_fsspec_fs()
+
+        # Define allowed content types
+        allowed_content_types = FileKey.FILE_UPLOAD_ALLOWED_MIME
+
         try:
             file_info = fs.info(file_path)
         except FileNotFoundError:
@@ -150,8 +164,10 @@ class FileManagerHelper:
 
         file_content_type = file_info.get("ContentType")
         file_type = file_info.get("type")
+
         if file_type != "file":
             raise InvalidFileType
+
         try:
             if not file_content_type:
                 file_content_type, _ = mimetypes.guess_type(file_path)
@@ -163,19 +179,26 @@ class FileManagerHelper:
         except ApiRequestError as exception:
             logger.error(f"ApiRequestError from {file_info} {exception}")
             raise ConnectorApiRequestError
+
+        data = ""
+        # Check if the file type is in the allowed list
+        if file_content_type not in allowed_content_types:
+            raise InvalidFileType(f"File type '{file_content_type}' is not allowed.")
+
+        # Handle allowed file types
         if file_content_type == "application/pdf":
-            # Read contents of PDF file into a string
             with fs.open(file_path, "rb") as file:
-                encoded_string = base64.b64encode(file.read())
-                return encoded_string
+                data = base64.b64encode(file.read())
 
         elif file_content_type == "text/plain":
             with fs.open(file_path, "r") as file:
                 logger.info(f"Reading text file: {file_path}")
-                text_content = file.read()
-                return text_content
+                data = file.read()
+
         else:
-            raise InvalidFileType
+            raise InvalidFileType(f"File type '{file_content_type}' is not handled.")
+
+        return {"data": data, "mime_type": file_content_type}
 
     @staticmethod
     def _delete_file(fs, file_path):

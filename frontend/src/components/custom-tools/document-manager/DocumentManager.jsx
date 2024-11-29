@@ -13,7 +13,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import "./DocumentManager.css";
 
-import { base64toBlob, docIndexStatus } from "../../../helpers/GetStaticData";
+import { docIndexStatus } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -22,6 +22,7 @@ import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { TextViewer } from "../text-viewer/TextViewer";
 
 let items = [
   {
@@ -37,6 +38,22 @@ let items = [
 const viewTypes = {
   original: "ORIGINAL",
   extract: "EXTRACT",
+};
+
+const base64toBlob = (data, mimeType) => {
+  const byteCharacters = atob(data?.data); // Decode base64
+  const byteArrays = [];
+
+  for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+    const slice = byteCharacters.slice(offset, offset + 512);
+    const byteNumbers = new Array(slice.length);
+    for (let i = 0; i < slice.length; i++) {
+      byteNumbers[i] = slice.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    byteArrays.push(byteArray);
+  }
+  return new Blob(byteArrays, { type: mimeType });
 };
 
 // Import components for the summarize feature
@@ -100,6 +117,20 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const axiosPrivate = useAxiosPrivate();
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { id } = useParams();
+
+  const [blobFileUrl, setBlobFileUrl] = useState("");
+  const [fileData, setFileData] = useState({});
+
+  useEffect(() => {
+    // Convert blob URL to an object URL
+    if (fileData.blob) {
+      const objectUrl = URL.createObjectURL(fileData.blob);
+      setBlobFileUrl(objectUrl);
+
+      // Clean up the URL after component unmount
+      return () => URL.revokeObjectURL(objectUrl);
+    }
+  }, [fileData]);
 
   useEffect(() => {
     if (isSimplePromptStudio) {
@@ -197,7 +228,8 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     getDocsFunc(details?.tool_id, selectedDoc?.document_id, viewType)
       .then((res) => {
         const data = res?.data?.data || "";
-        processGetDocsResponse(data, viewType);
+        const mimeType = res?.data?.mime_type || "";
+        processGetDocsResponse(data, viewType, mimeType);
       })
       .catch((err) => {
         handleGetDocsError(err, viewType);
@@ -224,11 +256,19 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       });
   };
 
-  const processGetDocsResponse = (data, viewType) => {
+  const processGetDocsResponse = (data, viewType, mimeType) => {
     if (viewType === viewTypes.original) {
       const base64String = data || "";
-      const blob = base64toBlob(base64String);
-      setFileUrl(URL.createObjectURL(blob));
+      const blob = base64toBlob(base64String, mimeType);
+      setFileData({ blob, mimeType });
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+      reader.onload = () => {
+        setFileUrl(reader.result);
+      };
+      reader.onerror = () => {
+        throw new Error("Fail to load the file");
+      };
     } else if (viewType === viewTypes.extract) {
       setExtractTxt(data);
     }
@@ -315,6 +355,20 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     }
   };
 
+  const renderDoc = (docName, fileUrl) => {
+    const fileType = docName?.split(".").pop().toLowerCase(); // Get the file extension
+    console.log(docName, fileData);
+    switch (fileType) {
+      case "pdf":
+        return <PdfViewer fileUrl={fileUrl} />;
+      case "txt":
+      case "md":
+        return <TextViewer fileUrl={fileUrl} />;
+      default:
+        return <div>Unsupported file type: {fileType}</div>;
+    }
+  };
+
   return (
     <div className="doc-manager-layout">
       <div className="doc-manager-header">
@@ -386,7 +440,8 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           setOpenManageDocsModal={setOpenManageDocsModal}
           errMsg={fileErrMsg}
         >
-          <PdfViewer fileUrl={fileUrl} />
+          {console.log(fileData.blob)}
+          {renderDoc(selectedDoc?.document_name, blobFileUrl)}
         </DocumentViewer>
       )}
       {activeKey === "2" && (
