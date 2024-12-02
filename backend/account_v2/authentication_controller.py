@@ -192,11 +192,6 @@ class AuthenticationController:
 
             if new_organization:
                 try:
-                    self.auth_service.hubspot_signup_api(request=request)
-                except MethodNotImplemented:
-                    logger.info("hubspot_signup_api not implemented")
-
-                try:
                     self.auth_service.frictionless_onboarding(
                         organization=organization, user=user
                     )
@@ -408,7 +403,7 @@ class AuthenticationController:
             )
             if current_roles:
                 self.save_organization_user_role(
-                    user_uid=user.user.user.id, role=current_roles[0]
+                    user_uid=user.user.id, role=current_roles[0]
                 )
             return current_roles[0]
         else:

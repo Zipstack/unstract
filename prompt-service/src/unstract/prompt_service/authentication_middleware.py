@@ -2,13 +2,11 @@ from typing import Optional
 
 from flask import Request, current_app
 from unstract.prompt_service.config import db
-from unstract.prompt_service.constants import DBTableV2, FeatureFlag
+from unstract.prompt_service.constants import DBTableV2
 from unstract.prompt_service.db_utils import DBUtils
 from unstract.prompt_service.env_manager import EnvLoader
 
-from unstract.flags.feature_flag import check_feature_flag_status
-
-DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract_v2")
+DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract")
 
 
 class AuthenticationMiddleware:
@@ -20,10 +18,7 @@ class AuthenticationMiddleware:
                 current_app.logger.error("Authentication failed. Empty bearer token")
                 return False
 
-            if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-                platform_key_table = f'"{DB_SCHEMA}".{DBTableV2.PLATFORM_KEY}'
-            else:
-                platform_key_table = "account_platformkey"
+            platform_key_table = f'"{DB_SCHEMA}".{DBTableV2.PLATFORM_KEY}'
 
             query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
             cursor = db.execute_sql(query)
@@ -71,12 +66,8 @@ class AuthenticationMiddleware:
 
     @staticmethod
     def get_account_from_bearer_token(token: Optional[str]) -> str:
-        if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-            platform_key_table = DBTableV2.PLATFORM_KEY
-            organization_table = DBTableV2.ORGANIZATION
-        else:
-            platform_key_table = "account_platformkey"
-            organization_table = "account_organization"
+        platform_key_table = DBTableV2.PLATFORM_KEY
+        organization_table = DBTableV2.ORGANIZATION
 
         query = f"SELECT organization_id FROM {platform_key_table} WHERE key='{token}'"
         organization = DBUtils.execute_query(query)

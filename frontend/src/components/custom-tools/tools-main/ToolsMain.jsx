@@ -26,7 +26,7 @@ function ToolsMain() {
     defaultLlmProfile,
     selectedDoc,
     updateCustomTool,
-    disableLlmOrDocChange,
+    isMultiPassExtractLoading,
     isSimplePromptStudio,
     singlePassExtractMode,
   } = useCustomToolStore();
@@ -56,7 +56,7 @@ function ToolsMain() {
       ) : (
         "Combined Output"
       ),
-      disabled: prompts?.length === 0 || disableLlmOrDocChange?.length > 0,
+      disabled: prompts?.length === 0 || isMultiPassExtractLoading,
     },
   ];
 

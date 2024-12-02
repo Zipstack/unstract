@@ -1,6 +1,5 @@
 import time
 import traceback
-from enum import Enum
 from json import JSONDecodeError
 from typing import Any, Optional
 
@@ -22,7 +21,9 @@ from unstract.prompt_service.helper import (
     run_completion,
 )
 from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
+from unstract.prompt_service.utils.log import publish_log
 from unstract.prompt_service.variable_extractor.base import VariableExtractor
+from unstract.sdk.adapters.llm.no_op.src.no_op_custom_llm import NoOpCustomLLM
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import Embedding
 from unstract.sdk.exceptions import SdkError
@@ -31,15 +32,13 @@ from unstract.sdk.llm import LLM
 from unstract.sdk.vector_db import VectorDB
 from werkzeug.exceptions import HTTPException
 
-from unstract.core.pubsub_helper import LogPublisher
-
 USE_UNSTRACT_PROMPT = True
 MAX_RETRIES = 3
 
 NO_CONTEXT_ERROR = (
     "Couldn't fetch context from vector DB. "
     "This happens usually due to a delay by the Vector DB "
-    "provider to confirm writes to db. "
+    "provider to confirm writes to DB. "
     "Please try again after some time"
 )
 
@@ -72,19 +71,6 @@ def log_response_info(response):
     return response
 
 
-def _publish_log(
-    log_events_id: str,
-    component: dict[str, str],
-    level: Enum,
-    state: Enum,
-    message: str,
-) -> None:
-    LogPublisher.publish(
-        log_events_id,
-        LogPublisher.log_prompt(component, level.value, state.value, message),
-    )
-
-
 def authentication_middleware(func: Any) -> Any:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         token = AuthenticationMiddleware.get_token_from_auth_header(request)
@@ -109,10 +95,12 @@ def prompt_processor() -> Any:
     if not payload:
         raise NoPayloadError
     tool_settings = payload.get(PSKeys.TOOL_SETTINGS, {})
-    outputs = payload.get(PSKeys.OUTPUTS, [])
+    # TODO: Rename "outputs" to "prompts" in payload
+    prompts = payload.get(PSKeys.OUTPUTS, [])
     tool_id: str = payload.get(PSKeys.TOOL_ID, "")
     run_id: str = payload.get(PSKeys.RUN_ID, "")
     file_hash = payload.get(PSKeys.FILE_HASH)
+    file_path = payload.get(PSKeys.FILE_PATH)
     doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
     structured_output: dict[str, Any] = {}
@@ -122,75 +110,36 @@ def prompt_processor() -> Any:
         PSKeys.CONTEXT: {},
     }
     variable_names: list[str] = []
-    _publish_log(
+    publish_log(
         log_events_id,
         {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
         LogLevel.DEBUG,
         RunLevel.RUN,
-        f"Preparing to execute {len(outputs)} prompt(s)",
+        f"Preparing to execute {len(prompts)} prompt(s)",
     )
 
-    for output in outputs:  # type:ignore
+    # TODO: Rename "output" to "prompt"
+    for output in prompts:  # type:ignore
         variable_names.append(output[PSKeys.NAME])
-    for output in outputs:  # type:ignore
+    for output in prompts:  # type:ignore
         prompt_name = output[PSKeys.NAME]
-        promptx = output[PSKeys.PROMPT]
+        prompt_text = output[PSKeys.PROMPT]
         chunk_size = output[PSKeys.CHUNK_SIZE]
-        util = PromptServiceBaseTool(log_level=LogLevel.INFO, platform_key=platform_key)
+        util = PromptServiceBaseTool(platform_key=platform_key)
         index = Index(tool=util)
 
-        app.logger.info(f"[{tool_id}] Replacing variables in prompt : {prompt_name}")
-        _publish_log(
-            log_events_id,
-            {
-                "tool_id": tool_id,
-                "prompt_key": prompt_name,
-                "doc_name": doc_name,
-            },
-            LogLevel.DEBUG,
-            RunLevel.RUN,
-            "Replacing variables in prompt",
-        )
-        try:
-            variable_map = output[PSKeys.VARIABLE_MAP]
-            promptx = VariableExtractor.execute_variable_replacement(
-                prompt=promptx, variable_map=variable_map
+        if VariableExtractor.is_variables_present(prompt_text=prompt_text):
+            prompt_text = VariableExtractor.replace_variables_in_prompt(
+                prompt=output,
+                structured_output=structured_output,
+                log_events_id=log_events_id,
+                tool_id=tool_id,
+                prompt_name=prompt_name,
+                doc_name=doc_name,
             )
-            app.logger.info(f"[{tool_id}] Prompt after variable replacement: {promptx}")
-            _publish_log(
-                log_events_id,
-                {
-                    "tool_id": tool_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevel.DEBUG,
-                RunLevel.RUN,
-                f"Prompt after variable replacement:{promptx} ",
-            )
-        except KeyError:
-            # Executed incase of structured tool and
-            # APIs where we do not set the variable map
-            promptx = VariableExtractor.execute_variable_replacement(
-                prompt=promptx, variable_map=structured_output
-            )
-            app.logger.info(f"[{tool_id}] Prompt after variable replacement: {promptx}")
-            _publish_log(
-                log_events_id,
-                {
-                    "tool_id": tool_id,
-                    "prompt_key": prompt_name,
-                    "doc_name": doc_name,
-                },
-                LogLevel.DEBUG,
-                RunLevel.RUN,
-                f"Prompt after variable replacement:{promptx} ",
-            )
-        except APIError as api_error:
-            raise api_error
 
         app.logger.info(f"[{tool_id}] Executing prompt: {prompt_name}")
-        _publish_log(
+        publish_log(
             log_events_id,
             {
                 "tool_id": tool_id,
@@ -206,7 +155,7 @@ def prompt_processor() -> Any:
         # The variables are in the form %variable_name%
 
         output[PSKeys.PROMPTX] = extract_variable(
-            structured_output, variable_names, output, promptx
+            structured_output, variable_names, output, prompt_text
         )
 
         doc_id = index.generate_index_key(
@@ -217,7 +166,7 @@ def prompt_processor() -> Any:
             chunk_size=str(output[PSKeys.CHUNK_SIZE]),
             chunk_overlap=str(output[PSKeys.CHUNK_OVERLAP]),
         )
-        _publish_log(
+        publish_log(
             log_events_id,
             {
                 "tool_id": tool_id,
@@ -255,7 +204,7 @@ def prompt_processor() -> Any:
         except SdkError as e:
             msg = f"Couldn't fetch adapter. {e}"
             app.logger.error(msg)
-            _publish_log(
+            publish_log(
                 log_events_id,
                 {
                     "tool_id": tool_id,
@@ -289,7 +238,7 @@ def prompt_processor() -> Any:
                     output[PSKeys.NAME],
                     str(api_error),
                 )
-                _publish_log(
+                publish_log(
                     log_events_id,
                     {
                         "tool_id": tool_id,
@@ -303,10 +252,10 @@ def prompt_processor() -> Any:
                 raise api_error
 
         try:
-            context = ""
+            context: set[str] = set()
             if output[PSKeys.CHUNK_SIZE] == 0:
                 # We can do this only for chunkless indexes
-                context: Optional[str] = index.query_index(
+                retrieved_context: Optional[str] = index.query_index(
                     embedding_instance_id=output[PSKeys.EMBEDDING],
                     vector_db_instance_id=output[PSKeys.VECTOR_DB],
                     doc_id=doc_id,
@@ -322,19 +271,19 @@ def prompt_processor() -> Any:
                     # inconsistent, and not reproducible easily,
                     # this is just a safety net.
                     time.sleep(2)
-                    context: Optional[str] = index.query_index(
+                    retrieved_context: Optional[str] = index.query_index(
                         embedding_instance_id=output[PSKeys.EMBEDDING],
                         vector_db_instance_id=output[PSKeys.VECTOR_DB],
                         doc_id=doc_id,
                         usage_kwargs=usage_kwargs,
                     )
-                    if context is None:
+                    if retrieved_context is None:
                         # TODO: Obtain user set name for vector DB
                         msg = NO_CONTEXT_ERROR
                         app.logger.error(
                             f"{msg} {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
                         )
-                        _publish_log(
+                        publish_log(
                             log_events_id,
                             {
                                 "tool_id": tool_id,
@@ -346,8 +295,9 @@ def prompt_processor() -> Any:
                             msg,
                         )
                         raise APIError(message=msg)
+                context.add(retrieved_context)
                 # TODO: Use vectorDB name when available
-                _publish_log(
+                publish_log(
                     log_events_id,
                     {
                         "tool_id": tool_id,
@@ -360,7 +310,7 @@ def prompt_processor() -> Any:
                 )
 
             if chunk_size == 0:
-                _publish_log(
+                publish_log(
                     log_events_id,
                     {
                         "tool_id": tool_id,
@@ -375,16 +325,17 @@ def prompt_processor() -> Any:
                     tool_settings=tool_settings,
                     output=output,
                     llm=llm,
-                    context=context,
+                    context="\n".join(context),
                     prompt="promptx",
                     metadata=metadata,
+                    file_path=file_path,
                 )
                 metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = get_cleaned_context(
                     context
                 )
             else:
                 answer = "NA"
-                _publish_log(
+                publish_log(
                     log_events_id,
                     {
                         "tool_id": tool_id,
@@ -418,7 +369,7 @@ def prompt_processor() -> Any:
                         retrieval_strategy,
                     )
 
-                _publish_log(
+                publish_log(
                     log_events_id,
                     {
                         "tool_id": tool_id,
@@ -430,7 +381,7 @@ def prompt_processor() -> Any:
                     "Retrieved context from adapter",
                 )
 
-            _publish_log(
+            publish_log(
                 log_events_id,
                 {
                     "tool_id": tool_id,
@@ -469,6 +420,17 @@ def prompt_processor() -> Any:
                             LogLevel.ERROR,
                         )
                         structured_output[output[PSKeys.NAME]] = None
+                        # No-op adapter always returns a string data and
+                        # to keep this response uniform
+                        # through all enforce types
+                        # we add this check, if not for this,
+                        # type casting to float raises
+                        # an error and we return None.
+                        if isinstance(
+                            llm.get_llm(adapter_instance_id=adapter_instance_id),
+                            NoOpCustomLLM,
+                        ):
+                            structured_output[output[PSKeys.NAME]] = answer
             elif output[PSKeys.TYPE] == PSKeys.EMAIL:
                 if answer.lower() == "na":
                     structured_output[output[PSKeys.NAME]] = None
@@ -555,7 +517,7 @@ def prompt_processor() -> Any:
                 challenge_plugin: dict[str, Any] = plugins.get(PSKeys.CHALLENGE, {})
                 try:
                     if challenge_plugin:
-                        _publish_log(
+                        publish_log(
                             log_events_id,
                             {
                                 "tool_id": tool_id,
@@ -578,7 +540,7 @@ def prompt_processor() -> Any:
                             llm=llm,
                             challenge_llm=challenge_llm,
                             run_id=run_id,
-                            context=context,
+                            context="\n".join(context),
                             tool_settings=tool_settings,
                             output=output,
                             structured_output=structured_output,
@@ -599,7 +561,7 @@ def prompt_processor() -> Any:
                         output[PSKeys.NAME],
                         str(e),
                     )
-                    _publish_log(
+                    publish_log(
                         log_events_id,
                         {
                             "tool_id": tool_id,
@@ -620,7 +582,7 @@ def prompt_processor() -> Any:
             ):
                 eval_plugin: dict[str, Any] = plugins.get("evaluation", {})
                 if eval_plugin:
-                    _publish_log(
+                    publish_log(
                         log_events_id,
                         {
                             "tool_id": tool_id,
@@ -634,7 +596,7 @@ def prompt_processor() -> Any:
                     try:
                         evaluator = eval_plugin["entrypoint_cls"](
                             "",
-                            context,
+                            "\n".join(context),
                             "",
                             "",
                             output,
@@ -648,7 +610,7 @@ def prompt_processor() -> Any:
                         app.logger.error(
                             f"Failed to evaluate prompt {output[PSKeys.NAME]}: {str(e)}"
                         )
-                        _publish_log(
+                        publish_log(
                             log_events_id,
                             {
                                 "tool_id": tool_id,
@@ -660,7 +622,7 @@ def prompt_processor() -> Any:
                             "Error while evaluation",
                         )
                     else:
-                        _publish_log(
+                        publish_log(
                             log_events_id,
                             {
                                 "tool_id": tool_id,
@@ -677,7 +639,7 @@ def prompt_processor() -> Any:
                     )
         finally:
             vector_db.close()
-    _publish_log(
+    publish_log(
         log_events_id,
         {"tool_id": tool_id, "doc_name": doc_name},
         LogLevel.INFO,
@@ -700,7 +662,7 @@ def prompt_processor() -> Any:
                 if isinstance(v1, str) and v1.lower() == "na":
                     v[k1] = None
 
-    _publish_log(
+    publish_log(
         log_events_id,
         {"tool_id": tool_id, "doc_name": doc_name},
         LogLevel.INFO,
@@ -721,7 +683,7 @@ def run_retrieval(  # type:ignore
     retrieval_type: str,
     metadata: dict[str, Any],
 ) -> tuple[str, str]:
-    context: str = ""
+    context: set[str] = set()
     prompt = output[PSKeys.PROMPTX]
     if retrieval_type == PSKeys.SUBQUESTION:
         subq_prompt: str = (
@@ -754,19 +716,11 @@ def run_retrieval(  # type:ignore
             prompt=subq_prompt,
         )
         subquestion_list = subquestions.split(",")
-        raw_retrieved_context = ""
         for each_subq in subquestion_list:
             retrieved_context = _retrieve_context(
                 output, doc_id, vector_index, each_subq
             )
-            # Not adding the potential for pinecode serverless
-            # inconsistency issue owing to risk of infinte loop
-            # and inablity to diffrentiate genuine cases of
-            # empty context.
-            raw_retrieved_context = "\f\n".join(
-                [raw_retrieved_context, retrieved_context]
-            )
-        context = _remove_duplicate_nodes(raw_retrieved_context)
+            context.update(retrieved_context)
 
     if retrieval_type == PSKeys.SIMPLE:
 
@@ -787,7 +741,7 @@ def run_retrieval(  # type:ignore
         tool_settings=tool_settings,
         output=output,
         llm=llm,
-        context=context,
+        context="\n".join(context),
         prompt="promptx",
         metadata=metadata,
     )
@@ -795,13 +749,7 @@ def run_retrieval(  # type:ignore
     return (answer, context)
 
 
-def _remove_duplicate_nodes(retrieved_context: str) -> str:
-    context_set: set[str] = set(retrieved_context.split("\f\n"))
-    fomatted_context = "\f\n".join(context_set)
-    return fomatted_context
-
-
-def _retrieve_context(output, doc_id, vector_index, answer) -> str:
+def _retrieve_context(output, doc_id, vector_index, answer) -> set[str]:
     retriever = vector_index.as_retriever(
         similarity_top_k=output[PSKeys.SIMILARITY_TOP_K],
         filters=MetadataFilters(
@@ -814,18 +762,18 @@ def _retrieve_context(output, doc_id, vector_index, answer) -> str:
         ),
     )
     nodes = retriever.retrieve(answer)
-    text = ""
+    context: set[str] = set()
     for node in nodes:
         # ToDo: May have to fine-tune this value for node score or keep it
         # configurable at the adapter level
         if node.score > 0:
-            text += node.get_content() + "\f\n"
+            context.add(node.get_content())
         else:
             app.logger.info(
                 "Node score is less than 0. "
                 f"Ignored: {node.node_id} with score {node.score}"
             )
-    return text
+    return context
 
 
 def log_exceptions(e: HTTPException):

@@ -232,6 +232,21 @@ class MigrationQuery:
                 """,
                 "dest_table": "connector_auth",
             },
+            {
+                "name": "migration_017_page_usage",
+                "src_query": """
+                    SELECT id, organization_id, file_name, file_type, run_id,
+                        pages_processed, file_size, created_at
+                    FROM page_usage;
+                """,
+                "dest_query": f"""
+                    INSERT INTO "{self.v2_schema}".page_usage (
+                        id, organization_id, file_name, file_type, run_id,
+                        pages_processed, file_size, created_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+                """,
+                "dest_table": "page_usage",
+            },
         ]
         return migrations
 
@@ -287,18 +302,31 @@ class MigrationQuery:
                 "dest_table": "adapter_instance",
             },
             {
+                "name": f"migration_{schema}_adapter_instance_shared_users",
+                "src_query": f"""
+                    SELECT adapterinstance_id, user_id
+                    FROM "{schema}".adapter_adapterinstance_shared_users;
+                """,
+                "dest_query": f"""
+                    INSERT INTO "{self.v2_schema}".adapter_instance_shared_users (
+                        adapterinstance_id, user_id
+                    ) VALUES (%s, %s);
+                """,
+                "dest_table": "adapter_instance_shared_users",
+            },
+            {
                 "name": f"migration_{schema}_003_workflow",
                 "src_query": f"""
-                    SELECT id, prompt_name, description, workflow_name, prompt_text,
-                           is_active, status, llm_response, workflow_owner_id,
+                    SELECT id, description, workflow_name,
+                           is_active, status, workflow_owner_id,
                            deployment_type, source_settings, destination_settings,
                            created_by_id, modified_by_id, modified_at, created_at
                     FROM "{schema}".workflow_workflow;
                 """,
                 "dest_query": f"""
                     INSERT INTO "{self.v2_schema}".workflow (
-                        id, prompt_name, description, workflow_name, prompt_text,
-                        is_active, status, llm_response, workflow_owner_id,
+                        id, description, workflow_name,
+                        is_active, status, workflow_owner_id,
                         deployment_type, source_settings, destination_settings,
                         created_by_id, modified_by_id, modified_at, created_at,
                         organization_id
@@ -326,6 +354,28 @@ class MigrationQuery:
                     {organization_id});
                 """,
                 "dest_table": "connector_instance",
+            },
+            {
+                "name": f"migration_{schema}_tool_instance",
+                "src_query": f"""
+                    SELECT id, tool_id, workflow_id, input, output, version, metadata,
+                        step, status, created_by_id, modified_by_id,
+                        input_file_connector_id, output_file_connector_id,
+                        input_db_connector_id, output_db_connector_id,
+                        created_at, modified_at
+                    FROM "{schema}".tool_instance_toolinstance;
+                """,
+                "dest_query": f"""
+                    INSERT INTO "{self.v2_schema}".tool_instance (
+                        id, tool_id, workflow_id, input, output, version, metadata,
+                        step, status, created_by_id, modified_by_id,
+                        input_file_connector_id, output_file_connector_id,
+                        input_db_connector_id, output_db_connector_id,
+                        created_at, modified_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s);
+                """,
+                "dest_table": "tool_instance",
             },
             {
                 "name": f"migration_{schema}_workflow_endpoint",
@@ -363,21 +413,6 @@ class MigrationQuery:
                 "dest_table": "api_deployment",
             },
             {
-                "name": f"migration_{schema}_api_key",
-                "src_query": f"""
-                    SELECT id, api_key, api_id, description, is_active,
-                    created_by_id, modified_by_id, created_at, modified_at
-                    FROM "{schema}".api_apikey;
-                """,
-                "dest_query": f"""
-                    INSERT INTO "{self.v2_schema}".api_deployment_key (
-                        id, api_key, api_id, description, is_active,
-                        created_by_id, modified_by_id, created_at, modified_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
-                """,
-                "dest_table": "api_deployment_key",
-            },
-            {
                 "name": f"migration_{schema}_pipeline",
                 "src_query": f"""
                     SELECT id, pipeline_name, workflow_id, app_id, active, scheduled,
@@ -400,6 +435,21 @@ class MigrationQuery:
                 "dest_table": "pipeline",
             },
             {
+                "name": f"migration_{schema}_api_key",
+                "src_query": f"""
+                    SELECT id, api_key, api_id, pipeline_id, description, is_active,
+                    created_by_id, modified_by_id, created_at, modified_at
+                    FROM "{schema}".api_apikey;
+                """,
+                "dest_query": f"""
+                    INSERT INTO "{self.v2_schema}".api_deployment_key (
+                        id, api_key, api_id, pipeline_id, description, is_active,
+                        created_by_id, modified_by_id, created_at, modified_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                """,
+                "dest_table": "api_deployment_key",
+            },
+            {
                 "name": f"migration_{schema}_usage",
                 "src_query": f"""
                     SELECT id, workflow_id, execution_id, adapter_instance_id, run_id,
@@ -410,7 +460,7 @@ class MigrationQuery:
                     FROM "{schema}".token_usage;
                 """,
                 "dest_query": f"""
-                    INSERT INTO "{self.v2_schema}".token_usage (
+                    INSERT INTO "{self.v2_schema}".usage (
                         id, workflow_id, execution_id, adapter_instance_id, run_id,
                         usage_type, llm_usage_reason, model_name,
                         embedding_tokens, prompt_tokens, completion_tokens,
@@ -419,7 +469,7 @@ class MigrationQuery:
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, {organization_id});
                 """,
-                "dest_table": "token_usage",
+                "dest_table": "usage",
             },
             {
                 "name": f"migration_{schema}_workflow_execution",
@@ -449,7 +499,7 @@ class MigrationQuery:
                 """,
                 "dest_query": f"""
                     INSERT INTO "{self.v2_schema}".file_history (
-                        id, cache_key, workflow_id, status, error, result, meta_data,
+                        id, cache_key, workflow_id, status, error, result, metadata,
                         created_at, modified_at
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
                 """,
@@ -501,6 +551,7 @@ class MigrationQuery:
                             WHERE user_id = %s AND organization_id='{organization_id}';
                         """,
                         "params": ["user_id"],
+                        "none_action": "DELETE",
                     }
                 },
             },
@@ -691,6 +742,23 @@ class MigrationQuery:
                     ) VALUES (%s, %s);
                 """,
                 "dest_table": "prompt_studio_registry_shared_users",
+            },
+            {
+                "name": f"migration_{schema}_notification",
+                "src_query": f"""
+                    SELECT id, name, url, authorization_key, authorization_header,
+                        authorization_type, max_retries, platform, notification_type,
+                        is_active, pipeline_id, api_id, created_at, modified_at
+                    FROM "{schema}".notification_notification;
+                """,
+                "dest_query": f"""
+                    INSERT INTO "{self.v2_schema}".notification (
+                        id, name, url, authorization_key, authorization_header,
+                        authorization_type, max_retries, platform, notification_type,
+                        is_active, pipeline_id, api_id, created_at, modified_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                """,
+                "dest_table": "notification",
             },
         ]
         return migrations

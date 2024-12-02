@@ -37,6 +37,12 @@ from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelpe
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
+from backend.constants import FeatureFlag
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+    from unstract.filesystem import FileStorageType, FileSystem
+
 logger = logging.getLogger(__name__)
 
 
@@ -329,7 +335,13 @@ class SourceConnector(BaseConnector):
             workflow=workflow, cache_key=file_hash
         )
 
-        if file_history and file_history.is_completed():
+        # In case of ETL pipelines, its necessary to skip files which have
+        # already been processed
+        if (
+            self.execution_service.use_file_history
+            and file_history
+            and file_history.is_completed()
+        ):
             self.execution_service.publish_log(
                 f"Skipping file {file_path} as it has already been processed. "
                 "Clear the file markers to process it again."
@@ -469,11 +481,17 @@ class SourceConnector(BaseConnector):
         )
         self.publish_input_file_content(input_file_path, input_log)
 
-        with fsspec.open(source_file, "wb") as local_file:
-            local_file.write(file_content)
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            file_storage = file_system.get_file_storage()
+            file_storage.write(path=source_file_path, mode="wb", data=file_content)
+            file_storage.write(path=infile_path, mode="wb", data=file_content)
+        else:
+            with fsspec.open(source_file, "wb") as local_file:
+                local_file.write(file_content)
 
-        # Copy file to infile directory
-        self.copy_file_to_infile_dir(source_file_path, infile_path)
+            # Copy file to infile directory
+            self.copy_file_to_infile_dir(source_file_path, infile_path)
 
         logger.info(f"{input_file_path} is added to execution directory")
         return hash_value_of_file_content
@@ -482,12 +500,78 @@ class SourceConnector(BaseConnector):
         """Add input file to execution directory from api storage."""
         infile_path = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         source_path = os.path.join(self.execution_dir, WorkflowFileType.SOURCE)
-        shutil.copyfile(input_file_path, infile_path)
-        shutil.copyfile(input_file_path, source_path)
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            api_file_system = FileSystem(FileStorageType.API_EXECUTION)
+            api_file_storage = api_file_system.get_file_storage()
+            workflow_file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            workflow_file_storage = workflow_file_system.get_file_storage()
+            self._copy_file_to_destination(
+                source_storage=api_file_storage,
+                destination_storage=workflow_file_storage,
+                source_path=input_file_path,
+                destination_paths=[infile_path, source_path],
+            )
+        else:
+            shutil.copyfile(input_file_path, infile_path)
+            shutil.copyfile(input_file_path, source_path)
 
-    def add_file_to_volume(
-        self, input_file_path: str, file_hash: FileHash
-    ) -> tuple[str, str]:
+    # TODO: replace it with method from SDK Utils
+    def _copy_file_to_destination(
+        self,
+        source_storage: Any,
+        destination_storage: Any,
+        source_path: str,
+        destination_paths: list[str],
+        chunk_size: int = 4096,
+    ) -> None:
+        """
+        Copy a file from a source storage to one or more paths in a
+        destination storage.
+
+        This function reads the source file in chunks and writes each chunk to
+        the specified destination paths. The function will continue until the
+        entire source file is copied.
+
+        Args:
+            source_storage (FileStorage): The storage object from which
+                the file is read.
+            destination_storage (FileStorage): The storage object to which
+                the file is written.
+            source_path (str): The path of the file in the source storage.
+            destination_paths (list[str]): A list of paths where the file will be
+                copied in the destination storage.
+            chunk_size (int, optional): The number of bytes to read per chunk.
+                Default is 4096 bytes.
+        """
+        seek_position = 0  # Start from the beginning
+        end_of_file = False
+
+        # Loop to read and write in chunks until the end of the file
+        while not end_of_file:
+            # Read a chunk from the source file
+            chunk = source_storage.read(
+                path=source_path,
+                mode="rb",
+                seek_position=seek_position,
+                length=chunk_size,
+            )
+            # Check if the end of the file has been reached
+            if not chunk:
+                end_of_file = True
+            else:
+                # Write the chunk to each destination path
+                for destination_file in destination_paths:
+                    destination_storage.write(
+                        path=destination_file,
+                        mode="ab",
+                        seek_position=seek_position,
+                        data=chunk,
+                    )
+
+                # Update the seek position
+                seek_position += len(chunk)
+
+    def add_file_to_volume(self, input_file_path: str, file_hash: FileHash) -> str:
         """Add input file to execution directory.
 
         Args:
@@ -555,7 +639,11 @@ class SourceConnector(BaseConnector):
 
     @classmethod
     def add_input_file_to_api_storage(
-        cls, workflow_id: str, execution_id: str, file_objs: list[UploadedFile]
+        cls,
+        workflow_id: str,
+        execution_id: str,
+        file_objs: list[UploadedFile],
+        use_file_history: bool = False,
     ) -> dict[str, FileHash]:
         """Add input file to api storage.
 
@@ -563,6 +651,8 @@ class SourceConnector(BaseConnector):
             workflow_id (str): UUID of the worklfow
             execution_id (str): UUID of the execution
             file_objs (list[UploadedFile]): List of uploaded files
+            use_file_history (bool): Use FileHistory table to return results on already
+                processed files. Defaults to False
         Returns:
             dict[str, FileHash]: Dict containing file name and its corresponding hash
         """
@@ -574,17 +664,28 @@ class SourceConnector(BaseConnector):
         for file in file_objs:
             file_name = file.name
             destination_path = os.path.join(api_storage_dir, file_name)
-            os.makedirs(os.path.dirname(destination_path), exist_ok=True)
-            with open(destination_path, "wb") as f:
+            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+                file_system = FileSystem(FileStorageType.API_EXECUTION)
+                file_storage = file_system.get_file_storage()
                 buffer = bytearray()
                 for chunk in file.chunks():
                     buffer.extend(chunk)
-                f.write(buffer)
+                    file_storage.write(path=destination_path, mode="wb", data=buffer)
+            else:
+                os.makedirs(os.path.dirname(destination_path), exist_ok=True)
+                with open(destination_path, "wb") as f:
+                    buffer = bytearray()
+                    for chunk in file.chunks():
+                        buffer.extend(chunk)
+                    f.write(buffer)
             file_hash = cls.hash_str(buffer)
             connection_type = WorkflowEndpoint.ConnectionType.API
-            file_history = FileHistoryHelper.get_file_history(
-                workflow=workflow, cache_key=file_hash
-            )
+
+            file_history = None
+            if use_file_history:
+                file_history = FileHistoryHelper.get_file_history(
+                    workflow=workflow, cache_key=file_hash
+                )
             is_executed = (
                 True if file_history and file_history.is_completed() else False
             )

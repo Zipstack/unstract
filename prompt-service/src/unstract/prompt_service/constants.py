@@ -62,20 +62,15 @@ class PromptServiceContants:
     TABLE_SETTINGS = "table_settings"
     EPILOGUE = "epilogue"
     PLATFORM_POSTAMBLE = "platform_postamble"
-    EXTRACT_EPILOGUE = "extract-epilogue"
+    HIGHLIGHT_DATA_PLUGIN = "highlight-data"
     CLEAN_CONTEXT = "clean-context"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
     VARIABLE_MAP = "variable_map"
     RECORD = "record"
     TEXT = "text"
-
-
-class LogLevel(Enum):
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARN = "WARN"
-    ERROR = "ERROR"
-    FATAL = "FATAL"
+    ENABLE_HIGHLIGHT = "enable_highlight"
+    FILE_PATH = "file_path"
+    HIGHLIGHT_DATA = "highlight_data"
 
 
 class RunLevel(Enum):
@@ -93,7 +88,7 @@ class RunLevel(Enum):
 class FeatureFlag:
     """Temporary feature flags."""
 
-    MULTI_TENANCY_V2 = "multi_tenancy_v2"
+    pass
 
 
 class DBTableV2:

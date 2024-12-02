@@ -18,4 +18,8 @@ urlpatterns = [
     ),
     # API deployment
     path(f"{settings.API_DEPLOYMENT_PATH_PREFIX}/", include("api_v2.execution_urls")),
+    path(
+        f"{settings.API_DEPLOYMENT_PATH_PREFIX}/pipeline/",
+        include("pipeline_v2.public_api_urls"),
+    ),
 ]

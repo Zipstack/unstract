@@ -33,5 +33,5 @@ class UrlPathConstants:
 class FeatureFlag:
     """Temporary feature flags."""
 
-    MULTI_TENANCY_V2 = "multi_tenancy_v2"
     APP_DEPLOYMENT = "app_deployment"
+    REMOTE_FILE_STORAGE = "remote_file_storage"

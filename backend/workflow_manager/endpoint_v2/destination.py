@@ -3,13 +3,14 @@ import base64
 import json
 import logging
 import os
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import fsspec
 import magic
 from connector_v2.models import ConnectorInstance
 from fsspec.implementations.local import LocalFileSystem
 from unstract.sdk.constants import ToolExecKey
+from unstract.sdk.tool.mime_types import EXT_MIME_MAP
 from unstract.workflow_execution.constants import ToolOutputType
 from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.base_connector import BaseConnector
@@ -35,6 +36,14 @@ from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelpe
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
+
+from backend.constants import FeatureFlag
+from backend.exceptions import UnstractFSException
+from unstract.connectors.exceptions import ConnectorError
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+    from unstract.filesystem import FileStorageType, FileSystem
 
 logger = logging.getLogger(__name__)
 
@@ -152,8 +161,9 @@ class DestinationConnector(BaseConnector):
         file_name: str,
         file_hash: FileHash,
         workflow: Workflow,
+        input_file_path: str,
         error: Optional[str] = None,
-        input_file_path: Optional[str] = None,
+        use_file_history: bool = True,
     ) -> None:
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
@@ -163,9 +173,12 @@ class DestinationConnector(BaseConnector):
             if connection_type == WorkflowEndpoint.ConnectionType.API:
                 self._handle_api_result(file_name=file_name, error=error, result=result)
             return
-        file_history = FileHistoryHelper.get_file_history(
-            workflow=workflow, cache_key=file_hash.file_hash
-        )
+
+        file_history = None
+        if use_file_history:
+            file_history = FileHistoryHelper.get_file_history(
+                workflow=workflow, cache_key=file_hash.file_hash
+            )
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
@@ -178,9 +191,9 @@ class DestinationConnector(BaseConnector):
                 self.insert_into_db(input_file_path=input_file_path)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
-            metadata = self.get_metadata(file_history)
+            exec_metadata = self.get_metadata(file_history)
             self._handle_api_result(
-                file_name=file_name, error=error, result=result, metadata=metadata
+                file_name=file_name, error=error, result=result, metadata=exec_metadata
             )
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
             self._push_data_to_queue(file_name, workflow, input_file_path)
@@ -188,7 +201,8 @@ class DestinationConnector(BaseConnector):
             self.execution_service.publish_log(
                 message=f"File '{file_name}' processed successfully"
             )
-        if not file_history:
+
+        if use_file_history and not file_history:
             FileHistoryHelper.create_file_history(
                 cache_key=file_hash.file_hash,
                 workflow=workflow,
@@ -218,31 +232,33 @@ class DestinationConnector(BaseConnector):
         destination_volume_path = os.path.join(
             self.execution_dir, ToolExecKey.OUTPUT_DIR
         )
-        destination_fs.create_dir_if_not_exists(input_dir=output_directory)
-        destination_fsspec = destination_fs.get_fsspec_fs()
 
-        # Traverse local directory and create the same structure in the
-        # output_directory
-        for root, dirs, files in os.walk(destination_volume_path):
-            for dir_name in dirs:
-                destination_fsspec.mkdir(
-                    os.path.join(
+        try:
+            destination_fs.create_dir_if_not_exists(input_dir=output_directory)
+
+            # Traverse local directory and create the same structure in the
+            # output_directory
+            for root, dirs, files in os.walk(destination_volume_path):
+                for dir_name in dirs:
+                    current_dir = os.path.join(
                         output_directory,
                         os.path.relpath(root, destination_volume_path),
                         dir_name,
                     )
-                )
+                    destination_fs.create_dir_if_not_exists(input_dir=current_dir)
 
-            for file_name in files:
-                source_path = os.path.join(root, file_name)
-                destination_path = os.path.join(
-                    output_directory,
-                    os.path.relpath(root, destination_volume_path),
-                    file_name,
-                )
-                normalized_path = os.path.normpath(destination_path)
-                with open(source_path, "rb") as source_file:
-                    destination_fsspec.write_bytes(normalized_path, source_file.read())
+                for file_name in files:
+                    source_path = os.path.join(root, file_name)
+                    destination_path = os.path.join(
+                        output_directory,
+                        os.path.relpath(root, destination_volume_path),
+                        file_name,
+                    )
+                    destination_fs.upload_file_to_storage(
+                        source_path=source_path, destination_path=destination_path
+                    )
+        except ConnectorError as e:
+            raise UnstractFSException(core_err=e) from e
 
     def insert_into_db(self, input_file_path: str) -> None:
         """Insert data into the database."""
@@ -272,7 +288,10 @@ class DestinationConnector(BaseConnector):
         if not data:
             return
         # Remove metadata from result
-        data.pop("metadata", None)
+        # Tool text-extractor returns data in the form of string.
+        # Don't pop out metadata in this case.
+        if isinstance(data, dict):
+            data.pop("metadata", None)
         values = DatabaseUtils.get_columns_and_values(
             column_mode_str=column_mode,
             data=data,
@@ -392,12 +411,14 @@ class DestinationConnector(BaseConnector):
         Returns:
             Union[dict[str, Any], str]: Result data.
         """
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            return self.get_result_with_file_storage(file_history=file_history)
         if file_history and file_history.result:
             return self.parse_string(file_history.result)
         output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         metadata: dict[str, Any] = self.get_workflow_metadata()
         output_type = self.get_output_type(metadata)
-        result: Optional[Any] = None
+        result: Union[dict[str, Any], str] = ""
         try:
             # TODO: SDK handles validation; consider removing here.
             mime = magic.Magic()
@@ -421,13 +442,50 @@ class DestinationConnector(BaseConnector):
             logger.error(f"Error while getting result {err}")
         return result
 
+    def get_result_with_file_storage(
+        self, file_history: Optional[FileHistory] = None
+    ) -> Optional[Any]:
+        """Get result data from the output file.
+
+        Returns:
+            Union[dict[str, Any], str]: Result data.
+        """
+        if file_history and file_history.result:
+            return self.parse_string(file_history.result)
+        output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
+        metadata: dict[str, Any] = self.get_workflow_metadata()
+        output_type = self.get_output_type(metadata)
+        result: Union[dict[str, Any], str] = ""
+        file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+        file_storage = file_system.get_file_storage()
+        try:
+            # TODO: SDK handles validation; consider removing here.
+            file_type = file_storage.mime_type(output_file)
+            if output_type == ToolOutputType.JSON:
+                if file_type != EXT_MIME_MAP[ToolOutputType.JSON.lower()]:
+                    logger.error(f"Output type json mismatched {file_type}")
+                    raise ToolOutputTypeMismatch()
+                file_content = file_storage.read(output_file, mode="r")
+                result = json.loads(file_content)
+            elif output_type == ToolOutputType.TXT:
+                if file_type == EXT_MIME_MAP[ToolOutputType.JSON.lower()]:
+                    logger.error(f"Output type txt mismatched {file_type}")
+                    raise ToolOutputTypeMismatch()
+                file_content = file_storage.read(output_file, mode="r")
+                result = file_content.encode("utf-8").decode("unicode-escape")
+            else:
+                raise InvalidToolOutputType()
+        except (FileNotFoundError, json.JSONDecodeError) as err:
+            logger.error(f"Error while getting result {err}")
+        return result
+
     def get_metadata(
         self, file_history: Optional[FileHistory] = None
     ) -> Optional[dict[str, Any]]:
         """Get metadata from the output file.
 
         Returns:
-            Union[dict[str, Any], str]: Meta data.
+            Union[dict[str, Any], str]: Metadata.
         """
         if file_history and file_history.metadata:
             return self.parse_string(file_history.metadata)
@@ -441,8 +499,13 @@ class DestinationConnector(BaseConnector):
         Returns:
             None
         """
-        fs: LocalFileSystem = fsspec.filesystem("file")
-        fs.rm(self.execution_dir, recursive=True)
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            file_storage = file_system.get_file_storage()
+            file_storage.rm(self.execution_dir, recursive=True)
+        else:
+            fs: LocalFileSystem = fsspec.filesystem("file")
+            fs.rm(self.execution_dir, recursive=True)
         self.delete_api_storage_dir(self.workflow_id, self.execution_id)
 
     @classmethod
@@ -455,8 +518,13 @@ class DestinationConnector(BaseConnector):
         api_storage_dir = cls.get_api_storage_dir_path(
             workflow_id=workflow_id, execution_id=execution_id
         )
-        fs: LocalFileSystem = fsspec.filesystem("file")
-        fs.rm(api_storage_dir, recursive=True)
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            file_system = FileSystem(FileStorageType.API_EXECUTION)
+            file_storage = file_system.get_file_storage()
+            file_storage.rm(api_storage_dir, recursive=True)
+        else:
+            fs: LocalFileSystem = fsspec.filesystem("file")
+            fs.rm(api_storage_dir, recursive=True)
 
     @classmethod
     def create_endpoint_for_workflow(

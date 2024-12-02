@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -62,7 +63,7 @@ ERROR_MSG = "User %s doesn't have access to adapter %s"
 
 logger = logging.getLogger(__name__)
 
-modifier_loader = load_modifier_plugins()
+modifier_plugins = load_modifier_plugins()
 
 
 class PromptStudioHelper:
@@ -262,6 +263,11 @@ class PromptStudioHelper:
         choices = f.read()
         f.close()
         response: dict[str, Any] = json.loads(choices)
+        for modifier_plugin in modifier_plugins:
+            cls = modifier_plugin[ModifierConfig.METADATA][
+                ModifierConfig.METADATA_SERVICE_CLASS
+            ]
+            response = cls.update_select_choices(default_choices=response)
         return response
 
     @staticmethod
@@ -338,6 +344,7 @@ class PromptStudioHelper:
             logger.error(f"No tool instance found for the ID {tool_id}")
             raise ToolNotValid()
 
+        start_time = time.time()
         logger.info(f"[{tool_id}] Indexing started for doc: {file_name}")
         PromptStudioHelper._publish_log(
             {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
@@ -367,12 +374,17 @@ class PromptStudioHelper:
             process_text=process_text,
         )
 
+        elapsed_time = time.time() - start_time
+        logger.info(
+            f"[{tool_id}] Indexing successful for doc: {file_name},"
+            f" took {elapsed_time:.3f}s"
+        )
         logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
         PromptStudioHelper._publish_log(
             {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
             LogLevels.INFO,
             LogLevels.RUN,
-            "Indexing successful",
+            f"Indexing successful, took {elapsed_time:.3f}s",
         )
 
         return doc_id.get("output")
@@ -451,7 +463,10 @@ class PromptStudioHelper:
     ):
         prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
 
-        if prompt_instance.enforce_type == TSPKeys.TABLE and not modifier_loader:
+        if (
+            prompt_instance.enforce_type == TSPKeys.TABLE
+            or prompt_instance.enforce_type == TSPKeys.RECORD
+        ) and not modifier_plugins:
             raise OperationNotSupported()
 
         prompt_name = prompt_instance.prompt_key
@@ -547,6 +562,7 @@ class PromptStudioHelper:
             if prompt.prompt_type != TSPKeys.NOTES
             and prompt.active
             and prompt.enforce_type != TSPKeys.TABLE
+            and prompt.enforce_type != TSPKeys.RECORD
         ]
         if not prompts:
             logger.error(f"[{tool_id or 'NA'}] No prompts found for id: {id}")
@@ -794,6 +810,7 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.PREAMBLE] = tool.preamble
         tool_settings[TSPKeys.POSTAMBLE] = tool.postamble
         tool_settings[TSPKeys.GRAMMAR] = grammar_list
+        tool_settings[TSPKeys.ENABLE_HIGHLIGHT] = tool.enable_highlight
         tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
             settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
         )
@@ -807,6 +824,7 @@ class PromptStudioHelper:
             TSPKeys.RUN_ID: run_id,
             TSPKeys.FILE_NAME: doc_name,
             TSPKeys.FILE_HASH: file_hash,
+            TSPKeys.FILE_PATH: doc_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
         }
 
@@ -841,13 +859,16 @@ class PromptStudioHelper:
         output: dict[str, Any],
     ) -> dict[str, Any]:
 
-        if prompt.enforce_type == TSPKeys.TABLE:
+        if (
+            prompt.enforce_type == TSPKeys.TABLE
+            or prompt.enforce_type == TSPKeys.RECORD
+        ):
             extract_doc_path: str = (
                 PromptStudioHelper._get_extract_or_summary_document_path(
                     org_id, user_id, tool_id, doc_name, TSPKeys.EXTRACT
                 )
             )
-            for modifier_plugin in modifier_loader:
+            for modifier_plugin in modifier_plugins:
                 cls = modifier_plugin[ModifierConfig.METADATA][
                     ModifierConfig.METADATA_SERVICE_CLASS
                 ]
@@ -857,6 +878,7 @@ class PromptStudioHelper:
                     prompt_id=str(prompt.prompt_id),
                     prompt=prompt.prompt,
                     input_file=extract_doc_path,
+                    clean_pages=True,
                 )
 
         return output
@@ -1048,6 +1070,7 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.CHUNK_SIZE] = default_profile.chunk_size
         tool_settings[TSPKeys.CHUNK_OVERLAP] = default_profile.chunk_overlap
         tool_settings[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
+        tool_settings[TSPKeys.ENABLE_HIGHLIGHT] = tool.enable_highlight
         tool_settings[TSPKeys.CHALLENGE_LLM] = challenge_llm
 
         for prompt in prompts:

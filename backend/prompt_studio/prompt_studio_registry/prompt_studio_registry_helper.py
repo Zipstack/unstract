@@ -48,28 +48,34 @@ class PromptStudioRegistryHelper:
         properties = {
             "challenge_llm": {
                 "type": "string",
-                "title": "Challenge LLM",
+                "title": "Challenger LLM",
                 "adapterType": "LLM",
-                "description": "LLM to use for challenge",
+                "description": "LLM to use for LLMChallenge",
                 "adapterIdKey": "challenge_llm_adapter_id",
             },
             "enable_challenge": {
                 "type": "boolean",
-                "title": "Enable challenge",
+                "title": "Enable LLMChallenge",
                 "default": False,
-                "description": "Enables Challenge",
+                "description": "Enables LLMChallenge",
             },
             "summarize_as_source": {
                 "type": "boolean",
-                "title": "Summarize and use summary as source",
+                "title": "Enable SummarizedExtraction",
                 "default": False,
-                "description": "Enables summary and use summarized content as source",
+                "description": "Enables SummarizedExtraction",
             },
             "single_pass_extraction_mode": {
                 "type": "boolean",
-                "title": "Enable Single pass extraction",
+                "title": "Enable SinglePass Extraction",
                 "default": False,
-                "description": "Enables single pass extraction",
+                "description": "Enables SinglePass Extraction",
+            },
+            "enable_highlight": {
+                "type": "boolean",
+                "title": "Enable highlight",
+                "default": False,
+                "description": "Enables highlight",
             },
         }
 
@@ -292,6 +298,9 @@ class PromptStudioRegistryHelper:
                 invalidated_prompts.append(prompt.prompt_key)
                 continue
 
+            if not prompt.profile_manager:
+                prompt.profile_manager = default_llm_profile
+
             if not force_export:
                 prompt_output = PromptStudioOutputManager.objects.filter(
                     tool_id=tool.tool_id,
@@ -301,9 +310,6 @@ class PromptStudioRegistryHelper:
                 if not prompt_output:
                     invalidated_outputs.append(prompt.prompt_key)
                     continue
-
-            if not prompt.profile_manager:
-                prompt.profile_manager = default_llm_profile
 
             vector_db = str(prompt.profile_manager.vector_store.id)
             embedding_model = str(prompt.profile_manager.embedding_model.id)

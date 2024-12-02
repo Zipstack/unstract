@@ -5,6 +5,7 @@ from api_v2.exceptions import UnauthorizedKey
 from api_v2.models import APIDeployment, APIKey
 from api_v2.serializers import APIKeySerializer
 from pipeline_v2.models import Pipeline
+from rest_framework.request import Request
 from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
 
 logger = logging.getLogger(__name__)
@@ -68,12 +69,14 @@ class KeyHelper:
         WorkflowHelper.get_workflow_by_id(workflow_id)
 
     @staticmethod
-    def create_api_key(deployment: Union[APIDeployment, Pipeline]) -> APIKey:
+    def create_api_key(
+        deployment: Union[APIDeployment, Pipeline], request: Request
+    ) -> APIKey:
         """Create an APIKey entity using the data from the provided
         APIDeployment or Pipeline instance."""
         api_key_serializer = APIKeySerializer(
             data=deployment.api_key_data,
-            context={"deployment": deployment},
+            context={"deployment": deployment, "request": request},
         )
         api_key_serializer.is_valid(raise_exception=True)
         api_key: APIKey = api_key_serializer.save()

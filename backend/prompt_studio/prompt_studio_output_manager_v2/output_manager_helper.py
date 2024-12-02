@@ -141,7 +141,8 @@ class OutputManagerHelper:
                 challenge_data["file_name"] = metadata.get("file_name")
 
             output = outputs.get(prompt.prompt_key)
-            if prompt.enforce_type in {"json", "table"}:
+            # TODO: use enums here
+            if prompt.enforce_type in {"json", "table", "record"}:
                 output = json.dumps(output)
             profile_manager = default_profile
             eval_metrics = outputs.get(f"{prompt.prompt_key}__evaluation", [])
@@ -153,7 +154,7 @@ class OutputManagerHelper:
                 output=output,
                 eval_metrics=eval_metrics,
                 tool=tool,
-                context=context,
+                context=json.dumps(context),
                 challenge_data=challenge_data,
             )
 

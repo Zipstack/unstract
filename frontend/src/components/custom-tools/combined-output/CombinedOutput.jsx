@@ -2,7 +2,7 @@ import "prismjs/components/prism-json";
 import "prismjs/plugins/line-numbers/prism-line-numbers.css";
 import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 import "prismjs/themes/prism.css";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import PropTypes from "prop-types";
 
@@ -15,7 +15,6 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { JsonView } from "./JsonView";
@@ -28,8 +27,9 @@ try {
   promptOutputApiSps =
     require("../../../plugins/simple-prompt-studio/helper").promptOutputApiSps;
 } catch {
-  // The component will remain null of it is not available
+  // The component will remain null if it is not available
 }
+
 let publicOutputsApi;
 let publicAdapterApi;
 let publicDefaultOutputApi;
@@ -41,9 +41,10 @@ try {
   publicDefaultOutputApi =
     require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicDefaultOutputApi;
 } catch {
-  // The component will remain null of it is not available
+  // The component will remain null if it is not available
 }
-function CombinedOutput({ docId, setFilledFields }) {
+
+function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
   const {
     details,
     defaultLlmProfile,
@@ -53,94 +54,99 @@ function CombinedOutput({ docId, setFilledFields }) {
     isSimplePromptStudio,
     isPublicSource,
   } = useCustomToolStore();
+
   const [combinedOutput, setCombinedOutput] = useState({});
   const [isOutputLoading, setIsOutputLoading] = useState(false);
   const [adapterData, setAdapterData] = useState([]);
   const [activeKey, setActiveKey] = useState(
     singlePassExtractMode ? defaultLlmProfile : "0"
   );
+  const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
+  const [filteredCombinedOutput, setFilteredCombinedOutput] = useState({});
+
   const { id } = useParams();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
-  const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
 
   useEffect(() => {
-    getAdapterInfo();
+    if (isSimplePromptStudio) return;
+
+    const fetchAdapterInfo = async () => {
+      let url = `/api/v1/unstract/${sessionDetails?.orgId}/adapter/?adapter_type=LLM`;
+      if (isPublicSource) {
+        url = publicAdapterApi(id, "LLM");
+      }
+      try {
+        const res = await axiosPrivate.get(url);
+        const adapterList = res?.data;
+        setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
+      } catch (err) {
+        setAlertDetails(
+          handleException(err, "Failed to fetch adapter information")
+        );
+      }
+    };
+    fetchAdapterInfo();
   }, []);
 
   useEffect(() => {
-    setActiveKey(singlePassExtractMode ? defaultLlmProfile : "0");
+    const key = singlePassExtractMode ? defaultLlmProfile : "0";
+    setActiveKey(key);
     setSelectedProfile(singlePassExtractMode ? defaultLlmProfile : null);
   }, [singlePassExtractMode]);
 
   useEffect(() => {
-    if (!docId || isSinglePassExtractLoading) {
-      return;
-    }
-    let filledFields = 0;
-    setIsOutputLoading(true);
-    setCombinedOutput({});
-    handleOutputApiRequest()
-      .then((res) => {
+    if (!docId || isSinglePassExtractLoading) return;
+
+    const fetchCombinedOutput = async () => {
+      setIsOutputLoading(true);
+      setCombinedOutput({});
+
+      try {
+        const res = await handleOutputApiRequest();
         const data = res?.data || [];
-        const prompts = details?.prompts;
+        const prompts = details?.prompts || [];
+
         if (activeKey === "0" && !isSimplePromptStudio) {
-          const output = {};
-          for (const key in data) {
-            if (Object.hasOwn(data, key)) {
-              output[key] = displayPromptResult(data[key], false);
-            }
-          }
+          const output = Object.entries(data).reduce((acc, [key, value]) => {
+            acc[key] = displayPromptResult(value, false);
+            return acc;
+          }, {});
           setCombinedOutput(output);
-          return;
+        } else {
+          const output = prompts.reduce((acc, item) => {
+            if (item?.prompt_type !== promptType.notes) {
+              const profileManager = selectedProfile || item?.profile_manager;
+              const outputDetails = data.find(
+                (outputValue) =>
+                  outputValue?.prompt_id === item?.prompt_id &&
+                  outputValue?.profile_manager === profileManager
+              );
+
+              acc[item?.prompt_key] =
+                outputDetails?.output?.length > 0
+                  ? displayPromptResult(outputDetails?.output, false)
+                  : "";
+            }
+            return acc;
+          }, {});
+          setCombinedOutput(output);
         }
-        const output = {};
-        prompts.forEach((item) => {
-          if (item?.prompt_type === promptType.notes) {
-            return;
-          }
-          output[item?.prompt_key] = "";
-
-          const profileManager = selectedProfile || item?.profile_manager;
-          const outputDetails = data.find(
-            (outputValue) =>
-              outputValue?.prompt_id === item?.prompt_id &&
-              outputValue?.profile_manager === profileManager
-          );
-
-          if (!outputDetails) {
-            return;
-          }
-
-          output[item?.prompt_key] = displayPromptResult(
-            outputDetails?.output,
-            false
-          );
-
-          if (outputDetails?.output?.length > 0) {
-            filledFields++;
-          }
-        });
-
-        setCombinedOutput(output);
-
-        if (setFilledFields) {
-          setFilledFields(filledFields);
-        }
-      })
-      .catch((err) => {
+      } catch (err) {
         setAlertDetails(
           handleException(err, "Failed to generate combined output")
         );
-      })
-      .finally(() => {
+      } finally {
         setIsOutputLoading(false);
-      });
-  }, [docId, isSinglePassExtractLoading, activeKey]);
+      }
+    };
 
-  const handleOutputApiRequest = async () => {
+    fetchCombinedOutput();
+  }, [docId, activeKey]);
+
+  const handleOutputApiRequest = useCallback(async () => {
     let url;
     if (isSimplePromptStudio) {
       url = promptOutputApiSps(details?.tool_id, null, docId);
@@ -156,15 +162,12 @@ function CombinedOutput({ docId, setFilledFields }) {
         url = publicDefaultOutputApi(id, docId);
       }
     } else {
-      url = `/api/v1/unstract/${
-        sessionDetails?.orgId
-      }/prompt-studio/prompt-output/?tool_id=${
-        details?.tool_id
-      }&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}&profile_manager=${
-        selectedProfile || defaultLlmProfile
-      }`;
+      const orgId = sessionDetails?.orgId;
+      const toolId = details?.tool_id;
+      const profileManager = selectedProfile || defaultLlmProfile;
+      url = `/api/v1/unstract/${orgId}/prompt-studio/prompt-output/?tool_id=${toolId}&document_manager=${docId}&is_single_pass_extract=${singlePassExtractMode}&profile_manager=${profileManager}`;
       if (activeKey === "0") {
-        url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-output/prompt-default-profile/?tool_id=${details?.tool_id}&document_manager=${docId}`;
+        url = `/api/v1/unstract/${orgId}/prompt-studio/prompt-output/prompt-default-profile/?tool_id=${toolId}&document_manager=${docId}`;
       }
     }
     const requestOptions = {
@@ -174,58 +177,66 @@ function CombinedOutput({ docId, setFilledFields }) {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
-    return axiosPrivate(requestOptions)
-      .then((res) => res)
-      .catch((err) => {
-        throw err;
-      });
-  };
+    const res = await axiosPrivate(requestOptions);
+    return res;
+  }, [
+    singlePassExtractMode,
+    docId,
+    selectedProfile,
+    defaultLlmProfile,
+    activeKey,
+  ]);
 
-  const getAdapterInfo = () => {
-    if (isSimplePromptStudio) return;
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/adapter/?adapter_type=LLM`;
-    if (isPublicSource) {
-      url = publicAdapterApi(id, "LLM");
+  const handleTabChange = useCallback(
+    (key) => {
+      setActiveKey(key);
+      setSelectedProfile(key === "0" ? defaultLlmProfile : key);
+    },
+    [defaultLlmProfile]
+  );
+
+  // Filter combined output based on selectedPrompts
+  useEffect(() => {
+    const filteredCombinedOutput = Object.fromEntries(
+      Object.entries(combinedOutput).filter(
+        ([key]) => !selectedPrompts || selectedPrompts[key]
+      )
+    );
+
+    const filledFields = Object.values(filteredCombinedOutput).filter(
+      (value) => value === 0 || (value && value.length > 0)
+    ).length;
+
+    if (setFilledFields) {
+      setFilledFields(filledFields);
     }
-    axiosPrivate.get(url).then((res) => {
-      const adapterList = res?.data;
-      setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
-    });
-  };
-
-  if (isOutputLoading) {
-    return <SpinnerLoader />;
-  }
-
-  const handleTabChange = (key) => {
-    if (key === "0") {
-      setSelectedProfile(defaultLlmProfile);
-    } else {
-      setSelectedProfile(key);
-    }
-    setActiveKey(key);
-  };
+    setFilteredCombinedOutput(filteredCombinedOutput);
+  }, [selectedPrompts, combinedOutput]);
 
   if (isSimplePromptStudio && TableView) {
-    return <TableView combinedOutput={combinedOutput} />;
+    return (
+      <TableView combinedOutput={combinedOutput} isLoading={isOutputLoading} />
+    );
   }
 
   return (
     <JsonView
-      combinedOutput={combinedOutput}
+      combinedOutput={filteredCombinedOutput}
       handleTabChange={handleTabChange}
       selectedProfile={selectedProfile}
       llmProfiles={llmProfiles}
       activeKey={activeKey}
       adapterData={adapterData}
       isSinglePass={singlePassExtractMode}
+      isLoading={isOutputLoading}
     />
   );
 }
 
 CombinedOutput.propTypes = {
-  docId: PropTypes.string,
+  docId: PropTypes.string.isRequired,
   setFilledFields: PropTypes.func,
+  selectedPrompts: PropTypes.object.isRequired,
 };
 
 export { CombinedOutput };

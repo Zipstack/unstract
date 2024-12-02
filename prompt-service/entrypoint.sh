@@ -8,5 +8,4 @@
     --log-level debug \
     --timeout 900 \
     --access-logfile - \
-    --reload \
     unstract.prompt_service.main:app

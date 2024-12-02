@@ -13,10 +13,9 @@ from rest_framework.serializers import (
 )
 from tool_instance_v2.serializers import ToolInstanceSerializer
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
+from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.constants import WorkflowExecutionKey, WorkflowKey
-from workflow_manager.workflow_v2.exceptions import WorkflowGenerationError
-from workflow_manager.workflow_v2.generator import WorkflowGenerator
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -27,7 +26,7 @@ from backend.serializers import AuditSerializer
 logger = logging.getLogger(__name__)
 
 
-class WorkflowSerializer(AuditSerializer):
+class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
     tool_instances = ToolInstanceSerializer(many=True, read_only=True)
 
     class Meta:
@@ -38,6 +37,13 @@ class WorkflowSerializer(AuditSerializer):
                 "required": False,
             },
         }
+
+    unique_error_message_map: dict[str, dict[str, str]] = {
+        "unique_workflow_name": {
+            "field": "workflow_name",
+            "message": "A workflow with this name already exists.",
+        }
+    }
 
     def to_representation(self, instance: Workflow) -> dict[str, str]:
         representation: dict[str, str] = super().to_representation(instance)
@@ -58,33 +64,6 @@ class WorkflowSerializer(AuditSerializer):
                 RequestKey.REQUEST
             ).user
         return super().create(validated_data)
-
-    def update(self, instance: Any, validated_data: dict[str, Any]) -> Any:
-        if validated_data.get(WorkflowKey.PROMPT_TEXT):
-            instance.workflow_tool.all().delete()
-        return super().update(instance, validated_data)
-
-    def save(self, **kwargs: Any) -> Workflow:
-        workflow: Workflow = super().save(**kwargs)
-        if self.validated_data.get(WorkflowKey.PROMPT_TEXT):
-            try:
-                tool_serializer = ToolInstanceSerializer(
-                    data=WorkflowGenerator.get_tool_instance_data_from_llm(
-                        workflow=workflow
-                    ),
-                    many=True,
-                    context=self.context,
-                )
-                tool_serializer.is_valid(raise_exception=True)
-                tool_serializer.save()
-            except Exception as exc:
-                logger.error(f"Error while generating tool instances: {exc}")
-                raise WorkflowGenerationError
-
-        request = self.context.get("request")
-        if not request:
-            return workflow
-        return workflow
 
 
 class ExecuteWorkflowSerializer(Serializer):
