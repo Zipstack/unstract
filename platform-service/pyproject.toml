@@ -14,7 +14,7 @@ dependencies = [
     "cryptography>=41.0.7",
     "unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
     "requests>=2.31.0",
-    "unstract-sdk~=0.54.0rc2",
+    "unstract-sdk~=0.54.0rc1",
     "gcsfs==2024.10.0",
 ]
 requires-python = ">=3.9,<3.11.1"
