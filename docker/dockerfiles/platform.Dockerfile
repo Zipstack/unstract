@@ -17,6 +17,8 @@ RUN apt-get update; \
     # unstract sdk
     build-essential libmagic-dev; \
     \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
+    \
     pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}; \
     \
     # Creates a non-root user with an explicit UID and adds permission to access the /app folder
