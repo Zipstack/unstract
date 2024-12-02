@@ -236,11 +236,11 @@ class OutputManagerHelper:
                 result[tool_prompt.prompt_key] = ""
         return result
 
-    def get_coverage(tool_id, profile_manager_id, prompt_id=None):
+    def get_coverage(tool, profile_manager_id, prompt_id=None):
         try:
             prompt_outputs = (
                 PromptStudioOutputManager.objects.filter(
-                    tool_id=tool_id,
+                    tool_id=tool,
                     profile_manager_id=profile_manager_id,
                     **({"prompt_id": prompt_id} if prompt_id else {}),
                 )

@@ -37,7 +37,7 @@ class PromptStudioOutputSerializer(AuditSerializer):
             data["coverage"] = coverage
 
         except Exception as e:
-            logger.error(
+            logger.warning(
                 "Error occurred while fetching "
                 f"coverage for tool_id {instance.tool_id} "
                 f"and profile_manager_id {instance.profile_manager_id}: {e}"
