@@ -810,6 +810,7 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.PREAMBLE] = tool.preamble
         tool_settings[TSPKeys.POSTAMBLE] = tool.postamble
         tool_settings[TSPKeys.GRAMMAR] = grammar_list
+        tool_settings[TSPKeys.ENABLE_HIGHLIGHT] = tool.enable_highlight
         tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
             settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
         )
@@ -823,6 +824,7 @@ class PromptStudioHelper:
             TSPKeys.RUN_ID: run_id,
             TSPKeys.FILE_NAME: doc_name,
             TSPKeys.FILE_HASH: file_hash,
+            TSPKeys.FILE_PATH: doc_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
         }
 
@@ -1068,6 +1070,7 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.CHUNK_SIZE] = default_profile.chunk_size
         tool_settings[TSPKeys.CHUNK_OVERLAP] = default_profile.chunk_overlap
         tool_settings[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
+        tool_settings[TSPKeys.ENABLE_HIGHLIGHT] = tool.enable_highlight
         tool_settings[TSPKeys.CHALLENGE_LLM] = challenge_llm
 
         for prompt in prompts:

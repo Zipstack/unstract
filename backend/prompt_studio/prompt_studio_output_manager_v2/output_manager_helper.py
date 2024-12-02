@@ -155,7 +155,7 @@ class OutputManagerHelper:
                 output=output,
                 eval_metrics=eval_metrics,
                 tool=tool,
-                context=context,
+                context=json.dumps(context),
                 challenge_data=challenge_data,
             )
 

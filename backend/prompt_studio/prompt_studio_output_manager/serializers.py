@@ -1,3 +1,4 @@
+import json
 import logging
 
 from django.db.models import Count
@@ -55,4 +56,10 @@ class PromptStudioOutputSerializer(AuditSerializer):
                 f"and profile_manager_id {instance.profile_manager_id}: {e}"
             )
             data["coverage"] = {}
+        # Convert string to list
+        try:
+            data["context"] = json.loads(data["context"])
+        except json.JSONDecodeError:
+            # Convert the old value of data["context"] to a list
+            data["context"] = [data["context"]]
         return data

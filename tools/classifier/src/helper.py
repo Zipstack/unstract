@@ -67,13 +67,49 @@ class ClassifierHelper:
         """
         try:
             output_folder_bin = Path(self.output_dir) / classification
-            if not output_folder_bin.is_dir():
-                output_folder_bin.mkdir(parents=True, exist_ok=True)
+            if hasattr(self.tool, "workflow_filestorage"):
+                output_file = output_folder_bin / source_name
+                self._copy_file(
+                    source_fs=self.tool.workflow_filestorage,
+                    destination_fs=self.tool.workflow_filestorage,
+                    source_path=source_file,
+                    destination_path=str(output_file),
+                )
+            else:
+                if not output_folder_bin.is_dir():
+                    output_folder_bin.mkdir(parents=True, exist_ok=True)
 
-            output_file = output_folder_bin / source_name
-            shutil.copyfile(source_file, output_file)
+                output_file = output_folder_bin / source_name
+                shutil.copyfile(source_file, output_file)
         except Exception as e:
             self.tool.stream_error_and_exit(f"Error creating output file: {e}")
+
+    def _copy_file(
+        self,
+        source_fs: Any,
+        destination_fs: Any,
+        source_path: str,
+        destination_path: str,
+    ) -> None:
+        """Helps copy a file from source to destination.
+
+        Args:
+            src (str): Path to the source file
+            dest (str): Path to the destination file
+        """
+        try:
+            # TODO: Move it to the top once SDK released with fileStorage Feature
+            # Change the source fs and destination fs type to to FileStorage
+            from unstract.sdk.utils import FileStorageUtils
+
+            FileStorageUtils.copy_file_to_destination(
+                source_storage=source_fs,
+                destination_storage=destination_fs,
+                source_path=source_path,
+                destination_paths=[destination_path],
+            )
+        except Exception as e:
+            self.stream_error_and_exit(f"Error copying file: {e}")
 
     def extract_text(
         self, file: str, text_extraction_adapter_id: Optional[str]
@@ -127,8 +163,13 @@ class ClassifierHelper:
         """
         self.tool.stream_log("Extracting text from file")
         try:
-            with open(file, "rb") as f:
-                text = f.read().decode("utf-8")
+            if hasattr(self.tool, "workflow_filestorage"):
+                text = self.tool.workflow_filestorage.read(path=file, mode="rb").decode(
+                    "utf-8"
+                )
+            else:
+                with open(file, "rb") as f:
+                    text = f.read().decode("utf-8")
         except Exception as e:
             self.tool.stream_log(f"File error: {e}")
             return None

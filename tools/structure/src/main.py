@@ -1,8 +1,9 @@
 import json
+import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Optional
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
 from unstract.sdk.constants import LogLevel, LogState, MetadataKey
@@ -12,6 +13,9 @@ from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
 from unstract.sdk.utils import ToolUtils
 from unstract.sdk.utils.common_utils import CommonUtils
+from utils import json_to_markdown
+
+logger = logging.getLogger(__name__)
 
 PAID_FEATURE_MSG = (
     "It is a cloud / enterprise feature. If you have purchased a plan and still "
@@ -41,24 +45,39 @@ class StructureTool(BaseTool):
             SettingsKeys.SINGLE_PASS_EXTRACTION_MODE, False
         )
         challenge_llm: str = settings.get(SettingsKeys.CHALLENGE_LLM_ADAPTER_ID, "")
+        enable_highlight: bool = settings.get(SettingsKeys.ENABLE_HIGHLIGHT, False)
+        source_file_name = self.get_exec_metadata.get(MetadataKey.SOURCE_NAME)
         responder: PromptTool = PromptTool(
             tool=self,
             prompt_port=self.get_env_or_die(SettingsKeys.PROMPT_PORT),
             prompt_host=self.get_env_or_die(SettingsKeys.PROMPT_HOST),
         )
-        self.stream_log(f"Fetching metadata for tool {prompt_registry_id}")
+        self.stream_log(
+            f"Fetching prompt studio exported tool with UUID '{prompt_registry_id}'"
+        )
         try:
             exported_tool = responder.get_exported_tool(
                 tool=self, prompt_registry_id=prompt_registry_id
             )
             tool_metadata = exported_tool[SettingsKeys.TOOL_METADATA]
-            self.stream_log(f"Tool metadata retrieved successfully: {tool_metadata}")
+            ps_project_name = tool_metadata.get("name", prompt_registry_id)
+            total_prompt_count = len(tool_metadata[SettingsKeys.OUTPUTS])
+            tool.stream_log(
+                f"Retrieved prompt studio exported tool '{ps_project_name}' having "
+                f"'{total_prompt_count}' prompts"
+            )
         except Exception as e:
             self.stream_error_and_exit(f"Error loading structure definition: {e}")
 
         # Update GUI
-        input_log = f"### Structure Definition:\n```json\n{tool_metadata}\n```\n\n"
-        output_log = "### Indexing..."
+        input_log = (
+            f"## Loaded '{ps_project_name}'\n{json_to_markdown(tool_metadata)}\n"
+        )
+        output_log = (
+            f"## Processing '{source_file_name}'\nThis might take a while and involve"
+            "...\n- Extracting text\n- Indexing\n- Retrieving answers "
+            f"for possibly '{total_prompt_count}' prompts"
+        )
         self.stream_update(input_log, state=LogState.INPUT_UPDATE)
         self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
 
@@ -67,13 +86,13 @@ class StructureTool(BaseTool):
         tool_id = tool_metadata[SettingsKeys.TOOL_ID]
         tool_settings = tool_metadata[SettingsKeys.TOOL_SETTINGS]
         outputs = tool_metadata[SettingsKeys.OUTPUTS]
-        enable_highlight: bool = tool_settings.get(SettingsKeys.ENABLE_HIGHLIGHT, False)
         tool_settings[SettingsKeys.CHALLENGE_LLM] = challenge_llm
         tool_settings[SettingsKeys.ENABLE_CHALLENGE] = enable_challenge
         tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION] = (
             single_pass_extraction_mode
         )
         tool_settings[SettingsKeys.SUMMARIZE_AS_SOURCE] = summarize_as_source
+        tool_settings[SettingsKeys.ENABLE_HIGHLIGHT] = enable_highlight
         prompt_service_resp = None
         _, file_name = os.path.split(input_file)
         if summarize_as_source:
@@ -83,6 +102,7 @@ class StructureTool(BaseTool):
             self.get_env_or_die(SettingsKeys.EXECUTION_RUN_DATA_FOLDER)
         )
         run_id = CommonUtils.generate_uuid()
+        extracted_input_file = str(execution_run_data_folder / SettingsKeys.EXTRACT)
         # TODO : Resolve and pass log events ID
         payload = {
             SettingsKeys.RUN_ID: run_id,
@@ -91,16 +111,16 @@ class StructureTool(BaseTool):
             SettingsKeys.TOOL_ID: tool_id,
             SettingsKeys.FILE_HASH: file_hash,
             SettingsKeys.FILE_NAME: file_name,
+            SettingsKeys.FILE_PATH: extracted_input_file,
         }
         # TODO: Need to split extraction and indexing
         # to avoid unwanted indexing
-        source_file_name = self.get_exec_metadata.get(MetadataKey.SOURCE_NAME)
         self.stream_log(f"Indexing document '{source_file_name}'")
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[SettingsKeys.RUN_ID] = run_id
         usage_kwargs[SettingsKeys.FILE_NAME] = source_file_name
 
-        process_text = None
+        process_text: Optional[Callable[[str], str]] = None
         try:
             from helper import process_text  # type: ignore [attr-defined]
         except ImportError:
@@ -108,7 +128,7 @@ class StructureTool(BaseTool):
                 f"Function to higlight context is not found. {PAID_FEATURE_MSG}",
                 level=LogLevel.WARN,
             )
-
+        workflow_filestorage = getattr(self, "workflow_filestorage", None)
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             index.index(
                 tool_id=tool_id,
@@ -122,8 +142,12 @@ class StructureTool(BaseTool):
                 output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
                 reindex=True,
                 usage_kwargs=usage_kwargs,
-                enable_highlight=enable_highlight,
                 process_text=process_text,
+                **(
+                    {"fs": workflow_filestorage}
+                    if workflow_filestorage is not None
+                    else {}
+                ),
             )
             if summarize_as_source:
                 summarize_file_hash = self._summarize_and_index(
@@ -134,7 +158,6 @@ class StructureTool(BaseTool):
                     outputs=outputs,
                     index=index,
                     usage_kwargs=usage_kwargs,
-                    enable_highlight=enable_highlight,
                 )
                 payload[SettingsKeys.FILE_HASH] = summarize_file_hash
             self.stream_log("Fetching response for single pass extraction")
@@ -160,7 +183,6 @@ class StructureTool(BaseTool):
                             output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
                             reindex=reindex,
                             usage_kwargs=usage_kwargs,
-                            enable_highlight=enable_highlight,
                             process_text=process_text,
                         )
 
@@ -186,17 +208,10 @@ class StructureTool(BaseTool):
 
             # TODO : Make this snippet pluggable and introduce pluggablity for tools.
             for output in outputs:
-                try:
+                if SettingsKeys.TABLE_SETTINGS in output:
                     table_settings = output[SettingsKeys.TABLE_SETTINGS]
-                    extracted_input_file = (
-                        execution_run_data_folder / SettingsKeys.EXTRACT
-                    )
-                    table_settings[SettingsKeys.INPUT_FILE] = str(extracted_input_file)
+                    table_settings[SettingsKeys.INPUT_FILE] = extracted_input_file
                     output.update({SettingsKeys.TABLE_SETTINGS: table_settings})
-
-                except KeyError:
-                    # To check if the prompt has table enforce type selected.
-                    pass
 
             self.stream_log(f"Fetching responses for {len(outputs)} prompt(s)...")
             prompt_service_resp = responder.answer_prompt(
@@ -213,18 +228,27 @@ class StructureTool(BaseTool):
         structured_output = prompt_service_resp[SettingsKeys.STRUCTURE_OUTPUT]
         structured_output_dict = json.loads(structured_output)
 
+        # HACK: Replacing actual file's name instead of INFILE
+        if SettingsKeys.METADATA in structured_output_dict:
+            structured_output_dict[SettingsKeys.METADATA][
+                SettingsKeys.FILE_NAME
+            ] = source_file_name
+
         if not summarize_as_source:
             metadata = structured_output_dict[SettingsKeys.METADATA]
             epilogue = metadata.pop(SettingsKeys.EPILOGUE, None)
             if epilogue:
                 try:
-                    from helper import transform_dict  # type: ignore [attr-defined]
+                    from helper import (  # type: ignore [attr-defined]
+                        get_confidence_data,
+                    )
 
-                    highlight_data = transform_dict(epilogue, tool_data_dir)
-                    metadata[SettingsKeys.HIGHLIGHT_DATA] = highlight_data
+                    metadata[SettingsKeys.CONFIDENCE_DATA] = get_confidence_data(
+                        epilogue, tool_data_dir
+                    )
                 except ImportError:
                     self.stream_log(
-                        f"Highlight metadata is not added. {PAID_FEATURE_MSG}",
+                        f"Confidence data is not added. {PAID_FEATURE_MSG}",
                         level=LogLevel.WARN,
                     )
             # Update the dictionary with modified metadata
@@ -232,12 +256,11 @@ class StructureTool(BaseTool):
             structured_output = json.dumps(structured_output_dict)
 
         # Update GUI
-        input_log = (
-            f"### Structure Definition:\n"
-            f"```json\n{json.dumps(tool_metadata, indent=2)}\n```\n\n"
+        output_log = (
+            f"## Result\n**NOTE:** In case of a deployed pipeline, the result would "
+            "be a JSON. This has been rendered for readability here\n"
+            f"{json_to_markdown(structured_output_dict)}\n"
         )
-        output_log = f"### Parsed output:\n```json\n{structured_output}\n```\n\n"
-        self.stream_update(input_log, state=LogState.INPUT_UPDATE)
         self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
 
         # Write the translated text to output file
@@ -262,7 +285,6 @@ class StructureTool(BaseTool):
         outputs: dict[str, Any],
         index: Index,
         usage_kwargs: dict[Any, Any] = {},
-        enable_highlight: bool = False,
     ) -> str:
         """Summarizes the context of the file and indexes the summarized
         content.
@@ -288,13 +310,23 @@ class StructureTool(BaseTool):
         summarize_file_path = tool_data_dir / SettingsKeys.SUMMARIZE
 
         summarized_context = ""
-        if summarize_file_path.exists():
+        if hasattr(self, "workflow_filestorage"):
+            if self.workflow_filestorage.exists(summarize_file_path):
+                summarized_context = self.workflow_filestorage.read(
+                    path=summarize_file_path, mode="r"
+                )
+        elif summarize_file_path.exists():
             with open(summarize_file_path, encoding="utf-8") as f:
                 summarized_context = f.read()
         if not summarized_context:
             context = ""
-            with open(extract_file_path, encoding="utf-8") as file:
-                context = file.read()
+            if hasattr(self, "workflow_filestorage"):
+                context = self.workflow_filestorage.read(
+                    path=extract_file_path, mode="r"
+                )
+            else:
+                with open(extract_file_path, encoding="utf-8") as file:
+                    context = file.read()
             prompt_keys = []
             for output in outputs:
                 prompt_keys.append(output[SettingsKeys.NAME])
@@ -326,6 +358,7 @@ class StructureTool(BaseTool):
         summarize_file_hash: str = ToolUtils.get_hash_from_file(
             file_path=summarize_file_path
         )
+        workflow_filestorage = getattr(self, "workflow_filestorage", None)
         index.index(
             tool_id=tool_id,
             embedding_instance_id=embedding_instance_id,
@@ -336,7 +369,9 @@ class StructureTool(BaseTool):
             chunk_size=0,
             chunk_overlap=0,
             usage_kwargs=usage_kwargs,
-            enable_highlight=enable_highlight,
+            **(
+                {"fs": workflow_filestorage} if workflow_filestorage is not None else {}
+            ),
         )
         return summarize_file_hash
 

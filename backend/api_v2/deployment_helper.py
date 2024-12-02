@@ -173,9 +173,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id
             )
-            if include_metadata:
-                result.remove_result_metadata_keys(keys_to_remove=["highlight_data"])
-            else:
+            if not include_metadata:
                 result.remove_result_metadata_keys()
         except Exception as error:
             DestinationConnector.delete_api_storage_dir(

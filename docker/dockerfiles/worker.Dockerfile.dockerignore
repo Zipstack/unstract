@@ -60,5 +60,6 @@ prompt-service
 tools
 unstract
 !unstract/core
+!unstract/flags
 !worker
 x2text-service

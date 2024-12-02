@@ -62,12 +62,15 @@ class PromptServiceContants:
     TABLE_SETTINGS = "table_settings"
     EPILOGUE = "epilogue"
     PLATFORM_POSTAMBLE = "platform_postamble"
-    EXTRACT_EPILOGUE = "extract-epilogue"
+    HIGHLIGHT_DATA_PLUGIN = "highlight-data"
     CLEAN_CONTEXT = "clean-context"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
     VARIABLE_MAP = "variable_map"
     RECORD = "record"
     TEXT = "text"
+    ENABLE_HIGHLIGHT = "enable_highlight"
+    FILE_PATH = "file_path"
+    HIGHLIGHT_DATA = "highlight_data"
 
 
 class RunLevel(Enum):

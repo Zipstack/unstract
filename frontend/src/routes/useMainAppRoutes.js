@@ -20,7 +20,6 @@ import { CustomToolsHelper } from "../components/helpers/custom-tools/CustomTool
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
-import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
 
 let RequirePlatformAdmin;
 let PlatformAdminPage;
@@ -28,6 +27,11 @@ let AppDeployments;
 let ChatAppPage;
 let ChatAppLayout;
 let ManualReviewSettings;
+let OnboardProduct;
+let PRODUCT_NAMES = {};
+let ManualReviewPage;
+let SimpleManualReviewPage;
+let ReviewLayout;
 
 try {
   RequirePlatformAdmin =
@@ -56,9 +60,28 @@ try {
   // Do nothing, Not-found Page will be triggered.
 }
 
+try {
+  OnboardProduct =
+    require("../plugins/llm-whisperer/components/onboard-product/OnboardProduct.jsx").OnboardProduct;
+  PRODUCT_NAMES = require("../plugins/llm-whisperer/helper.js").PRODUCT_NAMES;
+} catch (err) {
+  // Do nothing.
+}
+
+try {
+  ManualReviewPage =
+    require("../plugins/manual-review/page/ManualReviewPage.jsx").ManualReviewPage;
+  ReviewLayout =
+    require("../plugins/manual-review/review-layout/ReviewLayout.jsx").ReviewLayout;
+  SimpleManualReviewPage =
+    require("../plugins/manual-review/page/simple/SimpleManualReviewPage.jsx").SimpleManualReviewPage;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+
 function useMainAppRoutes() {
-  return (
-    <Route path="" element={<RequireAuth />}>
+  const routes = (
+    <>
       <Route path=":orgName" element={<FullPageLayout />}>
         <Route path="onboard" element={<OnBoardPage />} />
       </Route>
@@ -130,8 +153,45 @@ function useMainAppRoutes() {
           </Route>
         )}
       </Route>
-    </Route>
+      {ReviewLayout && ManualReviewPage && (
+        <Route path=":orgName" element={<ReviewLayout />}>
+          <Route
+            path="review"
+            element={<ManualReviewPage type="review" />}
+          ></Route>
+          <Route
+            path="simple_review/review"
+            element={<SimpleManualReviewPage type="simple_review" />}
+          ></Route>
+          <Route
+            path="simple_review/approve"
+            element={<SimpleManualReviewPage type="simple_approve" />}
+          ></Route>
+          <Route
+            path="review/download_and_sync"
+            element={<ManualReviewPage type="download" />}
+          />
+          <Route
+            path="review/approve"
+            element={<ManualReviewPage type="approve" />}
+          />
+        </Route>
+      )}
+    </>
   );
+
+  if (OnboardProduct && Object.keys(PRODUCT_NAMES)?.length) {
+    return (
+      <Route
+        path=""
+        element={<OnboardProduct type={PRODUCT_NAMES?.unstract} />}
+      >
+        {routes}
+      </Route>
+    );
+  } else {
+    return routes;
+  }
 }
 
 export { useMainAppRoutes };

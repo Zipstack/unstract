@@ -26,7 +26,7 @@ class Env:
     APPLICATION_NAME = EnvManager.get_required_setting(
         "APPLICATION_NAME", "unstract-platform-service"
     )
-    DB_SCHEMA = EnvManager.get_required_setting("DB_SCHEMA", "unstract_v2")
+    DB_SCHEMA = EnvManager.get_required_setting("DB_SCHEMA")
     LOG_LEVEL = EnvManager.get_required_setting("LOG_LEVEL", LogLevel.INFO)
 
 
