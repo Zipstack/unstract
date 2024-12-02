@@ -42,15 +42,12 @@ class CostCalculationHelper:
                 # across services
                 file_storage = json.loads(os.environ.get("FILE_STORAGE_CREDENTIALS"))
                 provider = FileStorageProvider(file_storage["provider"])
-                if "credentials" in file_storage:
-                    credentials = file_storage["credentials"]
-                else:
-                    credentials = {}
+                credentials = file_storage.get("credentials", {})
                 file_path = file_storage["model_prices_file_path"]
                 return PermanentFileStorage(provider, **credentials), file_path
             except KeyError as e:
                 app.logger.error(
-                    f"Required credentials is " f"missing in the env: {str(e)}"
+                    f"Required credentials is missing in the env: {str(e)}"
                 )
                 raise e
             except FileStorageError as e:

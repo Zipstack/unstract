@@ -26,8 +26,12 @@ logger = logging.getLogger(__name__)
 
 class ToolRegistry:
     REGISTRY_FILE = "registry.yaml"
-    PRIVATE_TOOL_CONFIG_FILE = "private_tools.json"
-    PUBLIC_TOOL_CONFIG_FILE = "public_tools.json"
+    if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+        PRIVATE_TOOL_CONFIG_FILE = "private_tools_remote_storage.json"
+        PUBLIC_TOOL_CONFIG_FILE = "public_tools_remote_storage.json"
+    else:
+        PRIVATE_TOOL_CONFIG_FILE = "private_tools.json"
+        PUBLIC_TOOL_CONFIG_FILE = "public_tools.json"
 
     def __init__(
         self,
@@ -80,15 +84,10 @@ class ToolRegistry:
                     os.environ.get("TOOL_REGISTRY_STORAGE_CREDENTIALS", {})
                 )
                 provider = FileStorageProvider(file_storage["provider"])
-                if "credentials" in file_storage:
-                    credentials = file_storage["credentials"]
-                else:
-                    credentials = dict()
+                credentials = file_storage.get("credentials", {})
                 return PermanentFileStorage(provider, **credentials)
             except KeyError as e:
-                logger.error(
-                    f"Required credentials is missing" f" in the env: {str(e)}"
-                )
+                logger.error(f"Required credentials is missing in the env: {str(e)}")
                 raise e
             except FileStorageError as e:
                 logger.error(
