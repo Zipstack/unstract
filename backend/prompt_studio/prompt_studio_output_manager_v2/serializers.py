@@ -22,7 +22,7 @@ class PromptStudioOutputSerializer(AuditSerializer):
         try:
             token_usage = UsageHelper.get_aggregated_token_count(instance.run_id)
         except Exception as e:
-            logger.error(
+            logger.warning(
                 "Error occured while fetching token usage for run_id"
                 f"{instance.run_id}: {e}"
             )
