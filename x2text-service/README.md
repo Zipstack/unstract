@@ -54,14 +54,14 @@ OK
 ```
 
 ## Migration for x2text_audit Table to New Schema
-*(Applicable for users migrating from [v0.93.0](https://github.com/Zipstack/unstract/releases/tag/v0.93.0) onward. Not required for fresh installations.)*
+*(Applicable for users upgrading from versions before [v0.93.0](https://github.com/Zipstack/unstract/releases/tag/v0.93.0) to [v0.93.0](https://github.com/Zipstack/unstract/releases/tag/v0.93.0) or higher. This migration is not required for fresh installations or users already on v0.93.0 or a later version.)*
 
 ### Migration Description
 This migration transfers data from the `public.x2text_audit_old` table to the `<db_schema>.x2text_audit` table. It ensures the new table and schema exist before inserting the data. The ON CONFLICT DO NOTHING clause prevents duplicate records during the migration.
 
 - **Step 1: Update .env Configuration**: Ensure the `.env` file is updated with the correct value for `DB_SCHEMA`, as specified in `sample.env`. The value should match the `.env` configuration used in the `backend service`.
 - **Step 2: Run the x2-Text Service**: Start the `x2-text service`. This step will automatically create the `x2text_audit` table in the schema defined by `DB_SCHEMA`.
-- **Step 3: Execute the SQL Migration Query** (Or Step 4): Run the following query in your database to migrate data from the old table to the new schema:
+- **Step 3: Execute the SQL Migration Query** *(Or Step 4)*: Run the following query in your database to migrate data from the old table to the new schema:
 
 ```sql
 INSERT INTO <DB_SCHEMA>.x2text_audit (id, created_at, org_id, file_name, file_type, file_size_in_kb, status)
