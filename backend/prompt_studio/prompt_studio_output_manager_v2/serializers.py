@@ -1,6 +1,5 @@
 import logging
 
-from django.db.models import Count
 from usage_v2.helper import UsageHelper
 
 from backend.serializers import AuditSerializer
@@ -16,6 +15,8 @@ class PromptStudioOutputSerializer(AuditSerializer):
         fields = "__all__"
 
     def to_representation(self, instance):
+        from .output_manager_helper import OutputManagerHelper
+
         data = super().to_representation(instance)
         try:
             token_usage = UsageHelper.get_aggregated_token_count(instance.run_id)
@@ -29,25 +30,11 @@ class PromptStudioOutputSerializer(AuditSerializer):
         # Get the coverage for the current tool_id and profile_manager_id
         try:
             # Fetch all relevant outputs for the current tool and profile
-            prompt_outputs = (
-                PromptStudioOutputManager.objects.filter(
-                    tool_id=instance.tool_id,
-                    profile_manager_id=instance.profile_manager_id,
-                    prompt_id=instance.prompt_id,
-                )
-                .values("prompt_id", "profile_manager_id")
-                .annotate(document_count=Count("document_manager_id"))
+            coverage = OutputManagerHelper.get_coverage(
+                instance.tool_id, instance.profile_manager_id, instance.prompt_id
             )
-
-            coverage = {}
-            for prompt_output in prompt_outputs:
-                prompt_key = str(prompt_output["prompt_id"])
-                profile_key = str(prompt_output["profile_manager_id"])
-                coverage[f"coverage_{prompt_key}_{profile_key}"] = prompt_output[
-                    "document_count"
-                ]
-
             data["coverage"] = coverage
+
         except Exception as e:
             logger.error(
                 "Error occurred while fetching "

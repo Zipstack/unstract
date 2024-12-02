@@ -3,6 +3,7 @@ import logging
 from typing import Any, Optional
 
 from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import Count
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.exceptions import (
     AnswerFetchError,
@@ -234,3 +235,27 @@ class OutputManagerHelper:
             except ObjectDoesNotExist:
                 result[tool_prompt.prompt_key] = ""
         return result
+
+    def get_coverage(tool_id, profile_manager_id, prompt_id=None):
+        try:
+            prompt_outputs = (
+                PromptStudioOutputManager.objects.filter(
+                    tool_id=tool_id,
+                    profile_manager_id=profile_manager_id,
+                    **({"prompt_id": prompt_id} if prompt_id else {}),
+                )
+                .values("prompt_id", "profile_manager_id")
+                .annotate(document_count=Count("document_manager_id"))
+            )
+
+            coverage = {}
+            for prompt_output in prompt_outputs:
+                prompt_key = str(prompt_output["prompt_id"])
+                profile_key = str(prompt_output["profile_manager_id"])
+                coverage[f"coverage_{prompt_key}_{profile_key}"] = prompt_output[
+                    "document_count"
+                ]
+            return coverage
+        except Exception as e:
+            logger.error(f"Error occurred while fetching coverage: {e}")
+        return {}
