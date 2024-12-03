@@ -6,6 +6,7 @@ from usage_v2.helper import UsageHelper
 from backend.serializers import AuditSerializer
 
 from .models import PromptStudioOutputManager
+from .output_manager_util import OutputManagerUtils
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,6 @@ class PromptStudioOutputSerializer(AuditSerializer):
         fields = "__all__"
 
     def to_representation(self, instance):
-        from .output_manager_helper import OutputManagerHelper
 
         data = super().to_representation(instance)
         try:
@@ -32,7 +32,7 @@ class PromptStudioOutputSerializer(AuditSerializer):
         # Get the coverage for the current tool_id and profile_manager_id
         try:
             # Fetch all relevant outputs for the current tool and profile
-            coverage = OutputManagerHelper.get_coverage(
+            coverage = OutputManagerUtils.get_coverage(
                 instance.tool_id, instance.profile_manager_id, instance.prompt_id
             )
             data["coverage"] = coverage

@@ -8,8 +8,8 @@ from file_management.constants import FileInformationKey
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.constants import ToolStudioKeys as TSKeys
 from prompt_studio.prompt_studio_core_v2.exceptions import DefaultProfileError
-from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import (
-    OutputManagerHelper,
+from prompt_studio.prompt_studio_output_manager_v2.output_manager_util import (
+    OutputManagerUtils,
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
@@ -71,7 +71,7 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             if prompt_instance.count() != 0:
                 for prompt in prompt_instance:
                     prompt_serializer = ToolStudioPromptSerializer(prompt)
-                    coverage = OutputManagerHelper.get_coverage(
+                    coverage = OutputManagerUtils.get_coverage(
                         data.get(TSKeys.TOOL_ID),
                         profile_manager.profile_id,
                         prompt.prompt_id,
