@@ -192,10 +192,10 @@ function ConfigureConnectorModal({
               <ManageFiles selectedItem={connectorId} />
             )}
             {activeKey === "MANUALREVIEW" && (
-              <DBRules
+              {DBRules &&<DBRules
                 connDetails={connDetails}
                 workflowDetails={workflowDetails}
-              />
+              />}
             )}
           </Col>
         </Row>
