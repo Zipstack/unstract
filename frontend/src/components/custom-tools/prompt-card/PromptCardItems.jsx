@@ -79,7 +79,7 @@ function PromptCardItems({
   const [enforceType, setEnforceType] = useState("");
   const coverageKey = generateCoverageKey(
     promptDetails?.prompt_id,
-    promptDetails.profile_manager || defaultLlmProfile
+    selectedLlmProfileId || defaultLlmProfile
   );
 
   useEffect(() => {
