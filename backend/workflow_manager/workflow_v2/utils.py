@@ -61,7 +61,7 @@ class WorkflowUtil:
         return file_hash
 
     @staticmethod
-    def db_rule_check(
+    def validate_db_rule(
         result: Optional[Any],
         workflow_id: Workflow,
         file_destination: Optional[tuple[str, str]],

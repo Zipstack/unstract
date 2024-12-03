@@ -178,7 +178,9 @@ class DestinationConnector(BaseConnector):
             self.copy_output_to_output_directory()
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
             result = self.get_result(file_history)
-            if WorkflowUtil.db_rule_check(result, workflow, file_hash.file_destination):
+            if WorkflowUtil.validate_db_rule(
+                result, workflow, file_hash.file_destination
+            ):
                 self._push_data_to_queue(file_name, workflow, input_file_path)
             else:
                 self.insert_into_db(input_file_path=input_file_path)
