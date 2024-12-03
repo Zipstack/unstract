@@ -52,6 +52,7 @@ function PromptCardItems({
   promptOutputs,
   promptRunStatus,
   coverageCountData,
+  isChallenge,
 }) {
   const {
     llmProfiles,
@@ -263,6 +264,7 @@ function PromptCardItems({
               enforceType={enforceType}
               promptOutputs={promptOutputs}
               promptRunStatus={promptRunStatus}
+              isChallenge={isChallenge}
             />
           </Row>
         </Collapse.Panel>
@@ -299,6 +301,7 @@ PromptCardItems.propTypes = {
   promptOutputs: PropTypes.object.isRequired,
   promptRunStatus: PropTypes.object.isRequired,
   coverageCountData: PropTypes.object.isRequired,
+  isChallenge: PropTypes.bool.isRequired,
 };
 
 export { PromptCardItems };

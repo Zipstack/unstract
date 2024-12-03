@@ -13,7 +13,6 @@ import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
 import { handleUpdateStatus } from "./constants";
-// import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
 
 const PromptCard = memo(
   ({
@@ -27,6 +26,7 @@ const PromptCard = memo(
     handlePromptRunRequest,
     promptRunStatus,
     coverageCountData,
+    isChallenge,
   }) => {
     const [promptDetailsState, setPromptDetailsState] = useState({});
     const [isPromptDetailsStateUpdated, setIsPromptDetailsStateUpdated] =
@@ -260,6 +260,7 @@ const PromptCard = memo(
           promptOutputs={promptOutputs}
           promptRunStatus={promptRunStatus}
           coverageCountData={coverageCountData}
+          isChallenge={isChallenge}
         />
         <OutputForDocModal
           open={openOutputForDoc}
@@ -286,6 +287,7 @@ PromptCard.propTypes = {
   handlePromptRunRequest: PropTypes.func.isRequired,
   promptRunStatus: PropTypes.object.isRequired,
   coverageCountData: PropTypes.object.isRequired,
+  isChallenge: PropTypes.bool.isRequired,
 };
 
 export { PromptCard };
