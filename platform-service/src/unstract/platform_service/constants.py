@@ -1,20 +1,24 @@
 class FeatureFlag:
     """Temporary feature flags."""
 
-    MULTI_TENANCY_V2 = "multi_tenancy_v2"
+    # For enabling remote storage feature
+    REMOTE_FILE_STORAGE = "remote_file_storage"
 
 
 class DBTable:
     """Database tables."""
 
+    ORGANIZATION = "organization"
+    ADAPTER_INSTANCE = "adapter_instance"
+    PROMPT_STUDIO_REGISTRY = "prompt_studio_registry"
+    PLATFORM_KEY = "platform_key"
+    TOKEN_USAGE = "usage"
     PAGE_USAGE = "page_usage"
 
 
-class DBTableV2:
-    """Database tables."""
-
-    ORGANIZATION = "organization_v2"
-    ADAPTER_INSTANCE = "adapter_instance_v2"
-    PROMPT_STUDIO_REGISTRY = "prompt_studio_registry_v2"
-    PLATFORM_KEY = "platform_key_v2"
-    TOKEN_USAGE = "token_usage_v2"
+class LogLevel:
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"

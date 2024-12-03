@@ -32,8 +32,8 @@ function TokenUsage({ tokenUsageId, isLoading }) {
 }
 
 TokenUsage.propTypes = {
-  tokenUsageId: PropTypes.string.isRequired,
-  isLoading: PropTypes.bool.isRequired,
+  tokenUsageId: PropTypes.string,
+  isLoading: PropTypes.bool,
 };
 
 export { TokenUsage };

@@ -89,7 +89,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         Returns:
         - str: The complete API endpoint URL.
         """
-        org_schema = connection.get_tenant().schema_name
+        org_schema = connection.tenant.schema_name
         return f"{ApiExecution.PATH}/{org_schema}/{api_name}/"
 
     @staticmethod
@@ -148,6 +148,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         file_objs: list[UploadedFile],
         timeout: int,
         include_metadata: bool = False,
+        use_file_history: bool = False,
     ) -> ReturnDict:
         """Execute workflow by api.
 
@@ -155,6 +156,8 @@ class DeploymentHelper(BaseAPIKeyValidator):
             organization_name (str): organization name
             api (APIDeployment): api model object
             file_obj (UploadedFile): input file
+            use_file_history (bool): Use FileHistory table to return results on already
+                processed files. Defaults to False
 
         Returns:
             ReturnDict: execution status/ result
@@ -167,6 +170,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             workflow_id=workflow_id,
             execution_id=execution_id,
             file_objs=file_objs,
+            use_file_history=use_file_history,
         )
         try:
             result = WorkflowHelper.execute_workflow_async(
@@ -176,6 +180,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 timeout=timeout,
                 execution_id=execution_id,
                 queue=CeleryQueue.CELERY_API_DEPLOYMENTS,
+                use_file_history=use_file_history,
             )
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id

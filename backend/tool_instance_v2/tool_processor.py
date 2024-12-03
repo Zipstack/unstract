@@ -7,7 +7,7 @@ from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper impor
     PromptStudioRegistryHelper,
 )
 from tool_instance_v2.exceptions import ToolDoesNotExist
-from unstract.adapters.enums import AdapterTypes
+from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_registry import ToolRegistry
 from unstract.tool_registry.tool_utils import ToolUtils
@@ -127,11 +127,4 @@ class ToolProcessor:
         )
         tool_list: list[dict[str, Any]] = tool_registry.fetch_tools_descriptions()
         tool_list = tool_list + prompt_studio_tools
-        return tool_list
-
-    @staticmethod
-    def get_registry_tools() -> list[Tool]:
-        """Function to get a list of tools."""
-        tool_registry = ToolRegistry()
-        tool_list: list[Tool] = tool_registry.fetch_all_tools()
         return tool_list

@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 import magic
+from connector_v2.models import ConnectorInstance
+from deprecated import deprecated
 from django.conf import settings
 from django.http import StreamingHttpResponse
 from file_management.exceptions import (
@@ -23,15 +25,8 @@ from file_management.file_management_dto import FileInformation
 from fsspec import AbstractFileSystem
 from pydrive2.files import ApiRequestError
 
-from backend.constants import FeatureFlag
 from unstract.connectors.filesystems import connectors as fs_connectors
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-    from connector_v2.models import ConnectorInstance
-else:
-    from connector.models import ConnectorInstance
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +142,7 @@ class FileManagerHelper:
             remote_file.write(file.read())
 
     @staticmethod
+    @deprecated(reason="Use remote FS APIs from SDK")
     def fetch_file_contents(file_system: UnstractFileSystem, file_path: str) -> Any:
         fs = file_system.get_fsspec_fs()
         try:

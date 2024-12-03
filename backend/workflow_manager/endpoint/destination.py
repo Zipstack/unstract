@@ -3,7 +3,7 @@ import base64
 import json
 import logging
 import os
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import fsspec
 import magic
@@ -35,6 +35,9 @@ from workflow_manager.workflow.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow.models.file_history import FileHistory
 from workflow_manager.workflow.models.workflow import Workflow
+
+from backend.exceptions import UnstractFSException
+from unstract.connectors.exceptions import ConnectorError
 
 logger = logging.getLogger(__name__)
 
@@ -152,20 +155,24 @@ class DestinationConnector(BaseConnector):
         file_name: str,
         file_hash: FileHash,
         workflow: Workflow,
+        input_file_path: str,
         error: Optional[str] = None,
-        input_file_path: Optional[str] = None,
+        use_file_history: bool = True,
     ) -> None:
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
         result: Optional[str] = None
-        meta_data: Optional[str] = None
+        metadata: Optional[str] = None
         if error:
             if connection_type == WorkflowEndpoint.ConnectionType.API:
                 self._handle_api_result(file_name=file_name, error=error, result=result)
             return
-        file_history = FileHistoryHelper.get_file_history(
-            workflow=workflow, cache_key=file_hash.file_hash
-        )
+
+        file_history = None
+        if use_file_history:
+            file_history = FileHistoryHelper.get_file_history(
+                workflow=workflow, cache_key=file_hash.file_hash
+            )
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
@@ -178,9 +185,9 @@ class DestinationConnector(BaseConnector):
                 self.insert_into_db(input_file_path=input_file_path)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
-            meta_data = self.get_metadata(file_history)
+            exec_metadata = self.get_metadata(file_history)
             self._handle_api_result(
-                file_name=file_name, error=error, result=result, meta_data=meta_data
+                file_name=file_name, error=error, result=result, metadata=exec_metadata
             )
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
             self._push_data_to_queue(file_name, workflow, input_file_path)
@@ -188,13 +195,14 @@ class DestinationConnector(BaseConnector):
             self.execution_service.publish_log(
                 message=f"File '{file_name}' processed successfully"
             )
-        if not file_history:
+
+        if use_file_history and not file_history:
             FileHistoryHelper.create_file_history(
                 cache_key=file_hash.file_hash,
                 workflow=workflow,
                 status=ExecutionStatus.COMPLETED,
                 result=result,
-                metadata=meta_data,
+                metadata=metadata,
                 file_name=file_name,
             )
 
@@ -218,31 +226,33 @@ class DestinationConnector(BaseConnector):
         destination_volume_path = os.path.join(
             self.execution_dir, ToolExecKey.OUTPUT_DIR
         )
-        destination_fs.create_dir_if_not_exists(input_dir=output_directory)
-        destination_fsspec = destination_fs.get_fsspec_fs()
 
-        # Traverse local directory and create the same structure in the
-        # output_directory
-        for root, dirs, files in os.walk(destination_volume_path):
-            for dir_name in dirs:
-                destination_fsspec.mkdir(
-                    os.path.join(
+        try:
+            destination_fs.create_dir_if_not_exists(input_dir=output_directory)
+
+            # Traverse local directory and create the same structure in the
+            # output_directory
+            for root, dirs, files in os.walk(destination_volume_path):
+                for dir_name in dirs:
+                    current_dir = os.path.join(
                         output_directory,
                         os.path.relpath(root, destination_volume_path),
                         dir_name,
                     )
-                )
+                    destination_fs.create_dir_if_not_exists(input_dir=current_dir)
 
-            for file_name in files:
-                source_path = os.path.join(root, file_name)
-                destination_path = os.path.join(
-                    output_directory,
-                    os.path.relpath(root, destination_volume_path),
-                    file_name,
-                )
-                normalized_path = os.path.normpath(destination_path)
-                with open(source_path, "rb") as source_file:
-                    destination_fsspec.write_bytes(normalized_path, source_file.read())
+                for file_name in files:
+                    source_path = os.path.join(root, file_name)
+                    destination_path = os.path.join(
+                        output_directory,
+                        os.path.relpath(root, destination_volume_path),
+                        file_name,
+                    )
+                    destination_fs.upload_file_to_storage(
+                        source_path=source_path, destination_path=destination_path
+                    )
+        except ConnectorError as e:
+            raise UnstractFSException(core_err=e) from e
 
     def insert_into_db(self, input_file_path: str) -> None:
         """Insert data into the database."""
@@ -272,7 +282,10 @@ class DestinationConnector(BaseConnector):
         if not data:
             return
         # Remove metadata from result
-        data.pop("metadata", None)
+        # Tool text-extractor returns data in the form of string.
+        # Don't pop out metadata in this case.
+        if isinstance(data, dict):
+            data.pop("metadata", None)
         values = DatabaseUtils.get_columns_and_values(
             column_mode_str=column_mode,
             data=data,
@@ -314,7 +327,7 @@ class DestinationConnector(BaseConnector):
         file_name: str,
         error: Optional[str] = None,
         result: Optional[str] = None,
-        meta_data: Optional[dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         """Handle the API result.
 
@@ -340,7 +353,7 @@ class DestinationConnector(BaseConnector):
                     {
                         "status": ApiDeploymentResultStatus.SUCCESS,
                         "result": result,
-                        "metadata": meta_data,
+                        "metadata": metadata,
                     }
                 )
             else:
@@ -394,7 +407,7 @@ class DestinationConnector(BaseConnector):
         output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         metadata: dict[str, Any] = self.get_workflow_metadata()
         output_type = self.get_output_type(metadata)
-        result: Optional[Any] = None
+        result: Union[dict[str, Any], str] = ""
         try:
             # TODO: SDK handles validation; consider removing here.
             mime = magic.Magic()

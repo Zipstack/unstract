@@ -92,6 +92,7 @@ class WorkflowHelper:
         scheduled: bool,
         execution_mode: tuple[str, str],
         workflow_execution: Optional[WorkflowExecution],
+        use_file_history: bool = True,  # Will be False for API deployment alone
     ) -> WorkflowExecutionServiceHelper:
         workflow_execution_service = WorkflowExecutionServiceHelper(
             organization_id=organization_id,
@@ -102,6 +103,7 @@ class WorkflowHelper:
             scheduled=scheduled,
             mode=execution_mode,
             workflow_execution=workflow_execution,
+            use_file_history=use_file_history,
         )
         workflow_execution_service.build()
         return workflow_execution_service
@@ -157,6 +159,7 @@ class WorkflowHelper:
             except Exception as e:
                 failed_files += 1
                 error_message = f"Error processing file '{file_path}'. {e}"
+                logger.error(error_message, stack_info=True, exc_info=True)
                 execution_service.publish_log(
                     message=error_message, level=LogLevel.ERROR
                 )
@@ -217,8 +220,9 @@ class WorkflowHelper:
             file_name=file_name,
             file_hash=file_hash,
             workflow=workflow,
-            error=error,
             input_file_path=input_file,
+            error=error,
+            use_file_history=execution_service.use_file_history,
         )
         execution_service.publish_update_log(
             LogState.SUCCESS,
@@ -248,6 +252,7 @@ class WorkflowHelper:
         single_step: bool = False,
         workflow_execution: Optional[WorkflowExecution] = None,
         execution_mode: Optional[tuple[str, str]] = None,
+        use_file_history: bool = True,
     ) -> ExecutionResponse:
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
@@ -266,6 +271,7 @@ class WorkflowHelper:
             scheduled=scheduled,
             execution_mode=execution_mode,
             workflow_execution=workflow_execution,
+            use_file_history=use_file_history,
         )
         execution_id = execution_service.execution_id
         source = SourceConnector(
@@ -390,6 +396,7 @@ class WorkflowHelper:
         timeout: int = -1,
         pipeline_id: Optional[str] = None,
         queue: Optional[str] = None,
+        use_file_history: bool = True,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
 
@@ -398,6 +405,9 @@ class WorkflowHelper:
             execution_id (str): Execution ID
             timeout (int):  Celery timeout (timeout -1 : async execution)
             pipeline_id (Optional[str], optional): Optional pipeline. Defaults to None.
+            queue (Optional[str]): Name of the celery queue to push into
+            use_file_history (bool): Use FileHistory table to return results on already
+                processed files. Defaults to True
 
         Returns:
             ExecutionResponse: Existing status of execution
@@ -420,6 +430,7 @@ class WorkflowHelper:
                     "execution_mode": None,
                     "pipeline_id": pipeline_id,
                     "log_events_id": log_events_id,
+                    "use_file_history": use_file_history,
                 },
                 queue=queue,
             )
@@ -481,6 +492,7 @@ class WorkflowHelper:
         scheduled: bool = False,
         execution_mode: Optional[tuple[str, str]] = None,
         pipeline_id: Optional[str] = None,
+        use_file_history: bool = True,
         **kwargs: dict[str, Any],
     ) -> Optional[list[Any]]:
         """Asynchronous Execution By celery.
@@ -494,6 +506,8 @@ class WorkflowHelper:
             execution_mode (Optional[WorkflowExecution.Mode]): WorkflowExecution Mode
                 Defaults to None
             pipeline_id (Optional[str], optional): Id of pipeline. Defaults to None
+            use_file_history (bool): Use FileHistory table to return results on already
+                processed files. Defaults to True
 
         Kwargs:
             log_events_id (str): Session ID of the user,
@@ -538,6 +552,7 @@ class WorkflowHelper:
                     workflow_execution=workflow_execution,
                     execution_mode=execution_mode,
                     hash_values_of_files=hash_values,
+                    use_file_history=use_file_history,
                 )
             except Exception as error:
                 error_message = traceback.format_exc()
@@ -557,6 +572,7 @@ class WorkflowHelper:
         pipeline_id: Optional[str] = None,
         execution_mode: Optional[WorkflowExecution] = WorkflowExecution.Mode.QUEUE,
         hash_values_of_files: dict[str, FileHash] = {},
+        use_file_history: bool = True,
     ) -> ExecutionResponse:
         if pipeline_id:
             logger.info(f"Executing pipeline: {pipeline_id}")
@@ -580,6 +596,7 @@ class WorkflowHelper:
                     pipeline_id=pipeline_id,
                     execution_id=execution_id,
                     hash_values_of_files=hash_values_of_files,
+                    use_file_history=use_file_history,
                 )
                 return response
             else:
@@ -592,6 +609,7 @@ class WorkflowHelper:
                     execution_mode=execution_mode,
                     pipeline_id=pipeline_id,
                     log_events_id=log_events_id,
+                    use_file_history=use_file_history,
                 )
 
             updated_execution = WorkflowExecution.objects.get(id=execution_id)
@@ -620,6 +638,7 @@ class WorkflowHelper:
                 workflow=workflow,
                 workflow_execution=workflow_execution,
                 hash_values_of_files=hash_values_of_files,
+                use_file_history=use_file_history,
             )
         except WorkflowExecution.DoesNotExist:
             return WorkflowHelper.create_and_make_execution_response(

@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 
 from utils.constants import Common
 from workflow_manager.endpoint_v2.exceptions import UnstractQueueException
@@ -34,8 +34,18 @@ class QueueUtils:
 @dataclass
 class QueueResult:
     file: str
-    whisper_hash: str
     status: QueueResultStatus
     result: Any
     workflow_id: str
     file_content: str
+    whisper_hash: Optional[str] = None
+
+    def to_dict(self) -> Any:
+        return {
+            "file": self.file,
+            "whisper_hash": self.whisper_hash,
+            "status": self.status,
+            "result": self.result,
+            "workflow_id": self.workflow_id,
+            "file_content": self.file_content,
+        }

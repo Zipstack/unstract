@@ -23,6 +23,7 @@ WORKDIR /app
 COPY ${BUILD_CONTEXT_PATH} .
 # Copy local dependency packages
 COPY ${BUILD_PACKAGES_PATH}/core /unstract/core
+COPY ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 
 RUN set -e; \
     \
@@ -31,6 +32,11 @@ RUN set -e; \
     pdm venv create -w virtualenv --with-pip; \
     # source command may not be availble in sh
     . .venv/bin/activate; \
+    \
+    # Install opentelemetry for instrumentation.
+    pip install opentelemetry-distro opentelemetry-exporter-otlp; \
+    \
+    opentelemetry-bootstrap -a install; \
     \
     pdm sync --prod --no-editable; \
     \

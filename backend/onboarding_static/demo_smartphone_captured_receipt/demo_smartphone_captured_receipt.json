@@ -1,0 +1,59 @@
+{
+    "tool_name": "Demo Smartphone Captured Receipt",
+    "author": "Unstract",
+    "description": "Demo of extraction from a casually clicked receipt from a smartphone",
+    "icon": "📸",
+    "profile_manager": {
+        "profile_name": "sample_profile",
+        "chunk_size": 0,
+        "chunk_overlap": 0,
+        "retrieval_strategy": "simple",
+        "similarity_top_k": 3,
+        "section": "Default"
+    },
+    "prompts": [
+        {
+            "prompt_key": "receipt_category",
+            "enforce_type": "Text",
+            "prompt": "From the contents of the receipt, guess the category of the receipt spend and respond with one of the following that closely matches the spend category:\n- Travel\n- Stationery\n- Food\n- HotelStay",
+            "sequence_number": 1,
+            "prompt_type": "PROMPT"
+        },
+        {
+            "prompt_key": "name_of_vendor",
+            "enforce_type": "Text",
+            "prompt": "What's the name of the merchant or vendor?",
+            "sequence_number": 2,
+            "prompt_type": "PROMPT"
+        },
+        {
+            "prompt_key": "recepit_value",
+            "enforce_type": "number",
+            "prompt": "What's the total value of the receipt?",
+            "sequence_number": 3,
+            "prompt_type": "PROMPT"
+        },
+        {
+            "prompt_key": "line_items",
+            "enforce_type": "json",
+            "prompt": "Respond with a JSON object of the following format for the line items in the receipt:\n- item_name\n- quantity\n- subtotal_amount",
+            "sequence_number": 4,
+            "prompt_type": "PROMPT"
+        },
+        {
+            "prompt_key": "tax_amount",
+            "enforce_type": "number",
+            "prompt": "What's the total tax amount of the receipt? In India, tax amount can be labeled as GST. Do not attempt to calculate the tax amount. Just respond with the total tax amount found in the receipt.",
+            "sequence_number": 5,
+            "prompt_type": "PROMPT"
+        },
+        {
+            "prompt_key": "healthy_score",
+            "enforce_type": "number",
+            "prompt": "On a scale of 1 to 10, how healthy is this food consumed by the user?. Just respond with the total tax amount found in the receipt.",
+            "sequence_number": 6,
+            "prompt_type": "PROMPT"
+        }
+
+    ]
+}

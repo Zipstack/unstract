@@ -8,11 +8,45 @@ Contains the backend services for Unstract written with Django and DRF.
 1. Redis
 
 ## Getting started
-**NOTE**: All commands are executed from `/backend` and require the venv to be active. Refer [these steps](/README.md#create-your-virtual-env) to create/activate your venv
 
-### Install and run manually
+### Install and run locally
 
-- Ensure that you've sourced your virtual environment and installed dependencies mentioned [here](/README.md#create-your-virtual-env).
+#### Create your virtual env
+
+All commands assumes that you have activated your `venv`.
+
+```bash
+# Create venv
+pdm venv create -w virtualenv --with-pip
+eval "$(pdm venv activate in-project)"
+
+# Remove venv
+pdm venv remove in-project
+```
+
+#### Installing dependencies
+
+Go to service dir and install dependencies listed in corresponding `pyproject.toml`.
+
+```bash
+# Install dependencies
+pdm install
+
+# Install specific dev dependency group
+pdm install --dev -G lint
+
+# Install production dependencies only
+pdm install --prod --no-editable
+```
+
+PDM allows you to run scripts applicable within the service dir.
+
+```bash
+# List the possible scripts that can be executed
+pdm run -l
+```
+
+#### Running commands
 
 - If you plan to run the django server locally, make sure the dependent services are up (either locally or through docker compose)
 - Copy `sample.env` into `.env` and update the necessary variables. For eg:

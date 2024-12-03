@@ -1,5 +1,6 @@
 import os
 
+from unstract.platform_service.constants import LogLevel
 from unstract.platform_service.utils import EnvManager
 
 
@@ -22,6 +23,11 @@ class Env:
         EnvManager.get_required_setting("MODEL_PRICES_TTL_IN_DAYS")
     )
     MODEL_PRICES_FILE_PATH = EnvManager.get_required_setting("MODEL_PRICES_FILE_PATH")
+    APPLICATION_NAME = EnvManager.get_required_setting(
+        "APPLICATION_NAME", "unstract-platform-service"
+    )
+    DB_SCHEMA = EnvManager.get_required_setting("DB_SCHEMA")
+    LOG_LEVEL = EnvManager.get_required_setting("LOG_LEVEL", LogLevel.INFO)
 
 
 EnvManager.raise_for_missing_envs()

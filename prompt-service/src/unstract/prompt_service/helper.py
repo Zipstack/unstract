@@ -1,15 +1,16 @@
 import importlib
 import os
-from json import JSONDecodeError
 from logging import Logger
 from pathlib import Path
 from typing import Any, Optional
 
 from dotenv import load_dotenv
-from flask import Flask, current_app, json
-from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
+from flask import Flask, current_app
 from unstract.prompt_service.config import db
+from unstract.prompt_service.constants import DBTableV2
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
+from unstract.prompt_service.db_utils import DBUtils
+from unstract.prompt_service.env_manager import EnvLoader
 from unstract.prompt_service.exceptions import APIError, RateLimitError
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
 from unstract.sdk.exceptions import SdkError
@@ -81,11 +82,11 @@ def plugin_loader(app: Flask) -> None:
     initialize_plugin_endpoints(app=app)
 
 
-def get_cleaned_context(context: str) -> str:
+def get_cleaned_context(context: set[str]) -> list[str]:
     clean_context_plugin: dict[str, Any] = plugins.get(PSKeys.CLEAN_CONTEXT, {})
     if clean_context_plugin:
         return clean_context_plugin["entrypoint_cls"].run(context=context)
-    return context
+    return list(context)
 
 
 def initialize_plugin_endpoints(app: Flask) -> None:
@@ -112,7 +113,8 @@ def initialize_plugin_endpoints(app: Flask) -> None:
 
 
 def query_usage_metadata(token: str, metadata: dict[str, Any]) -> dict[str, Any]:
-    org_id: str = AuthenticationMiddleware.get_account_from_bearer_token(token)
+    DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract")
+    organization_uid, org_id = DBUtils.get_organization_from_bearer_token(token)
     run_id: str = metadata["run_id"]
     query: str = f"""
         SELECT
@@ -124,8 +126,8 @@ def query_usage_metadata(token: str, metadata: dict[str, Any]) -> dict[str, Any]
             SUM(total_tokens) AS total_tokens,
             SUM(embedding_tokens) AS embedding_tokens,
             SUM(cost_in_dollars) AS cost_in_dollars
-        FROM "{org_id}"."token_usage"
-        WHERE run_id = %s
+        FROM "{DB_SCHEMA}"."{DBTableV2.TOKEN_USAGE}"
+        WHERE run_id = %s and organization_id = %s
         GROUP BY usage_type, llm_usage_reason, model_name;
     """
     logger: Logger = current_app.logger
@@ -134,7 +136,7 @@ def query_usage_metadata(token: str, metadata: dict[str, Any]) -> dict[str, Any]
             logger.info(
                 "Querying usage metadata for org_id: %s, run_id: %s", org_id, run_id
             )
-            cursor = db.execute_sql(query, (run_id,))
+            cursor = db.execute_sql(query, (run_id, organization_uid))
             results: list[tuple] = cursor.fetchall()
             # Process results as needed
             for row in results:
@@ -212,9 +214,12 @@ def construct_and_run_prompt(
     context: str,
     prompt: str,
     metadata: dict[str, Any],
+    file_path: str = "",
 ) -> str:
     platform_postamble = tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, "")
-    if tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE):
+    summarize_as_source = tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE)
+    enable_highlight = tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False)
+    if not enable_highlight or summarize_as_source:
         platform_postamble = ""
     prompt = construct_prompt(
         preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
@@ -230,6 +235,8 @@ def construct_and_run_prompt(
         metadata=metadata,
         prompt_key=output[PSKeys.NAME],
         prompt_type=output.get(PSKeys.TYPE, PSKeys.TEXT),
+        enable_highlight=enable_highlight,
+        file_path=file_path,
     )
 
 
@@ -241,10 +248,7 @@ def construct_prompt(
     context: str,
     platform_postamble: str,
 ) -> str:
-    prompt = (
-        f"{preamble}\n\nContext:\n---------------\n{context}\n"
-        f"-----------------\n\nQuestion or Instruction: {prompt}\n"
-    )
+    prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}"
     if grammar_list is not None and len(grammar_list) > 0:
         prompt += "\n"
         for grammar in grammar_list:
@@ -259,7 +263,10 @@ def construct_prompt(
                     {", ".join(synonyms)} in both the quesiton and the context.'  # noqa
     if platform_postamble:
         platform_postamble += "\n\n"
-    prompt += f"\n\n{postamble}\n\n{platform_postamble}Answer:"
+    prompt += (
+        f"\n\n{postamble}\n\nContext:\n---------------\n{context}\n"
+        f"-----------------\n\n{platform_postamble}Answer:"
+    )
     return prompt
 
 
@@ -269,29 +276,28 @@ def run_completion(
     metadata: Optional[dict[str, str]] = None,
     prompt_key: Optional[str] = None,
     prompt_type: Optional[str] = PSKeys.TEXT,
+    enable_highlight: bool = False,
+    file_path: str = "",
 ) -> str:
     logger: Logger = current_app.logger
     try:
-        extract_epilogue_plugin: dict[str, Any] = plugins.get(
-            PSKeys.EXTRACT_EPILOGUE, {}
+        highlight_data_plugin: dict[str, Any] = plugins.get(
+            PSKeys.HIGHLIGHT_DATA_PLUGIN, {}
         )
-        extract_epilogue = None
-        if extract_epilogue_plugin:
-            extract_epilogue = extract_epilogue_plugin["entrypoint_cls"].run
+        highlight_data = None
+        if highlight_data_plugin and enable_highlight:
+            highlight_data = highlight_data_plugin["entrypoint_cls"](
+                logger=current_app.logger, file_path=file_path
+            ).run
         completion = llm.complete(
             prompt=prompt,
-            process_text=extract_epilogue,
+            process_text=highlight_data,
             extract_json=prompt_type.lower() != PSKeys.TEXT,
         )
         answer: str = completion[PSKeys.RESPONSE].text
-        epilogue = completion.get(PSKeys.EPILOGUE)
-        if all([metadata, epilogue, prompt_key]):
-            try:
-                logger.info(f"Epilogue extracted from LLM: {epilogue}")
-                epilogue = json.loads(epilogue)
-            except JSONDecodeError:
-                logger.error(f"Failed to convert epilogue to JSON: {epilogue}")
-            metadata.setdefault(PSKeys.EPILOGUE, {})[prompt_key] = epilogue
+        highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA)
+        if all([metadata, highlight_data, prompt_key]):
+            metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = highlight_data
         return answer
     # TODO: Catch and handle specific exception here
     except SdkRateLimitError as e:
@@ -307,6 +313,7 @@ def extract_table(
     plugins: dict[str, dict[str, Any]],
     structured_output: dict[str, Any],
     llm: LLM,
+    enforce_type: str,
 ) -> dict[str, Any]:
     table_settings = output[PSKeys.TABLE_SETTINGS]
     table_extractor: dict[str, Any] = plugins.get("table-extractor", {})
@@ -317,7 +324,7 @@ def extract_table(
         )
     try:
         answer = table_extractor["entrypoint_cls"].extract_large_table(
-            llm=llm, table_settings=table_settings
+            llm=llm, table_settings=table_settings, enforce_type=enforce_type
         )
         structured_output[output[PSKeys.NAME]] = answer
         # We do not support summary and eval for table.

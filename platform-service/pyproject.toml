@@ -14,7 +14,8 @@ dependencies = [
     "cryptography>=41.0.7",
     "unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
     "requests>=2.31.0",
-    "singleton-decorator~=1.0.0",
+    "unstract-sdk~=0.54.0rc1",
+    "gcsfs==2024.10.0",
 ]
 requires-python = ">=3.9,<3.11.1"
 readme = "README.md"
@@ -38,6 +39,6 @@ deploy = [
 ]
 
 [tool.pdm.scripts]
-platform_service.cmd = "flask --app src/unstract/platform_service/run.py run --port 3001"
+platform_service.cmd = "./entrypoint.sh"
 platform_service.env_file = ".env"
 platform_service.help = "Runs the Unstract platform service"

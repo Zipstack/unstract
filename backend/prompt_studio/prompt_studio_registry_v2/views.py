@@ -20,7 +20,6 @@ class PromptStudioRegistryView(viewsets.ModelViewSet):
     tool hub."""
 
     versioning_class = URLPathVersioning
-    queryset = PromptStudioRegistry.objects.all()
     serializer_class = PromptStudioRegistrySerializer
 
     def get_queryset(self) -> Optional[QuerySet]:

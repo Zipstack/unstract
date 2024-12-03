@@ -19,6 +19,7 @@ import {
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
+import PropTypes from "prop-types";
 
 import { UnstractLogo } from "../../../assets/index.js";
 import {
@@ -40,8 +41,39 @@ try {
 } catch (err) {
   // Plugin not found
 }
+let selectedProduct;
+let selectedProductStore;
 
-function TopNavBar() {
+try {
+  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
+} catch {
+  // Ignore if hook not available
+}
+
+let PlatformDropdown;
+
+try {
+  PlatformDropdown =
+    require("../../../plugins/platform-dropdown/PlatformDropDown.jsx").PlatformDropdown;
+} catch (err) {
+  // Plugin not found
+}
+
+try {
+  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
+} catch {
+  // Ignore if hook not available
+}
+
+let WhispererLogo;
+try {
+  WhispererLogo =
+    require("../../../plugins/assets/llmWhisperer/index.js").WhispererLogo;
+} catch {
+  // Ignore if hook not available
+}
+
+function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const { orgName, remainingTrialDays, allOrganization, orgId } =
@@ -56,6 +88,14 @@ function TopNavBar() {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const location = useLocation();
+
+  if (selectedProductStore) {
+    selectedProduct = selectedProductStore.useSelectedProductStore(
+      (state) => state?.selectedProduct
+    );
+  }
+
+  const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
 
   useEffect(() => {
     const isUnstractReviewer = sessionDetails.role === "unstract_reviewer";
@@ -90,7 +130,7 @@ function TopNavBar() {
     }
   }, [location]);
 
-  const cascadeOptions = allOrganization.map((org) => {
+  const cascadeOptions = allOrganization?.map((org) => {
     return {
       key: org?.id,
       label:
@@ -126,6 +166,7 @@ function TopNavBar() {
     };
     await axios(requestOptions)
       .then(() => {
+        navigate("/");
         window.location.reload();
       })
       .catch((err) => {
@@ -135,7 +176,7 @@ function TopNavBar() {
 
   // Profile Dropdown items
   const items = [
-    {
+    isUnstract && {
       key: "1",
       label: (
         <Button
@@ -146,7 +187,7 @@ function TopNavBar() {
         </Button>
       ),
     },
-    allOrganization.length > 1 && {
+    allOrganization?.length > 1 && {
       key: "3",
       label: (
         <Dropdown
@@ -166,39 +207,42 @@ function TopNavBar() {
         </Dropdown>
       ),
     },
-    (reviewerStatus || approverStatus) && {
-      key: "4",
-      label: (
-        <Button
-          onClick={() => navigate(`/${orgName}/review`)}
-          className="logout-button"
-        >
-          <FileProtectOutlined /> Review
-        </Button>
-      ),
-    },
-    approverStatus && {
-      key: "5",
-      label: (
-        <Button
-          onClick={() => navigate(`/${orgName}/review/approve`)}
-          className="logout-button"
-        >
-          <LikeOutlined /> Approve
-        </Button>
-      ),
-    },
-    approverStatus && {
-      key: "6",
-      label: (
-        <Button
-          onClick={() => navigate(`/${orgName}/review/download_and_sync`)}
-          className="logout-button"
-        >
-          <DownloadOutlined /> Download and Sync Manager
-        </Button>
-      ),
-    },
+    isUnstract &&
+      (reviewerStatus || approverStatus) && {
+        key: "4",
+        label: (
+          <Button
+            onClick={() => navigate(`/${orgName}/review`)}
+            className="logout-button"
+          >
+            <FileProtectOutlined /> Review
+          </Button>
+        ),
+      },
+    isUnstract &&
+      approverStatus && {
+        key: "5",
+        label: (
+          <Button
+            onClick={() => navigate(`/${orgName}/review/approve`)}
+            className="logout-button"
+          >
+            <LikeOutlined /> Approve
+          </Button>
+        ),
+      },
+    isUnstract &&
+      approverStatus && {
+        key: "6",
+        label: (
+          <Button
+            onClick={() => navigate(`/${orgName}/review/download_and_sync`)}
+            className="logout-button"
+          >
+            <DownloadOutlined /> Download and Sync Manager
+          </Button>
+        ),
+      },
     {
       key: "2",
       label: (
@@ -221,66 +265,82 @@ function TopNavBar() {
 
   return (
     <Row align="middle" className="topNav">
-      <Col span={6}>
-        <UnstractLogo className="topbar-logo" />
+      <Col span={6} className="platform-switch-container">
+        {isUnstract ? (
+          <UnstractLogo className="topbar-logo" />
+        ) : (
+          WhispererLogo && <WhispererLogo className="topbar-logo" />
+        )}
         {reviewPageHeader && (
           <span className="page-identifier">
             <span className="custom-tools-header-v-divider" />
             <span className="page-heading">{reviewPageHeader}</span>
           </span>
         )}
+        {PlatformDropdown && <PlatformDropdown />}
       </Col>
-      <Col span={14} className="top-nav-alert-col">
-        {showOnboardBanner && (
-          <Alert
-            type="error"
-            message={
-              <>
-                <span className="top-nav-alert-msg">
-                  Your setup process is incomplete. Now, that&apos;s a bummer!
-                </span>
-                <a
-                  href={onBoardUrl}
-                  size="small"
-                  type="text"
-                  className="top-nav-alert-link"
-                >
-                  Complete it to start using Unstract
-                </a>
-              </>
-            }
-            showIcon
-          />
-        )}
-      </Col>
-      <Col span={4}>
-        <Row justify="end" align="middle">
-          <Space>
-            {TrialDaysInfo && (
-              <TrialDaysInfo remainingTrialDays={remainingTrialDays} />
+      {!isSimpleLayout && (
+        <>
+          <Col span={14} className="top-nav-alert-col">
+            {isUnstract && showOnboardBanner && (
+              <Alert
+                type="error"
+                message={
+                  <>
+                    <span className="top-nav-alert-msg">
+                      Your setup process is incomplete. Now, that&apos;s a
+                      bummer!
+                    </span>
+                    <a
+                      href={onBoardUrl}
+                      size="small"
+                      type="text"
+                      className="top-nav-alert-link"
+                    >
+                      Complete it to start using Unstract
+                    </a>
+                  </>
+                }
+                showIcon
+              />
             )}
-            <Dropdown menu={{ items }} placement="bottomLeft" arrow>
-              <div className="top-navbar-dp">
-                {sessionDetails?.picture ? (
-                  <Image
-                    className="navbar-img"
-                    height="100%"
-                    width="100%"
-                    preview={false}
-                    src={sessionDetails?.picture}
-                  />
-                ) : (
-                  <Typography.Text className="initials">
-                    {getInitials(sessionDetails?.name)}
-                  </Typography.Text>
+          </Col>
+          <Col span={4}>
+            <Row justify="end" align="middle">
+              <Space>
+                {topNavBarOptions}
+                {isUnstract && TrialDaysInfo && (
+                  <TrialDaysInfo remainingTrialDays={remainingTrialDays} />
                 )}
-              </div>
-            </Dropdown>
-          </Space>
-        </Row>
-      </Col>
+                <Dropdown menu={{ items }} placement="bottomLeft" arrow>
+                  <div className="top-navbar-dp">
+                    {sessionDetails?.picture ? (
+                      <Image
+                        className="navbar-img"
+                        height="100%"
+                        width="100%"
+                        preview={false}
+                        src={sessionDetails?.picture}
+                      />
+                    ) : (
+                      <Typography.Text className="initials">
+                        {getInitials(sessionDetails?.name)}
+                      </Typography.Text>
+                    )}
+                  </div>
+                </Dropdown>
+              </Space>
+            </Row>
+          </Col>
+        </>
+      )}
     </Row>
   );
 }
+
+TopNavBar.propTypes = {
+  isSimpleLayout: PropTypes.bool,
+  topNavBarOptions: PropTypes.node,
+};
 
 export { TopNavBar };
