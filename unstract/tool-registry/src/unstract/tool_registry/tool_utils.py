@@ -113,7 +113,7 @@ class ToolUtils:
         """
         yml_data: dict[str, Any] = {}
         try:
-            logger.info(f"Reading yaml file: {file_path}")
+            logger.debug(f"Reading tool registry YAML: {file_path}")
             if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
                 yml_data = fs.yaml_load(file_path)
             else:
