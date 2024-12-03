@@ -62,7 +62,6 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
                 "Default LLM profile doesnt exist for prompt tool %s",
                 str(instance.tool_id),
             )
-        try:
             prompt_instance: ToolStudioPrompt = ToolStudioPrompt.objects.filter(
                 tool_id=data.get(TSKeys.TOOL_ID)
             ).order_by("sequence_number")
@@ -81,9 +80,6 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
                     serialized_data["coverage"] = coverage
                     output.append(serialized_data)
                 data[TSKeys.PROMPTS] = output
-        except Exception as e:
-            logger.error(f"Error occured while appending prompts {e}")
-            return data
 
         data["created_by_email"] = instance.created_by.email
 

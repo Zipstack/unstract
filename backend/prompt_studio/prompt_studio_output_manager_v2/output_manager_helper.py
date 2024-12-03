@@ -257,25 +257,21 @@ class OutputManagerHelper:
                 and profile combination.
         """
 
-        try:
-            prompt_outputs = (
-                PromptStudioOutputManager.objects.filter(
-                    tool_id=tool_id,
-                    profile_manager_id=profile_manager_id,
-                    **({"prompt_id": prompt_id} if prompt_id else {}),
-                )
-                .values("prompt_id", "profile_manager_id")
-                .annotate(document_count=Count("document_manager_id"))
+        prompt_outputs = (
+            PromptStudioOutputManager.objects.filter(
+                tool_id=tool_id,
+                profile_manager_id=profile_manager_id,
+                **({"prompt_id": prompt_id} if prompt_id else {}),
             )
+            .values("prompt_id", "profile_manager_id")
+            .annotate(document_count=Count("document_manager_id"))
+        )
 
-            coverage = {}
-            for prompt_output in prompt_outputs:
-                prompt_key = str(prompt_output["prompt_id"])
-                profile_key = str(prompt_output["profile_manager_id"])
-                coverage[f"coverage_{prompt_key}_{profile_key}"] = prompt_output[
-                    "document_count"
-                ]
-            return coverage
-        except Exception as e:
-            logger.error(f"Error occurred while fetching coverage: {e}")
-        return {}
+        coverage = {}
+        for prompt_output in prompt_outputs:
+            prompt_key = str(prompt_output["prompt_id"])
+            profile_key = str(prompt_output["profile_manager_id"])
+            coverage[f"coverage_{prompt_key}_{profile_key}"] = prompt_output[
+                "document_count"
+            ]
+        return coverage

@@ -25,6 +25,7 @@ class PromptStudioOutputSerializer(AuditSerializer):
             logger.warning(
                 "Error occured while fetching token usage for run_id"
                 f"{instance.run_id}: {e}"
+                " | Process continued"
             )
             token_usage = {}
         data["token_usage"] = token_usage
@@ -37,10 +38,11 @@ class PromptStudioOutputSerializer(AuditSerializer):
             data["coverage"] = coverage
 
         except Exception as e:
-            logger.warning(
+            logger.error(
                 "Error occurred while fetching "
                 f"coverage for tool_id {instance.tool_id} "
                 f"and profile_manager_id {instance.profile_manager_id}: {e}"
+                " | Process continued"
             )
             data["coverage"] = {}
         # Convert string to list
