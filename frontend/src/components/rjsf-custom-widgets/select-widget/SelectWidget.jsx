@@ -33,7 +33,7 @@ const SelectWidget = (props) => {
                 </Option>
               ))}
           </Select>
-          {description?.length && (
+          {description?.length > 0 && (
             <CustomMarkdown
               text={description}
               isSecondary={true}

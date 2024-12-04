@@ -42,7 +42,7 @@ function RjsfFormLayout({
     setDescription(schema?.description || "");
     schema.title = "";
     schema.description = "";
-  }, []);
+  }, [schema]);
 
   const widgets = {
     AltDateTimeWidget,
