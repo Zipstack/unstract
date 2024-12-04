@@ -62,24 +62,24 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
                 "Default LLM profile doesnt exist for prompt tool %s",
                 str(instance.tool_id),
             )
-            prompt_instance: ToolStudioPrompt = ToolStudioPrompt.objects.filter(
-                tool_id=data.get(TSKeys.TOOL_ID)
-            ).order_by("sequence_number")
-            data[TSKeys.PROMPTS] = []
-            output: list[Any] = []
-            # Appending prompt instances of the tool for FE Processing
-            if prompt_instance.count() != 0:
-                for prompt in prompt_instance:
-                    prompt_serializer = ToolStudioPromptSerializer(prompt)
-                    coverage = OutputManagerUtils.get_coverage(
-                        data.get(TSKeys.TOOL_ID),
-                        profile_manager.profile_id,
-                        prompt.prompt_id,
-                    )
-                    serialized_data = prompt_serializer.data
-                    serialized_data["coverage"] = coverage
-                    output.append(serialized_data)
-                data[TSKeys.PROMPTS] = output
+        prompt_instance: ToolStudioPrompt = ToolStudioPrompt.objects.filter(
+            tool_id=data.get(TSKeys.TOOL_ID)
+        ).order_by("sequence_number")
+        data[TSKeys.PROMPTS] = []
+        output: list[Any] = []
+        # Appending prompt instances of the tool for FE Processing
+        if prompt_instance.count() != 0:
+            for prompt in prompt_instance:
+                prompt_serializer = ToolStudioPromptSerializer(prompt)
+                coverage = OutputManagerUtils.get_coverage(
+                    data.get(TSKeys.TOOL_ID),
+                    prompt.profile_manager_id,
+                    prompt.prompt_id,
+                )
+                serialized_data = prompt_serializer.data
+                serialized_data["coverage"] = coverage
+                output.append(serialized_data)
+            data[TSKeys.PROMPTS] = output
 
         data["created_by_email"] = instance.created_by.email
 
