@@ -62,7 +62,7 @@ That's all there is to it!
 Follow [these steps](backend/README.md#authentication) to change the default username and password.
 
 See [user guide](https://docs.unstract.com/unstract/unstract_platform/user_guides/run_platform) for more details on managing the platform.  
-Another really quick way to experience Unstract is by signing up for our [hosted version](https://us-central.unstract.com/).
+Another really quick way to experience Unstract is by signing up for our [hosted version](https://us-central.unstract.com/). It comes with a 14 day free trial!
 
 ## ⏩ Quick Start Guide
 
