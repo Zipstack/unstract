@@ -544,6 +544,10 @@ const generateApiRunStatusId = (docId, profileId) => {
   return `${docId}__${profileId}`;
 };
 
+const generateCoverageKey = (promptId, profileId) => {
+  return `coverage_${promptId}_${profileId}`;
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -593,4 +597,5 @@ export {
   PROMPT_RUN_TYPES,
   PROMPT_RUN_API_STATUSES,
   generateApiRunStatusId,
+  generateCoverageKey,
 };
