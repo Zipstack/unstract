@@ -32,6 +32,8 @@ function SocketMessages() {
   // Buffer to hold the logs between throttle intervals
   const psLogs = useRef([]);
   const wfLogs = useRef([]);
+  // Buffer to hold the staged messages between throttle intervals
+  const stagedMsgsBuffer = useRef([]);
 
   useEffect(() => {
     setLogId(sessionDetails?.logEventsId || "");
@@ -53,13 +55,24 @@ function SocketMessages() {
     }, THROTTLE_DELAY)
   ).current;
 
+  // Throttled function for staged messages
+  const stagedMsgsThrottledUpdate = useRef(
+    throttle((bufferedMsgs) => {
+      bufferedMsgs.forEach((msg) => {
+        pushStagedMessage(msg);
+      });
+      stagedMsgsBuffer.current = [];
+    }, 2000)
+  ).current;
+
   // Clean up throttling functions on unmount
   useEffect(() => {
     return () => {
       psLogsThrottledUpdate.cancel();
       wfLogsThrottledUpdate.cancel();
+      stagedMsgsThrottledUpdate.cancel();
     };
-  }, [psLogsThrottledUpdate, wfLogsThrottledUpdate]);
+  }, [psLogsThrottledUpdate, wfLogsThrottledUpdate, stagedMsgsThrottledUpdate]);
 
   const handlePsLogs = useCallback(
     (msg) => {
@@ -76,10 +89,20 @@ function SocketMessages() {
     },
     [wfLogsThrottledUpdate]
   );
+
+  const handleStagedMessages = useCallback(
+    (msg) => {
+      stagedMsgsBuffer.current = [...stagedMsgsBuffer.current, msg];
+      stagedMsgsThrottledUpdate(stagedMsgsBuffer.current);
+    },
+    [stagedMsgsThrottledUpdate]
+  );
+
   // Handle incoming socket messages
   const onMessage = (data) => {
     try {
       let msg = data.data;
+
       // Attempt to decode data as JSON if it's in encoded state
       if (typeof msg === "string" || msg instanceof Uint8Array) {
         if (typeof msg === "string") {
@@ -95,7 +118,7 @@ function SocketMessages() {
         msg.message = msg?.log;
         handleWfLogs(msg);
       } else if (msg?.type === "UPDATE") {
-        pushStagedMessage(msg);
+        handleStagedMessages(msg);
       } else if (msg?.type === "LOG" && msg?.service === "prompt") {
         handlePsLogs(msg);
       }
