@@ -2,9 +2,11 @@ import logging
 import os
 from typing import Any
 
-from unstract.sdk.file_storage import FileStorageProvider
-from unstract.sdk.file_storage.fs_impl import FileStorage
-from unstract.sdk.file_storage.fs_permanent import PermanentFileStorage
+from unstract.sdk.file_storage import (
+    FileStorage,
+    FileStorageProvider,
+    PermanentFileStorage,
+)
 
 from unstract.filesystem.file_storage_types import FileStorageType
 
