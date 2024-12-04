@@ -9,7 +9,7 @@ const CheckboxWidget = ({ id, value, onChange, label, schema, required }) => {
   };
 
   return (
-    <Space direction="vertical" className="checkbox-widget-main">
+    <Space direction="vertical" className="checkbox-widget-main" size={0}>
       <Checkbox id={id} checked={value} onChange={handleCheckboxChange}>
         <Typography>
           {required && <span className="form-item-required">* </span>}

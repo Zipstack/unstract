@@ -22,6 +22,9 @@ import { PasswordWidget } from "../../components/rjsf-custom-widgets/password-wi
 import { UpDownWidget } from "../../components/rjsf-custom-widgets/up-down-widget/UpDownWidget.jsx";
 import { CustomFieldTemplate } from "./CustomFieldTemplate.jsx";
 import "./RjsfFormLayout.css";
+import { useEffect, useState } from "react";
+import { Alert, Space } from "antd";
+import CustomMarkdown from "../../components/helpers/custom-markdown/CustomMarkdown.jsx";
 
 function RjsfFormLayout({
   children,
@@ -33,8 +36,14 @@ function RjsfFormLayout({
   validateAndSubmit,
   isStateUpdateRequired,
 }) {
-  schema.title = "";
-  schema.description = "";
+  const [description, setDescription] = useState("");
+
+  useEffect(() => {
+    setDescription(schema?.description || "");
+    schema.title = "";
+    schema.description = "";
+  }, []);
+
   const widgets = {
     AltDateTimeWidget,
     AltDateWidget,
@@ -112,25 +121,33 @@ function RjsfFormLayout({
       {isLoading ? (
         <SpinnerLoader />
       ) : (
-        <Form
-          form={formRef}
-          schema={removeBlankDefault(schema)}
-          uiSchema={uiSchema}
-          validator={validator}
-          widgets={widgets}
-          fields={fields}
-          formData={formData}
-          transformErrors={transformErrors}
-          onError={() => {}}
-          onSubmit={(e) => validateAndSubmit(e.formData)}
-          showErrorList={false}
-          onChange={handleChange}
-          templates={{
-            FieldTemplate: CustomFieldTemplate,
-          }}
-        >
-          {children}
-        </Form>
+        <Space direction="vertical" className="width-100">
+          {description && (
+            <Alert
+              message={<CustomMarkdown text={description} />}
+              type="info"
+            />
+          )}
+          <Form
+            form={formRef}
+            schema={removeBlankDefault(schema)}
+            uiSchema={uiSchema}
+            validator={validator}
+            widgets={widgets}
+            fields={fields}
+            formData={formData}
+            transformErrors={transformErrors}
+            onError={() => {}}
+            onSubmit={(e) => validateAndSubmit(e.formData)}
+            showErrorList={false}
+            onChange={handleChange}
+            templates={{
+              FieldTemplate: CustomFieldTemplate,
+            }}
+          >
+            {children}
+          </Form>
+        </Space>
       )}
     </>
   );
