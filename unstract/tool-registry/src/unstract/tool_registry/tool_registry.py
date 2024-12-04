@@ -1,21 +1,37 @@
+import json
 import logging
 import os
 from typing import Any, Optional
 
-from unstract.tool_registry.constants import PropKey, ToolJsonField, ToolKey
+from unstract.tool_registry.constants import (
+    FeatureFlag,
+    PropKey,
+    ToolJsonField,
+    ToolKey,
+)
 from unstract.tool_registry.dto import Tool
 from unstract.tool_registry.exceptions import InvalidToolURLException
 from unstract.tool_registry.helper import ToolRegistryHelper
 from unstract.tool_registry.schema_validator import JsonSchemaValidator
 from unstract.tool_registry.tool_utils import ToolUtils
 
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+    from unstract.sdk.exceptions import FileStorageError
+    from unstract.sdk.file_storage import FileStorageProvider, PermanentFileStorage
+
 logger = logging.getLogger(__name__)
 
 
 class ToolRegistry:
     REGISTRY_FILE = "registry.yaml"
-    PRIVATE_TOOL_CONFIG_FILE = "private_tools.json"
-    PUBLIC_TOOL_CONFIG_FILE = "public_tools.json"
+    if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+        PRIVATE_TOOL_CONFIG_FILE = "private_tools_remote_storage.json"
+        PUBLIC_TOOL_CONFIG_FILE = "public_tools_remote_storage.json"
+    else:
+        PRIVATE_TOOL_CONFIG_FILE = "private_tools.json"
+        PUBLIC_TOOL_CONFIG_FILE = "public_tools.json"
 
     def __init__(
         self,
@@ -45,11 +61,42 @@ class ToolRegistry:
                 "Env 'TOOL_REGISTRY_CONFIG_PATH' is not set, please add the tool "
                 "registry JSONs and YAML to a directory and set the env."
             )
+
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            self.fs = self._get_storage_credentials()
+        else:
+            self.fs = None
         self.helper = ToolRegistryHelper(
             registry=os.path.join(directory, registry_file),
             private_tools_file=os.path.join(directory, private_tools),
             public_tools_file=os.path.join(directory, public_tools),
+            fs=self.fs,
         )
+
+    if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+
+        def _get_storage_credentials(self) -> PermanentFileStorage:
+            try:
+                # Not creating constants for now for the keywords below as this
+                # logic ought to change in the near future to maintain unformity
+                # across services
+                file_storage = json.loads(
+                    os.environ.get("TOOL_REGISTRY_STORAGE_CREDENTIALS", {})
+                )
+                provider = FileStorageProvider(file_storage["provider"])
+                credentials = file_storage.get("credentials", {})
+                return PermanentFileStorage(provider, **credentials)
+            except KeyError as e:
+                logger.error(f"Required credentials is missing in the env: {str(e)}")
+                raise e
+            except FileStorageError as e:
+                logger.error(
+                    "Error while initialising storage: %s",
+                    e,
+                    stack_info=True,
+                    exc_info=True,
+                )
+                raise e
 
     def load_all_tools_to_disk(self) -> None:
         self.helper.load_all_tools_to_disk()

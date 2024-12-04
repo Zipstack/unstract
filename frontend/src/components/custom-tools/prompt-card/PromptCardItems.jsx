@@ -19,6 +19,7 @@ import { Header } from "./Header";
 import { OutputForIndex } from "./OutputForIndex";
 import { PromptOutput } from "./PromptOutput";
 import { TABLE_ENFORCE_TYPE, RECORD_ENFORCE_TYPE } from "./constants";
+import { generateCoverageKey } from "../../../helpers/GetStaticData";
 
 let TableExtractionSettingsBtn;
 try {
@@ -50,6 +51,8 @@ function PromptCardItems({
   handleSpsLoading,
   promptOutputs,
   promptRunStatus,
+  coverageCountData,
+  isChallenge,
 }) {
   const {
     llmProfiles,
@@ -60,13 +63,13 @@ function PromptCardItems({
     isSimplePromptStudio,
     isPublicSource,
     adapters,
+    defaultLlmProfile,
   } = useCustomToolStore();
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [expandCard, setExpandCard] = useState(true);
   const [llmProfileDetails, setLlmProfileDetails] = useState([]);
   const [openIndexProfile, setOpenIndexProfile] = useState(null);
-  const [coverageCount] = useState(0);
   const [enabledProfiles, setEnabledProfiles] = useState(
     llmProfiles.map((profile) => profile.profile_id)
   );
@@ -74,6 +77,10 @@ function PromptCardItems({
   const isNotSingleLlmProfile = llmProfiles.length > 1;
   const divRef = useRef(null);
   const [enforceType, setEnforceType] = useState("");
+  const coverageKey = generateCoverageKey(
+    promptDetails?.prompt_id,
+    selectedLlmProfileId || defaultLlmProfile
+  );
 
   useEffect(() => {
     if (enforceType !== promptDetails?.enforce_type) {
@@ -205,7 +212,7 @@ function PromptCardItems({
                             <SearchOutlined className="font-size-12" />
                           )}
                           <Typography.Link className="font-size-12">
-                            Coverage: {coverageCount} of{" "}
+                            Coverage: {coverageCountData[coverageKey] || 0} of{" "}
                             {listOfDocs?.length || 0} docs
                           </Typography.Link>
                         </Space>
@@ -257,6 +264,7 @@ function PromptCardItems({
               enforceType={enforceType}
               promptOutputs={promptOutputs}
               promptRunStatus={promptRunStatus}
+              isChallenge={isChallenge}
             />
           </Row>
         </Collapse.Panel>
@@ -292,6 +300,8 @@ PromptCardItems.propTypes = {
   handleSpsLoading: PropTypes.func.isRequired,
   promptOutputs: PropTypes.object.isRequired,
   promptRunStatus: PropTypes.object.isRequired,
+  coverageCountData: PropTypes.object.isRequired,
+  isChallenge: PropTypes.bool.isRequired,
 };
 
 export { PromptCardItems };
