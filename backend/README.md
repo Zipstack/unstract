@@ -87,11 +87,11 @@ To customize the username or password:
 To update the username or password after initial setup:
 
 1. Modify the credentials in `/backend/.env`
-   1. **DEFAULT_AUTH_USERNAME**=`your_new_username`
-   2. **DEFAULT_AUTH_PASSWORD**=`your_new_password`
-2. Save the `/backend/.env` file
-3. Restart the server to apply changes
-4. Login with the new credentials
+    - **DEFAULT_AUTH_USERNAME**=`your_new_username`
+    - **DEFAULT_AUTH_PASSWORD**=`your_new_password`
+2. Save changes and restart `backend` service
+
+Now you can login with the new credentials.
 
 ### Important Notes
 
