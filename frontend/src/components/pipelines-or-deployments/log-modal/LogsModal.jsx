@@ -41,7 +41,7 @@ const LogsModal = ({
       .then((res) => {
         const logDetails = res.data.results.map((item) => ({
           id: item.id,
-          log: <CustomMarkdown text={item.data?.log} renderNewLines={false} />,
+          log: <CustomMarkdown text={item.data?.log} />,
           type: item.data?.type,
           stage: item.data?.stage,
           level: item.data?.level,

@@ -19,21 +19,28 @@ const SelectWidget = (props) => {
     >
       <Space direction="vertical">
         <Typography.Text>{label}</Typography.Text>
-        <Select id={id} value={value} onChange={handleSelectChange} showSearch>
-          {options?.enumOptions &&
-            options.enumOptions.map((option, index) => (
-              <Option key={option.value} value={option.value}>
-                {option.label}
-              </Option>
-            ))}
-        </Select>
-        {description?.length && (
-          <CustomMarkdown
-            text={description}
-            isSecondary={true}
-            styleClassName="rjsf-helper-font"
-          />
-        )}
+        <div>
+          <Select
+            id={id}
+            value={value}
+            onChange={handleSelectChange}
+            showSearch
+          >
+            {options?.enumOptions &&
+              options.enumOptions.map((option, index) => (
+                <Option key={option.value} value={option.value}>
+                  {option.label}
+                </Option>
+              ))}
+          </Select>
+          {description?.length && (
+            <CustomMarkdown
+              text={description}
+              isSecondary={true}
+              styleClassName="rjsf-helper-font"
+            />
+          )}
+        </div>
       </Space>
     </Form.Item>
   );

@@ -2,7 +2,7 @@ import React from "react";
 import { Typography } from "antd";
 import PropTypes from "prop-types";
 
-const { Text, Link } = Typography;
+const { Text, Link, Paragraph } = Typography;
 
 const CustomMarkdown = ({
   text = "",
@@ -18,21 +18,18 @@ const CustomMarkdown = ({
     let index = 0;
     const input = text;
 
-    // Helper functions for parsing different markdown elements
     const parseCodeBlock = () => {
       const endIndex = input.indexOf("```", index + 3);
       if (endIndex !== -1) {
         const codeText = input.substring(index + 3, endIndex);
         elements.push(
-          <Text
-            code
+          <Paragraph
             key={elements.length}
-            type={textType}
             className={className}
-            style={{ display: "block", whiteSpace: "pre-wrap" }}
+            style={{ margin: 0 }}
           >
-            {codeText}
-          </Text>
+            <pre style={{ margin: 0 }}>{codeText}</pre>
+          </Paragraph>
         );
         index = endIndex + 3;
         return true;

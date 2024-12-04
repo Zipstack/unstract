@@ -40,7 +40,6 @@ function DisplayLogs() {
               <Col span={8}>
                 <CustomMarkdown
                   text={log?.message}
-                  renderNewLines={false}
                   styleClassName="display-logs-col"
                 />
               </Col>
