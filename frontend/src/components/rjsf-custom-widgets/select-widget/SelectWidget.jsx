@@ -13,11 +13,8 @@ const SelectWidget = (props) => {
   const hasError = rawErrors && rawErrors.length > 0;
 
   return (
-    <Form.Item
-      style={{ width: "100%" }}
-      validateStatus={hasError ? "error" : ""}
-    >
-      <Space direction="vertical">
+    <Form.Item className="width-100" validateStatus={hasError ? "error" : ""}>
+      <Space direction="vertical" className="width-100">
         <Typography.Text>{label}</Typography.Text>
         <div>
           <Select
