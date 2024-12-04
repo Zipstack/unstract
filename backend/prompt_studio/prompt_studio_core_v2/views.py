@@ -459,7 +459,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             logger.info(
                 f"Uploading file: {file_name}" if file_name else "Uploading file"
             )
-            if check_feature_flag_status(flag_key=FeatureFlag.REMOTE_FILE_STORAGE):
+            if not check_feature_flag_status(flag_key=FeatureFlag.REMOTE_FILE_STORAGE):
                 file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                     UserSessionUtils.get_organization_id(request),
                     is_create=True,

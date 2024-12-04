@@ -8,6 +8,9 @@ from file_management.constants import FileInformationKey
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.constants import ToolStudioKeys as TSKeys
 from prompt_studio.prompt_studio_core_v2.exceptions import DefaultProfileError
+from prompt_studio.prompt_studio_output_manager_v2.output_manager_util import (
+    OutputManagerUtils,
+)
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
 from rest_framework import serializers
@@ -55,25 +58,28 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             profile_manager = ProfileManager.get_default_llm_profile(instance)
             data[TSKeys.DEFAULT_PROFILE] = profile_manager.profile_id
         except DefaultProfileError:
-            logger.info(
+            logger.warning(
                 "Default LLM profile doesnt exist for prompt tool %s",
                 str(instance.tool_id),
             )
-        try:
-            prompt_instance: ToolStudioPrompt = ToolStudioPrompt.objects.filter(
-                tool_id=data.get(TSKeys.TOOL_ID)
-            ).order_by("sequence_number")
-            data[TSKeys.PROMPTS] = []
-            output: list[Any] = []
-            # Appending prompt instances of the tool for FE Processing
-            if prompt_instance.count() != 0:
-                for prompt in prompt_instance:
-                    prompt_serializer = ToolStudioPromptSerializer(prompt)
-                    output.append(prompt_serializer.data)
-                data[TSKeys.PROMPTS] = output
-        except Exception as e:
-            logger.error(f"Error occured while appending prompts {e}")
-            return data
+        prompt_instance: ToolStudioPrompt = ToolStudioPrompt.objects.filter(
+            tool_id=data.get(TSKeys.TOOL_ID)
+        ).order_by("sequence_number")
+        data[TSKeys.PROMPTS] = []
+        output: list[Any] = []
+        # Appending prompt instances of the tool for FE Processing
+        if prompt_instance.count() != 0:
+            for prompt in prompt_instance:
+                prompt_serializer = ToolStudioPromptSerializer(prompt)
+                coverage = OutputManagerUtils.get_coverage(
+                    data.get(TSKeys.TOOL_ID),
+                    prompt.profile_manager_id,
+                    prompt.prompt_id,
+                )
+                serialized_data = prompt_serializer.data
+                serialized_data["coverage"] = coverage
+                output.append(serialized_data)
+            data[TSKeys.PROMPTS] = output
 
         data["created_by_email"] = instance.created_by.email
 

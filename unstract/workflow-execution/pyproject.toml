@@ -23,7 +23,8 @@ dependencies = [
     "unstract-core",
     "unstract-tool-registry",
     "unstract-tool-sandbox",
-    "unstract-flags"
+    "unstract-flags",
+    "unstract-filesystem"
 ]
 requires-python = ">=3.9"
 readme = "README.md"
