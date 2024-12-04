@@ -25,6 +25,7 @@ dependencies = [
     # Hence instead, add the dependencies without version constraints where the
     # assumption is they are added as direct dependencies in main project itself.
     "unstract-tool-sandbox",
+    "unstract-flags",
 ]
 requires-python = ">=3.9,<3.11.1"
 readme = "README.md"
