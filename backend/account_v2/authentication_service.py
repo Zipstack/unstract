@@ -324,7 +324,7 @@ class AuthenticationService:
             logger.error(f"Failed to set default user: {str(e)}")
             return False
 
-    def _get_or_create_user(self, organization: Organization) -> User:
+    def _get_or_create_user(self, organization: Optional[Organization]) -> User:
         """Get existing user or create a new one based on organization context.
 
         Args:
@@ -384,7 +384,7 @@ class AuthenticationService:
         """
         members = OrganizationMemberService.get_members()
         if not members:
-            logger.error("No organization member found")
+            logger.warning("No organization member found")
             return None
 
         first_member = members[0]
