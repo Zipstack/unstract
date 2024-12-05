@@ -32,6 +32,30 @@ class OrganizationMemberService:
         return OrganizationMember.objects.all()
 
     @staticmethod
+    def get_members_by_role(role: str) -> list[OrganizationMember]:
+        """It return members in the order of member_id
+
+        Args:
+            role (str): user role
+
+        Returns:
+            list[OrganizationMember]: list of members
+        """
+        return OrganizationMember.objects.filter(role=role).order_by("member_id")
+
+    @staticmethod
+    def set_member_role(member_id: int, role: str) -> None:
+        """Set the role of a member.
+
+        Parameters:
+            role (str): The role to set.
+        """
+        # Get and update member
+        member = OrganizationMember.objects.get(member_id=member_id)
+        member.role = role.lower()
+        member.save()
+
+    @staticmethod
     def get_members_by_user_email(
         user_emails: list[str], values_list_fields: list[str]
     ) -> list[dict[str, Any]]:
