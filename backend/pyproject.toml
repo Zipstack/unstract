@@ -48,6 +48,7 @@ dependencies = [
     "unstract-tool-registry @ file:///${PROJECT_ROOT}/../unstract/tool-registry",
     "unstract-tool-sandbox @ file:///${PROJECT_ROOT}/../unstract/tool-sandbox",
     "unstract-workflow-execution @ file:///${PROJECT_ROOT}/../unstract/workflow-execution",
+    "unstract-filesystem @ file:///${PROJECT_ROOT}/../unstract/filesystem",
     "azure-identity==1.16.0",
     "azure-mgmt-apimanagement==3.0.0",
     "croniter>=3.0.3",

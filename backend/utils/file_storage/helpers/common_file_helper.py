@@ -1,9 +1,11 @@
 import json
 from typing import Any, Union
 
-from unstract.sdk.file_storage.fs_permanent import PermanentFileStorage
-from unstract.sdk.file_storage.fs_provider import FileStorageProvider
-from unstract.sdk.file_storage.fs_shared_temporary import SharedTemporaryFileStorage
+from unstract.sdk.file_storage import (
+    FileStorageProvider,
+    PermanentFileStorage,
+    SharedTemporaryFileStorage,
+)
 from utils.file_storage.constants import FileStorageKeys, FileStorageType
 
 from unstract.core.utilities import UnstractUtils
