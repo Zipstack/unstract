@@ -38,9 +38,9 @@
     },
     "dsn": {
       "type": "string",
-      "title": "Dsn",
+      "title": "DSN",
       "description": "Specify the desired network or the TNS names",
-      "default": "db2024_low"
+      "default": ""
     },
     "wallet_location": {
       "type": "string",

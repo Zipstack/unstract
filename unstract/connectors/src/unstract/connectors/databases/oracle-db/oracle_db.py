@@ -12,12 +12,12 @@ class OracleDB(UnstractDB):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("OracleDB")
 
-        self.config_dir = settings.get("config_dir", None)
-        self.user = settings.get("user", None)
-        self.password = settings.get("password", None)
-        self.dsn = settings.get("dsn", None)
-        self.wallet_location = settings.get("wallet_location", None)
-        self.wallet_password = settings.get("wallet_password", None)
+        self.config_dir = settings.get("config_dir", "/opt/OracleCloud/MYDB")
+        self.user = settings.get("user", "admin")
+        self.password = settings.get("password", "")
+        self.dsn = settings.get("dsn", "")
+        self.wallet_location = settings.get("wallet_location", "/opt/OracleCloud/MYDB")
+        self.wallet_password = settings.get("wallet_password", "")
         if not (
             self.config_dir
             and self.user
