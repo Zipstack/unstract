@@ -5,7 +5,7 @@
 groups = ["default", "hook-check-django-migrations", "lint"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:de6d56246a31a6cb1cbc753687c77c79ddcc90e528609077cf683463de67f44d"
+content_hash = "sha256:8872abdb755963ff0f3bf68bf074db7e58b97ef7fccbadea6a25e8c49f07332a"
 
 [[package]]
 name = "adlfs"
@@ -5079,6 +5079,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "unstract-filesystem"
+version = "0.0.1"
+requires_python = ">=3.9,<3.11.1"
+editable = true
+path = "./unstract/filesystem"
+summary = "Unstract filesystem package"
+groups = ["hook-check-django-migrations"]
+dependencies = [
+    "unstract-sdk~=0.54.0rc2",
+]
+
+[[package]]
 name = "unstract-flags"
 version = "0.0.1"
 requires_python = ">=3.9"
@@ -5148,6 +5160,7 @@ dependencies = [
     "PyYAML~=6.0.1",
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
+    "unstract-flags",
     "unstract-sdk~=0.54.0rc2",
     "unstract-tool-sandbox",
 ]
@@ -5174,6 +5187,7 @@ summary = "Unstract workflow execution package"
 groups = ["hook-check-django-migrations"]
 dependencies = [
     "unstract-core",
+    "unstract-filesystem",
     "unstract-flags",
     "unstract-tool-registry",
     "unstract-tool-sandbox",
