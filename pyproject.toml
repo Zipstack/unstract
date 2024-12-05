@@ -41,13 +41,14 @@ hook-check-django-migrations = [
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.0.0",
     "python-magic==0.4.27",
-    "unstract-sdk~=0.54.0rc2",
+    "unstract-sdk~=0.54.0rc5",
     "-e unstract-connectors @ file:///${PROJECT_ROOT}/unstract/connectors",
     "-e unstract-core @ file:///${PROJECT_ROOT}/unstract/core",
     "-e unstract-flags @ file:///${PROJECT_ROOT}/unstract/flags",
     "-e unstract-tool-registry @ file:///${PROJECT_ROOT}/unstract/tool-registry",
     "-e unstract-tool-sandbox @ file:///${PROJECT_ROOT}/unstract/tool-sandbox",
     "-e unstract-workflow-execution @ file:///${PROJECT_ROOT}/unstract/workflow-execution",
+    "-e unstract-filesystem @ file:///${PROJECT_ROOT}/unstract/filesystem"
 ]
 
 [tool.black]
