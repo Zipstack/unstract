@@ -27,6 +27,7 @@ dependencies = [
     "google-cloud-bigquery==3.11.4", # For Bigquery
     "pymssql==2.2.8", # For MSSQL
     "PyMySQL==1.1.0", # For MySQL
+    "oracledb==2.4.0", # For OracleDB
     "fsspec[sftp]~=2024.6.0", # For SFTP
 
 ]

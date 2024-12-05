@@ -1,0 +1,59 @@
+{
+  "title": "Oracle DB database",
+  "description": "Designed with a patented new architecture to handle all aspects of data and analytics",
+  "type": "object",
+  "required": [
+    "connectorName",
+    "config_dir",
+    "user",
+    "password",
+    "dsn",
+    "wallet_location",
+    "wallet_password"
+  ],
+  "properties": {
+    "connectorName": {
+      "type": "string",
+      "title": "Name of the connector",
+      "default": "Unstract's Oracle DB connector"
+    },
+    "config_dir": {
+      "type": "string",
+      "title": "Connector Directory",
+      "description": "Specifies the directory containing tnsnames.ora ",
+      "default": "/opt/OracleCloud/MYDB"
+    },
+    "user": {
+      "type": "string",
+      "title": "User",
+      "description": "Specifies the database user ",
+      "default": "admin"
+    },
+    "password": {
+      "type": "string",
+      "title": "Password",
+      "description": "Specifies the database user password ",
+      "format": "password",
+      "default": ""
+    },
+    "dsn": {
+      "type": "string",
+      "title": "DSN",
+      "description": "Specify the desired network or the TNS names",
+      "default": ""
+    },
+    "wallet_location": {
+      "type": "string",
+      "title": "Wallet Location",
+      "description": "Specifies the directory containing the PEM file (ewallet.pem)",
+      "default": "/opt/OracleCloud/MYDB"
+    },
+    "wallet_password": {
+      "type": "string",
+      "title": "Wallet Password",
+      "description": "Specifies the password for the PEM file",
+      "format": "password",
+      "default": ""
+    }
+  }
+}

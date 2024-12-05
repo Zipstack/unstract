@@ -4,7 +4,6 @@ from typing import Any
 import pymysql
 from pymysql.connections import Connection
 
-from unstract.connectors.databases.mysql import MySQL
 from unstract.connectors.databases.mysql_handler import MysqlHandler
 from unstract.connectors.databases.unstract_db import UnstractDB
 
@@ -60,21 +59,8 @@ class MariaDB(UnstractDB, MysqlHandler):
         )
         return con
 
-    @staticmethod
-    def sql_to_db_mapping(value: str) -> str:
-        """
-        Gets the python datatype of value and converts python datatype
-        to corresponding DB datatype
-        Args:
-            value (str): _description_
-
-        Returns:
-            str: returns Mysql.sql_to_db_mapping
-
-        Note:
-            Mysql and Mariadb share same SQL column type
-        """
-        return str(MySQL.sql_to_db_mapping(value=value))
+    def sql_to_db_mapping(self, value: str) -> str:
+        return str(MysqlHandler.sql_to_db_mapping(value=value))
 
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any

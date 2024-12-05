@@ -1,3 +1,4 @@
+import datetime
 import logging
 from typing import Any
 
@@ -13,6 +14,26 @@ logger = logging.getLogger(__name__)
 
 
 class MysqlHandler:
+    @staticmethod
+    def sql_to_db_mapping(value: str) -> str:
+        """Function to generate information schema of the corresponding table.
+
+        Args:
+            table_name (str): db-connector table name
+
+        Returns:
+            dict[str, str]: a dictionary contains db column name and
+            db column types of corresponding table
+        """
+        python_type = type(value)
+        mapping = {
+            str: "LONGTEXT",
+            int: "BIGINT",
+            float: "FLOAT",
+            datetime.datetime: "TIMESTAMP",
+        }
+        return mapping.get(python_type, "LONGTEXT")
+
     @staticmethod
     def execute_query(
         engine: Any,
