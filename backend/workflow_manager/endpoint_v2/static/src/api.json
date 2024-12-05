@@ -1,6 +1,5 @@
 {
-    "title": "Workflow API Source",
-    "description": "Settings for API Source",
+    "title": "API Source Settings",
     "type": "object",
     "required": [],
     "properties": {
