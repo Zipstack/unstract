@@ -37,7 +37,7 @@ dependencies = [
     # Indirect local dependencies usually need to be added in their own projects
     # as: https://pdm-project.org/latest/usage/dependency/#local-dependencies.
     #
-    # However, such indirect local dependencies which are not direct depedency of
+    # However, such indirect local dependencies which are not direct dependency of
     # main project appear as absolute paths in pdm.lock of main project, making it
     # impossible to check in the lock file.
     #
