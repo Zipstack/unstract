@@ -73,21 +73,27 @@ class DeploymentExecution(views.APIView):
     def get(
         self, request: Request, org_name: str, api_name: str, api: APIDeployment
     ) -> Response:
-        execution_id = request.query_params.get("execution_id")
+        execution_id = request.query_params.get("execution_id").strip()
         include_metadata = (
             request.query_params.get(ApiExecution.INCLUDE_METADATA, "false").lower()
             == "true"
         )
+
         if not execution_id:
             raise InvalidAPIRequest("execution_id shouldn't be empty")
-        response: ExecutionResponse = DeploymentHelper.get_execution_status(
-            execution_id=execution_id
-        )
+
+        try:
+            response: ExecutionResponse = DeploymentHelper.get_execution_status(execution_id)
+        except InvalidAPIRequest as e:
+            logger.error(f"Invalid execution_id: {execution_id}. Error: {e}")
+            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+
         response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
         if response.execution_status == CeleryTaskState.COMPLETED.value:
             response_status = status.HTTP_200_OK
             if not include_metadata:
                 response.remove_result_metadata_keys()
+
         return Response(
             data={
                 "status": response.execution_status,
