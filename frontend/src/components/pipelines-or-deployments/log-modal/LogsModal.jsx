@@ -7,6 +7,7 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import "./LogsModel.css";
+import CustomMarkdown from "../../helpers/custom-markdown/CustomMarkdown.jsx";
 
 const LogsModal = ({
   open,
@@ -40,7 +41,7 @@ const LogsModal = ({
       .then((res) => {
         const logDetails = res.data.results.map((item) => ({
           id: item.id,
-          log: item.data?.log,
+          log: <CustomMarkdown text={item.data?.log} />,
           type: item.data?.type,
           stage: item.data?.stage,
           level: item.data?.level,

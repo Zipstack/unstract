@@ -1,20 +1,22 @@
-import { Form, Input } from "antd";
+import { Input } from "antd";
 import PropTypes from "prop-types";
+import { RjsfWidgetLayout } from "../../../layouts/rjsf-widget-layout/RjsfWidgetLayout";
 
-const URLWidget = ({ id, value, onChange, rawErrors }) => {
+const URLWidget = (props) => {
+  const { id, value, onChange, label, schema, required } = props;
+  const description = schema?.description || "";
   const handleURLChange = (event) => {
     onChange(event.target.value);
   };
 
-  const hasError = rawErrors && rawErrors.length > 0;
-
   return (
-    <Form.Item
-      style={{ width: "100%" }}
-      validateStatus={hasError ? "error" : ""}
+    <RjsfWidgetLayout
+      label={label}
+      description={description}
+      required={required}
     >
       <Input type="url" id={id} value={value} onChange={handleURLChange} />
-    </Form.Item>
+    </RjsfWidgetLayout>
   );
 };
 
@@ -22,7 +24,9 @@ URLWidget.propTypes = {
   id: PropTypes.string.isRequired,
   value: PropTypes.string,
   onChange: PropTypes.func.isRequired,
-  rawErrors: PropTypes.array,
+  label: PropTypes.string.isRequired,
+  schema: PropTypes.object.isRequired,
+  required: PropTypes.bool,
 };
 
 export { URLWidget };
