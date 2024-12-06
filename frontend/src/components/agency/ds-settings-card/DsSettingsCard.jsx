@@ -47,7 +47,7 @@ const needToRemove = {
 
 function DsSettingsCard({ type, endpointDetails, message }) {
   const workflowStore = useWorkflowStore();
-  const { source, destination, allowChangeEndpoint } = workflowStore;
+  const { source, destination, allowChangeEndpoint, details } = workflowStore;
   const [options, setOptions] = useState({});
   const [openModal, setOpenModal] = useState(false);
 
@@ -490,6 +490,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         connType={connType}
         selectedItemName={selectedItemName}
         setSelectedItemName={setSelectedItemName}
+        workflowDetails={details}
       />
     </>
   );

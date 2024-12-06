@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -59,3 +59,24 @@ class WorkflowUtil:
             destination modified.
         """
         return file_hash
+
+    @staticmethod
+    def validate_db_rule(
+        result: Optional[Any],
+        workflow_id: Workflow,
+        file_destination: Optional[tuple[str, str]],
+    ) -> bool:
+        """Placeholder method to check the db rules - MRQ
+
+        Args:
+            result (Optional[Any]): The result dictionary containing
+            confidence_data.
+            workflow_id (str): The ID of the workflow to retrieve the rules.
+            file_destination (Optional[tuple[str, str]]): The destination of
+            the file (e.g., MANUALREVIEW or other).
+
+        Returns:
+            bool: True if the field_key conditions are met based on rule logic
+            and file destination.
+        """
+        return False

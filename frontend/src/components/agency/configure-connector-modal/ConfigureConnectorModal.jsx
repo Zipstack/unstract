@@ -34,6 +34,7 @@ function ConfigureConnectorModal({
   connType,
   selectedItemName,
   setSelectedItemName,
+  workflowDetails,
 }) {
   const [activeKey, setActiveKey] = useState("1");
   useEffect(() => {
@@ -190,8 +191,11 @@ function ConfigureConnectorModal({
             {activeKey === "2" && connType === "FILESYSTEM" && (
               <ManageFiles selectedItem={connectorId} />
             )}
-            {activeKey === "MANUALREVIEW" && (
-              <DBRules connDetails={connDetails} />
+            {activeKey === "MANUALREVIEW" && DBRules && (
+              <DBRules
+                connDetails={connDetails}
+                workflowDetails={workflowDetails}
+              />
             )}
           </Col>
         </Row>
@@ -218,6 +222,7 @@ ConfigureConnectorModal.propTypes = {
   connType: PropTypes.string.isRequired,
   selectedItemName: PropTypes.string,
   setSelectedItemName: PropTypes.func.isRequired,
+  workflowDetails: PropTypes.object,
 };
 
 export { ConfigureConnectorModal };
