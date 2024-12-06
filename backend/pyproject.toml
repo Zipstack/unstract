@@ -37,7 +37,7 @@ dependencies = [
     # Indirect local dependencies usually need to be added in their own projects
     # as: https://pdm-project.org/latest/usage/dependency/#local-dependencies.
     #
-    # However, such indirect local dependencies which are not direct depedency of
+    # However, such indirect local dependencies which are not direct dependency of
     # main project appear as absolute paths in pdm.lock of main project, making it
     # impossible to check in the lock file.
     #
@@ -77,6 +77,7 @@ dev = [
     "-e unstract-tool-registry @ file:///${PROJECT_ROOT}/../unstract/tool-registry",
     "-e unstract-tool-sandbox @ file:///${PROJECT_ROOT}/../unstract/tool-sandbox",
     "-e unstract-workflow-execution @ file:///${PROJECT_ROOT}/../unstract/workflow-execution",
+    "-e unstract-filesystem @ file:///${PROJECT_ROOT}/../unstract/filesystem",
 ]
 
 [tool.pytest.ini_options]

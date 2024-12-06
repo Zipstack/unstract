@@ -187,7 +187,9 @@ class ExecutionFileHandler:
         path_prefix = ToolsUtils.get_env(
             ToolRuntimeVariable.WORKFLOW_EXECUTION_DIR_PREFIX
         )
-        execution_dir = Path(path_prefix) / organization_id / workflow_id / execution_id
+        execution_dir = (
+            Path(path_prefix) / organization_id / str(workflow_id) / str(execution_id)
+        )
 
         return str(execution_dir)
 
@@ -207,5 +209,7 @@ class ExecutionFileHandler:
         str: The directory path for the execution.
         """
         path_prefix = ToolsUtils.get_env(ToolRuntimeVariable.API_EXECUTION_DIR_PREFIX)
-        execution_dir = Path(path_prefix) / organization_id / workflow_id / execution_id
+        execution_dir = (
+            Path(path_prefix) / organization_id / str(workflow_id) / str(execution_id)
+        )
         return str(execution_dir)

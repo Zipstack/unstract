@@ -5086,6 +5086,9 @@ editable = true
 path = "./unstract/filesystem"
 summary = "Unstract filesystem package"
 groups = ["hook-check-django-migrations"]
+dependencies = [
+    "unstract-sdk~=0.54.0rc5",
+]
 
 [[package]]
 name = "unstract-flags"

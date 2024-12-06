@@ -73,6 +73,7 @@ directories=(
     "backend"
     "prompt-service"
     "worker"
+    "unstract/filesystem"
     "unstract/core"
     "unstract/flags"
     "platform-service"
