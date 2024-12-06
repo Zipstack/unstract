@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:89de7479d6c560460d6a91c569d66b30db7db17b5d9c59e7e174e32f479ea197"
+content_hash = "sha256:24b17c615ba6c63307c81e8ffe634e34d1ea88208bf68521eca192a7a35b0d26"
 
 [[package]]
 name = "adlfs"
@@ -5008,7 +5008,7 @@ path = "../unstract/filesystem"
 summary = "Unstract filesystem package"
 groups = ["default", "dev"]
 dependencies = [
-    "unstract-sdk~=0.54.0rc2",
+    "unstract-sdk~=0.54.0rc5",
 ]
 
 [[package]]
@@ -5082,7 +5082,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
     "unstract-flags",
-    "unstract-sdk~=0.54.0rc2",
+    "unstract-sdk~=0.54.0rc5",
     "unstract-tool-sandbox",
 ]
 

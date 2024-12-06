@@ -5,7 +5,7 @@
 groups = ["default", "hook-check-django-migrations", "lint"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:8872abdb755963ff0f3bf68bf074db7e58b97ef7fccbadea6a25e8c49f07332a"
+content_hash = "sha256:e8b8c1cd8d0b2d2b7c786b559c5814a9c19e34785d897c8be5652fbb6bb42564"
 
 [[package]]
 name = "adlfs"
@@ -5087,7 +5087,7 @@ path = "./unstract/filesystem"
 summary = "Unstract filesystem package"
 groups = ["hook-check-django-migrations"]
 dependencies = [
-    "unstract-sdk~=0.54.0rc2",
+    "unstract-sdk~=0.54.0rc5",
 ]
 
 [[package]]
@@ -5161,7 +5161,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
     "unstract-flags",
-    "unstract-sdk~=0.54.0rc2",
+    "unstract-sdk~=0.54.0rc5",
     "unstract-tool-sandbox",
 ]
 
