@@ -1,6 +1,5 @@
 {
   "title": "Azure Cloud Storage",
-  "description": "Access files in your Azure Cloud Storage with this connector",
   "type": "object",
   "required": [
     "connectorName",

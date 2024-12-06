@@ -1,6 +1,5 @@
 {
-  "title": "BigQuery database",
-  "description": "Designed with a patented new architecture to handle all aspects of data and analytics",
+  "title": "BigQuery Database",
   "type": "object",
   "required": [
     "connectorName",
@@ -17,7 +16,7 @@
       "format": "password",
       "title": "Credentials",
       "default": "",
-      "description": "You can download credentials from Google Clouds's iam-admin/serviceaccounts/Keys. Click on Add keys."
+      "description": "Refer [GCloud docs](https://developers.google.com/workspace/guides/create-credentials#create_credentials_for_a_service_account) on adding keys for service account"
     }
   }
 }

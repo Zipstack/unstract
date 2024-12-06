@@ -1,6 +1,5 @@
 {
-  "title": "PostgreSQL database",
-  "description": "Designed with a patented new architecture to handle all aspects of data and analytics",
+  "title": "PostgreSQL Database",
   "type": "object",
   "allOf": [
     {

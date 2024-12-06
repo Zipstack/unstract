@@ -1,6 +1,5 @@
 {
-    "title": "Workflow File Destination",
-    "description": "Settings for File Destination",
+    "title": "File Destination Settings",
     "type": "object",
     "required": [
         "outputFolder"
