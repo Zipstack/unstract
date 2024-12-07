@@ -1,11 +1,13 @@
 import { Button, ConfigProvider, notification, theme } from "antd";
 import { BrowserRouter } from "react-router-dom";
+import { HelmetProvider } from "react-helmet-async";
 
 import { THEME } from "./helpers/GetStaticData.js";
 import { Router } from "./routes/Router.jsx";
 import { useAlertStore } from "./store/alert-store.js";
 import { useSessionStore } from "./store/session-store.js";
 import PostHogPageviewTracker from "./PostHogPageviewTracker.js";
+import { PageTitle } from "./components/widgets/page-title/PageTitle.jsx";
 import { useEffect } from "react";
 
 let GoogleTagManagerHelper;
@@ -71,12 +73,15 @@ function App() {
         },
       }}
     >
-      <BrowserRouter>
-        <PostHogPageviewTracker />
-        {GoogleTagManagerHelper && <GoogleTagManagerHelper />}
-        {contextHolder}
-        <Router />
-      </BrowserRouter>
+      <HelmetProvider>
+        <BrowserRouter>
+          <PostHogPageviewTracker />
+          <PageTitle title={"Unstract"} />
+          {GoogleTagManagerHelper && <GoogleTagManagerHelper />}
+          {contextHolder}
+          <Router />
+        </BrowserRouter>
+      </HelmetProvider>
     </ConfigProvider>
   );
 }
