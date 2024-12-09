@@ -20,7 +20,7 @@ const CustomMarkdown = ({
   // 4. Link: [text](url)
   // 5. New line: \n
   const tokenRegex =
-    /(```([\s\S]*?)```|`([^`]+)`|\*\*(.*?)\*\*|\[([^\]]+)\]\(([^)]+)\)|\n)/g;
+    /(```((?:[^`]|`(?!``))*)```|`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)]+)\)|\n)/g;
 
   const content = useMemo(() => {
     const elements = [];
