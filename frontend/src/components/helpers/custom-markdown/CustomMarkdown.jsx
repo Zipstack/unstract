@@ -1,4 +1,4 @@
-import React from "react";
+import { useMemo } from "react";
 import { Typography } from "antd";
 import PropTypes from "prop-types";
 
@@ -13,34 +13,41 @@ const CustomMarkdown = ({
   const textType = isSecondary ? "secondary" : undefined;
   const className = styleClassName || "";
 
-  const parseMarkdown = React.useCallback(() => {
-    const elements = [];
-    let index = 0;
-    const input = text;
+  // Single regex to capture supported markdown tokens:
+  // 1. Triple code block: ```code```
+  // 2. Inline code: `code`
+  // 3. Bold text: **bold**
+  // 4. Link: [text](url)
+  // 5. New line: \n
+  const tokenRegex =
+    /(```([\s\S]*?)```|`([^`]+)`|\*\*(.*?)\*\*|\[([^\]]+)\]\(([^)]+)\)|\n)/g;
 
-    const parseCodeBlock = () => {
-      const endIndex = input.indexOf("```", index + 3);
-      if (endIndex !== -1) {
-        const codeText = input.substring(index + 3, endIndex);
+  const content = useMemo(() => {
+    const elements = [];
+    let lastIndex = 0;
+    const matches = text.matchAll(tokenRegex);
+
+    for (const match of matches) {
+      const matchIndex = match.index || 0;
+      // Push any preceding regular text
+      if (matchIndex > lastIndex) {
+        elements.push(text.substring(lastIndex, matchIndex));
+      }
+
+      // Identify matched token
+      if (match[2] !== undefined) {
+        // Triple code block
         elements.push(
           <Paragraph
             key={elements.length}
             className={className}
             style={{ margin: 0 }}
           >
-            <pre style={{ margin: 0 }}>{codeText}</pre>
+            <pre style={{ margin: 0 }}>{match[2]}</pre>
           </Paragraph>
         );
-        index = endIndex + 3;
-        return true;
-      }
-      return false;
-    };
-
-    const parseInlineCode = () => {
-      const endIndex = input.indexOf("`", index + 1);
-      if (endIndex !== -1) {
-        const codeText = input.substring(index + 1, endIndex);
+      } else if (match[3] !== undefined) {
+        // Inline code
         elements.push(
           <Text
             code
@@ -48,19 +55,11 @@ const CustomMarkdown = ({
             type={textType}
             className={className}
           >
-            {codeText}
+            {match[3]}
           </Text>
         );
-        index = endIndex + 1;
-        return true;
-      }
-      return false;
-    };
-
-    const parseBoldText = () => {
-      const endIndex = input.indexOf("**", index + 2);
-      if (endIndex !== -1) {
-        const boldText = input.substring(index + 2, endIndex);
+      } else if (match[4] !== undefined) {
+        // Bold text
         elements.push(
           <Text
             strong
@@ -68,89 +67,37 @@ const CustomMarkdown = ({
             type={textType}
             className={className}
           >
-            {boldText}
+            {match[4]}
           </Text>
         );
-        index = endIndex + 2;
-        return true;
-      }
-      return false;
-    };
-
-    const parseLink = () => {
-      const endLinkTextIndex = input.indexOf("]", index);
-      const startUrlIndex = input.indexOf("(", endLinkTextIndex);
-      const endUrlIndex = input.indexOf(")", startUrlIndex);
-
-      if (
-        endLinkTextIndex !== -1 &&
-        startUrlIndex === endLinkTextIndex + 1 &&
-        endUrlIndex !== -1
-      ) {
-        const linkText = input.substring(index + 1, endLinkTextIndex);
-        const url = input.substring(startUrlIndex + 1, endUrlIndex);
+      } else if (match[5] !== undefined && match[6] !== undefined) {
+        // Link
         elements.push(
           <Link
-            href={url}
+            href={match[6]}
             key={elements.length}
             target="_blank"
             rel="noopener noreferrer"
             className={className}
           >
-            {linkText}
+            {match[5]}
           </Link>
         );
-        index = endUrlIndex + 1;
-        return true;
-      }
-      return false;
-    };
-
-    while (index < input.length) {
-      const char = input[index];
-
-      if (input.startsWith("```", index)) {
-        if (parseCodeBlock()) continue;
-      } else if (input.startsWith("`", index)) {
-        if (parseInlineCode()) continue;
-      } else if (input.startsWith("**", index)) {
-        if (parseBoldText()) continue;
-      } else if (char === "[") {
-        if (parseLink()) continue;
-      } else if (char === "\n") {
-        // Handle new lines
-        if (renderNewLines) {
-          elements.push(<br key={elements.length} />);
-        } else {
-          elements.push("\n");
-        }
-        index += 1;
-        continue;
+      } else if (match[0] === "\n") {
+        // New line
+        elements.push(renderNewLines ? <br key={elements.length} /> : "\n");
       }
 
-      // Handle regular text
-      let nextIndex = input.length;
-      const nextSpecialIndices = [
-        input.indexOf("```", index),
-        input.indexOf("`", index),
-        input.indexOf("**", index),
-        input.indexOf("[", index),
-        input.indexOf("\n", index),
-      ].filter((i) => i !== -1);
+      lastIndex = matchIndex + match[0].length;
+    }
 
-      if (nextSpecialIndices.length > 0) {
-        nextIndex = Math.min(...nextSpecialIndices);
-      }
-
-      const textSegment = input.substring(index, nextIndex);
-      elements.push(textSegment);
-      index = nextIndex;
+    // Add remaining text after the last token
+    if (lastIndex < text.length) {
+      elements.push(text.substring(lastIndex));
     }
 
     return elements;
   }, [text, renderNewLines, textType, className]);
-
-  const content = React.useMemo(() => parseMarkdown(), [parseMarkdown]);
 
   return (
     <Text type={textType} className={className}>
