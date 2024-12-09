@@ -13,16 +13,17 @@ const CustomMarkdown = ({
   const textType = isSecondary ? "secondary" : undefined;
   const className = styleClassName || "";
 
-  // Single regex to capture supported markdown tokens:
-  // 1. Triple code block: ```code```
-  // 2. Inline code: `code`
-  // 3. Bold text: **bold**
-  // 4. Link: [text](url)
-  // 5. New line: \n
-  const tokenRegexPart1 =
-    "(```((?:[^`]|`(?!``))*)```|`([^`]+)`|\\*\\*([^*]+)\\*\\*|";
-  const tokenRegexPart2 = "\\[([^\\]]+)\\]\\(([^)]+)\\)|\\n)";
-  const tokenRegex = new RegExp(tokenRegexPart1 + tokenRegexPart2, "g");
+  /*
+    Single regex to capture supported markdown tokens:
+    1. Triple code block: ```code```
+    2. Inline code: `code`
+    3. Bold text: **bold**
+    4. Link: [text](url)
+    5. New line: \n
+    Note: Added maximum repetition limit to prevent super-linear runtime
+  */
+  const tokenRegex =
+    /(```((?:[^`]|`(?!``)){0,1000})```|`([^`]{1,100})`|\*\*([^*]{1,100})\*\*|\[([^\]]{1,100})\]\(([^)]{1,200})\)|\n)/g;
 
   const content = useMemo(() => {
     const elements = [];
