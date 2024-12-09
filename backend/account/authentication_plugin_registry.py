@@ -43,14 +43,11 @@ def _load_plugins() -> dict[str, dict[str, Any]]:
                     PluginConfig.AUTH_METADATA: module.metadata,
                 }
                 Logger.info(
-                    "Loaded auth plugin: %s, is_active: %s",
-                    module.metadata["name"],
-                    module.metadata["is_active"],
+                    "Loaded active authentication plugin: %s", module.metadata["name"]
                 )
             else:
-                Logger.warning(
-                    "Metadata is not active for %s authentication module.",
-                    auth_module_name,
+                Logger.info(
+                    "Skipping inactive authentication plugin: %s", auth_module_name
                 )
         except ModuleNotFoundError as exception:
             Logger.error(

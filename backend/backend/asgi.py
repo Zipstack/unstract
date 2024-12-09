@@ -8,13 +8,17 @@ https://docs.djangoproject.com/en/4.2/howto/deployment/asgi/
 
 import os
 
-from django.core.asgi import get_asgi_application
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
+
+load_dotenv(find_dotenv() or "")
 
 load_dotenv()
+
 os.environ.setdefault(
     "DJANGO_SETTINGS_MODULE",
-    os.environ.get("DJANGO_SETTINGS_MODULE", "backend.settings.dev"),
+    os.environ.get("DJANGO_SETTINGS_MODULE", "backend.settings.platform"),
 )
+
+from django.core.asgi import get_asgi_application  # noqa: E402
 
 application = get_asgi_application()
