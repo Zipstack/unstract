@@ -1,6 +1,5 @@
 {
-    "title": "Workflow DB Destination",
-    "description": "Settings for DB Destination",
+    "title": "DB Destination Settings",
     "type": "object",
     "required": [
         "table",
@@ -13,13 +12,13 @@
             "type": "string",
             "title": "Table",
             "default": "",
-            "description": "Table to store the output. If your database supports schemas, use the format schema.table"
+            "description": "Table to store the output. If your database supports schemas, use the format `schema.table`"
         },
         "includeAgent": {
             "type": "boolean",
             "title": "Include 'created_by' column",
             "default": false,
-            "description": "Include the 'created_by' in the output row"
+            "description": "Include the `created_by` in the output row"
         },
         "agentName": {
             "type": "string",
@@ -28,7 +27,7 @@
                 "Unstract/DBWriter"
             ],
             "default": "Unstract/DBWriter",
-            "description": "Name of the agent to use as the 'created_by' value"
+            "description": "Name of the agent to use as the `created_by` value"
         },
         "includeTimestamp": {
             "type": "boolean",

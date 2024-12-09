@@ -1,6 +1,5 @@
 {
-    "title": "Workflow File Source",
-    "description": "Settings for File Source",
+    "title": "File Source Settings",
     "type": "object",
     "required": [],
     "properties": {

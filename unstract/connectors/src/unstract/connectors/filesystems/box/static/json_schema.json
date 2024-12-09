@@ -1,6 +1,6 @@
 {
-    "title": "Box connector",
-    "description": "A connector that allows for fetching data from Box content management(https://www.box.com/overview)",
+    "title": "Box Connector",
+    "description": "A connector that allows for fetching data from [Box content management](https://www.box.com/overview)",
     "type": "object",
     "required": [
       "connectorName",
@@ -15,7 +15,7 @@
       "box_app_settings": {
         "type": "string",
         "title": "Box App Settings JSON",
-        "description": "A JSON of your app configuration settings downloaded from the Box dev console. Ensure that the private key is filled and you're using an Enterprise Box account due to this issue (https://forum.box.com/t/free-developer-accounts-please-read/152/3)",
+        "description": "A JSON of your app configuration settings downloaded from the Box dev console. Ensure that the private key is filled and you're using an Enterprise Box account due to [this issue](https://forum.box.com/t/free-developer-accounts-please-read/152/3)",
         "format": "password"
       }
     }

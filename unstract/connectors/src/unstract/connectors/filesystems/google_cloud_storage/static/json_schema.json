@@ -1,6 +1,5 @@
 {
   "title": "Google Cloud Storage",
-  "description": "Access files in your Google Cloud Storage with this connector",
   "type": "object",
   "required": [
     "connectorName",
@@ -18,7 +17,7 @@
       "title": "Credentials",
       "format": "password",
       "default": "",
-      "description": "You can download credentials from Google Clouds's iam-admin/serviceaccounts/Keys. Click on Add keys."
+      "description": "Refer [GCloud docs](https://developers.google.com/workspace/guides/create-credentials#create_credentials_for_a_service_account) on adding keys for service account"
     },
     "project_id": {
       "type": "string",

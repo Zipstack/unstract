@@ -30,7 +30,7 @@
       "type": "string",
       "title": "Endpoint URL",
       "default": "https://s3.amazonaws.com",
-      "description": "Endpoint URL to connect to. (example https://s3.amazonaws.com)"
+      "description": "Endpoint URL to connect to. (example `https://s3.amazonaws.com`)"
     },
     "region_name": {
       "type": "string",
