@@ -14,16 +14,16 @@ const CustomMarkdown = ({
   const className = styleClassName || "";
 
   /*
-    Simplified regex to reduce complexity:
-    1. Triple code block: ```([\s\S]*?)```
-      Using a lazy quantifier with [\s\S] matches everything, but keeps it simple.
-    2. Inline code: `([^`]+)` - matches one or more non-backtick chars
-    3. Bold text: **([^*]+)** - matches one or more non-asterisk chars
-    4. Link: \[([^\]]+)\]\(([^)]+)\) - matches link text and URL
+    Single regex to capture supported markdown tokens:
+    1. Triple code block: ```code```
+    2. Inline code: `code`
+    3. Bold text: **bold**
+    4. Link: [text](url)
     5. New line: \n
+    Note: Added maximum repetition limit to prevent super-linear runtime
   */
   const tokenRegex =
-    /(```([\s\S]*?)```|`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)]+)\)|\n)/g;
+    /(```((?:[^`]|`(?!``)){0,1000})```|`([^`]{1,100})`|\*\*([^*]{1,100})\*\*|\[([^\]]{1,100})\]\(([^)]{1,200})\)|\n)/g;
 
   const content = useMemo(() => {
     const elements = [];
