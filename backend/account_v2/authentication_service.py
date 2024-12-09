@@ -27,8 +27,9 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from tenant_account_v2.models import OrganizationMember as OrganizationMember
 from tenant_account_v2.organization_member_service import OrganizationMemberService
+from utils.user_context import UserContext
 
-Logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class AuthenticationService:
@@ -90,6 +91,13 @@ class AuthenticationService:
             bool: True if the user is successfully authenticated and logged in,
                 False otherwise.
         """
+        # Validation of user credentials
+        if (
+            username != DefaultOrg.MOCK_USER
+            or password != DefaultOrg.MOCK_USER_PASSWORD
+        ):
+            return False
+
         user = authenticate(request, username=username, password=password)
         if user:
             # To avoid conflicts with django superuser
@@ -98,7 +106,7 @@ class AuthenticationService:
             login(request, user)
             return True
         # Attempt to initiate default user and authenticate again
-        if self.set_default_user(username, password):
+        if self._set_default_user():
             user = authenticate(request, username=username, password=password)
             if user:
                 login(request, user)
@@ -295,36 +303,108 @@ class AuthenticationService:
         )
         return organizationData
 
-    def set_default_user(self, username: str, password: str) -> bool:
+    def _set_default_user(self) -> bool:
         """Set the default user for authentication.
 
-        This method creates a default user with the provided username and
-        password if the username and password match the default values defined
-        in the 'DefaultOrg' class. The default user is saved in the database.
-
-        Args:
-            username (str): The username of the default user.
-            password (str): The password of the default user.
+        Creates or updates a default user with predefined credentials.
 
         Returns:
-            bool: True if the default user is successfully created and saved,
-                False otherwise.
+            bool: True if the default user is successfully created/updated.
         """
-        if (
-            username != DefaultOrg.MOCK_USER
-            or password != DefaultOrg.MOCK_USER_PASSWORD
-        ):
+        try:
+            UserContext.set_organization_identifier(DefaultOrg.ORGANIZATION_NAME)
+            organization = UserContext.get_organization()
+
+            user = self._get_or_create_user(organization)
+            self._update_user_credentials(user)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to set default user: {str(e)}")
             return False
 
+    def _get_or_create_user(self, organization: Optional[Organization]) -> User:
+        """Get existing user or create a new one based on organization context.
+
+        Args:
+            organization: The organization context
+
+        Returns:
+            User: The retrieved or created user
+        """
+        if not organization:
+            return self._create_mock_user()
+
+        return self._get_or_create_organization_user()
+
+    def _create_mock_user(self) -> User:
+        """Create a new mock user if it doesn't exist.
+
+        Returns:
+            User: The created or existing mock user
+        """
         user, created = User.objects.get_or_create(username=DefaultOrg.MOCK_USER)
         if created:
-            user.password = make_password(DefaultOrg.MOCK_USER_PASSWORD)
-        else:
-            user.user_id = DefaultOrg.MOCK_USER_ID
-            user.email = DefaultOrg.MOCK_USER_EMAIL
-            user.password = make_password(DefaultOrg.MOCK_USER_PASSWORD)
+            logger.info(f"Created new user with username {DefaultOrg.MOCK_USER}")
+        return user
+
+    def _get_or_create_organization_user(self) -> User:
+        """Get or create an organization user with admin privileges.
+
+        Returns:
+            User: The organization user with admin role
+        """
+        admin_user = self._get_admin_user()
+        if admin_user:
+            return admin_user
+
+        member = self._promote_first_member_to_admin()
+        if member:
+            return member.user
+
+        return self._create_mock_user()
+
+    def _get_admin_user(self) -> Optional[User]:
+        """Get the first admin user from the organization.
+
+        Returns:
+            Optional[User]: The admin user if exists, None otherwise
+        """
+        admin_members = OrganizationMemberService.get_members_by_role(
+            role=UserRole.ADMIN.value
+        )
+        return admin_members[0].user if admin_members else None
+
+    def _promote_first_member_to_admin(self) -> Optional[OrganizationMember]:
+        """Promote the first organization member to admin role.
+
+        Returns:
+            Optional[OrganizationMember]: The promoted member if exists, None otherwise
+        """
+        members = OrganizationMemberService.get_members()
+        if not members:
+            logger.warning("No organization member found")
+            return None
+
+        first_member = members[0]
+        OrganizationMemberService.set_member_role(
+            member_id=first_member.member_id, role=UserRole.ADMIN.value
+        )
+        return first_member
+
+    def _update_user_credentials(self, user: User) -> None:
+        """Update user with default credentials.
+
+        Args:
+            user (User): The user to update
+        """
+        user.username = DefaultOrg.MOCK_USER
+        user.user_id = DefaultOrg.MOCK_USER_ID
+        user.email = DefaultOrg.MOCK_USER_EMAIL
+        user.password = make_password(DefaultOrg.MOCK_USER_PASSWORD)
         user.save()
-        return True
+        logger.info(f"Updated user {user} with username {DefaultOrg.MOCK_USER}")
 
     def get_user_info(self, request: Request) -> Optional[UserInfo]:
         user: User = request.user
