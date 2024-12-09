@@ -13,7 +13,7 @@ ENV BUILD_PACKAGES_PATH unstract
 ENV PDM_VERSION 2.16.1
 
 RUN apt-get update \
-    && apt-get --no-install-recommends install -y docker \
+    && apt-get --no-install-recommends install -y docker build-essential pkg-config  freetds-dev libssl-dev libkrb5-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
     \
     && pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}
