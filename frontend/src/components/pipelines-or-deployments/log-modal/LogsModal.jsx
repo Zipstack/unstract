@@ -39,16 +39,16 @@ const LogsModal = ({
     };
     axiosPrivate(requestOptions)
       .then((res) => {
-        const logDetails = res.data.results.map((item) => ({
-          id: item.id,
-          log: <CustomMarkdown text={item.data?.log} />,
-          type: item.data?.type,
-          stage: item.data?.stage,
-          level: item.data?.level,
-          event_time: item.event_time,
+        const logDetails = res?.data?.results?.map((item) => ({
+          id: item?.id,
+          log: <CustomMarkdown text={item?.data?.log} />,
+          type: item?.data?.type,
+          stage: item?.data?.stage,
+          level: item?.data?.level,
+          event_time: item?.event_time,
         }));
         setLogDetails(logDetails);
-        setTotalCount(res.data.count);
+        setTotalCount(res?.data?.count);
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
@@ -75,7 +75,7 @@ const LogsModal = ({
         return (
           <Button
             type="link"
-            onClick={() => handleLogIdClick(record.execution_id)}
+            onClick={() => handleLogIdClick(record?.execution_id)}
           >
             {text}
           </Button>
@@ -86,7 +86,7 @@ const LogsModal = ({
       title: "Status",
       dataIndex: "status",
       key: "status",
-      render: (level) => <span className={level.toLowerCase()}>{level}</span>,
+      render: (level) => <span className={level?.toLowerCase()}>{level}</span>,
     },
   ];
 
@@ -105,7 +105,7 @@ const LogsModal = ({
       title: "Log Level",
       dataIndex: "level",
       key: "level",
-      render: (level) => <span className={level.toLowerCase()}>{level}</span>,
+      render: (level) => <span className={level?.toLowerCase()}>{level}</span>,
     },
     {
       title: "Log",
@@ -113,6 +113,7 @@ const LogsModal = ({
       key: "log",
     },
   ];
+
   return (
     <>
       <Modal

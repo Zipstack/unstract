@@ -25,17 +25,17 @@ const CustomMarkdown = ({
   const content = useMemo(() => {
     const elements = [];
     let lastIndex = 0;
-    const matches = text.matchAll(tokenRegex);
+    const matches = text?.matchAll(tokenRegex);
 
-    for (const match of matches) {
-      const matchIndex = match.index || 0;
+    for (const match of matches || []) {
+      const matchIndex = match?.index || 0;
       // Push any preceding regular text
       if (matchIndex > lastIndex) {
-        elements.push(text.substring(lastIndex, matchIndex));
+        elements.push(text?.substring(lastIndex, matchIndex));
       }
 
       // Identify matched token
-      if (match[2] !== undefined) {
+      if (match?.[2] !== undefined) {
         // Triple code block
         elements.push(
           <Paragraph
@@ -43,10 +43,10 @@ const CustomMarkdown = ({
             className={className}
             style={{ margin: 0 }}
           >
-            <pre style={{ margin: 0 }}>{match[2]}</pre>
+            <pre style={{ margin: 0 }}>{match?.[2]}</pre>
           </Paragraph>
         );
-      } else if (match[3] !== undefined) {
+      } else if (match?.[3] !== undefined) {
         // Inline code
         elements.push(
           <Text
@@ -55,10 +55,10 @@ const CustomMarkdown = ({
             type={textType}
             className={className}
           >
-            {match[3]}
+            {match?.[3]}
           </Text>
         );
-      } else if (match[4] !== undefined) {
+      } else if (match?.[4] !== undefined) {
         // Bold text
         elements.push(
           <Text
@@ -67,33 +67,33 @@ const CustomMarkdown = ({
             type={textType}
             className={className}
           >
-            {match[4]}
+            {match?.[4]}
           </Text>
         );
-      } else if (match[5] !== undefined && match[6] !== undefined) {
+      } else if (match?.[5] !== undefined && match?.[6] !== undefined) {
         // Link
         elements.push(
           <Link
-            href={match[6]}
+            href={match?.[6]}
             key={elements.length}
             target="_blank"
             rel="noopener noreferrer"
             className={className}
           >
-            {match[5]}
+            {match?.[5]}
           </Link>
         );
-      } else if (match[0] === "\n") {
+      } else if (match?.[0] === "\n") {
         // New line
         elements.push(renderNewLines ? <br key={elements.length} /> : "\n");
       }
 
-      lastIndex = matchIndex + match[0].length;
+      lastIndex = matchIndex + (match?.[0]?.length || 0);
     }
 
     // Add remaining text after the last token
-    if (lastIndex < text.length) {
-      elements.push(text.substring(lastIndex));
+    if (lastIndex < (text?.length || 0)) {
+      elements.push(text?.substring(lastIndex));
     }
 
     return elements;
