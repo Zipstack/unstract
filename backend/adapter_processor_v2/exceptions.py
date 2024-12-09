@@ -2,6 +2,7 @@ from typing import Optional
 
 from adapter_processor_v2.constants import AdapterKeys
 from rest_framework.exceptions import APIException
+from unstract.sdk.exceptions import SdkError
 
 
 class IdIsMandatory(APIException):
@@ -50,6 +51,20 @@ class DuplicateAdapterNameError(APIException):
 class TestAdapterError(APIException):
     status_code = 500
     default_detail = "Error while testing adapter"
+
+    def __init__(
+        self,
+        sdk_err: SdkError,
+        detail: Optional[str] = None,
+        code: Optional[str] = None,
+        adapter_name: Optional[str] = None,
+    ):
+        if sdk_err.status_code:
+            self.status_code = sdk_err.status_code
+        if detail is None:
+            adapter_name = f"'{adapter_name}'" if adapter_name else "adapter"
+            detail = f"Error testing {adapter_name}. {str(sdk_err)}"
+        super().__init__(detail, code)
 
 
 class TestAdapterInputError(APIException):
