@@ -1,4 +1,3 @@
-import datetime
 import os
 from typing import Any
 
@@ -60,25 +59,8 @@ class MySQL(UnstractDB, MysqlHandler):
         )
         return con
 
-    @staticmethod
-    def sql_to_db_mapping(value: str) -> str:
-        """
-        Gets the python datatype of value and converts python datatype
-        to corresponding DB datatype
-        Args:
-            value (str): _description_
-
-        Returns:
-            str: _description_
-        """
-        python_type = type(value)
-        mapping = {
-            str: "LONGTEXT",
-            int: "BIGINT",
-            float: "FLOAT",
-            datetime.datetime: "TIMESTAMP",
-        }
-        return mapping.get(python_type, "LONGTEXT")
+    def sql_to_db_mapping(self, value: str) -> str:
+        return str(MysqlHandler.sql_to_db_mapping(value=value))
 
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
