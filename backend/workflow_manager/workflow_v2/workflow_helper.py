@@ -42,6 +42,7 @@ from workflow_manager.workflow_v2.exceptions import (
     TaskDoesNotExistError,
     WorkflowDoesNotExistError,
     WorkflowExecutionNotExist,
+    ExecutionDoesNotExistError,
 )
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
@@ -376,12 +377,8 @@ class WorkflowHelper:
         """
         try:
             execution = WorkflowExecution.objects.get(id=execution_id)
-        except DjangoValidationError:
-            raise InvalidRequest(
-                f"Invalid execution_id format: {execution_id}"
-            )
         except WorkflowExecution.DoesNotExist:
-            raise WorkflowDoesNotExistError(
+            raise ExecutionDoesNotExistError(
                 f"No execution found with id: {execution_id}"
             )
 

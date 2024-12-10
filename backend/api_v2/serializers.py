@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from typing import Any, Union
+import uuid
 
 from api_v2.constants import ApiExecution
 from api_v2.models import APIDeployment, APIKey
@@ -113,7 +114,16 @@ class ExecutionRequestSerializer(Serializer):
     )
     include_metadata = BooleanField(default=False)
     use_file_history = BooleanField(default=False)
-
+    execution_id = CharField(required=True)
+    
+    def validate_execution_id(self, value):
+        """Trim spaces, validate execution_id as UUID, and check database existence."""
+        value = value.strip()
+        try:
+            uuid.UUID(value)
+        except ValueError:
+            raise ValidationError("Invalid execution_id. Must be a valid UUID.")    
+        return value
 
 class APIDeploymentListSerializer(ModelSerializer):
     workflow_name = CharField(source="workflow.workflow_name", read_only=True)

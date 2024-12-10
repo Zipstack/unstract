@@ -73,14 +73,11 @@ class DeploymentExecution(views.APIView):
     def get(
         self, request: Request, org_name: str, api_name: str, api: APIDeployment
     ) -> Response:
-        execution_id = request.query_params.get("execution_id").strip()
-        include_metadata = (
-            request.query_params.get(ApiExecution.INCLUDE_METADATA, "false").lower()
-            == "true"
-        )
+        serializer = ExecutionRequestSerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
 
-        if not execution_id:
-            raise InvalidAPIRequest("execution_id shouldn't be empty")
+        execution_id = serializer.validated_data.get("execution_id")
+        include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
 
         try:
             response: ExecutionResponse = DeploymentHelper.get_execution_status(execution_id)
@@ -93,7 +90,7 @@ class DeploymentExecution(views.APIView):
             response_status = status.HTTP_200_OK
             if not include_metadata:
                 response.remove_result_metadata_keys()
-
+    
         return Response(
             data={
                 "status": response.execution_status,
