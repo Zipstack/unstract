@@ -71,6 +71,7 @@ class PromptServiceContants:
     ENABLE_HIGHLIGHT = "enable_highlight"
     FILE_PATH = "file_path"
     HIGHLIGHT_DATA = "highlight_data"
+    LINE_ITEM = "line-item"
 
 
 class RunLevel(Enum):

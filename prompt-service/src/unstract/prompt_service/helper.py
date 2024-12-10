@@ -16,6 +16,11 @@ from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
 from unstract.sdk.exceptions import SdkError
 from unstract.sdk.llm import LLM
 
+PAID_FEATURE_MSG = (
+    "It is a cloud / enterprise feature. If you have purchased a plan and still "
+    "face this issue, please contact support"
+)
+
 load_dotenv()
 
 # Global variable to store plugins
@@ -295,8 +300,8 @@ def run_completion(
             extract_json=prompt_type.lower() != PSKeys.TEXT,
         )
         answer: str = completion[PSKeys.RESPONSE].text
-        highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA)
-        if all([metadata, highlight_data, prompt_key]):
+        highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA, [])
+        if all([metadata, prompt_key]):
             metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = highlight_data
         return answer
     # TODO: Catch and handle specific exception here
@@ -331,5 +336,69 @@ def extract_table(
         # Hence returning the result
         return structured_output
     except table_extractor["exception_cls"] as e:
+        msg = f"Couldn't extract table. {e}"
+        raise APIError(message=msg)
+
+
+def extract_line_item(
+    tool_settings: dict[str, Any],
+    output: dict[str, Any],
+    plugins: dict[str, dict[str, Any]],
+    structured_output: dict[str, Any],
+    llm: LLM,
+    file_path: str,
+) -> dict[str, Any]:
+    # Adjust file path to read from the extract folder
+    base_name = os.path.splitext(os.path.basename(file_path))[
+        0
+    ]  # Get the base name without extension
+    extract_file_path = os.path.join(
+        os.path.dirname(file_path), "extract", f"{base_name}.txt"
+    )
+
+    # Read file content into context
+    if not os.path.exists(extract_file_path):
+        raise FileNotFoundError(
+            f"The file at path '{extract_file_path}' does not exist."
+        )
+
+    with open(extract_file_path, encoding="utf-8") as file:
+        context = file.read()
+
+    prompt = construct_prompt(
+        preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
+        prompt=output["promptx"],
+        postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
+        grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
+        context=context,
+        platform_postamble="",
+    )
+    # return run_completion(
+    #     llm=llm,
+    #     prompt=prompt,
+    #     metadata=metadata,
+    #     prompt_key=output[PSKeys.NAME],
+    #     prompt_type=output.get(PSKeys.TYPE, PSKeys.TEXT),
+    #     enable_highlight=enable_highlight,
+    #     file_path=file_path,
+    # )
+    line_item_extraction_plugin: dict[str, Any] = plugins.get(
+        "line-item-extraction", {}
+    )
+    if not line_item_extraction_plugin:
+        raise APIError(PAID_FEATURE_MSG)
+    try:
+        line_item_extraction = line_item_extraction_plugin["entrypoint_cls"](
+            llm=llm,
+            tool_settings=tool_settings,
+            output=output,
+            structured_output=structured_output,
+            logger=current_app.logger,
+            prompt=prompt,
+        )
+        answer = line_item_extraction.run()
+        structured_output[output[PSKeys.NAME]] = answer
+        return structured_output
+    except line_item_extraction["exception_cls"] as e:
         msg = f"Couldn't extract table. {e}"
         raise APIError(message=msg)

@@ -27,6 +27,7 @@ class ToolStudioPrompt(BaseModel):
             "logical and organized individual "
             "entities with distint values"
         )
+        LINE_ITEM = "line-item", ("Response sent as line-item")
 
     class PromptType(models.TextChoices):
         PROMPT = "PROMPT", "Response sent as Text"
