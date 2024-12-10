@@ -18,9 +18,8 @@ from unstract.connectors.exceptions import ConnectorError
 
 logger = logging.getLogger(__name__)
 
-BIG_QUERY_TABLE_SIZE = (
-    3  # BigQuery table format 'database.schema.table' splits into an array of size 3
-)
+# BigQuery table format 'database.schema.table' splits into an array of size 3
+BIG_QUERY_TABLE_SIZE = 3
 
 
 class BigQuery(UnstractDB):
