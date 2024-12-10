@@ -2,17 +2,17 @@
 # It is not intended for manual editing.
 
 [metadata]
-groups = ["default", "deploy", "dev", "test"]
+groups = ["default", "hook-check-django-migrations", "lint"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:f209aed32a5db4c0c86c742bae147380ecac529d12ffac751c67420f0e0a0f44"
+content_hash = "sha256:e8b8c1cd8d0b2d2b7c786b559c5814a9c19e34785d897c8be5652fbb6bb42564"
 
 [[package]]
 name = "adlfs"
 version = "2023.8.0"
 requires_python = ">=3.8"
 summary = "Access Azure Datalake Gen1 with fsspec and dask"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "aiohttp>=3.7.0",
     "azure-core<2.0.0,>=1.23.1",
@@ -31,7 +31,7 @@ name = "aiobotocore"
 version = "2.13.3"
 requires_python = ">=3.8"
 summary = "Async client for aws services using botocore and aiohttp"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "aiohttp<4.0.0,>=3.9.2",
     "aioitertools<1.0.0,>=0.5.1",
@@ -49,7 +49,7 @@ version = "2.13.3"
 extras = ["boto3"]
 requires_python = ">=3.8"
 summary = "Async client for aws services using botocore and aiohttp"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "aiobotocore==2.13.3",
     "boto3<1.34.163,>=1.34.70",
@@ -64,7 +64,7 @@ name = "aiohappyeyeballs"
 version = "2.4.4"
 requires_python = ">=3.8"
 summary = "Happy Eyeballs for asyncio"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "aiohappyeyeballs-2.4.4-py3-none-any.whl", hash = "sha256:a980909d50efcd44795c4afeca523296716d50cd756ddca6af8c65b996e27de8"},
     {file = "aiohappyeyeballs-2.4.4.tar.gz", hash = "sha256:5fdd7d87889c63183afc18ce9271f9b0a7d32c2303e394468dd45d514a757745"},
@@ -72,10 +72,10 @@ files = [
 
 [[package]]
 name = "aiohttp"
-version = "3.11.10"
+version = "3.11.9"
 requires_python = ">=3.9"
 summary = "Async http client/server framework (asyncio)"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "aiohappyeyeballs>=2.3.0",
     "aiosignal>=1.1.2",
@@ -87,52 +87,52 @@ dependencies = [
     "yarl<2.0,>=1.17.0",
 ]
 files = [
-    {file = "aiohttp-3.11.10-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:cbad88a61fa743c5d283ad501b01c153820734118b65aee2bd7dbb735475ce0d"},
-    {file = "aiohttp-3.11.10-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:80886dac673ceaef499de2f393fc80bb4481a129e6cb29e624a12e3296cc088f"},
-    {file = "aiohttp-3.11.10-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:61b9bae80ed1f338c42f57c16918853dc51775fb5cb61da70d590de14d8b5fb4"},
-    {file = "aiohttp-3.11.10-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9e2e576caec5c6a6b93f41626c9c02fc87cd91538b81a3670b2e04452a63def6"},
-    {file = "aiohttp-3.11.10-cp310-cp310-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:02c13415b5732fb6ee7ff64583a5e6ed1c57aa68f17d2bda79c04888dfdc2769"},
-    {file = "aiohttp-3.11.10-cp310-cp310-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:4cfce37f31f20800a6a6620ce2cdd6737b82e42e06e6e9bd1b36f546feb3c44f"},
-    {file = "aiohttp-3.11.10-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3bbbfff4c679c64e6e23cb213f57cc2c9165c9a65d63717108a644eb5a7398df"},
-    {file = "aiohttp-3.11.10-cp310-cp310-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:49c7dbbc1a559ae14fc48387a115b7d4bbc84b4a2c3b9299c31696953c2a5219"},
-    {file = "aiohttp-3.11.10-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:68386d78743e6570f054fe7949d6cb37ef2b672b4d3405ce91fafa996f7d9b4d"},
-    {file = "aiohttp-3.11.10-cp310-cp310-musllinux_1_2_i686.whl", hash = "sha256:9ef405356ba989fb57f84cac66f7b0260772836191ccefbb987f414bcd2979d9"},
-    {file = "aiohttp-3.11.10-cp310-cp310-musllinux_1_2_ppc64le.whl", hash = "sha256:5d6958671b296febe7f5f859bea581a21c1d05430d1bbdcf2b393599b1cdce77"},
-    {file = "aiohttp-3.11.10-cp310-cp310-musllinux_1_2_s390x.whl", hash = "sha256:99b7920e7165be5a9e9a3a7f1b680f06f68ff0d0328ff4079e5163990d046767"},
-    {file = "aiohttp-3.11.10-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:0dc49f42422163efb7e6f1df2636fe3db72713f6cd94688e339dbe33fe06d61d"},
-    {file = "aiohttp-3.11.10-cp310-cp310-win32.whl", hash = "sha256:40d1c7a7f750b5648642586ba7206999650208dbe5afbcc5284bcec6579c9b91"},
-    {file = "aiohttp-3.11.10-cp310-cp310-win_amd64.whl", hash = "sha256:68ff6f48b51bd78ea92b31079817aff539f6c8fc80b6b8d6ca347d7c02384e33"},
-    {file = "aiohttp-3.11.10-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:77c4aa15a89847b9891abf97f3d4048f3c2d667e00f8a623c89ad2dccee6771b"},
-    {file = "aiohttp-3.11.10-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:909af95a72cedbefe5596f0bdf3055740f96c1a4baa0dd11fd74ca4de0b4e3f1"},
-    {file = "aiohttp-3.11.10-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:386fbe79863eb564e9f3615b959e28b222259da0c48fd1be5929ac838bc65683"},
-    {file = "aiohttp-3.11.10-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3de34936eb1a647aa919655ff8d38b618e9f6b7f250cc19a57a4bf7fd2062b6d"},
-    {file = "aiohttp-3.11.10-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:0c9527819b29cd2b9f52033e7fb9ff08073df49b4799c89cb5754624ecd98299"},
-    {file = "aiohttp-3.11.10-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:65a96e3e03300b41f261bbfd40dfdbf1c301e87eab7cd61c054b1f2e7c89b9e8"},
-    {file = "aiohttp-3.11.10-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:98f5635f7b74bcd4f6f72fcd85bea2154b323a9f05226a80bc7398d0c90763b0"},
-    {file = "aiohttp-3.11.10-cp311-cp311-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:03b6002e20938fc6ee0918c81d9e776bebccc84690e2b03ed132331cca065ee5"},
-    {file = "aiohttp-3.11.10-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:6362cc6c23c08d18ddbf0e8c4d5159b5df74fea1a5278ff4f2c79aed3f4e9f46"},
-    {file = "aiohttp-3.11.10-cp311-cp311-musllinux_1_2_i686.whl", hash = "sha256:3691ed7726fef54e928fe26344d930c0c8575bc968c3e239c2e1a04bd8cf7838"},
-    {file = "aiohttp-3.11.10-cp311-cp311-musllinux_1_2_ppc64le.whl", hash = "sha256:31d5093d3acd02b31c649d3a69bb072d539d4c7659b87caa4f6d2bcf57c2fa2b"},
-    {file = "aiohttp-3.11.10-cp311-cp311-musllinux_1_2_s390x.whl", hash = "sha256:8b3cf2dc0f0690a33f2d2b2cb15db87a65f1c609f53c37e226f84edb08d10f52"},
-    {file = "aiohttp-3.11.10-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:fbbaea811a2bba171197b08eea288b9402faa2bab2ba0858eecdd0a4105753a3"},
-    {file = "aiohttp-3.11.10-cp311-cp311-win32.whl", hash = "sha256:4b2c7ac59c5698a7a8207ba72d9e9c15b0fc484a560be0788b31312c2c5504e4"},
-    {file = "aiohttp-3.11.10-cp311-cp311-win_amd64.whl", hash = "sha256:974d3a2cce5fcfa32f06b13ccc8f20c6ad9c51802bb7f829eae8a1845c4019ec"},
-    {file = "aiohttp-3.11.10-cp39-cp39-macosx_10_9_universal2.whl", hash = "sha256:0580f2e12de2138f34debcd5d88894786453a76e98febaf3e8fe5db62d01c9bf"},
-    {file = "aiohttp-3.11.10-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:a55d2ad345684e7c3dd2c20d2f9572e9e1d5446d57200ff630e6ede7612e307f"},
-    {file = "aiohttp-3.11.10-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:04814571cb72d65a6899db6099e377ed00710bf2e3eafd2985166f2918beaf59"},
-    {file = "aiohttp-3.11.10-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:e44a9a3c053b90c6f09b1bb4edd880959f5328cf63052503f892c41ea786d99f"},
-    {file = "aiohttp-3.11.10-cp39-cp39-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:502a1464ccbc800b4b1995b302efaf426e8763fadf185e933c2931df7db9a199"},
-    {file = "aiohttp-3.11.10-cp39-cp39-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:613e5169f8ae77b1933e42e418a95931fb4867b2991fc311430b15901ed67079"},
-    {file = "aiohttp-3.11.10-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:4cca22a61b7fe45da8fc73c3443150c3608750bbe27641fc7558ec5117b27fdf"},
-    {file = "aiohttp-3.11.10-cp39-cp39-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:86a5dfcc39309470bd7b68c591d84056d195428d5d2e0b5ccadfbaf25b026ebc"},
-    {file = "aiohttp-3.11.10-cp39-cp39-musllinux_1_2_aarch64.whl", hash = "sha256:77ae58586930ee6b2b6f696c82cf8e78c8016ec4795c53e36718365f6959dc82"},
-    {file = "aiohttp-3.11.10-cp39-cp39-musllinux_1_2_i686.whl", hash = "sha256:78153314f26d5abef3239b4a9af20c229c6f3ecb97d4c1c01b22c4f87669820c"},
-    {file = "aiohttp-3.11.10-cp39-cp39-musllinux_1_2_ppc64le.whl", hash = "sha256:98283b94cc0e11c73acaf1c9698dea80c830ca476492c0fe2622bd931f34b487"},
-    {file = "aiohttp-3.11.10-cp39-cp39-musllinux_1_2_s390x.whl", hash = "sha256:53bf2097e05c2accc166c142a2090e4c6fd86581bde3fd9b2d3f9e93dda66ac1"},
-    {file = "aiohttp-3.11.10-cp39-cp39-musllinux_1_2_x86_64.whl", hash = "sha256:c5532f0441fc09c119e1dca18fbc0687e64fbeb45aa4d6a87211ceaee50a74c4"},
-    {file = "aiohttp-3.11.10-cp39-cp39-win32.whl", hash = "sha256:47ad15a65fb41c570cd0ad9a9ff8012489e68176e7207ec7b82a0940dddfd8be"},
-    {file = "aiohttp-3.11.10-cp39-cp39-win_amd64.whl", hash = "sha256:c6b9e6d7e41656d78e37ce754813fa44b455c3d0d0dced2a047def7dc5570b74"},
-    {file = "aiohttp-3.11.10.tar.gz", hash = "sha256:b1fc6b45010a8d0ff9e88f9f2418c6fd408c99c211257334aff41597ebece42e"},
+    {file = "aiohttp-3.11.9-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:0411777249f25d11bd2964a230b3ffafcbed6cd65d0f2b132bc2b8f5b8c347c7"},
+    {file = "aiohttp-3.11.9-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:499368eb904566fbdf1a3836a1532000ef1308f34a1bcbf36e6351904cced771"},
+    {file = "aiohttp-3.11.9-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:0b5a5009b0159a8f707879dc102b139466d8ec6db05103ec1520394fdd8ea02c"},
+    {file = "aiohttp-3.11.9-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:176f8bb8931da0613bb0ed16326d01330066bb1e172dd97e1e02b1c27383277b"},
+    {file = "aiohttp-3.11.9-cp310-cp310-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:6435a66957cdba1a0b16f368bde03ce9c79c57306b39510da6ae5312a1a5b2c1"},
+    {file = "aiohttp-3.11.9-cp310-cp310-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:202f40fb686e5f93908eee0c75d1e6fbe50a43e9bd4909bf3bf4a56b560ca180"},
+    {file = "aiohttp-3.11.9-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:39625703540feb50b6b7f938b3856d1f4886d2e585d88274e62b1bd273fae09b"},
+    {file = "aiohttp-3.11.9-cp310-cp310-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:c6beeac698671baa558e82fa160be9761cf0eb25861943f4689ecf9000f8ebd0"},
+    {file = "aiohttp-3.11.9-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:96726839a42429318017e67a42cca75d4f0d5248a809b3cc2e125445edd7d50d"},
+    {file = "aiohttp-3.11.9-cp310-cp310-musllinux_1_2_i686.whl", hash = "sha256:3f5461c77649358610fb9694e790956b4238ac5d9e697a17f63619c096469afe"},
+    {file = "aiohttp-3.11.9-cp310-cp310-musllinux_1_2_ppc64le.whl", hash = "sha256:4313f3bc901255b22f01663eeeae167468264fdae0d32c25fc631d5d6e15b502"},
+    {file = "aiohttp-3.11.9-cp310-cp310-musllinux_1_2_s390x.whl", hash = "sha256:d6e274661c74195708fc4380a4ef64298926c5a50bb10fbae3d01627d7a075b7"},
+    {file = "aiohttp-3.11.9-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:db2914de2559809fdbcf3e48f41b17a493b58cb7988d3e211f6b63126c55fe82"},
+    {file = "aiohttp-3.11.9-cp310-cp310-win32.whl", hash = "sha256:27935716f8d62c1c73010428db310fd10136002cfc6d52b0ba7bdfa752d26066"},
+    {file = "aiohttp-3.11.9-cp310-cp310-win_amd64.whl", hash = "sha256:afbe85b50ade42ddff5669947afde9e8a610e64d2c80be046d67ec4368e555fa"},
+    {file = "aiohttp-3.11.9-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:afcda759a69c6a8be3aae764ec6733155aa4a5ad9aad4f398b52ba4037942fe3"},
+    {file = "aiohttp-3.11.9-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:c5bba6b83fde4ca233cfda04cbd4685ab88696b0c8eaf76f7148969eab5e248a"},
+    {file = "aiohttp-3.11.9-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:442356e8924fe1a121f8c87866b0ecdc785757fd28924b17c20493961b3d6697"},
+    {file = "aiohttp-3.11.9-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:f737fef6e117856400afee4f17774cdea392b28ecf058833f5eca368a18cf1bf"},
+    {file = "aiohttp-3.11.9-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:ea142255d4901b03f89cb6a94411ecec117786a76fc9ab043af8f51dd50b5313"},
+    {file = "aiohttp-3.11.9-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:6e1e9e447856e9b7b3d38e1316ae9a8c92e7536ef48373de758ea055edfd5db5"},
+    {file = "aiohttp-3.11.9-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e7f6173302f8a329ca5d1ee592af9e628d3ade87816e9958dcf7cdae2841def7"},
+    {file = "aiohttp-3.11.9-cp311-cp311-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:a7c6147c6306f537cff59409609508a1d2eff81199f0302dd456bb9e7ea50c39"},
+    {file = "aiohttp-3.11.9-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:e9d036a9a41fc78e8a3f10a86c2fc1098fca8fab8715ba9eb999ce4788d35df0"},
+    {file = "aiohttp-3.11.9-cp311-cp311-musllinux_1_2_i686.whl", hash = "sha256:2ac9fd83096df36728da8e2f4488ac3b5602238f602706606f3702f07a13a409"},
+    {file = "aiohttp-3.11.9-cp311-cp311-musllinux_1_2_ppc64le.whl", hash = "sha256:d3108f0ad5c6b6d78eec5273219a5bbd884b4aacec17883ceefaac988850ce6e"},
+    {file = "aiohttp-3.11.9-cp311-cp311-musllinux_1_2_s390x.whl", hash = "sha256:96bbec47beb131bbf4bae05d8ef99ad9e5738f12717cfbbf16648b78b0232e87"},
+    {file = "aiohttp-3.11.9-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:fc726c3fa8f606d07bd2b500e5dc4c0fd664c59be7788a16b9e34352c50b6b6b"},
+    {file = "aiohttp-3.11.9-cp311-cp311-win32.whl", hash = "sha256:5720ebbc7a1b46c33a42d489d25d36c64c419f52159485e55589fbec648ea49a"},
+    {file = "aiohttp-3.11.9-cp311-cp311-win_amd64.whl", hash = "sha256:17af09d963fa1acd7e4c280e9354aeafd9e3d47eaa4a6bfbd2171ad7da49f0c5"},
+    {file = "aiohttp-3.11.9-cp39-cp39-macosx_10_9_universal2.whl", hash = "sha256:e738aabff3586091221044b7a584865ddc4d6120346d12e28e788307cd731043"},
+    {file = "aiohttp-3.11.9-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:28f29bce89c3b401a53d6fd4bee401ee943083bf2bdc12ef297c1d63155070b0"},
+    {file = "aiohttp-3.11.9-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:31de2f10f63f96cc19e04bd2df9549559beadd0b2ee2da24a17e7ed877ca8c60"},
+    {file = "aiohttp-3.11.9-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:77f31cebd8c27a36af6c7346055ac564946e562080ee1a838da724585c67474f"},
+    {file = "aiohttp-3.11.9-cp39-cp39-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:0bcb7f6976dc0b6b56efde13294862adf68dd48854111b422a336fa729a82ea6"},
+    {file = "aiohttp-3.11.9-cp39-cp39-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:1a8b13b9950d8b2f8f58b6e5842c4b842b5887e2c32e3f4644d6642f1659a530"},
+    {file = "aiohttp-3.11.9-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c9c23e62f3545c2216100603614f9e019e41b9403c47dd85b8e7e5015bf1bde0"},
+    {file = "aiohttp-3.11.9-cp39-cp39-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:ec656680fc53a13f849c71afd0c84a55c536206d524cbc831cde80abbe80489e"},
+    {file = "aiohttp-3.11.9-cp39-cp39-musllinux_1_2_aarch64.whl", hash = "sha256:36df00e0541f264ce42d62280281541a47474dfda500bc5b7f24f70a7f87be7a"},
+    {file = "aiohttp-3.11.9-cp39-cp39-musllinux_1_2_i686.whl", hash = "sha256:8dcfd14c712aa9dd18049280bfb2f95700ff6a8bde645e09f17c3ed3f05a0130"},
+    {file = "aiohttp-3.11.9-cp39-cp39-musllinux_1_2_ppc64le.whl", hash = "sha256:14624d96f0d69cf451deed3173079a68c322279be6030208b045ab77e1e8d550"},
+    {file = "aiohttp-3.11.9-cp39-cp39-musllinux_1_2_s390x.whl", hash = "sha256:4b01d9cfcb616eeb6d40f02e66bebfe7b06d9f2ef81641fdd50b8dd981166e0b"},
+    {file = "aiohttp-3.11.9-cp39-cp39-musllinux_1_2_x86_64.whl", hash = "sha256:928f92f80e2e8d6567b87d3316c1fd9860ccfe36e87a9a7f5237d4cda8baa1ba"},
+    {file = "aiohttp-3.11.9-cp39-cp39-win32.whl", hash = "sha256:c8a02f74ae419e3955af60f570d83187423e42e672a6433c5e292f1d23619269"},
+    {file = "aiohttp-3.11.9-cp39-cp39-win_amd64.whl", hash = "sha256:0a97d657f6cf8782a830bb476c13f7d777cfcab8428ac49dde15c22babceb361"},
+    {file = "aiohttp-3.11.9.tar.gz", hash = "sha256:a9266644064779840feec0e34f10a89b3ff1d2d6b751fe90017abcad1864fa7c"},
 ]
 
 [[package]]
@@ -140,7 +140,7 @@ name = "aioitertools"
 version = "0.12.0"
 requires_python = ">=3.8"
 summary = "itertools and builtins for AsyncIO and mixed iterables"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "typing-extensions>=4.0; python_version < \"3.10\"",
 ]
@@ -154,7 +154,7 @@ name = "aiosignal"
 version = "1.3.1"
 requires_python = ">=3.7"
 summary = "aiosignal: a list of registered asynchronous callbacks"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "frozenlist>=1.1.0",
 ]
@@ -168,7 +168,7 @@ name = "amqp"
 version = "5.3.1"
 requires_python = ">=3.6"
 summary = "Low-level AMQP client for Python (fork of amqplib)."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "vine<6.0.0,>=5.0.0",
 ]
@@ -182,7 +182,7 @@ name = "annotated-types"
 version = "0.7.0"
 requires_python = ">=3.8"
 summary = "Reusable constraint types to use with typing.Annotated"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "annotated_types-0.7.0-py3-none-any.whl", hash = "sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53"},
     {file = "annotated_types-0.7.0.tar.gz", hash = "sha256:aff07c09a53a08bc8cfccb9c85b05f1aa9a2a6f23728d790723543408344ce89"},
@@ -193,7 +193,7 @@ name = "anthropic"
 version = "0.28.1"
 requires_python = ">=3.7"
 summary = "The official Python library for the anthropic API"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "anyio<5,>=3.5.0",
     "distro<2,>=1.7.0",
@@ -211,26 +211,26 @@ files = [
 
 [[package]]
 name = "anyio"
-version = "4.7.0"
+version = "4.6.2.post1"
 requires_python = ">=3.9"
 summary = "High level compatibility layer for multiple asynchronous event loop implementations"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "exceptiongroup>=1.0.2; python_version < \"3.11\"",
     "idna>=2.8",
     "sniffio>=1.1",
-    "typing-extensions>=4.5; python_version < \"3.13\"",
+    "typing-extensions>=4.1; python_version < \"3.11\"",
 ]
 files = [
-    {file = "anyio-4.7.0-py3-none-any.whl", hash = "sha256:ea60c3723ab42ba6fff7e8ccb0488c898ec538ff4df1f1d5e642c3601d07e352"},
-    {file = "anyio-4.7.0.tar.gz", hash = "sha256:2f834749c602966b7d456a7567cafcb309f96482b5081d14ac93ccd457f9dd48"},
+    {file = "anyio-4.6.2.post1-py3-none-any.whl", hash = "sha256:6d170c36fba3bdd840c73d3868c1e777e33676a69c3a72cf0a0d5d6d8009b61d"},
+    {file = "anyio-4.6.2.post1.tar.gz", hash = "sha256:4c8bc31ccdb51c7f7bd251f51c609e038d63e34219b44aa86e47576389880b4c"},
 ]
 
 [[package]]
 name = "appdirs"
 version = "1.4.4"
 summary = "A small Python module for determining appropriate platform-specific dirs, e.g. a \"user data dir\"."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "appdirs-1.4.4-py2.py3-none-any.whl", hash = "sha256:a841dacd6b99318a741b166adb07e19ee71a274450e68237b4650ca1055ab128"},
     {file = "appdirs-1.4.4.tar.gz", hash = "sha256:7d5d0167b2b1ba821647616af46a749d1c653740dd0d2415100fe26e27afdf41"},
@@ -241,7 +241,7 @@ name = "asgiref"
 version = "3.8.1"
 requires_python = ">=3.8"
 summary = "ASGI specs, helper code, and adapters"
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "typing-extensions>=4; python_version < \"3.11\"",
 ]
@@ -254,7 +254,7 @@ files = [
 name = "asn1crypto"
 version = "1.5.1"
 summary = "Fast ASN.1 parser and serializer with definitions for private keys, public keys, certificates, CRL, OCSP, CMS, PKCS#3, PKCS#7, PKCS#8, PKCS#12, PKCS#5, X.509 and TSP"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "asn1crypto-1.5.1-py2.py3-none-any.whl", hash = "sha256:db4e40728b728508912cbb3d44f19ce188f218e9eba635821bb4b68564f8fd67"},
     {file = "asn1crypto-1.5.1.tar.gz", hash = "sha256:13ae38502be632115abf8a24cbe5f4da52e3b5231990aff31123c805306ccb9c"},
@@ -265,7 +265,7 @@ name = "async-timeout"
 version = "5.0.1"
 requires_python = ">=3.8"
 summary = "Timeout context manager for asyncio programs"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 marker = "python_version < \"3.12.0\""
 files = [
     {file = "async_timeout-5.0.1-py3-none-any.whl", hash = "sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c"},
@@ -277,7 +277,7 @@ name = "asyncpg"
 version = "0.29.0"
 requires_python = ">=3.8.0"
 summary = "An asyncio PostgreSQL driver"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "async-timeout>=4.0.3; python_version < \"3.12.0\"",
 ]
@@ -314,7 +314,7 @@ name = "attrs"
 version = "24.2.0"
 requires_python = ">=3.7"
 summary = "Classes Without Boilerplate"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "attrs-24.2.0-py3-none-any.whl", hash = "sha256:81921eb96de3191c8258c199618104dd27ac608d9366f5e35d011eae1867ede2"},
     {file = "attrs-24.2.0.tar.gz", hash = "sha256:5cfb1b9148b5b086569baec03f20d7b6bf3bcacc9a42bebf87ffaaca362f6346"},
@@ -322,25 +322,31 @@ files = [
 
 [[package]]
 name = "authlib"
-version = "1.2.1"
+version = "1.3.1"
+requires_python = ">=3.8"
 summary = "The ultimate Python library in building OAuth and OpenID Connect servers and clients."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
-    "cryptography>=3.2",
+    "cryptography",
 ]
 files = [
-    {file = "Authlib-1.2.1-py2.py3-none-any.whl", hash = "sha256:c88984ea00149a90e3537c964327da930779afa4564e354edfd98410bea01911"},
-    {file = "Authlib-1.2.1.tar.gz", hash = "sha256:421f7c6b468d907ca2d9afede256f068f87e34d23dd221c07d13d4c234726afb"},
+    {file = "Authlib-1.3.1-py2.py3-none-any.whl", hash = "sha256:d35800b973099bbadc49b42b256ecb80041ad56b7fe1216a362c7943c088f377"},
+    {file = "authlib-1.3.1.tar.gz", hash = "sha256:7ae843f03c06c5c0debd63c9db91f9fda64fa62a42a77419fa15fbb7e7a58917"},
 ]
 
 [[package]]
-name = "azure-common"
-version = "1.1.28"
-summary = "Microsoft Azure Client Library for Python (Common)"
-groups = ["default"]
+name = "autopep8"
+version = "2.0.4"
+requires_python = ">=3.6"
+summary = "A tool that automatically formats Python code to conform to the PEP 8 style guide"
+groups = ["lint"]
+dependencies = [
+    "pycodestyle>=2.10.0",
+    "tomli; python_version < \"3.11\"",
+]
 files = [
-    {file = "azure-common-1.1.28.zip", hash = "sha256:4ac0cd3214e36b6a1b6a442686722a5d8cc449603aa833f3f0f40bda836704a3"},
-    {file = "azure_common-1.1.28-py2.py3-none-any.whl", hash = "sha256:5c12d3dcf4ec20599ca6b0d3e09e86e146353d443e7fcc050c9a19c1f9df20ad"},
+    {file = "autopep8-2.0.4-py2.py3-none-any.whl", hash = "sha256:067959ca4a07b24dbd5345efa8325f5f58da4298dab0dde0443d5ed765de80cb"},
+    {file = "autopep8-2.0.4.tar.gz", hash = "sha256:2913064abd97b3419d1cc83ea71f042cb821f87e45b9c88cad5ad3c4ea87fe0c"},
 ]
 
 [[package]]
@@ -348,7 +354,7 @@ name = "azure-core"
 version = "1.32.0"
 requires_python = ">=3.8"
 summary = "Microsoft Azure Core Library for Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "requests>=2.21.0",
     "six>=1.11.0",
@@ -363,7 +369,7 @@ files = [
 name = "azure-datalake-store"
 version = "0.0.53"
 summary = "Azure Data Lake Store Filesystem Client Library for Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "cffi",
     "msal<2,>=1.16.0",
@@ -376,49 +382,20 @@ files = [
 
 [[package]]
 name = "azure-identity"
-version = "1.16.0"
+version = "1.19.0"
 requires_python = ">=3.8"
 summary = "Microsoft Azure Identity Library for Python"
-groups = ["default", "dev"]
-dependencies = [
-    "azure-core>=1.23.0",
-    "cryptography>=2.5",
-    "msal-extensions>=0.3.0",
-    "msal>=1.24.0",
-]
-files = [
-    {file = "azure-identity-1.16.0.tar.gz", hash = "sha256:6ff1d667cdcd81da1ceab42f80a0be63ca846629f518a922f7317a7e3c844e1b"},
-    {file = "azure_identity-1.16.0-py3-none-any.whl", hash = "sha256:722fdb60b8fdd55fa44dc378b8072f4b419b56a5e54c0de391f644949f3a826f"},
-]
-
-[[package]]
-name = "azure-mgmt-apimanagement"
-version = "3.0.0"
-requires_python = ">=3.6"
-summary = "Microsoft Azure API Management Client Library for Python"
-groups = ["default"]
-dependencies = [
-    "azure-common~=1.1",
-    "azure-mgmt-core<2.0.0,>=1.3.0",
-    "msrest>=0.6.21",
-]
-files = [
-    {file = "azure-mgmt-apimanagement-3.0.0.zip", hash = "sha256:9262f54ed387eb083d8dae66d32a8df35647319b902bd498cdc376f50a12d154"},
-    {file = "azure_mgmt_apimanagement-3.0.0-py3-none-any.whl", hash = "sha256:58a96261266c51c63a64113dbb0ad96cabbf3b6c32fb9b79c395462d01470964"},
-]
-
-[[package]]
-name = "azure-mgmt-core"
-version = "1.5.0"
-requires_python = ">=3.8"
-summary = "Microsoft Azure Management Core Library for Python"
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "azure-core>=1.31.0",
+    "cryptography>=2.5",
+    "msal-extensions>=1.2.0",
+    "msal>=1.30.0",
+    "typing-extensions>=4.0.0",
 ]
 files = [
-    {file = "azure_mgmt_core-1.5.0-py3-none-any.whl", hash = "sha256:18aaa5a723ee8ae05bf1bfc9f6d0ffb996631c7ea3c922cc86f522973ce07b5f"},
-    {file = "azure_mgmt_core-1.5.0.tar.gz", hash = "sha256:380ae3dfa3639f4a5c246a7db7ed2d08374e88230fd0da3eb899f7c11e5c441a"},
+    {file = "azure_identity-1.19.0-py3-none-any.whl", hash = "sha256:e3f6558c181692d7509f09de10cca527c7dce426776454fb97df512a46527e81"},
+    {file = "azure_identity-1.19.0.tar.gz", hash = "sha256:500144dc18197d7019b81501165d4fa92225f03778f17d7ca8a2a180129a9c83"},
 ]
 
 
@@ -427,7 +404,7 @@ name = "bcrypt"
 version = "4.2.1"
 requires_python = ">=3.7"
 summary = "Modern password hashing for your software and your servers"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "bcrypt-4.2.1-cp37-abi3-macosx_10_12_universal2.whl", hash = "sha256:1340411a0894b7d3ef562fb233e4b6ed58add185228650942bdc885362f32c17"},
     {file = "bcrypt-4.2.1-cp37-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b1ee315739bc8387aa36ff127afc99120ee452924e0df517a8f3e4c0187a0f5f"},
@@ -461,7 +438,7 @@ name = "beautifulsoup4"
 version = "4.12.3"
 requires_python = ">=3.6.0"
 summary = "Screen-scraping library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "soupsieve>1.2",
 ]
@@ -471,25 +448,46 @@ files = [
 ]
 
 [[package]]
-name = "bidict"
-version = "0.23.1"
-requires_python = ">=3.8"
-summary = "The bidirectional mapping library for Python."
-groups = ["default"]
-files = [
-    {file = "bidict-0.23.1-py3-none-any.whl", hash = "sha256:5dae8d4d79b552a71cbabc7deb25dfe8ce710b17ff41711e13010ead2abfc3e5"},
-    {file = "bidict-0.23.1.tar.gz", hash = "sha256:03069d763bc387bbd20e7d49914e75fc4132a41937fa3405417e1a5a2d006d71"},
-]
-
-[[package]]
 name = "billiard"
 version = "4.2.1"
 requires_python = ">=3.7"
 summary = "Python multiprocessing fork with improvements and bugfixes"
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "billiard-4.2.1-py3-none-any.whl", hash = "sha256:40b59a4ac8806ba2c2369ea98d876bc6108b051c227baffd928c644d15d8f3cb"},
     {file = "billiard-4.2.1.tar.gz", hash = "sha256:12b641b0c539073fc8d3f5b8b7be998956665c4233c7c1fcd66a7e677c4fb36f"},
+]
+
+[[package]]
+name = "black"
+version = "24.3.0"
+requires_python = ">=3.8"
+summary = "The uncompromising code formatter."
+groups = ["lint"]
+dependencies = [
+    "click>=8.0.0",
+    "mypy-extensions>=0.4.3",
+    "packaging>=22.0",
+    "pathspec>=0.9.0",
+    "platformdirs>=2",
+    "tomli>=1.1.0; python_version < \"3.11\"",
+    "typing-extensions>=4.0.1; python_version < \"3.11\"",
+]
+files = [
+    {file = "black-24.3.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:7d5e026f8da0322b5662fa7a8e752b3fa2dac1c1cbc213c3d7ff9bdd0ab12395"},
+    {file = "black-24.3.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:9f50ea1132e2189d8dff0115ab75b65590a3e97de1e143795adb4ce317934995"},
+    {file = "black-24.3.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e2af80566f43c85f5797365077fb64a393861a3730bd110971ab7a0c94e873e7"},
+    {file = "black-24.3.0-cp310-cp310-win_amd64.whl", hash = "sha256:4be5bb28e090456adfc1255e03967fb67ca846a03be7aadf6249096100ee32d0"},
+    {file = "black-24.3.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:4f1373a7808a8f135b774039f61d59e4be7eb56b2513d3d2f02a8b9365b8a8a9"},
+    {file = "black-24.3.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:aadf7a02d947936ee418777e0247ea114f78aff0d0959461057cae8a04f20597"},
+    {file = "black-24.3.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:65c02e4ea2ae09d16314d30912a58ada9a5c4fdfedf9512d23326128ac08ac3d"},
+    {file = "black-24.3.0-cp311-cp311-win_amd64.whl", hash = "sha256:bf21b7b230718a5f08bd32d5e4f1db7fc8788345c8aea1d155fc17852b3410f5"},
+    {file = "black-24.3.0-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:c45f8dff244b3c431b36e3224b6be4a127c6aca780853574c00faf99258041eb"},
+    {file = "black-24.3.0-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:6905238a754ceb7788a73f02b45637d820b2f5478b20fec82ea865e4f5d4d9f7"},
+    {file = "black-24.3.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d7de8d330763c66663661a1ffd432274a2f92f07feeddd89ffd085b5744f85e7"},
+    {file = "black-24.3.0-cp39-cp39-win_amd64.whl", hash = "sha256:7bb041dca0d784697af4646d3b62ba4a6b028276ae878e53f6b4f74ddd6db99f"},
+    {file = "black-24.3.0-py3-none-any.whl", hash = "sha256:41622020d7120e01d377f74249e677039d20e6344ff5851de8a10f11f513bf93"},
+    {file = "black-24.3.0.tar.gz", hash = "sha256:a0c9c4a0771afc6919578cec71ce82a3e31e054904e7197deacbc9382671c41f"},
 ]
 
 [[package]]
@@ -497,7 +495,7 @@ name = "boto3"
 version = "1.34.162"
 requires_python = ">=3.8"
 summary = "The AWS SDK for Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "botocore<1.35.0,>=1.34.162",
     "jmespath<2.0.0,>=0.7.1",
@@ -513,7 +511,7 @@ name = "botocore"
 version = "1.34.162"
 requires_python = ">=3.8"
 summary = "Low-level, data-driven core of boto 3."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "jmespath<2.0.0,>=0.7.1",
     "python-dateutil<3.0.0,>=2.1",
@@ -530,7 +528,7 @@ name = "boxfs"
 version = "0.2.1"
 requires_python = ">=3.8,<4.0"
 summary = "Implementation of fsspec for Box file storage"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "boxsdk[jwt]<4.0,>=3.7",
     "fsspec>=2023.4",
@@ -544,7 +542,7 @@ files = [
 name = "boxsdk"
 version = "3.13.0"
 summary = "Official Box Python SDK"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "attrs>=17.3.0",
     "python-dateutil",
@@ -562,7 +560,7 @@ name = "boxsdk"
 version = "3.13.0"
 extras = ["jwt"]
 summary = "Official Box Python SDK"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "boxsdk==3.13.0",
     "cryptography>=3",
@@ -578,7 +576,7 @@ name = "cachetools"
 version = "5.5.0"
 requires_python = ">=3.7"
 summary = "Extensible memoizing collections and decorators"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "cachetools-5.5.0-py3-none-any.whl", hash = "sha256:02134e8439cdc2ffb62023ce1debca2944c3f289d66bb17ead3ab3dede74b292"},
     {file = "cachetools-5.5.0.tar.gz", hash = "sha256:2cc24fb4cbe39633fb7badd9db9ca6295d766d9c2995f245725a46715d050f2a"},
@@ -589,7 +587,7 @@ name = "celery"
 version = "5.4.0"
 requires_python = ">=3.8"
 summary = "Distributed Task Queue."
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "billiard<5.0,>=4.2.0",
     "click-didyoumean>=0.3.0",
@@ -611,7 +609,7 @@ name = "certifi"
 version = "2024.8.30"
 requires_python = ">=3.6"
 summary = "Python package for providing Mozilla's CA Bundle."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "certifi-2024.8.30-py3-none-any.whl", hash = "sha256:922820b53db7a7257ffbda3f597266d435245903d80737e34f8a45ff3e3230d8"},
     {file = "certifi-2024.8.30.tar.gz", hash = "sha256:bec941d2aa8195e248a60b31ff9f0558284cf01a52591ceda73ea9afffd69fd9"},
@@ -622,7 +620,7 @@ name = "cffi"
 version = "1.17.1"
 requires_python = ">=3.8"
 summary = "Foreign Function Interface for Python calling C code."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations", "lint"]
 dependencies = [
     "pycparser",
 ]
@@ -667,11 +665,22 @@ files = [
 ]
 
 [[package]]
+name = "cfgv"
+version = "3.4.0"
+requires_python = ">=3.8"
+summary = "Validate configuration and produce human readable error messages."
+groups = ["lint"]
+files = [
+    {file = "cfgv-3.4.0-py2.py3-none-any.whl", hash = "sha256:b7265b1f29fd3316bfcd2b330d63d024f2bfd8bcb8b0272f8e19a504856c48f9"},
+    {file = "cfgv-3.4.0.tar.gz", hash = "sha256:e52591d4c5f5dead8e0f673fb16db7949d2cfb3f7da4582893288f0ded8fe560"},
+]
+
+[[package]]
 name = "charset-normalizer"
 version = "3.4.0"
 requires_python = ">=3.7.0"
 summary = "The Real First Universal Charset Detector. Open, modern and actively maintained alternative to Chardet."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "charset_normalizer-3.4.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:4f9fc98dad6c2eaa32fc3af1417d95b5e3d08aff968df0cd320066def971f9a6"},
     {file = "charset_normalizer-3.4.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:0de7b687289d3c1b3e8660d0741874abe7888100efe14bd0f9fd7141bcbda92b"},
@@ -727,7 +736,7 @@ name = "click"
 version = "8.1.7"
 requires_python = ">=3.7"
 summary = "Composable command line interface toolkit"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations", "lint"]
 dependencies = [
     "colorama; platform_system == \"Windows\"",
 ]
@@ -741,7 +750,7 @@ name = "click-didyoumean"
 version = "0.3.1"
 requires_python = ">=3.6.2"
 summary = "Enables git-like *did-you-mean* feature in click"
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "click>=7",
 ]
@@ -754,7 +763,7 @@ files = [
 name = "click-plugins"
 version = "1.1.1"
 summary = "An extension module for click to enable registering CLI commands via setuptools entry-points."
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "click>=4.0",
 ]
@@ -768,7 +777,7 @@ name = "click-repl"
 version = "0.3.0"
 requires_python = ">=3.6"
 summary = "REPL plugin for Click"
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "click>=7.0",
     "prompt-toolkit>=3.0.36",
@@ -783,8 +792,8 @@ name = "colorama"
 version = "0.4.6"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*,>=2.7"
 summary = "Cross-platform colored terminal text."
-groups = ["default", "dev", "test"]
-marker = "sys_platform == \"win32\" or platform_system == \"Windows\""
+groups = ["hook-check-django-migrations", "lint"]
+marker = "platform_system == \"Windows\""
 files = [
     {file = "colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"},
     {file = "colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44"},
@@ -794,24 +803,9 @@ files = [
 name = "cron-descriptor"
 version = "1.4.0"
 summary = "A Python library that converts cron expressions into human readable strings."
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "cron_descriptor-1.4.0.tar.gz", hash = "sha256:b6ff4e3a988d7ca04a4ab150248e9f166fb7a5c828a85090e75bcc25aa93b4dd"},
-]
-
-[[package]]
-name = "croniter"
-version = "5.0.1"
-requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,>=2.6"
-summary = "croniter provides iteration for datetime object with cron like format"
-groups = ["default"]
-dependencies = [
-    "python-dateutil",
-    "pytz>2021.1",
-]
-files = [
-    {file = "croniter-5.0.1-py2.py3-none-any.whl", hash = "sha256:eb28439742291f6c10b181df1a5ecf421208b1fc62ef44501daec1780a0b09e9"},
-    {file = "croniter-5.0.1.tar.gz", hash = "sha256:7d9b1ef25b10eece48fdf29d8ac52f9b6252abff983ac614ade4f3276294019e"},
 ]
 
 [[package]]
@@ -819,7 +813,7 @@ name = "cryptography"
 version = "41.0.7"
 requires_python = ">=3.7"
 summary = "cryptography is a package which provides cryptographic recipes and primitives to Python developers."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations", "lint"]
 dependencies = [
     "cffi>=1.12",
 ]
@@ -854,7 +848,7 @@ name = "dataclasses-json"
 version = "0.6.7"
 requires_python = "<4.0,>=3.7"
 summary = "Easily serialize dataclasses to and from JSON."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "marshmallow<4.0.0,>=3.18.0",
     "typing-inspect<1,>=0.4.0",
@@ -869,7 +863,7 @@ name = "decorator"
 version = "5.1.1"
 requires_python = ">=3.5"
 summary = "Decorators for Humans"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "decorator-5.1.1-py3-none-any.whl", hash = "sha256:b8c3f85900b9dc423225913c5aace94729fe1fa9763b38939a95226f02d37186"},
     {file = "decorator-5.1.1.tar.gz", hash = "sha256:637996211036b6385ef91435e4fae22989472f9d571faba8927ba8253acbc330"},
@@ -880,7 +874,7 @@ name = "defusedxml"
 version = "0.8.0rc2"
 requires_python = ">=3.6"
 summary = "XML bomb protection for Python stdlib modules"
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "defusedxml-0.8.0rc2-py2.py3-none-any.whl", hash = "sha256:1c812964311154c3bf4aaf3bc1443b31ee13530b7f255eaaa062c0553c76103d"},
     {file = "defusedxml-0.8.0rc2.tar.gz", hash = "sha256:138c7d540a78775182206c7c97fe65b246a2f40b29471e1a2f1b0da76e7a3942"},
@@ -891,7 +885,7 @@ name = "deprecated"
 version = "1.2.15"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,>=2.7"
 summary = "Python @deprecated decorator to deprecate old python classes, functions or methods."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "wrapt<2,>=1.10",
 ]
@@ -904,10 +898,20 @@ files = [
 name = "dirtyjson"
 version = "1.0.8"
 summary = "JSON decoder for Python that can extract data from the muck"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "dirtyjson-1.0.8-py3-none-any.whl", hash = "sha256:125e27248435a58acace26d5c2c4c11a1c0de0a9c5124c5a94ba78e517d74f53"},
     {file = "dirtyjson-1.0.8.tar.gz", hash = "sha256:90ca4a18f3ff30ce849d100dcf4a003953c79d3a2348ef056f1d9c22231a25fd"},
+]
+
+[[package]]
+name = "distlib"
+version = "0.3.9"
+summary = "Distribution utilities"
+groups = ["lint"]
+files = [
+    {file = "distlib-0.3.9-py2.py3-none-any.whl", hash = "sha256:47f8c22fd27c27e25a65601af709b38e4f0a45ea4fc2e710f65755fa8caaaf87"},
+    {file = "distlib-0.3.9.tar.gz", hash = "sha256:a60f20dea646b8a33f3e7772f74dc0b2d0772d2837ee1342a00645c81edf9403"},
 ]
 
 [[package]]
@@ -915,7 +919,7 @@ name = "distro"
 version = "1.9.0"
 requires_python = ">=3.6"
 summary = "Distro - an OS platform information API"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "distro-1.9.0-py3-none-any.whl", hash = "sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2"},
     {file = "distro-1.9.0.tar.gz", hash = "sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed"},
@@ -926,7 +930,7 @@ name = "django"
 version = "4.2.1"
 requires_python = ">=3.8"
 summary = "A high-level Python web framework that encourages rapid development and clean, pragmatic design."
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "asgiref<4,>=3.6.0",
     "sqlparse>=0.3.1",
@@ -941,7 +945,7 @@ files = [
 name = "django-celery-beat"
 version = "2.5.0"
 summary = "Database-backed Periodic Tasks."
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "Django<5.0,>=2.2",
     "celery<6.0,>=5.2.3",
@@ -957,30 +961,17 @@ files = [
 
 [[package]]
 name = "django-cors-headers"
-version = "4.3.1"
-requires_python = ">=3.8"
+version = "4.6.0"
+requires_python = ">=3.9"
 summary = "django-cors-headers is a Django application for handling the server headers required for Cross-Origin Resource Sharing (CORS)."
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
-    "Django>=3.2",
     "asgiref>=3.6",
+    "django>=4.2",
 ]
 files = [
-    {file = "django-cors-headers-4.3.1.tar.gz", hash = "sha256:0bf65ef45e606aff1994d35503e6b677c0b26cafff6506f8fd7187f3be840207"},
-    {file = "django_cors_headers-4.3.1-py3-none-any.whl", hash = "sha256:0b1fd19297e37417fc9f835d39e45c8c642938ddba1acce0c1753d3edef04f36"},
-]
-
-[[package]]
-name = "django-log-request-id"
-version = "2.1.0"
-summary = "Django middleware and log filter to attach a unique ID to every log message generated as part of a request"
-groups = ["default"]
-dependencies = [
-    "django>=1.8",
-]
-files = [
-    {file = "django-log-request-id-2.1.0.tar.gz", hash = "sha256:b11fc821774b54b820ef2e732dbaa52304711de8d5c4f9031ca48578f6121ab6"},
-    {file = "django_log_request_id-2.1.0-py3-none-any.whl", hash = "sha256:c0793c030cfe9f673eff3f89667711f65c39509c016d85e436f9d48507ee778c"},
+    {file = "django_cors_headers-4.6.0-py3-none-any.whl", hash = "sha256:8edbc0497e611c24d5150e0055d3b178c6534b8ed826fb6f53b21c63f5d48ba3"},
+    {file = "django_cors_headers-4.6.0.tar.gz", hash = "sha256:14d76b4b4c8d39375baeddd89e4f08899051eeaf177cb02a29bd6eae8cf63aa8"},
 ]
 
 [[package]]
@@ -988,7 +979,7 @@ name = "django-redis"
 version = "5.4.0"
 requires_python = ">=3.6"
 summary = "Full featured redis cache backend for Django."
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "Django>=3.2",
     "redis!=4.0.0,!=4.0.1,>=3",
@@ -1002,7 +993,7 @@ files = [
 name = "django-tenants"
 version = "3.5.0"
 summary = "Tenant support for Django using PostgreSQL schemas."
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "Django<4.3,>=2.1",
 ]
@@ -1015,7 +1006,7 @@ name = "django-timezone-field"
 version = "7.0"
 requires_python = "<4.0,>=3.8"
 summary = "A Django app providing DB, form, and REST framework fields for zoneinfo and pytz timezone objects."
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "Django<6.0,>=3.2",
 ]
@@ -1029,7 +1020,7 @@ name = "djangorestframework"
 version = "3.14.0"
 requires_python = ">=3.6"
 summary = "Web APIs for Django, made easy."
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "django>=3.0",
     "pytz",
@@ -1044,7 +1035,7 @@ name = "docker"
 version = "6.1.3"
 requires_python = ">=3.7"
 summary = "A Python library for the Docker Engine API."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "packaging>=14.0",
     "pywin32>=304; sys_platform == \"win32\"",
@@ -1062,25 +1053,21 @@ name = "docstring-parser"
 version = "0.16"
 requires_python = ">=3.6,<4.0"
 summary = "Parse Python docstrings in reST, Google and Numpydoc format"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "docstring_parser-0.16-py3-none-any.whl", hash = "sha256:bf0a1387354d3691d102edef7ec124f219ef639982d096e26e3b60aeffa90637"},
     {file = "docstring_parser-0.16.tar.gz", hash = "sha256:538beabd0af1e2db0146b6bd3caa526c35a34d61af9fd2887f3a8a27a739aa6e"},
 ]
 
 [[package]]
-name = "drf-standardized-errors"
-version = "0.14.1"
-requires_python = ">=3.8"
-summary = "Standardize your API error responses."
-groups = ["default"]
-dependencies = [
-    "django>=3.2",
-    "djangorestframework>=3.12",
-]
+name = "docutils"
+version = "0.20.1"
+requires_python = ">=3.7"
+summary = "Docutils -- Python Documentation Utilities"
+groups = ["lint"]
 files = [
-    {file = "drf_standardized_errors-0.14.1-py3-none-any.whl", hash = "sha256:4941e0f81be94eb0904549999cf221988a5b0f524041c3877530e24f70328ed8"},
-    {file = "drf_standardized_errors-0.14.1.tar.gz", hash = "sha256:0610dcd0096b75365102d276022a22e59a1f8db8825bb0bff05e1b7194ba145d"},
+    {file = "docutils-0.20.1-py3-none-any.whl", hash = "sha256:96f387a2c5562db4476f09f13bbab2192e764cac08ebbf3a34a95d9b1e4a59d6"},
+    {file = "docutils-0.20.1.tar.gz", hash = "sha256:f08a4e276c3a1583a86dce3e34aba3fe04d02bba2dd51ed16106244e8a923e3b"},
 ]
 
 [[package]]
@@ -1088,7 +1075,7 @@ name = "drf-yasg"
 version = "1.21.7"
 requires_python = ">=3.6"
 summary = "Automated generation of real Swagger/OpenAPI 2.0 schemas from Django Rest Framework code."
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "django>=2.2.16",
     "djangorestframework>=3.10.3",
@@ -1107,7 +1094,7 @@ files = [
 name = "dropbox"
 version = "12.0.2"
 summary = "Official Dropbox API Client"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "requests>=2.16.2",
     "six>=1.12.0",
@@ -1123,7 +1110,7 @@ name = "dropboxdrivefs"
 version = "1.4.1"
 requires_python = ">=3.5"
 summary = "Dropbox implementation for fsspec module"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "dropbox",
     "fsspec",
@@ -1138,7 +1125,7 @@ name = "environs"
 version = "9.5.0"
 requires_python = ">=3.6"
 summary = "simplified environment variable parsing"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "marshmallow>=3.0.0",
     "python-dotenv",
@@ -1153,7 +1140,7 @@ name = "exceptiongroup"
 version = "1.2.2"
 requires_python = ">=3.7"
 summary = "Backport of PEP 654 (exception groups)"
-groups = ["default", "dev", "test"]
+groups = ["hook-check-django-migrations"]
 marker = "python_version < \"3.11\""
 files = [
     {file = "exceptiongroup-1.2.2-py3-none-any.whl", hash = "sha256:3111b9d131c238bec2f8f516e123e14ba243563fb135d3fe885990585aa7795b"},
@@ -1165,7 +1152,7 @@ name = "filelock"
 version = "3.16.1"
 requires_python = ">=3.8"
 summary = "A platform independent file lock."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations", "lint"]
 files = [
     {file = "filelock-3.16.1-py3-none-any.whl", hash = "sha256:2082e5703d51fbf98ea75855d9d5527e33d8ff23099bec374a134febee6946b0"},
     {file = "filelock-3.16.1.tar.gz", hash = "sha256:c249fbfcd5db47e5e2d6d62198e565475ee65e4831e2561c8e313fa7eb961435"},
@@ -1175,28 +1162,40 @@ files = [
 name = "filetype"
 version = "1.2.0"
 summary = "Infer file type and MIME type of any file/buffer. No external dependencies."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "filetype-1.2.0-py2.py3-none-any.whl", hash = "sha256:7ce71b6880181241cf7ac8697a2f1eb6a8bd9b429f7ad6d27b8db9ba5f1c2d25"},
     {file = "filetype-1.2.0.tar.gz", hash = "sha256:66b56cd6474bf41d8c54660347d37afcc3f7d1970648de365c102ef77548aadb"},
 ]
 
 [[package]]
-name = "flower"
-version = "2.0.1"
-requires_python = ">=3.7"
-summary = "Celery Flower"
-groups = ["default"]
+name = "flake8"
+version = "7.0.0"
+requires_python = ">=3.8.1"
+summary = "the modular source code checker: pep8 pyflakes and co"
+groups = ["lint"]
 dependencies = [
-    "celery>=5.0.5",
-    "humanize",
-    "prometheus-client>=0.8.0",
-    "pytz",
-    "tornado<7.0.0,>=5.0.0",
+    "mccabe<0.8.0,>=0.7.0",
+    "pycodestyle<2.12.0,>=2.11.0",
+    "pyflakes<3.3.0,>=3.2.0",
 ]
 files = [
-    {file = "flower-2.0.1-py2.py3-none-any.whl", hash = "sha256:9db2c621eeefbc844c8dd88be64aef61e84e2deb29b271e02ab2b5b9f01068e2"},
-    {file = "flower-2.0.1.tar.gz", hash = "sha256:5ab717b979530770c16afb48b50d2a98d23c3e9fe39851dcf6bc4d01845a02a0"},
+    {file = "flake8-7.0.0-py2.py3-none-any.whl", hash = "sha256:a6dfbb75e03252917f2473ea9653f7cd799c3064e54d4c8140044c5c065f53c3"},
+    {file = "flake8-7.0.0.tar.gz", hash = "sha256:33f96621059e65eec474169085dc92bf26e7b2d47366b70be2f67ab80dc25132"},
+]
+
+[[package]]
+name = "flake8-pyproject"
+version = "1.2.3"
+requires_python = ">= 3.6"
+summary = "Flake8 plug-in loading the configuration from pyproject.toml"
+groups = ["lint"]
+dependencies = [
+    "Flake8>=5",
+    "TOMLi; python_version < \"3.11\"",
+]
+files = [
+    {file = "flake8_pyproject-1.2.3-py3-none-any.whl", hash = "sha256:6249fe53545205af5e76837644dc80b4c10037e73a0e5db87ff562d75fb5bd4a"},
 ]
 
 [[package]]
@@ -1204,7 +1203,7 @@ name = "frozenlist"
 version = "1.5.0"
 requires_python = ">=3.8"
 summary = "A list-like structure which implements collections.abc.MutableSequence"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "frozenlist-1.5.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:5b6a66c18b5b9dd261ca98dffcb826a525334b2f29e7caa54e182255c5f6a65a"},
     {file = "frozenlist-1.5.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:d1b3eb7b05ea246510b43a7e53ed1653e55c2121019a97e60cad7efb881a97bb"},
@@ -1260,7 +1259,7 @@ name = "fsspec"
 version = "2024.6.0"
 requires_python = ">=3.8"
 summary = "File-system specification"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "fsspec-2024.6.0-py3-none-any.whl", hash = "sha256:58d7122eb8a1a46f7f13453187bfea4972d66bf01618d37366521b1998034cee"},
     {file = "fsspec-2024.6.0.tar.gz", hash = "sha256:f579960a56e6d8038a9efc8f9c77279ec12e6299aa86b0769a7e9c46b94527c2"},
@@ -1272,7 +1271,7 @@ version = "2024.6.0"
 extras = ["sftp"]
 requires_python = ">=3.8"
 summary = "File-system specification"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "fsspec==2024.6.0",
     "paramiko",
@@ -1286,7 +1285,7 @@ files = [
 name = "funcy"
 version = "2.0"
 summary = "A fancy and practical functional tools"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "funcy-2.0-py2.py3-none-any.whl", hash = "sha256:53df23c8bb1651b12f095df764bfb057935d49537a56de211b098f4c79614bb0"},
     {file = "funcy-2.0.tar.gz", hash = "sha256:3963315d59d41c6f30c04bc910e10ab50a3ac4a225868bfa96feed133df075cb"},
@@ -1297,7 +1296,7 @@ name = "gcsfs"
 version = "2024.6.0"
 requires_python = ">=3.8"
 summary = "Convenient Filesystem interface over GCS"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "aiohttp!=4.0.0a0,!=4.0.0a1",
     "decorator>4.1.2",
@@ -1317,7 +1316,7 @@ name = "google-ai-generativelanguage"
 version = "0.4.0"
 requires_python = ">=3.7"
 summary = "Google Ai Generativelanguage API client library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.10.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3.0.0dev,>=1.34.0",
     "proto-plus<2.0.0dev,>=1.22.3",
@@ -1333,7 +1332,7 @@ name = "google-api-core"
 version = "2.23.0"
 requires_python = ">=3.7"
 summary = "Google API client core library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-auth<3.0.dev0,>=2.14.1",
     "googleapis-common-protos<2.0.dev0,>=1.56.2",
@@ -1352,7 +1351,7 @@ version = "2.23.0"
 extras = ["grpc"]
 requires_python = ">=3.7"
 summary = "Google API client core library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-api-core==2.23.0",
     "grpcio-status<2.0.dev0,>=1.33.2",
@@ -1370,7 +1369,7 @@ name = "google-api-python-client"
 version = "2.154.0"
 requires_python = ">=3.7"
 summary = "Google API Client Library for Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-api-core!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.0,<3.0.0.dev0,>=1.31.5",
     "google-auth!=2.24.0,!=2.25.0,<3.0.0.dev0,>=1.32.0",
@@ -1388,7 +1387,7 @@ name = "google-auth"
 version = "2.20.0"
 requires_python = ">=3.6"
 summary = "Google Authentication Library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "cachetools<6.0,>=2.0.0",
     "pyasn1-modules>=0.2.1",
@@ -1405,7 +1404,7 @@ files = [
 name = "google-auth-httplib2"
 version = "0.2.0"
 summary = "Google Authentication Library: httplib2 transport"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-auth",
     "httplib2>=0.19.0",
@@ -1420,7 +1419,7 @@ name = "google-auth-oauthlib"
 version = "1.2.1"
 requires_python = ">=3.6"
 summary = "Google Authentication Library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-auth>=2.15.0",
     "requests-oauthlib>=0.7.0",
@@ -1435,7 +1434,7 @@ name = "google-cloud-aiplatform"
 version = "1.74.0"
 requires_python = ">=3.8"
 summary = "Vertex AI API client library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "docstring-parser<1",
     "google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,<3.0.0dev,>=1.34.1",
@@ -1459,7 +1458,7 @@ name = "google-cloud-bigquery"
 version = "3.11.4"
 requires_python = ">=3.7"
 summary = "Google BigQuery API client library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.0,<3.0.0dev,>=1.31.5",
     "google-cloud-core<3.0.0dev,>=1.6.0",
@@ -1482,7 +1481,7 @@ name = "google-cloud-core"
 version = "2.4.1"
 requires_python = ">=3.7"
 summary = "Google Cloud API client core library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-api-core!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.0,<3.0.0dev,>=1.31.6",
     "google-auth<3.0dev,>=1.25.0",
@@ -1497,7 +1496,7 @@ name = "google-cloud-resource-manager"
 version = "1.13.1"
 requires_python = ">=3.7"
 summary = "Google Cloud Resource Manager API client library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.10.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3.0.0dev,>=1.34.1",
     "google-auth!=2.24.0,!=2.25.0,<3.0.0dev,>=2.14.1",
@@ -1515,7 +1514,7 @@ name = "google-cloud-secret-manager"
 version = "2.16.1"
 requires_python = ">=3.7"
 summary = "Google Cloud Secret Manager API client library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.10.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3.0.0dev,>=1.34.0",
     "grpc-google-iam-v1<1.0.0dev,>=0.12.4",
@@ -1533,7 +1532,7 @@ name = "google-cloud-storage"
 version = "2.9.0"
 requires_python = ">=3.7"
 summary = "Google Cloud Storage API client library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-api-core!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.0,<3.0.0dev,>=1.31.5",
     "google-auth<3.0dev,>=1.25.0",
@@ -1551,7 +1550,7 @@ name = "google-crc32c"
 version = "1.6.0"
 requires_python = ">=3.9"
 summary = "A python wrapper of the C library 'Google CRC32C'"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "google_crc32c-1.6.0-cp310-cp310-macosx_12_0_arm64.whl", hash = "sha256:5bcc90b34df28a4b38653c36bb5ada35671ad105c99cfe915fb5bed7ad6924aa"},
     {file = "google_crc32c-1.6.0-cp310-cp310-macosx_12_0_x86_64.whl", hash = "sha256:d9e9913f7bd69e093b81da4535ce27af842e7bf371cde42d1ae9e9bd382dc0e9"},
@@ -1582,7 +1581,7 @@ name = "google-generativeai"
 version = "0.4.1"
 requires_python = ">=3.9"
 summary = "Google Generative AI High level API client library and tools."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-ai-generativelanguage==0.4.0",
     "google-api-core",
@@ -1601,7 +1600,7 @@ name = "google-resumable-media"
 version = "2.7.2"
 requires_python = ">=3.7"
 summary = "Utilities for Google Media Downloads and Resumable Uploads"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-crc32c<2.0dev,>=1.0",
 ]
@@ -1615,7 +1614,7 @@ name = "googleapis-common-protos"
 version = "1.66.0"
 requires_python = ">=3.7"
 summary = "Common protobufs used in Google APIs"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "protobuf!=3.20.0,!=3.20.1,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<6.0.0.dev0,>=3.20.2",
 ]
@@ -1630,7 +1629,7 @@ version = "1.66.0"
 extras = ["grpc"]
 requires_python = ">=3.7"
 summary = "Common protobufs used in Google APIs"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "googleapis-common-protos==1.66.0",
     "grpcio<2.0.0.dev0,>=1.44.0",
@@ -1645,7 +1644,7 @@ name = "greenlet"
 version = "3.1.1"
 requires_python = ">=3.7"
 summary = "Lightweight in-process concurrent programming"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "greenlet-3.1.1-cp310-cp310-macosx_11_0_universal2.whl", hash = "sha256:0bbae94a29c9e5c7e4a2b7f0aae5c17e8e90acbfd3bf6270eeba60c39fce3563"},
     {file = "greenlet-3.1.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0fde093fb93f35ca72a556cf72c92ea3ebfda3d79fc35bb19fbe685853869a83"},
@@ -1683,7 +1682,7 @@ name = "grpc-google-iam-v1"
 version = "0.13.1"
 requires_python = ">=3.7"
 summary = "IAM API client library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "googleapis-common-protos[grpc]<2.0.0dev,>=1.56.0",
     "grpcio<2.0.0dev,>=1.44.0",
@@ -1699,7 +1698,7 @@ name = "grpcio"
 version = "1.60.0"
 requires_python = ">=3.7"
 summary = "HTTP/2-based RPC framework"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "grpcio-1.60.0-cp310-cp310-linux_armv7l.whl", hash = "sha256:d020cfa595d1f8f5c6b343530cd3ca16ae5aefdd1e832b777f9f0eb105f5b139"},
     {file = "grpcio-1.60.0-cp310-cp310-macosx_12_0_universal2.whl", hash = "sha256:b98f43fcdb16172dec5f4b49f2fece4b16a99fd284d81c6bbac1b3b69fcbe0ff"},
@@ -1736,7 +1735,7 @@ name = "grpcio-health-checking"
 version = "1.60.0"
 requires_python = ">=3.6"
 summary = "Standard Health Checking Service for gRPC"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "grpcio>=1.60.0",
     "protobuf>=4.21.6",
@@ -1751,7 +1750,7 @@ name = "grpcio-status"
 version = "1.60.0"
 requires_python = ">=3.6"
 summary = "Status proto mapping for gRPC"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "googleapis-common-protos>=1.5.5",
     "grpcio>=1.60.0",
@@ -1767,7 +1766,7 @@ name = "grpcio-tools"
 version = "1.60.0"
 requires_python = ">=3.7"
 summary = "Protobuf code generator for gRPC"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "grpcio>=1.60.0",
     "protobuf<5.0dev,>=4.21.6",
@@ -1805,25 +1804,11 @@ files = [
 ]
 
 [[package]]
-name = "gunicorn"
-version = "23.0.0"
-requires_python = ">=3.7"
-summary = "WSGI HTTP Server for UNIX"
-groups = ["deploy"]
-dependencies = [
-    "packaging",
-]
-files = [
-    {file = "gunicorn-23.0.0-py3-none-any.whl", hash = "sha256:ec400d38950de4dfd418cff8328b2c8faed0edb0d517d3394e457c317908ca4d"},
-    {file = "gunicorn-23.0.0.tar.gz", hash = "sha256:f014447a0101dc57e294f6c18ca6b40227a4c90e9bdb586042628030cba004ec"},
-]
-
-[[package]]
 name = "h11"
 version = "0.14.0"
 requires_python = ">=3.7"
 summary = "A pure-Python, bring-your-own-I/O implementation of HTTP/1.1"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "h11-0.14.0-py3-none-any.whl", hash = "sha256:e3fe4ac4b851c468cc8363d500db52c2ead036020723024a109d37346efaa761"},
     {file = "h11-0.14.0.tar.gz", hash = "sha256:8f19fbbe99e72420ff35c00b27a34cb9937e902a8b810e2c88300c6f0a3b699d"},
@@ -1834,7 +1819,7 @@ name = "h2"
 version = "4.1.0"
 requires_python = ">=3.6.1"
 summary = "HTTP/2 State-Machine based protocol implementation"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "hpack<5,>=4.0",
     "hyperframe<7,>=6.0",
@@ -1849,7 +1834,7 @@ name = "hpack"
 version = "4.0.0"
 requires_python = ">=3.6.1"
 summary = "Pure-Python HPACK header compression"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "hpack-4.0.0-py3-none-any.whl", hash = "sha256:84a076fad3dc9a9f8063ccb8041ef100867b1878b25ef0ee63847a5d53818a6c"},
     {file = "hpack-4.0.0.tar.gz", hash = "sha256:fc41de0c63e687ebffde81187a948221294896f6bdc0ae2312708df339430095"},
@@ -1860,7 +1845,7 @@ name = "httpcore"
 version = "1.0.7"
 requires_python = ">=3.8"
 summary = "A minimal low-level HTTP client."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "certifi",
     "h11<0.15,>=0.13",
@@ -1875,7 +1860,7 @@ name = "httplib2"
 version = "0.22.0"
 requires_python = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 summary = "A comprehensive HTTP client library."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "pyparsing!=3.0.0,!=3.0.1,!=3.0.2,!=3.0.3,<4,>=2.4.2; python_version > \"3.0\"",
 ]
@@ -1889,7 +1874,7 @@ name = "httpx"
 version = "0.27.0"
 requires_python = ">=3.8"
 summary = "The next generation HTTP client."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "anyio",
     "certifi",
@@ -1908,7 +1893,7 @@ version = "0.27.0"
 extras = ["http2"]
 requires_python = ">=3.8"
 summary = "The next generation HTTP client."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "h2<5,>=3",
     "httpx==0.27.0",
@@ -1923,7 +1908,7 @@ name = "huggingface-hub"
 version = "0.26.3"
 requires_python = ">=3.8.0"
 summary = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "filelock",
     "fsspec>=2023.5.0",
@@ -1939,25 +1924,25 @@ files = [
 ]
 
 [[package]]
-name = "humanize"
-version = "4.11.0"
-requires_python = ">=3.9"
-summary = "Python humanize utilities"
-groups = ["default"]
-files = [
-    {file = "humanize-4.11.0-py3-none-any.whl", hash = "sha256:b53caaec8532bcb2fff70c8826f904c35943f8cecaca29d272d9df38092736c0"},
-    {file = "humanize-4.11.0.tar.gz", hash = "sha256:e66f36020a2d5a974c504bd2555cf770621dbdbb6d82f94a6857c0b1ea2608be"},
-]
-
-[[package]]
 name = "hyperframe"
 version = "6.0.1"
 requires_python = ">=3.6.1"
 summary = "HTTP/2 framing layer for Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "hyperframe-6.0.1-py3-none-any.whl", hash = "sha256:0ec6bafd80d8ad2195c4f03aacba3a8265e57bc4cff261e802bf39970ed02a15"},
     {file = "hyperframe-6.0.1.tar.gz", hash = "sha256:ae510046231dc8e9ecb1a6586f63d2347bf4c8905914aa84ba585ae85f28a914"},
+]
+
+[[package]]
+name = "identify"
+version = "2.6.3"
+requires_python = ">=3.9"
+summary = "File identification library for Python"
+groups = ["lint"]
+files = [
+    {file = "identify-2.6.3-py2.py3-none-any.whl", hash = "sha256:9edba65473324c2ea9684b1f944fe3191db3345e50b6d04571d10ed164f8d7bd"},
+    {file = "identify-2.6.3.tar.gz", hash = "sha256:62f5dae9b5fef52c84cc188514e9ea4f3f636b1d8799ab5ebc475471f9e47a02"},
 ]
 
 [[package]]
@@ -1965,7 +1950,7 @@ name = "idna"
 version = "3.10"
 requires_python = ">=3.6"
 summary = "Internationalized Domain Names in Applications (IDNA)"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "idna-3.10-py3-none-any.whl", hash = "sha256:946d195a0d259cbba61165e88e65941f16e9b36ea6ddb97f00452bae8b1287d3"},
     {file = "idna-3.10.tar.gz", hash = "sha256:12f65c9b470abda6dc35cf8e63cc574b1c52b11df2c86030af0ac09b01b13ea9"},
@@ -1976,21 +1961,10 @@ name = "inflection"
 version = "0.5.1"
 requires_python = ">=3.5"
 summary = "A port of Ruby on Rails inflector to Python"
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "inflection-0.5.1-py2.py3-none-any.whl", hash = "sha256:f38b2b640938a4f35ade69ac3d053042959b62a0f1076a5bbaa1b9526605a8a2"},
     {file = "inflection-0.5.1.tar.gz", hash = "sha256:1a29730d366e996aaacffb2f1f1cb9593dc38e2ddd30c91250c6dde09ea9b417"},
-]
-
-[[package]]
-name = "iniconfig"
-version = "2.0.0"
-requires_python = ">=3.7"
-summary = "brain-dead simple config-ini parsing"
-groups = ["test"]
-files = [
-    {file = "iniconfig-2.0.0-py3-none-any.whl", hash = "sha256:b6a85871a79d2e3b22d2d1b94ac2824226a63c6b741c88f7ae975f18b6778374"},
-    {file = "iniconfig-2.0.0.tar.gz", hash = "sha256:2d91e135bf72d31a410b17c16da610a82cb55f6b0477d1a902134b24a455b8b3"},
 ]
 
 [[package]]
@@ -1998,10 +1972,21 @@ name = "isodate"
 version = "0.7.2"
 requires_python = ">=3.7"
 summary = "An ISO 8601 date/time/duration parser and formatter"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "isodate-0.7.2-py3-none-any.whl", hash = "sha256:28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15"},
     {file = "isodate-0.7.2.tar.gz", hash = "sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6"},
+]
+
+[[package]]
+name = "isort"
+version = "5.13.2"
+requires_python = ">=3.8.0"
+summary = "A Python utility / library to sort Python imports."
+groups = ["lint"]
+files = [
+    {file = "isort-5.13.2-py3-none-any.whl", hash = "sha256:8ca5e72a8d85860d5a3fa69b8745237f2939afe12dbf656afbcb47fe72d947a6"},
+    {file = "isort-5.13.2.tar.gz", hash = "sha256:48fdfcb9face5d58a4f6dde2e72a1fb8dcaf8ab26f95ab49fab84c2ddefb0109"},
 ]
 
 [[package]]
@@ -2009,7 +1994,7 @@ name = "jiter"
 version = "0.8.0"
 requires_python = ">=3.8"
 summary = "Fast iterable JSON parser."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "jiter-0.8.0-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:dee4eeb293ffcd2c3b31ebab684dbf7f7b71fe198f8eddcdf3a042cc6e10205a"},
     {file = "jiter-0.8.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:aad1e6e9b01cf0304dcee14db03e92e0073287a6297caf5caf2e9dbfea16a924"},
@@ -2055,7 +2040,7 @@ name = "jmespath"
 version = "1.0.1"
 requires_python = ">=3.7"
 summary = "JSON Matching Expressions"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "jmespath-1.0.1-py3-none-any.whl", hash = "sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980"},
     {file = "jmespath-1.0.1.tar.gz", hash = "sha256:90261b206d6defd58fdd5e85f478bf633a2901798906be2ad389150c5c60edbe"},
@@ -2066,7 +2051,7 @@ name = "joblib"
 version = "1.4.2"
 requires_python = ">=3.8"
 summary = "Lightweight pipelining with Python functions"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "joblib-1.4.2-py3-none-any.whl", hash = "sha256:06d478d5674cbc267e7496a410ee875abd68e4340feff4490bcb7afb88060ae6"},
     {file = "joblib-1.4.2.tar.gz", hash = "sha256:2382c5816b2636fbd20a09e0f4e9dad4736765fdfb7dca582943b9c1366b3f0e"},
@@ -2077,7 +2062,7 @@ name = "jsonschema"
 version = "4.18.6"
 requires_python = ">=3.8"
 summary = "An implementation of JSON Schema validation for Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "attrs>=22.2.0",
     "jsonschema-specifications>=2023.03.6",
@@ -2094,7 +2079,7 @@ name = "jsonschema-specifications"
 version = "2024.10.1"
 requires_python = ">=3.9"
 summary = "The JSON Schema meta-schemas and vocabularies, exposed as a Registry"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "referencing>=0.31.0",
 ]
@@ -2108,7 +2093,7 @@ name = "kombu"
 version = "5.3.7"
 requires_python = ">=3.8"
 summary = "Messaging library for Python."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "amqp<6.0.0,>=5.1.1",
     "typing-extensions; python_version < \"3.10\"",
@@ -2124,7 +2109,7 @@ name = "llama-cloud"
 version = "0.1.6"
 requires_python = "<4,>=3.8"
 summary = ""
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "httpx>=0.20.0",
     "pydantic>=1.10",
@@ -2139,7 +2124,7 @@ name = "llama-index"
 version = "0.10.58"
 requires_python = "<4.0,>=3.8.1"
 summary = "Interface between LLMs and your data"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-agent-openai<0.3.0,>=0.1.4",
     "llama-index-cli<0.2.0,>=0.1.2",
@@ -2164,7 +2149,7 @@ name = "llama-index-agent-openai"
 version = "0.2.9"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index agent openai integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.41",
     "llama-index-llms-openai<0.2.0,>=0.1.5",
@@ -2180,7 +2165,7 @@ name = "llama-index-cli"
 version = "0.1.13"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index cli"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.11.post1",
     "llama-index-embeddings-openai<0.2.0,>=0.1.1",
@@ -2196,7 +2181,7 @@ name = "llama-index-core"
 version = "0.10.58"
 requires_python = "<4.0,>=3.8.1"
 summary = "Interface between LLMs and your data"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "PyYAML>=6.0.1",
     "SQLAlchemy[asyncio]>=1.4.49",
@@ -2231,7 +2216,7 @@ name = "llama-index-embeddings-azure-openai"
 version = "0.1.11"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index embeddings azure openai integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.11.post1",
     "llama-index-embeddings-openai<0.2.0,>=0.1.3",
@@ -2247,7 +2232,7 @@ name = "llama-index-embeddings-google"
 version = "0.1.5"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index embeddings google integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-generativeai<0.5.0,>=0.4.1",
     "llama-index-core<0.11.0,>=0.10.11.post1",
@@ -2262,7 +2247,7 @@ name = "llama-index-embeddings-ollama"
 version = "0.1.2"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index embeddings ollama integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
 ]
@@ -2276,7 +2261,7 @@ name = "llama-index-embeddings-openai"
 version = "0.1.11"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index embeddings openai integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
 ]
@@ -2290,7 +2275,7 @@ name = "llama-index-indices-managed-llama-cloud"
 version = "0.2.7"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index indices llama-cloud integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-cloud>=0.0.11",
     "llama-index-core<0.11.0,>=0.10.48.post1",
@@ -2305,7 +2290,7 @@ name = "llama-index-legacy"
 version = "0.9.48.post4"
 requires_python = "<4.0,>=3.8.1"
 summary = "Interface between LLMs and your data"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "SQLAlchemy[asyncio]>=1.4.49",
     "aiohttp<4.0.0,>=3.8.6",
@@ -2336,7 +2321,7 @@ name = "llama-index-llms-anthropic"
 version = "0.1.16"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms anthropic integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "anthropic<0.29.0,>=0.26.2",
     "llama-index-core<0.11.0,>=0.10.57",
@@ -2351,7 +2336,7 @@ name = "llama-index-llms-anyscale"
 version = "0.1.4"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms anyscale integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
     "llama-index-llms-openai<0.2.0,>=0.1.1",
@@ -2366,7 +2351,7 @@ name = "llama-index-llms-azure-openai"
 version = "0.1.10"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms azure openai integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "azure-identity<2.0.0,>=1.15.0",
     "httpx",
@@ -2383,7 +2368,7 @@ name = "llama-index-llms-bedrock"
 version = "0.1.13"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms bedrock integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "boto3<2.0.0,>=1.34.26",
     "llama-index-core<0.11.0,>=0.10.1",
@@ -2399,7 +2384,7 @@ name = "llama-index-llms-mistralai"
 version = "0.1.19"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index llms mistral ai integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.57",
     "mistralai>=0.4.2",
@@ -2414,7 +2399,7 @@ name = "llama-index-llms-ollama"
 version = "0.2.2"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms ollama integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
     "ollama>=0.3.0",
@@ -2429,7 +2414,7 @@ name = "llama-index-llms-openai"
 version = "0.1.27"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms openai integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.57",
 ]
@@ -2443,7 +2428,7 @@ name = "llama-index-llms-palm"
 version = "0.1.5"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index llms palm integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-generativeai<0.5.0,>=0.4.1",
     "llama-index-core<0.11.0,>=0.10.11.post1",
@@ -2458,7 +2443,7 @@ name = "llama-index-llms-replicate"
 version = "0.1.3"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index llms replicate integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
 ]
@@ -2472,7 +2457,7 @@ name = "llama-index-llms-vertex"
 version = "0.2.2"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index llms vertex integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "google-cloud-aiplatform<2.0.0,>=1.39.0",
     "llama-index-core<0.11.0,>=0.10.57",
@@ -2488,7 +2473,7 @@ name = "llama-index-multi-modal-llms-openai"
 version = "0.1.9"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index multi-modal-llms openai integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
     "llama-index-llms-openai<0.2.0,>=0.1.1",
@@ -2503,7 +2488,7 @@ name = "llama-index-program-openai"
 version = "0.1.7"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index program openai integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-agent-openai<0.3.0,>=0.1.1",
     "llama-index-core<0.11.0,>=0.10.57",
@@ -2519,7 +2504,7 @@ name = "llama-index-question-gen-openai"
 version = "0.1.3"
 requires_python = ">=3.8.1,<4.0"
 summary = "llama-index question_gen openai integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
     "llama-index-llms-openai<0.2.0,>=0.1.1",
@@ -2535,7 +2520,7 @@ name = "llama-index-readers-file"
 version = "0.1.33"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index readers file integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "beautifulsoup4<5.0.0,>=4.12.3",
     "llama-index-core<0.11.0,>=0.10.37.post1",
@@ -2552,7 +2537,7 @@ name = "llama-index-readers-llama-parse"
 version = "0.1.6"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index readers llama-parse integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.7",
     "llama-parse>=0.4.0",
@@ -2567,7 +2552,7 @@ name = "llama-index-vector-stores-milvus"
 version = "0.1.21"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index vector_stores milvus integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
     "pymilvus<3.0.0,>=2.3.6",
@@ -2582,7 +2567,7 @@ name = "llama-index-vector-stores-pinecone"
 version = "0.1.8"
 requires_python = "<3.13,>=3.8.1"
 summary = "llama-index vector_stores pinecone integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.11.post1",
     "pinecone-client<4.0.0,>=3.0.2",
@@ -2597,7 +2582,7 @@ name = "llama-index-vector-stores-postgres"
 version = "0.1.13"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index vector_stores postgres integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "asyncpg<0.30.0,>=0.29.0",
     "llama-index-core<0.11.0,>=0.10.20",
@@ -2615,7 +2600,7 @@ name = "llama-index-vector-stores-qdrant"
 version = "0.2.14"
 requires_python = "<3.13,>=3.9"
 summary = "llama-index vector_stores qdrant integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "grpcio<2.0.0,>=1.60.0",
     "llama-index-core<0.11.0,>=0.10.1",
@@ -2631,7 +2616,7 @@ name = "llama-index-vector-stores-weaviate"
 version = "1.0.2"
 requires_python = "<4.0,>=3.8.1"
 summary = "llama-index vector_stores weaviate integration"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core<0.11.0,>=0.10.1",
     "weaviate-client<5.0.0,>=4.5.7",
@@ -2646,7 +2631,7 @@ name = "llama-parse"
 version = "0.4.9"
 requires_python = "<4.0,>=3.8.1"
 summary = "Parse files into RAG-Optimized formats."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "llama-index-core>=0.10.29",
 ]
@@ -2660,7 +2645,7 @@ name = "marshmallow"
 version = "3.23.1"
 requires_python = ">=3.9"
 summary = "A lightweight library for converting complex datatypes to and from native Python datatypes."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "packaging>=17.0",
 ]
@@ -2670,11 +2655,22 @@ files = [
 ]
 
 [[package]]
+name = "mccabe"
+version = "0.7.0"
+requires_python = ">=3.6"
+summary = "McCabe checker, plugin for flake8"
+groups = ["lint"]
+files = [
+    {file = "mccabe-0.7.0-py2.py3-none-any.whl", hash = "sha256:6c2d30ab6be0e4a46919781807b4f0d834ebdd6c6e3dca0bda5a15f863427b6e"},
+    {file = "mccabe-0.7.0.tar.gz", hash = "sha256:348e0240c33b60bbdf4e523192ef919f28cb2c3d7d5c7794f74009290f236325"},
+]
+
+[[package]]
 name = "milvus-lite"
 version = "2.4.10"
 requires_python = ">=3.7"
 summary = "A lightweight version of Milvus wrapped with Python."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 marker = "sys_platform != \"win32\""
 dependencies = [
     "tqdm",
@@ -2691,7 +2687,7 @@ name = "mistralai"
 version = "0.4.2"
 requires_python = "<4.0,>=3.9"
 summary = ""
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "httpx<1,>=0.25",
     "orjson<3.11,>=3.9.10",
@@ -2707,7 +2703,7 @@ name = "msal"
 version = "1.31.1"
 requires_python = ">=3.7"
 summary = "The Microsoft Authentication Library (MSAL) for Python library enables your app to access the Microsoft Cloud by supporting authentication of users with Microsoft Azure Active Directory accounts (AAD) and Microsoft Accounts (MSA) using industry standard OAuth2 and OpenID Connect."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "PyJWT[crypto]<3,>=1.0.0",
     "cryptography<46,>=2.5",
@@ -2723,7 +2719,7 @@ name = "msal-extensions"
 version = "1.2.0"
 requires_python = ">=3.7"
 summary = "Microsoft Authentication Library extensions (MSAL EX) provides a persistence API that can save your data on disk, encrypted on Windows, macOS and Linux. Concurrent data access will be coordinated by a file lock mechanism."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "msal<2,>=1.29",
     "portalocker<3,>=1.4",
@@ -2734,29 +2730,11 @@ files = [
 ]
 
 [[package]]
-name = "msrest"
-version = "0.7.1"
-requires_python = ">=3.6"
-summary = "AutoRest swagger generator Python client runtime."
-groups = ["default"]
-dependencies = [
-    "azure-core>=1.24.0",
-    "certifi>=2017.4.17",
-    "isodate>=0.6.0",
-    "requests-oauthlib>=0.5.0",
-    "requests~=2.16",
-]
-files = [
-    {file = "msrest-0.7.1-py3-none-any.whl", hash = "sha256:21120a810e1233e5e6cc7fe40b474eeb4ec6f757a15d7cf86702c369f9567c32"},
-    {file = "msrest-0.7.1.zip", hash = "sha256:6e7661f46f3afd88b75667b7187a92829924446c7ea1d169be8c4bb7eeb788b9"},
-]
-
-[[package]]
 name = "multidict"
 version = "6.1.0"
 requires_python = ">=3.8"
 summary = "multidict implementation"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "typing-extensions>=4.1.0; python_version < \"3.11\"",
 ]
@@ -2811,11 +2789,42 @@ files = [
 ]
 
 [[package]]
+name = "mypy"
+version = "1.9.0"
+requires_python = ">=3.8"
+summary = "Optional static typing for Python"
+groups = ["lint"]
+dependencies = [
+    "mypy-extensions>=1.0.0",
+    "tomli>=1.1.0; python_version < \"3.11\"",
+    "typing-extensions>=4.1.0",
+]
+files = [
+    {file = "mypy-1.9.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:f8a67616990062232ee4c3952f41c779afac41405806042a8126fe96e098419f"},
+    {file = "mypy-1.9.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:d357423fa57a489e8c47b7c85dfb96698caba13d66e086b412298a1a0ea3b0ed"},
+    {file = "mypy-1.9.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:49c87c15aed320de9b438ae7b00c1ac91cd393c1b854c2ce538e2a72d55df150"},
+    {file = "mypy-1.9.0-cp310-cp310-musllinux_1_1_x86_64.whl", hash = "sha256:48533cdd345c3c2e5ef48ba3b0d3880b257b423e7995dada04248725c6f77374"},
+    {file = "mypy-1.9.0-cp310-cp310-win_amd64.whl", hash = "sha256:4d3dbd346cfec7cb98e6cbb6e0f3c23618af826316188d587d1c1bc34f0ede03"},
+    {file = "mypy-1.9.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:653265f9a2784db65bfca694d1edd23093ce49740b2244cde583aeb134c008f3"},
+    {file = "mypy-1.9.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:3a3c007ff3ee90f69cf0a15cbcdf0995749569b86b6d2f327af01fd1b8aee9dc"},
+    {file = "mypy-1.9.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2418488264eb41f69cc64a69a745fad4a8f86649af4b1041a4c64ee61fc61129"},
+    {file = "mypy-1.9.0-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:68edad3dc7d70f2f17ae4c6c1b9471a56138ca22722487eebacfd1eb5321d612"},
+    {file = "mypy-1.9.0-cp311-cp311-win_amd64.whl", hash = "sha256:85ca5fcc24f0b4aeedc1d02f93707bccc04733f21d41c88334c5482219b1ccb3"},
+    {file = "mypy-1.9.0-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:587ce887f75dd9700252a3abbc9c97bbe165a4a630597845c61279cf32dfbf02"},
+    {file = "mypy-1.9.0-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:f88566144752999351725ac623471661c9d1cd8caa0134ff98cceeea181789f4"},
+    {file = "mypy-1.9.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:61758fabd58ce4b0720ae1e2fea5cfd4431591d6d590b197775329264f86311d"},
+    {file = "mypy-1.9.0-cp39-cp39-musllinux_1_1_x86_64.whl", hash = "sha256:e49499be624dead83927e70c756970a0bc8240e9f769389cdf5714b0784ca6bf"},
+    {file = "mypy-1.9.0-cp39-cp39-win_amd64.whl", hash = "sha256:571741dc4194b4f82d344b15e8837e8c5fcc462d66d076748142327626a1b6e9"},
+    {file = "mypy-1.9.0-py3-none-any.whl", hash = "sha256:a260627a570559181a9ea5de61ac6297aa5af202f06fd7ab093ce74e7181e43e"},
+    {file = "mypy-1.9.0.tar.gz", hash = "sha256:3cc5da0127e6a478cddd906068496a97a7618a21ce9b54bde5bf7e539c7af974"},
+]
+
+[[package]]
 name = "mypy-extensions"
 version = "1.0.0"
 requires_python = ">=3.5"
 summary = "Type system extensions for programs checked with the mypy type checker."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations", "lint"]
 files = [
     {file = "mypy_extensions-1.0.0-py3-none-any.whl", hash = "sha256:4392f6c0eb8a5668a69e23d168ffa70f0be9ccfd32b5cc2d26a34ae5b844552d"},
     {file = "mypy_extensions-1.0.0.tar.gz", hash = "sha256:75dbf8955dc00442a438fc4d0666508a9a97b6bd41aa2f0ffe9d2f2725af0782"},
@@ -2826,7 +2835,7 @@ name = "nest-asyncio"
 version = "1.6.0"
 requires_python = ">=3.5"
 summary = "Patch asyncio to allow nested event loops"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "nest_asyncio-1.6.0-py3-none-any.whl", hash = "sha256:87af6efd6b5e897c81050477ef65c62e2b2f35d51703cae01aff2905b1852e1c"},
     {file = "nest_asyncio-1.6.0.tar.gz", hash = "sha256:6f172d5449aca15afd6c646851f4e31e02c598d553a667e38cafa997cfec55fe"},
@@ -2837,7 +2846,7 @@ name = "networkx"
 version = "3.2.1"
 requires_python = ">=3.9"
 summary = "Python package for creating and manipulating graphs and networks"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "networkx-3.2.1-py3-none-any.whl", hash = "sha256:f18c69adc97877c42332c170849c96cefa91881c99a7cb3e95b7c659ebdc1ec2"},
     {file = "networkx-3.2.1.tar.gz", hash = "sha256:9f1bb5cf3409bf324e0a722c20bdb4c20ee39bf1c30ce8ae499c8502b0b5e0c6"},
@@ -2848,7 +2857,7 @@ name = "nltk"
 version = "3.9.1"
 requires_python = ">=3.8"
 summary = "Natural Language Toolkit"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "click",
     "joblib",
@@ -2861,11 +2870,22 @@ files = [
 ]
 
 [[package]]
+name = "nodeenv"
+version = "1.9.1"
+requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*,>=2.7"
+summary = "Node.js virtual environment builder"
+groups = ["lint"]
+files = [
+    {file = "nodeenv-1.9.1-py2.py3-none-any.whl", hash = "sha256:ba11c9782d29c27c70ffbdda2d7415098754709be8a7056d79a737cd901155c9"},
+    {file = "nodeenv-1.9.1.tar.gz", hash = "sha256:6ec12890a2dab7946721edbfbcd91f3319c6ccc9aec47be7c7e6b7011ee6645f"},
+]
+
+[[package]]
 name = "numpy"
 version = "1.26.4"
 requires_python = ">=3.9"
 summary = "Fundamental package for array computing in Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "numpy-1.26.4-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:9ff0f4f29c51e2803569d7a51c2304de5554655a60c5d776e35b4a41413830d0"},
     {file = "numpy-1.26.4-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:2e4ee3380d6de9c9ec04745830fd9e2eccb3e6cf790d39d7b98ffd19b0dd754a"},
@@ -2901,7 +2921,7 @@ files = [
 name = "oauth2client"
 version = "4.1.3"
 summary = "OAuth 2.0 client library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "httplib2>=0.9.1",
     "pyasn1-modules>=0.0.5",
@@ -2919,7 +2939,7 @@ name = "oauthlib"
 version = "3.2.2"
 requires_python = ">=3.6"
 summary = "A generic, spec-compliant, thorough implementation of the OAuth request-signing logic"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "oauthlib-3.2.2-py3-none-any.whl", hash = "sha256:8139f29aac13e25d502680e9e19963e83f16838d48a0d71c287fe40e7067fbca"},
     {file = "oauthlib-3.2.2.tar.gz", hash = "sha256:9859c40929662bec5d64f34d01c99e093149682a3f38915dc0655d5a633dd918"},
@@ -2930,7 +2950,7 @@ name = "ollama"
 version = "0.4.2"
 requires_python = "<4.0,>=3.8"
 summary = "The official Python client for Ollama."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "httpx<0.28.0,>=0.27.0",
     "pydantic<3.0.0,>=2.9.0",
@@ -2942,10 +2962,10 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.57.0"
+version = "1.56.2"
 requires_python = ">=3.8"
 summary = "The official Python library for the openai API"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "anyio<5,>=3.5.0",
     "distro<2,>=1.7.0",
@@ -2957,8 +2977,8 @@ dependencies = [
     "typing-extensions<5,>=4.11",
 ]
 files = [
-    {file = "openai-1.57.0-py3-none-any.whl", hash = "sha256:972e36960b821797952da3dc4532f486c28e28a2a332d7d0c5407f242e9d9c39"},
-    {file = "openai-1.57.0.tar.gz", hash = "sha256:76f91971c4bdbd78380c9970581075e0337b5d497c2fbf7b5255078f4b31abf9"},
+    {file = "openai-1.56.2-py3-none-any.whl", hash = "sha256:82d0c48f9504e04c7797e9b799dcf7f49a246d99b6cbfd90f3193ea80815b69e"},
+    {file = "openai-1.56.2.tar.gz", hash = "sha256:17312af69bc7670d4048f98ab5849f8784d98c39ac64fcde19406e3774a0c1e5"},
 ]
 
 [[package]]
@@ -2966,7 +2986,7 @@ name = "orjson"
 version = "3.10.12"
 requires_python = ">=3.8"
 summary = "Fast, correct Python JSON library supporting dataclasses, datetimes, and numpy"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "orjson-3.10.12-cp310-cp310-macosx_10_15_x86_64.macosx_11_0_arm64.macosx_10_15_universal2.whl", hash = "sha256:ece01a7ec71d9940cc654c482907a6b65df27251255097629d0dea781f255c6d"},
     {file = "orjson-3.10.12-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:c34ec9aebc04f11f4b978dd6caf697a2df2dd9b47d35aa4cc606cabcb9df69d7"},
@@ -3015,7 +3035,7 @@ name = "packaging"
 version = "24.2"
 requires_python = ">=3.8"
 summary = "Core utilities for Python packages"
-groups = ["default", "deploy", "dev", "test"]
+groups = ["hook-check-django-migrations", "lint"]
 files = [
     {file = "packaging-24.2-py3-none-any.whl", hash = "sha256:09abb1bccd265c01f4a3aa3f7a7db064b36514d2cba19a2f694fe6150451a759"},
     {file = "packaging-24.2.tar.gz", hash = "sha256:c228a6dc5e932d346bc5739379109d49e8853dd8223571c7c5b55260edc0b97f"},
@@ -3026,7 +3046,7 @@ name = "pandas"
 version = "2.1.4"
 requires_python = ">=3.9"
 summary = "Powerful data structures for data analysis, time series, and statistics"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "numpy<2,>=1.22.4; python_version < \"3.11\"",
     "numpy<2,>=1.23.2; python_version == \"3.11\"",
@@ -3061,7 +3081,7 @@ name = "paramiko"
 version = "3.5.0"
 requires_python = ">=3.6"
 summary = "SSH2 protocol library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "bcrypt>=3.2",
     "cryptography>=3.3",
@@ -3073,11 +3093,22 @@ files = [
 ]
 
 [[package]]
+name = "pathspec"
+version = "0.12.1"
+requires_python = ">=3.8"
+summary = "Utility library for gitignore style pattern matching of file paths."
+groups = ["lint"]
+files = [
+    {file = "pathspec-0.12.1-py3-none-any.whl", hash = "sha256:a0d503e138a4c123b27490a4f7beda6a01c6f288df0e4a8b79c7eb0dc7b4cc08"},
+    {file = "pathspec-0.12.1.tar.gz", hash = "sha256:a482d51503a1ab33b1c67a6c3813a26953dbdc71c31dacaef9a838c4e29f5712"},
+]
+
+[[package]]
 name = "pdfminer-six"
 version = "20231228"
 requires_python = ">=3.6"
 summary = "PDF parser and analyzer"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "charset-normalizer>=2.0.0",
     "cryptography>=36.0.0",
@@ -3092,7 +3123,7 @@ name = "pdfplumber"
 version = "0.11.4"
 requires_python = ">=3.8"
 summary = "Plumb a PDF for detailed information about each char, rectangle, and line."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "Pillow>=9.1",
     "pdfminer-six==20231228",
@@ -3108,7 +3139,7 @@ name = "pgvector"
 version = "0.2.5"
 requires_python = ">=3.8"
 summary = "pgvector support for Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "numpy",
 ]
@@ -3121,7 +3152,7 @@ name = "pillow"
 version = "11.0.0"
 requires_python = ">=3.9"
 summary = "Python Imaging Library (Fork)"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "pillow-11.0.0-cp310-cp310-macosx_10_10_x86_64.whl", hash = "sha256:6619654954dc4936fcff82db8eb6401d3159ec6be81e33c6000dfd76ae189947"},
     {file = "pillow-11.0.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:b3c5ac4bed7519088103d9450a1107f76308ecf91d6dabc8a33a2fcfb18d0fba"},
@@ -3175,7 +3206,7 @@ name = "pinecone-client"
 version = "3.2.2"
 requires_python = "<4.0,>=3.8"
 summary = "Pinecone client and SDK"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "certifi>=2019.11.17",
     "tqdm>=4.64.1",
@@ -3192,28 +3223,17 @@ name = "platformdirs"
 version = "3.11.0"
 requires_python = ">=3.7"
 summary = "A small Python package for determining appropriate platform-specific dirs, e.g. a \"user data dir\"."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations", "lint"]
 files = [
     {file = "platformdirs-3.11.0-py3-none-any.whl", hash = "sha256:e9d171d00af68be50e9202731309c4e658fd8bc76f55c11c7dd760d023bda68e"},
     {file = "platformdirs-3.11.0.tar.gz", hash = "sha256:cf8ee52a3afdb965072dcc652433e0c7e3e40cf5ea1477cd4b3b1d2eb75495b3"},
 ]
 
 [[package]]
-name = "pluggy"
-version = "1.5.0"
-requires_python = ">=3.8"
-summary = "plugin and hook calling mechanisms for python"
-groups = ["test"]
-files = [
-    {file = "pluggy-1.5.0-py3-none-any.whl", hash = "sha256:44e1ad92c8ca002de6377e165f3e0f1be63266ab4d554740532335b9d75ea669"},
-    {file = "pluggy-1.5.0.tar.gz", hash = "sha256:2cffa88e94fdc978c4c574f15f9e59b7f4201d439195c3715ca9e2486f1d0cf1"},
-]
-
-[[package]]
 name = "ply"
 version = "3.11"
 summary = "Python Lex & Yacc"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "ply-3.11-py2.py3-none-any.whl", hash = "sha256:096f9b8350b65ebd2fd1346b12452efe5b9607f7482813ffca50c22722a807ce"},
     {file = "ply-3.11.tar.gz", hash = "sha256:00c7c1aaa88358b9c765b6d3000c6eec0ba42abca5351b095321aef446081da3"},
@@ -3224,7 +3244,7 @@ name = "portalocker"
 version = "2.10.1"
 requires_python = ">=3.8"
 summary = "Wraps the portalocker recipe for easy usage"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "pywin32>=226; platform_system == \"Windows\"",
 ]
@@ -3234,14 +3254,21 @@ files = [
 ]
 
 [[package]]
-name = "prometheus-client"
-version = "0.21.1"
-requires_python = ">=3.8"
-summary = "Python client for the Prometheus monitoring system."
-groups = ["default"]
+name = "pre-commit"
+version = "3.6.2"
+requires_python = ">=3.9"
+summary = "A framework for managing and maintaining multi-language pre-commit hooks."
+groups = ["lint"]
+dependencies = [
+    "cfgv>=2.0.0",
+    "identify>=1.0.0",
+    "nodeenv>=0.11.1",
+    "pyyaml>=5.1",
+    "virtualenv>=20.10.0",
+]
 files = [
-    {file = "prometheus_client-0.21.1-py3-none-any.whl", hash = "sha256:594b45c410d6f4f8888940fe80b5cc2521b305a1fafe1c58609ef715a001f301"},
-    {file = "prometheus_client-0.21.1.tar.gz", hash = "sha256:252505a722ac04b0456be05c05f75f45d760c2911ffc45f2a06bcaed9f3ae3fb"},
+    {file = "pre_commit-3.6.2-py2.py3-none-any.whl", hash = "sha256:ba637c2d7a670c10daedc059f5c49b5bd0aadbccfcd7ec15592cf9665117532c"},
+    {file = "pre_commit-3.6.2.tar.gz", hash = "sha256:c3ef34f463045c88658c5b99f38c1e297abdcc0ff13f98d3370055fbbfabc67e"},
 ]
 
 [[package]]
@@ -3249,7 +3276,7 @@ name = "prompt-toolkit"
 version = "3.0.48"
 requires_python = ">=3.7.0"
 summary = "Library for building powerful interactive command lines in Python"
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "wcwidth",
 ]
@@ -3263,7 +3290,7 @@ name = "propcache"
 version = "0.2.1"
 requires_python = ">=3.9"
 summary = "Accelerated property cache"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "propcache-0.2.1-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:6b3f39a85d671436ee3d12c017f8fdea38509e4f25b28eb25877293c98c243f6"},
     {file = "propcache-0.2.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:39d51fbe4285d5db5d92a929e3e21536ea3dd43732c5b177c7ef03f918dff9f2"},
@@ -3322,7 +3349,7 @@ name = "proto-plus"
 version = "1.25.0"
 requires_python = ">=3.7"
 summary = "Beautiful, Pythonic protocol buffers."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "protobuf<6.0.0dev,>=3.19.0",
 ]
@@ -3336,7 +3363,7 @@ name = "protobuf"
 version = "4.25.5"
 requires_python = ">=3.8"
 summary = ""
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "protobuf-4.25.5-cp310-abi3-win32.whl", hash = "sha256:5e61fd921603f58d2f5acb2806a929b4675f8874ff5f330b7d6f7e2e784bbcd8"},
     {file = "protobuf-4.25.5-cp310-abi3-win_amd64.whl", hash = "sha256:4be0571adcbe712b282a330c6e89eae24281344429ae95c6d85e79e84780f5ea"},
@@ -3354,7 +3381,7 @@ name = "psycopg2-binary"
 version = "2.9.9"
 requires_python = ">=3.7"
 summary = "psycopg2 - Python-PostgreSQL Database Adapter"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "psycopg2-binary-2.9.9.tar.gz", hash = "sha256:7f01846810177d829c7692f1f5ada8096762d9172af1b1a28d4ab5b77c923c1c"},
     {file = "psycopg2_binary-2.9.9-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:c2470da5418b76232f02a2fcd2229537bb2d5a7096674ce61859c3229f2eb202"},
@@ -3400,7 +3427,7 @@ name = "pyarrow"
 version = "15.0.2"
 requires_python = ">=3.8"
 summary = "Python library for Apache Arrow"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "numpy<2,>=1.16.6",
 ]
@@ -3434,7 +3461,7 @@ name = "pyasn1"
 version = "0.6.1"
 requires_python = ">=3.8"
 summary = "Pure-Python implementation of ASN.1 types and DER/BER/CER codecs (X.208)"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "pyasn1-0.6.1-py3-none-any.whl", hash = "sha256:0d632f46f2ba09143da3a8afe9e33fb6f92fa2320ab7e886e2d0f7672af84629"},
     {file = "pyasn1-0.6.1.tar.gz", hash = "sha256:6f580d2bdd84365380830acf45550f2511469f673cb4a5ae3857a3170128b034"},
@@ -3445,7 +3472,7 @@ name = "pyasn1-modules"
 version = "0.4.1"
 requires_python = ">=3.8"
 summary = "A collection of ASN.1-based protocols modules"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "pyasn1<0.7.0,>=0.4.6",
 ]
@@ -3455,11 +3482,22 @@ files = [
 ]
 
 [[package]]
+name = "pycodestyle"
+version = "2.11.1"
+requires_python = ">=3.8"
+summary = "Python style guide checker"
+groups = ["lint"]
+files = [
+    {file = "pycodestyle-2.11.1-py2.py3-none-any.whl", hash = "sha256:44fe31000b2d866f2e41841b18528a505fbd7fef9017b04eff4e2648a0fadc67"},
+    {file = "pycodestyle-2.11.1.tar.gz", hash = "sha256:41ba0e7afc9752dfb53ced5489e89f8186be00e599e712660695b7a75ff2663f"},
+]
+
+[[package]]
 name = "pycparser"
 version = "2.22"
 requires_python = ">=3.8"
 summary = "C parser in Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations", "lint"]
 files = [
     {file = "pycparser-2.22-py3-none-any.whl", hash = "sha256:c3702b6d3dd8c7abc1afa565d7e63d53a1d0bd86cdc24edd75470f4de499cfcc"},
     {file = "pycparser-2.22.tar.gz", hash = "sha256:491c8be9c040f5390f5bf44a5b07752bd07f56edf992381b05c701439eec10f6"},
@@ -3470,7 +3508,7 @@ name = "pydantic"
 version = "2.10.3"
 requires_python = ">=3.8"
 summary = "Data validation using Python type hints"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "annotated-types>=0.6.0",
     "pydantic-core==2.27.1",
@@ -3486,7 +3524,7 @@ name = "pydantic-core"
 version = "2.27.1"
 requires_python = ">=3.8"
 summary = "Core functionality for Pydantic validation and serialization"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "typing-extensions!=4.7.0,>=4.6.0",
 ]
@@ -3557,7 +3595,7 @@ name = "pydrive2"
 version = "1.15.4"
 requires_python = ">=3.7"
 summary = "Google Drive API made easy. Maintained fork of PyDrive."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "PyYAML>=3.0",
     "google-api-python-client>=1.12.5",
@@ -3575,7 +3613,7 @@ version = "1.15.4"
 extras = ["fsspec"]
 requires_python = ">=3.7"
 summary = "Google Drive API made easy. Maintained fork of PyDrive."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "PyDrive2==1.15.4",
     "appdirs>=1.4.3",
@@ -3589,11 +3627,22 @@ files = [
 ]
 
 [[package]]
+name = "pyflakes"
+version = "3.2.0"
+requires_python = ">=3.8"
+summary = "passive checker of Python programs"
+groups = ["lint"]
+files = [
+    {file = "pyflakes-3.2.0-py2.py3-none-any.whl", hash = "sha256:84b5be138a2dfbb40689ca07e2152deb896a65c3a3e24c251c5c62489568074a"},
+    {file = "pyflakes-3.2.0.tar.gz", hash = "sha256:1c61603ff154621fb2a9172037d84dca3500def8c8b630657d1701f026f8af3f"},
+]
+
+[[package]]
 name = "pyjwt"
 version = "2.10.1"
 requires_python = ">=3.9"
 summary = "JSON Web Token implementation in Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "PyJWT-2.10.1-py3-none-any.whl", hash = "sha256:dcdd193e30abefd5debf142f9adfcdd2b58004e644f25406ffaebd50bd98dacb"},
     {file = "pyjwt-2.10.1.tar.gz", hash = "sha256:3cc5772eb20009233caf06e9d8a0577824723b44e6648ee0a2aedb6cf9381953"},
@@ -3605,7 +3654,7 @@ version = "2.10.1"
 extras = ["crypto"]
 requires_python = ">=3.9"
 summary = "JSON Web Token implementation in Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "PyJWT==2.10.1",
     "cryptography>=3.4.0",
@@ -3620,7 +3669,7 @@ name = "pymilvus"
 version = "2.4.9"
 requires_python = ">=3.8"
 summary = "Python Sdk for Milvus"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "environs<=9.5.0",
     "grpcio>=1.49.1",
@@ -3639,7 +3688,7 @@ files = [
 name = "pymssql"
 version = "2.2.8"
 summary = "DB-API interface to Microsoft SQL Server for Python. (new Cython-based version)"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "pymssql-2.2.8-cp310-cp310-macosx_11_0_x86_64.whl", hash = "sha256:30bfd7b8edef78097ccd3f52ac3f3a5c3cf0019f8a280f306cacbbb165caaf63"},
     {file = "pymssql-2.2.8-cp310-cp310-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:049f2e3de919e8e02504780a21ebbf235e21ca8ed5c7538c5b6e705aa6c43d8c"},
@@ -3664,7 +3713,7 @@ name = "pymysql"
 version = "1.1.0"
 requires_python = ">=3.7"
 summary = "Pure Python MySQL Driver"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "PyMySQL-1.1.0-py3-none-any.whl", hash = "sha256:8969ec6d763c856f7073c4c64662882675702efcb114b4bcbb955aea3a069fa7"},
     {file = "PyMySQL-1.1.0.tar.gz", hash = "sha256:4f13a7df8bf36a51e81dd9f3605fede45a4878fe02f9236349fd82a3f0612f96"},
@@ -3675,7 +3724,7 @@ name = "pynacl"
 version = "1.5.0"
 requires_python = ">=3.6"
 summary = "Python binding to the Networking and Cryptography (NaCl) library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "cffi>=1.4.1",
 ]
@@ -3697,7 +3746,7 @@ name = "pyopenssl"
 version = "23.3.0"
 requires_python = ">=3.7"
 summary = "Python wrapper module around the OpenSSL library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "cryptography<42,>=41.0.5",
 ]
@@ -3711,7 +3760,7 @@ name = "pyparsing"
 version = "3.2.0"
 requires_python = ">=3.9"
 summary = "pyparsing module - Classes and methods to define and execute parsing grammars"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 marker = "python_version > \"3.0\""
 files = [
     {file = "pyparsing-3.2.0-py3-none-any.whl", hash = "sha256:93d9577b88da0bbea8cc8334ee8b918ed014968fd2ec383e868fb8afb1ccef84"},
@@ -3723,7 +3772,7 @@ name = "pypdf"
 version = "4.3.1"
 requires_python = ">=3.6"
 summary = "A pure-python PDF library capable of splitting, merging, cropping, and transforming PDF files"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "typing-extensions>=4.0; python_version < \"3.11\"",
 ]
@@ -3737,7 +3786,7 @@ name = "pypdfium2"
 version = "4.30.0"
 requires_python = ">=3.6"
 summary = "Python bindings to PDFium"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "pypdfium2-4.30.0-py3-none-macosx_10_13_x86_64.whl", hash = "sha256:b33ceded0b6ff5b2b93bc1fe0ad4b71aa6b7e7bd5875f1ca0cdfb6ba6ac01aab"},
     {file = "pypdfium2-4.30.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:4e55689f4b06e2d2406203e771f78789bd4f190731b5d57383d05cf611d829de"},
@@ -3755,43 +3804,10 @@ files = [
 ]
 
 [[package]]
-name = "pytest"
-version = "8.3.4"
-requires_python = ">=3.8"
-summary = "pytest: simple powerful testing with Python"
-groups = ["test"]
-dependencies = [
-    "colorama; sys_platform == \"win32\"",
-    "exceptiongroup>=1.0.0rc8; python_version < \"3.11\"",
-    "iniconfig",
-    "packaging",
-    "pluggy<2,>=1.5",
-    "tomli>=1; python_version < \"3.11\"",
-]
-files = [
-    {file = "pytest-8.3.4-py3-none-any.whl", hash = "sha256:50e16d954148559c9a74109af1eaf0c945ba2d8f30f0a3d3335edde19788b6f6"},
-    {file = "pytest-8.3.4.tar.gz", hash = "sha256:965370d062bce11e73868e0335abac31b4d3de0e82f4007408d242b4f8610761"},
-]
-
-[[package]]
-name = "pytest-dotenv"
-version = "0.5.2"
-summary = "A py.test plugin that parses environment files before running tests"
-groups = ["test"]
-dependencies = [
-    "pytest>=5.0.0",
-    "python-dotenv>=0.9.1",
-]
-files = [
-    {file = "pytest-dotenv-0.5.2.tar.gz", hash = "sha256:2dc6c3ac6d8764c71c6d2804e902d0ff810fa19692e95fe138aefc9b1aa73732"},
-    {file = "pytest_dotenv-0.5.2-py3-none-any.whl", hash = "sha256:40a2cece120a213898afaa5407673f6bd924b1fa7eafce6bda0e8abffe2f710f"},
-]
-
-[[package]]
 name = "python-crontab"
 version = "3.2.0"
 summary = "Python Crontab API"
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "python-dateutil",
 ]
@@ -3805,7 +3821,7 @@ name = "python-dateutil"
 version = "2.9.0.post0"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
 summary = "Extensions to the standard Python datetime module"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "six>=1.5",
 ]
@@ -3819,24 +3835,10 @@ name = "python-dotenv"
 version = "1.0.0"
 requires_python = ">=3.8"
 summary = "Read key-value pairs from a .env file and set them as environment variables"
-groups = ["default", "dev", "test"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "python-dotenv-1.0.0.tar.gz", hash = "sha256:a8df96034aae6d2d50a4ebe8216326c61c3eb64836776504fcca410e5937a3ba"},
     {file = "python_dotenv-1.0.0-py3-none-any.whl", hash = "sha256:f5971a9226b701070a4bf2c38c89e5a3f0d64de8debda981d1db98583009122a"},
-]
-
-[[package]]
-name = "python-engineio"
-version = "4.10.1"
-requires_python = ">=3.6"
-summary = "Engine.IO server and client for Python"
-groups = ["default"]
-dependencies = [
-    "simple-websocket>=0.10.0",
-]
-files = [
-    {file = "python_engineio-4.10.1-py3-none-any.whl", hash = "sha256:445a94004ec8034960ab99e7ce4209ec619c6e6b6a12aedcb05abeab924025c0"},
-    {file = "python_engineio-4.10.1.tar.gz", hash = "sha256:166cea8dd7429638c5c4e3a4895beae95196e860bc6f29ed0b9fe753d1ef2072"},
 ]
 
 [[package]]
@@ -3844,32 +3846,17 @@ name = "python-magic"
 version = "0.4.27"
 requires_python = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 summary = "File type identification using libmagic"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "python-magic-0.4.27.tar.gz", hash = "sha256:c1ba14b08e4a5f5c31a302b7721239695b2f0f058d125bd5ce1ee36b9d9d3c3b"},
     {file = "python_magic-0.4.27-py2.py3-none-any.whl", hash = "sha256:c212960ad306f700aa0d01e5d7a325d20548ff97eb9920dcd29513174f0294d3"},
 ]
 
 [[package]]
-name = "python-socketio"
-version = "5.9.0"
-requires_python = ">=3.6"
-summary = "Socket.IO server and client for Python"
-groups = ["default"]
-dependencies = [
-    "bidict>=0.21.0",
-    "python-engineio>=4.7.0",
-]
-files = [
-    {file = "python-socketio-5.9.0.tar.gz", hash = "sha256:dc42735f65534187f381fde291ebf620216a4960001370f32de940229b2e7f8f"},
-    {file = "python_socketio-5.9.0-py3-none-any.whl", hash = "sha256:c20f12e4ed0cba57581af26bbeea9998bc2eeebb3b952fa92493a1e051cfe9dc"},
-]
-
-[[package]]
 name = "python3-openid"
 version = "3.2.0"
 summary = "OpenID support for modern servers and consumers."
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "defusedxml",
 ]
@@ -3882,7 +3869,7 @@ files = [
 name = "pytz"
 version = "2024.2"
 summary = "World timezone definitions, modern and historical"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "pytz-2024.2-py2.py3-none-any.whl", hash = "sha256:31c7c1817eb7fae7ca4b8c7ee50c72f93aa2dd863de768e1ef4245d426aa0725"},
     {file = "pytz-2024.2.tar.gz", hash = "sha256:2aa355083c50a0f93fa581709deac0c9ad65cca8a9e9beac660adcbd493c798a"},
@@ -3892,7 +3879,7 @@ files = [
 name = "pywin32"
 version = "308"
 summary = "Python for Window Extensions"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 marker = "sys_platform == \"win32\" or platform_system == \"Windows\""
 files = [
     {file = "pywin32-308-cp310-cp310-win32.whl", hash = "sha256:796ff4426437896550d2981b9c2ac0ffd75238ad9ea2d3bfa67a1abd546d262e"},
@@ -3910,7 +3897,7 @@ name = "pyyaml"
 version = "6.0.2"
 requires_python = ">=3.8"
 summary = "YAML parser and emitter for Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations", "lint"]
 files = [
     {file = "PyYAML-6.0.2-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:0a9a2848a5b7feac301353437eb7d5957887edbf81d56e903999a75a3d743086"},
     {file = "PyYAML-6.0.2-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:29717114e51c84ddfba879543fb232a6ed60086602313ca38cce623c1d62cfbf"},
@@ -3947,7 +3934,7 @@ name = "qdrant-client"
 version = "1.12.1"
 requires_python = ">=3.8"
 summary = "Client library for the Qdrant vector search engine"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "grpcio-tools>=1.41.0",
     "grpcio>=1.41.0",
@@ -3967,7 +3954,7 @@ name = "redis"
 version = "5.0.8"
 requires_python = ">=3.7"
 summary = "Python client for Redis database and key-value store"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "async-timeout>=4.0.3; python_full_version < \"3.11.3\"",
 ]
@@ -3981,7 +3968,7 @@ name = "referencing"
 version = "0.35.1"
 requires_python = ">=3.8"
 summary = "JSON Referencing + Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "attrs>=22.2.0",
     "rpds-py>=0.7.0",
@@ -3996,7 +3983,7 @@ name = "regex"
 version = "2024.11.6"
 requires_python = ">=3.8"
 summary = "Alternative regular expression module, to replace re."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "regex-2024.11.6-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:ff590880083d60acc0433f9c3f713c51f7ac6ebb9adf889c79a261ecf541aa91"},
     {file = "regex-2024.11.6-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:658f90550f38270639e83ce492f27d2c8d2cd63805c65a13a14d36ca126753f0"},
@@ -4053,7 +4040,7 @@ name = "requests"
 version = "2.31.0"
 requires_python = ">=3.7"
 summary = "Python HTTP for Humans."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "certifi>=2017.4.17",
     "charset-normalizer<4,>=2",
@@ -4070,7 +4057,7 @@ name = "requests-oauthlib"
 version = "2.0.0"
 requires_python = ">=3.4"
 summary = "OAuthlib authentication support for Requests."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "oauthlib>=3.0.0",
     "requests>=2.0.0",
@@ -4085,7 +4072,7 @@ name = "requests-toolbelt"
 version = "1.0.0"
 requires_python = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 summary = "A utility belt for advanced users of python-requests"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "requests<3.0.0,>=2.0.1",
 ]
@@ -4099,7 +4086,7 @@ name = "rpds-py"
 version = "0.22.3"
 requires_python = ">=3.9"
 summary = "Python bindings to Rust's persistent data structures (rpds)"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "rpds_py-0.22.3-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:6c7b99ca52c2c1752b544e310101b98a659b720b21db00e65edca34483259967"},
     {file = "rpds_py-0.22.3-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:be2eb3f2495ba669d2a985f9b426c1797b7d48d6963899276d22f23e33d47e37"},
@@ -4172,7 +4159,7 @@ name = "rsa"
 version = "4.9"
 requires_python = ">=3.6,<4"
 summary = "Pure-Python RSA implementation"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "pyasn1>=0.1.3",
 ]
@@ -4186,7 +4173,7 @@ name = "s3fs"
 version = "2024.6.0"
 requires_python = ">=3.8"
 summary = "Convenient Filesystem interface over S3"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "aiobotocore<3.0.0,>=2.5.4",
     "aiohttp!=4.0.0a0,!=4.0.0a1",
@@ -4203,7 +4190,7 @@ version = "2024.6.0"
 extras = ["boto3"]
 requires_python = ">=3.8"
 summary = "Convenient Filesystem interface over S3"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "aiobotocore[boto3]<3.0.0,>=2.5.4",
     "s3fs==2024.6.0",
@@ -4218,7 +4205,7 @@ name = "s3transfer"
 version = "0.10.4"
 requires_python = ">=3.8"
 summary = "An Amazon S3 Transfer Manager"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "botocore<2.0a.0,>=1.33.2",
 ]
@@ -4232,7 +4219,7 @@ name = "safetensors"
 version = "0.4.5"
 requires_python = ">=3.7"
 summary = ""
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "safetensors-0.4.5-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:a63eaccd22243c67e4f2b1c3e258b257effc4acd78f3b9d397edc8cf8f1298a7"},
     {file = "safetensors-0.4.5-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:23fc9b4ec7b602915cbb4ec1a7c1ad96d2743c322f20ab709e2c35d1b66dad27"},
@@ -4305,7 +4292,7 @@ name = "setuptools"
 version = "75.6.0"
 requires_python = ">=3.9"
 summary = "Easily download, build, install, upgrade, and uninstall Python packages"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "setuptools-75.6.0-py3-none-any.whl", hash = "sha256:ce74b49e8f7110f9bf04883b730f4765b774ef3ef28f722cce7c273d253aaf7d"},
     {file = "setuptools-75.6.0.tar.gz", hash = "sha256:8199222558df7c86216af4f84c30e9b34a61d8ba19366cc914424cdbd28252f6"},
@@ -4316,7 +4303,7 @@ name = "shapely"
 version = "2.0.6"
 requires_python = ">=3.7"
 summary = "Manipulation and analysis of geometric objects"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "numpy<3,>=1.14",
 ]
@@ -4343,24 +4330,10 @@ files = [
 ]
 
 [[package]]
-name = "simple-websocket"
-version = "1.1.0"
-requires_python = ">=3.6"
-summary = "Simple WebSocket server and client for Python"
-groups = ["default"]
-dependencies = [
-    "wsproto",
-]
-files = [
-    {file = "simple_websocket-1.1.0-py3-none-any.whl", hash = "sha256:4af6069630a38ed6c561010f0e11a5bc0d4ca569b36306eb257cd9a192497c8c"},
-    {file = "simple_websocket-1.1.0.tar.gz", hash = "sha256:7939234e7aa067c534abdab3a9ed933ec9ce4691b0713c78acb195560aa52ae4"},
-]
-
-[[package]]
 name = "singleton-decorator"
 version = "1.0.0"
 summary = "A testable singleton decorator"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "singleton-decorator-1.0.0.tar.gz", hash = "sha256:1a90ad8a8a738be591c9c167fdd677c5d4a43d1bc6b1c128227be1c5e03bee07"},
 ]
@@ -4370,7 +4343,7 @@ name = "six"
 version = "1.17.0"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
 summary = "Python 2 and 3 compatibility utilities"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274"},
     {file = "six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81"},
@@ -4381,7 +4354,7 @@ name = "sniffio"
 version = "1.3.1"
 requires_python = ">=3.7"
 summary = "Sniff out which async library your code is running under"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "sniffio-1.3.1-py3-none-any.whl", hash = "sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2"},
     {file = "sniffio-1.3.1.tar.gz", hash = "sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc"},
@@ -4392,7 +4365,7 @@ name = "snowflake-connector-python"
 version = "3.6.0"
 requires_python = ">=3.8"
 summary = "Snowflake Connector for Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "asn1crypto<2.0.0,>0.24.0",
     "certifi>=2017.4.17",
@@ -4437,7 +4410,7 @@ version = "3.6.0"
 extras = ["pandas"]
 requires_python = ">=3.8"
 summary = "Snowflake Connector for Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "pandas<2.2.0,>=1.0.0",
     "pyarrow",
@@ -4467,7 +4440,7 @@ name = "social-auth-app-django"
 version = "5.3.0"
 requires_python = ">=3.7"
 summary = "Python Social Authentication, Django integration."
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "Django>=3.2",
     "social-auth-core>=4.4.1",
@@ -4479,12 +4452,12 @@ files = [
 
 [[package]]
 name = "social-auth-core"
-version = "4.4.2"
-requires_python = ">=3.6"
+version = "4.5.4"
+requires_python = ">=3.8"
 summary = "Python social authentication made simple."
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
-    "PyJWT>=2.0.0",
+    "PyJWT>=2.7.0",
     "cryptography>=1.4",
     "defusedxml>=0.5.0rc1",
     "oauthlib>=1.0.3",
@@ -4493,15 +4466,15 @@ dependencies = [
     "requests>=2.9.1",
 ]
 files = [
-    {file = "social-auth-core-4.4.2.tar.gz", hash = "sha256:9791d7c7aee2ac8517fe7a2ea2f942a8a5492b3a4ccb44a9b0dacc87d182f2aa"},
-    {file = "social_auth_core-4.4.2-py3-none-any.whl", hash = "sha256:ea7a19c46b791b767e95f467881b53c5fd0d1efb40048d9ed3dbc46daa05c954"},
+    {file = "social-auth-core-4.5.4.tar.gz", hash = "sha256:d3dbeb0999ffd0e68aa4bd73f2ac698a18133fd11b3fc890e1366f18c8889fac"},
+    {file = "social_auth_core-4.5.4-py3-none-any.whl", hash = "sha256:33cf970a623c442376f9d4a86fb187579e4438649daa5b5be993d05e74d7b2db"},
 ]
 
 [[package]]
 name = "sortedcontainers"
 version = "2.4.0"
 summary = "Sorted Containers -- Sorted List, Sorted Dict, Sorted Set"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "sortedcontainers-2.4.0-py2.py3-none-any.whl", hash = "sha256:a163dcaede0f1c021485e957a39245190e74249897e2ae4b2aa38595db237ee0"},
     {file = "sortedcontainers-2.4.0.tar.gz", hash = "sha256:25caa5a06cc30b6b83d11423433f65d1f9d76c4c6a0c90e3379eaa43b9bfdb88"},
@@ -4512,7 +4485,7 @@ name = "soupsieve"
 version = "2.6"
 requires_python = ">=3.8"
 summary = "A modern CSS selector implementation for Beautiful Soup."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "soupsieve-2.6-py3-none-any.whl", hash = "sha256:e72c4ff06e4fb6e4b5a9f0f55fe6e81514581fca1515028625d0f299c602ccc9"},
     {file = "soupsieve-2.6.tar.gz", hash = "sha256:e2e68417777af359ec65daac1057404a3c8a5455bb8abc36f1a9866ab1a51abb"},
@@ -4523,7 +4496,7 @@ name = "sqlalchemy"
 version = "2.0.36"
 requires_python = ">=3.7"
 summary = "Database Abstraction Library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "greenlet!=0.4.17; (platform_machine == \"win32\" or platform_machine == \"WIN32\" or platform_machine == \"AMD64\" or platform_machine == \"amd64\" or platform_machine == \"x86_64\" or platform_machine == \"ppc64le\" or platform_machine == \"aarch64\") and python_version < \"3.13\"",
     "typing-extensions>=4.6.0",
@@ -4563,7 +4536,7 @@ version = "2.0.36"
 extras = ["asyncio"]
 requires_python = ">=3.7"
 summary = "Database Abstraction Library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "greenlet!=0.4.17",
     "sqlalchemy==2.0.36",
@@ -4602,7 +4575,7 @@ name = "sqlparse"
 version = "0.5.2"
 requires_python = ">=3.8"
 summary = "A non-validating SQL parser."
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "sqlparse-0.5.2-py3-none-any.whl", hash = "sha256:e99bc85c78160918c3e1d9230834ab8d80fc06c59d03f8db2618f65f65dda55e"},
     {file = "sqlparse-0.5.2.tar.gz", hash = "sha256:9e37b35e16d1cc652a2545f0997c1deb23ea28fa1f3eefe609eee3063c3b105f"},
@@ -4612,7 +4585,7 @@ files = [
 name = "stone"
 version = "3.3.1"
 summary = "Stone is an interface description language (IDL) for APIs."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "ply>=3.4",
     "six>=1.12.0",
@@ -4626,7 +4599,7 @@ files = [
 name = "striprtf"
 version = "0.0.26"
 summary = "A simple library to convert rtf to text"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "striprtf-0.0.26-py3-none-any.whl", hash = "sha256:8c8f9d32083cdc2e8bfb149455aa1cc5a4e0a035893bedc75db8b73becb3a1bb"},
     {file = "striprtf-0.0.26.tar.gz", hash = "sha256:fdb2bba7ac440072d1c41eab50d8d74ae88f60a8b6575c6e2c7805dc462093aa"},
@@ -4637,7 +4610,7 @@ name = "tenacity"
 version = "8.5.0"
 requires_python = ">=3.8"
 summary = "Retry code until it succeeds"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "tenacity-8.5.0-py3-none-any.whl", hash = "sha256:b594c2a5945830c267ce6b79a166228323ed52718f30302c1359836112346687"},
     {file = "tenacity-8.5.0.tar.gz", hash = "sha256:8bc6c0c8a09b31e6cad13c47afbed1a567518250a9a171418582ed8d9c20ca78"},
@@ -4648,7 +4621,7 @@ name = "tiktoken"
 version = "0.4.0"
 requires_python = ">=3.8"
 summary = "tiktoken is a fast BPE tokeniser for use with OpenAI's models"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "regex>=2022.1.18",
     "requests>=2.26.0",
@@ -4683,7 +4656,7 @@ name = "tokenizers"
 version = "0.15.2"
 requires_python = ">=3.7"
 summary = ""
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "huggingface-hub<1.0,>=0.16.4",
 ]
@@ -4759,7 +4732,7 @@ name = "tomli"
 version = "2.2.1"
 requires_python = ">=3.8"
 summary = "A lil' TOML parser"
-groups = ["test"]
+groups = ["lint"]
 marker = "python_version < \"3.11\""
 files = [
     {file = "tomli-2.2.1-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:678e4fa69e4575eb77d103de3df8a895e1591b48e740211bd1067378c69e8249"},
@@ -4781,30 +4754,10 @@ name = "tomlkit"
 version = "0.13.2"
 requires_python = ">=3.8"
 summary = "Style preserving TOML library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "tomlkit-0.13.2-py3-none-any.whl", hash = "sha256:7a974427f6e119197f670fbbbeae7bef749a6c14e793db934baefc1b5f03efde"},
     {file = "tomlkit-0.13.2.tar.gz", hash = "sha256:fff5fe59a87295b278abd31bec92c15d9bc4a06885ab12bcea52c71119392e79"},
-]
-
-[[package]]
-name = "tornado"
-version = "6.4.2"
-requires_python = ">=3.8"
-summary = "Tornado is a Python web framework and asynchronous networking library, originally developed at FriendFeed."
-groups = ["default"]
-files = [
-    {file = "tornado-6.4.2-cp38-abi3-macosx_10_9_universal2.whl", hash = "sha256:e828cce1123e9e44ae2a50a9de3055497ab1d0aeb440c5ac23064d9e44880da1"},
-    {file = "tornado-6.4.2-cp38-abi3-macosx_10_9_x86_64.whl", hash = "sha256:072ce12ada169c5b00b7d92a99ba089447ccc993ea2143c9ede887e0937aa803"},
-    {file = "tornado-6.4.2-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:1a017d239bd1bb0919f72af256a970624241f070496635784d9bf0db640d3fec"},
-    {file = "tornado-6.4.2-cp38-abi3-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:c36e62ce8f63409301537222faffcef7dfc5284f27eec227389f2ad11b09d946"},
-    {file = "tornado-6.4.2-cp38-abi3-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:bca9eb02196e789c9cb5c3c7c0f04fb447dc2adffd95265b2c7223a8a615ccbf"},
-    {file = "tornado-6.4.2-cp38-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:304463bd0772442ff4d0f5149c6f1c2135a1fae045adf070821c6cdc76980634"},
-    {file = "tornado-6.4.2-cp38-abi3-musllinux_1_2_i686.whl", hash = "sha256:c82c46813ba483a385ab2a99caeaedf92585a1f90defb5693351fa7e4ea0bf73"},
-    {file = "tornado-6.4.2-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:932d195ca9015956fa502c6b56af9eb06106140d844a335590c1ec7f5277d10c"},
-    {file = "tornado-6.4.2-cp38-abi3-win32.whl", hash = "sha256:2876cef82e6c5978fde1e0d5b1f919d756968d5b4282418f3146b79b58556482"},
-    {file = "tornado-6.4.2-cp38-abi3-win_amd64.whl", hash = "sha256:908b71bf3ff37d81073356a5fadcc660eb10c1476ee6e2725588626ce7e5ca38"},
-    {file = "tornado-6.4.2.tar.gz", hash = "sha256:92bad5b4746e9879fd7bf1eb21dce4e3fc5128d71601f80005afa39237ad620b"},
 ]
 
 [[package]]
@@ -4812,7 +4765,7 @@ name = "tqdm"
 version = "4.67.1"
 requires_python = ">=3.7"
 summary = "Fast, Extensible Progress Meter"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "colorama; platform_system == \"Windows\"",
 ]
@@ -4826,7 +4779,7 @@ name = "transformers"
 version = "4.37.0"
 requires_python = ">=3.8.0"
 summary = "State-of-the-art Machine Learning for JAX, PyTorch and TensorFlow"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "filelock",
     "huggingface-hub<1.0,>=0.19.3",
@@ -4845,11 +4798,137 @@ files = [
 ]
 
 [[package]]
+name = "types-cffi"
+version = "1.16.0.20240331"
+requires_python = ">=3.8"
+summary = "Typing stubs for cffi"
+groups = ["lint"]
+dependencies = [
+    "types-setuptools",
+]
+files = [
+    {file = "types-cffi-1.16.0.20240331.tar.gz", hash = "sha256:b8b20d23a2b89cfed5f8c5bc53b0cb8677c3aac6d970dbc771e28b9c698f5dee"},
+    {file = "types_cffi-1.16.0.20240331-py3-none-any.whl", hash = "sha256:a363e5ea54a4eb6a4a105d800685fde596bc318089b025b27dee09849fe41ff0"},
+]
+
+[[package]]
+name = "types-pymysql"
+version = "1.1.0.20241103"
+requires_python = ">=3.8"
+summary = "Typing stubs for PyMySQL"
+groups = ["lint"]
+files = [
+    {file = "types-PyMySQL-1.1.0.20241103.tar.gz", hash = "sha256:a7628542919a0ba87625fb79eefb2a2de45fb4ad32afe6e561e8f2f27fb58b8c"},
+    {file = "types_PyMySQL-1.1.0.20241103-py3-none-any.whl", hash = "sha256:1a32efd8a74b5bf74c4de92a86c1cc6edaf3802dcfd5546635ab501eb5e3c096"},
+]
+
+[[package]]
+name = "types-pyopenssl"
+version = "24.0.0.20240417"
+requires_python = ">=3.8"
+summary = "Typing stubs for pyOpenSSL"
+groups = ["lint"]
+dependencies = [
+    "cryptography>=35.0.0",
+    "types-cffi",
+]
+files = [
+    {file = "types-pyOpenSSL-24.0.0.20240417.tar.gz", hash = "sha256:38e75fb828d2717be173770bbae8c22811fdec68e2bc3f5833954113eb84237d"},
+    {file = "types_pyOpenSSL-24.0.0.20240417-py3-none-any.whl", hash = "sha256:4ce41ddaf383815168b6e21d542fd92135f10a5e82adb3e593a6b79638b0b511"},
+]
+
+[[package]]
+name = "types-pytz"
+version = "2024.2.0.20241003"
+requires_python = ">=3.8"
+summary = "Typing stubs for pytz"
+groups = ["lint"]
+files = [
+    {file = "types-pytz-2024.2.0.20241003.tar.gz", hash = "sha256:575dc38f385a922a212bac00a7d6d2e16e141132a3c955078f4a4fd13ed6cb44"},
+    {file = "types_pytz-2024.2.0.20241003-py3-none-any.whl", hash = "sha256:3e22df1336c0c6ad1d29163c8fda82736909eb977281cb823c57f8bae07118b7"},
+]
+
+[[package]]
+name = "types-pyyaml"
+version = "6.0.12.20240917"
+requires_python = ">=3.8"
+summary = "Typing stubs for PyYAML"
+groups = ["lint"]
+files = [
+    {file = "types-PyYAML-6.0.12.20240917.tar.gz", hash = "sha256:d1405a86f9576682234ef83bcb4e6fff7c9305c8b1fbad5e0bcd4f7dbdc9c587"},
+    {file = "types_PyYAML-6.0.12.20240917-py3-none-any.whl", hash = "sha256:392b267f1c0fe6022952462bf5d6523f31e37f6cea49b14cee7ad634b6301570"},
+]
+
+[[package]]
+name = "types-redis"
+version = "4.6.0.20241004"
+requires_python = ">=3.8"
+summary = "Typing stubs for redis"
+groups = ["lint"]
+dependencies = [
+    "cryptography>=35.0.0",
+    "types-pyOpenSSL",
+]
+files = [
+    {file = "types-redis-4.6.0.20241004.tar.gz", hash = "sha256:5f17d2b3f9091ab75384153bfa276619ffa1cf6a38da60e10d5e6749cc5b902e"},
+    {file = "types_redis-4.6.0.20241004-py3-none-any.whl", hash = "sha256:ef5da68cb827e5f606c8f9c0b49eeee4c2669d6d97122f301d3a55dc6a63f6ed"},
+]
+
+[[package]]
+name = "types-requests"
+version = "2.31.0.6"
+requires_python = ">=3.7"
+summary = "Typing stubs for requests"
+groups = ["lint"]
+dependencies = [
+    "types-urllib3",
+]
+files = [
+    {file = "types-requests-2.31.0.6.tar.gz", hash = "sha256:cd74ce3b53c461f1228a9b783929ac73a666658f223e28ed29753771477b3bd0"},
+    {file = "types_requests-2.31.0.6-py3-none-any.whl", hash = "sha256:a2db9cb228a81da8348b49ad6db3f5519452dd20a9c1e1a868c83c5fe88fd1a9"},
+]
+
+[[package]]
+name = "types-setuptools"
+version = "75.6.0.20241126"
+requires_python = ">=3.8"
+summary = "Typing stubs for setuptools"
+groups = ["lint"]
+files = [
+    {file = "types_setuptools-75.6.0.20241126-py3-none-any.whl", hash = "sha256:aaae310a0e27033c1da8457d4d26ac673b0c8a0de7272d6d4708e263f2ea3b9b"},
+    {file = "types_setuptools-75.6.0.20241126.tar.gz", hash = "sha256:7bf25ad4be39740e469f9268b6beddda6e088891fa5a27e985c6ce68bf62ace0"},
+]
+
+[[package]]
+name = "types-tzlocal"
+version = "5.1.0.1"
+requires_python = ">=3.7"
+summary = "Typing stubs for tzlocal"
+groups = ["lint"]
+dependencies = [
+    "types-pytz",
+]
+files = [
+    {file = "types-tzlocal-5.1.0.1.tar.gz", hash = "sha256:b84a115c0c68f0d0fa9af1c57f0645eeef0e539147806faf1f95ac3ac01ce47b"},
+    {file = "types_tzlocal-5.1.0.1-py3-none-any.whl", hash = "sha256:0302e8067c86936de8f7e0aaedc2cfbf240080802c603df0f80312fbd4efb926"},
+]
+
+[[package]]
+name = "types-urllib3"
+version = "1.26.25.14"
+summary = "Typing stubs for urllib3"
+groups = ["lint"]
+files = [
+    {file = "types-urllib3-1.26.25.14.tar.gz", hash = "sha256:229b7f577c951b8c1b92c1bc2b2fdb0b49847bd2af6d1cc2a2e3dd340f3bda8f"},
+    {file = "types_urllib3-1.26.25.14-py3-none-any.whl", hash = "sha256:9683bbb7fb72e32bfe9d2be6e04875fbe1b3eeec3cbb4ea231435aa7fd6b4f0e"},
+]
+
+[[package]]
 name = "typing-extensions"
 version = "4.12.2"
 requires_python = ">=3.8"
 summary = "Backported and Experimental Type Hints for Python 3.8+"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations", "lint"]
 files = [
     {file = "typing_extensions-4.12.2-py3-none-any.whl", hash = "sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d"},
     {file = "typing_extensions-4.12.2.tar.gz", hash = "sha256:1a7ead55c7e559dd4dee8856e3a88b41225abfe1ce8df57b7c13915fe121ffb8"},
@@ -4859,7 +4938,7 @@ files = [
 name = "typing-inspect"
 version = "0.9.0"
 summary = "Runtime inspection utilities for typing module."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "mypy-extensions>=0.3.0",
     "typing-extensions>=3.7.4",
@@ -4874,7 +4953,7 @@ name = "tzdata"
 version = "2024.2"
 requires_python = ">=2"
 summary = "Provider of IANA time zone data"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "tzdata-2024.2-py2.py3-none-any.whl", hash = "sha256:a48093786cdcde33cad18c2555e8532f34422074448fbc874186f0abd79565cd"},
     {file = "tzdata-2024.2.tar.gz", hash = "sha256:7d85cc416e9382e69095b7bdf4afd9e3880418a2413feec7069d533d6b4e31cc"},
@@ -4885,7 +4964,7 @@ name = "ujson"
 version = "5.10.0"
 requires_python = ">=3.8"
 summary = "Ultra fast JSON encoder and decoder for Python"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "ujson-5.10.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:2601aa9ecdbee1118a1c2065323bda35e2c5a2cf0797ef4522d485f9d3ef65bd"},
     {file = "ujson-5.10.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:348898dd702fc1c4f1051bc3aacbf894caa0927fe2c53e68679c073375f732cf"},
@@ -4942,9 +5021,9 @@ name = "unstract-connectors"
 version = "0.0.3"
 requires_python = ">=3.9"
 editable = true
-path = "../unstract/connectors"
+path = "./unstract/connectors"
 summary = "All connectors that are part of the Unstract platform"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "PyDrive2[fsspec]==1.15.4",
     "PyMySQL==1.1.0",
@@ -4970,9 +5049,9 @@ name = "unstract-core"
 version = "0.0.1"
 requires_python = ">=3.9,<3.11.1"
 editable = true
-path = "../unstract/core"
+path = "./unstract/core"
 summary = "Core library that helps with executing workflows."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "boto3~=1.34.0",
     "botocore~=1.34.0",
@@ -4988,9 +5067,9 @@ name = "unstract-filesystem"
 version = "0.0.1"
 requires_python = ">=3.9,<3.11.1"
 editable = true
-path = "../unstract/filesystem"
+path = "./unstract/filesystem"
 summary = "Unstract filesystem package"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "unstract-sdk~=0.54.0rc5",
 ]
@@ -5000,9 +5079,9 @@ name = "unstract-flags"
 version = "0.0.1"
 requires_python = ">=3.9"
 editable = true
-path = "../unstract/flags"
+path = "./unstract/flags"
 summary = "Unstract's feature flags package."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "grpcio-tools<=1.60.0",
     "grpcio<=1.60.0",
@@ -5013,7 +5092,7 @@ name = "unstract-sdk"
 version = "0.54.0rc5"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "filetype~=1.2.0",
     "httpx>=0.25.2",
@@ -5058,9 +5137,9 @@ name = "unstract-tool-registry"
 version = "0.0.1"
 requires_python = ">=3.9,<3.11.1"
 editable = true
-path = "../unstract/tool-registry"
+path = "./unstract/tool-registry"
 summary = "Unstract's registry of tools to be used in workflows."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "PyYAML~=6.0.1",
     "docker~=6.1.3",
@@ -5075,9 +5154,9 @@ name = "unstract-tool-sandbox"
 version = "0.0.1"
 requires_python = ">=3.9"
 editable = true
-path = "../unstract/tool-sandbox"
+path = "./unstract/tool-sandbox"
 summary = "Unstract Tool Sandbox is a package to communicate with tool worker"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "requests==2.31.0",
 ]
@@ -5087,9 +5166,9 @@ name = "unstract-workflow-execution"
 version = "0.0.1"
 requires_python = ">=3.9"
 editable = true
-path = "../unstract/workflow-execution"
+path = "./unstract/workflow-execution"
 summary = "Unstract workflow execution package"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "unstract-core",
     "unstract-filesystem",
@@ -5103,7 +5182,7 @@ name = "uritemplate"
 version = "4.1.1"
 requires_python = ">=3.6"
 summary = "Implementation of RFC 6570 URI Templates"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "uritemplate-4.1.1-py2.py3-none-any.whl", hash = "sha256:830c08b8d99bdd312ea4ead05994a38e8936266f84b9a7878232db50b044e02e"},
     {file = "uritemplate-4.1.1.tar.gz", hash = "sha256:4346edfc5c3b79f694bccd6d6099a322bbeb628dbf2cd86eea55a456ce5124f0"},
@@ -5114,7 +5193,7 @@ name = "urllib3"
 version = "1.26.20"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,>=2.7"
 summary = "HTTP library with thread-safe connection pooling, file post, and more."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "urllib3-1.26.20-py2.py3-none-any.whl", hash = "sha256:0ed14ccfbf1c30a9072c7ca157e4319b70d65f623e91e7b32fadb2853431016e"},
     {file = "urllib3-1.26.20.tar.gz", hash = "sha256:40c2dc0c681e47eb8f90e7e27bf6ff7df2e677421fd46756da1161c39ca70d32"},
@@ -5125,7 +5204,7 @@ name = "validators"
 version = "0.34.0"
 requires_python = ">=3.8"
 summary = "Python Data Validation for Humans™"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "validators-0.34.0-py3-none-any.whl", hash = "sha256:c804b476e3e6d3786fa07a30073a4ef694e617805eb1946ceee3fe5a9b8b1321"},
     {file = "validators-0.34.0.tar.gz", hash = "sha256:647fe407b45af9a74d245b943b18e6a816acf4926974278f6dd617778e1e781f"},
@@ -5136,17 +5215,33 @@ name = "vine"
 version = "5.1.0"
 requires_python = ">=3.6"
 summary = "Python promises."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "vine-5.1.0-py3-none-any.whl", hash = "sha256:40fdf3c48b2cfe1c38a49e9ae2da6fda88e4794c810050a728bd7413811fb1dc"},
     {file = "vine-5.1.0.tar.gz", hash = "sha256:8b62e981d35c41049211cf62a0a1242d8c1ee9bd15bb196ce38aefd6799e61e0"},
 ]
 
 [[package]]
+name = "virtualenv"
+version = "20.28.0"
+requires_python = ">=3.8"
+summary = "Virtual Python Environment builder"
+groups = ["lint"]
+dependencies = [
+    "distlib<1,>=0.3.7",
+    "filelock<4,>=3.12.2",
+    "platformdirs<5,>=3.9.1",
+]
+files = [
+    {file = "virtualenv-20.28.0-py3-none-any.whl", hash = "sha256:23eae1b4516ecd610481eda647f3a7c09aea295055337331bb4e6892ecce47b0"},
+    {file = "virtualenv-20.28.0.tar.gz", hash = "sha256:2c9c3262bb8e7b87ea801d715fae4495e6032450c71d2309be9550e7364049aa"},
+]
+
+[[package]]
 name = "wcwidth"
 version = "0.2.13"
 summary = "Measures the displayed width of unicode strings in a terminal"
-groups = ["default"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "wcwidth-0.2.13-py2.py3-none-any.whl", hash = "sha256:3da69048e4540d84af32131829ff948f1e022c1c6bdb8d6102117aac784f6859"},
     {file = "wcwidth-0.2.13.tar.gz", hash = "sha256:72ea0c06399eb286d978fdedb6923a9eb47e1c486ce63e9b4e64fc18303972b5"},
@@ -5157,7 +5252,7 @@ name = "weaviate-client"
 version = "4.9.6"
 requires_python = ">=3.9"
 summary = "A python native Weaviate client"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "authlib<1.3.2,>=1.2.1",
     "grpcio-health-checking<2.0.0,>=1.57.0",
@@ -5178,7 +5273,7 @@ name = "websocket-client"
 version = "1.8.0"
 requires_python = ">=3.8"
 summary = "WebSocket client for Python with low level API options"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "websocket_client-1.8.0-py3-none-any.whl", hash = "sha256:17b44cc997f5c498e809b22cdf2d9c7a9e71c02c8cc2b6c56e7c2d1239bfa526"},
     {file = "websocket_client-1.8.0.tar.gz", hash = "sha256:3239df9f44da632f96012472805d40a23281a991027ce11d2f45a6f24ac4c3da"},
@@ -5189,7 +5284,7 @@ name = "wrapt"
 version = "1.17.0"
 requires_python = ">=3.8"
 summary = "Module for decorators, wrappers and monkey patching."
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 files = [
     {file = "wrapt-1.17.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:2a0c23b8319848426f305f9cb0c98a6e32ee68a36264f45948ccf8e7d2b941f8"},
     {file = "wrapt-1.17.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b1ca5f060e205f72bec57faae5bd817a1560fcfc4af03f414b08fa29106b7e2d"},
@@ -5223,17 +5318,18 @@ files = [
 ]
 
 [[package]]
-name = "wsproto"
-version = "1.2.0"
-requires_python = ">=3.7.0"
-summary = "WebSockets state-machine based protocol implementation"
-groups = ["default"]
+name = "yamllint"
+version = "1.35.1"
+requires_python = ">=3.8"
+summary = "A linter for YAML files."
+groups = ["lint"]
 dependencies = [
-    "h11<1,>=0.9.0",
+    "pathspec>=0.5.3",
+    "pyyaml",
 ]
 files = [
-    {file = "wsproto-1.2.0-py3-none-any.whl", hash = "sha256:b9acddd652b585d75b20477888c56642fdade28bdfd3579aa24a4d2c037dd736"},
-    {file = "wsproto-1.2.0.tar.gz", hash = "sha256:ad565f26ecb92588a3e43bc3d96164de84cd9902482b130d0ddbaa9664a85065"},
+    {file = "yamllint-1.35.1-py3-none-any.whl", hash = "sha256:2e16e504bb129ff515b37823b472750b36b6de07963bd74b307341ef5ad8bdc3"},
+    {file = "yamllint-1.35.1.tar.gz", hash = "sha256:7a003809f88324fd2c877734f2d575ee7881dd9043360657cc8049c809eba6cd"},
 ]
 
 [[package]]
@@ -5241,7 +5337,7 @@ name = "yarl"
 version = "1.18.3"
 requires_python = ">=3.9"
 summary = "Yet another URL library"
-groups = ["default", "dev"]
+groups = ["hook-check-django-migrations"]
 dependencies = [
     "idna>=2.0",
     "multidict>=4.0",
