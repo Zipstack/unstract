@@ -91,7 +91,10 @@ class DatabaseUtils:
         except ConnectorError as e:
             raise UnstractDBException(detail=e.message) from e
         except Exception as e:
-            logger.error(f"Error getting column types for {table_name}: {str(e)}")
+            logger.error(
+                f"Error getting db-column-name and db-column-type "
+                f"for {table_name}: {str(e)}"
+            )
             raise
 
     @staticmethod
