@@ -373,15 +373,6 @@ def extract_line_item(
         context=context,
         platform_postamble="",
     )
-    # return run_completion(
-    #     llm=llm,
-    #     prompt=prompt,
-    #     metadata=metadata,
-    #     prompt_key=output[PSKeys.NAME],
-    #     prompt_type=output.get(PSKeys.TYPE, PSKeys.TEXT),
-    #     enable_highlight=enable_highlight,
-    #     file_path=file_path,
-    # )
     line_item_extraction_plugin: dict[str, Any] = plugins.get(
         "line-item-extraction", {}
     )
