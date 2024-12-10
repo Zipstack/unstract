@@ -16,7 +16,7 @@ ENV PDM_VERSION 2.16.1
 RUN apt-get update; \
     apt-get --no-install-recommends install -y \
     # unstract sdk
-    build-essential libmagic-dev pandoc pkg-config tesseract-ocr \
+    build-essential libmagic-dev pkg-config \
     # git url
     git; \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
