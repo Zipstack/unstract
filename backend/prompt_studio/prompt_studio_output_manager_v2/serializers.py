@@ -47,7 +47,9 @@ class PromptStudioOutputSerializer(AuditSerializer):
             data["coverage"] = {}
         # Convert string to list
         try:
-            data["context"] = json.loads(data["context"])
+            context = data["context"]
+            if context:
+                data["context"] = json.loads(data["context"])
         except json.JSONDecodeError:
             # Convert the old value of data["context"] to a list
             data["context"] = [data["context"]]

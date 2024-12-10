@@ -317,11 +317,8 @@ class DestinationConnector(BaseConnector):
             table_name=table_name,
             database_entry=values,
         )
-        cls_name = db_class.__class__.__name__
         sql_columns_and_values = DatabaseUtils.get_sql_query_data(
-            cls_name=cls_name,
-            connector_id=connector_instance.connector_id,
-            connector_settings=connector_settings,
+            conn_cls=db_class,
             table_name=table_name,
             values=values,
         )

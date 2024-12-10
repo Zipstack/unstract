@@ -32,12 +32,12 @@ dependencies = [
     "python-socketio==5.9.0", # For log_events
     "social-auth-app-django==5.3.0", # For OAuth
     "social-auth-core==4.4.2", # For OAuth
-    "unstract-sdk~=0.54.0rc2",
+    "unstract-sdk~=0.54.0rc5",
     # ! IMPORTANT!
     # Indirect local dependencies usually need to be added in their own projects
     # as: https://pdm-project.org/latest/usage/dependency/#local-dependencies.
     #
-    # However, such indirect local dependencies which are not direct depedency of
+    # However, such indirect local dependencies which are not direct dependency of
     # main project appear as absolute paths in pdm.lock of main project, making it
     # impossible to check in the lock file.
     #
@@ -48,6 +48,7 @@ dependencies = [
     "unstract-tool-registry @ file:///${PROJECT_ROOT}/../unstract/tool-registry",
     "unstract-tool-sandbox @ file:///${PROJECT_ROOT}/../unstract/tool-sandbox",
     "unstract-workflow-execution @ file:///${PROJECT_ROOT}/../unstract/workflow-execution",
+    "unstract-filesystem @ file:///${PROJECT_ROOT}/../unstract/filesystem",
     "azure-identity==1.16.0",
     "azure-mgmt-apimanagement==3.0.0",
     "croniter>=3.0.3",
@@ -76,6 +77,7 @@ dev = [
     "-e unstract-tool-registry @ file:///${PROJECT_ROOT}/../unstract/tool-registry",
     "-e unstract-tool-sandbox @ file:///${PROJECT_ROOT}/../unstract/tool-sandbox",
     "-e unstract-workflow-execution @ file:///${PROJECT_ROOT}/../unstract/workflow-execution",
+    "-e unstract-filesystem @ file:///${PROJECT_ROOT}/../unstract/filesystem",
 ]
 
 [tool.pytest.ini_options]

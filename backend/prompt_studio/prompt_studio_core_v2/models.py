@@ -140,7 +140,7 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
     def delete(self, organization_id=None, *args, **kwargs):
         # Delete the documents associated with the tool
         if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            file_path = FileManagerHelper.handle_sub_directory_for_prompt_studio(
+            file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                 organization_id,
                 is_create=False,
                 user_id=self.created_by.user_id,
