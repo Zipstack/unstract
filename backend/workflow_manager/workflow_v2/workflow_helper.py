@@ -13,7 +13,6 @@ from celery import exceptions as celery_exceptions
 from celery import shared_task
 from celery.result import AsyncResult
 from django.db import IntegrityError
-from django.core.exceptions import ValidationError as DjangoValidationError
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from rest_framework import serializers
@@ -38,11 +37,11 @@ from workflow_manager.workflow_v2.constants import (
 from workflow_manager.workflow_v2.dto import AsyncResultData, ExecutionResponse
 from workflow_manager.workflow_v2.enums import ExecutionStatus, SchemaEntity, SchemaType
 from workflow_manager.workflow_v2.exceptions import (
+    ExecutionDoesNotExistError,
     InvalidRequest,
     TaskDoesNotExistError,
     WorkflowDoesNotExistError,
     WorkflowExecutionNotExist,
-    ExecutionDoesNotExistError,
 )
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
@@ -383,11 +382,13 @@ class WorkflowHelper:
             )
 
         if not execution.task_id:
-            raise TaskDoesNotExistError(f"No task ID found for execution: {execution_id}")
-    
+            raise TaskDoesNotExistError(
+                f"No task ID found for execution: {execution_id}"
+            )
+
         result = AsyncResult(str(execution.task_id))
         task = AsyncResultData(async_result=result)
-    
+
         return ExecutionResponse(
             execution.workflow_id,
             execution_id,

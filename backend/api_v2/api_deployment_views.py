@@ -11,8 +11,8 @@ from api_v2.serializers import (
     APIDeploymentListSerializer,
     APIDeploymentSerializer,
     DeploymentResponseSerializer,
-    ExecutionRequestSerializer,
     ExecutionQuerySerializer,
+    ExecutionRequestSerializer,
 )
 from django.db.models import QuerySet
 from django.http import HttpResponse
@@ -81,7 +81,9 @@ class DeploymentExecution(views.APIView):
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
 
         try:
-            response: ExecutionResponse = DeploymentHelper.get_execution_status(execution_id)
+            response: ExecutionResponse = DeploymentHelper.get_execution_status(
+                execution_id
+            )
         except InvalidAPIRequest as e:
             logger.error(f"Invalid execution_id: {execution_id}. Error: {e}")
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
@@ -91,7 +93,7 @@ class DeploymentExecution(views.APIView):
             response_status = status.HTTP_200_OK
             if not include_metadata:
                 response.remove_result_metadata_keys()
-    
+
         return Response(
             data={
                 "status": response.execution_status,
