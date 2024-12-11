@@ -239,21 +239,6 @@ class StructureTool(BaseTool):
 
         if not summarize_as_source:
             metadata = structured_output_dict[SettingsKeys.METADATA]
-            epilogue = metadata.pop(SettingsKeys.EPILOGUE, None)
-            if epilogue:
-                try:
-                    from helper import (  # type: ignore [attr-defined]
-                        get_confidence_data,
-                    )
-
-                    metadata[SettingsKeys.CONFIDENCE_DATA] = get_confidence_data(
-                        epilogue, tool_data_dir
-                    )
-                except ImportError:
-                    self.stream_log(
-                        f"Confidence data is not added. {PAID_FEATURE_MSG}",
-                        level=LogLevel.WARN,
-                    )
             # Update the dictionary with modified metadata
             structured_output_dict[SettingsKeys.METADATA] = metadata
             structured_output = json.dumps(structured_output_dict)
