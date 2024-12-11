@@ -11,6 +11,7 @@ from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.exceptions import APIError, ErrorResponse, NoPayloadError
 from unstract.prompt_service.helper import (
+    add_required_field,
     construct_and_run_prompt,
     extract_table,
     extract_variable,
@@ -108,6 +109,7 @@ def prompt_processor() -> Any:
         PSKeys.RUN_ID: run_id,
         PSKeys.FILE_NAME: doc_name,
         PSKeys.CONTEXT: {},
+        PSKeys.REQUIRED_FIELDS: [],
     }
     variable_names: list[str] = []
     publish_log(
@@ -117,10 +119,14 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         f"Preparing to execute {len(prompts)} prompt(s)",
     )
-
     # TODO: Rename "output" to "prompt"
     for output in prompts:  # type:ignore
         variable_names.append(output[PSKeys.NAME])
+        metadata[PSKeys.REQUIRED_FIELDS] = add_required_field(
+            metadata[PSKeys.REQUIRED_FIELDS],
+            output[PSKeys.NAME],
+            output.get(PSKeys.REQUIRED, False),
+        )
     for output in prompts:  # type:ignore
         prompt_name = output[PSKeys.NAME]
         prompt_text = output[PSKeys.PROMPT]
