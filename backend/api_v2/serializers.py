@@ -114,15 +114,18 @@ class ExecutionRequestSerializer(Serializer):
     )
     include_metadata = BooleanField(default=False)
     use_file_history = BooleanField(default=False)
+
+class ExecutionQuerySerializer(Serializer):
     execution_id = CharField(required=True)
-    
+    include_metadata = BooleanField(default=False)
+
     def validate_execution_id(self, value):
-        """Trim spaces, validate execution_id as UUID, and check database existence."""
+        """Trim spaces and validate execution_id as UUID."""
         value = value.strip()
         try:
             uuid.UUID(value)
         except ValueError:
-            raise ValidationError("Invalid execution_id. Must be a valid UUID.")    
+            raise ValidationError("Invalid execution_id. Must be a valid UUID.")
         return value
 
 class APIDeploymentListSerializer(ModelSerializer):

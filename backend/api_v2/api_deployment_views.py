@@ -12,6 +12,7 @@ from api_v2.serializers import (
     APIDeploymentSerializer,
     DeploymentResponseSerializer,
     ExecutionRequestSerializer,
+    ExecutionQuerySerializer,
 )
 from django.db.models import QuerySet
 from django.http import HttpResponse
@@ -73,10 +74,10 @@ class DeploymentExecution(views.APIView):
     def get(
         self, request: Request, org_name: str, api_name: str, api: APIDeployment
     ) -> Response:
-        serializer = ExecutionRequestSerializer(data=request.query_params)
+        serializer = ExecutionQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
 
-        execution_id = serializer.validated_data.get("execution_id")
+        execution_id = serializer.validated_data.get(ApiExecution.EXECUTION_ID)
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
 
         try:
