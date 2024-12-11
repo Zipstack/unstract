@@ -1,7 +1,7 @@
 import time
 import traceback
 from json import JSONDecodeError
-from typing import Any, Optional
+from typing import Any
 
 from flask import json, jsonify, request
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
@@ -252,64 +252,18 @@ def prompt_processor() -> Any:
                 raise api_error
 
         try:
-            context: set[str] = set()
-            if output[PSKeys.CHUNK_SIZE] == 0:
+            if chunk_size == 0:
                 # We can do this only for chunkless indexes
-                retrieved_context: Optional[str] = index.query_index(
-                    embedding_instance_id=output[PSKeys.EMBEDDING],
-                    vector_db_instance_id=output[PSKeys.VECTOR_DB],
+                context: set[str] = fetch_context_from_vector_db(
+                    index=index,
+                    output=output,
                     doc_id=doc_id,
+                    tool_id=tool_id,
+                    doc_name=doc_name,
+                    prompt_name=prompt_name,
+                    log_events_id=log_events_id,
                     usage_kwargs=usage_kwargs,
                 )
-                if not context:
-                    # UN-1288 For Pinecone, we are seeing an inconsistent case where
-                    # query with doc_id fails even though indexing just happened.
-                    # This causes the following retrieve to return no text.
-                    # To rule out any lag on the Pinecone vector DB write,
-                    # the following sleep is added.
-                    # Note: This will not fix the issue. Since this issue is
-                    # inconsistent, and not reproducible easily,
-                    # this is just a safety net.
-                    time.sleep(2)
-                    retrieved_context: Optional[str] = index.query_index(
-                        embedding_instance_id=output[PSKeys.EMBEDDING],
-                        vector_db_instance_id=output[PSKeys.VECTOR_DB],
-                        doc_id=doc_id,
-                        usage_kwargs=usage_kwargs,
-                    )
-                    if retrieved_context is None:
-                        # TODO: Obtain user set name for vector DB
-                        msg = NO_CONTEXT_ERROR
-                        app.logger.error(
-                            f"{msg} {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
-                        )
-                        publish_log(
-                            log_events_id,
-                            {
-                                "tool_id": tool_id,
-                                "prompt_key": prompt_name,
-                                "doc_name": doc_name,
-                            },
-                            LogLevel.ERROR,
-                            RunLevel.RUN,
-                            msg,
-                        )
-                        raise APIError(message=msg)
-                context.add(retrieved_context)
-                # TODO: Use vectorDB name when available
-                publish_log(
-                    log_events_id,
-                    {
-                        "tool_id": tool_id,
-                        "prompt_key": prompt_name,
-                        "doc_name": doc_name,
-                    },
-                    LogLevel.DEBUG,
-                    RunLevel.RUN,
-                    "Fetched context from vector DB",
-                )
-
-            if chunk_size == 0:
                 publish_log(
                     log_events_id,
                     {
@@ -674,6 +628,102 @@ def prompt_processor() -> Any:
     return response
 
 
+def fetch_context_from_vector_db(
+    index: Index,
+    output: dict[str, Any],
+    doc_id: str,
+    tool_id: str,
+    doc_name: str,
+    prompt_name: str,
+    log_events_id: str,
+    usage_kwargs: dict[str, Any],
+) -> set[str]:
+    """
+    Fetches context from the index for the given document ID. Implements a retry
+    mechanism with logging and raises an error if context retrieval fails.
+
+    Args:
+        index: The index object to query.
+        output: Dictionary containing keys like embedding and vector DB instance ID.
+        doc_id: The document ID to query.
+        tool_id: Identifier for the tool in use.
+        doc_name: Name of the document being queried.
+        prompt_name: Name of the prompt being executed.
+        log_events_id: Unique ID for logging events.
+        usage_kwargs: Additional usage parameters.
+
+    Raises:
+        APIError: If context retrieval fails after retrying.
+    """
+    context: set[str] = set()
+    try:
+        retrieved_context = index.query_index(
+            embedding_instance_id=output[PSKeys.EMBEDDING],
+            vector_db_instance_id=output[PSKeys.VECTOR_DB],
+            doc_id=doc_id,
+            usage_kwargs=usage_kwargs,
+        )
+
+        if retrieved_context:
+            context.add(retrieved_context)
+            publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.DEBUG,
+                RunLevel.RUN,
+                "Fetched context from vector DB",
+            )
+        else:
+            # Handle lag in vector DB write (e.g., Pinecone issue)
+            time.sleep(2)
+            retrieved_context = index.query_index(
+                embedding_instance_id=output[PSKeys.EMBEDDING],
+                vector_db_instance_id=output[PSKeys.VECTOR_DB],
+                doc_id=doc_id,
+                usage_kwargs=usage_kwargs,
+            )
+
+            if retrieved_context is None:
+                msg = NO_CONTEXT_ERROR
+                app.logger.error(
+                    f"{msg} {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
+                )
+                publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.ERROR,
+                    RunLevel.RUN,
+                    msg,
+                )
+                raise APIError(message=msg)
+    except SdkError as e:
+        msg = f"Unable to fetch context from vector DB. {str(e)}"
+        app.logger.error(
+            f"{msg}. VectorDB: {output[PSKeys.VECTOR_DB]}, doc_id: {doc_id}"
+        )
+        publish_log(
+            log_events_id,
+            {
+                "tool_id": tool_id,
+                "prompt_key": prompt_name,
+                "doc_name": doc_name,
+            },
+            LogLevel.ERROR,
+            RunLevel.RUN,
+            msg,
+        )
+        raise APIError(message=msg, code=e.status_code)
+    return context
+
+
 def run_retrieval(  # type:ignore
     tool_settings: dict[str, Any],
     output: dict[str, Any],
@@ -682,7 +732,7 @@ def run_retrieval(  # type:ignore
     vector_index,
     retrieval_type: str,
     metadata: dict[str, Any],
-) -> tuple[str, str]:
+) -> tuple[str, set[str]]:
     context: set[str] = set()
     prompt = output[PSKeys.PROMPTX]
     if retrieval_type == PSKeys.SUBQUESTION:
