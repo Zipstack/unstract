@@ -398,22 +398,6 @@ files = [
     {file = "azure_identity-1.19.0.tar.gz", hash = "sha256:500144dc18197d7019b81501165d4fa92225f03778f17d7ca8a2a180129a9c83"},
 ]
 
-[[package]]
-name = "azure-storage-blob"
-version = "12.24.0"
-requires_python = ">=3.8"
-summary = "Microsoft Azure Blob Storage Client Library for Python"
-groups = ["hook-check-django-migrations"]
-dependencies = [
-    "azure-core>=1.30.0",
-    "cryptography>=2.1.4",
-    "isodate>=0.6.1",
-    "typing-extensions>=4.6.0",
-]
-files = [
-    {file = "azure_storage_blob-12.24.0-py3-none-any.whl", hash = "sha256:4f0bb4592ea79a2d986063696514c781c9e62be240f09f6397986e01755bc071"},
-    {file = "azure_storage_blob-12.24.0.tar.gz", hash = "sha256:eaaaa1507c8c363d6e1d1342bd549938fdf1adec9b1ada8658c8f5bf3aea844e"},
-]
 
 [[package]]
 name = "bcrypt"
@@ -5086,6 +5070,9 @@ editable = true
 path = "./unstract/filesystem"
 summary = "Unstract filesystem package"
 groups = ["hook-check-django-migrations"]
+dependencies = [
+    "unstract-sdk~=0.54.0rc5",
+]
 
 [[package]]
 name = "unstract-flags"

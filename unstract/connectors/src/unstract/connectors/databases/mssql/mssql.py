@@ -66,8 +66,15 @@ class MSSQL(UnstractDB):
             database=self.database,
         )
 
-    @staticmethod
-    def get_create_table_query(table: str) -> str:
+    def get_create_table_base_query(self, table: str) -> str:
+        """Function to create a base create table sql query.
+
+        Args:
+            table (str): db-connector table name
+
+        Returns:
+            str: generates a create sql base query with the constant columns
+        """
         sql_query = (
             f"IF NOT EXISTS ("
             f"SELECT * FROM sysobjects WHERE name='{table}' and xtype='U')"
@@ -80,11 +87,23 @@ class MSSQL(UnstractDB):
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
+        """Executes create/insert query.
+
+        Args:
+            engine (Any): mssql client engine
+            sql_query (str): sql create table/insert into table query
+            sql_values (Any): sql data to be insertted
+
+        Raises:
+            InvalidSyntaxException: raised due to invalid syntax
+            ColumnMissingException: raised due to missing columns in table query
+        """
         table_name = kwargs.get("table_name", None)
         try:
             with engine.cursor() as cursor:
                 if sql_values:
-                    cursor.execute(sql_query, sql_values)
+                    params = tuple(sql_values)
+                    cursor.execute(sql_query, params)
                 else:
                     cursor.execute(sql_query)
             engine.commit()
