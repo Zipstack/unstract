@@ -84,6 +84,7 @@ class ToolStudioPrompt(BaseModel):
         db_comment="Field to store the prompt key",
         unique=False,
     )
+    required = models.BooleanField(default=False)
     is_assert = models.BooleanField(default=False)
     active = models.BooleanField(default=True, null=False, blank=False)
     output_metadata = models.JSONField(
