@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import { Viewer, Worker } from "@react-pdf-viewer/core";
 import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
 import { pageNavigationPlugin } from "@react-pdf-viewer/page-navigation";
@@ -32,23 +32,22 @@ function PdfViewer({ fileUrl, highlightData }) {
     : [];
 
   const processedHighlightData =
-    processHighlightData?.length > 0
-      ? processHighlightData
-      : [[0, 0, 0, 11111]];
+    processHighlightData?.length > 0 ? processHighlightData : [[0, 0, 0, 0]];
 
-  const highlightPluginInstance =
-    RenderHighlights &&
-    Array.isArray(processedHighlightData) &&
-    processedHighlightData?.length > 0
-      ? highlightPlugin({
-          renderHighlights: (props) => (
-            <RenderHighlights
-              {...props}
-              highlightData={processedHighlightData}
-            />
-          ),
-        })
-      : null;
+  const highlightPluginInstance = useMemo(() => {
+    if (
+      RenderHighlights &&
+      Array.isArray(processedHighlightData) &&
+      processedHighlightData?.length > 0
+    ) {
+      return highlightPlugin({
+        renderHighlights: (props) => (
+          <RenderHighlights {...props} highlightData={processedHighlightData} />
+        ),
+      });
+    }
+    return "";
+  }, [RenderHighlights, processedHighlightData]);
 
   // Jump to page when highlightData changes
   useEffect(() => {
@@ -70,7 +69,7 @@ function PdfViewer({ fileUrl, highlightData }) {
           plugins={[
             newPlugin,
             pageNavigationPluginInstance,
-            ...(highlightPluginInstance ? [highlightPluginInstance] : []),
+            highlightPluginInstance,
           ]}
         />
       </Worker>

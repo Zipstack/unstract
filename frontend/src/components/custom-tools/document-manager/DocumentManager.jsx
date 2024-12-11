@@ -101,7 +101,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const axiosPrivate = useAxiosPrivate();
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { id } = useParams();
-  const highlightData = selectedHighlight?.highlight || [[0, 0, 0, 1111]];
+  const highlightData = selectedHighlight?.highlight || [];
 
   useEffect(() => {
     if (isSimplePromptStudio) {
