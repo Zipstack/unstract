@@ -23,11 +23,9 @@ from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.source import SourceConnector
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 from workflow_manager.workflow_v2.enums import ExecutionStatus
-from workflow_manager.workflow_v2.models.workflow import Workflow
-from workflow_manager.workflow_v2.workflow_helper import (
-    WorkflowExecutionServiceHelper,
-    WorkflowHelper,
-)
+from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
+from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
+from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
 
 logger = logging.getLogger(__name__)
 
@@ -156,8 +154,8 @@ class DeploymentHelper(BaseAPIKeyValidator):
         pipeline_id = api.id
         workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
             workflow_id=workflow_id,
-            single_step=False,
             pipeline_id=pipeline_id,
+            mode=WorkflowExecution.Mode.QUEUE,
         )
         execution_id = workflow_execution.id
 
