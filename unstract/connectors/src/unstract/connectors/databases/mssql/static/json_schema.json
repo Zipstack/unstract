@@ -1,6 +1,5 @@
 {
-  "title": "MSSQL database",
-  "description": "Designed with a patented new architecture to handle all aspects of data and analytics",
+  "title": "MSSQL Database",
   "type": "object",
   "required": [
     "connectorName",

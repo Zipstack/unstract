@@ -9,7 +9,7 @@
     "classificationBins": {
       "type": "array",
       "title": "Classification bins",
-      "description": "Specify at least two unique classification bins. 'unknown' and '__unstract_failed' are reserved bins. 'unknown' indicates the LLM can't determine the classification and `__unstract_failed` indicates a tool run failure for the given file.",
+      "description": "Specify at least two unique classification bins. `unknown` and `__unstract_failed` are reserved bins.\n - `unknown` indicates the LLM can't determine the classification\n - `__unstract_failed` indicates a tool run failure for the given file.",
       "items": {
         "type": "string"
       },
