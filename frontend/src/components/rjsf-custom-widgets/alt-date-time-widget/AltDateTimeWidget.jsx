@@ -4,7 +4,15 @@ import PropTypes from "prop-types";
 
 import { RjsfWidgetLayout } from "../../../layouts/rjsf-widget-layout/RjsfWidgetLayout.jsx";
 
-const AltDateTimeWidget = ({ id, value, onChange, label, required }) => {
+const AltDateTimeWidget = ({
+  id,
+  value,
+  onChange,
+  label,
+  schema,
+  required,
+}) => {
+  const description = schema?.description || "";
   const handleDateChange = (date) => {
     onChange(date?.toISOString());
   };
@@ -17,7 +25,11 @@ const AltDateTimeWidget = ({ id, value, onChange, label, required }) => {
   };
 
   return (
-    <RjsfWidgetLayout label={label} required={required}>
+    <RjsfWidgetLayout
+      label={label}
+      description={description}
+      required={required}
+    >
       <DatePicker
         id={id}
         value={value ? moment(value) : null}
@@ -36,6 +48,7 @@ AltDateTimeWidget.propTypes = {
   value: PropTypes.string,
   onChange: PropTypes.func.isRequired,
   label: PropTypes.string.isRequired,
+  schema: PropTypes.object.isRequired,
   required: PropTypes.bool,
 };
 
