@@ -1,6 +1,5 @@
 {
-  "title": "Snowflake data warehouse",
-  "description": "Designed with a patented new architecture to handle all aspects of data and analytics, it combines high performance, high concurrency, simplicity, and affordability at levels not possible with other data warehouses.",
+  "title": "Snowflake Data Warehouse",
   "type": "object",
   "required": [
     "connectorName",
