@@ -89,7 +89,9 @@ class BaseConnector(ExecutionFileHandler):
             if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
                 file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
                 file_storage = file_system.get_file_storage()
-                file_contents = file_storage.read(path=file_path, mode="r", encoding="utf-8")
+                file_contents = file_storage.read(
+                    path=file_path, mode="r", encoding="utf-8"
+                )
                 schema: dict[str, Any] = json.load(file_contents)
             else:
                 with open(file_path, encoding="utf-8") as file:
