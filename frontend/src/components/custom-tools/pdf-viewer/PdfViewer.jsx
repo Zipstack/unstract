@@ -20,32 +20,47 @@ function PdfViewer({ fileUrl, highlightData }) {
   const pageNavigationPluginInstance = pageNavigationPlugin();
   const { jumpToPage } = pageNavigationPluginInstance;
   const parentRef = useRef(null);
-  function removeZerosAndDeleteIfAllZero(highlightData) {
-    return highlightData.filter((innerArray) =>
+
+  const removeZerosAndDeleteIfAllZero = (data) => {
+    return data?.filter((innerArray) =>
       innerArray.some((value) => value !== 0)
-    ); // Keep arrays that contain at least one non-zero value
-  }
-  let highlightPluginInstance = "";
-  if (RenderHighlights && highlightData) {
-    highlightPluginInstance = highlightPlugin({
-      renderHighlights: (props) => (
-        <RenderHighlights {...props} highlightData={highlightData} />
-      ),
-    });
-  }
+    );
+  };
+
+  const processHighlightData = highlightData
+    ? removeZerosAndDeleteIfAllZero(highlightData)
+    : [];
+
+  const processedHighlightData =
+    processHighlightData?.length > 0
+      ? processHighlightData
+      : [[0, 0, 0, 11111]];
+
+  const highlightPluginInstance =
+    RenderHighlights &&
+    Array.isArray(processedHighlightData) &&
+    processedHighlightData?.length > 0
+      ? highlightPlugin({
+          renderHighlights: (props) => (
+            <RenderHighlights
+              {...props}
+              highlightData={processedHighlightData}
+            />
+          ),
+        })
+      : null;
 
   // Jump to page when highlightData changes
   useEffect(() => {
-    if (highlightData && highlightData.length > 0) {
-      highlightData = removeZerosAndDeleteIfAllZero(highlightData);
-      const pageNumber = highlightData[0][0]; // Assume highlightData[0][0] is the page number
+    if (processedHighlightData && processedHighlightData?.length > 0) {
+      const pageNumber = processedHighlightData[0][0]; // Assume highlightData[0][0] is the page number
       if (pageNumber !== null && jumpToPage) {
         setTimeout(() => {
-          jumpToPage(pageNumber); // jumpToPage is 0-indexed, so subtract 1
+          jumpToPage(pageNumber); // jumpToPage is 0-indexed, so subtract 1 if necessary
         }, 100); // Add a slight delay to ensure proper page rendering
       }
     }
-  }, [highlightData, jumpToPage]);
+  }, [processedHighlightData, jumpToPage]);
 
   return (
     <div ref={parentRef} className="doc-manager-body">
@@ -55,7 +70,7 @@ function PdfViewer({ fileUrl, highlightData }) {
           plugins={[
             newPlugin,
             pageNavigationPluginInstance,
-            highlightPluginInstance,
+            ...(highlightPluginInstance ? [highlightPluginInstance] : []),
           ]}
         />
       </Worker>

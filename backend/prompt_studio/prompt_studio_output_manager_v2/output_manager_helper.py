@@ -60,6 +60,7 @@ class OutputManagerHelper:
             tool: CustomTool,
             context: str,
             challenge_data: Optional[dict[str, Any]],
+            highlight_data: Optional[dict[str, Any]],
         ) -> PromptStudioOutputManager:
             """Handles creating or updating a single prompt output and returns
             the instance."""
@@ -76,6 +77,7 @@ class OutputManagerHelper:
                             "eval_metrics": eval_metrics,
                             "context": context,
                             "challenge_data": challenge_data,
+                            "highlight_data": highlight_data,
                         },
                     )
                 )
@@ -97,6 +99,7 @@ class OutputManagerHelper:
                     "eval_metrics": eval_metrics,
                     "context": context,
                     "challenge_data": challenge_data,
+                    "highlight_data": highlight_data,
                 }
                 PromptStudioOutputManager.objects.filter(
                     document_manager=document_manager,
@@ -118,6 +121,7 @@ class OutputManagerHelper:
         serialized_data: list[dict[str, Any]] = []
         context = metadata.get("context")
         challenge_data = metadata.get("challenge_data")
+        highlight_data = metadata.get("highlight_data")
 
         if not prompts:
             return serialized_data
@@ -134,6 +138,8 @@ class OutputManagerHelper:
 
             if not is_single_pass_extract:
                 context = context.get(prompt.prompt_key)
+                if highlight_data:
+                    highlight_data = highlight_data.get(prompt.prompt_key)
                 if challenge_data:
                     challenge_data = challenge_data.get(prompt.prompt_key)
 
@@ -156,6 +162,7 @@ class OutputManagerHelper:
                 tool=tool,
                 context=json.dumps(context),
                 challenge_data=challenge_data,
+                highlight_data=highlight_data,
             )
 
             # Serialize the instance
