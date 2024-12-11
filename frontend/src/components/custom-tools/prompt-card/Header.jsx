@@ -58,6 +58,7 @@ function Header({
   const [items, setItems] = useState([]);
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(null);
+  const [isRequired, setIsRequired] = useState(false);
 
   const handleRunBtnClick = (promptRunType, docId = null) => {
     setExpandCard(true);
@@ -73,8 +74,18 @@ function Header({
       }
     );
   };
+  const handleRequired = (event) => {
+    const check = event?.target?.checked;
+    setIsRequired(check);
+    handleChange(check, promptDetails?.prompt_id, "required", true, true).catch(
+      () => {
+        setIsRequired(!check);
+      }
+    );
+  };
   useEffect(() => {
     setIsDisablePrompt(promptDetails?.active);
+    setIsRequired(promptDetails?.required);
   }, [promptDetails, details]);
 
   useEffect(() => {
@@ -86,6 +97,14 @@ function Header({
           </Checkbox>
         ),
         key: "enable",
+      },
+      {
+        label: (
+          <Checkbox checked={isRequired} onChange={handleRequired}>
+            Required
+          </Checkbox>
+        ),
+        key: "required",
       },
       {
         label: (
@@ -109,7 +128,7 @@ function Header({
     }
 
     setItems(dropdownItems);
-  }, [isDisablePrompt]);
+  }, [isDisablePrompt, isRequired]);
 
   return (
     <Row>
