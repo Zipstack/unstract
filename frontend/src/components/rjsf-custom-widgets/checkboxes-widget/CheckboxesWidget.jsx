@@ -3,7 +3,16 @@ import { Checkbox } from "antd";
 
 import { RjsfWidgetLayout } from "../../../layouts/rjsf-widget-layout/RjsfWidgetLayout.jsx";
 
-const CheckboxesWidget = ({ id, options, value, onChange, label }) => {
+const CheckboxesWidget = ({
+  id,
+  options,
+  value,
+  onChange,
+  label,
+  schema,
+  required,
+}) => {
+  const description = schema?.description || "";
   const handleCheckboxChange = (optionValue) => {
     const newValue = [...(value || [])];
     const index = newValue.indexOf(optionValue);
@@ -16,7 +25,11 @@ const CheckboxesWidget = ({ id, options, value, onChange, label }) => {
   };
 
   return (
-    <RjsfWidgetLayout label={label}>
+    <RjsfWidgetLayout
+      label={label}
+      description={description}
+      required={required}
+    >
       {options.map((option) => (
         <Checkbox
           key={option.value}
@@ -36,6 +49,8 @@ CheckboxesWidget.propTypes = {
   value: PropTypes.array,
   onChange: PropTypes.func.isRequired,
   label: PropTypes.string.isRequired,
+  schema: PropTypes.object.isRequired,
+  required: PropTypes.bool,
 };
 
 export { CheckboxesWidget };

@@ -15,7 +15,7 @@
       "base_url": {
         "type": "string",
         "title": "Base URL",
-        "description": "Base URL of the file server to connect to (for example: https://demo.unstract.connectors.com/)"
+        "description": "Base URL of the file server to connect to (for example: `https://demo.unstract.connectors.com/`)"
       },
       "username": {
         "type": "string",
