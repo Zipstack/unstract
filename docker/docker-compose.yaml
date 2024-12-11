@@ -42,7 +42,7 @@ services:
     entrypoint: .venv/bin/celery
     command: "-A backend worker --loglevel=info -Q celery --autoscale=${WORKER_AUTOSCALE}"
     env_file:
-      - ../backend/.env
+      - ../backend/.celery.env
     depends_on:
       - redis
     environment:
@@ -100,7 +100,7 @@ services:
     entrypoint: .venv/bin/celery
     command: "-A backend flower --port=5555 --purge_offline_workers=5"
     env_file:
-      - ../backend/.env
+      - ../backend/.celery.env
     depends_on:
       - worker
       - worker-logging
@@ -126,7 +126,7 @@ services:
     entrypoint: .venv/bin/celery
     command: "-A backend beat --scheduler django_celery_beat.schedulers:DatabaseScheduler -l INFO"
     env_file:
-      - ../backend/.env
+      - ../backend/.celery.env
       - ./essentials.env
     depends_on:
         - db

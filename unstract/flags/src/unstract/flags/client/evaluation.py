@@ -52,14 +52,17 @@ class EvaluationClient(BaseClient):
             return bool(response.enabled)
         except grpc.RpcError as e:
             if e.code() == grpc.StatusCode.NOT_FOUND:
-                logger.warning(
-                    f"Flag key {flag_key} not found in namespace {namespace_key}."
-                )
+                if self.warnings:
+                    logger.warning(
+                        f"Flag key {flag_key} not found in namespace {namespace_key}."
+                    )
             elif e.code() == grpc.StatusCode.UNAVAILABLE:
-                logger.warning(f"Evaluation server is unavailable: {e.details()}.")
+                if self.warnings:
+                    logger.warning(f"Evaluation server is unavailable: {e.details()}.")
             else:
-                logger.warning(
-                    f"Error evaluating feature flag {flag_key} for {namespace_key}"
-                    f" : {str(e)}"
-                )
+                if self.warnings:
+                    logger.warning(
+                        f"Error evaluating feature flag {flag_key} for {namespace_key}"
+                        f" : {str(e)}"
+                    )
             return False

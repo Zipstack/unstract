@@ -2,20 +2,25 @@
 
 import os
 
-from celery import Celery
-from django.conf import settings
-from utils.constants import ExecutionLogConstants
+from dotenv import find_dotenv, load_dotenv
 
-from backend.celery_task import TaskRegistry
-
-# Set the default Django settings module for the 'celery' program.
+# NOTE:
+# Do this before loading any environment variables.
 os.environ.setdefault(
     "DJANGO_SETTINGS_MODULE",
-    os.environ.get("DJANGO_SETTINGS_MODULE", "backend.settings.dev"),
+    os.environ.get("DJANGO_SETTINGS_MODULE", "backend.settings.celery"),
 )
 
+# Load environment variables.
+load_dotenv(find_dotenv() or "")
+
+from celery import Celery  # noqa: E402
+from django.conf import settings  # noqa: E402
+from utils.celery.constants import ExecutionLogConstants  # noqa: E402
+from utils.celery.task_registry import TaskRegistry  # noqa: E402
+
 # Create a Celery instance. Default time zone is UTC.
-app = Celery("backend")
+app = Celery("celery")
 
 # To register the custom tasks.
 TaskRegistry()
@@ -23,7 +28,6 @@ TaskRegistry()
 # Use Redis as the message broker.
 app.conf.broker_url = settings.CELERY_BROKER_URL
 app.conf.result_backend = settings.CELERY_RESULT_BACKEND
-
 
 # Load task modules from all registered Django app configs.
 app.config_from_object("django.conf:settings", namespace="CELERY")

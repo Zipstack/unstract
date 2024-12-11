@@ -134,8 +134,8 @@ celerybeat.pid
 
 # Environments
 test*.env
-*.env
-!sample.env
+.env
+.*.env
 .env.export
 .venv*
 env/
@@ -646,7 +646,8 @@ tools/*/data_dir/
 backend/backend/settings/*
 !backend/backend/settings/__init__.py
 !backend/backend/settings/base.py
-!backend/backend/settings/dev.py
+!backend/backend/settings/platform.py
+!backend/backend/settings/celery.py
 !backend/backend/settings/test.py
 
 # Local Dependencies for docker testing

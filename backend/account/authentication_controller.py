@@ -113,7 +113,8 @@ class AuthenticationController:
         try:
             organizations = self.auth_service.user_organizations(request)
         except Exception as ex:
-            #
+            Logger.error(f"Failed to get user orgs: {ex}")
+
             self.user_logout(request)
 
             response = Response(
