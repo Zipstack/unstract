@@ -297,7 +297,7 @@ def run_completion(
         answer: str = completion[PSKeys.RESPONSE].text
         highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA)
         confidence_data = completion.get(PSKeys.CONFIDENCE_DATA)
-
+        required_fields = True
         if metadata is not None and prompt_key:
             if highlight_data:
                 metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[
@@ -308,7 +308,9 @@ def run_completion(
                 metadata.setdefault(PSKeys.CONFIDENCE_DATA, {})[
                     prompt_key
                 ] = confidence_data
-
+            metadata.setdefault(PSKeys.REQUIRED_FIELDS, {})[
+                prompt_key
+            ] = required_fields
         return answer
     # TODO: Catch and handle specific exception here
     except SdkRateLimitError as e:
@@ -344,3 +346,21 @@ def extract_table(
     except table_extractor["exception_cls"] as e:
         msg = f"Couldn't extract table. {e}"
         raise APIError(message=msg)
+
+
+def add_required_field(
+    required_fields: list[str], key: str, required: bool
+) -> list[str]:
+    """
+    Retrieve a list of required prompt keys for a specific tool ID.
+
+    Args:
+        tool_id (str): The ID of the tool for which required fields are retrieved.
+
+    Returns:
+        List[str]: A list of prompt keys marked as required for the given tool ID.
+    """
+    if required:
+        required_fields.append(key)
+
+    return required_fields
