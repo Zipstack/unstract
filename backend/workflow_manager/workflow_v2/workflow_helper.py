@@ -378,9 +378,13 @@ class WorkflowHelper:
         try:
             execution = WorkflowExecution.objects.get(id=execution_id)
             if not execution.task_id:
-                raise TaskDoesNotExistError(f"No task ID found for execution: {execution_id}")
+                raise TaskDoesNotExistError(
+                    f"No task ID found for execution: {execution_id}"
+                )
         except WorkflowExecution.DoesNotExist:
-            raise ExecutionDoesNotExistError(f"No execution found with id: {execution_id}")
+            raise ExecutionDoesNotExistError(
+                f"No execution found with id: {execution_id}"
+            )
 
         result = AsyncResult(str(execution.task_id))
         task = AsyncResultData(async_result=result)
