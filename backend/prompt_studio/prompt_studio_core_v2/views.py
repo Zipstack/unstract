@@ -465,7 +465,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             user_id=custom_tool.created_by.user_id,
             tool_id=str(custom_tool.tool_id),
         )
-        file_system = LocalStorageFS(settings={"path": file_path})
 
         documents = []
         for uploaded_file in uploaded_files:
