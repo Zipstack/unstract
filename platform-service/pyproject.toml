@@ -13,7 +13,7 @@ dependencies = [
     "redis~=5.0.1",
     "cryptography>=41.0.7",
     "requests>=2.31.0",
-    "unstract-sdk==0.54.0rc5",
+    "unstract-sdk~=0.54.0rc6",
     "gcsfs==2024.10.0",
     "unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
 ]
