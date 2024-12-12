@@ -445,13 +445,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     tool_id=str(custom_tool.tool_id),
                 )
             except FileNotFoundError:
-                return Response(
-                    {
-                        "data": f"File {file_name} not found. Looks like it "
-                        "must be deleted or moved to a different location."
-                    },
-                    status=status.HTTP_404_NOT_FOUND,
-                )
+                raise FileNotFound()
         return Response({"data": contents}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
