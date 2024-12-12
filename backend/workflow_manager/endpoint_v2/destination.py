@@ -10,6 +10,7 @@ import magic
 from connector_v2.models import ConnectorInstance
 from fsspec.implementations.local import LocalFileSystem
 from unstract.sdk.constants import ToolExecKey
+from unstract.sdk.tool.mime_types import EXT_MIME_MAP
 from unstract.workflow_execution.constants import ToolOutputType
 from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.base_connector import BaseConnector
@@ -36,8 +37,13 @@ from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
+from backend.constants import FeatureFlag
 from backend.exceptions import UnstractFSException
 from unstract.connectors.exceptions import ConnectorError
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+    from unstract.filesystem import FileStorageType, FileSystem
 
 logger = logging.getLogger(__name__)
 
@@ -309,11 +315,8 @@ class DestinationConnector(BaseConnector):
             table_name=table_name,
             database_entry=values,
         )
-        cls_name = db_class.__class__.__name__
         sql_columns_and_values = DatabaseUtils.get_sql_query_data(
-            cls_name=cls_name,
-            connector_id=connector_instance.connector_id,
-            connector_settings=connector_settings,
+            conn_cls=db_class,
             table_name=table_name,
             values=values,
         )
@@ -405,6 +408,8 @@ class DestinationConnector(BaseConnector):
         Returns:
             Union[dict[str, Any], str]: Result data.
         """
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            return self.get_result_with_file_storage(file_history=file_history)
         if file_history and file_history.result:
             return self.parse_string(file_history.result)
         output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
@@ -434,6 +439,43 @@ class DestinationConnector(BaseConnector):
             logger.error(f"Error while getting result {err}")
         return result
 
+    def get_result_with_file_storage(
+        self, file_history: Optional[FileHistory] = None
+    ) -> Optional[Any]:
+        """Get result data from the output file.
+
+        Returns:
+            Union[dict[str, Any], str]: Result data.
+        """
+        if file_history and file_history.result:
+            return self.parse_string(file_history.result)
+        output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
+        metadata: dict[str, Any] = self.get_workflow_metadata()
+        output_type = self.get_output_type(metadata)
+        result: Union[dict[str, Any], str] = ""
+        file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+        file_storage = file_system.get_file_storage()
+        try:
+            # TODO: SDK handles validation; consider removing here.
+            file_type = file_storage.mime_type(output_file)
+            if output_type == ToolOutputType.JSON:
+                if file_type != EXT_MIME_MAP[ToolOutputType.JSON.lower()]:
+                    logger.error(f"Output type json mismatched {file_type}")
+                    raise ToolOutputTypeMismatch()
+                file_content = file_storage.read(output_file, mode="r")
+                result = json.loads(file_content)
+            elif output_type == ToolOutputType.TXT:
+                if file_type == EXT_MIME_MAP[ToolOutputType.JSON.lower()]:
+                    logger.error(f"Output type txt mismatched {file_type}")
+                    raise ToolOutputTypeMismatch()
+                file_content = file_storage.read(output_file, mode="r")
+                result = file_content.encode("utf-8").decode("unicode-escape")
+            else:
+                raise InvalidToolOutputType()
+        except (FileNotFoundError, json.JSONDecodeError) as err:
+            logger.error(f"Error while getting result {err}")
+        return result
+
     def get_metadata(
         self, file_history: Optional[FileHistory] = None
     ) -> Optional[dict[str, Any]]:
@@ -454,8 +496,13 @@ class DestinationConnector(BaseConnector):
         Returns:
             None
         """
-        fs: LocalFileSystem = fsspec.filesystem("file")
-        fs.rm(self.execution_dir, recursive=True)
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            file_storage = file_system.get_file_storage()
+            file_storage.rm(self.execution_dir, recursive=True)
+        else:
+            fs: LocalFileSystem = fsspec.filesystem("file")
+            fs.rm(self.execution_dir, recursive=True)
         self.delete_api_storage_dir(self.workflow_id, self.execution_id)
 
     @classmethod
@@ -468,8 +515,13 @@ class DestinationConnector(BaseConnector):
         api_storage_dir = cls.get_api_storage_dir_path(
             workflow_id=workflow_id, execution_id=execution_id
         )
-        fs: LocalFileSystem = fsspec.filesystem("file")
-        fs.rm(api_storage_dir, recursive=True)
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            file_system = FileSystem(FileStorageType.API_EXECUTION)
+            file_storage = file_system.get_file_storage()
+            file_storage.rm(api_storage_dir, recursive=True)
+        else:
+            fs: LocalFileSystem = fsspec.filesystem("file")
+            fs.rm(api_storage_dir, recursive=True)
 
     @classmethod
     def create_endpoint_for_workflow(

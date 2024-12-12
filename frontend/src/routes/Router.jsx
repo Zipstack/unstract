@@ -113,19 +113,19 @@ function Router() {
 
         {/* protected routes */}
         <Route path="setOrg" element={<SetOrgPage />} />
+        {SelectProduct && (
+          <Route path="selectProduct" element={<SelectProduct />} />
+        )}
+        {TrialRoutes && (
+          <Route path="/trial-expired" element={<TrialRoutes />} />
+        )}
+        {PaymentSuccessful && (
+          <Route path="/payment/success" element={<PaymentSuccessful />} />
+        )}
         <Route path="" element={<RequireAuth />}>
           <Route path="">{MainAppRoute}</Route>
           {llmWhispererRouter && (
             <Route path="llm-whisperer">{llmWhispererRouter()}</Route>
-          )}
-          {TrialRoutes && (
-            <Route path="/trial-expired" element={<TrialRoutes />} />
-          )}
-          {SelectProduct && (
-            <Route path="selectProduct" element={<SelectProduct />} />
-          )}
-          {PaymentSuccessful && (
-            <Route path="/payment/success" element={<PaymentSuccessful />} />
           )}
         </Route>
       </Route>

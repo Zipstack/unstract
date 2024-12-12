@@ -632,7 +632,6 @@ unstract/tool-registry/tool_registry_config/registry.yaml
 # Docker related
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,linux,pycharm,pycharm+all,pycharm+iml,python,visualstudiocode,react,django
 docker/temp/*
-docker/init.sql/*
 docker/*.env
 !docker/sample*.env
 docker/public_tools.json

@@ -91,7 +91,9 @@ def process() -> Any:
     file_size_in_kb = int(request.headers["Content-Length"]) / 1024
 
     bearer_token = AuthenticationMiddleware.get_token_from_auth_header(request)
-    org_id = AuthenticationMiddleware.get_account_from_bearer_token(bearer_token)
+    _, org_id = AuthenticationMiddleware.get_organization_from_bearer_token(
+        bearer_token
+    )
 
     x2_text_audit: X2TextAudit = X2TextAudit.create(
         org_id=org_id,

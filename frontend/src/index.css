@@ -175,3 +175,7 @@ body {
 .ant-tabs-nav-operations {
   display: none !important;
 }
+
+.text-align-center {
+  text-align: center;
+}

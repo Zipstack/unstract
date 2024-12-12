@@ -1,4 +1,6 @@
 # Add your dependencies here
 
 # Required for all unstract tools
-unstract-sdk~=0.52.0
+unstract-sdk~=0.54.0rc5
+# TODO: remove once it added in sdk
+s3fs[boto3]==2024.6.0

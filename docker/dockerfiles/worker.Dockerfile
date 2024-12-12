@@ -23,6 +23,7 @@ WORKDIR /app
 COPY ${BUILD_CONTEXT_PATH} .
 # Copy local dependency packages
 COPY ${BUILD_PACKAGES_PATH}/core /unstract/core
+COPY ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 
 RUN set -e; \
     \

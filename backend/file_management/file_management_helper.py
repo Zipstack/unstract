@@ -7,6 +7,7 @@ from typing import Any
 
 import magic
 from connector_v2.models import ConnectorInstance
+from deprecated import deprecated
 from django.conf import settings
 from django.http import StreamingHttpResponse
 from file_management.exceptions import (
@@ -151,6 +152,7 @@ class FileManagerHelper:
                 remote_file.write(file.read())
 
     @staticmethod
+    @deprecated(reason="Use remote FS APIs from SDK")
     def fetch_file_contents(file_system: UnstractFileSystem, file_path: str) -> Any:
         fs = file_system.get_fsspec_fs()
 
