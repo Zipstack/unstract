@@ -88,6 +88,9 @@ class DeploymentExecution(views.APIView):
             response_status = status.HTTP_200_OK
             if not include_metadata:
                 response.remove_result_metadata_keys()
+        if response.result_acknowledged:
+            response_status = status.HTTP_406_NOT_ACCEPTABLE
+            response.result = "Result already acknowledged"
         return Response(
             data={
                 "status": response.execution_status,
