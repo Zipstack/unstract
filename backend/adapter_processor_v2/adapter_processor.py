@@ -92,10 +92,11 @@ class AdapterProcessor:
 
             adapter_instance = adapter_class(adapter_metadata)
             test_result: bool = adapter_instance.test_connection()
-            logger.info(f"{adapter_id} test result: {test_result}")
             return test_result
         except SdkError as e:
-            raise TestAdapterError(str(e))
+            raise TestAdapterError(
+                e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]
+            )
 
     @staticmethod
     def __fetch_adapters_by_key_value(key: str, value: Any) -> Adapter:
