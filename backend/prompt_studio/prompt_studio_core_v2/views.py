@@ -1,6 +1,4 @@
-import io
 import logging
-import os
 import uuid
 from typing import Any, Optional
 
@@ -467,10 +465,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             file_type = uploaded_file.content_type
             # Convert non-PDF files
             if file_converter and file_type != "application/pdf":
-                file_data_bytes = uploaded_file.read()
-                with io.BytesIO(file_data_bytes) as file_stream:
-                    file_data = file_converter.convert_to_pdf(file_stream, file_name)
-                file_name = f"{os.path.splitext(file_name)[0]}.pdf"
+                file_data, file_name = file_converter.process_file(
+                    file_converter, uploaded_file, file_name
+                )
 
             logger.info(
                 f"Uploading file: {file_name}" if file_name else "Uploading file"

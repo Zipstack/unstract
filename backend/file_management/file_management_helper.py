@@ -146,10 +146,7 @@ class FileManagerHelper:
         # adding filename with path
         file_path += file_name
         with fs.open(file_path, mode="wb") as remote_file:
-            if isinstance(file, bytes):
-                remote_file.write(file)
-            else:
-                remote_file.write(file.read())
+            remote_file.write(file.read())
 
     @staticmethod
     @deprecated(reason="Use remote FS APIs from SDK")
@@ -198,7 +195,7 @@ class FileManagerHelper:
                 data = file.read()
 
         else:
-            raise InvalidFileType(f"File type '{file_content_type}' is not handled.")
+            logger.warning(f"File type '{file_content_type}' is not handled.")
 
         return {"data": data, "mime_type": file_content_type}
 
