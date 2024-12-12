@@ -109,7 +109,7 @@ def prompt_processor() -> Any:
         PSKeys.RUN_ID: run_id,
         PSKeys.FILE_NAME: doc_name,
         PSKeys.CONTEXT: {},
-        PSKeys.REQUIRED_FIELDS: [],
+        PSKeys.REQUIRED_FIELDS: {},
     }
     variable_names: list[str] = []
     publish_log(
@@ -125,7 +125,7 @@ def prompt_processor() -> Any:
         metadata[PSKeys.REQUIRED_FIELDS] = add_required_field(
             metadata[PSKeys.REQUIRED_FIELDS],
             output[PSKeys.NAME],
-            output.get(PSKeys.REQUIRED, False),
+            output.get(PSKeys.REQUIRED, None),
         )
     for output in prompts:  # type:ignore
         prompt_name = output[PSKeys.NAME]

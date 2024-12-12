@@ -345,17 +345,21 @@ def extract_table(
 
 
 def add_required_field(
-    required_fields: list[str], key: str, required: bool
-) -> list[str]:
+    required_fields: dict[str, str], key: str, required: str
+) -> dict[str, str]:
     """
-    Retrieve a list of required prompt keys for a specific tool ID.
+    Add or update a required field in the required_fields dictionary.
 
     Args:
-        tool_id (str): The ID of the tool for which required fields are retrieved.
+        required_fields (Dict[str, str]): The dictionary
+        containing existing required fields,
+        where keys are field names and values are boolean flags.
+        key (str): The field key to add or update in the dictionary.
+        required (str): A indicating whether the
+        all/any values in field is required.
 
     Returns:
-        List[str]: A list of prompt keys marked as required for the given tool ID.
+        Dict[str, str]: The updated dictionary of required fields.
     """
-    if required:
-        required_fields.append(key)
+    required_fields[key] = required
     return required_fields
