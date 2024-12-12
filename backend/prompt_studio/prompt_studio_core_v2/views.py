@@ -459,13 +459,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             plugins=self.processor_plugins,
         )
 
-        file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            UserSessionUtils.get_organization_id(request),
-            is_create=True,
-            user_id=custom_tool.created_by.user_id,
-            tool_id=str(custom_tool.tool_id),
-        )
-
         documents = []
         for uploaded_file in uploaded_files:
             # Store file
