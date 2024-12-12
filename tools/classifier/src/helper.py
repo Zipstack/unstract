@@ -67,7 +67,7 @@ class ClassifierHelper:
         """
         try:
             output_folder_bin = Path(self.output_dir) / classification
-            if hasattr(self.tool, "workflow_filestorage"):
+            if self.tool.workflow_filestorage:
                 output_file = output_folder_bin / source_name
                 self._copy_file(
                     source_fs=self.tool.workflow_filestorage,
@@ -163,7 +163,7 @@ class ClassifierHelper:
         """
         self.tool.stream_log("Extracting text from file")
         try:
-            if hasattr(self.tool, "workflow_filestorage"):
+            if self.tool.workflow_filestorage:
                 text = self.tool.workflow_filestorage.read(path=file, mode="rb").decode(
                     "utf-8"
                 )
