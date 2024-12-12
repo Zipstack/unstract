@@ -80,14 +80,10 @@ class DeploymentExecution(views.APIView):
         execution_id = serializer.validated_data.get(ApiExecution.EXECUTION_ID)
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
 
-        try:
-            response: ExecutionResponse = DeploymentHelper.get_execution_status(
-                execution_id
-            )
-        except InvalidAPIRequest as e:
-            logger.error(f"Invalid execution_id: {execution_id}. Error: {e}")
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        # Fetch execution status
+        response: ExecutionResponse = DeploymentHelper.get_execution_status(execution_id)   
 
+        # Determine response status
         response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
         if response.execution_status == CeleryTaskState.COMPLETED.value:
             response_status = status.HTTP_200_OK
