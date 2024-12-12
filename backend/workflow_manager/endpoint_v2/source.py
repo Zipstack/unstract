@@ -8,6 +8,7 @@ from itertools import islice
 from typing import Any, Optional
 
 import fsspec
+import magic
 from connector_processor.constants import ConnectorKeys
 from connector_v2.models import ConnectorInstance
 from django.core.files.uploadedfile import UploadedFile
@@ -313,10 +314,19 @@ class SourceConnector(BaseConnector):
                     break
                 if self._should_process_file(file, patterns):
                     file_path = str(os.path.join(root, file))
+                    file_content, file_size = self.get_file_content(
+                        input_file_path=file_path
+                    )
                     if self._is_new_file(
-                        file_path=file_path, workflow=self.endpoint.workflow
+                        file_path=file_path,
+                        file_content=file_content,
+                        workflow=self.endpoint.workflow,
                     ):
-                        matched_files[file_path] = self._create_file_hash(file_path)
+                        matched_files[file_path] = self._create_file_hash(
+                            file_path=file_path,
+                            file_content=file_content,
+                            file_size=file_size,
+                        )
                         count += 1
 
         return matched_files, count
@@ -327,10 +337,11 @@ class SourceConnector(BaseConnector):
             fnmatch.fnmatchcase(file.lower(), pattern.lower()) for pattern in patterns
         )
 
-    def _is_new_file(self, file_path: str, workflow: Workflow) -> bool:
+    def _is_new_file(
+        self, file_path: str, file_content: bytes, workflow: Workflow
+    ) -> bool:
         """Check if the file is new or already processed."""
-        file_content = self.get_file_content(input_file_path=file_path)
-        file_hash = self.get_hash_value(file_content)
+        file_hash = self.get_file_content_hash(file_content)
         file_history = FileHistoryHelper.get_file_history(
             workflow=workflow, cache_key=file_hash
         )
@@ -350,18 +361,21 @@ class SourceConnector(BaseConnector):
 
         return True
 
-    def _create_file_hash(self, file_path: str) -> FileHash:
+    def _create_file_hash(
+        self, file_path: str, file_content: bytes, file_size: int
+    ) -> FileHash:
         """Create a FileHash object for the matched file."""
         file_name = os.path.basename(file_path)
-        file_content = self.get_file_content(input_file_path=file_path)
-        file_hash = self.get_hash_value(file_content)
+        file_hash = self.get_file_content_hash(file_content)
         connection_type = self.endpoint.connection_type
-
+        file_type = magic.from_buffer(file_content, mime=True)
         return FileHash(
             file_path=file_path,
             source_connection_type=connection_type,
             file_name=file_name,
             file_hash=file_hash,
+            file_size=file_size,
+            mime_type=file_type,
         )
 
     def list_files_from_source(
@@ -408,7 +422,9 @@ class SourceConnector(BaseConnector):
         else:
             raise ValueError(f"Unsupported hash_method: {hash_method}")
 
-    def get_file_content(self, input_file_path: str, chunk_size: int = 8192) -> bytes:
+    def get_file_content(
+        self, input_file_path: str, chunk_size: int = 8192
+    ) -> tuple[bytes, int]:
         """Read the content of a file from a remote filesystem in chunks.
 
         Args:
@@ -417,21 +433,28 @@ class SourceConnector(BaseConnector):
             (default is 8192 bytes).
 
         Returns:
-            bytes: The content of the file.
+            tuple[bytes, int]:
+                A tuple containing the content of the file as bytes and
+                its size in bytes.
         """
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
         source_fs = self.get_fsspec(
             settings=connector_settings, connector_id=connector.connector_id
         )
+
+        # Get file size
+        file_metadata = source_fs.stat(input_file_path)
+        file_size = file_metadata.get("size", 0)
+
         file_content = bytearray()  # Use bytearray for efficient byte concatenation
         with source_fs.open(input_file_path, "rb") as remote_file:
             while chunk := remote_file.read(chunk_size):
                 file_content.extend(chunk)
 
-        return bytes(file_content)
+        return bytes(file_content), file_size
 
-    def get_hash_value(self, file_content: bytes) -> str:
+    def get_file_content_hash(self, file_content: bytes) -> str:
         """Generate a hash value from the file content.
 
         Args:
@@ -470,7 +493,7 @@ class SourceConnector(BaseConnector):
 
         # Get file content and hash value
         file_content = self.get_file_content(input_file_path)
-        hash_value_of_file_content = self.get_hash_value(file_content)
+        hash_value_of_file_content = self.get_file_content_hash(file_content)
 
         logger.info(
             f"hash_value_of_file {source_file} is : {hash_value_of_file_content}"
@@ -695,6 +718,8 @@ class SourceConnector(BaseConnector):
                 file_name=file_name,
                 file_hash=file_hash,
                 is_executed=is_executed,
+                file_size=file.size,
+                mime_type=file.content_type,
             )
             file_hashes.update({file_name: file_hash})
         return file_hashes
