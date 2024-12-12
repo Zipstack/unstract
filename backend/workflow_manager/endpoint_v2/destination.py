@@ -10,6 +10,7 @@ import magic
 from connector_v2.models import ConnectorInstance
 from fsspec.implementations.local import LocalFileSystem
 from unstract.sdk.constants import ToolExecKey
+from unstract.sdk.file_storage.constants import FileOperationParams
 from unstract.sdk.tool.mime_types import EXT_MIME_MAP
 from unstract.workflow_execution.constants import ToolOutputType
 from utils.user_context import UserContext
@@ -457,7 +458,9 @@ class DestinationConnector(BaseConnector):
         file_storage = file_system.get_file_storage()
         try:
             # TODO: SDK handles validation; consider removing here.
-            file_type = file_storage.mime_type(output_file)
+            file_type = file_storage.mime_type(
+                path=output_file, read_length=FileOperationParams.READ_ENTIRE_LENGTH
+            )
             if output_type == ToolOutputType.JSON:
                 if file_type != EXT_MIME_MAP[ToolOutputType.JSON.lower()]:
                     logger.error(f"Output type json mismatched {file_type}")
