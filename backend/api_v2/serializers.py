@@ -126,7 +126,9 @@ class ExecutionQuerySerializer(Serializer):
         try:
             uuid.UUID(value)
         except ValueError:
-            raise ValidationError(f"Invalid execution_id '{value}'. Must be a valid UUID.")
+            raise ValidationError(
+                f"Invalid execution_id '{value}'. Must be a valid UUID."
+            )
         return value
 
 
