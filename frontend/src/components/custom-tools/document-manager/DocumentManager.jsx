@@ -13,7 +13,10 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import "./DocumentManager.css";
 
-import { docIndexStatus } from "../../../helpers/GetStaticData";
+import {
+  base64toBlobWithMime,
+  docIndexStatus,
+} from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -38,22 +41,6 @@ let items = [
 const viewTypes = {
   original: "ORIGINAL",
   extract: "EXTRACT",
-};
-
-const base64toBlob = (data, mimeType) => {
-  const byteCharacters = atob(data?.data); // Decode base64
-  const byteArrays = [];
-
-  for (let offset = 0; offset < byteCharacters.length; offset += 512) {
-    const slice = byteCharacters.slice(offset, offset + 512);
-    const byteNumbers = new Array(slice.length);
-    for (let i = 0; i < slice.length; i++) {
-      byteNumbers[i] = slice.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    byteArrays.push(byteArray);
-  }
-  return new Blob(byteArrays, { type: mimeType });
 };
 
 // Import components for the summarize feature
@@ -259,7 +246,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const processGetDocsResponse = (data, viewType, mimeType) => {
     if (viewType === viewTypes.original) {
       const base64String = data || "";
-      const blob = base64toBlob(base64String, mimeType);
+      const blob = base64toBlobWithMime(base64String, mimeType);
       setFileData({ blob, mimeType });
       const reader = new FileReader();
       reader.readAsDataURL(blob);
@@ -357,7 +344,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
   const renderDoc = (docName, fileUrl) => {
     const fileType = docName?.split(".").pop().toLowerCase(); // Get the file extension
-    console.log(docName, fileData);
     switch (fileType) {
       case "pdf":
         return <PdfViewer fileUrl={fileUrl} />;
@@ -440,7 +426,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           setOpenManageDocsModal={setOpenManageDocsModal}
           errMsg={fileErrMsg}
         >
-          {console.log(fileData.blob)}
           {renderDoc(selectedDoc?.document_name, blobFileUrl)}
         </DocumentViewer>
       )}
