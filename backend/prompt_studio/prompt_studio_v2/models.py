@@ -84,7 +84,17 @@ class ToolStudioPrompt(BaseModel):
         db_comment="Field to store the prompt key",
         unique=False,
     )
-    required = models.BooleanField(default=False)
+    REQUIRED_CHOICES = [
+        ("all", "All values required"),
+        ("any", "Any value required"),
+    ]
+    required = models.CharField(
+        max_length=3,
+        choices=REQUIRED_CHOICES,
+        null=True,  # Allows the field to store NULL in the database
+        blank=True,  # Allows the field to be optional in forms
+        default=None,  # Sets the default value to None
+    )
     is_assert = models.BooleanField(default=False)
     active = models.BooleanField(default=True, null=False, blank=False)
     output_metadata = models.JSONField(
