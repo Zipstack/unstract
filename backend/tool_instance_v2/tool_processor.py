@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 class ToolProcessor:
     TOOL_NOT_IN_REGISTRY_MESSAGE = "Tool does not exist in registry"
-    tool_registry = ToolRegistry()
 
     @staticmethod
     def get_tool_by_uid(tool_uid: str) -> Tool:
