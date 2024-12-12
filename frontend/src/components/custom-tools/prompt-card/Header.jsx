@@ -58,7 +58,7 @@ function Header({
   const [items, setItems] = useState([]);
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(null);
-  const [isRequired, setIsRequired] = useState(false);
+  const [required, setRequired] = useState(false);
 
   const handleRunBtnClick = (promptRunType, docId = null) => {
     setExpandCard(true);
@@ -74,18 +74,22 @@ function Header({
       }
     );
   };
-  const handleRequired = (event) => {
-    const check = event?.target?.checked;
-    setIsRequired(check);
-    handleChange(check, promptDetails?.prompt_id, "required", true, true).catch(
-      () => {
-        setIsRequired(!check);
-      }
-    );
+  const handleRequiredChange = (value) => {
+    const newValue = value === required ? null : value; // Allow deselection
+    setRequired(newValue);
+    handleChange(
+      newValue,
+      promptDetails?.prompt_id,
+      "required",
+      true,
+      true
+    ).catch(() => {
+      setRequired(promptDetails?.required || null); // Rollback state in case of error
+    });
   };
   useEffect(() => {
     setIsDisablePrompt(promptDetails?.active);
-    setIsRequired(promptDetails?.required);
+    setRequired(promptDetails?.required);
   }, [promptDetails, details]);
 
   useEffect(() => {
@@ -100,9 +104,20 @@ function Header({
       },
       {
         label: (
-          <Checkbox checked={isRequired} onChange={handleRequired}>
-            Required
-          </Checkbox>
+          <div>
+            <Checkbox
+              checked={required === "all"}
+              onChange={() => handleRequiredChange("all")}
+            >
+              All Required
+            </Checkbox>
+            <Checkbox
+              checked={required === "any"}
+              onChange={() => handleRequiredChange("any")}
+            >
+              Any Required
+            </Checkbox>
+          </div>
         ),
         key: "required",
       },
@@ -128,7 +143,7 @@ function Header({
     }
 
     setItems(dropdownItems);
-  }, [isDisablePrompt, isRequired]);
+  }, [isDisablePrompt, required]);
 
   return (
     <Row>

@@ -112,6 +112,7 @@ const PromptCard = memo(
         name = event.target.name;
         value = event.target.value;
       }
+
       const prevPromptDetailsState = { ...promptDetailsState };
 
       const updatedPromptDetailsState = { ...promptDetailsState };
