@@ -6,6 +6,7 @@ from account_v2.custom_exceptions import DuplicateData
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest
+from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from file_management.file_management_helper import FileManagerHelper
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
@@ -396,7 +397,14 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         view_type: str = serializer.validated_data.get("view_type")
+        file_converter = get_plugin_class_by_name(
+            name="file_converter",
+            plugins=self.processor_plugins,
+        )
 
+        allowed_content_types = FileKey.FILE_UPLOAD_ALLOWED_MIME
+        if file_converter:
+            allowed_content_types = file_converter.get_extented_file_information_key()
         filename_without_extension = file_name.rsplit(".", 1)[0]
         if view_type == FileViewTypes.EXTRACT:
             file_name = (
@@ -422,7 +430,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             file_path += file_name
             # Temporary Hack for frictionless onboarding as the user id will be empty
             try:
-                contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
+                contents = FileManagerHelper.fetch_file_contents(
+                    file_system, file_path, allowed_content_types
+                )
             except FileNotFound:
                 file_path = file_path = (
                     FileManagerHelper.handle_sub_directory_for_tenants(

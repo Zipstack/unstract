@@ -28,13 +28,6 @@ from pydrive2.files import ApiRequestError
 from unstract.connectors.filesystems import connectors as fs_connectors
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
-try:
-    from plugins.processor.file_converter.constants import (
-        ExtentedFileInformationKey as FileKey,
-    )
-except ImportError:
-    from file_management.constants import FileInformationKey as FileKey
-
 logger = logging.getLogger(__name__)
 
 
@@ -146,15 +139,17 @@ class FileManagerHelper:
         # adding filename with path
         file_path += file_name
         with fs.open(file_path, mode="wb") as remote_file:
-            remote_file.write(file.read())
+            if isinstance(file, bytes):
+                remote_file.write(file)
+            else:
+                remote_file.write(file.read())
 
     @staticmethod
     @deprecated(reason="Use remote FS APIs from SDK")
-    def fetch_file_contents(file_system: UnstractFileSystem, file_path: str) -> Any:
+    def fetch_file_contents(
+        file_system: UnstractFileSystem, file_path: str, allowed_content_types
+    ) -> Any:
         fs = file_system.get_fsspec_fs()
-
-        # Define allowed content types
-        allowed_content_types = FileKey.FILE_UPLOAD_ALLOWED_MIME
 
         try:
             file_info = fs.info(file_path)
