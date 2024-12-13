@@ -358,8 +358,9 @@ class WorkflowHelper:
                 f"with workflow execution: {workflow_execution}"
             )
 
-    @staticmethod
+    @classmethod
     def get_status_of_async_task(
+        cls,
         execution_id: str,
     ) -> ExecutionResponse:
         """Get celery task status.
@@ -381,12 +382,38 @@ class WorkflowHelper:
         result = AsyncResult(str(execution.task_id))
 
         task = AsyncResultData(async_result=result)
-        return ExecutionResponse(
+
+        # Prepare the initial response with the task's current status and result.
+        result_response = ExecutionResponse(
             execution.workflow_id,
             execution_id,
             execution.status,
             result=task.result,
+            result_acknowledged=execution.result_acknowledged,
         )
+
+        # If task is complete, handle acknowledgment and forgetting the
+        if result.ready():
+            result.forget()  # Remove the result from the result backend.
+            cls._set_result_acknowledge(execution)
+        return result_response
+
+    @staticmethod
+    def _set_result_acknowledge(execution: WorkflowExecution) -> None:
+        """Mark the result as acknowledged and update the database.
+
+        This method is called once the task has completed and its result is forgotten.
+        It ensures that the task result is flagged as acknowledged in the database
+
+        Args:
+            execution (WorkflowExecution): WorkflowExecution instance
+        """
+        if not execution.result_acknowledged:
+            execution.result_acknowledged = True
+            execution.save()
+            logger.info(
+                f"ExecutionID [{execution.id}] - Task {execution.task_id} acknowledged"
+            )
 
     @staticmethod
     def execute_workflow_async(
