@@ -362,7 +362,7 @@ class SourceConnector(BaseConnector):
         return True
 
     def _create_file_hash(
-        self, file_path: str, file_content: bytes, file_size: int
+        self, file_path: str, file_content: bytes, file_size: Optional[int]
     ) -> FileHash:
         """Create a FileHash object for the matched file."""
         file_name = os.path.basename(file_path)
@@ -424,7 +424,7 @@ class SourceConnector(BaseConnector):
 
     def get_file_content(
         self, input_file_path: str, chunk_size: int = 8192
-    ) -> tuple[bytes, int]:
+    ) -> tuple[bytes, Optional[int]]:
         """Read the content of a file from a remote filesystem in chunks.
 
         Args:
@@ -445,7 +445,9 @@ class SourceConnector(BaseConnector):
 
         # Get file size
         file_metadata = source_fs.stat(input_file_path)
-        file_size = file_metadata.get("size", 0)
+        file_size: Optional[int] = file_metadata.get("size")
+        if file_size is None:
+            logger.warning(f"File size for {input_file_path} could not be determined.")
 
         file_content = bytearray()  # Use bytearray for efficient byte concatenation
         with source_fs.open(input_file_path, "rb") as remote_file:
@@ -492,7 +494,7 @@ class SourceConnector(BaseConnector):
         source_file = f"file://{source_file_path}"
 
         # Get file content and hash value
-        file_content = self.get_file_content(input_file_path)
+        file_content, _ = self.get_file_content(input_file_path)
         hash_value_of_file_content = self.get_file_content_hash(file_content)
 
         logger.info(

@@ -3,7 +3,6 @@ import logging
 import os
 import traceback
 from typing import Any, Optional
-from uuid import uuid4
 
 from account_v2.constants import Common
 from api_v2.models import APIDeployment
@@ -29,7 +28,6 @@ from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.endpoint_v2.source import SourceConnector
-from workflow_manager.file_execution.file_execution_helper import FileExecutionHelper
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.constants import (
     CeleryConfigurations,
@@ -120,9 +118,8 @@ class WorkflowHelper:
         is_api = source.endpoint.connection_type == WorkflowEndpoint.ConnectionType.API
         # Determine file path based on connection type
         execution_file_path = file_hash.file_path if not is_api else None
-
         # Create or retrieve the workflow execution file
-        return FileExecutionHelper.get_or_create_file_execution(
+        return WorkflowFileExecution.objects.get_or_create_file_execution(
             workflow_execution=execution_service.workflow_execution,
             file_name=file_hash.file_name,
             file_hash=file_hash.file_hash,
@@ -180,30 +177,26 @@ class WorkflowHelper:
                 )
                 if error:
                     failed_files += 1
-                    FileExecutionHelper.update_execution_error(
-                        workflow_execution_file, error
+                    workflow_execution_file.update_status(
+                        status=ExecutionStatus.ERROR,
+                        execution_error=error,
                     )
                 else:
                     successful_files += 1
-                    FileExecutionHelper.update_status(
-                        workflow_execution_file, ExecutionStatus.COMPLETED
-                    )
+                    workflow_execution_file.update_status(ExecutionStatus.COMPLETED)
             except StopExecution as e:
                 execution_service.update_execution(
                     ExecutionStatus.STOPPED, error=str(e)
                 )
-                FileExecutionHelper.update_status(
-                    execution_file=workflow_execution_file,
-                    status=ExecutionStatus.STOPPED,
-                    execution_error=str(e),
+                workflow_execution_file.update_status(
+                    status=ExecutionStatus.STOPPED, execution_error=str(e)
                 )
                 break
             except Exception as e:
                 failed_files += 1
                 error_message = f"Error processing file '{file_path}'. {e}"
                 logger.error(error_message, stack_info=True, exc_info=True)
-                FileExecutionHelper.update_status(
-                    execution_file=workflow_execution_file,
+                workflow_execution_file.update_status(
                     status=ExecutionStatus.ERROR,
                     execution_error=error_message,
                 )
@@ -245,13 +238,12 @@ class WorkflowHelper:
             execution_service.initiate_tool_execution(
                 current_file_idx, total_files, file_name, single_step
             )
-            FileExecutionHelper.update_status(
-                workflow_file_execution, ExecutionStatus.INITIATED
-            )
+            workflow_file_execution.update_status(status=ExecutionStatus.INITIATED)
             if not file_hash.is_executed:
                 # Multiple run_ids are linked to an execution_id
                 # Each run_id corresponds to workflow runs for a single file
-                run_id = str(uuid4())
+                # It should e uuid of workflow_file_execution
+                run_id = str(workflow_file_execution.id)
                 execution_service.execute_input_file(
                     run_id=run_id,
                     file_name=file_name,

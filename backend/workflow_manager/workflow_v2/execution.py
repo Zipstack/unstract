@@ -14,7 +14,6 @@ from unstract.workflow_execution.enums import ExecutionType, LogComponent, LogSt
 from unstract.workflow_execution.exceptions import StopExecution
 from utils.local_context import StateStore
 from utils.user_context import UserContext
-from workflow_manager.file_execution.file_execution_helper import FileExecutionHelper
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.constants import WorkflowKey
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -334,9 +333,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             message=f"{file_name} Sent for execution",
             component=LogComponent.SOURCE,
         )
-        FileExecutionHelper.update_status(
-            workflow_file_execution, ExecutionStatus.EXECUTING
-        )
+        workflow_file_execution.update_status(ExecutionStatus.EXECUTING)
+
         self.execute(run_id, file_name, single_step)
         self.publish_log(f"Tool executed successfully for '{file_name}'")
         self._handle_execution_type(execution_type)
