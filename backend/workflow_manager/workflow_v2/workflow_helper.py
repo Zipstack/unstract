@@ -412,7 +412,7 @@ class WorkflowHelper:
             execution.result_acknowledged = True
             execution.save()
             logger.info(
-                f"ExecutionId [{execution.id}] - Task {execution.task_id} acknowledged"
+                f"ExecutionID [{execution.id}] - Task {execution.task_id} acknowledged"
             )
 
     @staticmethod
