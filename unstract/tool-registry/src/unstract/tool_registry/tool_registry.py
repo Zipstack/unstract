@@ -26,12 +26,8 @@ logger = logging.getLogger(__name__)
 
 class ToolRegistry:
     REGISTRY_FILE = "registry.yaml"
-    if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-        PRIVATE_TOOL_CONFIG_FILE = "private_tools_remote_storage.json"
-        PUBLIC_TOOL_CONFIG_FILE = "public_tools_remote_storage.json"
-    else:
-        PRIVATE_TOOL_CONFIG_FILE = "private_tools.json"
-        PUBLIC_TOOL_CONFIG_FILE = "public_tools.json"
+    PRIVATE_TOOL_CONFIG_FILE = "private_tools.json"
+    PUBLIC_TOOL_CONFIG_FILE = "public_tools.json"
 
     def __init__(
         self,
