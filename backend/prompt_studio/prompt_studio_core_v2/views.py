@@ -476,7 +476,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             # Convert non-PDF files
             if file_converter and file_type != "application/pdf":
                 file_data, file_name = file_converter.process_file(
-                    file_converter, uploaded_file, file_name
+                    uploaded_file, file_name
                 )
 
             logger.info(
