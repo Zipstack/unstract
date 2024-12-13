@@ -147,7 +147,9 @@ class FileManagerHelper:
     @staticmethod
     @deprecated(reason="Use remote FS APIs from SDK")
     def fetch_file_contents(
-        file_system: UnstractFileSystem, file_path: str, allowed_content_types
+        file_system: UnstractFileSystem,
+        file_path: str,
+        allowed_content_types: list[str],
     ) -> Any:
         fs = file_system.get_fsspec_fs()
 
