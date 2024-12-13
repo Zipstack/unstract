@@ -73,7 +73,7 @@ class TextExtractor(BaseTool):
             self.stream_log("Preparing to write the extracted text.")
             if source_name:
                 output_path = Path(output_dir) / f"{Path(source_name).stem}.txt"
-                if hasattr(self, "workflow_filestorage"):
+                if self.workflow_filestorage:
                     self.workflow_filestorage.write(
                         path=output_path, mode="w", data=extracted_text
                     )
