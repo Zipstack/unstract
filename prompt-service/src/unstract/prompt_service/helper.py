@@ -383,13 +383,13 @@ def extract_line_item(
             llm=llm,
             tool_settings=tool_settings,
             output=output,
+            prompt=prompt,
             structured_output=structured_output,
             logger=current_app.logger,
-            prompt=prompt,
         )
         answer = line_item_extraction.run()
         structured_output[output[PSKeys.NAME]] = answer
         return structured_output
-    except line_item_extraction["exception_cls"] as e:
+    except line_item_extraction_plugin["exception_cls"] as e:
         msg = f"Couldn't extract table. {e}"
         raise APIError(message=msg)
