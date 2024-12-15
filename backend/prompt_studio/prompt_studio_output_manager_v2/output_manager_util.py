@@ -20,6 +20,7 @@ class OutputManagerUtils:
             profile_manager_id (str): The ID of the profile manager
             for which coverage is calculated.
             prompt_id (Optional[str]): The ID of the prompt (optional).
+            is_single_pass (Optional[bool]): Singlepass enabled or not
             If provided, coverage is fetched for the specific prompt.
 
         Returns:

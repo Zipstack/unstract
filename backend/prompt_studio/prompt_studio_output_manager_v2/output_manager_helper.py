@@ -193,7 +193,7 @@ class OutputManagerHelper:
     def fetch_default_output_response(
         tool_studio_prompts: list[ToolStudioPrompt],
         document_manager_id: str,
-        use_default_profile: str = False,
+        use_default_profile: bool = False,
     ) -> dict[str, Any]:
         """Method to frame JSON responses for combined output for default for
         default profile manager of the project.
@@ -201,6 +201,7 @@ class OutputManagerHelper:
         Args:
             tool_studio_prompts (list[ToolStudioPrompt])
             document_manager_id (str)
+            use_default_profile (bool)
 
         Returns:
             dict[str, Any]: Formatted JSON response for combined output.
