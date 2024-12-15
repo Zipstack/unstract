@@ -299,3 +299,16 @@
 .info-circle-colored {
   color: #f0ad4e;
 }
+
+.highlighted-prompt {
+  border-width: 1.2px;
+  border-style: solid;
+  border-color: #4096ff;
+  box-shadow: 4px 4px 12.5px 0px rgba(0, 0, 0, 0.08);
+}
+
+.highlighted-prompt-cell {
+  border-width: 1.2px;
+  border-style: solid;
+  border-color: #ffb400;
+}

@@ -27,6 +27,9 @@ class PromptStudioOutputManager(BaseModel):
     challenge_data = models.JSONField(
         db_comment="Field to store challenge data", editable=True, null=True, blank=True
     )
+    highlight_data = models.JSONField(
+        db_comment="Field to store highlight data", editable=True, null=True, blank=True
+    )
     eval_metrics = models.JSONField(
         db_column="eval_metrics",
         null=False,

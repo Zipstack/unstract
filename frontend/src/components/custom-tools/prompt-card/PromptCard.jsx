@@ -43,8 +43,13 @@ const PromptCard = memo(
     const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
     const [progressMsg, setProgressMsg] = useState({});
     const [spsLoading, setSpsLoading] = useState({});
-    const { llmProfiles, selectedDoc, details, summarizeIndexStatus } =
-      useCustomToolStore();
+    const {
+      llmProfiles,
+      selectedDoc,
+      details,
+      summarizeIndexStatus,
+      updateCustomTool,
+    } = useCustomToolStore();
     const { messages } = useSocketCustomToolStore();
     const { setAlertDetails } = useAlertStore();
     const { setPostHogCustomEvent } = usePostHogEvents();
@@ -161,6 +166,22 @@ const PromptCard = memo(
       );
     };
 
+    const handleSelectHighlight = (
+      highlightData,
+      highlightedPrompt,
+      highlightedProfile
+    ) => {
+      if (details?.enable_highlight) {
+        updateCustomTool({
+          selectedHighlight: {
+            highlight: highlightData,
+            highlightedPrompt: highlightedPrompt,
+            highlightedProfile: highlightedProfile,
+          },
+        });
+      }
+    };
+
     const handleTypeChange = (value) => {
       handleChange(value, promptDetailsState?.prompt_id, "enforce_type", true);
     };
@@ -261,6 +282,7 @@ const PromptCard = memo(
           promptRunStatus={promptRunStatus}
           coverageCountData={coverageCountData}
           isChallenge={isChallenge}
+          handleSelectHighlight={handleSelectHighlight}
         />
         <OutputForDocModal
           open={openOutputForDoc}

@@ -22,6 +22,7 @@ const defaultState = {
   isPublicSource: false,
   isChallengeEnabled: false,
   adapters: [],
+  selectedHighlight: null,
 };
 
 const defaultPromptInstance = {
