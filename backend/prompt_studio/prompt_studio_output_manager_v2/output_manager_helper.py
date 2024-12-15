@@ -191,7 +191,9 @@ class OutputManagerHelper:
 
     @staticmethod
     def fetch_default_output_response(
-        tool_studio_prompts: list[ToolStudioPrompt], document_manager_id: str
+        tool_studio_prompts: list[ToolStudioPrompt],
+        document_manager_id: str,
+        use_default_profile: str = False,
     ) -> dict[str, Any]:
         """Method to frame JSON responses for combined output for default for
         default profile manager of the project.
@@ -213,9 +215,15 @@ class OutputManagerHelper:
             profile_manager_id = tool_prompt.profile_manager_id
 
             # If profile_manager is not set, skip this record
-            if not profile_manager_id:
+            if not profile_manager_id and not use_default_profile:
                 result[tool_prompt.prompt_key] = ""
                 continue
+
+            if not profile_manager_id:
+                default_profile = ProfileManager.get_default_llm_profile(
+                    tool_prompt.tool_id
+                )
+                profile_manager_id = default_profile.profile_id
 
             try:
                 queryset = PromptStudioOutputManager.objects.filter(
