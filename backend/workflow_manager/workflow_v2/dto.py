@@ -32,6 +32,7 @@ class ExecutionResponse:
     mode: Optional[str] = None
     result: Optional[Any] = None
     message: Optional[str] = None
+    result_acknowledged: bool = False
 
     def __post_init__(self) -> None:
         self.log_id = self.log_id or None
