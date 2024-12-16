@@ -125,18 +125,22 @@ class ExecutionQuerySerializer(Serializer):
     def validate_execution_id(self, value):
         """Trim spaces, validate UUID format, and check if execution_id exists."""
         value = value.strip()
-        
+
         # Validate UUID format
         try:
             uuid_obj = uuid.UUID(value)
         except ValueError:
-            raise ValidationError(f"Invalid execution_id '{value}'. Must be a valid UUID.")
+            raise ValidationError(
+                f"Invalid execution_id '{value}'. Must be a valid UUID."
+            )
 
         # Check if UUID exists in the database
         exists = WorkflowExecution.objects.filter(id=uuid_obj).exists()
         if not exists:
-            raise ExecutionDoesNotExistError(f"Execution with ID '{value}' does not exist.")
-        
+            raise ExecutionDoesNotExistError(
+                f"Execution with ID '{value}' does not exist."
+            )
+
         return str(uuid_obj)
 
 

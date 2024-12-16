@@ -83,7 +83,7 @@ class DeploymentExecution(views.APIView):
         # Fetch execution status
         response: ExecutionResponse = DeploymentHelper.get_execution_status(
             execution_id
-        )   
+        )
 
         # Determine response status
         response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
