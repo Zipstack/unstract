@@ -45,6 +45,7 @@ function Header({
   setExpandCard,
   spsLoading,
   handleSpsLoading,
+  enforceType,
 }) {
   const {
     selectedDoc,
@@ -105,18 +106,30 @@ function Header({
       {
         label: (
           <div>
-            <Checkbox
-              checked={required === "all"}
-              onChange={() => handleRequiredChange("all")}
-            >
-              All Required
-            </Checkbox>
-            <Checkbox
-              checked={required === "any"}
-              onChange={() => handleRequiredChange("any")}
-            >
-              Any Required
-            </Checkbox>
+            {["json", "table", "record"].indexOf(enforceType) === -1 && (
+              <Checkbox
+                checked={required === "all"}
+                onChange={() => handleRequiredChange("all")}
+              >
+                Required
+              </Checkbox>
+            )}
+            {enforceType === "json" && (
+              <>
+                <Checkbox
+                  checked={required === "all"}
+                  onChange={() => handleRequiredChange("all")}
+                >
+                  All Required
+                </Checkbox>
+                <Checkbox
+                  checked={required === "any"}
+                  onChange={() => handleRequiredChange("any")}
+                >
+                  Any Required
+                </Checkbox>
+              </>
+            )}
           </div>
         ),
         key: "required",
@@ -143,7 +156,7 @@ function Header({
     }
 
     setItems(dropdownItems);
-  }, [isDisablePrompt, required]);
+  }, [isDisablePrompt, required, enforceType]);
 
   return (
     <Row>
@@ -304,6 +317,7 @@ Header.propTypes = {
   setExpandCard: PropTypes.func.isRequired,
   spsLoading: PropTypes.object,
   handleSpsLoading: PropTypes.func.isRequired,
+  enforceType: PropTypes.text,
 };
 
 export { Header };
