@@ -16,6 +16,8 @@ from rest_framework.serializers import (
     ValidationError,
 )
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
+from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from backend.serializers import AuditSerializer
 
@@ -121,15 +123,21 @@ class ExecutionQuerySerializer(Serializer):
     include_metadata = BooleanField(default=False)
 
     def validate_execution_id(self, value):
-        """Trim spaces and validate execution_id as UUID."""
+        """Trim spaces, validate UUID format, and check if execution_id exists."""
         value = value.strip()
+        
+        # Validate UUID format
         try:
-            uuid.UUID(value)
+            uuid_obj = uuid.UUID(value)
         except ValueError:
-            raise ValidationError(
-                f"Invalid execution_id '{value}'. Must be a valid UUID."
-            )
-        return value
+            raise ValidationError(f"Invalid execution_id '{value}'. Must be a valid UUID.")
+
+        # Check if UUID exists in the database
+        exists = WorkflowExecution.objects.filter(id=uuid_obj).exists()
+        if not exists:
+            raise ExecutionDoesNotExistError(f"Execution with id '{value}' does not exist.")
+        
+        return str(uuid_obj)
 
 
 class APIDeploymentListSerializer(ModelSerializer):

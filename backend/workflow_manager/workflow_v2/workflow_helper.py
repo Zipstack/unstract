@@ -375,11 +375,11 @@ class WorkflowHelper:
         Returns:
             ExecutionResponse: _description_
         """
-          execution = WorkflowExecution.objects.get(id=execution_id)
-          if not execution.task_id:
-              raise TaskDoesNotExistError(
-                  f"No task ID found for execution: {execution_id}"
-              )
+        execution = WorkflowExecution.objects.get(id=execution_id)
+        if not execution.task_id:
+            raise TaskDoesNotExistError(
+                f"No task ID found for execution: {execution_id}"
+            )
 
         result = AsyncResult(str(execution.task_id))
         task = AsyncResultData(async_result=result)
