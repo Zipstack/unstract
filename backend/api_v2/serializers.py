@@ -135,7 +135,7 @@ class ExecutionQuerySerializer(Serializer):
         # Check if UUID exists in the database
         exists = WorkflowExecution.objects.filter(id=uuid_obj).exists()
         if not exists:
-            raise ExecutionDoesNotExistError(f"Execution with id '{value}' does not exist.")
+            raise ExecutionDoesNotExistError(f"Execution with ID '{value}' does not exist.")
         
         return str(uuid_obj)
 
