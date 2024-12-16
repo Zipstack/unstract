@@ -29,7 +29,7 @@ class OutputManagerUtils:
                 Values are the count of documents associated with each prompt
                 and profile combination.
         """
-
+        # TODO: remove singlepass reference
         prompt_outputs = (
             PromptStudioOutputManager.objects.filter(
                 tool_id=tool_id,
