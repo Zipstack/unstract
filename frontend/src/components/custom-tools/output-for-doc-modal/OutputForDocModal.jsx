@@ -66,7 +66,11 @@ function OutputForDocModal({
     llmProfiles,
     defaultLlmProfile,
   } = useCustomToolStore();
-  const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
+
+  const profileId = singlePassExtractMode
+    ? defaultLlmProfile
+    : profileManagerId;
+  const [selectedProfile, setSelectedProfile] = useState(profileId);
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
@@ -79,7 +83,7 @@ function OutputForDocModal({
     if (!open) {
       return;
     }
-    handleGetOutputForDocs(selectedProfile || profileManagerId);
+    handleGetOutputForDocs(selectedProfile);
     getAdapterInfo();
   }, [
     open,
@@ -87,6 +91,10 @@ function OutputForDocModal({
     singlePassExtractMode,
     isSinglePassExtractLoading,
   ]);
+
+  useEffect(() => {
+    setSelectedProfile(profileId);
+  }, [profileManagerId, singlePassExtractMode]);
 
   useEffect(() => {
     handleRowsGeneration(promptOutputs);
@@ -284,7 +292,7 @@ function OutputForDocModal({
 
   const handleTabChange = (key) => {
     if (key === "0") {
-      setSelectedProfile(defaultLlmProfile);
+      setSelectedProfile(profileId);
     } else {
       setSelectedProfile(adapterData[key - 1]?.profile_id);
     }
@@ -337,10 +345,7 @@ function OutputForDocModal({
               ></TabPane>
             ))}
           </Tabs>{" "}
-          <ProfileInfoBar
-            profileId={selectedProfile || profileManagerId}
-            profiles={llmProfiles}
-          />
+          <ProfileInfoBar profileId={selectedProfile} profiles={llmProfiles} />
         </div>
         <div className="display-flex-right">
           <Button
