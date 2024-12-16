@@ -358,8 +358,9 @@ class WorkflowHelper:
                 f"with workflow execution: {workflow_execution}"
             )
 
-    @staticmethod
+    @classmethod
     def get_status_of_async_task(
+        cls,
         execution_id: str,
     ) -> ExecutionResponse:
         """Get celery task status.
@@ -381,15 +382,42 @@ class WorkflowHelper:
         result = AsyncResult(str(execution.task_id))
 
         task = AsyncResultData(async_result=result)
-        return ExecutionResponse(
+
+        # Prepare the initial response with the task's current status and result.
+        result_response = ExecutionResponse(
             execution.workflow_id,
             execution_id,
             execution.status,
             result=task.result,
+            result_acknowledged=execution.result_acknowledged,
         )
 
+        # If task is complete, handle acknowledgment and forgetting the
+        if result.ready():
+            result.forget()  # Remove the result from the result backend.
+            cls._set_result_acknowledge(execution)
+        return result_response
+
     @staticmethod
+    def _set_result_acknowledge(execution: WorkflowExecution) -> None:
+        """Mark the result as acknowledged and update the database.
+
+        This method is called once the task has completed and its result is forgotten.
+        It ensures that the task result is flagged as acknowledged in the database
+
+        Args:
+            execution (WorkflowExecution): WorkflowExecution instance
+        """
+        if not execution.result_acknowledged:
+            execution.result_acknowledged = True
+            execution.save()
+            logger.info(
+                f"ExecutionID [{execution.id}] - Task {execution.task_id} acknowledged"
+            )
+
+    @classmethod
     def execute_workflow_async(
+        cls,
         workflow_id: str,
         execution_id: str,
         hash_values_of_files: dict[str, FileHash],
@@ -418,7 +446,7 @@ class WorkflowHelper:
             }
             org_schema = UserContext.get_organization_identifier()
             log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
-            async_execution = WorkflowHelper.execute_bin.apply_async(
+            async_execution: AsyncResult = cls.execute_bin.apply_async(
                 args=[
                     org_schema,  # schema_name
                     workflow_id,  # workflow_id
@@ -453,6 +481,10 @@ class WorkflowHelper:
                 workflow_execution.status,
                 result=task_result,
             )
+            # If task is complete, handle acknowledgment and forgetting the
+            if async_execution.ready():
+                async_execution.forget()  # Remove the result from the result backend.
+                cls._set_result_acknowledge(workflow_execution)
             return execution_response
         except celery_exceptions.TimeoutError:
             return ExecutionResponse(
@@ -465,8 +497,12 @@ class WorkflowHelper:
             WorkflowExecutionServiceHelper.update_execution_err(
                 execution_id, str(error)
             )
-            logger.error(f"Errors while job enqueueing {str(error)}")
-            logger.error(f"Error {traceback.format_exc()}")
+            logger.error(
+                f"Error while enqueuing async job for WF '{workflow_id}', "
+                f"execution '{execution_id}': {str(error)}",
+                exc_info=True,
+                stack_info=True,
+            )
             return ExecutionResponse(
                 workflow_id,
                 execution_id,

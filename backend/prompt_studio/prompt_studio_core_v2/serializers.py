@@ -70,11 +70,16 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
         # Appending prompt instances of the tool for FE Processing
         if prompt_instance.count() != 0:
             for prompt in prompt_instance:
+                profile_manager_id = prompt.prompt_id
+                if instance.single_pass_extraction_mode:
+                    # use projects default profile
+                    profile_manager_id = profile_manager.profile_id
                 prompt_serializer = ToolStudioPromptSerializer(prompt)
                 coverage = OutputManagerUtils.get_coverage(
                     data.get(TSKeys.TOOL_ID),
-                    prompt.profile_manager_id,
+                    profile_manager_id,
                     prompt.prompt_id,
+                    instance.single_pass_extraction_mode,
                 )
                 serialized_data = prompt_serializer.data
                 serialized_data["coverage"] = coverage
