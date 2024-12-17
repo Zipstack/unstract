@@ -29,7 +29,6 @@
     "js-cookie": "^3.0.5",
     "js-yaml": "^4.1.0",
     "json-2-csv": "^5.5.1",
-    "markdown-to-jsx": "^7.2.1",
     "moment": "^2.29.4",
     "moment-timezone": "^0.5.45",
     "pdfjs-dist": "^3.4.120",
