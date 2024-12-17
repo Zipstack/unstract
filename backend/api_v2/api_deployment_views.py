@@ -11,6 +11,7 @@ from api_v2.serializers import (
     APIDeploymentListSerializer,
     APIDeploymentSerializer,
     DeploymentResponseSerializer,
+    ExecutionQuerySerializer,
     ExecutionRequestSerializer,
 )
 from django.db.models import QuerySet
@@ -75,20 +76,19 @@ class DeploymentExecution(views.APIView):
     def get(
         self, request: Request, org_name: str, api_name: str, api: APIDeployment
     ) -> Response:
-        execution_id = request.query_params.get("execution_id")
-        include_metadata = (
-            request.query_params.get(ApiExecution.INCLUDE_METADATA, "false").lower()
-            == "true"
-        )
-        include_metrics = (
-            request.query_params.get(ApiExecution.INCLUDE_METRICS, "false").lower()
-            == "true"
-        )
-        if not execution_id:
-            raise InvalidAPIRequest("execution_id shouldn't be empty")
+        serializer = ExecutionQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+
+        execution_id = serializer.validated_data.get(ApiExecution.EXECUTION_ID)
+        include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
+        include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
+
+        # Fetch execution status
         response: ExecutionResponse = DeploymentHelper.get_execution_status(
-            execution_id=execution_id
+            execution_id
         )
+
+        # Determine response status
         response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
         if response.execution_status == CeleryTaskState.COMPLETED.value:
             response_status = status.HTTP_200_OK

@@ -6,3 +6,4 @@ class ApiExecution:
     INCLUDE_METADATA: str = "include_metadata"
     INCLUDE_METRICS: str = "include_metrics"
     USE_FILE_HISTORY: str = "use_file_history"  # Undocumented parameter
+    EXECUTION_ID: str = "execution_id"
