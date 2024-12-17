@@ -75,3 +75,5 @@ class SettingsKeys:
     CONFIDENCE_DATA = "confidence_data"
     EXECUTION_RUN_DATA_FOLDER = "EXECUTION_RUN_DATA_FOLDER"
     FILE_PATH = "file_path"
+    EXECUTION_SOURCE = "execution_source"
+    TOOL = "tool"

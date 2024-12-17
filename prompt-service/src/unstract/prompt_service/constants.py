@@ -72,6 +72,7 @@ class PromptServiceContants:
     FILE_PATH = "file_path"
     HIGHLIGHT_DATA = "highlight_data"
     CONFIDENCE_DATA = "confidence_data"
+    EXECUTION_SOURCE = "execution_source"
 
 
 class RunLevel(Enum):
@@ -100,3 +101,18 @@ class DBTableV2:
     PROMPT_STUDIO_REGISTRY = "prompt_studio_registry"
     PLATFORM_KEY = "platform_key"
     TOKEN_USAGE = "usage"
+
+
+class FileStorageKeys:
+    FILE_STORAGE_PROVIDER = "FILE_STORAGE_PROVIDER"
+    FILE_STORAGE_CREDENTIALS = "FILE_STORAGE_CREDENTIALS"
+
+
+class FileStorageType(Enum):
+    PERMANENT = "permanent"
+    TEMPORARY = "temporary"
+
+
+class ExecutionSource(Enum):
+    IDE = "ide"
+    TOOL = "tool"
