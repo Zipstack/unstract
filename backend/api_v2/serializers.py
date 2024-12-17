@@ -123,6 +123,7 @@ class ExecutionRequestSerializer(Serializer):
 class ExecutionQuerySerializer(Serializer):
     execution_id = CharField(required=True)
     include_metadata = BooleanField(default=False)
+    include_metrics = BooleanField(default=False)
 
     def validate_execution_id(self, value):
         """Trim spaces, validate UUID format, and check if execution_id exists."""
