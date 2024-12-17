@@ -895,7 +895,8 @@ class PromptStudioHelper:
             error_message = answer.get("error", "")
             raise AnswerFetchError(
                 "Error while fetching response for "
-                f"'{prompt.prompt_key}' with '{doc_name}'. {error_message}"
+                f"'{prompt.prompt_key}' with '{doc_name}'. {error_message}",
+                status_code=int(answer.get("status_code")),
             )
         output_response = json.loads(answer["structure_output"])
         return output_response

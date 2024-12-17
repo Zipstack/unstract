@@ -232,6 +232,7 @@ v2_apps = (
     "connector_v2",
     "adapter_processor_v2",
     "file_management",
+    "workflow_manager.file_execution",
     "workflow_manager.endpoint_v2",
     "workflow_manager.workflow_v2",
     "tool_instance_v2",
