@@ -35,7 +35,15 @@ class ToolStudioPrompt(BaseModel):
     class Mode(models.TextChoices):
         DEFAULT = "Default", "Default choice for output"
 
-    prompt_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    class RequiredType(models.TextChoices):
+        ALL = "all", "All values required"
+        ANY = "any", "Any value required"
+
+    prompt_id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
     prompt_key = models.TextField(
         blank=False,
         db_comment="Field to store the prompt key",
@@ -84,13 +92,9 @@ class ToolStudioPrompt(BaseModel):
         db_comment="Field to store the prompt key",
         unique=False,
     )
-    REQUIRED_CHOICES = [
-        ("all", "All values required"),
-        ("any", "Any value required"),
-    ]
     required = models.CharField(
         max_length=3,
-        choices=REQUIRED_CHOICES,
+        choices=RequiredType.choices,
         null=True,  # Allows the field to store NULL in the database
         blank=True,  # Allows the field to be optional in forms
         default=None,  # Sets the default value to None
