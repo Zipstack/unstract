@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
-from unstract.sdk.constants import LogLevel, LogState, MetadataKey
+from unstract.sdk.constants import LogLevel, LogState, MetadataKey, ToolEnv
 from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
@@ -97,7 +97,10 @@ class StructureTool(BaseTool):
         _, file_name = os.path.split(input_file)
         if summarize_as_source:
             file_name = SettingsKeys.SUMMARIZE
-        tool_data_dir = Path(self.get_env_or_die(SettingsKeys.TOOL_DATA_DIR))
+        if self.workflow_filestorage:
+            tool_data_dir = Path(self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR))
+        else:
+            tool_data_dir = Path(self.get_env_or_die(SettingsKeys.TOOL_DATA_DIR))
         execution_run_data_folder = Path(
             self.get_env_or_die(SettingsKeys.EXECUTION_RUN_DATA_FOLDER)
         )
@@ -128,7 +131,6 @@ class StructureTool(BaseTool):
                 f"Function to higlight context is not found. {PAID_FEATURE_MSG}",
                 level=LogLevel.WARN,
             )
-        workflow_filestorage = getattr(self, "workflow_filestorage", None)
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             index.index(
                 tool_id=tool_id,
@@ -144,8 +146,8 @@ class StructureTool(BaseTool):
                 usage_kwargs=usage_kwargs,
                 process_text=process_text,
                 **(
-                    {"fs": workflow_filestorage}
-                    if workflow_filestorage is not None
+                    {"fs": self.workflow_filestorage}
+                    if self.workflow_filestorage is not None
                     else {}
                 ),
             )
@@ -236,21 +238,6 @@ class StructureTool(BaseTool):
 
         if not summarize_as_source:
             metadata = structured_output_dict[SettingsKeys.METADATA]
-            epilogue = metadata.pop(SettingsKeys.EPILOGUE, None)
-            if epilogue:
-                try:
-                    from helper import (  # type: ignore [attr-defined]
-                        get_confidence_data,
-                    )
-
-                    metadata[SettingsKeys.CONFIDENCE_DATA] = get_confidence_data(
-                        epilogue, tool_data_dir
-                    )
-                except ImportError:
-                    self.stream_log(
-                        f"Confidence data is not added. {PAID_FEATURE_MSG}",
-                        level=LogLevel.WARN,
-                    )
             # Update the dictionary with modified metadata
             structured_output_dict[SettingsKeys.METADATA] = metadata
             structured_output = json.dumps(structured_output_dict)
@@ -268,8 +255,13 @@ class StructureTool(BaseTool):
             self.stream_log("Writing parsed output...")
             source_name = self.get_exec_metadata.get(MetadataKey.SOURCE_NAME)
             output_path = Path(output_dir) / f"{Path(source_name).stem}.json"
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(structured_output)
+            if self.workflow_filestorage:
+                self.workflow_filestorage.json_dump(
+                    path=output_path, data=structured_output_dict
+                )
+            else:
+                with open(output_path, "w", encoding="utf-8") as f:
+                    f.write(structured_output)
         except OSError as e:
             self.stream_error_and_exit(f"Error creating output file: {e}")
         except json.JSONDecodeError as e:
@@ -310,7 +302,7 @@ class StructureTool(BaseTool):
         summarize_file_path = tool_data_dir / SettingsKeys.SUMMARIZE
 
         summarized_context = ""
-        if hasattr(self, "workflow_filestorage"):
+        if self.workflow_filestorage:
             if self.workflow_filestorage.exists(summarize_file_path):
                 summarized_context = self.workflow_filestorage.read(
                     path=summarize_file_path, mode="r"
@@ -320,7 +312,7 @@ class StructureTool(BaseTool):
                 summarized_context = f.read()
         if not summarized_context:
             context = ""
-            if hasattr(self, "workflow_filestorage"):
+            if self.workflow_filestorage:
                 context = self.workflow_filestorage.read(
                     path=extract_file_path, mode="r"
                 )
@@ -351,14 +343,18 @@ class StructureTool(BaseTool):
             structure_output = json.loads(response[SettingsKeys.STRUCTURE_OUTPUT])
             summarized_context = structure_output.get(SettingsKeys.DATA, "")
             self.stream_log("Writing summarized context to a file")
-            with open(summarize_file_path, "w", encoding="utf-8") as f:
-                f.write(summarized_context)
+            if self.workflow_filestorage:
+                self.workflow_filestorage.write(
+                    path=summarize_file_path, mode="w", data=summarized_context
+                )
+            else:
+                with open(summarize_file_path, "w", encoding="utf-8") as f:
+                    f.write(summarized_context)
 
         self.stream_log("Indexing summarized context")
         summarize_file_hash: str = ToolUtils.get_hash_from_file(
             file_path=summarize_file_path
         )
-        workflow_filestorage = getattr(self, "workflow_filestorage", None)
         index.index(
             tool_id=tool_id,
             embedding_instance_id=embedding_instance_id,
@@ -370,7 +366,9 @@ class StructureTool(BaseTool):
             chunk_overlap=0,
             usage_kwargs=usage_kwargs,
             **(
-                {"fs": workflow_filestorage} if workflow_filestorage is not None else {}
+                {"fs": self.workflow_filestorage}
+                if self.workflow_filestorage is not None
+                else {}
             ),
         )
         return summarize_file_hash

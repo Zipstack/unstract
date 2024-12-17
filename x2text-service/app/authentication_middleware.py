@@ -1,5 +1,7 @@
 from typing import Any, Optional
 
+from app.constants import DBTable
+from app.env import Env
 from app.models import be_db
 from flask import Request, current_app, request
 
@@ -24,8 +26,8 @@ class AuthenticationMiddleware:
             if token is None:
                 current_app.logger.error("Authentication failed. Empty bearer token")
                 return False
-
-            query = f"SELECT * FROM account_platformkey WHERE key = '{token}'"
+            platform_key_table = f'"{Env.DB_SCHEMA}".{DBTable.PLATFORM_KEY}'
+            query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
             cursor = be_db.execute_sql(query)
             result_row = cursor.fetchone()
             cursor.close()
@@ -70,16 +72,31 @@ class AuthenticationMiddleware:
             return None
 
     @classmethod
-    def get_account_from_bearer_token(cls, token: Optional[str]) -> str:
-        query = (
-            "SELECT organization_id FROM account_platformkey " f"WHERE key='{token}'"
+    def get_organization_from_bearer_token(
+        cls, token: str
+    ) -> tuple[Optional[int], str]:
+        """Retrieve organization ID and identifier using a bearer token.
+
+        Args:
+            token (str): The bearer token (platform key).
+
+        Returns:
+            tuple[int, str]: organization uid and organization identifier
+        """
+        platform_key_table = f'"{Env.DB_SCHEMA}".{DBTable.PLATFORM_KEY}'
+        organization_table = f'"{Env.DB_SCHEMA}".{DBTable.ORGANIZATION}'
+
+        organization_uid: Optional[int] = cls.execute_query(
+            f"SELECT organization_id FROM {platform_key_table} WHERE key=%s", (token,)
         )
-        organization = AuthenticationMiddleware.execute_query(query)
-        query_org = (
-            "SELECT schema_name FROM account_organization " f"WHERE id='{organization}'"
+        if organization_uid is None:
+            return None, None
+
+        organization_identifier: Optional[str] = cls.execute_query(
+            f"SELECT organization_id FROM {organization_table} WHERE id=%s",
+            (organization_uid,),
         )
-        schema_name: str = AuthenticationMiddleware.execute_query(query_org)
-        return schema_name
+        return organization_uid, organization_identifier
 
     @classmethod
     def execute_query(cls, query: str) -> Any:

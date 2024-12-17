@@ -66,6 +66,7 @@ function PromptOutput({
   enforceType,
   promptOutputs,
   promptRunStatus,
+  isChallenge,
 }) {
   const { width: windowWidth } = useWindowDimensions();
   const componentWidth = windowWidth * 0.4;
@@ -238,7 +239,7 @@ function PromptOutput({
                             className="prompt-card-actions-head"
                           />
                         </Tooltip>
-                        {ChallengeModal && (
+                        {ChallengeModal && isChallenge && (
                           <ChallengeModal
                             challengeData={
                               promptOutputData?.challengeData || {}
@@ -405,6 +406,7 @@ PromptOutput.propTypes = {
   enforceType: PropTypes.string,
   promptOutputs: PropTypes.object.isRequired,
   promptRunStatus: PropTypes.object.isRequired,
+  isChallenge: PropTypes.bool,
 };
 
 export { PromptOutput };

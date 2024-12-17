@@ -1,4 +1,5 @@
 import { useParams } from "react-router-dom";
+
 import { useCustomToolStore } from "../store/custom-tool-store";
 import { usePromptOutputStore } from "../store/prompt-output-store";
 import { useSessionStore } from "../store/session-store";
@@ -108,7 +109,7 @@ const usePromptOutput = () => {
         isSinglePass,
         true
       );
-
+      const coverageKey = `coverage_${item?.prompt_id}_${llmProfile}`;
       outputs[key] = {
         runId: item?.run_id,
         promptOutputId: item?.prompt_output_id,
@@ -119,6 +120,7 @@ const usePromptOutput = () => {
         output: item?.output,
         timer,
       };
+      outputs[coverageKey] = item?.coverage[coverageKey] || 0;
 
       if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded)
         return;

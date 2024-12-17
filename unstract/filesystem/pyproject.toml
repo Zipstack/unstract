@@ -9,7 +9,9 @@ description = "Unstract filesystem package"
 authors = [
     {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
 ]
-dependencies = []
+dependencies = [
+    "unstract-sdk~=0.54.0rc5",
+]
 requires-python = ">=3.9,<3.11.1"
 readme = "README.md"
 

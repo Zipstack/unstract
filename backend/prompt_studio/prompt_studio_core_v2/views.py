@@ -44,6 +44,7 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
     PromptStudioRegistryInfoSerializer,
 )
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
+from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -380,6 +381,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             raise MaxProfilesReachedError()
         try:
             self.perform_create(serializer)
+            # Check if this is the first profile and make it default for all prompts
+            if profile_count == 0:
+                profile_manager = serializer.instance  # Newly created profile manager
+                ToolStudioPrompt.objects.filter(tool_id=prompt_studio_tool).update(
+                    profile_manager=profile_manager
+                )
+
         except IntegrityError:
             raise DuplicateData(
                 f"{ProfileManagerErrors.PROFILE_NAME_EXISTS}, \
@@ -437,13 +445,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     file_path += file_name
                 contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
         else:
-            contents = PromptStudioFileHelper.fetch_file_contents(
-                file_name=file_name,
-                org_id=UserSessionUtils.get_organization_id(request),
-                user_id=custom_tool.created_by.user_id,
-                tool_id=str(custom_tool.tool_id),
-            )
-
+            try:
+                contents = PromptStudioFileHelper.fetch_file_contents(
+                    file_name=file_name,
+                    org_id=UserSessionUtils.get_organization_id(request),
+                    user_id=custom_tool.created_by.user_id,
+                    tool_id=str(custom_tool.tool_id),
+                )
+            except FileNotFoundError:
+                raise FileNotFound()
         return Response({"data": contents}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
@@ -459,7 +469,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             logger.info(
                 f"Uploading file: {file_name}" if file_name else "Uploading file"
             )
-            if check_feature_flag_status(flag_key=FeatureFlag.REMOTE_FILE_STORAGE):
+            if not check_feature_flag_status(flag_key=FeatureFlag.REMOTE_FILE_STORAGE):
                 file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                     UserSessionUtils.get_organization_id(request),
                     is_create=True,

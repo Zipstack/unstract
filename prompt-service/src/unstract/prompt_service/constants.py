@@ -71,6 +71,7 @@ class PromptServiceContants:
     ENABLE_HIGHLIGHT = "enable_highlight"
     FILE_PATH = "file_path"
     HIGHLIGHT_DATA = "highlight_data"
+    CONFIDENCE_DATA = "confidence_data"
 
 
 class RunLevel(Enum):
@@ -88,7 +89,7 @@ class RunLevel(Enum):
 class FeatureFlag:
     """Temporary feature flags."""
 
-    pass
+    REMOTE_FILE_STORAGE = "remote_file_storage"
 
 
 class DBTableV2:
