@@ -36,8 +36,8 @@ function PdfViewer({ fileUrl, highlightData }) {
 
   // Jump to page when highlightData changes
   useEffect(() => {
+    highlightData = removeZerosAndDeleteIfAllZero(highlightData); // Removing zeros before checking the highlight data condition
     if (highlightData && highlightData.length > 0) {
-      highlightData = removeZerosAndDeleteIfAllZero(highlightData);
       const pageNumber = highlightData[0][0]; // Assume highlightData[0][0] is the page number
       if (pageNumber !== null && jumpToPage) {
         setTimeout(() => {
