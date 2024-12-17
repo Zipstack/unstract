@@ -37,6 +37,7 @@ from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelpe
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
+from workflow_manager.workflow_v2.utils import WorkflowUtil
 
 from backend.constants import FeatureFlag
 from backend.exceptions import UnstractFSException
@@ -183,9 +184,9 @@ class DestinationConnector(BaseConnector):
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
-            if (
-                file_hash.file_destination
-                == WorkflowEndpoint.ConnectionType.MANUALREVIEW
+            result = self.get_result(file_history)
+            if WorkflowUtil.validate_db_rule(
+                result, workflow, file_hash.file_destination
             ):
                 self._push_data_to_queue(file_name, workflow, input_file_path)
             else:
@@ -288,6 +289,7 @@ class DestinationConnector(BaseConnector):
         # If data is None, don't execute CREATE or INSERT query
         if not data:
             return
+
         # Remove metadata from result
         # Tool text-extractor returns data in the form of string.
         # Don't pop out metadata in this case.
