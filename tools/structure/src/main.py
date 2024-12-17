@@ -156,6 +156,7 @@ class StructureTool(BaseTool):
                     else {}
                 ),
             )
+            index_metrics = {SettingsKeys.INDEXING: index.get_metrics()}
             if summarize_as_source:
                 summarize_file_hash = self._summarize_and_index(
                     tool_id=tool_id,
@@ -252,12 +253,19 @@ class StructureTool(BaseTool):
             structured_output = json.dumps(structured_output_dict)
 
         metrics = structured_output_dict[SettingsKeys.METRICS]
-        # Merge dictionaries
-        new_metrics = {
-            key: {**metrics.get(key, {}), **index_metrics.get(key, {})}
-            for key in set(metrics)
-            | set(index_metrics)  # Union of keys from both dictionaries
-        }
+        new_metrics = {}
+        if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
+            new_metrics = {
+                **metrics,
+                **index_metrics,
+            }
+        else:
+            # Merge dictionaries
+            new_metrics = {
+                key: {**metrics.get(key, {}), **index_metrics.get(key, {})}
+                for key in set(metrics)
+                | set(index_metrics)  # Union of keys from both dictionaries
+            }
         structured_output_dict[SettingsKeys.METRICS] = new_metrics
         # Update GUI
         output_log = (
