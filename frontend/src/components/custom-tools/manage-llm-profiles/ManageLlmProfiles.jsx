@@ -132,13 +132,22 @@ function ManageLlmProfiles() {
             handleConfirm={() => handleDelete(item?.profile_id)}
             content="The LLM profile will be permanently deleted."
           >
-            <Button
-              size="small"
-              className="display-flex-align-center"
-              disabled={isPublicSource}
+            <Tooltip
+              title={
+                defaultLlmProfile === item?.profile_id &&
+                "Default profile cannot be deleted"
+              }
             >
-              <DeleteOutlined classID="manage-llm-pro-icon" />
-            </Button>
+              <Button
+                size="small"
+                className="display-flex-align-center"
+                disabled={
+                  isPublicSource || defaultLlmProfile === item?.profile_id
+                }
+              >
+                <DeleteOutlined classID="manage-llm-pro-icon" />
+              </Button>
+            </Tooltip>
           </ConfirmModal>
         ),
         edit: (

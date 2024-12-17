@@ -71,3 +71,8 @@ class ColumnModes(Enum):
 
 class AgentName(Enum):
     UNSTRACT_DBWRITER = "Unstract/DBWriter"
+
+
+class RuleLogic(Enum):
+    AND = "AND"
+    OR = "OR"
