@@ -91,7 +91,7 @@ class RunLevel(Enum):
 class FeatureFlag:
     """Temporary feature flags."""
 
-    pass
+    REMOTE_FILE_STORAGE = "remote_file_storage"
 
 
 class DBTableV2:
