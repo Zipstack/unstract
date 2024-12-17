@@ -64,6 +64,7 @@ function PromptCardItems({
     isPublicSource,
     adapters,
     defaultLlmProfile,
+    singlePassExtractMode,
   } = useCustomToolStore();
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -77,10 +78,10 @@ function PromptCardItems({
   const isNotSingleLlmProfile = llmProfiles.length > 1;
   const divRef = useRef(null);
   const [enforceType, setEnforceType] = useState("");
-  const coverageKey = generateCoverageKey(
-    promptDetails?.prompt_id,
-    selectedLlmProfileId || defaultLlmProfile
-  );
+  const profileId = singlePassExtractMode
+    ? defaultLlmProfile
+    : selectedLlmProfileId || defaultLlmProfile;
+  const coverageKey = generateCoverageKey(promptDetails?.prompt_id, profileId);
 
   useEffect(() => {
     if (enforceType !== promptDetails?.enforce_type) {
