@@ -9,6 +9,8 @@ class FileHash:
     file_hash: str
     file_name: str
     source_connection_type: str
+    file_size: Optional[int] = None
+    mime_type: Optional[str] = None
     file_destination: Optional[tuple[str, str]] = (
         None  # To which destination this file wants to go for MRQ percentage
     )
@@ -22,6 +24,8 @@ class FileHash:
             "source_connection_type": self.source_connection_type,
             "file_destination": self.file_destination,
             "is_executed": self.is_executed,
+            "file_size": self.file_size,
+            "mime_type": self.mime_type,
         }
 
     @staticmethod
