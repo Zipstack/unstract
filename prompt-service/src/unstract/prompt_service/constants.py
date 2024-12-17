@@ -72,6 +72,8 @@ class PromptServiceContants:
     FILE_PATH = "file_path"
     HIGHLIGHT_DATA = "highlight_data"
     CONFIDENCE_DATA = "confidence_data"
+    TIME_TAKEN = "time_taken"
+    METRICS = "metrics"
 
 
 class RunLevel(Enum):

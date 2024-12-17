@@ -51,6 +51,7 @@ class DeploymentExecution(views.APIView):
         serializer.is_valid(raise_exception=True)
         timeout = serializer.validated_data.get(ApiExecution.TIMEOUT_FORM_DATA)
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
+        include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
         use_file_history = serializer.validated_data.get(ApiExecution.USE_FILE_HISTORY)
         if not file_objs or len(file_objs) == 0:
             raise InvalidAPIRequest("File shouldn't be empty")
@@ -60,6 +61,7 @@ class DeploymentExecution(views.APIView):
             file_objs=file_objs,
             timeout=timeout,
             include_metadata=include_metadata,
+            include_metrics=include_metrics,
             use_file_history=use_file_history,
         )
         if "error" in response and response["error"]:
@@ -78,6 +80,10 @@ class DeploymentExecution(views.APIView):
             request.query_params.get(ApiExecution.INCLUDE_METADATA, "false").lower()
             == "true"
         )
+        include_metrics = (
+            request.query_params.get(ApiExecution.INCLUDE_METRICS, "false").lower()
+            == "true"
+        )
         if not execution_id:
             raise InvalidAPIRequest("execution_id shouldn't be empty")
         response: ExecutionResponse = DeploymentHelper.get_execution_status(
@@ -88,6 +94,8 @@ class DeploymentExecution(views.APIView):
             response_status = status.HTTP_200_OK
             if not include_metadata:
                 response.remove_result_metadata_keys()
+            if not include_metrics:
+                response.remove_result_metrics()
         if response.result_acknowledged:
             response_status = status.HTTP_406_NOT_ACCEPTABLE
             response.result = "Result already acknowledged"
