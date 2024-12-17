@@ -192,7 +192,9 @@ class StructureTool(BaseTool):
                             usage_kwargs=usage_kwargs,
                             process_text=process_text,
                         )
-                        index_metrics[output[SettingsKeys.NAME]] = index.get_metrics()
+                        index_metrics[output[SettingsKeys.NAME]] = {
+                            SettingsKeys.INDEXING: index.get_metrics()
+                        }
                         index.clear_metrics()
 
                     if summarize_as_source:
@@ -249,14 +251,14 @@ class StructureTool(BaseTool):
             structured_output_dict[SettingsKeys.METADATA] = metadata
             structured_output = json.dumps(structured_output_dict)
 
-        metrics = structured_output[SettingsKeys.METRICS]
+        metrics = structured_output_dict[SettingsKeys.METRICS]
         # Merge dictionaries
         new_metrics = {
             key: {**metrics.get(key, {}), **index_metrics.get(key, {})}
             for key in set(metrics)
             | set(index_metrics)  # Union of keys from both dictionaries
         }
-        structured_output[SettingsKeys.METRICS] = new_metrics
+        structured_output_dict[SettingsKeys.METRICS] = new_metrics
         # Update GUI
         output_log = (
             f"## Result\n**NOTE:** In case of a deployed pipeline, the result would "

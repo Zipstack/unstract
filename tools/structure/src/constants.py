@@ -76,3 +76,4 @@ class SettingsKeys:
     EXECUTION_RUN_DATA_FOLDER = "EXECUTION_RUN_DATA_FOLDER"
     FILE_PATH = "file_path"
     METRICS = "metrics"
+    INDEXING = "indexing"
