@@ -111,7 +111,7 @@ function Header({
                 checked={required === "all"}
                 onChange={() => handleRequiredChange("all")}
               >
-                Required
+                Value Required
               </Checkbox>
             )}
             {enforceType === "json" && (
@@ -120,13 +120,13 @@ function Header({
                   checked={required === "all"}
                   onChange={() => handleRequiredChange("all")}
                 >
-                  All Required
+                  All JSON Values Required
                 </Checkbox>
                 <Checkbox
                   checked={required === "any"}
                   onChange={() => handleRequiredChange("any")}
                 >
-                  Any Required
+                  Atleast 1 JSON Value Required
                 </Checkbox>
               </>
             )}
