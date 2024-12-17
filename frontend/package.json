@@ -47,6 +47,7 @@
     "react-scripts": "5.0.1",
     "react-social-login-buttons": "^3.9.1",
     "remark-gfm": "^3.0.1",
+    "remarkable": "^2.0.1",
     "socket.io-client": "^4.7.2",
     "uuid": "^9.0.1",
     "zustand": "^4.3.8"
