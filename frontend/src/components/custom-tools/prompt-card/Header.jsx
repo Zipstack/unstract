@@ -45,6 +45,7 @@ function Header({
   setExpandCard,
   spsLoading,
   handleSpsLoading,
+  enforceType,
 }) {
   const {
     selectedDoc,
@@ -58,6 +59,7 @@ function Header({
   const [items, setItems] = useState([]);
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(null);
+  const [required, setRequired] = useState(false);
 
   const handleRunBtnClick = (promptRunType, docId = null) => {
     setExpandCard(true);
@@ -73,8 +75,22 @@ function Header({
       }
     );
   };
+  const handleRequiredChange = (value) => {
+    const newValue = value === required ? null : value; // Allow deselection
+    setRequired(newValue);
+    handleChange(
+      newValue,
+      promptDetails?.prompt_id,
+      "required",
+      true,
+      true
+    ).catch(() => {
+      setRequired(promptDetails?.required || null); // Rollback state in case of error
+    });
+  };
   useEffect(() => {
     setIsDisablePrompt(promptDetails?.active);
+    setRequired(promptDetails?.required);
   }, [promptDetails, details]);
 
   useEffect(() => {
@@ -86,6 +102,37 @@ function Header({
           </Checkbox>
         ),
         key: "enable",
+      },
+      {
+        label: (
+          <div>
+            {["json", "table", "record"].indexOf(enforceType) === -1 && (
+              <Checkbox
+                checked={required === "all"}
+                onChange={() => handleRequiredChange("all")}
+              >
+                Value Required
+              </Checkbox>
+            )}
+            {enforceType === "json" && (
+              <>
+                <Checkbox
+                  checked={required === "all"}
+                  onChange={() => handleRequiredChange("all")}
+                >
+                  All JSON Values Required
+                </Checkbox>
+                <Checkbox
+                  checked={required === "any"}
+                  onChange={() => handleRequiredChange("any")}
+                >
+                  Atleast 1 JSON Value Required
+                </Checkbox>
+              </>
+            )}
+          </div>
+        ),
+        key: "required",
       },
       {
         label: (
@@ -109,7 +156,7 @@ function Header({
     }
 
     setItems(dropdownItems);
-  }, [isDisablePrompt]);
+  }, [isDisablePrompt, required, enforceType]);
 
   return (
     <Row>
@@ -270,6 +317,7 @@ Header.propTypes = {
   setExpandCard: PropTypes.func.isRequired,
   spsLoading: PropTypes.object,
   handleSpsLoading: PropTypes.func.isRequired,
+  enforceType: PropTypes.text,
 };
 
 export { Header };

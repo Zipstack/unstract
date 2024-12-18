@@ -297,7 +297,6 @@ def run_completion(
         answer: str = completion[PSKeys.RESPONSE].text
         highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA)
         confidence_data = completion.get(PSKeys.CONFIDENCE_DATA)
-
         if metadata is not None and prompt_key:
             if highlight_data:
                 metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[
@@ -308,7 +307,6 @@ def run_completion(
                 metadata.setdefault(PSKeys.CONFIDENCE_DATA, {})[
                     prompt_key
                 ] = confidence_data
-
         return answer
     # TODO: Catch and handle specific exception here
     except SdkRateLimitError as e:
@@ -344,3 +342,24 @@ def extract_table(
     except table_extractor["exception_cls"] as e:
         msg = f"Couldn't extract table. {e}"
         raise APIError(message=msg)
+
+
+def add_required_field(
+    required_fields: dict[str, str], key: str, required: str
+) -> dict[str, str]:
+    """
+    Add or update a required field in the required_fields dictionary.
+
+    Args:
+        required_fields (Dict[str, str]): The dictionary
+        containing existing required fields,
+        where keys are field names and values are boolean flags.
+        key (str): The field key to add or update in the dictionary.
+        required (str): A indicating whether the
+        all/any values in field is required.
+
+    Returns:
+        Dict[str, str]: The updated dictionary of required fields.
+    """
+    required_fields[key] = required
+    return required_fields
