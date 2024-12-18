@@ -19,7 +19,6 @@ from unstract.prompt_service.env_manager import EnvLoader
 from unstract.prompt_service.exceptions import APIError, RateLimitError
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
 from unstract.sdk.exceptions import SdkError
-from unstract.sdk.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk.llm import LLM
 
 from unstract.flags.src.unstract.flags.feature_flag import check_feature_flag_status
@@ -305,12 +304,12 @@ def run_completion(
                 if execution_source == ExecutionSource.IDE.value:
                     fs_instance = EnvHelper.get_storage(
                         storage_type=StorageType.PERMANENT,
-                        env_name=FileStorageKeys.REMOTE_STORAGE,
+                        env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
                     )
                 if execution_source == ExecutionSource.TOOL.value:
                     fs_instance = EnvHelper.get_storage(
                         storage_type=StorageType.TEMPORARY,
-                        env_name=FileStorageKeys.REMOTE_STORAGE,
+                        env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
                     )
                 highlight_data = highlight_data_plugin["entrypoint_cls"](
                     logger=current_app.logger,
@@ -371,12 +370,12 @@ def extract_table(
         if execution_source == ExecutionSource.IDE.value:
             fs_instance = EnvHelper.get_storage(
                 storage_type=StorageType.PERMANENT,
-                env_name=FileStorageKeys.REMOTE_STORAGE,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
             )
         if execution_source == ExecutionSource.TOOL.value:
             fs_instance = EnvHelper.get_storage(
                 storage_type=StorageType.TEMPORARY,
-                env_name=FileStorageKeys.REMOTE_STORAGE,
+                env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
             )
     try:
         if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
