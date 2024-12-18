@@ -136,6 +136,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         file_objs: list[UploadedFile],
         timeout: int,
         include_metadata: bool = False,
+        include_metrics: bool = False,
         use_file_history: bool = False,
     ) -> ReturnDict:
         """Execute workflow by api.
@@ -180,6 +181,8 @@ class DeploymentHelper(BaseAPIKeyValidator):
             )
             if not include_metadata:
                 result.remove_result_metadata_keys()
+            if not include_metrics:
+                result.remove_result_metrics()
         except Exception as error:
             DestinationConnector.delete_api_storage_dir(
                 workflow_id=workflow_id, execution_id=execution_id
