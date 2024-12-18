@@ -12,7 +12,6 @@ from unstract.prompt_service.constants import (
     ExecutionSource,
     FeatureFlag,
     FileStorageKeys,
-    FileStorageType,
 )
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.db_utils import DBUtils
@@ -27,8 +26,8 @@ from unstract.flags.src.unstract.flags.feature_flag import check_feature_flag_st
 
 if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
     from unstract.sdk.file_storage import FileStorage, FileStorageProvider
-    from unstract.sdk.file_storage.env_helper import EnvHelper
     from unstract.sdk.file_storage.constants import StorageType
+    from unstract.sdk.file_storage.env_helper import EnvHelper
 
 load_dotenv()
 
@@ -305,8 +304,8 @@ def run_completion(
                 fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
                 if execution_source == ExecutionSource.IDE.value:
                     fs_instance = EnvHelper.get_storage(
-                        storage_type=StorageType.PERMANENT, 
-                        env_name=FileStorageKeys.REMOTE_STORAGE
+                        storage_type=StorageType.PERMANENT,
+                        env_name=FileStorageKeys.REMOTE_STORAGE,
                     )
                 if execution_source == ExecutionSource.TOOL.value:
                     fs_instance = EnvHelper.get_storage(
@@ -314,7 +313,9 @@ def run_completion(
                         env_name=FileStorageKeys.REMOTE_STORAGE,
                     )
                 highlight_data = highlight_data_plugin["entrypoint_cls"](
-                    logger=current_app.logger, file_path=file_path, fs_instance=fs_instance
+                    logger=current_app.logger,
+                    file_path=file_path,
+                    fs_instance=fs_instance,
                 ).run
             else:
                 highlight_data = highlight_data_plugin["entrypoint_cls"](
