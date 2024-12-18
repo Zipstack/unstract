@@ -22,12 +22,12 @@ from unstract.sdk.exceptions import SdkError
 from unstract.sdk.llm import LLM
 
 from unstract.flags.src.unstract.flags.feature_flag import check_feature_flag_status
+from unstract.sdk.file_storage import FileStorage, FileStorageProvider
 
 if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
     from unstract.prompt_service.prompt_service_file_helper import (
         PromptServiceFileHelper,
     )
-    from unstract.sdk.file_storage import FileStorage
 
 load_dotenv()
 
@@ -300,7 +300,7 @@ def run_completion(
         )
         highlight_data = None
         if highlight_data_plugin and enable_highlight:
-            fs_instance: FileStorage
+            fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
             if execution_source == ExecutionSource.IDE.value:
                 fs_instance = PromptServiceFileHelper.initialize_file_storage(
                     type=FileStorageType.PERMANENT
@@ -358,7 +358,7 @@ def extract_table(
             "Please contact admin to resolve this issue."
         )
     if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-        fs_instance: FileStorage
+        fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
         if execution_source == ExecutionSource.IDE.value:
             fs_instance = PromptServiceFileHelper.initialize_file_storage(
                 type=FileStorageType.PERMANENT
