@@ -11,6 +11,7 @@ from unstract.prompt_service.constants import (
     DBTableV2,
     ExecutionSource,
     FeatureFlag,
+    FileStorageKeys,
     FileStorageType,
 )
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
@@ -25,9 +26,9 @@ from unstract.sdk.llm import LLM
 from unstract.flags.src.unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-    from unstract.prompt_service.prompt_service_file_helper import (
-        PromptServiceFileHelper,
-    )
+    from unstract.sdk.file_storage import FileStorage, FileStorageProvider
+    from unstract.sdk.file_storage.env_helper import EnvHelper
+    from unstract.sdk.file_storage.constants import StorageType
 
 load_dotenv()
 
@@ -300,18 +301,25 @@ def run_completion(
         )
         highlight_data = None
         if highlight_data_plugin and enable_highlight:
-            fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
-            if execution_source == ExecutionSource.IDE.value:
-                fs_instance = PromptServiceFileHelper.initialize_file_storage(
-                    type=FileStorageType.PERMANENT
-                )
-            if execution_source == ExecutionSource.TOOL.value:
-                fs_instance = PromptServiceFileHelper.initialize_file_storage(
-                    type=FileStorageType.TEMPORARY
-                )
-            highlight_data = highlight_data_plugin["entrypoint_cls"](
-                logger=current_app.logger, file_path=file_path, fs_instance=fs_instance
-            ).run
+            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+                fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
+                if execution_source == ExecutionSource.IDE.value:
+                    fs_instance = EnvHelper.get_storage(
+                        storage_type=StorageType.PERMANENT, 
+                        env_name=FileStorageKeys.REMOTE_STORAGE
+                    )
+                if execution_source == ExecutionSource.TOOL.value:
+                    fs_instance = EnvHelper.get_storage(
+                        storage_type=StorageType.TEMPORARY,
+                        env_name=FileStorageKeys.REMOTE_STORAGE,
+                    )
+                highlight_data = highlight_data_plugin["entrypoint_cls"](
+                    logger=current_app.logger, file_path=file_path, fs_instance=fs_instance
+                ).run
+            else:
+                highlight_data = highlight_data_plugin["entrypoint_cls"](
+                    logger=current_app.logger, file_path=file_path
+                ).run
         completion = llm.complete(
             prompt=prompt,
             process_text=highlight_data,
@@ -360,20 +368,29 @@ def extract_table(
     if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
         fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
         if execution_source == ExecutionSource.IDE.value:
-            fs_instance = PromptServiceFileHelper.initialize_file_storage(
-                type=FileStorageType.PERMANENT
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.REMOTE_STORAGE,
             )
         if execution_source == ExecutionSource.TOOL.value:
-            fs_instance = PromptServiceFileHelper.initialize_file_storage(
-                type=FileStorageType.TEMPORARY
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.TEMPORARY,
+                env_name=FileStorageKeys.REMOTE_STORAGE,
             )
     try:
-        answer = table_extractor["entrypoint_cls"].extract_large_table(
-            llm=llm,
-            table_settings=table_settings,
-            enforce_type=enforce_type,
-            fs_instance=fs_instance,
-        )
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            answer = table_extractor["entrypoint_cls"].extract_large_table(
+                llm=llm,
+                table_settings=table_settings,
+                enforce_type=enforce_type,
+                fs_instance=fs_instance,
+            )
+        else:
+            answer = table_extractor["entrypoint_cls"].extract_large_table(
+                llm=llm,
+                table_settings=table_settings,
+                enforce_type=enforce_type,
+            )
         structured_output[output[PSKeys.NAME]] = answer
         # We do not support summary and eval for table.
         # Hence returning the result
