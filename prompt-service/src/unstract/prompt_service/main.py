@@ -111,6 +111,8 @@ def prompt_processor() -> Any:
     }
     metrics: dict = {}
     variable_names: list[str] = []
+    # Identifier for source of invocation
+    execution_source = payload.get(PSKeys.EXECUTION_SOURCE, "")
     publish_log(
         log_events_id,
         {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
@@ -226,6 +228,7 @@ def prompt_processor() -> Any:
                     structured_output=structured_output,
                     llm=llm,
                     enforce_type=output[PSKeys.TYPE],
+                    execution_source=execution_source,
                 )
                 metadata = query_usage_metadata(token=platform_key, metadata=metadata)
                 response = {

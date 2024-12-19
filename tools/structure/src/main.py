@@ -120,6 +120,7 @@ class StructureTool(BaseTool):
             SettingsKeys.FILE_HASH: file_hash,
             SettingsKeys.FILE_NAME: file_name,
             SettingsKeys.FILE_PATH: extracted_input_file,
+            SettingsKeys.EXECUTION_SOURCE: SettingsKeys.TOOL,
         }
         # TODO: Need to split extraction and indexing
         # to avoid unwanted indexing
