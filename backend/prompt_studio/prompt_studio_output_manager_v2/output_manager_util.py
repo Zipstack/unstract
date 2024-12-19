@@ -10,7 +10,7 @@ class OutputManagerUtils:
         profile_manager_id: str,
         prompt_id: str = None,
         is_single_pass: bool = False,
-    ) -> dict[str, list[str]]:
+    ) -> list[str]:
         """
         Method to fetch coverage data for given tool and profile manager.
 
