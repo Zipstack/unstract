@@ -69,7 +69,7 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             )
 
         # Fetch prompt instances
-        prompt_instances = ToolStudioPrompt.objects.filter(
+        prompt_instances: ToolStudioPrompt = ToolStudioPrompt.objects.filter(
             tool_id=data.get(TSKeys.TOOL_ID)
         ).order_by("sequence_number")
 
