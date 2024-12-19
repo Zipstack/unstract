@@ -73,7 +73,8 @@ class PromptServiceContants:
     HIGHLIGHT_DATA = "highlight_data"
     CONFIDENCE_DATA = "confidence_data"
     EXECUTION_SOURCE = "execution_source"
-
+    METRICS = "metrics"
+    
 
 class RunLevel(Enum):
     """Different stages of prompt execution.

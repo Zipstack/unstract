@@ -77,3 +77,5 @@ class SettingsKeys:
     FILE_PATH = "file_path"
     EXECUTION_SOURCE = "execution_source"
     TOOL = "tool"
+    METRICS = "metrics"
+    INDEXING = "indexing"
