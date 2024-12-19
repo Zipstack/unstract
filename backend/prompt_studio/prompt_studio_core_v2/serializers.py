@@ -63,6 +63,7 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             default_profile = ProfileManager.get_default_llm_profile(instance)
             data[TSKeys.DEFAULT_PROFILE] = default_profile.profile_id
         except DefaultProfileError:
+            # To make it compatible with older projects error suppressed with warning.
             logger.warning(
                 "Default LLM profile doesn't exist for prompt tool %s",
                 str(instance.tool_id),
