@@ -44,48 +44,71 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
 
     def to_representation(self, instance):  # type: ignore
         data = super().to_representation(instance)
+        default_profile = None
+
+        # Fetch summarize LLM profile
         try:
-            profile_manager = ProfileManager.objects.get(
+            summarize_profile = ProfileManager.objects.get(
                 prompt_studio_tool=instance, is_summarize_llm=True
             )
-            data[TSKeys.SUMMARIZE_LLM_PROFILE] = profile_manager.profile_id
+            data[TSKeys.SUMMARIZE_LLM_PROFILE] = summarize_profile.profile_id
         except ObjectDoesNotExist:
             logger.info(
-                "Summarize LLM profile doesnt exist for prompt tool %s",
+                "Summarize LLM profile doesn't exist for prompt tool %s",
                 str(instance.tool_id),
             )
+
+        # Fetch default LLM profile
         try:
-            profile_manager = ProfileManager.get_default_llm_profile(instance)
-            data[TSKeys.DEFAULT_PROFILE] = profile_manager.profile_id
+            default_profile = ProfileManager.get_default_llm_profile(instance)
+            data[TSKeys.DEFAULT_PROFILE] = default_profile.profile_id
         except DefaultProfileError:
+            # To make it compatible with older projects error suppressed with warning.
             logger.warning(
-                "Default LLM profile doesnt exist for prompt tool %s",
+                "Default LLM profile doesn't exist for prompt tool %s",
                 str(instance.tool_id),
             )
-        prompt_instance: ToolStudioPrompt = ToolStudioPrompt.objects.filter(
+
+        # Fetch prompt instances
+        prompt_instances: ToolStudioPrompt = ToolStudioPrompt.objects.filter(
             tool_id=data.get(TSKeys.TOOL_ID)
         ).order_by("sequence_number")
-        data[TSKeys.PROMPTS] = []
+
+        if not prompt_instances.exists():
+            data[TSKeys.PROMPTS] = []
+            return data
+
+        # Process prompt instances
         output: list[Any] = []
-        # Appending prompt instances of the tool for FE Processing
-        if prompt_instance.count() != 0:
-            for prompt in prompt_instance:
-                profile_manager_id = prompt.prompt_id
-                if instance.single_pass_extraction_mode:
-                    # use projects default profile
-                    profile_manager_id = profile_manager.profile_id
-                prompt_serializer = ToolStudioPromptSerializer(prompt)
+        for prompt in prompt_instances:
+            prompt_serializer = ToolStudioPromptSerializer(prompt)
+            serialized_data = prompt_serializer.data
+
+            # Determine coverage
+            coverage: list[Any] = []
+            profile_manager_id = prompt.profile_manager
+            if default_profile and instance.single_pass_extraction_mode:
+                profile_manager_id = default_profile.profile_id
+
+            if profile_manager_id:
                 coverage = OutputManagerUtils.get_coverage(
                     data.get(TSKeys.TOOL_ID),
                     profile_manager_id,
                     prompt.prompt_id,
                     instance.single_pass_extraction_mode,
                 )
-                serialized_data = prompt_serializer.data
-                serialized_data["coverage"] = coverage
-                output.append(serialized_data)
-            data[TSKeys.PROMPTS] = output
+            else:
+                logger.info(
+                    "Skipping coverage calculation for prompt %s "
+                    "due to missing profile ID",
+                    str(prompt.prompt_key),
+                )
 
+            # Add coverage to serialized data
+            serialized_data["coverage"] = coverage
+            output.append(serialized_data)
+
+        data[TSKeys.PROMPTS] = output
         data["created_by_email"] = instance.created_by.email
 
         return data

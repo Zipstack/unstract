@@ -180,29 +180,6 @@ function DocumentParser({
     return outputs;
   };
 
-  const getPromptCoverageCount = (promptId) => {
-    const keys = Object.keys(promptOutputs || {});
-    const coverageKey = `coverage_${promptId}`;
-    const outputs = {};
-    if (!keys?.length) {
-      details?.prompts?.forEach((prompt) => {
-        if (prompt?.coverage) {
-          const key = Object.keys(prompt?.coverage)[0];
-          if (key?.startsWith(coverageKey)) {
-            outputs[key] = prompt?.coverage[key];
-          }
-        }
-      });
-      return outputs;
-    }
-    keys?.forEach((key) => {
-      if (key?.startsWith(coverageKey)) {
-        outputs[key] = promptOutputs[key];
-      }
-    });
-    return outputs;
-  };
-
   if (!details?.prompts?.length) {
     if (isSimplePromptStudio && SpsPromptsEmptyState) {
       return <SpsPromptsEmptyState />;
@@ -230,7 +207,7 @@ function DocumentParser({
               outputs={getPromptOutputs(item?.prompt_id)}
               enforceTypeList={enforceTypeList}
               setUpdatedPromptsCopy={setUpdatedPromptsCopy}
-              coverageCountData={getPromptCoverageCount(item?.prompt_id)}
+              coverageCountData={item?.coverage}
               isChallenge={isChallenge}
             />
             <div ref={bottomRef} className="doc-parser-pad-bottom" />
