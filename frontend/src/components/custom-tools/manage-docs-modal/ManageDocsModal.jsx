@@ -549,7 +549,12 @@ function ManageDocsModal({
           const doc = newListOfDocs[0];
           handleDocChange(doc);
         }
-        const updatedPromptOutput = removeIdFromCoverage(promptOutputs, docId);
+        const updatedPromptDetails = removeIdFromCoverage(details, docId);
+        const updatedPromptOutput = removeIdFromCoverageOfPromptOutput(
+          promptOutputs,
+          docId
+        );
+        updateCustomTool({ details: updatedPromptDetails });
         updatePromptOutput(updatedPromptOutput);
       })
       .catch((err) => {
@@ -558,6 +563,17 @@ function ManageDocsModal({
   };
 
   const removeIdFromCoverage = (data, idToRemove) => {
+    if (data.prompts && Array.isArray(data.prompts)) {
+      data.prompts.forEach((prompt) => {
+        if (Array.isArray(prompt.coverage)) {
+          prompt.coverage = prompt.coverage.filter((id) => id !== idToRemove);
+        }
+      });
+    }
+    return data; // Return the updated data
+  };
+
+  const removeIdFromCoverageOfPromptOutput = (data, idToRemove) => {
     return Object.entries(data).reduce((updatedData, [key, value]) => {
       // Create a new object for the current entry
       updatedData[key] = {
