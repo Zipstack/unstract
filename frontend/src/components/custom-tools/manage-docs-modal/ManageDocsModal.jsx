@@ -563,9 +563,9 @@ function ManageDocsModal({
       updatedData[key] = {
         ...value,
         // Update the coverage array if it exists
-        coverage: value.coverage
-          ? value.coverage.filter((id) => id !== idToRemove)
-          : value.coverage,
+        coverage: value?.coverage
+          ? value?.coverage?.filter((id) => id !== idToRemove)
+          : value?.coverage,
       };
       return updatedData;
     }, {});
