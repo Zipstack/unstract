@@ -91,7 +91,6 @@ const usePromptOutput = () => {
 
     let isTokenUsageForSinglePassAdded = false;
     const tokenUsageDetails = {};
-
     data.forEach((item) => {
       const promptId = item?.prompt_id;
       const docId = item?.document_manager;
@@ -109,7 +108,6 @@ const usePromptOutput = () => {
         isSinglePass,
         true
       );
-      const coverageKey = `coverage_${item?.prompt_id}_${llmProfile}`;
       outputs[key] = {
         runId: item?.run_id,
         promptOutputId: item?.prompt_output_id,
@@ -119,8 +117,8 @@ const usePromptOutput = () => {
         tokenUsage: item?.token_usage,
         output: item?.output,
         timer,
+        coverage: item?.coverage,
       };
-      outputs[coverageKey] = item?.coverage[coverageKey] || 0;
 
       if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded)
         return;
@@ -150,7 +148,6 @@ const usePromptOutput = () => {
       );
       tokenUsageDetails[tokenUsageId] = item?.token_usage;
     });
-
     if (isReset) {
       setPromptOutput(outputs);
       setTokenUsage(tokenUsageDetails);
