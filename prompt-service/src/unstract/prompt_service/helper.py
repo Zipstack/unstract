@@ -21,7 +21,7 @@ from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
 from unstract.sdk.exceptions import SdkError
 from unstract.sdk.llm import LLM
 
-from unstract.flags.src.unstract.flags.feature_flag import check_feature_flag_status
+from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
     from unstract.sdk.file_storage import FileStorage, FileStorageProvider
