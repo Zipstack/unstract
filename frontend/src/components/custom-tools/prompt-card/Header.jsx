@@ -6,6 +6,7 @@ import {
   PlayCircleFilled,
   PlayCircleOutlined,
   SyncOutlined,
+  InfoCircleOutlined,
 } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { Button, Checkbox, Col, Dropdown, Row, Tag, Tooltip } from "antd";
@@ -111,7 +112,10 @@ function Header({
                 checked={required === "all"}
                 onChange={() => handleRequiredChange("all")}
               >
-                Value Required
+                Value Required{" "}
+                <Tooltip title="Marks this as a required field. Saving this record won't be allowed in Human Quality Review should this field be empty.">
+                  <InfoCircleOutlined />
+                </Tooltip>
               </Checkbox>
             )}
             {enforceType === "json" && (
@@ -122,12 +126,19 @@ function Header({
                 >
                   All JSON Values Required
                 </Checkbox>
+                <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without all key/values filled in this JSON structure.">
+                  <InfoCircleOutlined />
+                </Tooltip>
                 <Checkbox
                   checked={required === "any"}
                   onChange={() => handleRequiredChange("any")}
+                  className="required-checkbox-padding"
                 >
                   Atleast 1 JSON Value Required
                 </Checkbox>
+                <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without at least one value filled in this JSON structure.">
+                  <InfoCircleOutlined />
+                </Tooltip>
               </>
             )}
           </div>
