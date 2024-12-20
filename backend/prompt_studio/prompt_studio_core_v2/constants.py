@@ -99,6 +99,7 @@ class ToolStudioPromptKeys:
     REQUIRED = "required"
     EXECUTION_SOURCE = "execution_source"
 
+
 class FileViewTypes:
     ORIGINAL = "ORIGINAL"
     EXTRACT = "EXTRACT"
