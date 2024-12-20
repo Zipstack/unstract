@@ -19,7 +19,11 @@ from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
 )
-from prompt_studio.prompt_studio_core_v2.constants import IndexingStatus, LogLevels
+from prompt_studio.prompt_studio_core_v2.constants import (
+    ExecutionSource,
+    IndexingStatus,
+    LogLevels,
+)
 from prompt_studio.prompt_studio_core_v2.constants import (
     ToolStudioPromptKeys as TSPKeys,
 )
@@ -1177,6 +1181,7 @@ class PromptStudioHelper:
             TSPKeys.FILE_HASH: file_hash,
             TSPKeys.FILE_NAME: doc_name,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
+            TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
         }
 
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
