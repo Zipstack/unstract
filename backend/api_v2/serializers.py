@@ -1,3 +1,4 @@
+import uuid
 from collections import OrderedDict
 from typing import Any, Union
 
@@ -15,6 +16,8 @@ from rest_framework.serializers import (
     ValidationError,
 )
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
+from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from backend.serializers import AuditSerializer
 
@@ -103,6 +106,7 @@ class ExecutionRequestSerializer(Serializer):
         timeout (int): Timeout for the API deployment, maximum value can be 300s.
             If -1 it corresponds to async execution. Defaults to -1
         include_metadata (bool): Flag to include metadata in API response
+        include_metrics (bool): Flag to include metrics in API response
         use_file_history (bool): Flag to use FileHistory to save and retrieve
             responses quickly. This is undocumented to the user and can be
             helpful for demos.
@@ -112,7 +116,35 @@ class ExecutionRequestSerializer(Serializer):
         min_value=-1, max_value=ApiExecution.MAXIMUM_TIMEOUT_IN_SEC, default=-1
     )
     include_metadata = BooleanField(default=False)
+    include_metrics = BooleanField(default=False)
     use_file_history = BooleanField(default=False)
+
+
+class ExecutionQuerySerializer(Serializer):
+    execution_id = CharField(required=True)
+    include_metadata = BooleanField(default=False)
+    include_metrics = BooleanField(default=False)
+
+    def validate_execution_id(self, value):
+        """Trim spaces, validate UUID format, and check if execution_id exists."""
+        value = value.strip()
+
+        # Validate UUID format
+        try:
+            uuid_obj = uuid.UUID(value)
+        except ValueError:
+            raise ValidationError(
+                f"Invalid execution_id '{value}'. Must be a valid UUID."
+            )
+
+        # Check if UUID exists in the database
+        exists = WorkflowExecution.objects.filter(id=uuid_obj).exists()
+        if not exists:
+            raise ExecutionDoesNotExistError(
+                f"Execution with ID '{value}' does not exist."
+            )
+
+        return str(uuid_obj)
 
 
 class APIDeploymentListSerializer(ModelSerializer):

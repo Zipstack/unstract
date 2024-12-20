@@ -82,7 +82,6 @@ class StructureTool(BaseTool):
         self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
 
         file_hash = self.get_exec_metadata.get(MetadataKey.SOURCE_HASH)
-        index = Index(tool=self)
         tool_id = tool_metadata[SettingsKeys.TOOL_ID]
         tool_settings = tool_metadata[SettingsKeys.TOOL_SETTINGS]
         outputs = tool_metadata[SettingsKeys.OUTPUTS]
@@ -105,6 +104,12 @@ class StructureTool(BaseTool):
             self.get_env_or_die(SettingsKeys.EXECUTION_RUN_DATA_FOLDER)
         )
         run_id = CommonUtils.generate_uuid()
+        index = Index(
+            tool=self,
+            run_id=run_id,
+            capture_metrics=True,
+        )
+        index_metrics = {}
         extracted_input_file = str(execution_run_data_folder / SettingsKeys.EXTRACT)
         # TODO : Resolve and pass log events ID
         payload = {
@@ -115,6 +120,7 @@ class StructureTool(BaseTool):
             SettingsKeys.FILE_HASH: file_hash,
             SettingsKeys.FILE_NAME: file_name,
             SettingsKeys.FILE_PATH: extracted_input_file,
+            SettingsKeys.EXECUTION_SOURCE: SettingsKeys.TOOL,
         }
         # TODO: Need to split extraction and indexing
         # to avoid unwanted indexing
@@ -151,6 +157,7 @@ class StructureTool(BaseTool):
                     else {}
                 ),
             )
+            index_metrics = {SettingsKeys.INDEXING: index.get_metrics()}
             if summarize_as_source:
                 summarize_file_hash = self._summarize_and_index(
                     tool_id=tool_id,
@@ -187,6 +194,10 @@ class StructureTool(BaseTool):
                             usage_kwargs=usage_kwargs,
                             process_text=process_text,
                         )
+                        index_metrics[output[SettingsKeys.NAME]] = {
+                            SettingsKeys.INDEXING: index.get_metrics()
+                        }
+                        index.clear_metrics()
 
                     if summarize_as_source:
                         summarize_file_hash = self._summarize_and_index(
@@ -242,6 +253,22 @@ class StructureTool(BaseTool):
             structured_output_dict[SettingsKeys.METADATA] = metadata
             structured_output = json.dumps(structured_output_dict)
 
+        metrics = structured_output_dict.get(SettingsKeys.METRICS, {})
+        new_metrics = {}
+        if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
+            new_metrics = {
+                **metrics,
+                **index_metrics,
+            }
+        else:
+            # Merge dictionaries
+            new_metrics = {
+                key: {**metrics.get(key, {}), **index_metrics.get(key, {})}
+                for key in set(metrics)
+                | set(index_metrics)  # Union of keys from both dictionaries
+            }
+        if new_metrics:
+            structured_output_dict[SettingsKeys.METRICS] = new_metrics
         # Update GUI
         output_log = (
             f"## Result\n**NOTE:** In case of a deployed pipeline, the result would "

@@ -109,13 +109,25 @@ class AuthenticationHelper:
         Parameters:
             user_id (str): The user_id of the users to remove.
         """
+
+        organization_user = OrganizationMemberService.get_user_by_user_id(user_id)
+        if not organization_user:
+            logger.warning(
+                f"User removal skipped: User '{user_id}' not found in "
+                f"organization '{organization_id}'."
+            )
+            return
+
         # removing user from organization
         OrganizationMemberService.remove_user_by_user_id(user_id)
+
         # removing user m2m relations , while removing user
         User.objects.get(user_id=user_id).prompt_registries.clear()
         User.objects.get(user_id=user_id).shared_custom_tools.clear()
         User.objects.get(user_id=user_id).shared_adapters_instance.clear()
+
         # removing user from organization cache
         OrganizationMemberService.remove_user_membership_in_organization_cache(
             user_id=user_id, organization_id=organization_id
         )
+        logger.info(f"User '{user_id}' removed from organization '{organization_id}'")

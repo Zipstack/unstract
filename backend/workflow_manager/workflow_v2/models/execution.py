@@ -48,6 +48,9 @@ class WorkflowExecution(BaseModel):
     )
     # TODO: Restrict with an enum
     status = models.CharField(default="", db_comment="Current status of execution")
+    result_acknowledged = models.BooleanField(
+        default=False, db_comment="Result acknowledged"
+    )
     error_message = models.CharField(
         max_length=EXECUTION_ERROR_LENGTH,
         blank=True,
