@@ -93,11 +93,13 @@ class ToolStudioPrompt(BaseModel):
         unique=False,
     )
     required = models.CharField(
-        max_length=3,
         choices=RequiredType.choices,
         null=True,  # Allows the field to store NULL in the database
         blank=True,  # Allows the field to be optional in forms
         default=None,  # Sets the default value to None
+        db_comment="Field to store weather the values all values or any \
+        values required. This is used for HQR, based on the value approve or finish \
+        review",
     )
     is_assert = models.BooleanField(default=False)
     active = models.BooleanField(default=True, null=False, blank=False)

@@ -396,24 +396,3 @@ def extract_table(
     except table_extractor["exception_cls"] as e:
         msg = f"Couldn't extract table. {e}"
         raise APIError(message=msg)
-
-
-def add_required_field(
-    required_fields: dict[str, str], key: str, required: str
-) -> dict[str, str]:
-    """
-    Add or update a required field in the required_fields dictionary.
-
-    Args:
-        required_fields (Dict[str, str]): The dictionary
-        containing existing required fields,
-        where keys are field names and values are boolean flags.
-        key (str): The field key to add or update in the dictionary.
-        required (str): A indicating whether the
-        all/any values in field is required.
-
-    Returns:
-        Dict[str, str]: The updated dictionary of required fields.
-    """
-    required_fields[key] = required
-    return required_fields
