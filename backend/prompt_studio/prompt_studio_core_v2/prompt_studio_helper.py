@@ -819,6 +819,7 @@ class PromptStudioHelper:
 
         output[TSPKeys.PROMPT] = prompt.prompt
         output[TSPKeys.ACTIVE] = prompt.active
+        output[TSPKeys.REQUIRED] = prompt.required
         output[TSPKeys.CHUNK_SIZE] = profile_manager.chunk_size
         output[TSPKeys.VECTOR_DB] = vector_db
         output[TSPKeys.EMBEDDING] = embedding_model

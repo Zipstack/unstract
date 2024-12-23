@@ -108,6 +108,7 @@ def prompt_processor() -> Any:
         PSKeys.RUN_ID: run_id,
         PSKeys.FILE_NAME: doc_name,
         PSKeys.CONTEXT: {},
+        PSKeys.REQUIRED_FIELDS: {},
     }
     metrics: dict = {}
     variable_names: list[str] = []
@@ -120,10 +121,13 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         f"Preparing to execute {len(prompts)} prompt(s)",
     )
-
     # TODO: Rename "output" to "prompt"
     for output in prompts:  # type:ignore
         variable_names.append(output[PSKeys.NAME])
+        metadata[PSKeys.REQUIRED_FIELDS][output[PSKeys.NAME]] = output.get(
+            PSKeys.REQUIRED, None
+        )
+
     for output in prompts:  # type:ignore
         prompt_name = output[PSKeys.NAME]
         prompt_text = output[PSKeys.PROMPT]
