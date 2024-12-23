@@ -19,7 +19,11 @@ from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
 )
-from prompt_studio.prompt_studio_core_v2.constants import IndexingStatus, LogLevels
+from prompt_studio.prompt_studio_core_v2.constants import (
+    ExecutionSource,
+    IndexingStatus,
+    LogLevels,
+)
 from prompt_studio.prompt_studio_core_v2.constants import (
     ToolStudioPromptKeys as TSPKeys,
 )
@@ -815,6 +819,7 @@ class PromptStudioHelper:
 
         output[TSPKeys.PROMPT] = prompt.prompt
         output[TSPKeys.ACTIVE] = prompt.active
+        output[TSPKeys.REQUIRED] = prompt.required
         output[TSPKeys.CHUNK_SIZE] = profile_manager.chunk_size
         output[TSPKeys.VECTOR_DB] = vector_db
         output[TSPKeys.EMBEDDING] = embedding_model
@@ -1181,6 +1186,7 @@ class PromptStudioHelper:
             TSPKeys.FILE_NAME: doc_name,
             TSPKeys.FILE_PATH: file_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
+            TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
         }
 
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)

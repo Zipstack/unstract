@@ -19,7 +19,7 @@ import { Header } from "./Header";
 import { OutputForIndex } from "./OutputForIndex";
 import { PromptOutput } from "./PromptOutput";
 import { TABLE_ENFORCE_TYPE, RECORD_ENFORCE_TYPE } from "./constants";
-import { generateCoverageKey } from "../../../helpers/GetStaticData";
+import usePromptOutput from "../../../hooks/usePromptOutput";
 
 let TableExtractionSettingsBtn;
 try {
@@ -66,6 +66,8 @@ function PromptCardItems({
     defaultLlmProfile,
     singlePassExtractMode,
   } = useCustomToolStore();
+
+  const { generatePromptOutputKey } = usePromptOutput();
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [expandCard, setExpandCard] = useState(true);
@@ -78,10 +80,18 @@ function PromptCardItems({
   const isNotSingleLlmProfile = llmProfiles.length > 1;
   const divRef = useRef(null);
   const [enforceType, setEnforceType] = useState("");
-  const profileId = singlePassExtractMode
-    ? defaultLlmProfile
-    : selectedLlmProfileId || defaultLlmProfile;
-  const coverageKey = generateCoverageKey(promptDetails?.prompt_id, profileId);
+  const promptId = promptDetails?.prompt_id;
+  const docId = selectedDoc?.document_id;
+  const promptProfile = promptDetails?.profile_manager || defaultLlmProfile;
+  const promptOutputKey = generatePromptOutputKey(
+    promptId,
+    docId,
+    promptProfile,
+    singlePassExtractMode,
+    true
+  );
+  const promptCoverage =
+    promptOutputs[promptOutputKey]?.coverage || coverageCountData;
 
   useEffect(() => {
     if (enforceType !== promptDetails?.enforce_type) {
@@ -170,6 +180,7 @@ function PromptCardItems({
             enabledProfiles={enabledProfiles}
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
+            enforceType={enforceType}
           />
         </Space>
       </div>
@@ -213,7 +224,7 @@ function PromptCardItems({
                             <SearchOutlined className="font-size-12" />
                           )}
                           <Typography.Link className="font-size-12">
-                            Coverage: {coverageCountData[coverageKey] || 0} of{" "}
+                            Coverage: {promptCoverage?.length || 0} of{" "}
                             {listOfDocs?.length || 0} docs
                           </Typography.Link>
                         </Space>

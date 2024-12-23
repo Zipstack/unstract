@@ -24,8 +24,10 @@ try {
 const usePromptOutput = () => {
   const { sessionDetails } = useSessionStore();
   const { setTokenUsage, updateTokenUsage } = useTokenUsageStore();
-  const { setPromptOutput, updatePromptOutput } = usePromptOutputStore();
-  const { isSimplePromptStudio, isPublicSource } = useCustomToolStore();
+  const { setPromptOutput, updatePromptOutput, promptOutputs } =
+    usePromptOutputStore();
+  const { isSimplePromptStudio, isPublicSource, selectedDoc } =
+    useCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
   const { id } = useParams();
 
@@ -91,7 +93,6 @@ const usePromptOutput = () => {
 
     let isTokenUsageForSinglePassAdded = false;
     const tokenUsageDetails = {};
-
     data.forEach((item) => {
       const promptId = item?.prompt_id;
       const docId = item?.document_manager;
@@ -109,7 +110,6 @@ const usePromptOutput = () => {
         isSinglePass,
         true
       );
-      const coverageKey = `coverage_${item?.prompt_id}_${llmProfile}`;
       outputs[key] = {
         runId: item?.run_id,
         promptOutputId: item?.prompt_output_id,
@@ -119,8 +119,8 @@ const usePromptOutput = () => {
         tokenUsage: item?.token_usage,
         output: item?.output,
         timer,
+        coverage: item?.coverage,
       };
-      outputs[coverageKey] = item?.coverage[coverageKey] || 0;
 
       if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded)
         return;
@@ -150,12 +150,32 @@ const usePromptOutput = () => {
       );
       tokenUsageDetails[tokenUsageId] = item?.token_usage;
     });
-
     if (isReset) {
       setPromptOutput(outputs);
       setTokenUsage(tokenUsageDetails);
     } else {
-      updatePromptOutput(outputs);
+      let updatedPromptOutputs = promptOutputs;
+      Object.keys(outputs).forEach((key) => {
+        const [keyPromptId, keyDoctId, keyLlmProfile, keyIsSinglePass] =
+          key.split("__");
+        // only add output of selected document
+        if (keyDoctId === selectedDoc?.document_id) {
+          const currentOutput = { [key]: outputs[key] };
+          updatedPromptOutputs = { ...promptOutputs, ...currentOutput };
+        }
+        Object.keys(updatedPromptOutputs).forEach((innerKey) => {
+          const [existingPromptId, , existingLlmProfile, existingIsSinglePass] =
+            innerKey.split("__"); // Extract promptId from key
+          if (
+            keyPromptId === existingPromptId &&
+            keyLlmProfile === existingLlmProfile &&
+            keyIsSinglePass === existingIsSinglePass
+          ) {
+            updatedPromptOutputs[innerKey].coverage = outputs[key]?.coverage;
+          }
+        });
+      });
+      updatePromptOutput(updatedPromptOutputs);
       updateTokenUsage(tokenUsageDetails);
     }
   };
