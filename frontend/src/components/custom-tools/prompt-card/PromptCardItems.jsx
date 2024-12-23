@@ -180,6 +180,7 @@ function PromptCardItems({
             enabledProfiles={enabledProfiles}
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
+            enforceType={enforceType}
           />
         </Space>
       </div>
