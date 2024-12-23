@@ -159,7 +159,7 @@ const usePromptOutput = () => {
         const [keyPromptId, keyDoctId, keyLlmProfile, keyIsSinglePass] =
           key.split("__");
         // only add output of selected document
-        if (keyDoctId === selectedDoc.document_id) {
+        if (keyDoctId === selectedDoc?.document_id) {
           const currentOutput = { [key]: outputs[key] };
           updatedPromptOutputs = { ...promptOutputs, ...currentOutput };
         }
@@ -171,7 +171,7 @@ const usePromptOutput = () => {
             keyLlmProfile === existingLlmProfile &&
             keyIsSinglePass === existingIsSinglePass
           ) {
-            updatedPromptOutputs[innerKey].coverage = outputs[key].coverage;
+            updatedPromptOutputs[innerKey].coverage = outputs[key]?.coverage;
           }
         });
       });
