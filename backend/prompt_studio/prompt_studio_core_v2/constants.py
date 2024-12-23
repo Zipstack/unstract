@@ -96,6 +96,7 @@ class ToolStudioPromptKeys:
     RECORD = "record"
     FILE_PATH = "file_path"
     ENABLE_HIGHLIGHT = "enable_highlight"
+    REQUIRED = "required"
     EXECUTION_SOURCE = "execution_source"
 
 
