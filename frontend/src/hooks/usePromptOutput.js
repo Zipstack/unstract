@@ -160,25 +160,25 @@ const usePromptOutput = () => {
   };
 
   const updateCoverage = (promptOutputs, outputs) => {
-      let updatedPromptOutputs = promptOutputs;
-      Object.keys(outputs).forEach((key) => {
+    let updatedPromptOutputs = promptOutputs;
+    Object.keys(outputs).forEach((key) => {
       const [keyPromptId, keyDoctId, , keyIsSinglePass] = key.split("__");
-        // only add output of selected document
-        if (keyDoctId === selectedDoc?.document_id) {
-          const currentOutput = { [key]: outputs[key] };
-          updatedPromptOutputs = { ...promptOutputs, ...currentOutput };
-        }
-        Object.keys(updatedPromptOutputs).forEach((innerKey) => {
+      // only add output of selected document
+      if (keyDoctId === selectedDoc?.document_id) {
+        const currentOutput = { [key]: outputs[key] };
+        updatedPromptOutputs = { ...promptOutputs, ...currentOutput };
+      }
+      Object.keys(updatedPromptOutputs).forEach((innerKey) => {
         const [existingPromptId, , , existingIsSinglePass] =
-            innerKey.split("__"); // Extract promptId from key
-          if (
-            keyPromptId === existingPromptId &&
-            keyIsSinglePass === existingIsSinglePass
-          ) {
-            updatedPromptOutputs[innerKey].coverage = outputs[key]?.coverage;
-          }
-        });
+          innerKey.split("__"); // Extract promptId from key
+        if (
+          keyPromptId === existingPromptId &&
+          keyIsSinglePass === existingIsSinglePass
+        ) {
+          updatedPromptOutputs[innerKey].coverage = outputs[key]?.coverage;
+        }
       });
+    });
     return updatedPromptOutputs;
   };
 
