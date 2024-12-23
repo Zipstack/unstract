@@ -1157,7 +1157,6 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
         tool_settings[TSPKeys.ENABLE_HIGHLIGHT] = tool.enable_highlight
         tool_settings[TSPKeys.CHALLENGE_LLM] = challenge_llm
-        tool_settings[TSPKeys.ENABLE_HIGHLIGHT] = tool.enable_highlight
         tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
             settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
         )
