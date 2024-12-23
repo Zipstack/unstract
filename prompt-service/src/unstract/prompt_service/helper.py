@@ -113,6 +113,7 @@ def initialize_plugin_endpoints(app: Flask) -> None:
             app=app,
             challenge_plugin=plugins.get(PSKeys.CHALLENGE, {}),
             get_cleaned_context=get_cleaned_context,
+            highlight_data_plugin=plugins.get(PSKeys.HIGHLIGHT_DATA_PLUGIN, {}),
         )
     if summarize_plugin:
         summarize_plugin["entrypoint_cls"](
