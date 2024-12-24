@@ -67,8 +67,7 @@ class SnowflakeDB(UnstractDB):
         )
         return con
 
-    @staticmethod
-    def get_create_table_query(table: str) -> str:
+    def get_create_table_base_query(self, table: str) -> str:
         sql_query = (
             f"CREATE TABLE {table} IF NOT EXISTS "
             f"(id TEXT ,"
@@ -98,3 +97,11 @@ class SnowflakeDB(UnstractDB):
                 schema=self.schema,
                 table_name=table_name,
             ) from e
+
+    def get_information_schema(self, table_name: str) -> dict[str, str]:
+        query = f"describe table {table_name}"
+        column_types: dict[str, str] = {}
+        results = self.execute(query=query)
+        for column in results:
+            column_types[column[0].lower()] = column[1].split("(")[0]
+        return column_types

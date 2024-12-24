@@ -33,7 +33,10 @@ class PromptStudioOutputSerializer(AuditSerializer):
         try:
             # Fetch all relevant outputs for the current tool and profile
             coverage = OutputManagerUtils.get_coverage(
-                instance.tool_id, instance.profile_manager_id, instance.prompt_id
+                instance.tool_id,
+                instance.profile_manager_id,
+                instance.prompt_id,
+                instance.is_single_pass_extract,
             )
             data["coverage"] = coverage
 

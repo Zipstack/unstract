@@ -20,12 +20,11 @@ function PdfViewer({ fileUrl, highlightData }) {
   const pageNavigationPluginInstance = pageNavigationPlugin();
   const { jumpToPage } = pageNavigationPluginInstance;
   const parentRef = useRef(null);
-
-  const removeZerosAndDeleteIfAllZero = (data) => {
-    return data?.filter((innerArray) =>
+  function removeZerosAndDeleteIfAllZero(highlightData) {
+    return highlightData?.filter((innerArray) =>
       innerArray.some((value) => value !== 0)
     );
-  };
+  }
 
   const processHighlightData = highlightData
     ? removeZerosAndDeleteIfAllZero(highlightData)
@@ -51,8 +50,9 @@ function PdfViewer({ fileUrl, highlightData }) {
 
   // Jump to page when highlightData changes
   useEffect(() => {
-    if (processedHighlightData && processedHighlightData?.length > 0) {
-      const pageNumber = processedHighlightData[0][0]; // Assume highlightData[0][0] is the page number
+    highlightData = removeZerosAndDeleteIfAllZero(highlightData); // Removing zeros before checking the highlight data condition
+    if (highlightData && highlightData.length > 0) {
+      const pageNumber = highlightData[0][0]; // Assume highlightData[0][0] is the page number
       if (pageNumber !== null && jumpToPage) {
         setTimeout(() => {
           jumpToPage(pageNumber); // jumpToPage is 0-indexed, so subtract 1 if necessary

@@ -7,8 +7,7 @@ ENV UNSTRACT_ENTRYPOINT "python /app/src/main.py"
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ffmpeg libsm6 libxext6 libmagic-dev poppler-utils \
-        tesseract-ocr libreoffice pandoc \
-        freetds-dev freetds-bin \
+        libreoffice freetds-dev freetds-bin \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
