@@ -24,12 +24,10 @@ function workflowService() {
       };
       return axiosPrivate(options);
     },
-    getProjectList: (myProjects = false) => {
-      const params = myProjects ? { created_by: sessionDetails?.id } : {};
+    getProjectList: () => {
       options = {
         url: `${path}/workflow/`,
         method: "GET",
-        params,
       };
       return axiosPrivate(options);
     },
