@@ -216,13 +216,18 @@ function ToolIde() {
     const body = {
       output: doc?.document_id,
     };
-    handleUpdateTool(body).catch((err) => {
-      const revertSelectedDoc = {
-        selectedDoc: prevSelectedDoc,
-      };
-      updateCustomTool(revertSelectedDoc);
-      setAlertDetails(handleException(err, "Failed to select the document"));
-    });
+    handleUpdateTool(body)
+      .then((res) => {
+        const updatedToolData = res?.data;
+        updateCustomTool({ details: updatedToolData });
+      })
+      .catch((err) => {
+        const revertSelectedDoc = {
+          selectedDoc: prevSelectedDoc,
+        };
+        updateCustomTool(revertSelectedDoc);
+        setAlertDetails(handleException(err, "Failed to select the document"));
+      });
   };
 
   return (
