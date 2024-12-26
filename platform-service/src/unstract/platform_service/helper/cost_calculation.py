@@ -15,7 +15,7 @@ if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
     from datetime import timezone
 
     from unstract.sdk.exceptions import FileStorageError
-    from unstract.sdk.file_storage import FileStorageProvider, PermanentFileStorage
+    from unstract.sdk.file_storage import EnvHelper, StorageType
 
 
 class CostCalculationHelper:
@@ -30,21 +30,11 @@ class CostCalculationHelper:
         self.file_path = file_path
 
         if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            self.file_storage, self.file_path = self._get_storage_credentials()
-        self.model_token_data = self._get_model_token_data()
-
-    if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-
-        def _get_storage_credentials(self) -> tuple[PermanentFileStorage, str]:
             try:
-                # Not creating constants for now for the keywords below as this
-                # logic ought to change in the near future to maintain unformity
-                # across services
-                file_storage = json.loads(os.environ.get("FILE_STORAGE_CREDENTIALS"))
-                provider = FileStorageProvider(file_storage["provider"])
-                credentials = file_storage.get("credentials", {})
-                file_path = file_storage["model_prices_file_path"]
-                return PermanentFileStorage(provider, **credentials), file_path
+                self.file_storage = EnvHelper.get_storage(
+                    StorageType.PERMANENT, "FILE_STORAGE_CREDENTIALS"
+                )
+                self.file_path = os.environ.get("REMOTE_MODEL_PRICES_FILE_PATH", "")
             except KeyError as e:
                 app.logger.error(
                     f"Required credentials is missing in the env: {str(e)}"
@@ -57,6 +47,8 @@ class CostCalculationHelper:
                     stack_info=True,
                     exc_info=True,
                 )
+
+        self.model_token_data = self._get_model_token_data()
 
     def calculate_cost(
         self, model_name: str, provider: str, input_tokens: int, output_tokens: int
