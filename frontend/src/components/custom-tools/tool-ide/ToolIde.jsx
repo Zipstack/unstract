@@ -15,6 +15,8 @@ import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import { PageTitle } from "../../widgets/page-title/PageTitle.jsx";
+
 let OnboardMessagesModal;
 let PromptShareModal;
 let PromptShareLink;
@@ -232,6 +234,7 @@ function ToolIde() {
 
   return (
     <div className="tool-ide-layout">
+      <PageTitle title={details?.tool_name} />
       {isPublicSource && HeaderPublic && <HeaderPublic />}
       <div>
         <Header
