@@ -34,7 +34,7 @@ class CostCalculationHelper:
                 self.file_storage = EnvHelper.get_storage(
                     StorageType.PERMANENT, "FILE_STORAGE_CREDENTIALS"
                 )
-                self.file_path = os.environ.get("REMOTE_MODEL_PRICES_FILE_PATH", "")
+                self.file_path = os.environ.get("REMOTE_MODEL_PRICES_FILE_PATH")
             except KeyError as e:
                 app.logger.error(
                     f"Required credentials is missing in the env: {str(e)}"
@@ -47,6 +47,7 @@ class CostCalculationHelper:
                     stack_info=True,
                     exc_info=True,
                 )
+                raise e
 
         self.model_token_data = self._get_model_token_data()
 
