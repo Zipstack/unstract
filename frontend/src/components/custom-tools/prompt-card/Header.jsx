@@ -6,6 +6,7 @@ import {
   PlayCircleFilled,
   PlayCircleOutlined,
   SyncOutlined,
+  InfoCircleOutlined,
 } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { Button, Checkbox, Col, Dropdown, Row, Tag, Tooltip } from "antd";
@@ -45,6 +46,7 @@ function Header({
   setExpandCard,
   spsLoading,
   handleSpsLoading,
+  enforceType,
 }) {
   const {
     selectedDoc,
@@ -58,6 +60,7 @@ function Header({
   const [items, setItems] = useState([]);
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(null);
+  const [required, setRequired] = useState(false);
 
   const handleRunBtnClick = (promptRunType, docId = null) => {
     setExpandCard(true);
@@ -73,8 +76,22 @@ function Header({
       }
     );
   };
+  const handleRequiredChange = (value) => {
+    const newValue = value === required ? null : value; // Allow deselection
+    setRequired(newValue);
+    handleChange(
+      newValue,
+      promptDetails?.prompt_id,
+      "required",
+      true,
+      true
+    ).catch(() => {
+      setRequired(promptDetails?.required || null); // Rollback state in case of error
+    });
+  };
   useEffect(() => {
     setIsDisablePrompt(promptDetails?.active);
+    setRequired(promptDetails?.required);
   }, [promptDetails, details]);
 
   useEffect(() => {
@@ -86,6 +103,47 @@ function Header({
           </Checkbox>
         ),
         key: "enable",
+      },
+      {
+        label: (
+          <div>
+            {["json", "table", "record"].indexOf(enforceType) === -1 && (
+              <Checkbox
+                checked={required === "all"}
+                onChange={() => handleRequiredChange("all")}
+              >
+                Value Required{" "}
+                <Tooltip title="Marks this as a required field. Saving this record won't be allowed in Human Quality Review should this field be empty.">
+                  <InfoCircleOutlined />
+                </Tooltip>
+              </Checkbox>
+            )}
+            {enforceType === "json" && (
+              <>
+                <Checkbox
+                  checked={required === "all"}
+                  onChange={() => handleRequiredChange("all")}
+                >
+                  All JSON Values Required
+                </Checkbox>
+                <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without all key/values filled in this JSON structure.">
+                  <InfoCircleOutlined />
+                </Tooltip>
+                <Checkbox
+                  checked={required === "any"}
+                  onChange={() => handleRequiredChange("any")}
+                  className="required-checkbox-padding"
+                >
+                  Atleast 1 JSON Value Required
+                </Checkbox>
+                <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without at least one value filled in this JSON structure.">
+                  <InfoCircleOutlined />
+                </Tooltip>
+              </>
+            )}
+          </div>
+        ),
+        key: "required",
       },
       {
         label: (
@@ -109,7 +167,7 @@ function Header({
     }
 
     setItems(dropdownItems);
-  }, [isDisablePrompt]);
+  }, [isDisablePrompt, required, enforceType]);
 
   return (
     <Row>
@@ -270,6 +328,7 @@ Header.propTypes = {
   setExpandCard: PropTypes.func.isRequired,
   spsLoading: PropTypes.object,
   handleSpsLoading: PropTypes.func.isRequired,
+  enforceType: PropTypes.text,
 };
 
 export { Header };

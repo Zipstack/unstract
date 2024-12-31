@@ -819,6 +819,7 @@ class PromptStudioHelper:
 
         output[TSPKeys.PROMPT] = prompt.prompt
         output[TSPKeys.ACTIVE] = prompt.active
+        output[TSPKeys.REQUIRED] = prompt.required
         output[TSPKeys.CHUNK_SIZE] = profile_manager.chunk_size
         output[TSPKeys.VECTOR_DB] = vector_db
         output[TSPKeys.EMBEDDING] = embedding_model
@@ -1156,7 +1157,10 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
         tool_settings[TSPKeys.ENABLE_HIGHLIGHT] = tool.enable_highlight
         tool_settings[TSPKeys.CHALLENGE_LLM] = challenge_llm
-
+        tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
+            settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
+        )
+        tool_settings[TSPKeys.SUMMARIZE_AS_SOURCE] = tool.summarize_as_source
         for prompt in prompts:
             if not prompt.prompt:
                 raise EmptyPromptError()
@@ -1179,6 +1183,7 @@ class PromptStudioHelper:
             TSPKeys.RUN_ID: run_id,
             TSPKeys.FILE_HASH: file_hash,
             TSPKeys.FILE_NAME: doc_name,
+            TSPKeys.FILE_PATH: file_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
         }
