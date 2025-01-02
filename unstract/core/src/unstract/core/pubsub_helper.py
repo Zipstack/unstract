@@ -41,6 +41,7 @@ class LogPublisher:
         iteration: Optional[int] = None,
         iteration_total: Optional[int] = None,
         execution_id: Optional[str] = None,
+        file_execution_id: Optional[str] = None,
         organization_id: Optional[str] = None,
     ) -> dict[str, Any]:
         return {
@@ -56,6 +57,7 @@ class LogPublisher:
             "iteration": iteration,
             "iteration_total": iteration_total,
             "execution_id": execution_id,
+            "file_execution_id": file_execution_id,
             "organization_id": organization_id,
         }
 

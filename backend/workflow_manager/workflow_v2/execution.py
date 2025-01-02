@@ -213,7 +213,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             )
             raise WorkflowExecutionError(self.compilation_result["problems"][0])
 
-    def execute(self, run_id: str, file_name: str, single_step: bool = False) -> None:
+    def execute(
+        self, file_execution_id: str, file_name: str, single_step: bool = False
+    ) -> None:
         execution_type = ExecutionType.COMPLETE
         if single_step:
             execution_type = ExecutionType.STEP
@@ -235,7 +237,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         start_time = time.time()
         try:
             self.execute_workflow(
-                run_id=run_id, file_name=file_name, execution_type=execution_type
+                file_execution_id=file_execution_id,
+                file_name=file_name,
+                execution_type=execution_type,
             )
             end_time = time.time()
             execution_time = end_time - start_time
@@ -308,7 +312,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
     def execute_input_file(
         self,
-        run_id: str,
+        file_execution_id: str,
         file_name: str,
         single_step: bool,
         workflow_file_execution: WorkflowFileExecution,
@@ -316,7 +320,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         """Executes the input file.
 
         Args:
-            run_id (str): UUID for a single run of a file
+            file_execution_id (str): UUID for a single run of a file
             file_name (str): The name of the file to be executed.
             single_step (bool): Flag indicating whether to execute in
             single step mode.
@@ -335,7 +339,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         )
         workflow_file_execution.update_status(ExecutionStatus.EXECUTING)
 
-        self.execute(run_id, file_name, single_step)
+        self.execute(file_execution_id, file_name, single_step)
         self.publish_log(f"Tool executed successfully for '{file_name}'")
         self._handle_execution_type(execution_type)
 

@@ -5,6 +5,7 @@ class LogFieldName:
     TYPE = "type"
     DATA = "data"
     EVENT_TIME = "event_time"
+    FILE_EXECUTION_ID = "file_execution_id"
 
 
 class LogEventArgument:

@@ -235,17 +235,18 @@ class WorkflowHelper:
             input_file_path=input_file, file_hash=file_hash
         )
         try:
+            # Multiple run_ids are linked to an execution_id
+            # Each run_id corresponds to workflow runs for a single file
+            # It should e uuid of workflow_file_execution
+            file_execution_id = str(workflow_file_execution.id)
+            execution_service.file_execution_id = file_execution_id
             execution_service.initiate_tool_execution(
                 current_file_idx, total_files, file_name, single_step
             )
             workflow_file_execution.update_status(status=ExecutionStatus.INITIATED)
             if not file_hash.is_executed:
-                # Multiple run_ids are linked to an execution_id
-                # Each run_id corresponds to workflow runs for a single file
-                # It should e uuid of workflow_file_execution
-                run_id = str(workflow_file_execution.id)
                 execution_service.execute_input_file(
-                    run_id=run_id,
+                    file_execution_id=file_execution_id,
                     file_name=file_name,
                     single_step=single_step,
                     workflow_file_execution=workflow_file_execution,
