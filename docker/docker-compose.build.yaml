@@ -6,6 +6,7 @@ services:
       context: ..
   backend:
     image: unstract/backend:${VERSION}
+    network_mode: host
     build:
       dockerfile: docker/dockerfiles/backend.Dockerfile
       context: ..
@@ -16,11 +17,13 @@ services:
       context: ..
   platform-service:
     image: unstract/platform-service:${VERSION}
+    network_mode: host
     build:
       dockerfile: docker/dockerfiles/platform.Dockerfile
       context: ..
   prompt-service:
     image: unstract/prompt-service:${VERSION}
+    network_mode: host
     build:
       dockerfile: docker/dockerfiles/prompt.Dockerfile
       context: ..

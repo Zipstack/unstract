@@ -2,7 +2,7 @@
 
 ```bash
 # Build all services
-VERSION=dev docker compose -f docker-compose.build.yaml build
+VERSION=llama_test docker compose -f docker-compose.build.yaml build
 
 # Build a specific service alone
 VERSION=dev docker compose -f docker-compose.build.yaml build frontend
@@ -14,7 +14,7 @@ VERSION=dev docker compose -f docker-compose.build.yaml build frontend
 
 ```bash
 # Up all services
-VERSION=dev docker compose -f docker-compose.yaml up -d
+VERSION=llama_test docker compose -f docker-compose.yaml up -d
 
 # Up a specific service alone
 VERSION=dev docker compose -f docker-compose.yaml up -d frontend

@@ -44,6 +44,10 @@ RUN set -e; \
     # source command may not be availble in sh
     . .venv/bin/activate; \
     \
+    # Configure PDM to use the local PyPI server
+    pdm config pypi.url "http://192.168.1.8:9090/simple"; \
+    pdm config -v pypi.verify_ssl False; \
+    \
     # Install opentelemetry for instrumentation.
     pip install opentelemetry-distro opentelemetry-exporter-otlp; \
     \
