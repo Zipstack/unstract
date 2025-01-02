@@ -44,17 +44,25 @@ class AdapterProcessor:
         return schema_details
 
     @staticmethod
-    def get_all_supported_adapters(type: str) -> list[dict[Any, Any]]:
+    def get_all_supported_adapters(user_email: str, type: str) -> list[dict[Any, Any]]:
         """Function to return list of all supported adapters."""
         supported_adapters = []
         updated_adapters = []
         updated_adapters = AdapterProcessor.__fetch_adapters_by_key_value(
             AdapterKeys.ADAPTER_TYPE, type
         )
+        is_zipstack_or_unstract_user = (
+            "@zipstack.com" in user_email or "@unstract.com" in user_email
+        )
+
         for each_adapter in updated_adapters:
+            adapter_id = each_adapter.get(AdapterKeys.ID)
+            if not is_zipstack_or_unstract_user and adapter_id.startswith("noOp"):
+                continue
+
             supported_adapters.append(
                 {
-                    AdapterKeys.ID: each_adapter.get(AdapterKeys.ID),
+                    AdapterKeys.ID: adapter_id,
                     AdapterKeys.NAME: each_adapter.get(AdapterKeys.NAME),
                     AdapterKeys.DESCRIPTION: each_adapter.get(AdapterKeys.DESCRIPTION),
                     AdapterKeys.ICON: each_adapter.get(AdapterKeys.ICON),
