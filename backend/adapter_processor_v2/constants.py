@@ -1,3 +1,6 @@
+from enum import Enum
+
+
 class AdapterKeys:
     JSON_SCHEMA = "json_schema"
     ADAPTER_TYPE = "adapter_type"
@@ -27,3 +30,12 @@ class AdapterKeys:
     ADAPTER_NAME = "adapter_name"
     ADAPTER_CREATED_BY = "created_by_email"
     ADAPTER_CONTEXT_WINDOW_SIZE = "context_window_size"
+
+
+class AllowedDomains(Enum):
+    ZIPSTACK = "@zipstack.com"
+    UNSTRACT = "@unstract.com"
+
+    @staticmethod
+    def list():
+        return list(map(lambda c: c.value, AllowedDomains))
