@@ -3,7 +3,7 @@ import logging
 from typing import Any, Optional
 
 from account_v2.models import User
-from adapter_processor_v2.constants import AdapterKeys
+from adapter_processor_v2.constants import AdapterKeys, AllowedDomains
 from adapter_processor_v2.exceptions import (
     InternalServiceError,
     InValidAdapterId,
@@ -51,13 +51,13 @@ class AdapterProcessor:
         updated_adapters = AdapterProcessor.__fetch_adapters_by_key_value(
             AdapterKeys.ADAPTER_TYPE, type
         )
-        is_zipstack_or_unstract_user = (
-            "@zipstack.com" in user_email or "@unstract.com" in user_email
+        is_special_user = any(
+            identifier in user_email for identifier in AllowedDomains.list()
         )
 
         for each_adapter in updated_adapters:
             adapter_id = each_adapter.get(AdapterKeys.ID)
-            if not is_zipstack_or_unstract_user and adapter_id.startswith("noOp"):
+            if not is_special_user and adapter_id.startswith("noOp"):
                 continue
 
             supported_adapters.append(
