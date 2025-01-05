@@ -5093,8 +5093,8 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.68.0rc9-py3-none-any.whl", hash = "sha256:970a2a18b63b587f47ffa449dfa62090cbf7dd38533ad7888507d79e83150709"},
-    {file = "unstract_sdk-0.68.0rc9.tar.gz", hash = "sha256:ca7118b5066e5ee2f1d6cd8b87d7db6a995bc6dc9d2aa10bbf78c04724be2a26"},
+    {file = "unstract_sdk-0.68.0rc9-py3-none-any.whl", hash = "sha256:121d0e6d5e67698334bda647cdc5861de4d15240373c277b66a789b93dfae280"},
+    {file = "unstract_sdk-0.68.0rc9.tar.gz", hash = "sha256:8409517e353bc3fd94cc4f8dccb480e6958fa2d7d1bfb20496095e6170e579b7"},
 ]
 
 [[package]]
