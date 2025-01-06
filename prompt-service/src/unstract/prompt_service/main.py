@@ -108,9 +108,12 @@ def prompt_processor() -> Any:
         PSKeys.RUN_ID: run_id,
         PSKeys.FILE_NAME: doc_name,
         PSKeys.CONTEXT: {},
+        PSKeys.REQUIRED_FIELDS: {},
     }
     metrics: dict = {}
     variable_names: list[str] = []
+    # Identifier for source of invocation
+    execution_source = payload.get(PSKeys.EXECUTION_SOURCE, "")
     publish_log(
         log_events_id,
         {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
@@ -118,10 +121,13 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         f"Preparing to execute {len(prompts)} prompt(s)",
     )
-
     # TODO: Rename "output" to "prompt"
     for output in prompts:  # type:ignore
         variable_names.append(output[PSKeys.NAME])
+        metadata[PSKeys.REQUIRED_FIELDS][output[PSKeys.NAME]] = output.get(
+            PSKeys.REQUIRED, None
+        )
+
     for output in prompts:  # type:ignore
         prompt_name = output[PSKeys.NAME]
         prompt_text = output[PSKeys.PROMPT]
@@ -226,6 +232,7 @@ def prompt_processor() -> Any:
                     structured_output=structured_output,
                     llm=llm,
                     enforce_type=output[PSKeys.TYPE],
+                    execution_source=execution_source,
                 )
                 metadata = query_usage_metadata(token=platform_key, metadata=metadata)
                 response = {

@@ -299,3 +299,7 @@
 .info-circle-colored {
   color: #f0ad4e;
 }
+
+.required-checkbox-padding{
+  padding-left: 5px;
+}

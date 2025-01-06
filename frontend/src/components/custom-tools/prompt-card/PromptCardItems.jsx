@@ -19,7 +19,6 @@ import { Header } from "./Header";
 import { OutputForIndex } from "./OutputForIndex";
 import { PromptOutput } from "./PromptOutput";
 import { TABLE_ENFORCE_TYPE, RECORD_ENFORCE_TYPE } from "./constants";
-import { generateCoverageKey } from "../../../helpers/GetStaticData";
 
 let TableExtractionSettingsBtn;
 try {
@@ -63,9 +62,9 @@ function PromptCardItems({
     isSimplePromptStudio,
     isPublicSource,
     adapters,
-    defaultLlmProfile,
     singlePassExtractMode,
   } = useCustomToolStore();
+
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [expandCard, setExpandCard] = useState(true);
@@ -78,10 +77,7 @@ function PromptCardItems({
   const isNotSingleLlmProfile = llmProfiles.length > 1;
   const divRef = useRef(null);
   const [enforceType, setEnforceType] = useState("");
-  const profileId = singlePassExtractMode
-    ? defaultLlmProfile
-    : selectedLlmProfileId || defaultLlmProfile;
-  const coverageKey = generateCoverageKey(promptDetails?.prompt_id, profileId);
+  const promptId = promptDetails?.prompt_id;
 
   useEffect(() => {
     if (enforceType !== promptDetails?.enforce_type) {
@@ -112,6 +108,32 @@ function PromptCardItems({
     });
     return result;
   };
+
+  const getUpdatedCoverage = (promptId, singlePass, promptOutputs) => {
+    let updatedCoverage = null;
+    Object.keys(promptOutputs).forEach((key) => {
+      const [keyPromptId, , , keyIsSinglePass] = key.split("__"); // Destructure the key parts
+
+      // Check if the key matches the criteria
+      if (keyPromptId === promptId && keyIsSinglePass === String(singlePass)) {
+        const currentCoverage = promptOutputs[key]?.coverage || [];
+
+        // Update the highestCoverage if the current one is longer
+        if (
+          !updatedCoverage ||
+          currentCoverage.length > updatedCoverage.length
+        ) {
+          updatedCoverage = currentCoverage;
+        }
+      }
+    });
+
+    return updatedCoverage;
+  };
+
+  const promptCoverage =
+    getUpdatedCoverage(promptId, singlePassExtractMode, promptOutputs) ||
+    coverageCountData;
 
   const getAdapterInfo = async (adapterData) => {
     // If simple prompt studio, return early
@@ -170,6 +192,7 @@ function PromptCardItems({
             enabledProfiles={enabledProfiles}
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
+            enforceType={enforceType}
           />
         </Space>
       </div>
@@ -213,7 +236,7 @@ function PromptCardItems({
                             <SearchOutlined className="font-size-12" />
                           )}
                           <Typography.Link className="font-size-12">
-                            Coverage: {coverageCountData[coverageKey] || 0} of{" "}
+                            Coverage: {promptCoverage?.length || 0} of{" "}
                             {listOfDocs?.length || 0} docs
                           </Typography.Link>
                         </Space>

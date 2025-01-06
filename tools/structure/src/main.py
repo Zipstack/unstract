@@ -120,6 +120,7 @@ class StructureTool(BaseTool):
             SettingsKeys.FILE_HASH: file_hash,
             SettingsKeys.FILE_NAME: file_name,
             SettingsKeys.FILE_PATH: extracted_input_file,
+            SettingsKeys.EXECUTION_SOURCE: SettingsKeys.TOOL,
         }
         # TODO: Need to split extraction and indexing
         # to avoid unwanted indexing
@@ -252,7 +253,7 @@ class StructureTool(BaseTool):
             structured_output_dict[SettingsKeys.METADATA] = metadata
             structured_output = json.dumps(structured_output_dict)
 
-        metrics = structured_output_dict[SettingsKeys.METRICS]
+        metrics = structured_output_dict.get(SettingsKeys.METRICS, {})
         new_metrics = {}
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             new_metrics = {
@@ -266,7 +267,8 @@ class StructureTool(BaseTool):
                 for key in set(metrics)
                 | set(index_metrics)  # Union of keys from both dictionaries
             }
-        structured_output_dict[SettingsKeys.METRICS] = new_metrics
+        if new_metrics:
+            structured_output_dict[SettingsKeys.METRICS] = new_metrics
         # Update GUI
         output_log = (
             f"## Result\n**NOTE:** In case of a deployed pipeline, the result would "
