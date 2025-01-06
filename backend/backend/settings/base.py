@@ -114,20 +114,20 @@ PROMPT_STUDIO_FILE_PATH = os.environ.get(
 )
 X2TEXT_HOST = os.environ.get("X2TEXT_HOST", "http://localhost")
 X2TEXT_PORT = os.environ.get("X2TEXT_PORT", 3004)
-STRUCTURE_TOOL_IMAGE_URL = get_required_setting("STRUCTURE_TOOL_IMAGE_URL")
-STRUCTURE_TOOL_IMAGE_NAME = get_required_setting("STRUCTURE_TOOL_IMAGE_NAME")
-STRUCTURE_TOOL_IMAGE_TAG = get_required_setting("STRUCTURE_TOOL_IMAGE_TAG")
-WORKFLOW_DATA_DIR = os.environ.get("WORKFLOW_DATA_DIR")
-API_STORAGE_DIR = os.environ.get("API_STORAGE_DIR")
+STRUCTURE_TOOL_IMAGE_URL = get_required_setting("STRUCTURE_TOOL_IMAGE_URL", "")
+STRUCTURE_TOOL_IMAGE_NAME = get_required_setting("STRUCTURE_TOOL_IMAGE_NAME", "")
+STRUCTURE_TOOL_IMAGE_TAG = get_required_setting("STRUCTURE_TOOL_IMAGE_TAG", "")
+WORKFLOW_DATA_DIR = os.environ.get("WORKFLOW_DATA_DIR", "")
+API_STORAGE_DIR = os.environ.get("API_STORAGE_DIR", "")
 CACHE_TTL_SEC = os.environ.get("CACHE_TTL_SEC", 10800)
 
 DEFAULT_AUTH_USERNAME = os.environ.get("DEFAULT_AUTH_USERNAME", "unstract")
 DEFAULT_AUTH_PASSWORD = os.environ.get("DEFAULT_AUTH_PASSWORD", "unstract")
-SYSTEM_ADMIN_USERNAME = get_required_setting("SYSTEM_ADMIN_USERNAME")
-SYSTEM_ADMIN_PASSWORD = get_required_setting("SYSTEM_ADMIN_PASSWORD")
-SYSTEM_ADMIN_EMAIL = get_required_setting("SYSTEM_ADMIN_EMAIL")
+SYSTEM_ADMIN_USERNAME = get_required_setting("SYSTEM_ADMIN_USERNAME", "")
+SYSTEM_ADMIN_PASSWORD = get_required_setting("SYSTEM_ADMIN_PASSWORD", "")
+SYSTEM_ADMIN_EMAIL = get_required_setting("SYSTEM_ADMIN_EMAIL", "")
 SESSION_COOKIE_AGE = int(get_required_setting("SESSION_COOKIE_AGE", "86400"))
-ENABLE_LOG_HISTORY = get_required_setting("ENABLE_LOG_HISTORY")
+ENABLE_LOG_HISTORY = get_required_setting("ENABLE_LOG_HISTORY", "")
 LOG_HISTORY_CONSUMER_INTERVAL = int(
     get_required_setting("LOG_HISTORY_CONSUMER_INTERVAL", "60")
 )
@@ -136,7 +136,7 @@ CELERY_BROKER_URL = get_required_setting(
     "CELERY_BROKER_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}"
 )
 
-INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
+INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL", 5))
 NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))
 ATOMIC_REQUESTS = CommonUtils.str_to_bool(
     os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
@@ -148,8 +148,8 @@ ADMIN_ENABLED = False
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = get_required_setting("DJANGO_SECRET_KEY")
-ENCRYPTION_KEY = get_required_setting("ENCRYPTION_KEY")
+SECRET_KEY = get_required_setting("DJANGO_SECRET_KEY", "")
+ENCRYPTION_KEY = get_required_setting("ENCRYPTION_KEY", "")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -224,6 +224,8 @@ SHARED_APPS = (
     "django_celery_beat",
     # For additional helper commands
     "commands",
+    # health checks
+    "health",
 )
 v2_apps = (
     "migrating.v2",
@@ -441,6 +443,7 @@ WHITELISTED_PATHS_LIST = [
     "/logout",
     "/signup",
     "/static",
+    "/health",
 ]
 WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
 # White lists workflow-api-deployment path
