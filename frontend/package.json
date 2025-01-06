@@ -29,7 +29,6 @@
     "js-cookie": "^3.0.5",
     "js-yaml": "^4.1.0",
     "json-2-csv": "^5.5.1",
-    "markdown-to-jsx": "^7.2.1",
     "moment": "^2.29.4",
     "moment-timezone": "^0.5.45",
     "pdfjs-dist": "^3.4.120",
@@ -48,6 +47,7 @@
     "react-scripts": "5.0.1",
     "react-social-login-buttons": "^3.9.1",
     "remark-gfm": "^3.0.1",
+    "remarkable": "^2.0.1",
     "socket.io-client": "^4.7.2",
     "uuid": "^9.0.1",
     "zustand": "^4.3.8"

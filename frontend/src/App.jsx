@@ -9,6 +9,7 @@ import { useSessionStore } from "./store/session-store.js";
 import PostHogPageviewTracker from "./PostHogPageviewTracker.js";
 import { PageTitle } from "./components/widgets/page-title/PageTitle.jsx";
 import { useEffect } from "react";
+import CustomMarkdown from "./components/helpers/custom-markdown/CustomMarkdown.jsx";
 
 let GoogleTagManagerHelper;
 try {
@@ -48,7 +49,7 @@ function App() {
 
     notificationAPI.open({
       message: alertDetails?.title,
-      description: alertDetails?.content,
+      description: <CustomMarkdown text={alertDetails?.content} />,
       type: alertDetails?.type,
       duration: alertDetails?.duration,
       btn,

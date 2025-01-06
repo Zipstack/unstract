@@ -3,7 +3,6 @@ import logging
 import os
 import traceback
 from typing import Any, Optional
-from uuid import uuid4
 
 from account_v2.constants import Common
 from api_v2.models import APIDeployment
@@ -27,7 +26,9 @@ from utils.local_context import StateStore
 from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.dto import FileHash
+from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.endpoint_v2.source import SourceConnector
+from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.constants import (
     CeleryConfigurations,
     WorkflowErrors,
@@ -109,7 +110,27 @@ class WorkflowHelper:
         return workflow_execution_service
 
     @staticmethod
+    def _get_or_create_workflow_execution_file(
+        execution_service: WorkflowExecutionServiceHelper,
+        file_hash: FileHash,
+        source: SourceConnector,
+    ) -> WorkflowFileExecution:
+        is_api = source.endpoint.connection_type == WorkflowEndpoint.ConnectionType.API
+        # Determine file path based on connection type
+        execution_file_path = file_hash.file_path if not is_api else None
+        # Create or retrieve the workflow execution file
+        return WorkflowFileExecution.objects.get_or_create_file_execution(
+            workflow_execution=execution_service.workflow_execution,
+            file_name=file_hash.file_name,
+            file_hash=file_hash.file_hash,
+            file_path=execution_file_path,
+            file_size=file_hash.file_size,
+            mime_type=file_hash.mime_type,
+        )
+
+    @classmethod
     def process_input_files(
+        cls,
         workflow: Workflow,
         source: SourceConnector,
         destination: DestinationConnector,
@@ -129,6 +150,12 @@ class WorkflowHelper:
             q_file_no_list = WorkflowUtil.get_q_no_list(workflow, total_files)
 
         for index, (file_path, file_hash) in enumerate(input_files.items()):
+            # Get workflow execution file
+            workflow_execution_file = cls._get_or_create_workflow_execution_file(
+                execution_service=execution_service,
+                file_hash=file_hash,
+                source=source,
+            )
             file_number = index + 1
             file_hash = WorkflowUtil.add_file_destination_filehash(
                 file_number,
@@ -136,7 +163,7 @@ class WorkflowHelper:
                 file_hash,
             )
             try:
-                error = WorkflowHelper.process_file(
+                error = cls._process_file(
                     current_file_idx=file_number,
                     total_files=total_files,
                     input_file=file_hash.file_path,
@@ -146,20 +173,33 @@ class WorkflowHelper:
                     execution_service=execution_service,
                     single_step=single_step,
                     file_hash=file_hash,
+                    workflow_file_execution=workflow_execution_file,
                 )
                 if error:
                     failed_files += 1
+                    workflow_execution_file.update_status(
+                        status=ExecutionStatus.ERROR,
+                        execution_error=error,
+                    )
                 else:
                     successful_files += 1
+                    workflow_execution_file.update_status(ExecutionStatus.COMPLETED)
             except StopExecution as e:
                 execution_service.update_execution(
                     ExecutionStatus.STOPPED, error=str(e)
+                )
+                workflow_execution_file.update_status(
+                    status=ExecutionStatus.STOPPED, execution_error=str(e)
                 )
                 break
             except Exception as e:
                 failed_files += 1
                 error_message = f"Error processing file '{file_path}'. {e}"
                 logger.error(error_message, stack_info=True, exc_info=True)
+                workflow_execution_file.update_status(
+                    status=ExecutionStatus.ERROR,
+                    execution_error=error_message,
+                )
                 execution_service.publish_log(
                     message=error_message, level=LogLevel.ERROR
                 )
@@ -178,7 +218,7 @@ class WorkflowHelper:
         return execution_service.get_execution_instance()
 
     @staticmethod
-    def process_file(
+    def _process_file(
         current_file_idx: int,
         total_files: int,
         input_file: str,
@@ -188,6 +228,7 @@ class WorkflowHelper:
         execution_service: WorkflowExecutionServiceHelper,
         single_step: bool,
         file_hash: FileHash,
+        workflow_file_execution: WorkflowFileExecution,
     ) -> Optional[str]:
         error: Optional[str] = None
         file_name = source.add_file_to_volume(
@@ -197,14 +238,17 @@ class WorkflowHelper:
             execution_service.initiate_tool_execution(
                 current_file_idx, total_files, file_name, single_step
             )
+            workflow_file_execution.update_status(status=ExecutionStatus.INITIATED)
             if not file_hash.is_executed:
                 # Multiple run_ids are linked to an execution_id
                 # Each run_id corresponds to workflow runs for a single file
-                run_id = str(uuid4())
+                # It should e uuid of workflow_file_execution
+                run_id = str(workflow_file_execution.id)
                 execution_service.execute_input_file(
                     run_id=run_id,
                     file_name=file_name,
                     single_step=single_step,
+                    workflow_file_execution=workflow_file_execution,
                 )
         except StopExecution:
             raise
@@ -358,8 +402,9 @@ class WorkflowHelper:
                 f"with workflow execution: {workflow_execution}"
             )
 
-    @staticmethod
+    @classmethod
     def get_status_of_async_task(
+        cls,
         execution_id: str,
     ) -> ExecutionResponse:
         """Get celery task status.
@@ -369,27 +414,55 @@ class WorkflowHelper:
 
         Raises:
             TaskDoesNotExistError: Not found exception
+            ExecutionDoesNotExistError: If execution is not found
 
         Returns:
             ExecutionResponse: _description_
         """
         execution = WorkflowExecution.objects.get(id=execution_id)
-
         if not execution.task_id:
-            raise TaskDoesNotExistError()
+            raise TaskDoesNotExistError(
+                f"No task ID found for execution: {execution_id}"
+            )
 
         result = AsyncResult(str(execution.task_id))
-
         task = AsyncResultData(async_result=result)
-        return ExecutionResponse(
+
+        # Prepare the initial response with the task's current status and result.
+        result_response = ExecutionResponse(
             execution.workflow_id,
             execution_id,
             execution.status,
             result=task.result,
+            result_acknowledged=execution.result_acknowledged,
         )
 
+        # If task is complete, handle acknowledgment and forgetting the
+        if result.ready():
+            result.forget()  # Remove the result from the result backend.
+            cls._set_result_acknowledge(execution)
+        return result_response
+
     @staticmethod
+    def _set_result_acknowledge(execution: WorkflowExecution) -> None:
+        """Mark the result as acknowledged and update the database.
+
+        This method is called once the task has completed and its result is forgotten.
+        It ensures that the task result is flagged as acknowledged in the database
+
+        Args:
+            execution (WorkflowExecution): WorkflowExecution instance
+        """
+        if not execution.result_acknowledged:
+            execution.result_acknowledged = True
+            execution.save()
+            logger.info(
+                f"ExecutionID [{execution.id}] - Task {execution.task_id} acknowledged"
+            )
+
+    @classmethod
     def execute_workflow_async(
+        cls,
         workflow_id: str,
         execution_id: str,
         hash_values_of_files: dict[str, FileHash],
@@ -418,7 +491,7 @@ class WorkflowHelper:
             }
             org_schema = UserContext.get_organization_identifier()
             log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
-            async_execution = WorkflowHelper.execute_bin.apply_async(
+            async_execution: AsyncResult = cls.execute_bin.apply_async(
                 args=[
                     org_schema,  # schema_name
                     workflow_id,  # workflow_id
@@ -453,6 +526,10 @@ class WorkflowHelper:
                 workflow_execution.status,
                 result=task_result,
             )
+            # If task is complete, handle acknowledgment and forgetting the
+            if async_execution.ready():
+                async_execution.forget()  # Remove the result from the result backend.
+                cls._set_result_acknowledge(workflow_execution)
             return execution_response
         except celery_exceptions.TimeoutError:
             return ExecutionResponse(
@@ -465,8 +542,12 @@ class WorkflowHelper:
             WorkflowExecutionServiceHelper.update_execution_err(
                 execution_id, str(error)
             )
-            logger.error(f"Errors while job enqueueing {str(error)}")
-            logger.error(f"Error {traceback.format_exc()}")
+            logger.error(
+                f"Error while enqueuing async job for WF '{workflow_id}', "
+                f"execution '{execution_id}': {str(error)}",
+                exc_info=True,
+                stack_info=True,
+            )
             return ExecutionResponse(
                 workflow_id,
                 execution_id,

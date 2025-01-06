@@ -2,8 +2,7 @@ import json
 import logging
 import os
 
-from unstract.sdk.file_storage import FileStorageProvider
-from unstract.sdk.file_storage.fs_shared_temporary import SharedTemporaryFileStorage
+from unstract.sdk.file_storage import FileStorageProvider, SharedTemporaryFileStorage
 
 from .exceptions import ProviderNotFound
 from .file_storage_types import FileStorageType  # Import the shared enum

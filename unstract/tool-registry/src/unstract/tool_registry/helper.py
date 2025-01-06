@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Optional
 
+from unstract.sdk.file_storage import FileStorage, FileStorageProvider
 from unstract.tool_registry.constants import PropKey
 from unstract.tool_registry.dto import Tool, ToolMeta
 from unstract.tool_registry.exceptions import (
@@ -20,6 +21,7 @@ class ToolRegistryHelper:
         registry: str,
         private_tools_file: str,
         public_tools_file: str,
+        fs: FileStorage = FileStorage(FileStorageProvider.LOCAL),
     ) -> None:
         """Helper class for ToolRegistry.
 
@@ -32,6 +34,7 @@ class ToolRegistryHelper:
         self.registry_file = registry
         self.private_tools_file = private_tools_file
         self.public_tools_file = public_tools_file
+        self.fs = fs
         self.tools = self._load_tools_from_registry_file()
         if self.tools:
             logger.info(f"Loaded tools from registry YAML: {self.tools}")
@@ -214,7 +217,7 @@ class ToolRegistryHelper:
             RegistryNotFound: _description_
         """
         try:
-            ToolUtils.save_registry(self.registry_file, data=data)
+            ToolUtils.save_registry(self.registry_file, data=data, fs=self.fs)
         except FileNotFoundError:
             logger.error(f"File not found: {self.registry_file}")
             raise RegistryNotFound()
@@ -298,7 +301,9 @@ class ToolRegistryHelper:
         tools = {}
         for tool_file in tool_files:
             try:
-                data = ToolUtils.get_all_tools_from_disk(file_path=tool_file)
+                data = ToolUtils.get_all_tools_from_disk(
+                    file_path=tool_file, fs=self.fs
+                )
                 if not data:
                     logger.info(f"No data from {tool_file}")
                 tool_version_list = [
@@ -309,7 +314,6 @@ class ToolRegistryHelper:
                 tools.update(data)
             except FileNotFoundError:
                 logger.warning(f"Unable to find tool file to load tools: {tool_file}")
-                pass
         return tools
 
     def get_tool_data_by_id(self, tool_uid: str) -> dict[str, Any]:

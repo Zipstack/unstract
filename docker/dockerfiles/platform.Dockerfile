@@ -12,7 +12,14 @@ ENV BUILD_CONTEXT_PATH platform-service
 ENV BUILD_PACKAGES_PATH unstract
 ENV PDM_VERSION 2.16.1
 
-RUN pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}; \
+RUN apt-get update; \
+    apt-get --no-install-recommends install -y  \
+    # unstract sdk
+    build-essential libmagic-dev; \
+    \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
+    \
+    pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}; \
     \
     # Creates a non-root user with an explicit UID and adds permission to access the /app folder
     # For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers

@@ -77,8 +77,16 @@
   padding-top: 12px;
   position: relative;
   background-color: #fff8e6;
+  max-height: 300px;
+  overflow-y: scroll;
+  scrollbar-color: inherit #fff8e6 !important;
+  display: flex;
+  flex-grow: 1;
 }
 
+.prompt-card-result::-webkit-scrollbar-track {
+  background-color: #fff8e6 !important;
+}
 .prompt-card-result .ant-typography {
   margin-bottom: 0px;
 }
@@ -290,4 +298,8 @@
 
 .info-circle-colored {
   color: #f0ad4e;
+}
+
+.required-checkbox-padding{
+  padding-left: 5px;
 }
