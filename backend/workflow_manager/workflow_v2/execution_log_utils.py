@@ -9,6 +9,7 @@ from django_celery_beat.models import IntervalSchedule, PeriodicTask
 from utils.cache_service import CacheService
 from utils.constants import ExecutionLogConstants
 from utils.dto import LogDataDTO
+from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
 
 logger = logging.getLogger(__name__)
@@ -28,14 +29,21 @@ def consume_log_history(self):
         if not log_data:
             continue
 
-        organization_id = log_data.organization_id
-        organization_logs[organization_id].append(
-            ExecutionLog(
-                execution_id=log_data.execution_id,
-                data=log_data.data,
-                event_time=log_data.event_time,
-            )
+        # Create ExecutionLog instance
+        execution_log = ExecutionLog(
+            execution_id=log_data.execution_id,
+            data=log_data.data,
+            event_time=log_data.event_time,
         )
+
+        # Conditionally set file_execution if file_execution_id is present
+        if log_data.file_execution_id:
+            execution_log.file_execution = WorkflowFileExecution(
+                id=log_data.file_execution_id
+            )
+
+        organization_id = log_data.organization_id
+        organization_logs[organization_id].append(execution_log)
         logs_count += 1
     logger.info(f"Logs count: {logs_count}")
     for organization_id, logs in organization_logs.items():
