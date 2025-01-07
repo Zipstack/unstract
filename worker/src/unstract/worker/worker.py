@@ -190,11 +190,8 @@ class UnstractWorker:
                 workflow_id,
                 execution_id,
             )
-            envs[Env.WORKFLOW_EXECUTION_FS_PROVIDER] = os.getenv(
-                Env.WORKFLOW_EXECUTION_FS_PROVIDER, ""
-            )
-            envs[Env.WORKFLOW_EXECUTION_FS_CREDENTIAL] = os.getenv(
-                Env.WORKFLOW_EXECUTION_FS_CREDENTIAL, "{}"
+            envs[Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS] = os.getenv(
+                Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS, "{}"
             )
         else:
             envs[Env.TOOL_DATA_DIR] = tool_data_dir
