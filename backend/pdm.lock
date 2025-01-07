@@ -2668,7 +2668,7 @@ files = [
 
 [[package]]
 name = "marshmallow"
-version = "3.23.3"
+version = "3.24.1"
 requires_python = ">=3.9"
 summary = "A lightweight library for converting complex datatypes to and from native Python datatypes."
 groups = ["default", "dev"]
@@ -2676,8 +2676,8 @@ dependencies = [
     "packaging>=17.0",
 ]
 files = [
-    {file = "marshmallow-3.23.3-py3-none-any.whl", hash = "sha256:20c0f8c613f68bcb45b2a0d3282e2f172575560170bf220d67aafb42717910e4"},
-    {file = "marshmallow-3.23.3.tar.gz", hash = "sha256:d586c8685ebdb80bf754e1f96e3f305aaf30951f1fc69175b977453633467e76"},
+    {file = "marshmallow-3.24.1-py3-none-any.whl", hash = "sha256:ddb5c9987017d37be351c184e4e867e7bf55f7331f4da730dedad6b7af662cdd"},
+    {file = "marshmallow-3.24.1.tar.gz", hash = "sha256:efdcb656ac8788f0e3d1d938f8dc0f237bf1a99aff8f6dfbffa594981641cea0"},
 ]
 
 [[package]]
