@@ -224,6 +224,8 @@ SHARED_APPS = (
     "django_celery_beat",
     # For additional helper commands
     "commands",
+    # health checks
+    "health",
 )
 v2_apps = (
     "migrating.v2",
@@ -446,6 +448,8 @@ WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
 # White lists workflow-api-deployment path
 WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
 
+# Whitelisting health check API
+WHITELISTED_PATHS.append("/health")
 
 # API Doc Generator Settings
 # https://drf-yasg.readthedocs.io/en/stable/settings.html
