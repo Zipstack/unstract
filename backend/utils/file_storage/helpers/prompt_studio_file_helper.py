@@ -6,8 +6,9 @@ from typing import Any, Union
 
 from file_management.file_management_helper import FileManagerHelper
 from unstract.sdk.file_storage import FileStorage
-from utils.file_storage.constants import FileStorageConstants, FileStorageType
-from utils.file_storage.helpers.common_file_helper import FileStorageHelper
+from unstract.sdk.file_storage.constants import StorageType
+from unstract.sdk.file_storage.env_helper import EnvHelper
+from utils.file_storage.constants import FileStorageConstants, FileStorageKeys
 
 from unstract.core.utilities import UnstractUtils
 
@@ -37,8 +38,9 @@ class PromptStudioFileHelper:
         extract_file_path = str(Path(file_path) / "extract")
         summarize_file_path = str(Path(file_path) / "summarize")
         if is_create:
-            fs_instance = FileStorageHelper.initialize_file_storage(
-                type=FileStorageType.PERMANENT
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
             )
             fs_instance.mkdir(file_path, create_parents=True)
             fs_instance.mkdir(extract_file_path, create_parents=True)
@@ -57,8 +59,9 @@ class PromptStudioFileHelper:
             tool_id (str): ID of the prompt studio tool
             uploaded_file : File to upload to remote
         """
-        fs_instance = FileStorageHelper.initialize_file_storage(
-            type=FileStorageType.PERMANENT
+        fs_instance = EnvHelper.get_storage(
+            storage_type=StorageType.PERMANENT,
+            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
         )
         file_system_path = (
             PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
@@ -77,8 +80,9 @@ class PromptStudioFileHelper:
     ) -> Union[bytes, str]:
         """Method to fetch file contents from the remote location.
         The path is constructed in runtime based on the args"""
-        fs_instance = FileStorageHelper.initialize_file_storage(
-            type=FileStorageType.PERMANENT
+        fs_instance = EnvHelper.get_storage(
+            storage_type=StorageType.PERMANENT,
+            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
         )
         # Fetching legacy file path for lazy copy
         # This has to be removed once the usage of FS APIs
@@ -139,8 +143,9 @@ class PromptStudioFileHelper:
         """Method to delete file in remote while the corresponsing prompt
         studio project is deleted or the file is removed from the file manager.
         This method handles deleted for related files as well."""
-        fs_instance = FileStorageHelper.initialize_file_storage(
-            type=FileStorageType.PERMANENT
+        fs_instance = EnvHelper.get_storage(
+            storage_type=StorageType.PERMANENT,
+            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
         )
         file_system_path = (
             PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
