@@ -214,7 +214,7 @@ function PromptOutput({
                 title={
                   details?.enable_highlight && enforceType !== "json"
                     ? "Click to highlight"
-                    : "Highlight not supported for enforce type JSON"
+                    : "Highlighting is not supported when enforce type is JSON"
                 }
               >
                 <Col
