@@ -161,9 +161,9 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-src/unstract/worker/clients/
-!src/unstract/worker/clients/__init__.py
-!src/unstract/worker/clients/interface.py
-!src/unstract/worker/clients/helper.py
-!src/unstract/worker/clients/docker.py
-!src/unstract/worker/clients/test_docker.py
+src/unstract/runner/clients/
+!src/unstract/runner/clients/__init__.py
+!src/unstract/runner/clients/interface.py
+!src/unstract/runner/clients/helper.py
+!src/unstract/runner/clients/docker.py
+!src/unstract/runner/clients/test_docker.py

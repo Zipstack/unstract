@@ -41,17 +41,17 @@ jobs:
     - name: Render the report to the PR
       uses: marocchino/sticky-pull-request-comment@v2
       with:
-        header: worker-test-report
+        header: runner-test-report
         recreate: true
-        path: worker-report.md
+        path: runner-report.md
 
     - name: Output reports to the job summary when tests fail
       shell: bash
       run: |
-        if [ -f "worker-report.md" ]; then
-          echo "<details><summary>Worker Test Report</summary>" >> $GITHUB_STEP_SUMMARY
+        if [ -f "runner-report.md" ]; then
+          echo "<details><summary>Runner Test Report</summary>" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          cat "worker-report.md" >> $GITHUB_STEP_SUMMARY
+          cat "runner-report.md" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "</details>" >> $GITHUB_STEP_SUMMARY
         fi

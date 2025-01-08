@@ -1,5 +1,5 @@
 [project]
-name = "unstract-worker"
+name = "unstract-runner"
 version = "0.1.0"
 description = "Platform to interact with tools [Tool's Docker lifecycle management]"
 authors = [
@@ -39,7 +39,7 @@ dev = [
 
 [tool.pdm.scripts]
 # Runs the flask service
-runner.cmd = "flask --app src/unstract/worker/main.py run --port 5002"
+runner.cmd = "flask --app src/unstract/runner/main.py run --port 5002"
 runner.env_file = ".env"
 runner.help = "Runs the Unstract tool runner"
 # Run tests for this service
