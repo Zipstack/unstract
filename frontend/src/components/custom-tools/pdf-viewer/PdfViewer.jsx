@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import { Viewer, Worker } from "@react-pdf-viewer/core";
 import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
 import { pageNavigationPlugin } from "@react-pdf-viewer/page-navigation";
@@ -23,16 +23,30 @@ function PdfViewer({ fileUrl, highlightData }) {
   function removeZerosAndDeleteIfAllZero(highlightData) {
     return highlightData?.filter((innerArray) =>
       innerArray.some((value) => value !== 0)
-    ); // Keep arrays that contain at least one non-zero value
+    );
   }
-  let highlightPluginInstance = "";
-  if (RenderHighlights && highlightData) {
-    highlightPluginInstance = highlightPlugin({
-      renderHighlights: (props) => (
-        <RenderHighlights {...props} highlightData={highlightData} />
-      ),
-    });
-  }
+
+  const processHighlightData = highlightData
+    ? removeZerosAndDeleteIfAllZero(highlightData)
+    : [];
+
+  const processedHighlightData =
+    processHighlightData?.length > 0 ? processHighlightData : [[0, 0, 0, 0]];
+
+  const highlightPluginInstance = useMemo(() => {
+    if (
+      RenderHighlights &&
+      Array.isArray(processedHighlightData) &&
+      processedHighlightData?.length > 0
+    ) {
+      return highlightPlugin({
+        renderHighlights: (props) => (
+          <RenderHighlights {...props} highlightData={processedHighlightData} />
+        ),
+      });
+    }
+    return "";
+  }, [RenderHighlights, processedHighlightData]);
 
   // Jump to page when highlightData changes
   useEffect(() => {
@@ -41,11 +55,11 @@ function PdfViewer({ fileUrl, highlightData }) {
       const pageNumber = highlightData[0][0]; // Assume highlightData[0][0] is the page number
       if (pageNumber !== null && jumpToPage) {
         setTimeout(() => {
-          jumpToPage(pageNumber); // jumpToPage is 0-indexed, so subtract 1
+          jumpToPage(pageNumber); // jumpToPage is 0-indexed, so subtract 1 if necessary
         }, 100); // Add a slight delay to ensure proper page rendering
       }
     }
-  }, [highlightData, jumpToPage]);
+  }, [processedHighlightData, jumpToPage]);
 
   return (
     <div ref={parentRef} className="doc-manager-body">

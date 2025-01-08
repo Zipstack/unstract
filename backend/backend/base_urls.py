@@ -22,4 +22,5 @@ urlpatterns = [
         f"{settings.API_DEPLOYMENT_PATH_PREFIX}/pipeline/",
         include("pipeline_v2.public_api_urls"),
     ),
+    path("", include("health.urls")),
 ]
