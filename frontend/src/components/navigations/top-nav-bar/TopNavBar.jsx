@@ -76,8 +76,7 @@ try {
 function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { orgName, remainingTrialDays, allOrganization, orgId } =
-    sessionDetails;
+  const { orgName, allOrganization, orgId } = sessionDetails;
   const baseUrl = getBaseUrl();
   const onBoardUrl = baseUrl + `/${orgName}/onboard`;
   const logout = useLogout();
@@ -309,9 +308,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             <Row justify="end" align="middle">
               <Space>
                 {topNavBarOptions}
-                {isUnstract && TrialDaysInfo && (
-                  <TrialDaysInfo remainingTrialDays={remainingTrialDays} />
-                )}
+                {isUnstract && TrialDaysInfo && <TrialDaysInfo />}
                 <Dropdown menu={{ items }} placement="bottomLeft" arrow>
                   <div className="top-navbar-dp">
                     {sessionDetails?.picture ? (

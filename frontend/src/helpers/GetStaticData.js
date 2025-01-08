@@ -548,6 +548,8 @@ const generateCoverageKey = (promptId, profileId) => {
   return `coverage_${promptId}_${profileId}`;
 };
 
+const TRIAL_PLAN = "TRIAL";
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -598,4 +600,5 @@ export {
   PROMPT_RUN_API_STATUSES,
   generateApiRunStatusId,
   generateCoverageKey,
+  TRIAL_PLAN,
 };
