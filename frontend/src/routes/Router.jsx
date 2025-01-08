@@ -22,6 +22,7 @@ let SpsUpload;
 let TrialRoutes;
 let PaymentSuccessful;
 let SelectProduct;
+let UnstractSubscriptionCheck;
 try {
   SimplePromptStudioHelper =
     require("../plugins/simple-prompt-studio/SimplePromptStudioHelper.jsx").SimplePromptStudioHelper;
@@ -68,6 +69,13 @@ try {
     require("../plugins/payment-successful/PaymentSuccessful.jsx").PaymentSuccessful;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
+}
+
+try {
+  UnstractSubscriptionCheck =
+    require("../plugins/unstract-subscription/components/UnstractSubscriptionCheck.jsx").UnstractSubscriptionCheck;
+} catch (err) {
+  // Do nothing.
 }
 
 function Router() {
@@ -123,7 +131,14 @@ function Router() {
           <Route path="/payment/success" element={<PaymentSuccessful />} />
         )}
         <Route path="" element={<RequireAuth />}>
-          <Route path="">{MainAppRoute}</Route>
+          <Route
+            path=""
+            element={
+              UnstractSubscriptionCheck ? <UnstractSubscriptionCheck /> : <></>
+            }
+          >
+            {MainAppRoute}
+          </Route>
           {llmWhispererRouter && (
             <Route path="llm-whisperer">{llmWhispererRouter()}</Route>
           )}

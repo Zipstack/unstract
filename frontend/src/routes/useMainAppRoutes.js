@@ -32,6 +32,8 @@ let PRODUCT_NAMES = {};
 let ManualReviewPage;
 let SimpleManualReviewPage;
 let ReviewLayout;
+let UnstractUsagePage;
+let UnstractSubscriptionPage;
 
 try {
   RequirePlatformAdmin =
@@ -62,7 +64,7 @@ try {
 
 try {
   OnboardProduct =
-    require("../plugins/llm-whisperer/components/onboard-product/OnboardProduct.jsx").OnboardProduct;
+    require("../plugins/onboard-product/onboard-product/OnboardProduct.jsx").OnboardProduct;
   PRODUCT_NAMES = require("../plugins/llm-whisperer/helper.js").PRODUCT_NAMES;
 } catch (err) {
   // Do nothing.
@@ -79,6 +81,15 @@ try {
   // Do nothing, Not-found Page will be triggered.
 }
 
+try {
+  UnstractSubscriptionPage =
+    require("../plugins/unstract-subscription/pages/UnstractSubscriptionPage.jsx").UnstractSubscriptionPage;
+  UnstractUsagePage =
+    require("../plugins/unstract-subscription/pages/UnstractUsagePage.jsx").UnstractUsagePage;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+
 function useMainAppRoutes() {
   const routes = (
     <>
@@ -91,6 +102,12 @@ function useMainAppRoutes() {
         </Route>
       )}
       <Route path=":orgName" element={<PageLayout />}>
+        {UnstractUsagePage && (
+          <Route path="dashboard" element={<UnstractUsagePage />} />
+        )}
+        {UnstractSubscriptionPage && (
+          <Route path="subscribe" element={<UnstractSubscriptionPage />} />
+        )}
         <Route path="profile" element={<ProfilePage />} />
         <Route
           path="api"
