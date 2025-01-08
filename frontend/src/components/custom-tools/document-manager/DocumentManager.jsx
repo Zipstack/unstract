@@ -95,11 +95,13 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     isSimplePromptStudio,
     isPublicSource,
     refreshRawView,
+    selectedHighlight,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { id } = useParams();
+  const highlightData = selectedHighlight?.highlight || [];
 
   useEffect(() => {
     if (isSimplePromptStudio) {
@@ -386,7 +388,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           setOpenManageDocsModal={setOpenManageDocsModal}
           errMsg={fileErrMsg}
         >
-          <PdfViewer fileUrl={fileUrl} />
+          <PdfViewer fileUrl={fileUrl} highlightData={highlightData} />
         </DocumentViewer>
       )}
       {activeKey === "2" && (
