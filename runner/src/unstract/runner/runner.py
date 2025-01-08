@@ -6,13 +6,13 @@ from typing import Any, Optional
 
 from dotenv import load_dotenv
 from flask import Flask
-from unstract.worker.clients.helper import ContainerClientHelper
-from unstract.worker.clients.interface import (
+from unstract.runner.clients.helper import ContainerClientHelper
+from unstract.runner.clients.interface import (
     ContainerClientInterface,
     ContainerInterface,
 )
-from unstract.worker.constants import Env, FeatureFlag, LogLevel, LogType, ToolKey
-from unstract.worker.exception import ToolRunException
+from unstract.runner.constants import Env, FeatureFlag, LogLevel, LogType, ToolKey
+from unstract.runner.exception import ToolRunException
 
 from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
@@ -23,7 +23,7 @@ load_dotenv()
 client_class = ContainerClientHelper.get_container_client()
 
 
-class UnstractWorker:
+class UnstractRunner:
     def __init__(self, image_name: str, image_tag: str, app: Flask) -> None:
         self.image_name = image_name
         # If no image_tag is provided will assume the `latest` tag
