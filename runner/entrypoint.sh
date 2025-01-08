@@ -9,4 +9,4 @@
     --log-level debug \
     --timeout 900 \
     --access-logfile - \
-    unstract.worker.main:app
+    unstract.runner.main:app
