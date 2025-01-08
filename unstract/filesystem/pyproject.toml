@@ -10,7 +10,7 @@ authors = [
     {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
 ]
 dependencies = [
-    "unstract-sdk~=0.54.0rc5",
+    "unstract-sdk~=0.54.0rc12",
 ]
 requires-python = ">=3.9,<3.11.1"
 readme = "README.md"
