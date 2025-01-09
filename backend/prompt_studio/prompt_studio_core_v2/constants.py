@@ -96,6 +96,8 @@ class ToolStudioPromptKeys:
     RECORD = "record"
     FILE_PATH = "file_path"
     ENABLE_HIGHLIGHT = "enable_highlight"
+    REQUIRED = "required"
+    EXECUTION_SOURCE = "execution_source"
 
 
 class FileViewTypes:
@@ -132,3 +134,15 @@ class DefaultPrompts:
         "Do not include any explanation in the reply. "
         "Only include the extracted information in the reply."
     )
+
+
+class ExecutionSource(Enum):
+    """Enum to indicate the source of invocation.
+    Any new sources can be added to this enum.
+    This is to indicate the prompt service.
+
+    Args:
+        Enum (_type_): ide/tool
+    """
+
+    IDE = "ide"

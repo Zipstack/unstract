@@ -19,7 +19,11 @@ from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
 )
-from prompt_studio.prompt_studio_core_v2.constants import IndexingStatus, LogLevels
+from prompt_studio.prompt_studio_core_v2.constants import (
+    ExecutionSource,
+    IndexingStatus,
+    LogLevels,
+)
 from prompt_studio.prompt_studio_core_v2.constants import (
     ToolStudioPromptKeys as TSPKeys,
 )
@@ -52,11 +56,12 @@ from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import IndexingError, SdkError
 from unstract.sdk.file_storage import FileStorage, FileStorageProvider
+from unstract.sdk.file_storage.constants import StorageType
+from unstract.sdk.file_storage.env_helper import EnvHelper
 from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
-from utils.file_storage.constants import FileStorageType
-from utils.file_storage.helpers.common_file_helper import FileStorageHelper
+from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
@@ -377,18 +382,37 @@ class PromptStudioHelper:
         process_text = None
         if text_processor:
             process_text = text_processor.process
-        doc_id = PromptStudioHelper.dynamic_indexer(
-            profile_manager=default_profile,
-            tool_id=tool_id,
-            file_path=file_path,
-            org_id=org_id,
-            document_id=document_id,
-            is_summary=is_summary,
-            reindex=True,
-            run_id=run_id,
-            user_id=user_id,
-            process_text=process_text,
-        )
+        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            doc_id = PromptStudioHelper.dynamic_indexer(
+                profile_manager=default_profile,
+                tool_id=tool_id,
+                file_path=file_path,
+                org_id=org_id,
+                document_id=document_id,
+                is_summary=is_summary,
+                reindex=True,
+                run_id=run_id,
+                user_id=user_id,
+                process_text=process_text,
+            )
+        else:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+            doc_id = PromptStudioHelper.dynamic_indexer(
+                profile_manager=default_profile,
+                tool_id=tool_id,
+                file_path=file_path,
+                org_id=org_id,
+                document_id=document_id,
+                is_summary=is_summary,
+                reindex=True,
+                run_id=run_id,
+                user_id=user_id,
+                process_text=process_text,
+                fs=fs_instance,
+            )
 
         elapsed_time = time.time() - start_time
         logger.info(
@@ -778,8 +802,9 @@ class PromptStudioHelper:
                 process_text=process_text,
             )
         else:
-            fs_instance = FileStorageHelper.initialize_file_storage(
-                type=FileStorageType.PERMANENT
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
             )
             index_result = PromptStudioHelper.dynamic_indexer(
                 profile_manager=profile_manager,
@@ -815,6 +840,7 @@ class PromptStudioHelper:
 
         output[TSPKeys.PROMPT] = prompt.prompt
         output[TSPKeys.ACTIVE] = prompt.active
+        output[TSPKeys.REQUIRED] = prompt.required
         output[TSPKeys.CHUNK_SIZE] = profile_manager.chunk_size
         output[TSPKeys.VECTOR_DB] = vector_db
         output[TSPKeys.EMBEDDING] = embedding_model
@@ -865,7 +891,7 @@ class PromptStudioHelper:
         if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
             file_hash = ToolUtils.get_hash_from_file(file_path=doc_path)
         else:
-            file_hash = ToolUtils.get_hash_from_file(file_path=doc_path, fs=fs_instance)
+            file_hash = fs_instance.get_hash_from_file(path=doc_path)
 
         payload = {
             TSPKeys.TOOL_SETTINGS: tool_settings,
@@ -1118,17 +1144,35 @@ class PromptStudioHelper:
         if not default_profile:
             raise DefaultProfileError()
 
-        index_result = PromptStudioHelper.dynamic_indexer(
-            profile_manager=default_profile,
-            file_path=file_path,
-            tool_id=tool_id,
-            org_id=org_id,
-            is_summary=tool.summarize_as_source,
-            document_id=document_id,
-            run_id=run_id,
-            user_id=user_id,
-            process_text=process_text,
-        )
+        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            index_result = PromptStudioHelper.dynamic_indexer(
+                profile_manager=default_profile,
+                file_path=file_path,
+                tool_id=tool_id,
+                org_id=org_id,
+                is_summary=tool.summarize_as_source,
+                document_id=document_id,
+                run_id=run_id,
+                user_id=user_id,
+                process_text=process_text,
+            )
+        else:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+            index_result = PromptStudioHelper.dynamic_indexer(
+                profile_manager=default_profile,
+                file_path=file_path,
+                tool_id=tool_id,
+                org_id=org_id,
+                is_summary=tool.summarize_as_source,
+                document_id=document_id,
+                run_id=run_id,
+                user_id=user_id,
+                process_text=process_text,
+                fs=fs_instance,
+            )
         if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
                 "status": IndexingStatus.PENDING_STATUS.value,
@@ -1152,7 +1196,10 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
         tool_settings[TSPKeys.ENABLE_HIGHLIGHT] = tool.enable_highlight
         tool_settings[TSPKeys.CHALLENGE_LLM] = challenge_llm
-
+        tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
+            settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
+        )
+        tool_settings[TSPKeys.SUMMARIZE_AS_SOURCE] = tool.summarize_as_source
         for prompt in prompts:
             if not prompt.prompt:
                 raise EmptyPromptError()
@@ -1166,7 +1213,10 @@ class PromptStudioHelper:
         if tool.summarize_as_source:
             path = Path(file_path)
             file_path = str(path.parent / TSPKeys.SUMMARIZE / (path.stem + ".txt"))
-        file_hash = ToolUtils.get_hash_from_file(file_path=file_path)
+        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            file_hash = ToolUtils.get_hash_from_file(file_path=file_path)
+        else:
+            file_hash = fs_instance.get_hash_from_file(path=file_path)
 
         payload = {
             TSPKeys.TOOL_SETTINGS: tool_settings,
@@ -1175,7 +1225,9 @@ class PromptStudioHelper:
             TSPKeys.RUN_ID: run_id,
             TSPKeys.FILE_HASH: file_hash,
             TSPKeys.FILE_NAME: doc_name,
+            TSPKeys.FILE_PATH: file_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
+            TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
         }
 
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)

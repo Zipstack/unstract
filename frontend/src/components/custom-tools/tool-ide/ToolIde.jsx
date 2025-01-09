@@ -15,6 +15,8 @@ import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import { PageTitle } from "../../widgets/page-title/PageTitle.jsx";
+
 let OnboardMessagesModal;
 let PromptShareModal;
 let PromptShareLink;
@@ -216,17 +218,23 @@ function ToolIde() {
     const body = {
       output: doc?.document_id,
     };
-    handleUpdateTool(body).catch((err) => {
-      const revertSelectedDoc = {
-        selectedDoc: prevSelectedDoc,
-      };
-      updateCustomTool(revertSelectedDoc);
-      setAlertDetails(handleException(err, "Failed to select the document"));
-    });
+    handleUpdateTool(body)
+      .then((res) => {
+        const updatedToolData = res?.data;
+        updateCustomTool({ details: updatedToolData });
+      })
+      .catch((err) => {
+        const revertSelectedDoc = {
+          selectedDoc: prevSelectedDoc,
+        };
+        updateCustomTool(revertSelectedDoc);
+        setAlertDetails(handleException(err, "Failed to select the document"));
+      });
   };
 
   return (
     <div className="tool-ide-layout">
+      <PageTitle title={details?.tool_name} />
       {isPublicSource && HeaderPublic && <HeaderPublic />}
       <div>
         <Header

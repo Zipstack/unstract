@@ -21,6 +21,11 @@ class WorkflowDoesNotExistError(APIException):
     default_detail = "Workflow does not exist"
 
 
+class ExecutionDoesNotExistError(APIException):
+    status_code = 404
+    default_detail = "Execution does not exist."
+
+
 class TaskDoesNotExistError(APIException):
     status_code = 404
     default_detail = "Task does not exist"

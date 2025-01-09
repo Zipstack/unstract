@@ -45,6 +45,7 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
     PromptStudioRegistryInfoSerializer,
 )
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
+from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -381,6 +382,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             raise MaxProfilesReachedError()
         try:
             self.perform_create(serializer)
+            # Check if this is the first profile and make it default for all prompts
+            if profile_count == 0:
+                profile_manager = serializer.instance  # Newly created profile manager
+                ToolStudioPrompt.objects.filter(tool_id=prompt_studio_tool).update(
+                    profile_manager=profile_manager
+                )
+
         except IntegrityError:
             raise DuplicateData(
                 f"{ProfileManagerErrors.PROFILE_NAME_EXISTS}, \

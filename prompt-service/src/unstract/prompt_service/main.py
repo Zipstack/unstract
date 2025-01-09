@@ -83,6 +83,11 @@ def authentication_middleware(func: Any) -> Any:
     return wrapper
 
 
+@app.route("/health", methods=["GET"], endpoint="health_check")
+def health_check() -> str:
+    return "OK"
+
+
 @app.route(
     "/answer-prompt",
     endpoint="answer_prompt",
@@ -108,8 +113,12 @@ def prompt_processor() -> Any:
         PSKeys.RUN_ID: run_id,
         PSKeys.FILE_NAME: doc_name,
         PSKeys.CONTEXT: {},
+        PSKeys.REQUIRED_FIELDS: {},
     }
+    metrics: dict = {}
     variable_names: list[str] = []
+    # Identifier for source of invocation
+    execution_source = payload.get(PSKeys.EXECUTION_SOURCE, "")
     publish_log(
         log_events_id,
         {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
@@ -117,17 +126,19 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         f"Preparing to execute {len(prompts)} prompt(s)",
     )
-
     # TODO: Rename "output" to "prompt"
     for output in prompts:  # type:ignore
         variable_names.append(output[PSKeys.NAME])
+        metadata[PSKeys.REQUIRED_FIELDS][output[PSKeys.NAME]] = output.get(
+            PSKeys.REQUIRED, None
+        )
+
     for output in prompts:  # type:ignore
         prompt_name = output[PSKeys.NAME]
         prompt_text = output[PSKeys.PROMPT]
         chunk_size = output[PSKeys.CHUNK_SIZE]
         util = PromptServiceBaseTool(platform_key=platform_key)
-        index = Index(tool=util)
-
+        index = Index(tool=util, run_id=run_id, capture_metrics=True)
         if VariableExtractor.is_variables_present(prompt_text=prompt_text):
             prompt_text = VariableExtractor.replace_variables_in_prompt(
                 prompt=output,
@@ -188,6 +199,7 @@ def prompt_processor() -> Any:
                     **usage_kwargs,
                     PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
                 },
+                capture_metrics=True,
             )
 
             embedding = Embedding(
@@ -225,11 +237,13 @@ def prompt_processor() -> Any:
                     structured_output=structured_output,
                     llm=llm,
                     enforce_type=output[PSKeys.TYPE],
+                    execution_source=execution_source,
                 )
                 metadata = query_usage_metadata(token=platform_key, metadata=metadata)
                 response = {
                     PSKeys.METADATA: metadata,
                     PSKeys.OUTPUT: structured_output,
+                    PSKeys.METRICS: metrics,
                 }
                 return response
             except APIError as api_error:
@@ -489,6 +503,7 @@ def prompt_processor() -> Any:
                                 **usage_kwargs,
                                 PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
                             },
+                            capture_metrics=True,
                         )
                         challenge = challenge_plugin["entrypoint_cls"](
                             llm=llm,
@@ -592,6 +607,18 @@ def prompt_processor() -> Any:
                         f"No eval plugin found to evaluate prompt: {output[PSKeys.NAME]}"  # noqa: E501
                     )
         finally:
+            challenge_metrics = (
+                {f"{challenge_llm.get_usage_reason()}_llm": challenge_llm.get_metrics()}
+                if enable_challenge
+                else {}
+            )
+            metrics.setdefault(prompt_name, {}).update(
+                {
+                    "context_retrieval": index.get_metrics(),
+                    f"{llm.get_usage_reason()}_llm": llm.get_metrics(),
+                    **challenge_metrics,
+                }
+            )
             vector_db.close()
     publish_log(
         log_events_id,
@@ -624,7 +651,11 @@ def prompt_processor() -> Any:
         "Execution complete",
     )
     metadata = query_usage_metadata(token=platform_key, metadata=metadata)
-    response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
+    response = {
+        PSKeys.METADATA: metadata,
+        PSKeys.OUTPUT: structured_output,
+        PSKeys.METRICS: metrics,
+    }
     return response
 
 

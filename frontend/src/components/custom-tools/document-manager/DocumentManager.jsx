@@ -99,11 +99,13 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     isSimplePromptStudio,
     isPublicSource,
     refreshRawView,
+    selectedHighlight,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { id } = useParams();
+  const highlightData = selectedHighlight?.highlight || [];
 
   const [blobFileUrl, setBlobFileUrl] = useState("");
   const [fileData, setFileData] = useState({});
@@ -342,11 +344,11 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     }
   };
 
-  const renderDoc = (docName, fileUrl) => {
+  const renderDoc = (docName, fileUrl, highlightData) => {
     const fileType = docName?.split(".").pop().toLowerCase(); // Get the file extension
     switch (fileType) {
       case "pdf":
-        return <PdfViewer fileUrl={fileUrl} />;
+        return <PdfViewer fileUrl={fileUrl} highlightData={highlightData} />;
       case "txt":
       case "md":
         return <TextViewer fileUrl={fileUrl} />;
@@ -426,7 +428,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           setOpenManageDocsModal={setOpenManageDocsModal}
           errMsg={fileErrMsg}
         >
-          {renderDoc(selectedDoc?.document_name, blobFileUrl)}
+          {renderDoc(selectedDoc?.document_name, blobFileUrl, highlightData)}
         </DocumentViewer>
       )}
       {activeKey === "2" && (
