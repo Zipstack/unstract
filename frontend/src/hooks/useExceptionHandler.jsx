@@ -18,6 +18,21 @@ const useExceptionHandler = () => {
         duration: duration,
       };
     }
+    if (err.code === "ERR_NETWORK" && !navigator.onLine) {
+      return {
+        type: "error",
+        content: "Please check your internet connection.",
+        title: title,
+        duration: duration,
+      };
+    } else if (err.code === "ERR_CANCELED") {
+      return {
+        type: "error",
+        content: "Request has been canceled.",
+        title: title,
+        duration: duration,
+      };
+    }
 
     if (err?.response?.data) {
       const { type, errors } = err.response.data;
