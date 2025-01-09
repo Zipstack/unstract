@@ -14,7 +14,7 @@ on:
       - 'unstract/**'
       - 'platform-service/**'
       - 'x2text-service/**'
-      - 'worker/**'
+      - 'runner/**'
       - 'docker/dockerfiles/**'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -27,7 +27,7 @@ on:
       - 'unstract/**'
       - 'platform-service/**'
       - 'x2text-service/**'
-      - 'worker/**'
+      - 'runner/**'
       - 'docker/dockerfiles/**'
 
 jobs:
@@ -52,7 +52,7 @@ jobs:
           cp ../backend/sample.env ../backend/.env
           cp ../platform-service/sample.env ../platform-service/.env
           cp ../prompt-service/sample.env ../prompt-service/.env
-          cp ../worker/sample.env ../worker/.env
+          cp ../runner/sample.env ../runner/.env
           cp ../x2text-service/sample.env ../x2text-service/.env
           cp sample.essentials.env essentials.env
           cp sample.env .env

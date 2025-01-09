@@ -4,11 +4,11 @@ from unittest.mock import MagicMock
 
 import pytest
 from docker.errors import ImageNotFound
-from unstract.worker.constants import Env
+from unstract.runner.constants import Env
 
 from .docker import Client, DockerContainer
 
-DOCKER_MODULE = "unstract.worker.clients.docker"
+DOCKER_MODULE = "unstract.runner.clients.docker"
 
 
 @pytest.fixture
