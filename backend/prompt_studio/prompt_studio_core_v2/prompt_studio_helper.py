@@ -381,18 +381,36 @@ class PromptStudioHelper:
         process_text = None
         if text_processor:
             process_text = text_processor.process
-        doc_id = PromptStudioHelper.dynamic_indexer(
-            profile_manager=default_profile,
-            tool_id=tool_id,
-            file_path=file_path,
-            org_id=org_id,
-            document_id=document_id,
-            is_summary=is_summary,
-            reindex=True,
-            run_id=run_id,
-            user_id=user_id,
-            process_text=process_text,
-        )
+        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            doc_id = PromptStudioHelper.dynamic_indexer(
+                profile_manager=default_profile,
+                tool_id=tool_id,
+                file_path=file_path,
+                org_id=org_id,
+                document_id=document_id,
+                is_summary=is_summary,
+                reindex=True,
+                run_id=run_id,
+                user_id=user_id,
+                process_text=process_text,
+            )
+        else:
+            fs_instance = FileStorageHelper.initialize_file_storage(
+                type=FileStorageType.PERMANENT
+            )
+            doc_id = PromptStudioHelper.dynamic_indexer(
+                profile_manager=default_profile,
+                tool_id=tool_id,
+                file_path=file_path,
+                org_id=org_id,
+                document_id=document_id,
+                is_summary=is_summary,
+                reindex=True,
+                run_id=run_id,
+                user_id=user_id,
+                process_text=process_text,
+                fs=fs_instance,
+            )
 
         elapsed_time = time.time() - start_time
         logger.info(
@@ -870,7 +888,7 @@ class PromptStudioHelper:
         if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
             file_hash = ToolUtils.get_hash_from_file(file_path=doc_path)
         else:
-            file_hash = ToolUtils.get_hash_from_file(file_path=doc_path, fs=fs_instance)
+            file_hash = fs_instance.get_hash_from_file(path=doc_path)
 
         payload = {
             TSPKeys.TOOL_SETTINGS: tool_settings,
@@ -1123,17 +1141,34 @@ class PromptStudioHelper:
         if not default_profile:
             raise DefaultProfileError()
 
-        index_result = PromptStudioHelper.dynamic_indexer(
-            profile_manager=default_profile,
-            file_path=file_path,
-            tool_id=tool_id,
-            org_id=org_id,
-            is_summary=tool.summarize_as_source,
-            document_id=document_id,
-            run_id=run_id,
-            user_id=user_id,
-            process_text=process_text,
-        )
+        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            index_result = PromptStudioHelper.dynamic_indexer(
+                profile_manager=default_profile,
+                file_path=file_path,
+                tool_id=tool_id,
+                org_id=org_id,
+                is_summary=tool.summarize_as_source,
+                document_id=document_id,
+                run_id=run_id,
+                user_id=user_id,
+                process_text=process_text,
+            )
+        else:
+            fs_instance = FileStorageHelper.initialize_file_storage(
+                type=FileStorageType.PERMANENT
+            )
+            index_result = PromptStudioHelper.dynamic_indexer(
+                profile_manager=default_profile,
+                file_path=file_path,
+                tool_id=tool_id,
+                org_id=org_id,
+                is_summary=tool.summarize_as_source,
+                document_id=document_id,
+                run_id=run_id,
+                user_id=user_id,
+                process_text=process_text,
+                fs=fs_instance,
+            )
         if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
                 "status": IndexingStatus.PENDING_STATUS.value,
@@ -1174,7 +1209,10 @@ class PromptStudioHelper:
         if tool.summarize_as_source:
             path = Path(file_path)
             file_path = str(path.parent / TSPKeys.SUMMARIZE / (path.stem + ".txt"))
-        file_hash = ToolUtils.get_hash_from_file(file_path=file_path)
+        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            file_hash = ToolUtils.get_hash_from_file(file_path=file_path)
+        else:
+            file_hash = fs_instance.get_hash_from_file(path=file_path)
 
         payload = {
             TSPKeys.TOOL_SETTINGS: tool_settings,
