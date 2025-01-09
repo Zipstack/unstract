@@ -58,9 +58,14 @@ class TextExtractor(BaseTool):
             tool=self, adapter_instance_id=text_extraction_adapter_id
         )
         self.stream_log("Text extraction adapter has been created successfully.")
-        extraction_result: TextExtractionResult = text_extraction_adapter.process(
-            input_file_path=input_file
-        )
+        if self.workflow_filestorage:
+            extraction_result: TextExtractionResult = text_extraction_adapter.process(
+                input_file_path=input_file, fs=self.workflow_filestorage
+            )
+        else:
+            extraction_result: TextExtractionResult = text_extraction_adapter.process(
+                input_file_path=input_file
+            )
         extracted_text = self.convert_to_actual_string(extraction_result.extracted_text)
 
         self.stream_log("Text has been extracted successfully.")
