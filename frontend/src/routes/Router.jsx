@@ -125,7 +125,7 @@ function Router() {
           <Route path="selectProduct" element={<SelectProduct />} />
         )}
         {TrialRoutes && (
-          <Route path="/trial-expired" element={<TrialRoutes />} />
+          <Route path="/subscription-expired" element={<TrialRoutes />} />
         )}
         {PaymentSuccessful && (
           <Route path="/payment/success" element={<PaymentSuccessful />} />
