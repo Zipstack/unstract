@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 class ToolProcessor:
     TOOL_NOT_IN_REGISTRY_MESSAGE = "Tool does not exist in registry"
-    tool_registry = ToolRegistry()
 
     @staticmethod
     def get_tool_by_uid(tool_uid: str) -> Tool:
@@ -127,11 +126,4 @@ class ToolProcessor:
         )
         tool_list: list[dict[str, Any]] = tool_registry.fetch_tools_descriptions()
         tool_list = tool_list + prompt_studio_tools
-        return tool_list
-
-    @staticmethod
-    def get_registry_tools() -> list[Tool]:
-        """Function to get a list of tools."""
-        tool_registry = ToolRegistry()
-        tool_list: list[Tool] = tool_registry.fetch_all_tools()
         return tool_list

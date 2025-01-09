@@ -61,5 +61,5 @@ tools
 unstract
 !unstract/core
 !unstract/flags
-worker
+runner
 x2text-service

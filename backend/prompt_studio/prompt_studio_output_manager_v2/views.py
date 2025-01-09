@@ -82,6 +82,7 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         result: dict[str, Any] = OutputManagerHelper.fetch_default_output_response(
             tool_studio_prompts=tool_studio_prompts,
             document_manager_id=document_manager_id,
+            use_default_profile=True,
         )
 
         return Response(result, status=status.HTTP_200_OK)

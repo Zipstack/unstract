@@ -8,11 +8,45 @@ Contains the backend services for Unstract written with Django and DRF.
 1. Redis
 
 ## Getting started
-**NOTE**: All commands are executed from `/backend` and require the venv to be active. Refer [these steps](/README.md#create-your-virtual-env) to create/activate your venv
 
-### Install and run manually
+### Install and run locally
 
-- Ensure that you've sourced your virtual environment and installed dependencies mentioned [here](/README.md#create-your-virtual-env).
+#### Create your virtual env
+
+All commands assumes that you have activated your `venv`.
+
+```bash
+# Create venv
+pdm venv create -w virtualenv --with-pip
+eval "$(pdm venv activate in-project)"
+
+# Remove venv
+pdm venv remove in-project
+```
+
+#### Installing dependencies
+
+Go to service dir and install dependencies listed in corresponding `pyproject.toml`.
+
+```bash
+# Install dependencies
+pdm install
+
+# Install specific dev dependency group
+pdm install --dev -G lint
+
+# Install production dependencies only
+pdm install --prod --no-editable
+```
+
+PDM allows you to run scripts applicable within the service dir.
+
+```bash
+# List the possible scripts that can be executed
+pdm run -l
+```
+
+#### Running commands
 
 - If you plan to run the django server locally, make sure the dependent services are up (either locally or through docker compose)
 - Copy `sample.env` into `.env` and update the necessary variables. For eg:
@@ -40,20 +74,30 @@ python manage.py runserver localhost:8000
 
 The default username is `unstract` and the default password is `unstract`.
 
+### Initial Setup
+
 To customize the username or password:
 
 1. Navigate to `/backend/.env` created from [/backend/sample.env](/backend/sample.env)
-1. Update the values for `DEFAULT_AUTH_USERNAME` and `DEFAULT_AUTH_PASSWORD` with strong, unique credentials of your choosing
-1. Save the `/backend/.env` file and restart the server to apply changes
+2. Update the values for `DEFAULT_AUTH_USERNAME` and `DEFAULT_AUTH_PASSWORD` with strong, unique credentials of your choosing
+3. Save the `/backend/.env` file and restart the server to apply changes
 
-> **NOTE**: The username `admin` is reserved for Django admin, hence cannot be used
+### Updating Credentials
 
-To update the username or password after it's been set:
+To update the username or password after initial setup:
 
-1. Modify the username and password in the same `/backend/.env`
-1. Restart server to apply updates
-1. Login with the new credentials
+1. Modify the credentials in `/backend/.env`
+    - **DEFAULT_AUTH_USERNAME**=`your_new_username`
+    - **DEFAULT_AUTH_PASSWORD**=`your_new_password`
+2. Save changes and restart `backend` service
 
+Now you can login with the new credentials.
+
+### Important Notes
+
+- **DEFAULT_AUTH_USERNAME** must not match the `username` of any `Django superuser` or `admin` account. Keeping them distinct ensures security and avoids potential conflicts.
+- Use strong and unique credentials to protect your system.
+- The authentication system validates credentials against the values specified in the `/backend/.env` file.
 
 ## Asynchronous Execution
 

@@ -1,15 +1,18 @@
 import importlib
 import os
-from json import JSONDecodeError
 from logging import Logger
 from pathlib import Path
 from typing import Any, Optional
 
 from dotenv import load_dotenv
-from flask import Flask, current_app, json
-from unstract.prompt_service.authentication_middleware import AuthenticationMiddleware
+from flask import Flask, current_app
 from unstract.prompt_service.config import db
-from unstract.prompt_service.constants import DBTableV2, FeatureFlag
+from unstract.prompt_service.constants import (
+    DBTableV2,
+    ExecutionSource,
+    FeatureFlag,
+    FileStorageKeys,
+)
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service.db_utils import DBUtils
 from unstract.prompt_service.env_manager import EnvLoader
@@ -19,6 +22,11 @@ from unstract.sdk.exceptions import SdkError
 from unstract.sdk.llm import LLM
 
 from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+    from unstract.sdk.file_storage import FileStorage, FileStorageProvider
+    from unstract.sdk.file_storage.constants import StorageType
+    from unstract.sdk.file_storage.env_helper import EnvHelper
 
 load_dotenv()
 
@@ -86,11 +94,11 @@ def plugin_loader(app: Flask) -> None:
     initialize_plugin_endpoints(app=app)
 
 
-def get_cleaned_context(context: str) -> str:
+def get_cleaned_context(context: set[str]) -> list[str]:
     clean_context_plugin: dict[str, Any] = plugins.get(PSKeys.CLEAN_CONTEXT, {})
     if clean_context_plugin:
         return clean_context_plugin["entrypoint_cls"].run(context=context)
-    return context
+    return list(context)
 
 
 def initialize_plugin_endpoints(app: Flask) -> None:
@@ -105,6 +113,7 @@ def initialize_plugin_endpoints(app: Flask) -> None:
             app=app,
             challenge_plugin=plugins.get(PSKeys.CHALLENGE, {}),
             get_cleaned_context=get_cleaned_context,
+            highlight_data_plugin=plugins.get(PSKeys.HIGHLIGHT_DATA_PLUGIN, {}),
         )
     if summarize_plugin:
         summarize_plugin["entrypoint_cls"](
@@ -117,47 +126,7 @@ def initialize_plugin_endpoints(app: Flask) -> None:
 
 
 def query_usage_metadata(token: str, metadata: dict[str, Any]) -> dict[str, Any]:
-    if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-        return query_usage_metadata_v2(token, metadata)
-    org_id: str = AuthenticationMiddleware.get_account_from_bearer_token(token)
-    run_id: str = metadata["run_id"]
-    query: str = f"""
-        SELECT
-            usage_type,
-            llm_usage_reason,
-            model_name,
-            SUM(prompt_tokens) AS input_tokens,
-            SUM(completion_tokens) AS output_tokens,
-            SUM(total_tokens) AS total_tokens,
-            SUM(embedding_tokens) AS embedding_tokens,
-            SUM(cost_in_dollars) AS cost_in_dollars
-        FROM "{org_id}"."token_usage"
-        WHERE run_id = %s
-        GROUP BY usage_type, llm_usage_reason, model_name;
-    """
-    logger: Logger = current_app.logger
-    try:
-        with db.atomic():
-            logger.info(
-                "Querying usage metadata for org_id: %s, run_id: %s", org_id, run_id
-            )
-            cursor = db.execute_sql(query, (run_id,))
-            results: list[tuple] = cursor.fetchall()
-            # Process results as needed
-            for row in results:
-                key, item = _get_key_and_item(row)
-                # Initialize the key as an empty list if it doesn't exist
-                if key not in metadata:
-                    metadata[key] = []
-                # Append the item to the list associated with the key
-                metadata[key].append(item)
-    except Exception as e:
-        logger.error(f"Error executing querying usage metadata: {e}")
-    return metadata
-
-
-def query_usage_metadata_v2(token: str, metadata: dict[str, Any]) -> dict[str, Any]:
-    DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract_v2")
+    DB_SCHEMA = EnvLoader.get_env_or_die("DB_SCHEMA", "unstract")
     organization_uid, org_id = DBUtils.get_organization_from_bearer_token(token)
     run_id: str = metadata["run_id"]
     query: str = f"""
@@ -258,9 +227,12 @@ def construct_and_run_prompt(
     context: str,
     prompt: str,
     metadata: dict[str, Any],
+    file_path: str = "",
 ) -> str:
     platform_postamble = tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, "")
-    if tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE):
+    summarize_as_source = tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE)
+    enable_highlight = tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False)
+    if not enable_highlight or summarize_as_source:
         platform_postamble = ""
     prompt = construct_prompt(
         preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
@@ -276,6 +248,8 @@ def construct_and_run_prompt(
         metadata=metadata,
         prompt_key=output[PSKeys.NAME],
         prompt_type=output.get(PSKeys.TYPE, PSKeys.TEXT),
+        enable_highlight=enable_highlight,
+        file_path=file_path,
     )
 
 
@@ -315,29 +289,53 @@ def run_completion(
     metadata: Optional[dict[str, str]] = None,
     prompt_key: Optional[str] = None,
     prompt_type: Optional[str] = PSKeys.TEXT,
+    enable_highlight: bool = False,
+    file_path: str = "",
+    execution_source: Optional[str] = None,
 ) -> str:
     logger: Logger = current_app.logger
     try:
-        extract_epilogue_plugin: dict[str, Any] = plugins.get(
-            PSKeys.EXTRACT_EPILOGUE, {}
+        highlight_data_plugin: dict[str, Any] = plugins.get(
+            PSKeys.HIGHLIGHT_DATA_PLUGIN, {}
         )
-        extract_epilogue = None
-        if extract_epilogue_plugin:
-            extract_epilogue = extract_epilogue_plugin["entrypoint_cls"].run
+        highlight_data = None
+        if highlight_data_plugin and enable_highlight:
+            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+                fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
+                if execution_source == ExecutionSource.IDE.value:
+                    fs_instance = EnvHelper.get_storage(
+                        storage_type=StorageType.PERMANENT,
+                        env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+                    )
+                if execution_source == ExecutionSource.TOOL.value:
+                    fs_instance = EnvHelper.get_storage(
+                        storage_type=StorageType.TEMPORARY,
+                        env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
+                    )
+                highlight_data = highlight_data_plugin["entrypoint_cls"](
+                    logger=current_app.logger,
+                    file_path=file_path,
+                    fs_instance=fs_instance,
+                ).run
+            else:
+                highlight_data = highlight_data_plugin["entrypoint_cls"](
+                    logger=current_app.logger, file_path=file_path
+                ).run
         completion = llm.complete(
             prompt=prompt,
-            process_text=extract_epilogue,
+            process_text=highlight_data,
             extract_json=prompt_type.lower() != PSKeys.TEXT,
         )
         answer: str = completion[PSKeys.RESPONSE].text
-        epilogue = completion.get(PSKeys.EPILOGUE)
-        if all([metadata, epilogue, prompt_key]):
-            try:
-                logger.info(f"Epilogue extracted from LLM: {epilogue}")
-                epilogue = json.loads(epilogue)
-            except JSONDecodeError:
-                logger.error(f"Failed to convert epilogue to JSON: {epilogue}")
-            metadata.setdefault(PSKeys.EPILOGUE, {})[prompt_key] = epilogue
+        highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA, [])
+        confidence_data = completion.get(PSKeys.CONFIDENCE_DATA)
+        if metadata is not None and prompt_key:
+            metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = highlight_data
+
+            if confidence_data:
+                metadata.setdefault(PSKeys.CONFIDENCE_DATA, {})[
+                    prompt_key
+                ] = confidence_data
         return answer
     # TODO: Catch and handle specific exception here
     except SdkRateLimitError as e:
@@ -354,6 +352,7 @@ def extract_table(
     structured_output: dict[str, Any],
     llm: LLM,
     enforce_type: str,
+    execution_source: str,
 ) -> dict[str, Any]:
     table_settings = output[PSKeys.TABLE_SETTINGS]
     table_extractor: dict[str, Any] = plugins.get("table-extractor", {})
@@ -362,10 +361,32 @@ def extract_table(
             "Unable to extract table details. "
             "Please contact admin to resolve this issue."
         )
+    if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+        fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
+        if execution_source == ExecutionSource.IDE.value:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+        if execution_source == ExecutionSource.TOOL.value:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.TEMPORARY,
+                env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
+            )
     try:
-        answer = table_extractor["entrypoint_cls"].extract_large_table(
-            llm=llm, table_settings=table_settings, enforce_type=enforce_type
-        )
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            answer = table_extractor["entrypoint_cls"].extract_large_table(
+                llm=llm,
+                table_settings=table_settings,
+                enforce_type=enforce_type,
+                fs_instance=fs_instance,
+            )
+        else:
+            answer = table_extractor["entrypoint_cls"].extract_large_table(
+                llm=llm,
+                table_settings=table_settings,
+                enforce_type=enforce_type,
+            )
         structured_output[output[PSKeys.NAME]] = answer
         # We do not support summary and eval for table.
         # Hence returning the result

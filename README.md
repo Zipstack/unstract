@@ -54,16 +54,19 @@ Next, either download a release or clone this repo and do the following:
 
 ✅ `./run-platform.sh`<br>
 ✅ Now visit [http://frontend.unstract.localhost](http://frontend.unstract.localhost) in your browser <br>
-✅ Use user name and password `unstract` to login
+✅ Use username and password `unstract` to login
+
 
 That's all there is to it!
 
-See [user guide](https://docs.unstract.com/unstract_platform/user_guides/run_platform) for more details on managing the platform.  
-Another really quick way to experience Unstract is by signing up for our [hosted version](https://us-central.unstract.com/).
+Follow [these steps](backend/README.md#authentication) to change the default username and password.
+
+See [user guide](https://docs.unstract.com/unstract/unstract_platform/user_guides/run_platform) for more details on managing the platform.  
+Another really quick way to experience Unstract is by signing up for our [hosted version](https://us-central.unstract.com/). It comes with a 14 day free trial!
 
 ## ⏩ Quick Start Guide
 
-Unstract comes well documented. You can get introduced to the [basics of Unstract](https://docs.unstract.com/), and [learn how to connect](https://docs.unstract.com/unstract_platform/setup_accounts/whats_needed) various systems like LLMs, Vector Databases, Embedding Models and Text Extractors to it. The easiest way to wet your feet is to go through our [Quick Start Guide](https://docs.unstract.com/unstract_platform/quick_start) where you actually get to do some prompt engineering in Prompt Studio and launch an API to structure varied credit card statements!
+Unstract comes well documented. You can get introduced to the [basics of Unstract](https://docs.unstract.com/unstract/), and [learn how to connect](https://docs.unstract.com/unstract/unstract_platform/setup_accounts/whats_needed) various systems like LLMs, Vector Databases, Embedding Models and Text Extractors to it. The easiest way to wet your feet is to go through our [Quick Start Guide](https://docs.unstract.com/unstract/unstract_platform/quick_start) where you actually get to do some prompt engineering in Prompt Studio and launch an API to structure varied credit card statements!
 
 ## 🤝 Ecosystem support
 
@@ -118,7 +121,7 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 || Provider | Status |
 |---|---|---|
 |<img src="docs/assets/3rd_party/s3.png" width="32"/>| AWS S3 | ✅ Working |
-|<img src="docs/assets/3rd_party/minio.png" width="32"/>| Minio | ✅ Working |
+|<img src="docs/assets/3rd_party/minio.png" width="32"/>| MinIO | ✅ Working |
 |<img src="docs/assets/3rd_party/gcp.png" width="32"/>| Google Cloud Storage | ✅ Working |
 |<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure Cloud Storage | ✅ Working |
 |<img src="docs/assets/3rd_party/google_drive.png" width="32"/>| Google Drive | ✅ Working |
@@ -133,7 +136,7 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |---|---|---|
 |<img src="docs/assets/3rd_party/snowflake.png" width="32"/>| Snowflake | ✅ Working |
 |<img src="docs/assets/3rd_party/amazon_redshift.png" width="32"/>| Amazon Redshift | ✅ Working |
-|<img src="docs/assets/3rd_party/google_bigquery.png" width="32"/>| Google Bigquery | ✅ Working |
+|<img src="docs/assets/3rd_party/google_bigquery.png" width="32"/>| Google BigQuery | ✅ Working |
 |<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | ✅ Working |
 |<img src="docs/assets/3rd_party/mysql.png" width="32"/>| MySQL | ✅ Working |
 |<img src="docs/assets/3rd_party/mariadb.png" width="32"/>| MariaDB | ✅ Working |
@@ -141,7 +144,7 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 
 ## 🙌 Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for further details on setting up the development environment, etc. It also points you to other detailed documents as needed.
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for further details to get started easily.
 
 ## 👋 Join the LLM-powered automation community
 

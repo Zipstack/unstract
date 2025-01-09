@@ -118,6 +118,7 @@ class APIDeploymentDto(APIBase):
                 value=ApiExecution.MAXIMUM_TIMEOUT_IN_SEC,
             ),
             FormDataItem(key=ApiExecution.INCLUDE_METADATA, type="text", value="False"),
+            FormDataItem(key=ApiExecution.INCLUDE_METRICS, type="text", value="False"),
         ]
 
     def get_api_key(self) -> str:
@@ -131,6 +132,7 @@ class APIDeploymentDto(APIBase):
         status_query_param = {
             "execution_id": CollectionKey.STATUS_EXEC_ID_DEFAULT,
             ApiExecution.INCLUDE_METADATA: "False",
+            ApiExecution.INCLUDE_METRICS: "False",
         }
         status_query_str = urlencode(status_query_param)
         abs_api_endpoint = urljoin(settings.WEB_APP_ORIGIN_URL, self.api_endpoint)

@@ -75,10 +75,10 @@
 
 .logo {
     height: 50px;
+    width: 100%;
 }
 
 .text-wrapper {
-    height: 50%;
     width: 100%;
     display: flex;
     flex-direction: column;

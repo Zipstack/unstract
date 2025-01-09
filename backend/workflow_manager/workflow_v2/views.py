@@ -2,7 +2,6 @@ import logging
 from typing import Any, Optional
 
 from django.db.models.query import QuerySet
-from numpy import deprecate_with_doc
 from permissions.permission import IsOwner
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
@@ -11,8 +10,6 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
-from tool_instance_v2.tool_processor import ToolProcessor
-from unstract.tool_registry.dto import Tool
 from utils.filtering import FilterHelper
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.dto import FileHash
@@ -27,7 +24,6 @@ from workflow_manager.workflow_v2.exceptions import (
     WorkflowGenerationError,
     WorkflowRegenerationError,
 )
-from workflow_manager.workflow_v2.generator import WorkflowGenerator
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.serializers import (
@@ -78,14 +74,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             return ExecuteWorkflowSerializer
         else:
             return WorkflowSerializer
-
-    @deprecate_with_doc("Not using with the latest UX chnages")
-    def _generate_workflow(self, workflow_id: str) -> WorkflowGenerator:
-        registry_tools: list[Tool] = ToolProcessor.get_registry_tools()
-        generator = WorkflowGenerator(workflow_id=workflow_id)
-        generator.set_request(self.request)
-        generator.generate_workflow(registry_tools)
-        return generator
 
     def perform_update(self, serializer: WorkflowSerializer) -> Workflow:
         """To edit a workflow.

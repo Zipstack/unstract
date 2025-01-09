@@ -1,17 +1,11 @@
 import logging
 from typing import Any
 
+from pipeline_v2.manager import PipelineManager
 from rest_framework import serializers
 from scheduler.constants import SchedulerConstants as SC
 
-from backend.constants import FeatureFlag
 from backend.constants import FieldLengthConstants as FieldLength
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status(FeatureFlag.MULTI_TENANCY_V2):
-    from pipeline_v2.manager import PipelineManager
-else:
-    from pipeline.manager import PipelineManager
 
 logger = logging.getLogger(__name__)
 

@@ -9,30 +9,21 @@ import { useUserSession } from "./useUserSession.js";
 import { listFlags } from "../helpers/FeatureFlagsData.js";
 import { useAlertStore } from "../store/alert-store";
 
-let getTrialDetails;
 let isPlatformAdmin;
 try {
-  getTrialDetails = require("../plugins/subscription/trial-helper/fetchTrialDetails.jsx");
   isPlatformAdmin =
     require("../plugins/hooks/usePlatformAdmin.js").usePlatformAdmin();
 } catch (err) {
   // Plugin not available
 }
 
-// Import useGoogleTagManager hook
-let hsSignupEvent;
-try {
-  hsSignupEvent =
-    require("../plugins/hooks/useGoogleTagManager.js").useGoogleTagManager();
-} catch {
-  // Ignore if hook not available
-}
-
 let selectedProduct;
 let selectedProductStore;
+let PRODUCT_NAMES = {};
 
 try {
   selectedProductStore = require("../plugins/llm-whisperer/store/select-product-store.js");
+  PRODUCT_NAMES = require("../plugins/llm-whisperer/helper").PRODUCT_NAMES;
 } catch {
   // Ignore if hook not available
 }
@@ -57,7 +48,11 @@ function useSessionValid() {
     selectedProductStore,
     selectedProduct
   ) => {
-    if (userSessionData && selectedProductStore && !selectedProduct) {
+    if (
+      userSessionData &&
+      selectedProductStore &&
+      !Object.values(PRODUCT_NAMES).includes(selectedProduct)
+    ) {
       navigate("/selectProduct");
       return true; // Indicate that navigation has occurred
     }
@@ -114,11 +109,6 @@ function useSessionValid() {
         }
       });
 
-      const isNewOrg = setOrgRes?.data?.is_new_org || false;
-      if (isNewOrg && hsSignupEvent) {
-        hsSignupEvent();
-      }
-
       userAndOrgDetails = setOrgRes?.data?.user;
       userAndOrgDetails["orgName"] = setOrgRes?.data?.organization?.name;
       userAndOrgDetails["orgId"] = orgId;
@@ -159,15 +149,6 @@ function useSessionValid() {
           ),
         ];
         userAndOrgDetails["adapters"] = adapterTypes;
-      }
-
-      if (getTrialDetails && isUnstract) {
-        const remainingTrialDays = await getTrialDetails.fetchTrialDetails(
-          orgId,
-          csrfToken
-        );
-        if (remainingTrialDays)
-          userAndOrgDetails["remainingTrialDays"] = remainingTrialDays;
       }
 
       if (isUnstract) {

@@ -15,12 +15,6 @@ class Account:
     ORGANIZATION_ID = "organization_id"
 
 
-class FeatureFlag:
-    """Temporary feature flags."""
-
-    MULTI_TENANCY_V2 = "multi_tenancy_v2"
-
-
 class Common:
     METADATA = "metadata"
     MODULE = "module"
