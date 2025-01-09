@@ -2,7 +2,7 @@
   "schemaVersion": "0.0.1",
   "displayName": "File Classifier",
   "functionName": "classify",
-  "toolVersion": "0.0.42",
+  "toolVersion": "0.0.43",
   "description": "Classifies a file into a bin based on its contents",
   "input": {
     "description": "File to be classified"
