@@ -3,7 +3,7 @@ import logging
 from typing import Any, Optional
 
 from account_v2.models import User
-from adapter_processor_v2.constants import AdapterKeys
+from adapter_processor_v2.constants import AdapterKeys, AllowedDomains
 from adapter_processor_v2.exceptions import (
     InternalServiceError,
     InValidAdapterId,
@@ -44,17 +44,25 @@ class AdapterProcessor:
         return schema_details
 
     @staticmethod
-    def get_all_supported_adapters(type: str) -> list[dict[Any, Any]]:
+    def get_all_supported_adapters(user_email: str, type: str) -> list[dict[Any, Any]]:
         """Function to return list of all supported adapters."""
         supported_adapters = []
         updated_adapters = []
         updated_adapters = AdapterProcessor.__fetch_adapters_by_key_value(
             AdapterKeys.ADAPTER_TYPE, type
         )
+        is_special_user = any(
+            identifier in user_email for identifier in AllowedDomains.list()
+        )
+
         for each_adapter in updated_adapters:
+            adapter_id = each_adapter.get(AdapterKeys.ID)
+            if not is_special_user and adapter_id.startswith("noOp"):
+                continue
+
             supported_adapters.append(
                 {
-                    AdapterKeys.ID: each_adapter.get(AdapterKeys.ID),
+                    AdapterKeys.ID: adapter_id,
                     AdapterKeys.NAME: each_adapter.get(AdapterKeys.NAME),
                     AdapterKeys.DESCRIPTION: each_adapter.get(AdapterKeys.DESCRIPTION),
                     AdapterKeys.ICON: each_adapter.get(AdapterKeys.ICON),
@@ -92,10 +100,11 @@ class AdapterProcessor:
 
             adapter_instance = adapter_class(adapter_metadata)
             test_result: bool = adapter_instance.test_connection()
-            logger.info(f"{adapter_id} test result: {test_result}")
             return test_result
         except SdkError as e:
-            raise TestAdapterError(str(e))
+            raise TestAdapterError(
+                e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]
+            )
 
     @staticmethod
     def __fetch_adapters_by_key_value(key: str, value: Any) -> Adapter:

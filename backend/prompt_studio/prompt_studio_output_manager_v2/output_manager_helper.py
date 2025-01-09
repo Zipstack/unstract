@@ -60,6 +60,7 @@ class OutputManagerHelper:
             tool: CustomTool,
             context: str,
             challenge_data: Optional[dict[str, Any]],
+            highlight_data: Optional[dict[str, Any]],
         ) -> PromptStudioOutputManager:
             """Handles creating or updating a single prompt output and returns
             the instance."""
@@ -76,6 +77,7 @@ class OutputManagerHelper:
                             "eval_metrics": eval_metrics,
                             "context": context,
                             "challenge_data": challenge_data,
+                            "highlight_data": highlight_data,
                         },
                     )
                 )
@@ -97,6 +99,7 @@ class OutputManagerHelper:
                     "eval_metrics": eval_metrics,
                     "context": context,
                     "challenge_data": challenge_data,
+                    "highlight_data": highlight_data,
                 }
                 PromptStudioOutputManager.objects.filter(
                     document_manager=document_manager,
@@ -118,6 +121,7 @@ class OutputManagerHelper:
         serialized_data: list[dict[str, Any]] = []
         context = metadata.get("context")
         challenge_data = metadata.get("challenge_data")
+        highlight_data = metadata.get("highlight_data")
 
         if not prompts:
             return serialized_data
@@ -134,6 +138,8 @@ class OutputManagerHelper:
 
             if not is_single_pass_extract:
                 context = context.get(prompt.prompt_key)
+                if highlight_data:
+                    highlight_data = highlight_data.get(prompt.prompt_key)
                 if challenge_data:
                     challenge_data = challenge_data.get(prompt.prompt_key)
 
@@ -156,6 +162,7 @@ class OutputManagerHelper:
                 tool=tool,
                 context=json.dumps(context),
                 challenge_data=challenge_data,
+                highlight_data=highlight_data,
             )
 
             # Serialize the instance
@@ -191,7 +198,9 @@ class OutputManagerHelper:
 
     @staticmethod
     def fetch_default_output_response(
-        tool_studio_prompts: list[ToolStudioPrompt], document_manager_id: str
+        tool_studio_prompts: list[ToolStudioPrompt],
+        document_manager_id: str,
+        use_default_profile: bool = False,
     ) -> dict[str, Any]:
         """Method to frame JSON responses for combined output for default for
         default profile manager of the project.
@@ -199,6 +208,7 @@ class OutputManagerHelper:
         Args:
             tool_studio_prompts (list[ToolStudioPrompt])
             document_manager_id (str)
+            use_default_profile (bool)
 
         Returns:
             dict[str, Any]: Formatted JSON response for combined output.
@@ -213,9 +223,15 @@ class OutputManagerHelper:
             profile_manager_id = tool_prompt.profile_manager_id
 
             # If profile_manager is not set, skip this record
-            if not profile_manager_id:
+            if not profile_manager_id and not use_default_profile:
                 result[tool_prompt.prompt_key] = ""
                 continue
+
+            if not profile_manager_id:
+                default_profile = ProfileManager.get_default_llm_profile(
+                    tool_prompt.tool_id
+                )
+                profile_manager_id = default_profile.profile_id
 
             try:
                 queryset = PromptStudioOutputManager.objects.filter(

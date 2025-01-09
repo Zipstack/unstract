@@ -322,6 +322,7 @@ class PromptStudioRegistryHelper:
 
             output[JsonSchemaKey.PROMPT] = prompt.prompt
             output[JsonSchemaKey.ACTIVE] = prompt.active
+            output[JsonSchemaKey.REQUIRED] = prompt.required
             output[JsonSchemaKey.CHUNK_SIZE] = prompt.profile_manager.chunk_size
             output[JsonSchemaKey.VECTOR_DB] = vector_db
             output[JsonSchemaKey.EMBEDDING] = embedding_model

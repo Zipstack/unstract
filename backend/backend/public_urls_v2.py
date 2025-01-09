@@ -33,6 +33,8 @@ urlpatterns = [
     path("flags/", include("feature_flag.urls")),
     # Pipeline
     path("pipeline/", include("pipeline_v2.public_api_urls")),
+    # health checks
+    path("", include("health.urls")),
 ]
 if settings.ADMIN_ENABLED:
     # Admin URLs

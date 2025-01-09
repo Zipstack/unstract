@@ -30,9 +30,15 @@ function DocumentParser({
 }) {
   const [enforceTypeList, setEnforceTypeList] = useState([]);
   const [updatedPromptsCopy, setUpdatedPromptsCopy] = useState({});
+  const [isChallenge, setIsChallenge] = useState(false);
   const bottomRef = useRef(null);
-  const { details, isSimplePromptStudio, updateCustomTool, getDropdownItems } =
-    useCustomToolStore();
+  const {
+    details,
+    isSimplePromptStudio,
+    updateCustomTool,
+    getDropdownItems,
+    isChallengeEnabled,
+  } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -45,6 +51,7 @@ function DocumentParser({
       return { value: outputTypeData[item] };
     });
     setEnforceTypeList(dropdownList1);
+    setIsChallenge(isChallengeEnabled);
 
     return () => {
       // Set the prompts with updated changes when the component is unmounted
@@ -62,6 +69,10 @@ function DocumentParser({
       updateCustomTool({ details: modifiedDetails });
     };
   }, []);
+
+  useEffect(() => {
+    setIsChallenge(details.enable_challenge);
+  }, [details.enable_challenge]);
 
   useEffect(() => {
     if (scrollToBottom) {
@@ -196,6 +207,8 @@ function DocumentParser({
               outputs={getPromptOutputs(item?.prompt_id)}
               enforceTypeList={enforceTypeList}
               setUpdatedPromptsCopy={setUpdatedPromptsCopy}
+              coverageCountData={item?.coverage}
+              isChallenge={isChallenge}
             />
             <div ref={bottomRef} className="doc-parser-pad-bottom" />
           </div>

@@ -1,7 +1,7 @@
 import time
 import traceback
 from json import JSONDecodeError
-from typing import Any, Optional
+from typing import Any
 
 from flask import json, jsonify, request
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
@@ -84,6 +84,11 @@ def authentication_middleware(func: Any) -> Any:
     return wrapper
 
 
+@app.route("/health", methods=["GET"], endpoint="health_check")
+def health_check() -> str:
+    return "OK"
+
+
 @app.route(
     "/answer-prompt",
     endpoint="answer_prompt",
@@ -109,8 +114,12 @@ def prompt_processor() -> Any:
         PSKeys.RUN_ID: run_id,
         PSKeys.FILE_NAME: doc_name,
         PSKeys.CONTEXT: {},
+        PSKeys.REQUIRED_FIELDS: {},
     }
+    metrics: dict = {}
     variable_names: list[str] = []
+    # Identifier for source of invocation
+    execution_source = payload.get(PSKeys.EXECUTION_SOURCE, "")
     publish_log(
         log_events_id,
         {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
@@ -118,17 +127,19 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         f"Preparing to execute {len(prompts)} prompt(s)",
     )
-
     # TODO: Rename "output" to "prompt"
     for output in prompts:  # type:ignore
         variable_names.append(output[PSKeys.NAME])
+        metadata[PSKeys.REQUIRED_FIELDS][output[PSKeys.NAME]] = output.get(
+            PSKeys.REQUIRED, None
+        )
+
     for output in prompts:  # type:ignore
         prompt_name = output[PSKeys.NAME]
         prompt_text = output[PSKeys.PROMPT]
         chunk_size = output[PSKeys.CHUNK_SIZE]
         util = PromptServiceBaseTool(platform_key=platform_key)
-        index = Index(tool=util)
-
+        index = Index(tool=util, run_id=run_id, capture_metrics=True)
         if VariableExtractor.is_variables_present(prompt_text=prompt_text):
             prompt_text = VariableExtractor.replace_variables_in_prompt(
                 prompt=output,
@@ -189,6 +200,7 @@ def prompt_processor() -> Any:
                     **usage_kwargs,
                     PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
                 },
+                capture_metrics=True,
             )
 
             embedding = Embedding(
@@ -226,6 +238,7 @@ def prompt_processor() -> Any:
                     structured_output=structured_output,
                     llm=llm,
                     enforce_type=output[PSKeys.TYPE],
+                    execution_source=execution_source,
                 )
                 metadata = query_usage_metadata(token=platform_key, metadata=metadata)
                 response = {
@@ -287,64 +300,18 @@ def prompt_processor() -> Any:
                 raise e
 
         try:
-            context: set[str] = set()
-            if output[PSKeys.CHUNK_SIZE] == 0:
+            if chunk_size == 0:
                 # We can do this only for chunkless indexes
-                retrieved_context: Optional[str] = index.query_index(
-                    embedding_instance_id=output[PSKeys.EMBEDDING],
-                    vector_db_instance_id=output[PSKeys.VECTOR_DB],
+                context: set[str] = fetch_context_from_vector_db(
+                    index=index,
+                    output=output,
                     doc_id=doc_id,
+                    tool_id=tool_id,
+                    doc_name=doc_name,
+                    prompt_name=prompt_name,
+                    log_events_id=log_events_id,
                     usage_kwargs=usage_kwargs,
                 )
-                if not context:
-                    # UN-1288 For Pinecone, we are seeing an inconsistent case where
-                    # query with doc_id fails even though indexing just happened.
-                    # This causes the following retrieve to return no text.
-                    # To rule out any lag on the Pinecone vector DB write,
-                    # the following sleep is added.
-                    # Note: This will not fix the issue. Since this issue is
-                    # inconsistent, and not reproducible easily,
-                    # this is just a safety net.
-                    time.sleep(2)
-                    retrieved_context: Optional[str] = index.query_index(
-                        embedding_instance_id=output[PSKeys.EMBEDDING],
-                        vector_db_instance_id=output[PSKeys.VECTOR_DB],
-                        doc_id=doc_id,
-                        usage_kwargs=usage_kwargs,
-                    )
-                    if retrieved_context is None:
-                        # TODO: Obtain user set name for vector DB
-                        msg = NO_CONTEXT_ERROR
-                        app.logger.error(
-                            f"{msg} {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
-                        )
-                        publish_log(
-                            log_events_id,
-                            {
-                                "tool_id": tool_id,
-                                "prompt_key": prompt_name,
-                                "doc_name": doc_name,
-                            },
-                            LogLevel.ERROR,
-                            RunLevel.RUN,
-                            msg,
-                        )
-                        raise APIError(message=msg)
-                context.add(retrieved_context)
-                # TODO: Use vectorDB name when available
-                publish_log(
-                    log_events_id,
-                    {
-                        "tool_id": tool_id,
-                        "prompt_key": prompt_name,
-                        "doc_name": doc_name,
-                    },
-                    LogLevel.DEBUG,
-                    RunLevel.RUN,
-                    "Fetched context from vector DB",
-                )
-
-            if chunk_size == 0:
                 publish_log(
                     log_events_id,
                     {
@@ -570,6 +537,7 @@ def prompt_processor() -> Any:
                                 **usage_kwargs,
                                 PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
                             },
+                            capture_metrics=True,
                         )
                         challenge = challenge_plugin["entrypoint_cls"](
                             llm=llm,
@@ -673,6 +641,18 @@ def prompt_processor() -> Any:
                         f"No eval plugin found to evaluate prompt: {output[PSKeys.NAME]}"  # noqa: E501
                     )
         finally:
+            challenge_metrics = (
+                {f"{challenge_llm.get_usage_reason()}_llm": challenge_llm.get_metrics()}
+                if enable_challenge
+                else {}
+            )
+            metrics.setdefault(prompt_name, {}).update(
+                {
+                    "context_retrieval": index.get_metrics(),
+                    f"{llm.get_usage_reason()}_llm": llm.get_metrics(),
+                    **challenge_metrics,
+                }
+            )
             vector_db.close()
     publish_log(
         log_events_id,
@@ -705,8 +685,108 @@ def prompt_processor() -> Any:
         "Execution complete",
     )
     metadata = query_usage_metadata(token=platform_key, metadata=metadata)
-    response = {PSKeys.METADATA: metadata, PSKeys.OUTPUT: structured_output}
+    response = {
+        PSKeys.METADATA: metadata,
+        PSKeys.OUTPUT: structured_output,
+        PSKeys.METRICS: metrics,
+    }
     return response
+
+
+def fetch_context_from_vector_db(
+    index: Index,
+    output: dict[str, Any],
+    doc_id: str,
+    tool_id: str,
+    doc_name: str,
+    prompt_name: str,
+    log_events_id: str,
+    usage_kwargs: dict[str, Any],
+) -> set[str]:
+    """
+    Fetches context from the index for the given document ID. Implements a retry
+    mechanism with logging and raises an error if context retrieval fails.
+
+    Args:
+        index: The index object to query.
+        output: Dictionary containing keys like embedding and vector DB instance ID.
+        doc_id: The document ID to query.
+        tool_id: Identifier for the tool in use.
+        doc_name: Name of the document being queried.
+        prompt_name: Name of the prompt being executed.
+        log_events_id: Unique ID for logging events.
+        usage_kwargs: Additional usage parameters.
+
+    Raises:
+        APIError: If context retrieval fails after retrying.
+    """
+    context: set[str] = set()
+    try:
+        retrieved_context = index.query_index(
+            embedding_instance_id=output[PSKeys.EMBEDDING],
+            vector_db_instance_id=output[PSKeys.VECTOR_DB],
+            doc_id=doc_id,
+            usage_kwargs=usage_kwargs,
+        )
+
+        if retrieved_context:
+            context.add(retrieved_context)
+            publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.DEBUG,
+                RunLevel.RUN,
+                "Fetched context from vector DB",
+            )
+        else:
+            # Handle lag in vector DB write (e.g., Pinecone issue)
+            time.sleep(2)
+            retrieved_context = index.query_index(
+                embedding_instance_id=output[PSKeys.EMBEDDING],
+                vector_db_instance_id=output[PSKeys.VECTOR_DB],
+                doc_id=doc_id,
+                usage_kwargs=usage_kwargs,
+            )
+
+            if retrieved_context is None:
+                msg = NO_CONTEXT_ERROR
+                app.logger.error(
+                    f"{msg} {output[PSKeys.VECTOR_DB]} for doc_id {doc_id}"
+                )
+                publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.ERROR,
+                    RunLevel.RUN,
+                    msg,
+                )
+                raise APIError(message=msg)
+    except SdkError as e:
+        msg = f"Unable to fetch context from vector DB. {str(e)}"
+        app.logger.error(
+            f"{msg}. VectorDB: {output[PSKeys.VECTOR_DB]}, doc_id: {doc_id}"
+        )
+        publish_log(
+            log_events_id,
+            {
+                "tool_id": tool_id,
+                "prompt_key": prompt_name,
+                "doc_name": doc_name,
+            },
+            LogLevel.ERROR,
+            RunLevel.RUN,
+            msg,
+        )
+        raise APIError(message=msg, code=e.status_code)
+    return context
 
 
 def run_retrieval(  # type:ignore
@@ -717,7 +797,7 @@ def run_retrieval(  # type:ignore
     vector_index,
     retrieval_type: str,
     metadata: dict[str, Any],
-) -> tuple[str, str]:
+) -> tuple[str, set[str]]:
     context: set[str] = set()
     prompt = output[PSKeys.PROMPTX]
     if retrieval_type == PSKeys.SUBQUESTION:

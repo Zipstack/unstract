@@ -50,6 +50,9 @@ function PromptCardItems({
   handleSpsLoading,
   promptOutputs,
   promptRunStatus,
+  coverageCountData,
+  isChallenge,
+  handleSelectHighlight,
 }) {
   const {
     llmProfiles,
@@ -60,13 +63,16 @@ function PromptCardItems({
     isSimplePromptStudio,
     isPublicSource,
     adapters,
+    selectedHighlight,
+    details,
+    singlePassExtractMode,
   } = useCustomToolStore();
+
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [expandCard, setExpandCard] = useState(true);
   const [llmProfileDetails, setLlmProfileDetails] = useState([]);
   const [openIndexProfile, setOpenIndexProfile] = useState(null);
-  const [coverageCount] = useState(0);
   const [enabledProfiles, setEnabledProfiles] = useState(
     llmProfiles.map((profile) => profile.profile_id)
   );
@@ -74,6 +80,7 @@ function PromptCardItems({
   const isNotSingleLlmProfile = llmProfiles.length > 1;
   const divRef = useRef(null);
   const [enforceType, setEnforceType] = useState("");
+  const promptId = promptDetails?.prompt_id;
 
   useEffect(() => {
     if (enforceType !== promptDetails?.enforce_type) {
@@ -104,6 +111,32 @@ function PromptCardItems({
     });
     return result;
   };
+
+  const getUpdatedCoverage = (promptId, singlePass, promptOutputs) => {
+    let updatedCoverage = null;
+    Object.keys(promptOutputs).forEach((key) => {
+      const [keyPromptId, , , keyIsSinglePass] = key.split("__"); // Destructure the key parts
+
+      // Check if the key matches the criteria
+      if (keyPromptId === promptId && keyIsSinglePass === String(singlePass)) {
+        const currentCoverage = promptOutputs[key]?.coverage || [];
+
+        // Update the highestCoverage if the current one is longer
+        if (
+          !updatedCoverage ||
+          currentCoverage.length > updatedCoverage.length
+        ) {
+          updatedCoverage = currentCoverage;
+        }
+      }
+    });
+
+    return updatedCoverage;
+  };
+
+  const promptCoverage =
+    getUpdatedCoverage(promptId, singlePassExtractMode, promptOutputs) ||
+    coverageCountData;
 
   const getAdapterInfo = async (adapterData) => {
     // If simple prompt studio, return early
@@ -141,7 +174,13 @@ function PromptCardItems({
   }, [llmProfiles, selectedLlmProfileId, enabledProfiles]);
 
   return (
-    <Card className="prompt-card">
+    <Card
+      className={`prompt-card ${
+        details?.enable_highlight &&
+        selectedHighlight?.highlightedPrompt === promptDetails?.prompt_id &&
+        "highlighted-prompt"
+      }`}
+    >
       <div className="prompt-card-div prompt-card-bg-col1 prompt-card-rad">
         <Space direction="vertical" className="width-100" ref={divRef}>
           <Header
@@ -162,6 +201,7 @@ function PromptCardItems({
             enabledProfiles={enabledProfiles}
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
+            enforceType={enforceType}
           />
         </Space>
       </div>
@@ -205,7 +245,7 @@ function PromptCardItems({
                             <SearchOutlined className="font-size-12" />
                           )}
                           <Typography.Link className="font-size-12">
-                            Coverage: {coverageCount} of{" "}
+                            Coverage: {promptCoverage?.length || 0} of{" "}
                             {listOfDocs?.length || 0} docs
                           </Typography.Link>
                         </Space>
@@ -257,6 +297,8 @@ function PromptCardItems({
               enforceType={enforceType}
               promptOutputs={promptOutputs}
               promptRunStatus={promptRunStatus}
+              isChallenge={isChallenge}
+              handleSelectHighlight={handleSelectHighlight}
             />
           </Row>
         </Collapse.Panel>
@@ -292,6 +334,9 @@ PromptCardItems.propTypes = {
   handleSpsLoading: PropTypes.func.isRequired,
   promptOutputs: PropTypes.object.isRequired,
   promptRunStatus: PropTypes.object.isRequired,
+  coverageCountData: PropTypes.object.isRequired,
+  isChallenge: PropTypes.bool.isRequired,
+  handleSelectHighlight: PropTypes.func.isRequired,
 };
 
 export { PromptCardItems };

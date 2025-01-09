@@ -32,6 +32,7 @@ class ExecutionResponse:
     mode: Optional[str] = None
     result: Optional[Any] = None
     message: Optional[str] = None
+    result_acknowledged: bool = False
 
     def __post_init__(self) -> None:
         self.log_id = self.log_id or None
@@ -61,6 +62,21 @@ class ExecutionResponse:
                 break
 
             self._remove_specific_keys(result=result, keys_to_remove=keys_to_remove)
+
+    def remove_result_metrics(self) -> None:
+        """Removes the 'metrics' key from the 'result' dictionary within each
+        'result' dictionary in the 'result' list attribute of the instance.
+        """
+        if not isinstance(self.result, list):
+            return
+
+        for item in self.result:
+            if not isinstance(item, dict):
+                continue
+
+            result = item.get("result")
+            if isinstance(result, dict):
+                result.pop("metrics", None)
 
     def _remove_specific_keys(self, result: dict, keys_to_remove: list[str]) -> None:
         """Removes specified keys from the 'metadata' dictionary within the
