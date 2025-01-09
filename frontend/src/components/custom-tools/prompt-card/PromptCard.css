@@ -77,8 +77,16 @@
   padding-top: 12px;
   position: relative;
   background-color: #fff8e6;
+  max-height: 300px;
+  overflow-y: scroll;
+  scrollbar-color: inherit #fff8e6 !important;
+  display: flex;
+  flex-grow: 1;
 }
 
+.prompt-card-result::-webkit-scrollbar-track {
+  background-color: #fff8e6 !important;
+}
 .prompt-card-result .ant-typography {
   margin-bottom: 0px;
 }
@@ -290,4 +298,17 @@
 
 .info-circle-colored {
   color: #f0ad4e;
+}
+
+.highlighted-prompt {
+  border-width: 1.2px;
+  border-style: solid;
+  border-color: #4096ff;
+  box-shadow: 4px 4px 12.5px 0px rgba(0, 0, 0, 0.08);
+}
+
+.highlighted-prompt-cell {
+  border-width: 1.2px;
+  border-style: solid;
+  border-color: #ffb400;
 }

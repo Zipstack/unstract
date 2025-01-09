@@ -10,12 +10,12 @@ dependencies = [
     "peewee~=3.16",
     "psycopg2-binary~=2.9",
     "python-dotenv~=1.0",
-    "redis~=5.0.1",
+    "redis~=5.2.1",
     "cryptography>=41.0.7",
-    "unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
     "requests>=2.31.0",
-    "unstract-sdk~=0.54.0rc1",
+    "unstract-sdk==0.54.0rc11",
     "gcsfs==2024.10.0",
+    "unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
 ]
 requires-python = ">=3.9,<3.11.1"
 readme = "README.md"

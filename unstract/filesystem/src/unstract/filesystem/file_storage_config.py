@@ -2,8 +2,7 @@ import json
 import logging
 import os
 
-from unstract.sdk.file_storage import FileStorageProvider
-from unstract.sdk.file_storage.fs_shared_temporary import SharedTemporaryFileStorage
+from unstract.sdk.file_storage import FileStorageProvider, SharedTemporaryFileStorage
 
 from .exceptions import ProviderNotFound
 from .file_storage_types import FileStorageType  # Import the shared enum
@@ -13,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def get_provider(var_name: str, default: str = "minio") -> FileStorageProvider:
     """Retrieve the file storage provider based on an environment variable."""
-    provider_name = os.environ.get(var_name, default).capitalize()
+    provider_name = os.environ.get(var_name, default).upper()
     try:
         # Attempt to map the provider name to an enum value, case-insensitively
         return FileStorageProvider[provider_name]
