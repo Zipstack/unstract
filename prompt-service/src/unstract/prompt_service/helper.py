@@ -327,13 +327,10 @@ def run_completion(
             extract_json=prompt_type.lower() != PSKeys.TEXT,
         )
         answer: str = completion[PSKeys.RESPONSE].text
-        highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA)
+        highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA, [])
         confidence_data = completion.get(PSKeys.CONFIDENCE_DATA)
         if metadata is not None and prompt_key:
-            if highlight_data:
-                metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[
-                    prompt_key
-                ] = highlight_data
+            metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = highlight_data
 
             if confidence_data:
                 metadata.setdefault(PSKeys.CONFIDENCE_DATA, {})[

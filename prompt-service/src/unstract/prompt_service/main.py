@@ -83,6 +83,11 @@ def authentication_middleware(func: Any) -> Any:
     return wrapper
 
 
+@app.route("/health", methods=["GET"], endpoint="health_check")
+def health_check() -> str:
+    return "OK"
+
+
 @app.route(
     "/answer-prompt",
     endpoint="answer_prompt",
@@ -238,6 +243,7 @@ def prompt_processor() -> Any:
                 response = {
                     PSKeys.METADATA: metadata,
                     PSKeys.OUTPUT: structured_output,
+                    PSKeys.METRICS: metrics,
                 }
                 return response
             except APIError as api_error:
