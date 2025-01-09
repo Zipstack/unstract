@@ -13,7 +13,6 @@ import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
 import { handleUpdateStatus } from "./constants";
-// import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
 
 const PromptCard = memo(
   ({
@@ -26,6 +25,8 @@ const PromptCard = memo(
     setUpdatedPromptsCopy,
     handlePromptRunRequest,
     promptRunStatus,
+    coverageCountData,
+    isChallenge,
   }) => {
     const [promptDetailsState, setPromptDetailsState] = useState({});
     const [isPromptDetailsStateUpdated, setIsPromptDetailsStateUpdated] =
@@ -42,8 +43,13 @@ const PromptCard = memo(
     const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
     const [progressMsg, setProgressMsg] = useState({});
     const [spsLoading, setSpsLoading] = useState({});
-    const { llmProfiles, selectedDoc, details, summarizeIndexStatus } =
-      useCustomToolStore();
+    const {
+      llmProfiles,
+      selectedDoc,
+      details,
+      summarizeIndexStatus,
+      updateCustomTool,
+    } = useCustomToolStore();
     const { messages } = useSocketCustomToolStore();
     const { setAlertDetails } = useAlertStore();
     const { setPostHogCustomEvent } = usePostHogEvents();
@@ -160,6 +166,25 @@ const PromptCard = memo(
       );
     };
 
+    const handleSelectHighlight = (
+      highlightData,
+      highlightedPrompt,
+      highlightedProfile
+    ) => {
+      if (
+        details?.enable_highlight &&
+        promptDetailsState?.enforce_type !== "json"
+      ) {
+        updateCustomTool({
+          selectedHighlight: {
+            highlight: highlightData,
+            highlightedPrompt: highlightedPrompt,
+            highlightedProfile: highlightedProfile,
+          },
+        });
+      }
+    };
+
     const handleTypeChange = (value) => {
       handleChange(value, promptDetailsState?.prompt_id, "enforce_type", true);
     };
@@ -258,6 +283,9 @@ const PromptCard = memo(
           handleSpsLoading={handleSpsLoading}
           promptOutputs={promptOutputs}
           promptRunStatus={promptRunStatus}
+          coverageCountData={coverageCountData}
+          isChallenge={isChallenge}
+          handleSelectHighlight={handleSelectHighlight}
         />
         <OutputForDocModal
           open={openOutputForDoc}
@@ -283,6 +311,8 @@ PromptCard.propTypes = {
   setUpdatedPromptsCopy: PropTypes.func.isRequired,
   handlePromptRunRequest: PropTypes.func.isRequired,
   promptRunStatus: PropTypes.object.isRequired,
+  coverageCountData: PropTypes.object.isRequired,
+  isChallenge: PropTypes.bool.isRequired,
 };
 
 export { PromptCard };

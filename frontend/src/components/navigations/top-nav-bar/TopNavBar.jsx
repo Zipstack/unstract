@@ -67,12 +67,13 @@ try {
 
 let WhispererLogo;
 try {
-  WhispererLogo = require("../../../plugins/assets/index.js").WhispererLogo;
+  WhispererLogo =
+    require("../../../plugins/assets/llmWhisperer/index.js").WhispererLogo;
 } catch {
   // Ignore if hook not available
 }
 
-function TopNavBar({ isSimpleLayout }) {
+function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const { orgName, remainingTrialDays, allOrganization, orgId } =
@@ -307,6 +308,7 @@ function TopNavBar({ isSimpleLayout }) {
           <Col span={4}>
             <Row justify="end" align="middle">
               <Space>
+                {topNavBarOptions}
                 {isUnstract && TrialDaysInfo && (
                   <TrialDaysInfo remainingTrialDays={remainingTrialDays} />
                 )}
@@ -338,6 +340,7 @@ function TopNavBar({ isSimpleLayout }) {
 
 TopNavBar.propTypes = {
   isSimpleLayout: PropTypes.bool,
+  topNavBarOptions: PropTypes.node,
 };
 
 export { TopNavBar };

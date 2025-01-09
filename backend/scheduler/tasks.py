@@ -112,8 +112,13 @@ def execute_pipeline_task_v2(
         PipelineProcessor.update_pipeline(
             pipeline_id, Pipeline.PipelineStatus.INPROGRESS
         )
+        # Mark the File in file history to avoid duplicate execution
+        # only for ETL and TASK execution
+        use_file_history: bool = True
         execution_response = WorkflowHelper.complete_execution(
-            workflow=workflow, pipeline_id=pipeline_id
+            workflow=workflow,
+            pipeline_id=pipeline_id,
+            use_file_history=use_file_history,
         )
         execution_response.remove_result_metadata_keys()
         logger.info(

@@ -98,6 +98,7 @@ class JsonSchemaKey:
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
     ENABLE_HIGHLIGHT = "enable_highlight"
     PLATFORM_POSTAMBLE = "platform_postamble"
+    REQUIRED = "required"
 
 
 class SpecKey:

@@ -44,6 +44,7 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
     PromptStudioRegistryInfoSerializer,
 )
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
+from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -52,9 +53,12 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance_v2.models import ToolInstance
 from unstract.sdk.utils.common_utils import CommonUtils
+from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.user_session import UserSessionUtils
 
+from backend.constants import FeatureFlag
 from unstract.connectors.filesystems.local_storage.local_storage import LocalStorageFS
+from unstract.flags.feature_flag import check_feature_flag_status
 
 from .models import CustomTool
 from .serializers import (
@@ -377,6 +381,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             raise MaxProfilesReachedError()
         try:
             self.perform_create(serializer)
+            # Check if this is the first profile and make it default for all prompts
+            if profile_count == 0:
+                profile_manager = serializer.instance  # Newly created profile manager
+                ToolStudioPrompt.objects.filter(tool_id=prompt_studio_tool).update(
+                    profile_manager=profile_manager
+                )
+
         except IntegrityError:
             raise DuplicateData(
                 f"{ProfileManagerErrors.PROFILE_NAME_EXISTS}, \
@@ -405,31 +416,44 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 f"{filename_without_extension}.txt"
             )
 
-        file_path = file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            UserSessionUtils.get_organization_id(request),
-            is_create=True,
-            user_id=custom_tool.created_by.user_id,
-            tool_id=str(custom_tool.tool_id),
-        )
-        file_system = LocalStorageFS(settings={"path": file_path})
-        if not file_path.endswith("/"):
-            file_path += "/"
-        file_path += file_name
-        # Temporary Hack for frictionless onboarding as the user id will be empty
-        try:
-            contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
-        except FileNotFound:
+        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+
             file_path = file_path = FileManagerHelper.handle_sub_directory_for_tenants(
                 UserSessionUtils.get_organization_id(request),
                 is_create=True,
-                user_id="",
+                user_id=custom_tool.created_by.user_id,
                 tool_id=str(custom_tool.tool_id),
             )
+            file_system = LocalStorageFS(settings={"path": file_path})
             if not file_path.endswith("/"):
                 file_path += "/"
-                file_path += file_name
-            contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
-
+            file_path += file_name
+            # Temporary Hack for frictionless onboarding as the user id will be empty
+            try:
+                contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
+            except FileNotFound:
+                file_path = file_path = (
+                    FileManagerHelper.handle_sub_directory_for_tenants(
+                        UserSessionUtils.get_organization_id(request),
+                        is_create=True,
+                        user_id="",
+                        tool_id=str(custom_tool.tool_id),
+                    )
+                )
+                if not file_path.endswith("/"):
+                    file_path += "/"
+                    file_path += file_name
+                contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
+        else:
+            try:
+                contents = PromptStudioFileHelper.fetch_file_contents(
+                    file_name=file_name,
+                    org_id=UserSessionUtils.get_organization_id(request),
+                    user_id=custom_tool.created_by.user_id,
+                    tool_id=str(custom_tool.tool_id),
+                )
+            except FileNotFoundError:
+                raise FileNotFound()
         return Response({"data": contents}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
@@ -438,18 +462,34 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = FileUploadIdeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         uploaded_files: Any = serializer.validated_data.get("file")
-
-        file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            UserSessionUtils.get_organization_id(request),
-            is_create=True,
-            user_id=custom_tool.created_by.user_id,
-            tool_id=str(custom_tool.tool_id),
-        )
-        file_system = LocalStorageFS(settings={"path": file_path})
-
         documents = []
         for uploaded_file in uploaded_files:
+            # Store file
             file_name = uploaded_file.name
+            logger.info(
+                f"Uploading file: {file_name}" if file_name else "Uploading file"
+            )
+            if not check_feature_flag_status(flag_key=FeatureFlag.REMOTE_FILE_STORAGE):
+                file_path = FileManagerHelper.handle_sub_directory_for_tenants(
+                    UserSessionUtils.get_organization_id(request),
+                    is_create=True,
+                    user_id=custom_tool.created_by.user_id,
+                    tool_id=str(custom_tool.tool_id),
+                )
+                file_system = LocalStorageFS(settings={"path": file_path})
+                FileManagerHelper.upload_file(
+                    file_system,
+                    file_path,
+                    uploaded_file,
+                    file_name,
+                )
+            else:
+                PromptStudioFileHelper.upload_for_ide(
+                    org_id=UserSessionUtils.get_organization_id(request),
+                    user_id=custom_tool.created_by.user_id,
+                    tool_id=str(custom_tool.tool_id),
+                    uploaded_file=uploaded_file,
+                )
 
             # Create a record in the db for the file
             document = PromptStudioDocumentHelper.create(
@@ -461,16 +501,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 "document_name": document.document_name,
                 "tool": document.tool.tool_id,
             }
-            # Store file
-            logger.info(
-                f"Uploading file: {file_name}" if file_name else "Uploading file"
-            )
-            FileManagerHelper.upload_file(
-                file_system,
-                file_path,
-                uploaded_file,
-                file_name,
-            )
             documents.append(doc)
         return Response({"data": documents})
 
@@ -485,15 +515,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         org_id = UserSessionUtils.get_organization_id(request)
         user_id = custom_tool.created_by.user_id
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
-        file_name: str = document.document_name
-        file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-            org_id=org_id,
-            is_create=False,
-            user_id=user_id,
-            tool_id=str(custom_tool.tool_id),
-        )
-        path = file_path
-        file_system = LocalStorageFS(settings={"path": path})
+
         try:
             # Delete indexed flags in redis
             index_managers = IndexManager.objects.filter(document_manager=document_id)
@@ -505,12 +527,29 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             # Delete the document record
             document.delete()
             # Delete the files
-            FileManagerHelper.delete_file(file_system, path, file_name)
-            # Directories to delete the text files
-            directories = ["extract/", "extract/metadata/", "summarize/"]
-            FileManagerHelper.delete_related_files(
-                file_system, path, file_name, directories
-            )
+            file_name: str = document.document_name
+            if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+                file_path = FileManagerHelper.handle_sub_directory_for_tenants(
+                    org_id=org_id,
+                    is_create=False,
+                    user_id=user_id,
+                    tool_id=str(custom_tool.tool_id),
+                )
+                path = file_path
+                file_system = LocalStorageFS(settings={"path": path})
+                FileManagerHelper.delete_file(file_system, path, file_name)
+                # Directories to delete the text files
+                directories = ["extract/", "extract/metadata/", "summarize/"]
+                FileManagerHelper.delete_related_files(
+                    file_system, path, file_name, directories
+                )
+            else:
+                PromptStudioFileHelper.delete_for_ide(
+                    org_id=org_id,
+                    user_id=user_id,
+                    tool_id=str(custom_tool.tool_id),
+                    file_name=file_name,
+                )
             return Response(
                 {"data": "File deleted succesfully."},
                 status=status.HTTP_200_OK,

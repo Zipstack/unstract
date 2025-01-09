@@ -1,7 +1,6 @@
 class WorkflowKey:
     """Dict keys related to workflows."""
 
-    PROMPT_TEXT = "prompt_text"
     LLM_RESPONSE = "llm_response"
     WF_STEPS = "steps"
     WF_TOOL = "tool"
@@ -59,3 +58,8 @@ class WorkflowMessages:
     FILE_MARKER_CLEAR_SUCCESS = "File marker cleared successfully."
     FILE_MARKER_CLEAR_FAILED = "Failed to clear file marker."
     WORKFLOW_EXECUTION_NOT_FOUND = "Workflow execution not found."
+
+
+class ResultKeys:
+    METADATA = "metadata"
+    CONFIDENCE_DATA = "confidence_data"

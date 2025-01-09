@@ -14,6 +14,7 @@ import {
   Space,
   Tooltip,
   Typography,
+  Modal,
 } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
@@ -46,7 +47,7 @@ const needToRemove = {
 
 function DsSettingsCard({ type, endpointDetails, message }) {
   const workflowStore = useWorkflowStore();
-  const { source, destination, allowChangeEndpoint } = workflowStore;
+  const { source, destination, allowChangeEndpoint, details } = workflowStore;
   const [options, setOptions] = useState({});
   const [openModal, setOpenModal] = useState(false);
 
@@ -320,6 +321,16 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         } else {
           updatedData["destination"] = data;
         }
+        if (
+          type === "output" &&
+          updatedData?.destination?.connection_type === "MANUALREVIEW"
+        ) {
+          Modal.warning({
+            title: "Warning",
+            content:
+              "Please ensure that the tool in use is has highlight enabled in the tool settings.",
+          });
+        }
         updateWorkflow(updatedData);
         if (showSuccess) {
           setAlertDetails({
@@ -479,6 +490,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         connType={connType}
         selectedItemName={selectedItemName}
         setSelectedItemName={setSelectedItemName}
+        workflowDetails={details}
       />
     </>
   );

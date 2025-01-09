@@ -95,7 +95,7 @@ class AdapterViewSet(GenericViewSet):
                 or adapter_type == AdapterKeys.OCR
             ):
                 json_schema = AdapterProcessor.get_all_supported_adapters(
-                    type=adapter_type
+                    type=adapter_type, user_email=request.user.email
                 )
                 return Response(json_schema, status=status.HTTP_200_OK)
             else:

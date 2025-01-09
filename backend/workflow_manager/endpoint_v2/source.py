@@ -8,6 +8,7 @@ from itertools import islice
 from typing import Any, Optional
 
 import fsspec
+import magic
 from connector_processor.constants import ConnectorKeys
 from connector_v2.models import ConnectorInstance
 from django.core.files.uploadedfile import UploadedFile
@@ -36,6 +37,12 @@ from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.workflow import Workflow
+
+from backend.constants import FeatureFlag
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+    from unstract.filesystem import FileStorageType, FileSystem
 
 logger = logging.getLogger(__name__)
 
@@ -307,10 +314,19 @@ class SourceConnector(BaseConnector):
                     break
                 if self._should_process_file(file, patterns):
                     file_path = str(os.path.join(root, file))
+                    file_content, file_size = self.get_file_content(
+                        input_file_path=file_path
+                    )
                     if self._is_new_file(
-                        file_path=file_path, workflow=self.endpoint.workflow
+                        file_path=file_path,
+                        file_content=file_content,
+                        workflow=self.endpoint.workflow,
                     ):
-                        matched_files[file_path] = self._create_file_hash(file_path)
+                        matched_files[file_path] = self._create_file_hash(
+                            file_path=file_path,
+                            file_content=file_content,
+                            file_size=file_size,
+                        )
                         count += 1
 
         return matched_files, count
@@ -321,10 +337,11 @@ class SourceConnector(BaseConnector):
             fnmatch.fnmatchcase(file.lower(), pattern.lower()) for pattern in patterns
         )
 
-    def _is_new_file(self, file_path: str, workflow: Workflow) -> bool:
+    def _is_new_file(
+        self, file_path: str, file_content: bytes, workflow: Workflow
+    ) -> bool:
         """Check if the file is new or already processed."""
-        file_content = self.get_file_content(input_file_path=file_path)
-        file_hash = self.get_hash_value(file_content)
+        file_hash = self.get_file_content_hash(file_content)
         file_history = FileHistoryHelper.get_file_history(
             workflow=workflow, cache_key=file_hash
         )
@@ -344,18 +361,21 @@ class SourceConnector(BaseConnector):
 
         return True
 
-    def _create_file_hash(self, file_path: str) -> FileHash:
+    def _create_file_hash(
+        self, file_path: str, file_content: bytes, file_size: Optional[int]
+    ) -> FileHash:
         """Create a FileHash object for the matched file."""
         file_name = os.path.basename(file_path)
-        file_content = self.get_file_content(input_file_path=file_path)
-        file_hash = self.get_hash_value(file_content)
+        file_hash = self.get_file_content_hash(file_content)
         connection_type = self.endpoint.connection_type
-
+        file_type = magic.from_buffer(file_content, mime=True)
         return FileHash(
             file_path=file_path,
             source_connection_type=connection_type,
             file_name=file_name,
             file_hash=file_hash,
+            file_size=file_size,
+            mime_type=file_type,
         )
 
     def list_files_from_source(
@@ -402,7 +422,9 @@ class SourceConnector(BaseConnector):
         else:
             raise ValueError(f"Unsupported hash_method: {hash_method}")
 
-    def get_file_content(self, input_file_path: str, chunk_size: int = 8192) -> bytes:
+    def get_file_content(
+        self, input_file_path: str, chunk_size: int = 8192
+    ) -> tuple[bytes, Optional[int]]:
         """Read the content of a file from a remote filesystem in chunks.
 
         Args:
@@ -411,21 +433,30 @@ class SourceConnector(BaseConnector):
             (default is 8192 bytes).
 
         Returns:
-            bytes: The content of the file.
+            tuple[bytes, int]:
+                A tuple containing the content of the file as bytes and
+                its size in bytes.
         """
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
         source_fs = self.get_fsspec(
             settings=connector_settings, connector_id=connector.connector_id
         )
+
+        # Get file size
+        file_metadata = source_fs.stat(input_file_path)
+        file_size: Optional[int] = file_metadata.get("size")
+        if file_size is None:
+            logger.warning(f"File size for {input_file_path} could not be determined.")
+
         file_content = bytearray()  # Use bytearray for efficient byte concatenation
         with source_fs.open(input_file_path, "rb") as remote_file:
             while chunk := remote_file.read(chunk_size):
                 file_content.extend(chunk)
 
-        return bytes(file_content)
+        return bytes(file_content), file_size
 
-    def get_hash_value(self, file_content: bytes) -> str:
+    def get_file_content_hash(self, file_content: bytes) -> str:
         """Generate a hash value from the file content.
 
         Args:
@@ -463,8 +494,8 @@ class SourceConnector(BaseConnector):
         source_file = f"file://{source_file_path}"
 
         # Get file content and hash value
-        file_content = self.get_file_content(input_file_path)
-        hash_value_of_file_content = self.get_hash_value(file_content)
+        file_content, _ = self.get_file_content(input_file_path)
+        hash_value_of_file_content = self.get_file_content_hash(file_content)
 
         logger.info(
             f"hash_value_of_file {source_file} is : {hash_value_of_file_content}"
@@ -475,11 +506,17 @@ class SourceConnector(BaseConnector):
         )
         self.publish_input_file_content(input_file_path, input_log)
 
-        with fsspec.open(source_file, "wb") as local_file:
-            local_file.write(file_content)
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            file_storage = file_system.get_file_storage()
+            file_storage.write(path=source_file_path, mode="wb", data=file_content)
+            file_storage.write(path=infile_path, mode="wb", data=file_content)
+        else:
+            with fsspec.open(source_file, "wb") as local_file:
+                local_file.write(file_content)
 
-        # Copy file to infile directory
-        self.copy_file_to_infile_dir(source_file_path, infile_path)
+            # Copy file to infile directory
+            self.copy_file_to_infile_dir(source_file_path, infile_path)
 
         logger.info(f"{input_file_path} is added to execution directory")
         return hash_value_of_file_content
@@ -488,8 +525,76 @@ class SourceConnector(BaseConnector):
         """Add input file to execution directory from api storage."""
         infile_path = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         source_path = os.path.join(self.execution_dir, WorkflowFileType.SOURCE)
-        shutil.copyfile(input_file_path, infile_path)
-        shutil.copyfile(input_file_path, source_path)
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            api_file_system = FileSystem(FileStorageType.API_EXECUTION)
+            api_file_storage = api_file_system.get_file_storage()
+            workflow_file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            workflow_file_storage = workflow_file_system.get_file_storage()
+            self._copy_file_to_destination(
+                source_storage=api_file_storage,
+                destination_storage=workflow_file_storage,
+                source_path=input_file_path,
+                destination_paths=[infile_path, source_path],
+            )
+        else:
+            shutil.copyfile(input_file_path, infile_path)
+            shutil.copyfile(input_file_path, source_path)
+
+    # TODO: replace it with method from SDK Utils
+    def _copy_file_to_destination(
+        self,
+        source_storage: Any,
+        destination_storage: Any,
+        source_path: str,
+        destination_paths: list[str],
+        chunk_size: int = 4096,
+    ) -> None:
+        """
+        Copy a file from a source storage to one or more paths in a
+        destination storage.
+
+        This function reads the source file in chunks and writes each chunk to
+        the specified destination paths. The function will continue until the
+        entire source file is copied.
+
+        Args:
+            source_storage (FileStorage): The storage object from which
+                the file is read.
+            destination_storage (FileStorage): The storage object to which
+                the file is written.
+            source_path (str): The path of the file in the source storage.
+            destination_paths (list[str]): A list of paths where the file will be
+                copied in the destination storage.
+            chunk_size (int, optional): The number of bytes to read per chunk.
+                Default is 4096 bytes.
+        """
+        seek_position = 0  # Start from the beginning
+        end_of_file = False
+
+        # Loop to read and write in chunks until the end of the file
+        while not end_of_file:
+            # Read a chunk from the source file
+            chunk = source_storage.read(
+                path=source_path,
+                mode="rb",
+                seek_position=seek_position,
+                length=chunk_size,
+            )
+            # Check if the end of the file has been reached
+            if not chunk:
+                end_of_file = True
+            else:
+                # Write the chunk to each destination path
+                for destination_file in destination_paths:
+                    destination_storage.write(
+                        path=destination_file,
+                        mode="ab",
+                        seek_position=seek_position,
+                        data=chunk,
+                    )
+
+                # Update the seek position
+                seek_position += len(chunk)
 
     def add_file_to_volume(self, input_file_path: str, file_hash: FileHash) -> str:
         """Add input file to execution directory.
@@ -584,12 +689,20 @@ class SourceConnector(BaseConnector):
         for file in file_objs:
             file_name = file.name
             destination_path = os.path.join(api_storage_dir, file_name)
-            os.makedirs(os.path.dirname(destination_path), exist_ok=True)
-            with open(destination_path, "wb") as f:
+            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+                file_system = FileSystem(FileStorageType.API_EXECUTION)
+                file_storage = file_system.get_file_storage()
                 buffer = bytearray()
                 for chunk in file.chunks():
                     buffer.extend(chunk)
-                f.write(buffer)
+                    file_storage.write(path=destination_path, mode="wb", data=buffer)
+            else:
+                os.makedirs(os.path.dirname(destination_path), exist_ok=True)
+                with open(destination_path, "wb") as f:
+                    buffer = bytearray()
+                    for chunk in file.chunks():
+                        buffer.extend(chunk)
+                    f.write(buffer)
             file_hash = cls.hash_str(buffer)
             connection_type = WorkflowEndpoint.ConnectionType.API
 
@@ -607,6 +720,8 @@ class SourceConnector(BaseConnector):
                 file_name=file_name,
                 file_hash=file_hash,
                 is_executed=is_executed,
+                file_size=file.size,
+                mime_type=file.content_type,
             )
             file_hashes.update({file_name: file_hash})
         return file_hashes
