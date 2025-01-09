@@ -33,6 +33,7 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./ManageDocsModal.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { usePromptOutputStore } from "../../../store/prompt-output-store";
 
 let SummarizeStatusTitle = null;
 try {
@@ -103,6 +104,7 @@ function ManageDocsModal({
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const { promptOutputs, updatePromptOutput } = usePromptOutputStore();
 
   const successIndex = (
     <Typography.Text>
@@ -457,6 +459,9 @@ function ManageDocsModal({
       };
     });
     setRows(newRows);
+    updateCustomTool({
+      selectedHighlight: null,
+    });
   }, [
     listOfDocs,
     selectedDoc,
@@ -601,19 +606,46 @@ function ManageDocsModal({
         );
         updateCustomTool({ listOfDocs: newListOfDocs });
 
-        if (newListOfDocs?.length === 1 && selectedDoc?.document_id !== docId) {
-          const doc = newListOfDocs[1];
+        if (selectedDoc?.document_id === docId) {
+          const doc = newListOfDocs[0];
           handleDocChange(doc);
         }
-
-        if (docId === selectedDoc?.document_id) {
-          updateCustomTool({ selectedDoc: "" });
-          handleUpdateTool({ output: "" });
-        }
+        const updatedPromptDetails = removeIdFromCoverage(details, docId);
+        const updatedPromptOutput = removeIdFromCoverageOfPromptOutput(
+          promptOutputs,
+          docId
+        );
+        updateCustomTool({ details: updatedPromptDetails });
+        updatePromptOutput(updatedPromptOutput);
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to delete"));
       });
+  };
+
+  const removeIdFromCoverage = (data, idToRemove) => {
+    if (data.prompts && Array.isArray(data.prompts)) {
+      data.prompts.forEach((prompt) => {
+        if (Array.isArray(prompt.coverage)) {
+          prompt.coverage = prompt.coverage.filter((id) => id !== idToRemove);
+        }
+      });
+    }
+    return data; // Return the updated data
+  };
+
+  const removeIdFromCoverageOfPromptOutput = (data, idToRemove) => {
+    return Object.entries(data).reduce((updatedData, [key, value]) => {
+      // Create a new object for the current entry
+      updatedData[key] = {
+        ...value,
+        // Update the coverage array if it exists
+        coverage: value?.coverage
+          ? value?.coverage?.filter((id) => id !== idToRemove)
+          : value?.coverage,
+      };
+      return updatedData;
+    }, {});
   };
 
   return (
