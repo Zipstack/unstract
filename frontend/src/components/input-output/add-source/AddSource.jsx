@@ -10,6 +10,17 @@ import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { ConfigureDs } from "../configure-ds/ConfigureDs";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
+let transformLlmWhispererJsonSchema;
+let LLMW_V2_ID;
+try {
+  transformLlmWhispererJsonSchema =
+    require("../../../plugins/unstract-subscription/helper/transformLlmWhispererJsonSchema").transformLlmWhispererJsonSchema;
+  LLMW_V2_ID =
+    require("../../../plugins/unstract-subscription/helper/transformLlmWhispererJsonSchema").LLMW_V2_ID;
+} catch (err) {
+  // Ignore if not available
+}
+
 function AddSource({
   selectedSourceId,
   selectedSourceName,
@@ -56,7 +67,17 @@ function AddSource({
       .then((res) => {
         const data = res?.data;
         setFormData(metadata || {});
-        setSpec(data?.json_schema || {});
+
+        if (
+          LLMW_V2_ID &&
+          transformLlmWhispererJsonSchema &&
+          selectedSourceId === LLMW_V2_ID
+        ) {
+          setSpec(transformLlmWhispererJsonSchema(data?.json_schema || {}));
+        } else {
+          setSpec(data?.json_schema || {});
+        }
+
         if (data?.oauth) {
           setOAuthProvider(data?.python_social_auth_backend);
         } else {
