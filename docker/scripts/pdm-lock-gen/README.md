@@ -5,7 +5,7 @@ Helps generate pdm's lockfiles by running the command `pdm lock -G :all -v` on a
 - project root
 - `backend`
 - `prompt-service`
-- `worker`
+- `runner`
 - `unstract/core`
 - `unstract/flags`
 - `platform-service`

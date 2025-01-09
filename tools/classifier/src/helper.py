@@ -145,7 +145,7 @@ class ClassifierHelper:
 
         try:
             extraction_result: TextExtractionResult = x2text.process(
-                input_file_path=file
+                input_file_path=file, fs=self.tool.workflow_filestorage
             )
             extracted_text: str = extraction_result.extracted_text
             return extracted_text

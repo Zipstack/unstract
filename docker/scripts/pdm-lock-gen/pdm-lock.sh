@@ -72,7 +72,7 @@ directories=(
     "."
     "backend"
     "prompt-service"
-    "worker"
+    "runner"
     "unstract/filesystem"
     "unstract/core"
     "unstract/flags"

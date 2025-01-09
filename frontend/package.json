@@ -40,6 +40,7 @@
     "react-dom": "^18.2.0",
     "react-google-recaptcha": "^3.1.0",
     "react-gtm-module": "^2.0.11",
+    "react-helmet-async": "^2.0.5",
     "react-js-cron": "^5.0.1",
     "react-product-fruits": "^2.2.6",
     "react-router-dom": "^6.11.2",

@@ -1,6 +1,6 @@
 # Add your dependencies here
 
 # Required for all unstract tools
-unstract-sdk~=0.54.0rc8
+unstract-sdk~=0.54.0rc12
 # Required for remote storage support
 s3fs[boto3]==2024.6.0
