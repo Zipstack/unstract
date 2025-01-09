@@ -56,11 +56,12 @@ from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import IndexingError, SdkError
 from unstract.sdk.file_storage import FileStorage, FileStorageProvider
+from unstract.sdk.file_storage.constants import StorageType
+from unstract.sdk.file_storage.env_helper import EnvHelper
 from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
-from utils.file_storage.constants import FileStorageType
-from utils.file_storage.helpers.common_file_helper import FileStorageHelper
+from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
@@ -395,8 +396,9 @@ class PromptStudioHelper:
                 process_text=process_text,
             )
         else:
-            fs_instance = FileStorageHelper.initialize_file_storage(
-                type=FileStorageType.PERMANENT
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
             )
             doc_id = PromptStudioHelper.dynamic_indexer(
                 profile_manager=default_profile,
@@ -800,8 +802,9 @@ class PromptStudioHelper:
                 process_text=process_text,
             )
         else:
-            fs_instance = FileStorageHelper.initialize_file_storage(
-                type=FileStorageType.PERMANENT
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
             )
             index_result = PromptStudioHelper.dynamic_indexer(
                 profile_manager=profile_manager,
@@ -1154,8 +1157,9 @@ class PromptStudioHelper:
                 process_text=process_text,
             )
         else:
-            fs_instance = FileStorageHelper.initialize_file_storage(
-                type=FileStorageType.PERMANENT
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
             )
             index_result = PromptStudioHelper.dynamic_indexer(
                 profile_manager=default_profile,

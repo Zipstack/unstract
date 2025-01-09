@@ -9,8 +9,9 @@ from django.db import models
 from django.db.models import QuerySet
 from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.prompt_studio_core_v2.constants import DefaultPrompts
-from utils.file_storage.constants import FileStorageType
-from utils.file_storage.helpers.common_file_helper import FileStorageHelper
+from unstract.sdk.file_storage.constants import StorageType
+from unstract.sdk.file_storage.env_helper import EnvHelper
+from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
@@ -155,8 +156,9 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
                     logger.error(f"Error: {file_path} : {e.strerror}")
                     # Continue with the deletion of the tool
         else:
-            fs_instance = FileStorageHelper.initialize_file_storage(
-                type=FileStorageType.PERMANENT
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
             )
             file_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
                 organization_id,
