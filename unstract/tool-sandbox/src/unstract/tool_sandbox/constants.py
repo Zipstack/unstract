@@ -1,4 +1,4 @@
-class UnstractWorker:
+class UnstractRunner:
     BASE_API_ENDPOINT = "/v1/api"
     RUN_API_ENDPOINT = "/container/run"
     SPEC_API_ENDPOINT = "/container/spec"

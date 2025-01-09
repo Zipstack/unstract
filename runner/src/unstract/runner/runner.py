@@ -6,13 +6,13 @@ from typing import Any, Optional
 
 from dotenv import load_dotenv
 from flask import Flask
-from unstract.worker.clients.helper import ContainerClientHelper
-from unstract.worker.clients.interface import (
+from unstract.runner.clients.helper import ContainerClientHelper
+from unstract.runner.clients.interface import (
     ContainerClientInterface,
     ContainerInterface,
 )
-from unstract.worker.constants import Env, FeatureFlag, LogLevel, LogType, ToolKey
-from unstract.worker.exception import ToolRunException
+from unstract.runner.constants import Env, FeatureFlag, LogLevel, LogType, ToolKey
+from unstract.runner.exception import ToolRunException
 
 from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
@@ -23,7 +23,7 @@ load_dotenv()
 client_class = ContainerClientHelper.get_container_client()
 
 
-class UnstractWorker:
+class UnstractRunner:
     def __init__(self, image_name: str, image_tag: str, app: Flask) -> None:
         self.image_name = image_name
         # If no image_tag is provided will assume the `latest` tag
@@ -40,6 +40,7 @@ class UnstractWorker:
         tool_instance_id: str,
         execution_id: str,
         organization_id: str,
+        run_id: str,
         channel: Optional[str] = None,
     ) -> None:
         for line in container.logs(follow=True):
@@ -51,6 +52,7 @@ class UnstractWorker:
                 channel=channel,
                 execution_id=execution_id,
                 organization_id=organization_id,
+                run_id=run_id,
             )
 
     def get_valid_log_message(self, log_message: str) -> Optional[dict[str, Any]]:
@@ -75,6 +77,7 @@ class UnstractWorker:
         tool_instance_id: str,
         execution_id: str,
         organization_id: str,
+        run_id: str,
         channel: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         log_dict = self.get_valid_log_message(log_message)
@@ -97,6 +100,7 @@ class UnstractWorker:
             log_dict[LogFieldName.EXECUTION_ID] = execution_id
             log_dict[LogFieldName.ORGANIZATION_ID] = organization_id
             log_dict[LogFieldName.TIMESTAMP] = datetime.now(timezone.utc).timestamp()
+            log_dict[LogFieldName.FILE_EXECUTION_ID] = run_id
 
             # Publish to channel of socket io
             LogPublisher.publish(channel, log_dict)
@@ -239,6 +243,7 @@ class UnstractWorker:
                 channel=messaging_channel,
                 execution_id=execution_id,
                 organization_id=organization_id,
+                run_id=run_id,
             )
         except ToolRunException as te:
             self.logger.error(

@@ -83,6 +83,11 @@ def authentication_middleware(func: Any) -> Any:
     return wrapper
 
 
+@app.route("/health", methods=["GET"], endpoint="health_check")
+def health_check() -> str:
+    return "OK"
+
+
 @app.route(
     "/answer-prompt",
     endpoint="answer_prompt",
