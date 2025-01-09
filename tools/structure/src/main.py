@@ -193,6 +193,11 @@ class StructureTool(BaseTool):
                             reindex=reindex,
                             usage_kwargs=usage_kwargs,
                             process_text=process_text,
+                            **(
+                                {"fs": self.workflow_filestorage}
+                                if self.workflow_filestorage is not None
+                                else {}
+                            ),
                         )
                         index_metrics[output[SettingsKeys.NAME]] = {
                             SettingsKeys.INDEXING: index.get_metrics()
@@ -379,9 +384,14 @@ class StructureTool(BaseTool):
                     f.write(summarized_context)
 
         self.stream_log("Indexing summarized context")
-        summarize_file_hash: str = ToolUtils.get_hash_from_file(
-            file_path=summarize_file_path
-        )
+        if self.workflow_filestorage:
+            summarize_file_hash: str = self.workflow_filestorage.get_hash_from_file(
+                file_path=summarize_file_path
+            )
+        else:
+            summarize_file_hash: str = ToolUtils.get_hash_from_file(
+                file_path=summarize_file_path
+            )
         index.index(
             tool_id=tool_id,
             embedding_instance_id=embedding_instance_id,

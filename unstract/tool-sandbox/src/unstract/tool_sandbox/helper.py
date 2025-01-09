@@ -4,7 +4,7 @@ import os
 from typing import Any, Optional, Union
 
 import requests
-from unstract.tool_sandbox.constants import UnstractWorker
+from unstract.tool_sandbox.constants import UnstractRunner
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class ToolSandboxHelper:
     ) -> None:
         runner_host = os.environ.get("UNSTRACT_RUNNER_HOST")
         runner_port = os.environ.get("UNSTRACT_RUNNER_PORT")
-        self.base_url = f"{runner_host}:{runner_port}{UnstractWorker.BASE_API_ENDPOINT}"
+        self.base_url = f"{runner_host}:{runner_port}{UnstractRunner.BASE_API_ENDPOINT}"
         self.organization_id = str(organization_id)
         self.workflow_id = str(workflow_id)
         self.execution_id = str(execution_id)
@@ -40,7 +40,7 @@ class ToolSandboxHelper:
     def make_get_request(
         self, image_name: str, image_tag: str, endpoint: str
     ) -> Optional[dict[str, Any]]:
-        """Make unstract worker Get request.
+        """Make unstract runner Get request.
 
         Args:
             image_name (str): _description_
@@ -74,7 +74,7 @@ class ToolSandboxHelper:
         image_tag: str,
         settings: dict[str, Any],
     ) -> Optional[dict[str, Any]]:
-        """Calling unstract worker to run the required tool.
+        """Calling unstract runner to run the required tool.
 
         Args:
             image_name (str): image name
@@ -85,7 +85,7 @@ class ToolSandboxHelper:
         Returns:
             Optional[dict[str, Any]]: tool response
         """
-        url = f"{self.base_url}{UnstractWorker.RUN_API_ENDPOINT}"
+        url = f"{self.base_url}{UnstractRunner.RUN_API_ENDPOINT}"
         data = self.create_tool_request_data(
             run_id,
             image_name,

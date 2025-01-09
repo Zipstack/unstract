@@ -1,6 +1,6 @@
 from typing import Any, Optional
 
-from unstract.tool_sandbox.constants import ToolCommandKey, UnstractWorker
+from unstract.tool_sandbox.constants import ToolCommandKey, UnstractRunner
 from unstract.tool_sandbox.helper import ToolSandboxHelper
 
 
@@ -49,7 +49,7 @@ class ToolSandbox:
 
     def get_spec(self) -> Optional[dict[str, Any]]:
         spec = self.helper.make_get_request(
-            self.image_name, self.image_tag, UnstractWorker.SPEC_API_ENDPOINT
+            self.image_name, self.image_tag, UnstractRunner.SPEC_API_ENDPOINT
         )
         if not spec:
             return None
@@ -62,7 +62,7 @@ class ToolSandbox:
         properties = self.helper.make_get_request(
             self.image_name,
             self.image_tag,
-            UnstractWorker.PROPERTIES_API_ENDPOINT,
+            UnstractRunner.PROPERTIES_API_ENDPOINT,
         )
         if not properties:
             return None
@@ -73,7 +73,7 @@ class ToolSandbox:
 
     def get_icon(self) -> Optional[str]:
         icon = self.helper.make_get_request(
-            self.image_name, self.image_tag, UnstractWorker.ICON_API_ENDPOINT
+            self.image_name, self.image_tag, UnstractRunner.ICON_API_ENDPOINT
         )
         if not icon:
             return None
@@ -84,7 +84,7 @@ class ToolSandbox:
         variables = self.helper.make_get_request(
             self.image_name,
             self.image_tag,
-            UnstractWorker.VARIABLES_API_ENDPOINT,
+            UnstractRunner.VARIABLES_API_ENDPOINT,
         )
         if not variables:
             return None

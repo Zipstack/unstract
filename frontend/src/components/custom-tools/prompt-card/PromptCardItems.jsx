@@ -52,6 +52,7 @@ function PromptCardItems({
   promptRunStatus,
   coverageCountData,
   isChallenge,
+  handleSelectHighlight,
 }) {
   const {
     llmProfiles,
@@ -62,6 +63,8 @@ function PromptCardItems({
     isSimplePromptStudio,
     isPublicSource,
     adapters,
+    selectedHighlight,
+    details,
     singlePassExtractMode,
   } = useCustomToolStore();
 
@@ -171,7 +174,13 @@ function PromptCardItems({
   }, [llmProfiles, selectedLlmProfileId, enabledProfiles]);
 
   return (
-    <Card className="prompt-card">
+    <Card
+      className={`prompt-card ${
+        details?.enable_highlight &&
+        selectedHighlight?.highlightedPrompt === promptDetails?.prompt_id &&
+        "highlighted-prompt"
+      }`}
+    >
       <div className="prompt-card-div prompt-card-bg-col1 prompt-card-rad">
         <Space direction="vertical" className="width-100" ref={divRef}>
           <Header
@@ -289,6 +298,7 @@ function PromptCardItems({
               promptOutputs={promptOutputs}
               promptRunStatus={promptRunStatus}
               isChallenge={isChallenge}
+              handleSelectHighlight={handleSelectHighlight}
             />
           </Row>
         </Collapse.Panel>
@@ -326,6 +336,7 @@ PromptCardItems.propTypes = {
   promptRunStatus: PropTypes.object.isRequired,
   coverageCountData: PropTypes.object.isRequired,
   isChallenge: PropTypes.bool.isRequired,
+  handleSelectHighlight: PropTypes.func.isRequired,
 };
 
 export { PromptCardItems };

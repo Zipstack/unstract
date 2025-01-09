@@ -88,7 +88,9 @@ def validate_etl_run(org_id: str) -> bool:
         A boolean indicating whether the pre-run check passed or not.
     """
     try:
-        from pluggable_apps.subscription.subscription_helper import SubscriptionHelper
+        from pluggable_apps.subscription_v2.subscription_helper import (
+            SubscriptionHelper,
+        )
     except ModuleNotFoundError:
         logger.error("Subscription plugin not found.")
         return False

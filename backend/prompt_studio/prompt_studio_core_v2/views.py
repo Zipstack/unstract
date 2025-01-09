@@ -6,6 +6,7 @@ from account_v2.custom_exceptions import DuplicateData
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest
+from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from file_management.file_management_helper import FileManagerHelper
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
@@ -404,7 +405,14 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         view_type: str = serializer.validated_data.get("view_type")
+        file_converter = get_plugin_class_by_name(
+            name="file_converter",
+            plugins=self.processor_plugins,
+        )
 
+        allowed_content_types = FileKey.FILE_UPLOAD_ALLOWED_MIME
+        if file_converter:
+            allowed_content_types = file_converter.get_extented_file_information_key()
         filename_without_extension = file_name.rsplit(".", 1)[0]
         if view_type == FileViewTypes.EXTRACT:
             file_name = (
@@ -430,7 +438,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             file_path += file_name
             # Temporary Hack for frictionless onboarding as the user id will be empty
             try:
-                contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
+                contents = FileManagerHelper.fetch_file_contents(
+                    file_system, file_path, allowed_content_types
+                )
             except FileNotFound:
                 file_path = file_path = (
                     FileManagerHelper.handle_sub_directory_for_tenants(
@@ -462,10 +472,23 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = FileUploadIdeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         uploaded_files: Any = serializer.validated_data.get("file")
+        file_converter = get_plugin_class_by_name(
+            name="file_converter",
+            plugins=self.processor_plugins,
+        )
+
         documents = []
         for uploaded_file in uploaded_files:
             # Store file
             file_name = uploaded_file.name
+            file_data = uploaded_file
+            file_type = uploaded_file.content_type
+            # Convert non-PDF files
+            if file_converter and file_type != "application/pdf":
+                file_data, file_name = file_converter.process_file(
+                    uploaded_file, file_name
+                )
+
             logger.info(
                 f"Uploading file: {file_name}" if file_name else "Uploading file"
             )
@@ -480,7 +503,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 FileManagerHelper.upload_file(
                     file_system,
                     file_path,
-                    uploaded_file,
+                    file_data,
                     file_name,
                 )
             else:
@@ -488,7 +511,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     org_id=UserSessionUtils.get_organization_id(request),
                     user_id=custom_tool.created_by.user_id,
                     tool_id=str(custom_tool.tool_id),
-                    uploaded_file=uploaded_file,
+                    uploaded_file=file_data,
                 )
 
             # Create a record in the db for the file
