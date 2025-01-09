@@ -38,7 +38,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 let TrialDaysInfo;
 try {
   TrialDaysInfo =
-    require("../../../plugins/subscription/trial-helper/TrialDaysInfo.jsx").default;
+    require("../../../plugins/unstract-subscription/components/TrialDaysInfo.jsx").default;
 } catch (err) {
   // Plugin not found
 }
