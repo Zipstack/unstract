@@ -1,5 +1,6 @@
 import { Input } from "antd";
 import PropTypes from "prop-types";
+
 import { RjsfWidgetLayout } from "../../../layouts/rjsf-widget-layout/RjsfWidgetLayout";
 
 const URLWidget = (props) => {
