@@ -50,6 +50,15 @@ try {
 } catch {
   // The component will remain null if it is not available
 }
+
+let ConfirmMultiDoc = null;
+try {
+  ConfirmMultiDoc =
+    require("../../../plugins/prompt-studio-multi-doc/ConfirmMultiDoc").ConfirmMultiDoc;
+} catch {
+  // The component will remain null if it is not available
+}
+
 const indexTypes = {
   raw: "RAW",
   summarize: "Summarize",
@@ -69,7 +78,11 @@ function ManageDocsModal({
   const [summarizeLlmProfile, setSummarizeLlmProfile] = useState(null);
   const [isSummarizeDataLoading, setIsSummarizeDataLoading] = useState(false);
   const [indexMessages, setIndexMessages] = useState({});
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [fileToUpload, setFileToUpload] = useState(null);
   const [lastMessagesUpdate, setLastMessagesUpdate] = useState("");
+  const [resolveUpload, setResolveUpload] = useState(null);
+  const [rejectUpload, setRejectUpload] = useState(null);
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const { id } = useParams();
@@ -446,6 +459,9 @@ function ManageDocsModal({
       };
     });
     setRows(newRows);
+    updateCustomTool({
+      selectedHighlight: null,
+    });
   }, [
     listOfDocs,
     selectedDoc,
@@ -466,25 +482,70 @@ function ManageDocsModal({
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
+    const isFileAlreadyExist = (listOfDocs, fileName) => {
+      const fileNameWithoutExtension = fileName?.replace(/\.[^/.]+$/, ""); // Remove extension from file name
+
+      return [...listOfDocs]?.find(
+        (item) =>
+          item?.document_name?.replace(/\.[^/.]+$/, "") ===
+          fileNameWithoutExtension
+      );
+    };
+
     return new Promise((resolve, reject) => {
+      setResolveUpload(() => resolve); // Save the resolve function
+      setRejectUpload(() => reject); // Save the reject function
+
       const reader = new FileReader();
       reader.readAsDataURL(file);
+
       reader.onload = () => {
         const fileName = file.name;
-        const fileAlreadyExists = [...listOfDocs].find(
-          (item) => item?.document_name === fileName
-        );
-        if (!fileAlreadyExists) {
-          resolve(file);
-        } else {
+        const fileType = file.type;
+        const fileAlreadyExists = isFileAlreadyExist(listOfDocs, fileName);
+
+        // Check if file name already exists
+        if (fileAlreadyExists) {
           setAlertDetails({
             type: "error",
             content: "File name already exists",
           });
           reject(new Error("File name already exists"));
+          return; // Stop further execution
+        }
+
+        // If the file is not a PDF, show the modal for confirmation
+        if (fileType !== "application/pdf") {
+          if (!ConfirmMultiDoc) {
+            setAlertDetails({
+              type: "error",
+              content: "Only PDF files are allowed",
+            });
+          }
+          setFileToUpload(file); // Store the file to be uploaded
+          setIsModalVisible(true); // Show the modal
+        } else {
+          // If the file is a PDF, proceed with the upload immediately
+          resolve(file);
         }
       };
     });
+  };
+
+  // Function to handle the modal confirmation
+  const handleModalConfirm = () => {
+    if (resolveUpload && fileToUpload) {
+      setIsModalVisible(false); // Close the modal
+      resolveUpload(fileToUpload); // Resolve the promise to continue upload
+    }
+  };
+
+  // Function to handle modal cancellation
+  const handleModalCancel = () => {
+    if (rejectUpload) {
+      setIsModalVisible(false); // Close the modal without uploading
+      rejectUpload(new Error("Upload cancelled by user")); // Reject the promise and stop the upload
+    }
   };
 
   const handleUploadChange = async (info) => {
@@ -588,81 +649,89 @@ function ManageDocsModal({
   };
 
   return (
-    <Modal
-      className="pre-post-amble-modal"
-      open={open}
-      onCancel={() => setOpen(false)}
-      centered
-      footer={null}
-      maskClosable={false}
-      width={1400}
-    >
-      <div className="pre-post-amble-body">
-        <SpaceWrapper>
-          <Space>
-            <Typography.Text className="add-cus-tool-header">
-              Manage Documents
-            </Typography.Text>
-          </Space>
-          <div>
-            <Upload
-              name="file"
-              action={`/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}`}
-              headers={{
-                "X-CSRFToken": sessionDetails.csrfToken,
-              }}
-              onChange={handleUploadChange}
-              disabled={isUploading || !defaultLlmProfile}
-              showUploadList={false}
-              accept=".pdf"
-              beforeUpload={beforeUpload}
-            >
-              <Tooltip
-                title={
-                  !defaultLlmProfile &&
-                  "Set the default LLM profile before uploading a document"
-                }
+    <>
+      <Modal
+        className="pre-post-amble-modal"
+        open={open}
+        onCancel={() => setOpen(false)}
+        centered
+        footer={null}
+        maskClosable={false}
+        width={1400}
+      >
+        <div className="pre-post-amble-body">
+          <SpaceWrapper>
+            <Space>
+              <Typography.Text className="add-cus-tool-header">
+                Manage Documents
+              </Typography.Text>
+            </Space>
+            <div>
+              <Upload
+                name="file"
+                action={`/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}`}
+                headers={{
+                  "X-CSRFToken": sessionDetails.csrfToken,
+                }}
+                onChange={handleUploadChange}
+                disabled={isUploading || !defaultLlmProfile}
+                showUploadList={false}
+                beforeUpload={beforeUpload}
               >
-                <Button
-                  className="width-100"
-                  icon={<PlusOutlined />}
-                  type="text"
-                  block
-                  loading={isUploading}
-                  disabled={
-                    !defaultLlmProfile ||
-                    isMultiPassExtractLoading ||
-                    isSinglePassExtractLoading ||
-                    isPublicSource
+                <Tooltip
+                  title={
+                    !defaultLlmProfile &&
+                    "Set the default LLM profile before uploading a document"
                   }
                 >
-                  Upload New File
-                </Button>
-              </Tooltip>
-            </Upload>
-          </div>
-          <Divider className="manage-docs-div" />
-          <SpaceWrapper>
-            <div>
-              <Typography.Text strong>Uploaded files</Typography.Text>
+                  <Button
+                    className="width-100"
+                    icon={<PlusOutlined />}
+                    type="text"
+                    block
+                    loading={isUploading}
+                    disabled={
+                      !defaultLlmProfile ||
+                      isMultiPassExtractLoading ||
+                      isSinglePassExtractLoading ||
+                      isPublicSource
+                    }
+                  >
+                    Upload New File
+                  </Button>
+                </Tooltip>
+              </Upload>
             </div>
-            {!listOfDocs || listOfDocs?.length === 0 ? (
-              <EmptyState text="Upload the document" />
-            ) : (
+            <Divider className="manage-docs-div" />
+            <SpaceWrapper>
               <div>
-                <Table
-                  columns={columns}
-                  dataSource={rows}
-                  size="small"
-                  bordered
-                  pagination={{ pageSize: 10 }}
-                />
+                <Typography.Text strong>Uploaded files</Typography.Text>
               </div>
-            )}
+              {!listOfDocs || listOfDocs?.length === 0 ? (
+                <EmptyState text="Upload the document" />
+              ) : (
+                <div>
+                  <Table
+                    columns={columns}
+                    dataSource={rows}
+                    size="small"
+                    bordered
+                    pagination={{ pageSize: 10 }}
+                  />
+                </div>
+              )}
+            </SpaceWrapper>
           </SpaceWrapper>
-        </SpaceWrapper>
-      </div>
-    </Modal>
+        </div>
+      </Modal>
+      {ConfirmMultiDoc && (
+        <ConfirmMultiDoc
+          handleModalCancel={handleModalCancel}
+          handleModalConfirm={handleModalConfirm}
+          isModalVisible={isModalVisible}
+        />
+      )}
+    </>
   );
 }
 
