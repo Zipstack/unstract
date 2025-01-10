@@ -15,7 +15,8 @@
         "boolean":"boolean",
         "json":"json",
         "table":"table",
-        "record":"record"
+        "record":"record",
+        "line_item":"line-item"
     },
     "output_processing":{
         "DEFAULT":"Default"
