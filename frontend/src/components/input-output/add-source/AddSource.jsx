@@ -12,11 +12,14 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 let transformLlmWhispererJsonSchema;
 let LLMW_V2_ID;
+let useUnstractSubscriptionPlanStore;
 try {
   transformLlmWhispererJsonSchema =
     require("../../../plugins/unstract-subscription/helper/transformLlmWhispererJsonSchema").transformLlmWhispererJsonSchema;
   LLMW_V2_ID =
     require("../../../plugins/unstract-subscription/helper/transformLlmWhispererJsonSchema").LLMW_V2_ID;
+  useUnstractSubscriptionPlanStore =
+    require("../../../plugins/store/unstract-subscription-plan-store").useUnstractSubscriptionPlanStore;
 } catch (err) {
   // Ignore if not available
 }
@@ -42,6 +45,13 @@ function AddSource({
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+
+  let planType;
+  if (useUnstractSubscriptionPlanStore) {
+    planType = useUnstractSubscriptionPlanStore(
+      (state) => state?.unstractSubscriptionPlan?.planType
+    );
+  }
 
   useEffect(() => {
     if (!selectedSourceId) {
@@ -71,7 +81,8 @@ function AddSource({
         if (
           LLMW_V2_ID &&
           transformLlmWhispererJsonSchema &&
-          selectedSourceId === LLMW_V2_ID
+          selectedSourceId === LLMW_V2_ID &&
+          planType === "PAID"
         ) {
           setSpec(transformLlmWhispererJsonSchema(data?.json_schema || {}));
         } else {
