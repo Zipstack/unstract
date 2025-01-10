@@ -11,6 +11,7 @@ const CheckboxesWidget = ({
   label,
   schema,
   required,
+  readonly,
 }) => {
   const description = schema?.description || "";
   const handleCheckboxChange = (optionValue) => {
@@ -35,6 +36,7 @@ const CheckboxesWidget = ({
           key={option.value}
           checked={value?.includes(option.value)}
           onChange={() => handleCheckboxChange(option.value)}
+          disabled={readonly}
         >
           {option.label}
         </Checkbox>
@@ -51,6 +53,7 @@ CheckboxesWidget.propTypes = {
   label: PropTypes.string.isRequired,
   schema: PropTypes.object.isRequired,
   required: PropTypes.bool,
+  readonly: PropTypes.bool.isRequired,
 };
 
 export { CheckboxesWidget };

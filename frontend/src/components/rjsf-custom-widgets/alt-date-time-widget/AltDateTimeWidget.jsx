@@ -11,6 +11,7 @@ const AltDateTimeWidget = ({
   label,
   schema,
   required,
+  readonly,
 }) => {
   const description = schema?.description || "";
   const handleDateChange = (date) => {
@@ -34,10 +35,12 @@ const AltDateTimeWidget = ({
         id={id}
         value={value ? moment(value) : null}
         onChange={handleDateChange}
+        disabled={readonly}
       />
       <TimePicker
         value={value ? moment(value) : null}
         onChange={handleTimeChange}
+        disabled={readonly}
       />
     </RjsfWidgetLayout>
   );
@@ -49,7 +52,8 @@ AltDateTimeWidget.propTypes = {
   onChange: PropTypes.func.isRequired,
   label: PropTypes.string.isRequired,
   schema: PropTypes.object.isRequired,
-  required: PropTypes.bool,
+  required: PropTypes.bool.isRequired,
+  readonly: PropTypes.bool.isRequired,
 };
 
 export { AltDateTimeWidget };

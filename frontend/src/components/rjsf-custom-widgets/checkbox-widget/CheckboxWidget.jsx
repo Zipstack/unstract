@@ -1,8 +1,17 @@
 import { Checkbox, Space, Typography } from "antd";
 import PropTypes from "prop-types";
+
 import "./CheckboxWidget.css";
 import CustomMarkdown from "../../helpers/custom-markdown/CustomMarkdown";
-const CheckboxWidget = ({ id, value, onChange, label, schema, required }) => {
+const CheckboxWidget = ({
+  id,
+  value,
+  onChange,
+  label,
+  schema,
+  required,
+  readonly,
+}) => {
   const description = schema?.description || "";
   const handleCheckboxChange = (event) => {
     onChange(event.target.checked);
@@ -10,7 +19,12 @@ const CheckboxWidget = ({ id, value, onChange, label, schema, required }) => {
 
   return (
     <Space direction="vertical" className="checkbox-widget-main" size={0}>
-      <Checkbox id={id} checked={value} onChange={handleCheckboxChange}>
+      <Checkbox
+        id={id}
+        checked={value}
+        onChange={handleCheckboxChange}
+        disabled={readonly}
+      >
         <Typography>
           {required && <span className="form-item-required">* </span>}
           {label}
@@ -34,6 +48,7 @@ CheckboxWidget.propTypes = {
   label: PropTypes.string.isRequired,
   schema: PropTypes.object.isRequired,
   required: PropTypes.bool,
+  readonly: PropTypes.bool.isRequired,
 };
 
 export { CheckboxWidget };

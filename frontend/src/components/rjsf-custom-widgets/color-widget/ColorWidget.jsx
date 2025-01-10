@@ -3,7 +3,15 @@ import { Input } from "antd";
 
 import { RjsfWidgetLayout } from "../../../layouts/rjsf-widget-layout/RjsfWidgetLayout.jsx";
 
-const ColorWidget = ({ id, value, onChange, schema, label, required }) => {
+const ColorWidget = ({
+  id,
+  value,
+  onChange,
+  schema,
+  label,
+  required,
+  readonly,
+}) => {
   const description = schema?.description || "";
 
   const handleColorChange = (event) => {
@@ -16,7 +24,13 @@ const ColorWidget = ({ id, value, onChange, schema, label, required }) => {
       description={description}
       required={required}
     >
-      <Input type="color" id={id} value={value} onChange={handleColorChange} />
+      <Input
+        type="color"
+        id={id}
+        value={value}
+        onChange={handleColorChange}
+        disabled={readonly}
+      />
     </RjsfWidgetLayout>
   );
 };
@@ -28,6 +42,7 @@ ColorWidget.propTypes = {
   schema: PropTypes.object.isRequired,
   label: PropTypes.string.isRequired,
   required: PropTypes.bool,
+  readonly: PropTypes.bool.isRequired,
 };
 
 export { ColorWidget };
