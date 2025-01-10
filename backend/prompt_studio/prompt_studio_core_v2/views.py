@@ -453,7 +453,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 if not file_path.endswith("/"):
                     file_path += "/"
                     file_path += file_name
-                contents = FileManagerHelper.fetch_file_contents(file_system, file_path)
+                contents = FileManagerHelper.fetch_file_contents(
+                    file_system, file_path, allowed_content_types
+                )
         else:
             try:
                 contents = PromptStudioFileHelper.fetch_file_contents(
