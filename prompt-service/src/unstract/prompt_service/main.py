@@ -275,6 +275,7 @@ def prompt_processor() -> Any:
                     llm=llm,
                     file_path=file_path,
                     metadata=metadata,
+                    execution_source=execution_source,
                 )
                 metadata = query_usage_metadata(token=platform_key, metadata=metadata)
                 # TODO: Handle metrics for line-item extraction
