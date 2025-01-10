@@ -13,7 +13,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 let transformLlmWhispererJsonSchema;
 let LLMW_V2_ID;
 let PLAN_TYPES;
-let useUnstractSubscriptionPlanStore;
+let unstractSubscriptionPlanStore;
 try {
   transformLlmWhispererJsonSchema =
     require("../../../plugins/unstract-subscription/helper/transformLlmWhispererJsonSchema").transformLlmWhispererJsonSchema;
@@ -21,8 +21,7 @@ try {
     require("../../../plugins/unstract-subscription/helper/transformLlmWhispererJsonSchema").LLMW_V2_ID;
   PLAN_TYPES =
     require("../../../plugins/unstract-subscription/helper/constants").PLAN_TYPES;
-  useUnstractSubscriptionPlanStore =
-    require("../../../plugins/store/unstract-subscription-plan-store").useUnstractSubscriptionPlanStore;
+  unstractSubscriptionPlanStore = require("../../../plugins/store/unstract-subscription-plan-store");
 } catch (err) {
   // Ignore if not available
 }
@@ -50,8 +49,8 @@ function AddSource({
   const handleException = useExceptionHandler();
 
   let planType;
-  if (useUnstractSubscriptionPlanStore) {
-    planType = useUnstractSubscriptionPlanStore(
+  if (unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore) {
+    planType = unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore(
       (state) => state?.unstractSubscriptionPlan?.planType
     );
   }
