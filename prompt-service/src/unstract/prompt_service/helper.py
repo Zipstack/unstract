@@ -24,9 +24,8 @@ from unstract.sdk.llm import LLM
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-    from unstract.sdk.file_storage import FileStorage, FileStorageProvider
+    from unstract.sdk.file_storage import EnvHelper, FileStorage, FileStorageProvider
     from unstract.sdk.file_storage.constants import StorageType
-    from unstract.sdk.file_storage.env_helper import EnvHelper
 
 load_dotenv()
 
