@@ -409,6 +409,7 @@ def extract_line_item(
     llm: LLM,
     file_path: str,
     metadata: Optional[dict[str, str]],
+    execution_source: str,
 ) -> dict[str, Any]:
     line_item_extraction_plugin: dict[str, Any] = plugins.get(
         "line-item-extraction", {}
@@ -425,13 +426,32 @@ def extract_line_item(
     )
 
     # Read file content into context
-    if not os.path.exists(extract_file_path):
-        raise FileNotFoundError(
-            f"The file at path '{extract_file_path}' does not exist."
-        )
+    if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+        fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
+        if execution_source == ExecutionSource.IDE.value:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+        if execution_source == ExecutionSource.TOOL.value:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.TEMPORARY,
+                env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
+            )
 
-    with open(extract_file_path, encoding="utf-8") as file:
-        context = file.read()
+        if not fs_instance.exists(extract_file_path):
+            raise FileNotFoundError(
+                f"The file at path '{extract_file_path}' does not exist."
+            )
+        context = fs_instance.read(path=extract_file_path, encoding="utf-8", mode="rb")
+    else:
+        if not os.path.exists(extract_file_path):
+            raise FileNotFoundError(
+                f"The file at path '{extract_file_path}' does not exist."
+            )
+
+        with open(extract_file_path, encoding="utf-8") as file:
+            context = file.read()
 
     prompt = construct_prompt(
         preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
