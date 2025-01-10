@@ -408,7 +408,14 @@ def extract_line_item(
     structured_output: dict[str, Any],
     llm: LLM,
     file_path: str,
+    metadata: Optional[dict[str, str]],
 ) -> dict[str, Any]:
+    line_item_extraction_plugin: dict[str, Any] = plugins.get(
+        "line-item-extraction", {}
+    )
+    if not line_item_extraction_plugin:
+        raise APIError(PAID_FEATURE_MSG)
+
     # Adjust file path to read from the extract folder
     base_name = os.path.splitext(os.path.basename(file_path))[
         0
@@ -434,11 +441,7 @@ def extract_line_item(
         context=context,
         platform_postamble="",
     )
-    line_item_extraction_plugin: dict[str, Any] = plugins.get(
-        "line-item-extraction", {}
-    )
-    if not line_item_extraction_plugin:
-        raise APIError(PAID_FEATURE_MSG)
+
     try:
         line_item_extraction = line_item_extraction_plugin["entrypoint_cls"](
             llm=llm,
@@ -450,6 +453,7 @@ def extract_line_item(
         )
         answer = line_item_extraction.run()
         structured_output[output[PSKeys.NAME]] = answer
+        metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = get_cleaned_context(context)
         return structured_output
     except line_item_extraction_plugin["exception_cls"] as e:
         msg = f"Couldn't extract table. {e}"

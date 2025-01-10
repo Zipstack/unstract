@@ -274,13 +274,16 @@ def prompt_processor() -> Any:
                     structured_output=structured_output,
                     llm=llm,
                     file_path=file_path,
+                    metadata=metadata,
                 )
                 metadata = query_usage_metadata(token=platform_key, metadata=metadata)
+                # TODO: Handle metrics for line-item extraction
                 response = {
                     PSKeys.METADATA: metadata,
                     PSKeys.OUTPUT: structured_output,
+                    PSKeys.METRICS: metrics,
                 }
-                return response
+                continue
             except APIError as e:
                 app.logger.error(
                     "Failed to extract line-item for the prompt %s: %s",

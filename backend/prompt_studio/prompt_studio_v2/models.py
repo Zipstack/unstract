@@ -27,7 +27,12 @@ class ToolStudioPrompt(BaseModel):
             "logical and organized individual "
             "entities with distint values"
         )
-        LINE_ITEM = "line-item", ("Response sent as line-item")
+        LINE_ITEM = "line-item", (
+            "Response sent as line-item "
+            "which is large a JSON output. "
+            "If extraction stopped due to token limitation, "
+            "we try to continue extraction from where it stopped"
+        )
 
     class PromptType(models.TextChoices):
         PROMPT = "PROMPT", "Response sent as Text"
