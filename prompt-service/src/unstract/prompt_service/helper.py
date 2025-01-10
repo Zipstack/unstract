@@ -439,7 +439,6 @@ def extract_line_item(
                 env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
             )
 
-    if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
         if not fs_instance.exists(extract_file_path):
             raise FileNotFoundError(
                 f"The file at path '{extract_file_path}' does not exist."
