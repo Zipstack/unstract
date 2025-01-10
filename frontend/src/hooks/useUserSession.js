@@ -24,7 +24,7 @@ const useUserSession = () => {
       }
 
       if (error?.response?.data?.type === "subscription_error") {
-        navigate("/trial-expired");
+        navigate("/subscription-expired");
         return;
       }
 

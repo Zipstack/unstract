@@ -1,6 +1,10 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
-import { publicRoutes, onboardCompleted } from "../../../helpers/GetStaticData";
+import {
+  publicRoutes,
+  onboardCompleted,
+  homePagePath,
+} from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
 let selectedProductStore;
 let isLlmWhisperer;
@@ -28,7 +32,7 @@ const RequireGuest = () => {
   if (isLlmWhisperer) {
     navigateTo = `/llm-whisperer/${orgName}/playground`;
   } else if (onboardCompleted(adapters)) {
-    navigateTo = `/${orgName}/tools`;
+    navigateTo = `/${orgName}/${homePagePath}`;
   }
   if (
     sessionDetails.role === "unstract_reviewer" ||

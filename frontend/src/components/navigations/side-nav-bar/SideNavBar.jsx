@@ -31,6 +31,14 @@ try {
   // Plugin unavailable.
 }
 
+let dashboardSideMenuItem;
+try {
+  dashboardSideMenuItem =
+    require("../../../plugins/unstract-subscription/helper/constants").dashboardSideMenuItem;
+} catch (err) {
+  // Plugin unavailable.
+}
+
 const SideNavBar = ({ collapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
@@ -40,7 +48,7 @@ const SideNavBar = ({ collapsed }) => {
     menu = sideMenu.useSideMenu();
   }
 
-  const data = menu || [
+  const unstractMenuItems = [
     {
       id: 1,
       mainTitle: "MANAGE",
@@ -154,6 +162,12 @@ const SideNavBar = ({ collapsed }) => {
       ],
     },
   ];
+
+  if (dashboardSideMenuItem) {
+    unstractMenuItems[2].subMenu.push(dashboardSideMenuItem(orgName));
+  }
+
+  const data = menu || unstractMenuItems;
 
   if (getMenuItem && flags?.app_deployment) {
     data[0]?.subMenu?.splice(1, 0, getMenuItem?.default(orgName));

@@ -2,6 +2,14 @@ import moment from "moment";
 import momentTz from "moment-timezone";
 import { v4 as uuidv4 } from "uuid";
 
+let cloudHomePagePath;
+try {
+  cloudHomePagePath =
+    require("../plugins/unstract-subscription/helper/constants").cloudHomePagePath;
+} catch (err) {
+  // Ignore if plugin not available
+}
+
 const THEME = {
   DARK: "dark",
   LIGHT: "light",
@@ -565,6 +573,10 @@ const generateCoverageKey = (promptId, profileId) => {
   return `coverage_${promptId}_${profileId}`;
 };
 
+const TRIAL_PLAN = "TRIAL";
+
+const homePagePath = cloudHomePagePath || "tools";
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -616,4 +628,6 @@ export {
   generateApiRunStatusId,
   base64toBlobWithMime,
   generateCoverageKey,
+  TRIAL_PLAN,
+  homePagePath,
 };

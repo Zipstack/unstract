@@ -3,6 +3,7 @@ import { useEffect } from "react";
 
 import {
   getOrgNameFromPathname,
+  homePagePath,
   onboardCompleted,
 } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
@@ -53,7 +54,7 @@ const RequireAuth = () => {
   if (isLlmWhisperer) {
     navigateTo = `/llm-whisperer/${orgName}/playground`;
   } else if (onboardCompleted(adapters)) {
-    navigateTo = `/${orgName}/tools`;
+    navigateTo = `/${orgName}/${homePagePath}`;
   }
   if (
     sessionDetails.role === "unstract_reviewer" ||

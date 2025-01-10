@@ -51,7 +51,7 @@ const useExceptionHandler = () => {
           }
           break;
         case "subscription_error":
-          navigate("/trial-expired");
+          navigate("/subscription-expired");
           return {
             title: title,
             type: "error",

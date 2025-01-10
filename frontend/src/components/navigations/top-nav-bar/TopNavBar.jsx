@@ -16,7 +16,7 @@ import {
   FileProtectOutlined,
   LikeOutlined,
 } from "@ant-design/icons";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import PropTypes from "prop-types";
@@ -24,6 +24,7 @@ import PropTypes from "prop-types";
 import { UnstractLogo } from "../../../assets/index.js";
 import {
   getBaseUrl,
+  homePagePath,
   onboardCompleted,
 } from "../../../helpers/GetStaticData.js";
 import useLogout from "../../../hooks/useLogout.js";
@@ -37,12 +38,13 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 let TrialDaysInfo;
 try {
   TrialDaysInfo =
-    require("../../../plugins/subscription/trial-helper/TrialDaysInfo.jsx").default;
+    require("../../../plugins/unstract-subscription/components/TrialDaysInfo.jsx").default;
 } catch (err) {
   // Plugin not found
 }
-let selectedProduct;
+
 let selectedProductStore;
+let selectedProduct;
 
 try {
   selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
@@ -51,18 +53,11 @@ try {
 }
 
 let PlatformDropdown;
-
 try {
   PlatformDropdown =
     require("../../../plugins/platform-dropdown/PlatformDropDown.jsx").PlatformDropdown;
 } catch (err) {
   // Plugin not found
-}
-
-try {
-  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
-} catch {
-  // Ignore if hook not available
 }
 
 let WhispererLogo;
@@ -76,10 +71,9 @@ try {
 function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { orgName, remainingTrialDays, allOrganization, orgId } =
-    sessionDetails;
+  const { orgName, allOrganization, orgId } = sessionDetails;
   const baseUrl = getBaseUrl();
-  const onBoardUrl = baseUrl + `/${orgName}/onboard`;
+  const onBoardUrl = `${baseUrl}/${orgName}/onboard`;
   const logout = useLogout();
   const [showOnboardBanner, setShowOnboardBanner] = useState(false);
   const [approverStatus, setApproverStatus] = useState(false);
@@ -97,27 +91,29 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
 
   const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
 
+  // Check user role and whether the onboarding is incomplete
   useEffect(() => {
-    const isUnstractReviewer = sessionDetails.role === "unstract_reviewer";
-    const isUnstractSupervisor = sessionDetails.role === "unstract_supervisor";
-    const isUnstractAdmin = sessionDetails.role === "unstract_admin";
+    const { role } = sessionDetails;
+    const isReviewer = role === "unstract_reviewer";
+    const isSupervisor = role === "unstract_supervisor";
+    const isAdmin = role === "unstract_admin";
 
     setShowOnboardBanner(
       !onboardCompleted(sessionDetails?.adapters) &&
-        !isUnstractReviewer &&
-        !isUnstractSupervisor
+        !isReviewer &&
+        !isSupervisor
     );
-
-    setApproverStatus(isUnstractAdmin || isUnstractSupervisor);
-    setReviewerStatus(isUnstractReviewer);
+    setApproverStatus(isAdmin || isSupervisor);
+    setReviewerStatus(isReviewer);
   }, [sessionDetails]);
 
+  // Determine review page header
   useEffect(() => {
-    const checkReviewPage = location.pathname.split("review");
-    if (checkReviewPage.length > 1) {
-      if (checkReviewPage[1].includes("/approve")) {
+    const pathSegments = location.pathname.split("review");
+    if (pathSegments.length > 1) {
+      if (pathSegments[1].includes("/approve")) {
         setReviewPageHeader("Approve");
-      } else if (checkReviewPage[1].includes("/download_and_sync")) {
+      } else if (pathSegments[1].includes("/download_and_sync")) {
         setReviewPageHeader("Download and syncmanager");
       } else {
         setReviewPageHeader("Review");
@@ -130,33 +126,8 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     }
   }, [location]);
 
-  const cascadeOptions = allOrganization?.map((org) => {
-    return {
-      key: org?.id,
-      label:
-        org?.id === sessionDetails?.orgId ? (
-          <div
-            onClick={() =>
-              setAlertDetails({
-                type: "error",
-                content: `You are already in ${org?.display_name}`,
-              })
-            }
-          >
-            {org?.display_name}
-          </div>
-        ) : (
-          <ConfirmModal
-            handleConfirm={() => handleContinue(org?.id)}
-            content={`Want to switch to ${org?.display_name} `}
-          >
-            <div>{org?.display_name}</div>
-          </ConfirmModal>
-        ),
-    };
-  });
-
-  const handleContinue = async (selectedOrg) => {
+  // Switch organization
+  const handleContinue = useCallback(async (selectedOrg) => {
     const requestOptions = {
       method: "POST",
       url: `/api/v1/organization/${selectedOrg}/set`,
@@ -164,51 +135,89 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
-    await axios(requestOptions)
-      .then(() => {
-        navigate("/");
-        window.location.reload();
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      });
-  };
+    try {
+      await axios(requestOptions);
+      navigate("/");
+      window.location.reload();
+    } catch (err) {
+      setAlertDetails(handleException(err));
+    }
+  }, []);
 
-  // Profile Dropdown items
-  const items = [
-    isUnstract && {
-      key: "1",
-      label: (
-        <Button
-          onClick={() => navigate(`/${orgName}/profile`)}
-          className="logout-button"
-        >
-          <UserOutlined /> Profile
-        </Button>
-      ),
-    },
-    allOrganization?.length > 1 && {
-      key: "3",
-      label: (
-        <Dropdown
-          placeholder="Switch Organization"
-          menu={{
-            items: cascadeOptions,
-            selectable: true,
-            selectedKeys: [orgId],
-            className: "switch-org-menu",
-          }}
-          placement="left"
-        >
-          <div>
-            {" "}
-            <UserSwitchOutlined /> Switch Org
-          </div>
-        </Dropdown>
-      ),
-    },
-    isUnstract &&
-      (reviewerStatus || approverStatus) && {
+  // Prepare org list for switching
+  const cascadeOptions = useMemo(() => {
+    return allOrganization?.map((org) => {
+      return {
+        key: org?.id,
+        label:
+          org?.id === sessionDetails?.orgId ? (
+            <div
+              onClick={() =>
+                setAlertDetails({
+                  type: "error",
+                  content: `You are already in ${org?.display_name}`,
+                })
+              }
+            >
+              {org?.display_name}
+            </div>
+          ) : (
+            <ConfirmModal
+              handleConfirm={() => handleContinue(org?.id)}
+              content={`Want to switch to ${org?.display_name}?`}
+            >
+              <div>{org?.display_name}</div>
+            </ConfirmModal>
+          ),
+      };
+    });
+  }, [allOrganization, handleContinue]);
+
+  // Build dropdown menu items
+  const items = useMemo(() => {
+    const menuItems = [];
+
+    // Profile
+    if (isUnstract && !isSimpleLayout) {
+      menuItems.push({
+        key: "1",
+        label: (
+          <Button
+            onClick={() => navigate(`/${orgName}/profile`)}
+            className="logout-button"
+          >
+            <UserOutlined /> Profile
+          </Button>
+        ),
+      });
+    }
+
+    // Switch Organization
+    if (allOrganization?.length > 1) {
+      menuItems.push({
+        key: "3",
+        label: (
+          <Dropdown
+            placeholder="Switch Organization"
+            menu={{
+              items: cascadeOptions,
+              selectable: true,
+              selectedKeys: [orgId],
+              className: "switch-org-menu",
+            }}
+            placement="left"
+          >
+            <div>
+              <UserSwitchOutlined /> Switch Org
+            </div>
+          </Dropdown>
+        ),
+      });
+    }
+
+    // Review
+    if (isUnstract && !isSimpleLayout && (reviewerStatus || approverStatus)) {
+      menuItems.push({
         key: "4",
         label: (
           <Button
@@ -218,9 +227,12 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             <FileProtectOutlined /> Review
           </Button>
         ),
-      },
-    isUnstract &&
-      approverStatus && {
+      });
+    }
+
+    // Approve
+    if (isUnstract && !isSimpleLayout && approverStatus) {
+      menuItems.push({
         key: "5",
         label: (
           <Button
@@ -230,9 +242,9 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             <LikeOutlined /> Approve
           </Button>
         ),
-      },
-    isUnstract &&
-      approverStatus && {
+      });
+
+      menuItems.push({
         key: "6",
         label: (
           <Button
@@ -242,32 +254,50 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             <DownloadOutlined /> Download and Sync Manager
           </Button>
         ),
-      },
-    {
+      });
+    }
+
+    // Logout
+    menuItems.push({
       key: "2",
       label: (
         <Button onClick={logout} className="logout-button">
           <LogoutOutlined /> Logout
         </Button>
       ),
-    },
-  ];
+    });
+
+    return menuItems.filter(Boolean); // remove any undefined items
+  }, [
+    isUnstract,
+    isSimpleLayout,
+    reviewerStatus,
+    approverStatus,
+    allOrganization,
+    cascadeOptions,
+    orgName,
+    orgId,
+  ]);
 
   // Function to get the initials from the user name
-  const getInitials = (name) => {
+  const getInitials = useCallback((name) => {
     const names = name?.split(" ");
-    const initials = names
+    return names
       ?.map((n) => n.charAt(0))
       ?.join("")
       ?.toUpperCase();
-    return initials;
-  };
+  }, []);
 
   return (
     <Row align="middle" className="topNav">
       <Col span={6} className="platform-switch-container">
         {isUnstract ? (
-          <UnstractLogo className="topbar-logo" />
+          <UnstractLogo
+            className="topbar-logo cursor-pointer"
+            onClick={() =>
+              navigate(`/${sessionDetails?.orgName}/${homePagePath}`)
+            }
+          />
         ) : (
           WhispererLogo && <WhispererLogo className="topbar-logo" />
         )}
@@ -279,61 +309,55 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
         )}
         {PlatformDropdown && <PlatformDropdown />}
       </Col>
-      {!isSimpleLayout && (
-        <>
-          <Col span={14} className="top-nav-alert-col">
-            {isUnstract && showOnboardBanner && (
-              <Alert
-                type="error"
-                message={
-                  <>
-                    <span className="top-nav-alert-msg">
-                      Your setup process is incomplete. Now, that&apos;s a
-                      bummer!
-                    </span>
-                    <a
-                      href={onBoardUrl}
-                      size="small"
-                      type="text"
-                      className="top-nav-alert-link"
-                    >
-                      Complete it to start using Unstract
-                    </a>
-                  </>
-                }
-                showIcon
-              />
-            )}
-          </Col>
-          <Col span={4}>
-            <Row justify="end" align="middle">
-              <Space>
-                {topNavBarOptions}
-                {isUnstract && TrialDaysInfo && (
-                  <TrialDaysInfo remainingTrialDays={remainingTrialDays} />
-                )}
-                <Dropdown menu={{ items }} placement="bottomLeft" arrow>
-                  <div className="top-navbar-dp">
-                    {sessionDetails?.picture ? (
-                      <Image
-                        className="navbar-img"
-                        height="100%"
-                        width="100%"
-                        preview={false}
-                        src={sessionDetails?.picture}
-                      />
-                    ) : (
-                      <Typography.Text className="initials">
-                        {getInitials(sessionDetails?.name)}
-                      </Typography.Text>
-                    )}
-                  </div>
-                </Dropdown>
-              </Space>
-            </Row>
-          </Col>
-        </>
+
+      {isSimpleLayout ? (
+        <Col span={14} />
+      ) : (
+        <Col span={14} className="top-nav-alert-col">
+          {isUnstract && showOnboardBanner && (
+            <Alert
+              type="error"
+              message={
+                <>
+                  <span className="top-nav-alert-msg">
+                    Your setup process is incomplete. Now, that&apos;s a bummer!
+                  </span>
+                  <a href={onBoardUrl} className="top-nav-alert-link">
+                    Complete it to start using Unstract
+                  </a>
+                </>
+              }
+              showIcon
+            />
+          )}
+        </Col>
       )}
+
+      <Col span={4}>
+        <Row justify="end" align="middle">
+          <Space>
+            {topNavBarOptions}
+            {isUnstract && TrialDaysInfo && <TrialDaysInfo />}
+            <Dropdown menu={{ items }} placement="bottomLeft" arrow>
+              <div className="top-navbar-dp">
+                {sessionDetails?.picture ? (
+                  <Image
+                    className="navbar-img"
+                    height="100%"
+                    width="100%"
+                    preview={false}
+                    src={sessionDetails?.picture}
+                  />
+                ) : (
+                  <Typography.Text className="initials">
+                    {getInitials(sessionDetails?.name)}
+                  </Typography.Text>
+                )}
+              </div>
+            </Dropdown>
+          </Space>
+        </Row>
+      </Col>
     </Row>
   );
 }

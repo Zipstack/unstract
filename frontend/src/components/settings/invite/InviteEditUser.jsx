@@ -12,6 +12,7 @@ import { TopBar } from "../../widgets/top-bar/TopBar.jsx";
 import "./InviteEditUser.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import { homePagePath } from "../../../helpers/GetStaticData.js";
 
 function InviteEditUser() {
   const axiosPrivate = useAxiosPrivate();
@@ -145,7 +146,7 @@ function InviteEditUser() {
 
   useEffect(() => {
     if (!isInvite && !location.state) {
-      navigate(`/${sessionDetails?.orgName}/tools`);
+      navigate(`/${sessionDetails?.orgName}/${homePagePath}`);
     }
     getUserRoles();
   }, []);
