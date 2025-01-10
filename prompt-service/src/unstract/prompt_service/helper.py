@@ -417,13 +417,13 @@ def extract_line_item(
     if not line_item_extraction_plugin:
         raise APIError(PAID_FEATURE_MSG)
 
-    # Adjust file path to read from the extract folder
-    base_name = os.path.splitext(os.path.basename(file_path))[
-        0
-    ]  # Get the base name without extension
-    extract_file_path = os.path.join(
-        os.path.dirname(file_path), "extract", f"{base_name}.txt"
-    )
+    extract_file_path = file_path
+    if execution_source == ExecutionSource.IDE.value:
+        # Adjust file path to read from the extract folder
+        base_name = os.path.splitext(os.path.basename(file_path))[0]
+        extract_file_path = os.path.join(
+            os.path.dirname(file_path), "extract", f"{base_name}.txt"
+        )
 
     # Read file content into context
     if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
@@ -473,7 +473,7 @@ def extract_line_item(
         )
         answer = line_item_extraction.run()
         structured_output[output[PSKeys.NAME]] = answer
-        metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = get_cleaned_context(context)
+        metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = [context]
         return structured_output
     except line_item_extraction_plugin["exception_cls"] as e:
         msg = f"Couldn't extract table. {e}"
