@@ -5,9 +5,8 @@ from pathlib import Path
 from typing import Any, Union
 
 from file_management.file_management_helper import FileManagerHelper
-from unstract.sdk.file_storage import FileStorage
+from unstract.sdk.file_storage import EnvHelper, FileStorage
 from unstract.sdk.file_storage.constants import StorageType
-from unstract.sdk.file_storage.env_helper import EnvHelper
 from utils.file_storage.constants import FileStorageConstants, FileStorageKeys
 
 from unstract.core.utilities import UnstractUtils
