@@ -8,12 +8,12 @@ from django.db import migrations
 
 
 def migrate_adapter_data(apps, schema_editor):
-    AdapterInstance = apps.get_model("adapter_processor_v2", "AdapterInstance")
+    adapter_instance = apps.get_model("adapter_processor_v2", "AdapterInstance")
 
     old_adapter_id = "llmwhisperer|0a1647f0-f65f-410d-843b-3d979c78350e"
     new_adapter_id = "llmwhisperer|a5e6b8af-3e1f-4a80-b006-d017e8e67f93"
 
-    for adapter in AdapterInstance.objects.all():
+    for adapter in adapter_instance.objects.all():
 
         # Deserialize adapter_metadata_b if it exists
         encryption_secret: str = settings.ENCRYPTION_KEY
@@ -44,14 +44,14 @@ def migrate_adapter_data(apps, schema_editor):
 
 
 def rollback_adapter_data(apps, schema_editor):
-    AdapterInstance = apps.get_model("adapter_processor_v2", "AdapterInstance")
+    adapter_instance = apps.get_model("adapter_processor_v2", "AdapterInstance")
 
     old_adapter_id = "llmwhisperer|0a1647f0-f65f-410d-843b-3d979c78350e"
 
     encryption_secret: str = settings.ENCRYPTION_KEY
     f: Fernet = Fernet(encryption_secret.encode("utf-8"))
 
-    for adapter in AdapterInstance.objects.all():
+    for adapter in adapter_instance.objects.all():
         if adapter.adapter_metadata_b:
             # Deserialize adapter_metadata_b
             metadata = json.loads(
