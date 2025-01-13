@@ -43,6 +43,35 @@ def migrate_adapter_data(apps, schema_editor):
         adapter.save()
 
 
+def rollback_adapter_data(apps, schema_editor):
+    AdapterInstance = apps.get_model("adapter_processor_v2", "AdapterInstance")
+
+    old_adapter_id = "llmwhisperer|0a1647f0-f65f-410d-843b-3d979c78350e"
+
+    encryption_secret: str = settings.ENCRYPTION_KEY
+    f: Fernet = Fernet(encryption_secret.encode("utf-8"))
+
+    for adapter in AdapterInstance.objects.all():
+        if adapter.adapter_metadata_b:
+            # Deserialize adapter_metadata_b
+            metadata = json.loads(
+                f.decrypt(bytes(adapter.adapter_metadata_b).decode("utf-8"))
+            )
+
+            # Check if 'version' is 'v1' and revert adapter_id to old value
+            if metadata.get("version") == "v1":
+                adapter.adapter_id = old_adapter_id
+
+            # Remove 'version' key to restore original state
+            if "version" in metadata:
+                del metadata["version"]
+
+            # Serialize and save updated metadata
+            adapter.adapter_metadata_b = f.encrypt(json.dumps(metadata).encode("utf-8"))
+
+        adapter.save()
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -50,5 +79,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(migrate_adapter_data),
+        migrations.RunPython(migrate_adapter_data, reverse_code=rollback_adapter_data),
     ]
