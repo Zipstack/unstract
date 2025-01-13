@@ -177,9 +177,6 @@ class FileManagerHelper:
             raise ConnectorApiRequestError
 
         data = ""
-        # Check if the file type is in the allowed list
-        if file_content_type not in allowed_content_types:
-            raise InvalidFileType(f"File type '{file_content_type}' is not allowed.")
 
         # Handle allowed file types
         if file_content_type == "application/pdf":
@@ -190,6 +187,10 @@ class FileManagerHelper:
             with fs.open(file_path, "r") as file:
                 logger.info(f"Reading text file: {file_path}")
                 data = file.read()
+
+        # Check if the file type is in the allowed list
+        elif file_content_type not in allowed_content_types:
+            raise InvalidFileType(f"File type '{file_content_type}' is not allowed.")
 
         else:
             logger.warning(f"File type '{file_content_type}' is not handled.")
