@@ -1,8 +1,7 @@
-import json
 import logging
 import os
 
-from unstract.sdk.file_storage import FileStorageProvider, SharedTemporaryFileStorage
+from unstract.sdk.file_storage import FileStorageProvider, StorageType
 
 from .exceptions import ProviderNotFound
 from .file_storage_types import FileStorageType  # Import the shared enum
@@ -29,22 +28,11 @@ def get_provider(var_name: str, default: str = "minio") -> FileStorageProvider:
 
 # Mappings for storage types, credentials, and providers
 STORAGE_MAPPING = {
-    FileStorageType.WORKFLOW_EXECUTION: SharedTemporaryFileStorage,
-    FileStorageType.API_EXECUTION: SharedTemporaryFileStorage,
+    FileStorageType.WORKFLOW_EXECUTION: StorageType.SHARED_TEMPORARY,
+    FileStorageType.API_EXECUTION: StorageType.SHARED_TEMPORARY,
 }
 
-FILE_STORAGE_CREDENTIALS_MAPPING = {
-    FileStorageType.WORKFLOW_EXECUTION: json.loads(
-        os.environ.get("WORKFLOW_EXECUTION_FS_CREDENTIAL", "{}")
-    ),
-    FileStorageType.API_EXECUTION: json.loads(
-        os.environ.get("API_STORAGE_FS_CREDENTIAL", "{}")
-    ),
-}
-
-FILE_STORAGE_PROVIDER_MAPPING = {
-    FileStorageType.WORKFLOW_EXECUTION: get_provider(
-        "WORKFLOW_EXECUTION_FS_PROVIDER", "minio"
-    ),
-    FileStorageType.API_EXECUTION: get_provider("API_STORAGE_FS_PROVIDER", "minio"),
+FILE_STORAGE_CREDENTIALS_TO_ENV_NAME_MAPPING = {
+    FileStorageType.WORKFLOW_EXECUTION: "WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS",
+    FileStorageType.API_EXECUTION: "API_FILE_STORAGE_CREDENTIALS",
 }

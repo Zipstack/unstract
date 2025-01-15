@@ -5,12 +5,12 @@ from typing import Any, Optional
 
 from docker.errors import APIError, ImageNotFound
 from docker.models.containers import Container
-from unstract.worker.clients.interface import (
+from unstract.runner.clients.interface import (
     ContainerClientInterface,
     ContainerInterface,
 )
-from unstract.worker.constants import Env, FeatureFlag
-from unstract.worker.utils import Utils
+from unstract.runner.constants import Env, FeatureFlag
+from unstract.runner.utils import Utils
 
 from docker import DockerClient
 from unstract.core.utilities import UnstractUtils
