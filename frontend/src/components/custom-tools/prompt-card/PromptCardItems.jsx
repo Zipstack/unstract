@@ -8,6 +8,7 @@ import {
   Row,
   Select,
   Space,
+  Tag,
   Typography,
 } from "antd";
 import { useEffect, useRef, useState } from "react";
@@ -250,6 +251,22 @@ function PromptCardItems({
                           </Typography.Link>
                         </Space>
                       </Button>
+                    </Space>
+                    <Space>
+                      {details?.enable_highlight &&
+                        ["json", "table", "record"].includes(enforceType) && (
+                          <Tag
+                            color="red"
+                            style={{
+                              whiteSpace: "normal",
+                              wordWrap: "break-word",
+                              minWidth: "200px",
+                            }}
+                          >
+                            Highlighting is not supported when enforce type is{" "}
+                            {enforceType}
+                          </Tag>
+                        )}
                     </Space>
                     <Space>
                       {(enforceType === TABLE_ENFORCE_TYPE ||
