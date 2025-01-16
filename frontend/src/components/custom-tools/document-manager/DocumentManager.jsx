@@ -259,7 +259,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
         throw new Error("Fail to load the file");
       };
     } else if (viewType === viewTypes.extract) {
-      setExtractTxt(data);
+      setExtractTxt(data?.data);
     }
   };
 

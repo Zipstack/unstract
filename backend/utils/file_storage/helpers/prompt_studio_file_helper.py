@@ -2,7 +2,7 @@ import base64
 import logging
 import os
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 from file_management.file_management_helper import FileManagerHelper
 from unstract.sdk.file_storage import EnvHelper, FileStorage
@@ -76,7 +76,7 @@ class PromptStudioFileHelper:
     @staticmethod
     def fetch_file_contents(
         org_id: str, user_id: str, tool_id: str, file_name: str
-    ) -> Union[bytes, str]:
+    ) -> dict[str, Any]:
         """Method to fetch file contents from the remote location.
         The path is constructed in runtime based on the args"""
         fs_instance = EnvHelper.get_storage(
@@ -124,7 +124,7 @@ class PromptStudioFileHelper:
                 encoding="utf-8",
             )
             encoded_string = base64.b64encode(bytes(text_content_bytes))
-            return encoded_string
+            return {"data": encoded_string, "mime_type": file_content_type}
 
         elif file_content_type == "text/plain":
             text_content_string: str = fs_instance.read(
@@ -133,7 +133,7 @@ class PromptStudioFileHelper:
                 legacy_storage_path=legacy_file_path,
                 encoding="utf-8",
             )
-            return text_content_string
+            return {"data": text_content_string, "mime_type": file_content_type}
         else:
             raise ValueError(f"Unsupported file type: {file_content_type}")
 

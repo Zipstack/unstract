@@ -52,6 +52,12 @@ class ToolsUtils:
         self.llmw_max_polls = ToolsUtils.get_env(
             ToolRV.ADAPTER_LLMW_MAX_POLLS, raise_exception=False
         )
+        self.redis_host = ToolsUtils.get_env(ToolRV.REDIS_HOST, raise_exception=True)
+        self.redis_port = ToolsUtils.get_env(ToolRV.REDIS_PORT, raise_exception=True)
+        self.redis_user = ToolsUtils.get_env(ToolRV.REDIS_USER, raise_exception=True)
+        self.redis_password = ToolsUtils.get_env(
+            ToolRV.REDIS_PASSWORD, raise_exception=True
+        )
 
     def set_messaging_channel(self, messaging_channel: str) -> None:
         self.messaging_channel = messaging_channel
@@ -219,6 +225,10 @@ class ToolsUtils:
             ToolRV.X2TEXT_HOST: self.x2text_host,
             ToolRV.X2TEXT_PORT: self.x2text_port,
             ToolRV.EXECUTION_BY_TOOL: True,
+            ToolRV.REDIS_HOST: self.redis_host,
+            ToolRV.REDIS_PORT: self.redis_port,
+            ToolRV.REDIS_USER: self.redis_user,
+            ToolRV.REDIS_PASSWORD: self.redis_password,
         }
         # For async LLM Whisperer extraction
         if self.llmw_poll_interval:
@@ -243,6 +253,6 @@ class ToolsUtils:
             Optional[str]: Value for the env variable
         """
         env_value = os.environ.get(env_key)
-        if (env_value is None or env_value == "") and raise_exception:
+        if (env_value is None) and raise_exception:
             raise MissingEnvVariable(f"Env variable {env_key} is required")
         return env_value

@@ -23,6 +23,10 @@ class ToolRuntimeVariable:
     EXECUTION_BY_TOOL = "EXECUTION_BY_TOOL"
     WORKFLOW_EXECUTION_DIR_PREFIX = "WORKFLOW_EXECUTION_DIR_PREFIX"
     API_EXECUTION_DIR_PREFIX = "API_EXECUTION_DIR_PREFIX"
+    REDIS_HOST = "REDIS_HOST"
+    REDIS_PORT = "REDIS_PORT"
+    REDIS_USER = "REDIS_USER"
+    REDIS_PASSWORD = "REDIS_PASSWORD"
 
 
 class WorkflowFileType:
@@ -36,6 +40,7 @@ class MetaDataKey:
     SOURCE_HASH = "source_hash"
     WORKFLOW_ID = "workflow_id"
     EXECUTION_ID = "execution_id"
+    FILE_EXECUTION_ID = "file_execution_id"
     ORGANIZATION_ID = "organization_id"
     TOOL_METADATA = "tool_metadata"
 
