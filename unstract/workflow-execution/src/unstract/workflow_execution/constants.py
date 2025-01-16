@@ -40,6 +40,7 @@ class MetaDataKey:
     SOURCE_HASH = "source_hash"
     WORKFLOW_ID = "workflow_id"
     EXECUTION_ID = "execution_id"
+    FILE_EXECUTION_ID = "file_execution_id"
     ORGANIZATION_ID = "organization_id"
     TOOL_METADATA = "tool_metadata"
 
