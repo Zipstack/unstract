@@ -116,7 +116,7 @@
             "schemaVersion": "0.0.1",
             "displayName": "Text Extractor",
             "functionName": "text_extractor",
-            "toolVersion": "0.0.42",
+            "toolVersion": "0.0.44",
             "description": "The Text Extractor is a powerful tool designed to convert documents to its text form or Extract texts from documents",
             "input": {
                 "description": "Document"
