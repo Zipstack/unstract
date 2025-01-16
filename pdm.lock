@@ -3,7 +3,7 @@
 
 [metadata]
 groups = ["default", "hook-check-django-migrations", "lint"]
-strategy = ["cross_platform", "inherit_metadata"]
+strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
 content_hash = "sha256:57c9799f6208a76092e6b89d1ed443da20b3e27658ae856756b48696bf739fea"
 
