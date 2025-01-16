@@ -34,6 +34,7 @@ from workflow_manager.endpoint_v2.exceptions import (
     SourceConnectorNotConfigured,
 )
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
+from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -596,11 +597,14 @@ class SourceConnector(BaseConnector):
                 # Update the seek position
                 seek_position += len(chunk)
 
-    def add_file_to_volume(self, input_file_path: str, file_hash: FileHash) -> str:
+    def add_file_to_volume(
+        self, input_file_path: str, workflow_file_execution: WorkflowFileExecution
+    ) -> str:
         """Add input file to execution directory.
 
         Args:
             input_file_path (str): source file
+            workflow_file_execution: WorkflowFileExecution model
 
         Raises:
             InvalidSource: _description_
@@ -614,18 +618,20 @@ class SourceConnector(BaseConnector):
             file_content_hash = self.add_input_from_connector_to_volume(
                 input_file_path=input_file_path,
             )
-            if file_content_hash != file_hash.file_hash:
+            if file_content_hash != workflow_file_execution.file_hash:
                 raise FileHashMismatched()
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             self.add_input_from_api_storage_to_volume(input_file_path=input_file_path)
-            if file_name != file_hash.file_name:
+            if file_name != workflow_file_execution.file_name:
                 raise FileHashNotFound()
-            file_content_hash = file_hash.file_hash
+            file_content_hash = workflow_file_execution.file_hash
         else:
             raise InvalidSourceConnectionType()
 
         self.add_metadata_to_volume(
-            input_file_path=input_file_path, source_hash=file_content_hash
+            input_file_path=input_file_path,
+            file_execution_id=workflow_file_execution.id,
+            source_hash=file_content_hash,
         )
         return file_name
 
