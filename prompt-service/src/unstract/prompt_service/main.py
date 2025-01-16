@@ -12,6 +12,7 @@ from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.exceptions import APIError, ErrorResponse, NoPayloadError
 from unstract.prompt_service.helper import (
     construct_and_run_prompt,
+    extract_line_item,
     extract_table,
     extract_variable,
     get_cleaned_context,
@@ -81,6 +82,11 @@ def authentication_middleware(func: Any) -> Any:
         return func(*args, **kwargs)
 
     return wrapper
+
+
+@app.route("/health", methods=["GET"], endpoint="health_check")
+def health_check() -> str:
+    return "OK"
 
 
 @app.route(
@@ -239,6 +245,7 @@ def prompt_processor() -> Any:
                 response = {
                     PSKeys.METADATA: metadata,
                     PSKeys.OUTPUT: structured_output,
+                    PSKeys.METRICS: metrics,
                 }
                 return response
             except APIError as api_error:
@@ -259,6 +266,44 @@ def prompt_processor() -> Any:
                     "Error while extracting table for the prompt",
                 )
                 raise api_error
+        elif output[PSKeys.TYPE] == PSKeys.LINE_ITEM:
+            try:
+                structured_output = extract_line_item(
+                    tool_settings=tool_settings,
+                    output=output,
+                    plugins=plugins,
+                    structured_output=structured_output,
+                    llm=llm,
+                    file_path=file_path,
+                    metadata=metadata,
+                    execution_source=execution_source,
+                )
+                metadata = query_usage_metadata(token=platform_key, metadata=metadata)
+                # TODO: Handle metrics for line-item extraction
+                response = {
+                    PSKeys.METADATA: metadata,
+                    PSKeys.OUTPUT: structured_output,
+                    PSKeys.METRICS: metrics,
+                }
+                continue
+            except APIError as e:
+                app.logger.error(
+                    "Failed to extract line-item for the prompt %s: %s",
+                    output[PSKeys.NAME],
+                    str(e),
+                )
+                publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.ERROR,
+                    RunLevel.RUN,
+                    "Error while extracting line-item for the prompt",
+                )
+                raise e
 
         try:
             if chunk_size == 0:

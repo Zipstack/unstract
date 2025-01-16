@@ -195,13 +195,13 @@ services:
       - traefik.enable=false
 
   runner:
-    image: unstract/worker:${VERSION}
+    image: unstract/runner:${VERSION}
     container_name: unstract-runner
     restart: unless-stopped
     ports:
       - 5002:5002
     env_file:
-      - ../worker/.env
+      - ../runner/.env
     volumes:
       - ./workflow_data:/data
       # Docker socket bind mount to spawn tool containers

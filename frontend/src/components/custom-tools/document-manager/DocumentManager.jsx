@@ -13,7 +13,10 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import "./DocumentManager.css";
 
-import { base64toBlob, docIndexStatus } from "../../../helpers/GetStaticData";
+import {
+  base64toBlobWithMime,
+  docIndexStatus,
+} from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -22,6 +25,7 @@ import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { TextViewer } from "../text-viewer/TextViewer";
 
 let items = [
   {
@@ -95,11 +99,27 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     isSimplePromptStudio,
     isPublicSource,
     refreshRawView,
+    selectedHighlight,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { id } = useParams();
+  const highlightData = selectedHighlight?.highlight || [];
+
+  const [blobFileUrl, setBlobFileUrl] = useState("");
+  const [fileData, setFileData] = useState({});
+
+  useEffect(() => {
+    // Convert blob URL to an object URL
+    if (fileData.blob) {
+      const objectUrl = URL.createObjectURL(fileData.blob);
+      setBlobFileUrl(objectUrl);
+
+      // Clean up the URL after component unmount
+      return () => URL.revokeObjectURL(objectUrl);
+    }
+  }, [fileData]);
 
   useEffect(() => {
     if (isSimplePromptStudio) {
@@ -197,7 +217,8 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     getDocsFunc(details?.tool_id, selectedDoc?.document_id, viewType)
       .then((res) => {
         const data = res?.data?.data || "";
-        processGetDocsResponse(data, viewType);
+        const mimeType = res?.data?.mime_type || "";
+        processGetDocsResponse(data, viewType, mimeType);
       })
       .catch((err) => {
         handleGetDocsError(err, viewType);
@@ -224,13 +245,21 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
       });
   };
 
-  const processGetDocsResponse = (data, viewType) => {
+  const processGetDocsResponse = (data, viewType, mimeType) => {
     if (viewType === viewTypes.original) {
       const base64String = data || "";
-      const blob = base64toBlob(base64String);
-      setFileUrl(URL.createObjectURL(blob));
+      const blob = base64toBlobWithMime(base64String, mimeType);
+      setFileData({ blob, mimeType });
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+      reader.onload = () => {
+        setFileUrl(reader.result);
+      };
+      reader.onerror = () => {
+        throw new Error("Fail to load the file");
+      };
     } else if (viewType === viewTypes.extract) {
-      setExtractTxt(data);
+      setExtractTxt(data?.data);
     }
   };
 
@@ -315,6 +344,19 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     }
   };
 
+  const renderDoc = (docName, fileUrl, highlightData) => {
+    const fileType = docName?.split(".").pop().toLowerCase(); // Get the file extension
+    switch (fileType) {
+      case "pdf":
+        return <PdfViewer fileUrl={fileUrl} highlightData={highlightData} />;
+      case "txt":
+      case "md":
+        return <TextViewer fileUrl={fileUrl} />;
+      default:
+        return <div>Unsupported file type: {fileType}</div>;
+    }
+  };
+
   return (
     <div className="doc-manager-layout">
       <div className="doc-manager-header">
@@ -386,7 +428,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           setOpenManageDocsModal={setOpenManageDocsModal}
           errMsg={fileErrMsg}
         >
-          <PdfViewer fileUrl={fileUrl} />
+          {renderDoc(selectedDoc?.document_name, blobFileUrl, highlightData)}
         </DocumentViewer>
       )}
       {activeKey === "2" && (

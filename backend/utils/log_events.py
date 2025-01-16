@@ -110,6 +110,7 @@ def _get_validated_log_data(json_data: Any) -> Optional[LogDataDTO]:
     organization_id = json_data.get(LogFieldName.ORGANIZATION_ID)
     timestamp = json_data.get(LogFieldName.TIMESTAMP)
     log_type = json_data.get(LogFieldName.TYPE)
+    file_execution_id = json_data.get(LogFieldName.FILE_EXECUTION_ID)
 
     # Ensure the log type is LogType.LOG
     if log_type != LogType.LOG.value:
@@ -122,6 +123,7 @@ def _get_validated_log_data(json_data: Any) -> Optional[LogDataDTO]:
 
     return LogDataDTO(
         execution_id=execution_id,
+        file_execution_id=file_execution_id,
         organization_id=organization_id,
         timestamp=timestamp,
         log_type=log_type,

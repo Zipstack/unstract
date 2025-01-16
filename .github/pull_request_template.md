@@ -42,4 +42,4 @@
 
 ## Checklist
 
-I have read and understood the [Contribution Guidelines]().
+I have read and understood the [Contribution Guidelines](https://docs.unstract.com/unstract/contributing/unstract/).
