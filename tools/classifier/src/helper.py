@@ -150,9 +150,14 @@ class ClassifierHelper:
         self.tool.stream_log("Text extraction adapter has been created successfully.")
 
         try:
-            extraction_result: TextExtractionResult = x2text.process(
-                input_file_path=file, fs=self.tool.workflow_filestorage
-            )
+            if self.workflow_filestorage:
+                extraction_result: TextExtractionResult = x2text.process(
+                    input_file_path=file, fs=self.tool.workflow_filestorage
+                )
+            else:
+                extraction_result: TextExtractionResult = x2text.process(
+                    input_file_path=file
+                )
             extracted_text: str = extraction_result.extracted_text
             return extracted_text
         except Exception as e:
