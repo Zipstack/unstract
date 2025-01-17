@@ -12,9 +12,6 @@ from unstract.connectors.filesystems import connectors
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.flags.feature_flag import check_feature_flag_status
 
-if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-    pass
-
 
 class BaseConnector(ExecutionFileHandler):
     """Base class for connectors providing common methods and utilities."""
