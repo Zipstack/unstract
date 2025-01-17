@@ -1,4 +1,4 @@
-import { Outlet, Route, Routes } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 
 import { GenericError } from "../components/error/GenericError/GenericError.jsx";
 import { NotFound } from "../components/error/NotFound/NotFound.jsx";
@@ -21,7 +21,6 @@ let SpsLanding;
 let SpsUpload;
 let PaymentSuccessful;
 let SelectProduct;
-let UnstractSubscriptionCheck;
 let UnstractSubscriptionEndPage;
 try {
   SimplePromptStudioHelper =
@@ -69,13 +68,6 @@ try {
     require("../plugins/payment-successful/PaymentSuccessful.jsx").PaymentSuccessful;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
-}
-
-try {
-  UnstractSubscriptionCheck =
-    require("../plugins/unstract-subscription/components/UnstractSubscriptionCheck.jsx").UnstractSubscriptionCheck;
-} catch (err) {
-  // Do nothing.
 }
 
 function Router() {
@@ -134,18 +126,7 @@ function Router() {
           <Route path="/payment/success" element={<PaymentSuccessful />} />
         )}
         <Route path="" element={<RequireAuth />}>
-          <Route
-            path=""
-            element={
-              UnstractSubscriptionCheck ? (
-                <UnstractSubscriptionCheck />
-              ) : (
-                <Outlet />
-              )
-            }
-          >
-            {MainAppRoute}
-          </Route>
+          {MainAppRoute}
           {llmWhispererRouter && (
             <Route path="llm-whisperer">{llmWhispererRouter()}</Route>
           )}
