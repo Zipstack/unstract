@@ -34,6 +34,7 @@ let SimpleManualReviewPage;
 let ReviewLayout;
 let UnstractUsagePage;
 let UnstractSubscriptionPage;
+let UnstractSubscriptionCheck;
 
 try {
   RequirePlatformAdmin =
@@ -64,7 +65,7 @@ try {
 
 try {
   OnboardProduct =
-    require("../plugins/onboard-product/onboard-product/OnboardProduct.jsx").OnboardProduct;
+    require("../plugins/onboard-product/OnboardProduct.jsx").OnboardProduct;
   PRODUCT_NAMES = require("../plugins/llm-whisperer/helper.js").PRODUCT_NAMES;
 } catch (err) {
   // Do nothing.
@@ -86,6 +87,8 @@ try {
     require("../plugins/unstract-subscription/pages/UnstractSubscriptionPage.jsx").UnstractSubscriptionPage;
   UnstractUsagePage =
     require("../plugins/unstract-subscription/pages/UnstractUsagePage.jsx").UnstractUsagePage;
+  UnstractSubscriptionCheck =
+    require("../plugins/unstract-subscription/components/UnstractSubscriptionCheck.jsx").UnstractSubscriptionCheck;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
@@ -203,7 +206,9 @@ function useMainAppRoutes() {
         path=""
         element={<OnboardProduct type={PRODUCT_NAMES?.unstract} />}
       >
-        {routes}
+        <Route path="" element={<UnstractSubscriptionCheck />}>
+          {routes}
+        </Route>
       </Route>
     );
   } else {
