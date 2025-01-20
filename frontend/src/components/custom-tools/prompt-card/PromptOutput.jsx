@@ -84,6 +84,9 @@ function PromptOutput({
   const { generatePromptOutputKey } = usePromptOutput();
   const isTableExtraction =
     enforceType === TABLE_ENFORCE_TYPE || enforceType === RECORD_ENFORCE_TYPE;
+  const noHighlightEnforceType = !["json", "table", "record"].includes(
+    enforceType
+  );
   const tooltipContent = (adapterConf) => (
     <div>
       {Object.entries(adapterConf)?.map(([key, value]) => (
@@ -204,7 +207,7 @@ function PromptOutput({
               transition={{ duration: 0.5, ease: "linear" }}
               className={`prompt-card-llm ${
                 details?.enable_highlight &&
-                enforceType !== "json" &&
+                noHighlightEnforceType &&
                 selectedHighlight?.highlightedPrompt === promptId &&
                 selectedHighlight?.highlightedProfile === profileId &&
                 "highlighted-prompt-cell"
@@ -212,9 +215,9 @@ function PromptOutput({
             >
               <Tooltip
                 title={
-                  details?.enable_highlight && enforceType !== "json"
-                    ? "Click to highlight"
-                    : "Highlighting is not supported when enforce type is JSON"
+                  details?.enable_highlight &&
+                  noHighlightEnforceType &&
+                  "Click to highlight"
                 }
               >
                 <Col
