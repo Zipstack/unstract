@@ -72,3 +72,7 @@ class ExecutionLogConstants:
     PERIODIC_TASK_NAME_V2 = "workflow_log_history_v2"
     TASK = "workflow_manager.workflow.execution_log_utils.consume_log_history"
     TASK_V2 = "consume_log_history"
+
+
+class FileReader:
+    READ_FULL_LENGTH = -1
