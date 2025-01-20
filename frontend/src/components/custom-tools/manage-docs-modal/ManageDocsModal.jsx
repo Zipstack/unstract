@@ -580,7 +580,7 @@ function ManageDocsModal({
       setIsUploading(false);
       setAlertDetails({
         type: "error",
-        content: "Failed to upload",
+        content: info?.file?.response?.errors[0]?.detail || "Failed to Upload",
       });
     }
   };
