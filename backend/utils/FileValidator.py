@@ -8,7 +8,7 @@ from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.template.defaultfilters import filesizeformat
 from django.utils.translation import gettext_lazy as _
 from typing_extensions import NotRequired, Unpack
-from utils.constants import FileReader
+from unstract.sdk.file_storage.constants import FileOperationParams
 
 
 class FileValidationParam(TypedDict):
@@ -71,7 +71,9 @@ class FileValidator:
 
     def _check_file_mime_type(self, file: InMemoryUploadedFile) -> None:
         # TODO: Need to optimise, istead of reading entire file.
-        mimetype = magic.from_buffer(file.read(FileReader.READ_FULL_LENGTH), mime=True)
+        mimetype = magic.from_buffer(
+            file.read(FileOperationParams.READ_ENTIRE_LENGTH), mime=True
+        )
         file.seek(0)  # Reset the file pointer to the start
 
         if self.allowed_mimetypes and mimetype not in self.allowed_mimetypes:
