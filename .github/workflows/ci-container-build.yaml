@@ -4,28 +4,11 @@ on:
   push:
     branches:
       - main
-      - development
-    # paths:
-    #   - 'backend/**'
-    #   - 'frontend/**'
-    #   - 'unstract/**'
-    #   - 'platform-service/**'
-    #   - 'x2text-service/**'
-    #   - 'runner/**'
-    #   - 'docker/dockerfiles/**'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - main
-      - development
-    # paths:
-    #   - 'backend/**'
-    #   - 'frontend/**'
-    #   - 'unstract/**'
-    #   - 'platform-service/**'
-    #   - 'x2text-service/**'
-    #   - 'runner/**'
-    #   - 'docker/dockerfiles/**'
+  workflow_dispatch:
 
 jobs:
   build:
