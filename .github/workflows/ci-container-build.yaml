@@ -1,8 +1,5 @@
 name: Container Image Build Test for PRs
 
-env:
-  VERSION: ci-test # Used for docker tag
-
 on:
   push:
     branches:
@@ -41,16 +38,10 @@ jobs:
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      # - name: Container Build
-      #   working-directory: ./docker
-      #   run: |
-      #     docker compose -f docker-compose.build.yaml build
+          password: ${{ secrets.DOCKERHUB_TOKEN }
       - name: Container Run
         run: |
           ./run-platform.sh -b
-
-          docker compose -f docker/docker-compose.yaml up -d
           sleep 30
           docker compose -f docker/docker-compose.yaml ps -a
           # Get the names of exited containers
