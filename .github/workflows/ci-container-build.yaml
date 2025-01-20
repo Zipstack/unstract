@@ -42,12 +42,11 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Container Build
-        working-directory: ./docker
-        run: |
-          docker compose -f docker-compose.build.yaml build
+      # - name: Container Build
+      #   working-directory: ./docker
+      #   run: |
+      #     docker compose -f docker-compose.build.yaml build
       - name: Container Run
-        working-directory: ./docker
         run: |
           ./run-platform.sh -b
 
