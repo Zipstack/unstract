@@ -1,34 +1,14 @@
 name: Container Image Build Test for PRs
 
-env:
-  VERSION: ci-test # Used for docker tag
-
 on:
   push:
     branches:
       - main
-      - development
-    paths:
-      - 'backend/**'
-      - 'frontend/**'
-      - 'unstract/**'
-      - 'platform-service/**'
-      - 'x2text-service/**'
-      - 'runner/**'
-      - 'docker/dockerfiles/**'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - main
-      - development
-    paths:
-      - 'backend/**'
-      - 'frontend/**'
-      - 'unstract/**'
-      - 'platform-service/**'
-      - 'x2text-service/**'
-      - 'runner/**'
-      - 'docker/dockerfiles/**'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -41,28 +21,15 @@ jobs:
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Container Build
-        working-directory: ./docker
-        run: |
-          docker compose -f docker-compose.build.yaml build
+          password: ${{ secrets.DOCKERHUB_TOKEN }
       - name: Container Run
-        working-directory: ./docker
         run: |
-          cp ../backend/sample.env ../backend/.env
-          cp ../platform-service/sample.env ../platform-service/.env
-          cp ../prompt-service/sample.env ../prompt-service/.env
-          cp ../runner/sample.env ../runner/.env
-          cp ../x2text-service/sample.env ../x2text-service/.env
-          cp sample.essentials.env essentials.env
-          cp sample.env .env
-
-          docker compose -f docker-compose.yaml up -d
-          sleep 10
-          docker compose -f docker-compose.yaml ps -a
+          ./run-platform.sh -b
+          sleep 30
+          docker compose -f docker/docker-compose.yaml ps -a
           # Get the names of exited containers
           custom_format="{{.Name}}\t{{.Image}}\t{{.Service}}"
-          EXITED_CONTAINERS=$(docker compose -f docker-compose.yaml ps -a --filter status=exited --format "$custom_format")
+          EXITED_CONTAINERS=$(docker compose -f docker/docker-compose.yaml ps -a --filter status=exited --format "$custom_format")
 
           line_count=$(echo "$EXITED_CONTAINERS" | wc -l)
 
@@ -76,9 +43,9 @@ jobs:
             # Print logs of exited containers
             IFS=$'\n'
             for SERVICE in $SERVICE; do
-              docker compose -f docker-compose.yaml logs "$SERVICE"
+              docker compose -f docker/docker-compose.yaml logs "$SERVICE"
             done
-            docker compose -f docker-compose.yaml down -v
+            docker compose -f docker/docker-compose.yaml down -v
             exit 1
           fi
-          docker compose -f docker-compose.yaml down -v
+          docker compose -f docker/docker-compose.yaml down -v
