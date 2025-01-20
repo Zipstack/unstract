@@ -307,7 +307,7 @@ function ManageDocsModal({
 
   const columns = [
     {
-      title: "Document",
+      title: "Document Variants",
       dataIndex: "document",
       key: "document",
     },
@@ -663,7 +663,7 @@ function ManageDocsModal({
           <SpaceWrapper>
             <Space>
               <Typography.Text className="add-cus-tool-header">
-                Manage Documents
+                Manage Document Variants
               </Typography.Text>
             </Space>
             <div>
