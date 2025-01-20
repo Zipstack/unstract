@@ -12,9 +12,6 @@ from unstract.connectors.filesystems import connectors
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.flags.feature_flag import check_feature_flag_status
 
-if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-    from unstract.filesystem import FileStorageType, FileSystem
-
 
 class BaseConnector(ExecutionFileHandler):
     """Base class for connectors providing common methods and utilities."""
@@ -86,16 +83,8 @@ class BaseConnector(ExecutionFileHandler):
         json.JSONDecodeError: If there is an issue decoding the JSON file.
         """
         try:
-            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-                file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
-                file_storage = file_system.get_file_storage()
-                file_contents = file_storage.read(
-                    path=file_path, mode="r", encoding="utf-8"
-                )
-                schema: dict[str, Any] = json.load(file_contents)
-            else:
-                with open(file_path, encoding="utf-8") as file:
-                    schema: dict[str, Any] = json.load(file)
+            with open(file_path, encoding="utf-8") as file:
+                schema: dict[str, Any] = json.load(file)
         except OSError:
             schema = {}
         return schema
