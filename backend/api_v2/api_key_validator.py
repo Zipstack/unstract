@@ -1,7 +1,9 @@
 import logging
+import uuid
 from functools import wraps
 from typing import Any
 
+from account_v2.exceptions import BadRequestException
 from api_v2.exceptions import Forbidden
 from rest_framework.request import Request
 
@@ -39,6 +41,8 @@ class BaseAPIKeyValidator:
                 api_key = authorization_header.split(" ")[1]
             if not api_key:
                 raise Forbidden("Missing api key")
+            if not cls.is_valid_uuid(api_key):
+                raise BadRequestException("Invalid API key format. Expected a UUID.")
             cls.validate_parameters(request, **kwargs)
             return cls.validate_and_process(
                 self, request, func, *args, **kwargs, api_key=api_key
@@ -58,3 +62,19 @@ class BaseAPIKeyValidator:
         """Process and validate API key with specific logic required by
         subclasses."""
         pass
+
+    @staticmethod
+    def is_valid_uuid(api_key: str) -> bool:
+        """Check if a given string is a valid UUID.
+
+        Args:
+            api_key (str): The API key to validate
+
+        Returns:
+            bool: True if valid UUID, False otherwise
+        """
+        try:
+            uuid.UUID(api_key)
+            return True
+        except ValueError:
+            return False
