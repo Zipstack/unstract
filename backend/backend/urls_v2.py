@@ -59,3 +59,7 @@ urlpatterns = [
         include("prompt_studio.prompt_studio_index_manager_v2.urls"),
     ),
 ]
+
+urlpatterns_v2 = [
+    path("workflow/", include("workflow_manager.workflow_v2.urls.execution_log")),
+]

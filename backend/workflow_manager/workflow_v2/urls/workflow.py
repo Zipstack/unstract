@@ -23,7 +23,7 @@ workflow_detail = WorkflowViewSet.as_view(
 workflow_execute = WorkflowViewSet.as_view({"post": "execute", "put": "activate"})
 execution_entity = WorkflowExecutionViewSet.as_view({"get": "retrieve"})
 execution_list = WorkflowExecutionViewSet.as_view({"get": "list"})
-execution_log_list = WorkflowExecutionLogViewSet.as_view({"get": "list"})
+# execution_log_list = WorkflowExecutionLogViewSet.as_view({"get": "list"})
 workflow_clear_cache = WorkflowViewSet.as_view({"get": "clear_cache"})
 workflow_clear_file_marker = WorkflowViewSet.as_view({"get": "clear_file_marker"})
 workflow_schema = WorkflowViewSet.as_view({"get": "get_schema"})
@@ -63,11 +63,11 @@ urlpatterns = format_suffix_patterns(
             execution_entity,
             name="workflow-detail",
         ),
-        path(
-            "execution/<uuid:pk>/logs/",
-            execution_log_list,
-            name="execution-log",
-        ),
+        # path(
+        #     "execution/<uuid:pk>/logs/",
+        #     execution_log_list,
+        #     name="execution-log",
+        # ),
         path(
             "schema/",
             workflow_schema,

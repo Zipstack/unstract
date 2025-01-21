@@ -1,11 +1,12 @@
 # base_urls.py
 from django.conf import settings
-from django.urls import include, path
+from django.urls import include, path, re_path
 
 from .public_urls_v2 import urlpatterns as public_urls
 
 # Import urlpatterns from each file
 from .urls_v2 import urlpatterns as tenant_urls
+from .urls_v2 import urlpatterns_v2 as tenant_v2_urls
 
 # Combine the URL patterns
 urlpatterns = [
@@ -23,4 +24,12 @@ urlpatterns = [
         include("pipeline_v2.public_api_urls"),
     ),
     path("", include("health.urls")),
+]
+
+# TODO: Add versioning regex to PATH_PREFIX and handle version kwarg for view functions
+urlpatterns += [
+    re_path(
+        r"^api/(?P<version>(v1|v2))/unstract/",
+        include((tenant_v2_urls, "tenant_v2"), namespace="tenant_v2"),
+    ),
 ]

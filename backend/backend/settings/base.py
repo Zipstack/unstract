@@ -324,7 +324,7 @@ MIDDLEWARE = [
     "middleware.cache_control.CacheControlMiddleware",
 ]
 
-TENANT_SUBFOLDER_PREFIX = f"/{PATH_PREFIX}/unstract"
+TENANT_SUBFOLDER_PREFIX = f"{PATH_PREFIX}/unstract"
 SHOW_PUBLIC_IF_NO_TENANT_FOUND = True
 
 TEMPLATES = [
@@ -432,6 +432,11 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [],  # TODO: Update once auth is figured
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
     "EXCEPTION_HANDLER": "middleware.exception.drf_logging_exc_handler",
+    # For API versioning
+    "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.URLPathVersioning",
+    "DEFAULT_VERSION": "v1",
+    "ALLOWED_VERSIONS": ["v1", "v2"],
+    "VERSION_PARAM": "version",
 }
 
 # These paths will work without authentication
