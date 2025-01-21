@@ -2,6 +2,7 @@ import logging
 from typing import Union
 
 from api_v2.exceptions import UnauthorizedKey
+from django.core.exceptions import ValidationError
 from api_v2.models import APIDeployment, APIKey
 from api_v2.serializers import APIKeySerializer
 from pipeline_v2.models import Pipeline
@@ -29,7 +30,7 @@ class KeyHelper:
             api_key_instance: APIKey = APIKey.objects.get(api_key=api_key)
             if not KeyHelper.has_access(api_key_instance, instance):
                 raise UnauthorizedKey()
-        except APIKey.DoesNotExist:
+        except (APIKey.DoesNotExist, ValidationError):
             raise UnauthorizedKey()
 
     @staticmethod
