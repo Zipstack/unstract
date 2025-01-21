@@ -5,7 +5,7 @@
             "schemaVersion": "0.0.1",
             "displayName": "File Classifier",
             "functionName": "classify",
-            "toolVersion": "0.0.45",
+            "toolVersion": "0.0.46",
             "description": "Classifies a file into a bin based on its contents",
             "input": {
                 "description": "File to be classified"
@@ -106,9 +106,9 @@
             "properties": {}
         },
         "icon": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n<svg\n   enable-background=\"new 0 0 20 20\"\n   height=\"48\"\n   viewBox=\"0 0 20 20\"\n   width=\"48\"\n   fill=\"#000000\"\n   version=\"1.1\"\n   id=\"svg8109\"\n   sodipodi:docname=\"folder_copy_black_48dp.svg\"\n   xmlns:inkscape=\"http://www.inkscape.org/namespaces/inkscape\"\n   xmlns:sodipodi=\"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd\"\n   xmlns=\"http://www.w3.org/2000/svg\"\n   xmlns:svg=\"http://www.w3.org/2000/svg\">\n  <defs\n     id=\"defs8113\" />\n  <sodipodi:namedview\n     id=\"namedview8111\"\n     pagecolor=\"#ffffff\"\n     bordercolor=\"#000000\"\n     borderopacity=\"0.25\"\n     inkscape:showpageshadow=\"2\"\n     inkscape:pageopacity=\"0.0\"\n     inkscape:pagecheckerboard=\"0\"\n     inkscape:deskcolor=\"#d1d1d1\"\n     showgrid=\"false\" />\n  <g\n     id=\"g8099\">\n    <rect\n       fill=\"none\"\n       height=\"20\"\n       width=\"20\"\n       x=\"0\"\n       id=\"rect8097\"\n       y=\"0\" />\n  </g>\n  <g\n     id=\"g8107\"\n     style=\"fill:#ff4d6d;fill-opacity:1\">\n    <g\n       id=\"g8105\"\n       style=\"fill:#ff4d6d;fill-opacity:1\">\n      <path\n         d=\"M 2.5,5 H 1 V 15.5 C 1,16.33 1.67,17 2.5,17 H 15.68 V 15.5 H 2.5 Z\"\n         id=\"path8101\"\n         style=\"fill:#ff4d6d;fill-opacity:1\" />\n      <path\n         d=\"M 16.5,4 H 11 L 9,2 H 5.5 C 4.67,2 4,2.67 4,3.5 v 9 C 4,13.33 4.67,14 5.5,14 h 11 c 0.83,0 1.5,-0.67 1.5,-1.5 v -7 C 18,4.67 17.33,4 16.5,4 Z m 0,8.5 h -11 v -9 h 2.88 l 2,2 h 6.12 z\"\n         id=\"path8103\"\n         style=\"fill:#ff4d6d;fill-opacity:1\" />\n    </g>\n  </g>\n</svg>\n",
-        "image_url": "docker:unstract/tool-classifier:0.0.45",
+        "image_url": "docker:unstract/tool-classifier:0.0.46",
         "image_name": "unstract/tool-classifier",
-        "image_tag": "0.0.45"
+        "image_tag": "0.0.46"
     },
     "text_extractor": {
         "tool_uid": "text_extractor",
@@ -116,7 +116,7 @@
             "schemaVersion": "0.0.1",
             "displayName": "Text Extractor",
             "functionName": "text_extractor",
-            "toolVersion": "0.0.42",
+            "toolVersion": "0.0.43",
             "description": "The Text Extractor is a powerful tool designed to convert documents to its text form or Extract texts from documents",
             "input": {
                 "description": "Document"
@@ -191,8 +191,8 @@
             }
         },
         "icon": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n<svg\n   enable-background=\"new 0 0 20 20\"\n   height=\"48\"\n   viewBox=\"0 0 20 20\"\n   width=\"48\"\n   fill=\"#000000\"\n   version=\"1.1\"\n   id=\"svg8109\"\n   sodipodi:docname=\"folder_copy_black_48dp.svg\"\n   xmlns:inkscape=\"http://www.inkscape.org/namespaces/inkscape\"\n   xmlns:sodipodi=\"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd\"\n   xmlns=\"http://www.w3.org/2000/svg\"\n   xmlns:svg=\"http://www.w3.org/2000/svg\">\n  <defs\n     id=\"defs8113\" />\n  <sodipodi:namedview\n     id=\"namedview8111\"\n     pagecolor=\"#ffffff\"\n     bordercolor=\"#000000\"\n     borderopacity=\"0.25\"\n     inkscape:showpageshadow=\"2\"\n     inkscape:pageopacity=\"0.0\"\n     inkscape:pagecheckerboard=\"0\"\n     inkscape:deskcolor=\"#d1d1d1\"\n     showgrid=\"false\" />\n  <g\n     id=\"g8099\">\n    <rect\n       fill=\"none\"\n       height=\"20\"\n       width=\"20\"\n       x=\"0\"\n       id=\"rect8097\"\n       y=\"0\" />\n  </g>\n  <g\n     id=\"g8107\"\n     style=\"fill:#ff4d6d;fill-opacity:1\">\n    <g\n       id=\"g8105\"\n       style=\"fill:#ff4d6d;fill-opacity:1\">\n      <path\n         d=\"M 2.5,5 H 1 V 15.5 C 1,16.33 1.67,17 2.5,17 H 15.68 V 15.5 H 2.5 Z\"\n         id=\"path8101\"\n         style=\"fill:#ff4d6d;fill-opacity:1\" />\n      <path\n         d=\"M 16.5,4 H 11 L 9,2 H 5.5 C 4.67,2 4,2.67 4,3.5 v 9 C 4,13.33 4.67,14 5.5,14 h 11 c 0.83,0 1.5,-0.67 1.5,-1.5 v -7 C 18,4.67 17.33,4 16.5,4 Z m 0,8.5 h -11 v -9 h 2.88 l 2,2 h 6.12 z\"\n         id=\"path8103\"\n         style=\"fill:#ff4d6d;fill-opacity:1\" />\n    </g>\n  </g>\n</svg>\n",
-        "image_url": "docker:unstract/tool-text-extractor:0.0.44",
+        "image_url": "docker:unstract/tool-text-extractor:0.0.43",
         "image_name": "unstract/tool-text-extractor",
-        "image_tag": "0.0.44"
+        "image_tag": "0.0.43"
     }
 }
