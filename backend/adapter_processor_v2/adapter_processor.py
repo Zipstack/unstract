@@ -23,6 +23,13 @@ from .models import AdapterInstance, UserDefaultAdapter
 
 logger = logging.getLogger(__name__)
 
+try:
+    from plugins.subscription.time_trials.subscription_adapter import (
+        add_unstract_key
+    )
+except ImportError:
+    add_unstract_key = None
+
 
 class AdapterProcessor:
     @staticmethod
@@ -91,6 +98,11 @@ class AdapterProcessor:
             adapter_class = Adapterkit().get_adapter_class_by_adapter_id(adapter_id)
 
             if adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE) == AdapterKeys.X2TEXT:
+
+                if adapter_metadata.get('use_platform_provided_unstract_key') and \
+                        add_unstract_key:
+                    adapter_metadata = add_unstract_key(adapter_metadata)
+
                 adapter_metadata[X2TextConstants.X2TEXT_HOST] = settings.X2TEXT_HOST
                 adapter_metadata[X2TextConstants.X2TEXT_PORT] = settings.X2TEXT_PORT
                 platform_key = PlatformAuthenticationService.get_active_platform_key()
