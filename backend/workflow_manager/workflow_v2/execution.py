@@ -4,6 +4,7 @@ from typing import Optional
 
 from account_v2.constants import Common
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
+from tags.models import Tag
 from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.tool_processor import ToolProcessor
 from unstract.tool_registry.dto import Tool
@@ -117,6 +118,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         log_events_id: Optional[str] = None,
         execution_id: Optional[str] = None,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
+        tags: Optional[list[Tag]] = None,
     ) -> WorkflowExecution:
         # Validating with existing execution
         existing_execution = cls.get_execution_instance_by_id(execution_id)
@@ -147,6 +149,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         if execution_id:
             workflow_execution.id = execution_id
         workflow_execution.save()
+        if tags:
+            workflow_execution.tags.set(tags)
         return workflow_execution
 
     def update_execution(

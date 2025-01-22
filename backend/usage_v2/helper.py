@@ -1,6 +1,8 @@
 import logging
+from datetime import datetime
+from typing import Any
 
-from django.db.models import Sum
+from django.db.models import QuerySet, Sum
 from rest_framework.exceptions import APIException
 
 from .constants import UsageKeys
@@ -62,3 +64,41 @@ class UsageHelper:
             # Handle any other exceptions that might occur during the execution
             logger.error(f"An unexpected error occurred for run_id {run_id}: {str(e)}")
             raise APIException("Error while aggregating token counts")
+
+    @staticmethod
+    def aggregate_usage_metrics(queryset: QuerySet) -> dict[str, Any]:
+        """
+        Aggregate usage metrics from a queryset of Usage objects.
+
+        Args:
+            queryset (QuerySet): A queryset of Usage objects.
+
+        Returns:
+            dict: A dictionary containing aggregated usage metrics.
+        """
+        return queryset.aggregate(
+            total_prompt_tokens=Sum("prompt_tokens"),
+            total_completion_tokens=Sum("completion_tokens"),
+            total_tokens=Sum("total_tokens"),
+            total_cost=Sum("cost_in_dollars"),
+        )
+
+    @staticmethod
+    def format_usage_response(
+        aggregated_data: dict[str, Any], start_date: datetime, end_date: datetime
+    ) -> dict[str, Any]:
+        """
+        Format aggregated usage data into a structured response.
+
+        Args:
+            aggregated_data (dict): Aggregated usage metrics.
+            start_date (datetime): Start date of the usage period.
+            end_date (datetime): End date of the usage period.
+
+        Returns:
+            dict: Formatted response containing aggregated data and date range.
+        """
+        return {
+            "aggregated_data": aggregated_data,
+            "date_range": {"start_date": start_date, "end_date": end_date},
+        }

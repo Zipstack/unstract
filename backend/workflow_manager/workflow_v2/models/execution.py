@@ -1,6 +1,7 @@
 import uuid
 
 from django.db import models
+from tags.models import Tag
 from utils.models.base_model import BaseModel
 
 EXECUTION_ERROR_LENGTH = 256
@@ -61,6 +62,7 @@ class WorkflowExecution(BaseModel):
     execution_time = models.FloatField(
         default=0, db_comment="execution time in seconds"
     )
+    tags = models.ManyToManyField(Tag, related_name="workflow_executions", blank=True)
 
     def __str__(self) -> str:
         return (
