@@ -300,7 +300,7 @@ function OutputForDocModal({
 
   const columns = [
     {
-      title: "Document",
+      title: "Document Variants",
       dataIndex: "document",
       key: "document",
     },
