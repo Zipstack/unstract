@@ -259,7 +259,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
         throw new Error("Fail to load the file");
       };
     } else if (viewType === viewTypes.extract) {
-      setExtractTxt(data);
+      setExtractTxt(data?.data);
     }
   };
 
@@ -380,7 +380,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
               ) : null}
             </div>
             <div>
-              <Tooltip title="Manage Documents">
+              <Tooltip title="Manage Document Variants">
                 <Button
                   className="doc-manager-btn"
                   onClick={() => setOpenManageDocsModal(true)}
