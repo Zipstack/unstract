@@ -43,7 +43,7 @@ services:
     command: server /data --console-address ":9001"
     labels:
       - traefik.enable=true
-      - traefik.http.routers.minio.rule=Host(`minio.unstract.localhost`)
+      - traefik.http.routers.minio.rule=Host(`minio.because-security.com`)
       - traefik.http.services.minio.loadbalancer.server.port=9001
 
   reverse-proxy:
@@ -92,7 +92,7 @@ services:
       FLIPT_CACHE_ENABLED: true
     labels:
       - traefik.enable=true
-      - traefik.http.routers.feature-flag.rule=Host(`feature-flag.unstract.localhost`)
+      - traefik.http.routers.feature-flag.rule=Host(`feature-flag.because-security.com`)
       - traefik.http.services.feature-flag.loadbalancer.server.port=8080
 
   unstructured-io:

@@ -29,7 +29,7 @@ services:
       - APPLICATION_NAME=unstract-backend
     labels:
       - traefik.enable=true
-      - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && PathPrefix(`/api/v1`, `/deployment`)
+      - traefik.http.routers.backend.rule=Host(`unstract.because-security.com`) && PathPrefix(`/api/v1`, `/deployment`)
     extra_hosts:
       # "host-gateway" is a special string that translates to host docker0 i/f IP.
       - "host.docker.internal:host-gateway"
@@ -149,7 +149,7 @@ services:
       - ENVIRONMENT=development
     labels:
       - traefik.enable=true
-      - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`)  && !PathPrefix(`/api/v1`, `/deployment`)
+      - traefik.http.routers.frontend.rule=Host(`unstract.because-security.com`)  && !PathPrefix(`/api/v1`, `/deployment`)
 
   platform-service:
     image: unstract/platform-service:${VERSION}
