@@ -179,14 +179,9 @@ class AdapterInstanceViewSet(ModelViewSet):
 
         serializer.is_valid(raise_exception=True)
         try:
-            adapter_type = serializer.validated_data.get(
-                AdapterKeys.ADAPTER_TYPE
-            )
+            adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
 
-            if (
-                adapter_type == AdapterKeys.X2TEXT
-                and use_platform_unstract_key
-            ):
+            if adapter_type == AdapterKeys.X2TEXT and use_platform_unstract_key:
                 adapter_metadata_b = serializer.validated_data.get(
                     AdapterKeys.ADAPTER_METADATA_B
                 )

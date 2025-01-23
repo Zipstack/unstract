@@ -99,9 +99,7 @@ class AdapterProcessor:
             if adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE) == AdapterKeys.X2TEXT:
 
                 if (
-                    adapter_metadata.get(
-                        AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY
-                    )
+                    adapter_metadata.get(AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY)
                     and add_unstract_key
                 ):
                     adapter_metadata = add_unstract_key(adapter_metadata)
