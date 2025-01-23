@@ -20,12 +20,12 @@ class TagHelper:
     @staticmethod
     def list_workflow_file_executions(tag: Tag):
         """
-        Lists all workflow executions that are tagged with the given tag.
+        Lists all workflow file executions that are tagged with the given tag.
 
         Args:
-            tag (str): The tag to filter workflow executions by.
+            tag (str): The tag to filter workflow file executions by.
 
         Returns:
-            QuerySet: A QuerySet containing the filtered WorkflowExecution objects.
+            QuerySet: A QuerySet containing the filtered WorkflowFileExecution objects.
         """
         return WorkflowFileExecution.objects.filter(workflow_execution__tags=tag)

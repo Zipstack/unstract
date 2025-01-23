@@ -41,8 +41,8 @@ class TagParamsSerializer(serializers.Serializer):
         # Check maximum number of tags
         if len(tags) > self.MAX_TAGS_ALLOWED:
             raise ValidationError(
-                f"Maximum {self.MAX_TAGS_ALLOWED} tags allowed. "
-                f"You provided {len(tags)} tags."
+                f"Maximum '{self.MAX_TAGS_ALLOWED}' tags allowed. "
+                f"You provided '{len(tags)}' tags."
             )
 
         # Validate tags
