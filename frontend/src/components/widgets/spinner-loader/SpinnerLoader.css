@@ -1,23 +1,17 @@
 /* Styles for SpinnerLoader */
 
-.spinner-loader-layout {
-    display: flex;
-    width: 100%;
-    height: 100%;
-}
-
 .spinner-loader-layout .ant-spin-dot-item {
-  background-color: #FFB400 !important; /* Change the color of the first dot */
+  background-color: #ffb400 !important; /* Change the color of the first dot */
 }
 
 .spinner-loader-layout .ant-spin-dot-item:nth-child(2) {
-  background-color: #00A6ED !important; /* Change the color of the second dot */
+  background-color: #00a6ed !important; /* Change the color of the second dot */
 }
 
 .spinner-loader-layout .ant-spin-dot-item:nth-child(3) {
-  background-color: #7FB800 !important; /* Change the color of the third dot */
+  background-color: #7fb800 !important; /* Change the color of the third dot */
 }
 
 .spinner-loader-layout .ant-spin-dot-item:nth-child(4) {
-  background-color: #FF4D6D !important; /* Change the color of the fourth dot */
+  background-color: #ff4d6d !important; /* Change the color of the fourth dot */
 }

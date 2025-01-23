@@ -4,7 +4,15 @@ import PropTypes from "prop-types";
 
 import { RjsfWidgetLayout } from "../../../layouts/rjsf-widget-layout/RjsfWidgetLayout.jsx";
 
-const DateWidget = ({ id, value, onChange, label, schema, required }) => {
+const DateWidget = ({
+  id,
+  value,
+  onChange,
+  label,
+  schema,
+  required,
+  readonly,
+}) => {
   const description = schema?.description || "";
   const handleDateChange = (date) => {
     onChange(date?.toISOString());
@@ -20,6 +28,7 @@ const DateWidget = ({ id, value, onChange, label, schema, required }) => {
         id={id}
         value={value ? moment(value) : null}
         onChange={handleDateChange}
+        disabled={readonly}
       />
     </RjsfWidgetLayout>
   );
@@ -32,6 +41,7 @@ DateWidget.propTypes = {
   label: PropTypes.string.isRequired,
   schema: PropTypes.object.isRequired,
   required: PropTypes.bool,
+  readonly: PropTypes.bool.isRequired,
 };
 
 export { DateWidget };
