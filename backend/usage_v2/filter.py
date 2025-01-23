@@ -1,4 +1,3 @@
-# import datetime
 from typing import Any
 
 from django.db.models import Q, QuerySet
