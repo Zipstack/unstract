@@ -9,7 +9,6 @@ from tags.helper import TagHelper
 from tags.models import Tag
 from tags.serializers import TagSerializer
 from utils.pagination import CustomPagination
-from utils.user_context import UserContext
 from workflow_manager.file_execution.serializers import WorkflowFileExecutionSerializer
 from workflow_manager.workflow_v2.serializers import WorkflowExecutionSerializer
 
@@ -23,10 +22,12 @@ class TagViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """
-        Returns a queryset filtered by the current user's organization.
+        Retrieve the base queryset for the Tag model, allowing additional
+        filtering or customization if needed. Defaults to using the manager's
+        get_queryset method.
+
         """
-        user_organization = UserContext.get_organization()
-        return Tag.objects.filter(organization=user_organization)
+        return Tag.objects.get_queryset()
 
     @action(detail=True, methods=["get"], url_path="workflow-executions")
     def workflow_executions(self, request, pk=None):
