@@ -2,7 +2,6 @@ import json
 import logging
 from typing import Any, Optional
 
-from cryptography.fernet import Fernet
 from account_v2.models import User
 from adapter_processor_v2.constants import AdapterKeys, AllowedDomains
 from adapter_processor_v2.exceptions import (
@@ -10,6 +9,7 @@ from adapter_processor_v2.exceptions import (
     InValidAdapterId,
     TestAdapterError,
 )
+from cryptography.fernet import Fernet
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
@@ -25,9 +25,7 @@ from .models import AdapterInstance, UserDefaultAdapter
 logger = logging.getLogger(__name__)
 
 try:
-    from plugins.subscription.time_trials.subscription_adapter import (
-        add_unstract_key
-    )
+    from plugins.subscription.time_trials.subscription_adapter import add_unstract_key
 except ImportError:
     add_unstract_key = None
 
@@ -100,8 +98,10 @@ class AdapterProcessor:
 
             if adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE) == AdapterKeys.X2TEXT:
 
-                if adapter_metadata.get('use_platform_provided_unstract_key') and \
-                        add_unstract_key:
+                if (
+                    adapter_metadata.get("use_platform_provided_unstract_key")
+                    and add_unstract_key
+                ):
                     adapter_metadata = add_unstract_key(adapter_metadata)
                 adapter_metadata[X2TextConstants.X2TEXT_HOST] = settings.X2TEXT_HOST
                 adapter_metadata[X2TextConstants.X2TEXT_PORT] = settings.X2TEXT_PORT
@@ -129,9 +129,7 @@ class AdapterProcessor:
             )
             adapter_metadata = add_unstract_key(adapter_metadata)
 
-            adapter_metadata_b = f.encrypt(
-                json.dumps(adapter_metadata).encode("utf-8")
-            )
+            adapter_metadata_b = f.encrypt(json.dumps(adapter_metadata).encode("utf-8"))
             return adapter_metadata_b
         return adapter_metadata_b
 

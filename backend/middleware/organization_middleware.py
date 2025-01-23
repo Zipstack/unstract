@@ -13,8 +13,7 @@ class OrganizationMiddleware(MiddlewareMixin):
         match = re.match(pattern, request.path)
         if match:
             # Check if the request path matches any of the whitelisted paths
-            if any(re.match(path, request.path)
-                    for path in settings.WHITELISTED_PATHS):
+            if any(re.match(path, request.path) for path in settings.WHITELISTED_PATHS):
                 request.path_info = "/" + request.path_info
                 return
 
