@@ -237,10 +237,15 @@ class DestinationConnector(BaseConnector):
 
         try:
             destination_fs.create_dir_if_not_exists(input_dir=output_directory)
-
             # Traverse local directory and create the same structure in the
             # output_directory
-            for root, dirs, files in os.walk(destination_volume_path):
+            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+                file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+                fs = file_system.get_file_storage()
+                dir_path = fs.walk(str(destination_volume_path))
+            else:
+                dir_path = os.walk(destination_volume_path)
+            for root, dirs, files in dir_path:
                 for dir_name in dirs:
                     current_dir = os.path.join(
                         output_directory,
@@ -504,7 +509,8 @@ class DestinationConnector(BaseConnector):
         if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
             file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
             file_storage = file_system.get_file_storage()
-            file_storage.rm(self.execution_dir, recursive=True)
+            if file_storage.exists(self.execution_dir):
+                file_storage.rm(self.execution_dir, recursive=True)
         else:
             fs: LocalFileSystem = fsspec.filesystem("file")
             fs.rm(self.execution_dir, recursive=True)
@@ -523,7 +529,8 @@ class DestinationConnector(BaseConnector):
         if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
             file_system = FileSystem(FileStorageType.API_EXECUTION)
             file_storage = file_system.get_file_storage()
-            file_storage.rm(api_storage_dir, recursive=True)
+            if file_storage.exists(api_storage_dir):
+                file_storage.rm(api_storage_dir, recursive=True)
         else:
             fs: LocalFileSystem = fsspec.filesystem("file")
             fs.rm(api_storage_dir, recursive=True)
