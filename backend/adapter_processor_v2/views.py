@@ -169,26 +169,34 @@ class AdapterInstanceViewSet(ModelViewSet):
 
     def create(self, request: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
+
+        USE_PLATFORM_PROVIDED_UNSTRACT_KEY = False
+        adapter_metadata = request.data.get(AdapterKeys.ADAPTER_METADATA)
+        if (adapter_metadata and adapter_metadata.get(
+            "use_platform_provided_unstract_key", False
+        )):
+            USE_PLATFORM_PROVIDED_UNSTRACT_KEY = True
+
         serializer.is_valid(raise_exception=True)
         try:
             adapter_type = serializer.validated_data.get(
                 AdapterKeys.ADAPTER_TYPE
             )
-            adapter_metadata = serializer.validated_data.get(
-                AdapterKeys.ADAPTER_METADATA
-            )
-            # Update adapter_metadata if necessary
+
             if (
                 adapter_type == AdapterKeys.X2TEXT
-                and adapter_metadata.get("use_platform_provided_unstract_key")
+                and USE_PLATFORM_PROVIDED_UNSTRACT_KEY
             ):
-                adapter_metadata = AdapterProcessor.update_adapter_metadata(
-                    adapter_metadata
+                adapter_metadata_b = serializer.validated_data.get(
+                    AdapterKeys.ADAPTER_METADATA_B
+                )
+                adapter_metadata_b = AdapterProcessor.update_adapter_metadata(
+                    adapter_metadata_b
                 )
                 # Update the validated data with the new adapter_metadata
                 serializer.validated_data[
-                    AdapterKeys.ADAPTER_METADATA
-                ] = adapter_metadata
+                    AdapterKeys.ADAPTER_METADATA_B
+                ] = adapter_metadata_b
 
             instance = serializer.save()
             organization_member = OrganizationMemberService.get_user_by_id(

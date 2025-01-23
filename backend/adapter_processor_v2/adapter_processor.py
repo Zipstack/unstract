@@ -2,6 +2,7 @@ import json
 import logging
 from typing import Any, Optional
 
+from cryptography.fernet import Fernet
 from account_v2.models import User
 from adapter_processor_v2.constants import AdapterKeys, AllowedDomains
 from adapter_processor_v2.exceptions import (
@@ -118,11 +119,21 @@ class AdapterProcessor:
             )
 
     @staticmethod
-    def update_adapter_metadata(adapter_metadata: dict[str, Any]) -> Any:
+    def update_adapter_metadata(adapter_metadata_b: Any) -> Any:
         if add_unstract_key:
+            encryption_secret: str = settings.ENCRYPTION_KEY
+            f: Fernet = Fernet(encryption_secret.encode("utf-8"))
+
+            adapter_metadata = json.loads(
+                f.decrypt(bytes(adapter_metadata_b).decode("utf-8"))
+            )
             adapter_metadata = add_unstract_key(adapter_metadata)
-            return adapter_metadata
-        return adapter_metadata
+
+            adapter_metadata_b = f.encrypt(
+                json.dumps(adapter_metadata).encode("utf-8")
+            )
+            return adapter_metadata_b
+        return adapter_metadata_b
 
     @staticmethod
     def __fetch_adapters_by_key_value(key: str, value: Any) -> Adapter:
