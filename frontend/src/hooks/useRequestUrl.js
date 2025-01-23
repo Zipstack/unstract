@@ -6,7 +6,7 @@ const useRequestUrl = () => {
   const getUrl = (url) => {
     if (!url) return null;
 
-    const baseUrl = `/api/v1/${sessionDetails?.orgId}/`;
+    const baseUrl = `/api/v1/unstract/${sessionDetails?.orgId}/`;
     return baseUrl + url.replace(/^\//, "");
   };
 
