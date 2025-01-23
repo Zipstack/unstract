@@ -13,7 +13,10 @@ class TagSerializer(serializers.ModelSerializer):
 
 
 class TagParamsSerializer(serializers.Serializer):
-    MAX_TAGS_ALLOWED = 5
+    # Currently limited to 1 tag per request to maintain compatibility with
+    # LLM Whisperer integration. Consider increasing the limit once LLM Whisperer
+    # supports multiple tags
+    MAX_TAGS_ALLOWED = 1
     tags = CharField(
         required=False,
         allow_blank=True,
