@@ -171,6 +171,25 @@ class AdapterInstanceViewSet(ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
+            adapter_type = serializer.validated_data.get(
+                AdapterKeys.ADAPTER_TYPE
+            )
+            adapter_metadata = serializer.validated_data.get(
+                AdapterKeys.ADAPTER_METADATA
+            )
+            # Update adapter_metadata if necessary
+            if (
+                adapter_type == AdapterKeys.X2TEXT
+                and adapter_metadata.get("use_platform_provided_unstract_key")
+            ):
+                adapter_metadata = AdapterProcessor.update_adapter_metadata(
+                    adapter_metadata
+                )
+                # Update the validated data with the new adapter_metadata
+                serializer.validated_data[
+                    AdapterKeys.ADAPTER_METADATA
+                ] = adapter_metadata
+
             instance = serializer.save()
             organization_member = OrganizationMemberService.get_user_by_id(
                 request.user.id
@@ -185,7 +204,6 @@ class AdapterInstanceViewSet(ModelViewSet):
                 organization_member=organization_member
             )
 
-            adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
             if (adapter_type == AdapterKeys.LLM) and (
                 not user_default_adapter.default_llm_adapter
             ):

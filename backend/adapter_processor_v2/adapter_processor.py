@@ -102,7 +102,6 @@ class AdapterProcessor:
                 if adapter_metadata.get('use_platform_provided_unstract_key') and \
                         add_unstract_key:
                     adapter_metadata = add_unstract_key(adapter_metadata)
-
                 adapter_metadata[X2TextConstants.X2TEXT_HOST] = settings.X2TEXT_HOST
                 adapter_metadata[X2TextConstants.X2TEXT_PORT] = settings.X2TEXT_PORT
                 platform_key = PlatformAuthenticationService.get_active_platform_key()
@@ -117,6 +116,13 @@ class AdapterProcessor:
             raise TestAdapterError(
                 e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]
             )
+
+    @staticmethod
+    def update_adapter_metadata(adapter_metadata: dict[str, Any]) -> Any:
+        if add_unstract_key:
+            adapter_metadata = add_unstract_key(adapter_metadata)
+            return adapter_metadata
+        return adapter_metadata
 
     @staticmethod
     def __fetch_adapters_by_key_value(key: str, value: Any) -> Adapter:
