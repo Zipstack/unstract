@@ -1,10 +1,12 @@
 import { Form, Select, Space, Typography } from "antd";
 import PropTypes from "prop-types";
+
 import CustomMarkdown from "../../helpers/custom-markdown/CustomMarkdown";
 
 const { Option } = Select;
 const SelectWidget = (props) => {
-  const { id, value, options, onChange, label, schema, rawErrors } = props;
+  const { id, value, options, onChange, label, schema, rawErrors, readonly } =
+    props;
   const description = schema?.description || "";
 
   const handleSelectChange = (selectedValue) => {
@@ -22,6 +24,7 @@ const SelectWidget = (props) => {
             value={value}
             onChange={handleSelectChange}
             showSearch
+            disabled={readonly}
           >
             {options?.enumOptions &&
               options.enumOptions.map((option, index) => (
@@ -51,6 +54,7 @@ SelectWidget.propTypes = {
   rawErrors: PropTypes.array,
   label: PropTypes.string.isRequired,
   schema: PropTypes.object.isRequired,
+  readonly: PropTypes.bool.isRequired,
 };
 
 export { SelectWidget };

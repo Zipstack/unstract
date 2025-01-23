@@ -3,7 +3,13 @@ from typing import Any, Optional
 
 from helper import ClassifierHelper  # type: ignore
 from helper import ReservedBins
-from unstract.sdk.constants import LogLevel, LogState, MetadataKey, ToolSettingsKey
+from unstract.sdk.constants import (
+    LogLevel,
+    LogState,
+    MetadataKey,
+    ToolSettingsKey,
+    UsageKwargs,
+)
 from unstract.sdk.exceptions import SdkError
 from unstract.sdk.llm import LLM
 from unstract.sdk.tool.base import BaseTool
@@ -80,8 +86,10 @@ class UnstractClassifier(BaseTool):
         bins_with_quotes = [f"'{b}'" for b in bins]
 
         usage_kwargs: dict[Any, Any] = dict()
-        usage_kwargs["workflow_id"] = self.workflow_id
-        usage_kwargs["execution_id"] = self.execution_id
+        usage_kwargs[UsageKwargs.WORKFLOW_ID] = self.workflow_id
+        usage_kwargs[UsageKwargs.EXECUTION_ID] = self.execution_id
+        usage_kwargs[UsageKwargs.FILE_NAME] = self.source_file_name
+        usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
 
         try:
             llm = LLM(
