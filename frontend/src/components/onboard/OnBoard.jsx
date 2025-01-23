@@ -8,7 +8,7 @@ import ConnectLLM from "../../assets/connect_llm.svg";
 import ConnectVectorDb from "../../assets/connect_vector_db.svg";
 import ConnectEmbedding from "../../assets/connect_embedding.svg";
 import ConnectTextExtractor from "../../assets/connect_x2text.svg";
-import { onboardCompleted } from "../../helpers/GetStaticData.js";
+import { homePagePath, onboardCompleted } from "../../helpers/GetStaticData.js";
 import { useSessionStore } from "../../store/session-store.js";
 import { AddSourceModal } from "../input-output/add-source-modal/AddSourceModal.jsx";
 import { CustomButton } from "../widgets/custom-button/CustomButton.jsx";
@@ -22,7 +22,7 @@ function OnBoard() {
   const [openAddSourcesModal, setOpenAddSourcesModal] = useState(false);
   const [editItemId, setEditItemId] = useState(null);
   const [type, setType] = useState(null);
-  const homePageUrl = `/${orgName}/tools`;
+  const homePageUrl = `/${orgName}/${homePagePath}`;
   const [adaptersList, setAdaptersList] = useState(adapters || []);
   useEffect(() => {
     if (onboardCompleted(adaptersList)) {
