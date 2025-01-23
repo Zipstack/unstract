@@ -10,6 +10,22 @@ import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { ConfigureDs } from "../configure-ds/ConfigureDs";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
+let transformLlmWhispererJsonSchema;
+let LLMW_V2_ID;
+let PLAN_TYPES;
+let unstractSubscriptionPlanStore;
+try {
+  transformLlmWhispererJsonSchema =
+    require("../../../plugins/unstract-subscription/helper/transformLlmWhispererJsonSchema").transformLlmWhispererJsonSchema;
+  LLMW_V2_ID =
+    require("../../../plugins/unstract-subscription/helper/transformLlmWhispererJsonSchema").LLMW_V2_ID;
+  PLAN_TYPES =
+    require("../../../plugins/unstract-subscription/helper/constants").PLAN_TYPES;
+  unstractSubscriptionPlanStore = require("../../../plugins/store/unstract-subscription-plan-store");
+} catch (err) {
+  // Ignore if not available
+}
+
 function AddSource({
   selectedSourceId,
   selectedSourceName,
@@ -31,6 +47,13 @@ function AddSource({
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+
+  let planType;
+  if (unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore) {
+    planType = unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore(
+      (state) => state?.unstractSubscriptionPlan?.planType
+    );
+  }
 
   useEffect(() => {
     if (!selectedSourceId) {
@@ -56,7 +79,19 @@ function AddSource({
       .then((res) => {
         const data = res?.data;
         setFormData(metadata || {});
-        setSpec(data?.json_schema || {});
+
+        if (
+          LLMW_V2_ID &&
+          transformLlmWhispererJsonSchema &&
+          PLAN_TYPES &&
+          selectedSourceId === LLMW_V2_ID &&
+          planType === PLAN_TYPES?.PAID
+        ) {
+          setSpec(transformLlmWhispererJsonSchema(data?.json_schema || {}));
+        } else {
+          setSpec(data?.json_schema || {});
+        }
+
         if (data?.oauth) {
           setOAuthProvider(data?.python_social_auth_backend);
         } else {
