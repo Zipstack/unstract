@@ -100,6 +100,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.pipeline_id = pipeline_id
         self.execution_id = str(workflow_execution.id)
         self.use_file_history = use_file_history
+        self.tags = workflow_execution.tag_names
         logger.info(
             f"Executing for Pipeline ID: {pipeline_id}, "
             f"workflow ID: {self.workflow_id}, execution ID: {self.execution_id}, "

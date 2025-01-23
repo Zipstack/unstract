@@ -43,6 +43,7 @@ class MetaDataKey:
     FILE_EXECUTION_ID = "file_execution_id"
     ORGANIZATION_ID = "organization_id"
     TOOL_METADATA = "tool_metadata"
+    TAGS = "tags"
 
 
 class ToolMetadataKey:

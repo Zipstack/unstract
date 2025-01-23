@@ -64,6 +64,16 @@ class WorkflowExecution(BaseModel):
     )
     tags = models.ManyToManyField(Tag, related_name="workflow_executions", blank=True)
 
+    class Meta:
+        verbose_name = "Workflow Execution"
+        verbose_name_plural = "Workflow Executions"
+        db_table = "workflow_execution"
+
+    @property
+    def tag_names(self) -> list[str]:
+        """Return a list of tag names associated with the workflow execution."""
+        return list(self.tags.values_list("name", flat=True))
+
     def __str__(self) -> str:
         return (
             f"Workflow execution: {self.id} ("
@@ -73,8 +83,3 @@ class WorkflowExecution(BaseModel):
             f"status: {self.status}, "
             f"error message: {self.error_message})"
         )
-
-    class Meta:
-        verbose_name = "Workflow Execution"
-        verbose_name_plural = "Workflow Executions"
-        db_table = "workflow_execution"
