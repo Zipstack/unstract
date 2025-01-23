@@ -307,7 +307,7 @@ function ManageDocsModal({
 
   const columns = [
     {
-      title: "Document",
+      title: "Document Variants",
       dataIndex: "document",
       key: "document",
     },
@@ -580,7 +580,7 @@ function ManageDocsModal({
       setIsUploading(false);
       setAlertDetails({
         type: "error",
-        content: "Failed to upload",
+        content: info?.file?.response?.errors[0]?.detail || "Failed to Upload",
       });
     }
   };
@@ -663,7 +663,7 @@ function ManageDocsModal({
           <SpaceWrapper>
             <Space>
               <Typography.Text className="add-cus-tool-header">
-                Manage Documents
+                Manage Document Variants
               </Typography.Text>
             </Space>
             <div>
