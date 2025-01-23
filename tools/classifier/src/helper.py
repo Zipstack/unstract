@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from unstract.sdk.cache import ToolCache
-from unstract.sdk.constants import LogLevel, MetadataKey, ToolEnv
+from unstract.sdk.constants import LogLevel, MetadataKey, ToolEnv, UsageKwargs
 from unstract.sdk.llm import LLM
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.utils import ToolUtils
@@ -139,14 +139,25 @@ class ClassifierHelper:
         self.tool.stream_log(
             f"Creating text extraction adapter using adapter_id: {adapter_id}"
         )
-        x2text = X2Text(tool=self.tool, adapter_instance_id=adapter_id)
+        usage_kwargs: dict[Any, Any] = dict()
+        usage_kwargs[UsageKwargs.FILE_NAME] = self.tool.source_file_name
+        usage_kwargs[UsageKwargs.RUN_ID] = self.tool.file_execution_id
+
+        x2text = X2Text(
+            tool=self.tool, adapter_instance_id=adapter_id, usage_kwargs=usage_kwargs
+        )
 
         self.tool.stream_log("Text extraction adapter has been created successfully.")
 
         try:
-            extraction_result: TextExtractionResult = x2text.process(
-                input_file_path=file, fs=self.tool.workflow_filestorage
-            )
+            if self.tool.workflow_filestorage:
+                extraction_result: TextExtractionResult = x2text.process(
+                    input_file_path=file, fs=self.tool.workflow_filestorage
+                )
+            else:
+                extraction_result: TextExtractionResult = x2text.process(
+                    input_file_path=file
+                )
             extracted_text: str = extraction_result.extracted_text
             return extracted_text
         except Exception as e:

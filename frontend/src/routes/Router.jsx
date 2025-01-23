@@ -19,9 +19,9 @@ let SimplePromptStudioHelper;
 let SimplePromptStudio;
 let SpsLanding;
 let SpsUpload;
-let TrialRoutes;
 let PaymentSuccessful;
 let SelectProduct;
+let UnstractSubscriptionEndPage;
 try {
   SimplePromptStudioHelper =
     require("../plugins/simple-prompt-studio/SimplePromptStudioHelper.jsx").SimplePromptStudioHelper;
@@ -57,8 +57,8 @@ try {
 }
 
 try {
-  TrialRoutes =
-    require("../plugins/subscription/trial-page/TrialEndPage.jsx").TrialEndPage;
+  UnstractSubscriptionEndPage =
+    require("../plugins/unstract-subscription/pages/UnstractSubscriptionEndPage.jsx").UnstractSubscriptionEndPage;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
@@ -116,14 +116,17 @@ function Router() {
         {SelectProduct && (
           <Route path="selectProduct" element={<SelectProduct />} />
         )}
-        {TrialRoutes && (
-          <Route path="/trial-expired" element={<TrialRoutes />} />
+        {UnstractSubscriptionEndPage && (
+          <Route
+            path="/subscription-expired"
+            element={<UnstractSubscriptionEndPage />}
+          />
         )}
         {PaymentSuccessful && (
           <Route path="/payment/success" element={<PaymentSuccessful />} />
         )}
         <Route path="" element={<RequireAuth />}>
-          <Route path="">{MainAppRoute}</Route>
+          {MainAppRoute}
           {llmWhispererRouter && (
             <Route path="llm-whisperer">{llmWhispererRouter()}</Route>
           )}
