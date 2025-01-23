@@ -6,13 +6,12 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
-from unstract.sdk.constants import LogLevel, LogState, MetadataKey, ToolEnv
+from unstract.sdk.constants import LogLevel, LogState, MetadataKey, ToolEnv, UsageKwargs
 from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
 from unstract.sdk.utils import ToolUtils
-from unstract.sdk.utils.common_utils import CommonUtils
 from utils import json_to_markdown
 
 logger = logging.getLogger(__name__)
@@ -46,7 +45,6 @@ class StructureTool(BaseTool):
         )
         challenge_llm: str = settings.get(SettingsKeys.CHALLENGE_LLM_ADAPTER_ID, "")
         enable_highlight: bool = settings.get(SettingsKeys.ENABLE_HIGHLIGHT, False)
-        source_file_name = self.get_exec_metadata.get(MetadataKey.SOURCE_NAME)
         responder: PromptTool = PromptTool(
             tool=self,
             prompt_port=self.get_env_or_die(SettingsKeys.PROMPT_PORT),
@@ -74,8 +72,8 @@ class StructureTool(BaseTool):
             f"## Loaded '{ps_project_name}'\n{json_to_markdown(tool_metadata)}\n"
         )
         output_log = (
-            f"## Processing '{source_file_name}'\nThis might take a while and involve"
-            "...\n- Extracting text\n- Indexing\n- Retrieving answers "
+            f"## Processing '{self.source_file_name}'\nThis might take a while and "
+            "involve...\n- Extracting text\n- Indexing\n- Retrieving answers "
             f"for possibly '{total_prompt_count}' prompts"
         )
         self.stream_update(input_log, state=LogState.INPUT_UPDATE)
@@ -103,17 +101,17 @@ class StructureTool(BaseTool):
         execution_run_data_folder = Path(
             self.get_env_or_die(SettingsKeys.EXECUTION_RUN_DATA_FOLDER)
         )
-        run_id = CommonUtils.generate_uuid()
+
         index = Index(
             tool=self,
-            run_id=run_id,
+            run_id=self.file_execution_id,
             capture_metrics=True,
         )
         index_metrics = {}
         extracted_input_file = str(execution_run_data_folder / SettingsKeys.EXTRACT)
         # TODO : Resolve and pass log events ID
         payload = {
-            SettingsKeys.RUN_ID: run_id,
+            SettingsKeys.RUN_ID: self.file_execution_id,
             SettingsKeys.TOOL_SETTINGS: tool_settings,
             SettingsKeys.OUTPUTS: outputs,
             SettingsKeys.TOOL_ID: tool_id,
@@ -124,10 +122,10 @@ class StructureTool(BaseTool):
         }
         # TODO: Need to split extraction and indexing
         # to avoid unwanted indexing
-        self.stream_log(f"Indexing document '{source_file_name}'")
+        self.stream_log(f"Indexing document '{self.source_file_name}'")
         usage_kwargs: dict[Any, Any] = dict()
-        usage_kwargs[SettingsKeys.RUN_ID] = run_id
-        usage_kwargs[SettingsKeys.FILE_NAME] = source_file_name
+        usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
+        usage_kwargs[UsageKwargs.FILE_NAME] = self.source_file_name
 
         process_text: Optional[Callable[[str], str]] = None
         try:
@@ -250,7 +248,7 @@ class StructureTool(BaseTool):
         if SettingsKeys.METADATA in structured_output_dict:
             structured_output_dict[SettingsKeys.METADATA][
                 SettingsKeys.FILE_NAME
-            ] = source_file_name
+            ] = self.source_file_name
 
         if not summarize_as_source:
             metadata = structured_output_dict[SettingsKeys.METADATA]
@@ -285,8 +283,7 @@ class StructureTool(BaseTool):
         # Write the translated text to output file
         try:
             self.stream_log("Writing parsed output...")
-            source_name = self.get_exec_metadata.get(MetadataKey.SOURCE_NAME)
-            output_path = Path(output_dir) / f"{Path(source_name).stem}.json"
+            output_path = Path(output_dir) / f"{Path(self.source_file_name).stem}.json"
             if self.workflow_filestorage:
                 self.workflow_filestorage.json_dump(
                     path=output_path, data=structured_output_dict
@@ -329,7 +326,7 @@ class StructureTool(BaseTool):
         vector_db_instance_id: str = tool_settings[SettingsKeys.VECTOR_DB]
         x2text_instance_id: str = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
         summarize_prompt: str = tool_settings[SettingsKeys.SUMMARIZE_PROMPT]
-        run_id: str = usage_kwargs.get(SettingsKeys.RUN_ID)
+        run_id: str = usage_kwargs.get(UsageKwargs.RUN_ID)
         extract_file_path = tool_data_dir / SettingsKeys.EXTRACT
         summarize_file_path = tool_data_dir / SettingsKeys.SUMMARIZE
 

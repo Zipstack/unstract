@@ -103,7 +103,9 @@ class ExecutionFileHandler:
             raise ToolMetadataNotFound()
         return tool_metadata[-1]
 
-    def add_metadata_to_volume(self, input_file_path: str, source_hash: str) -> None:
+    def add_metadata_to_volume(
+        self, input_file_path: str, file_execution_id: str, source_hash: str
+    ) -> None:
         """Creating metadata for workflow. This method is responsible for
         creating metadata for the workflow. It takes the input file path and
         the source hash as parameters. The metadata is stored in a JSON file in
@@ -111,6 +113,7 @@ class ExecutionFileHandler:
 
         Parameters:
             input_file_path (str): The path of the input file.
+            file_execution_id (str): Unique execution id for the file.
             source_hash (str): The hash value of the source/input file.
 
         Returns:
@@ -127,6 +130,7 @@ class ExecutionFileHandler:
             MetaDataKey.ORGANIZATION_ID: str(self.organization_id),
             MetaDataKey.WORKFLOW_ID: str(self.workflow_id),
             MetaDataKey.EXECUTION_ID: str(self.execution_id),
+            MetaDataKey.FILE_EXECUTION_ID: str(file_execution_id),
         }
         if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
             file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
