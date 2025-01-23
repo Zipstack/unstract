@@ -170,20 +170,22 @@ class AdapterInstanceViewSet(ModelViewSet):
     def create(self, request: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
 
-        USE_PLATFORM_PROVIDED_UNSTRACT_KEY = False
+        use_platform_unstract_key = False
         adapter_metadata = request.data.get(AdapterKeys.ADAPTER_METADATA)
         if adapter_metadata and adapter_metadata.get(
-            "use_platform_provided_unstract_key", False
+            AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY, False
         ):
-            USE_PLATFORM_PROVIDED_UNSTRACT_KEY = True
+            use_platform_unstract_key = True
 
         serializer.is_valid(raise_exception=True)
         try:
-            adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+            adapter_type = serializer.validated_data.get(
+                AdapterKeys.ADAPTER_TYPE
+            )
 
             if (
                 adapter_type == AdapterKeys.X2TEXT
-                and USE_PLATFORM_PROVIDED_UNSTRACT_KEY
+                and use_platform_unstract_key
             ):
                 adapter_metadata_b = serializer.validated_data.get(
                     AdapterKeys.ADAPTER_METADATA_B

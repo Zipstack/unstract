@@ -451,6 +451,9 @@ WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
 # Whitelisting health check API
 WHITELISTED_PATHS.append("/health")
 
+# These path will work without organization in request
+ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS = []
+
 # API Doc Generator Settings
 # https://drf-yasg.readthedocs.io/en/stable/settings.html
 REDOC_SETTINGS = {
