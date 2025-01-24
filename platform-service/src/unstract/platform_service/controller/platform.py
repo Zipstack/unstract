@@ -198,7 +198,7 @@ def usage() -> Any:
     workflow_id = payload.get("workflow_id")
     execution_id = payload.get("execution_id", "")
     adapter_instance_id = payload.get("adapter_instance_id", "")
-    run_id = payload.get("run_id", "")
+    run_id = payload.get("run_id")
     usage_type = payload.get("usage_type", "")
     llm_usage_reason = payload.get("llm_usage_reason", "")
     model_name = payload.get("model_name", "")
