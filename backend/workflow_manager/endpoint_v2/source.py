@@ -598,13 +598,17 @@ class SourceConnector(BaseConnector):
                 seek_position += len(chunk)
 
     def add_file_to_volume(
-        self, input_file_path: str, workflow_file_execution: WorkflowFileExecution
+        self,
+        input_file_path: str,
+        workflow_file_execution: WorkflowFileExecution,
+        tags=list[str],
     ) -> str:
         """Add input file to execution directory.
 
         Args:
             input_file_path (str): source file
             workflow_file_execution: WorkflowFileExecution model
+            tags (list[str]): Tag names associated with the workflow execution.
 
         Raises:
             InvalidSource: _description_
@@ -632,6 +636,7 @@ class SourceConnector(BaseConnector):
             input_file_path=input_file_path,
             file_execution_id=workflow_file_execution.id,
             source_hash=file_content_hash,
+            tags=tags,
         )
         return file_name
 
