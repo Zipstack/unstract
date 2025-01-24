@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:8840d46b34ffa521b5a4d19a7e22636a1e34669bfb52dac91d8bf6ffa2dce6f3"
+content_hash = "sha256:082fcff0302d049c12d2ad56e54cc76ad29a4c9e5c52d242a63190c5ce8ac2a1"
 
 [[package]]
 name = "adlfs"
@@ -4991,7 +4991,7 @@ path = "../unstract/filesystem"
 summary = "Unstract filesystem package"
 groups = ["default", "dev"]
 dependencies = [
-    "unstract-sdk~=0.55.0rc2",
+    "unstract-sdk~=0.56.0rc3",
 ]
 
 [[package]]
@@ -5009,7 +5009,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.55.0rc2"
+version = "0.56.0rc3"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default", "dev"]
@@ -5048,8 +5048,8 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.55.0rc2-py3-none-any.whl", hash = "sha256:d3cdd3c06f3b773ecf26f2abc0f71f89e5bbc9748b1ddb0ea5a29c4164c28da3"},
-    {file = "unstract_sdk-0.55.0rc2.tar.gz", hash = "sha256:d4cb9a58a7740b01854e372472901761e86e64eca83d6250ff17b047ad25b39c"},
+    {file = "unstract_sdk-0.56.0rc3-py3-none-any.whl", hash = "sha256:abc8ee27b4eaa9694f272460b2696ed2798ff60b9b12539d327cdeaacbb02914"},
+    {file = "unstract_sdk-0.56.0rc3.tar.gz", hash = "sha256:f09db70f91fe5405918a27b91b3807d812b223dae54b9ad1f688f02a88512bb1"},
 ]
 
 [[package]]
@@ -5065,7 +5065,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
     "unstract-flags",
-    "unstract-sdk~=0.55.0rc2",
+    "unstract-sdk~=0.56.0rc3",
     "unstract-tool-sandbox",
 ]
 

@@ -5,7 +5,7 @@
 groups = ["default"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:5111c92e7ad214e27e366db8473c173d245113e0696d3b4625b004b79a6a9a3f"
+content_hash = "sha256:0feefc31b976567b21f22a884beec5e403b86fc5dda1eb7be2ad6e8c8be76205"
 
 [[package]]
 name = "aiohappyeyeballs"
@@ -110,7 +110,7 @@ files = [
 
 [[package]]
 name = "anthropic"
-version = "0.44.0"
+version = "0.45.0"
 requires_python = ">=3.8"
 summary = "The official Python library for the anthropic API"
 groups = ["default"]
@@ -124,26 +124,26 @@ dependencies = [
     "typing-extensions<5,>=4.10",
 ]
 files = [
-    {file = "anthropic-0.44.0-py3-none-any.whl", hash = "sha256:7087ccfc8ed7b164f971e094495cd3aeabac1e435fa393480cc146c87946c21c"},
-    {file = "anthropic-0.44.0.tar.gz", hash = "sha256:dc5c91c8b0463f97513d2e79350511ef295a56910bac4fbbe9491016c71f2ef0"},
+    {file = "anthropic-0.45.0-py3-none-any.whl", hash = "sha256:f36aff71d2c232945e64d1970be68a91b05a2ef5e3afa6c1ff195c3303a95ad3"},
+    {file = "anthropic-0.45.0.tar.gz", hash = "sha256:4e8541dc355332090bfc51b84549c19b649a13a23dbd6bd68e1d012e08551025"},
 ]
 
 [[package]]
 name = "anthropic"
-version = "0.44.0"
+version = "0.45.0"
 extras = ["bedrock", "vertex"]
 requires_python = ">=3.8"
 summary = "The official Python library for the anthropic API"
 groups = ["default"]
 dependencies = [
-    "anthropic==0.44.0",
+    "anthropic==0.45.0",
     "boto3>=1.28.57",
     "botocore>=1.31.57",
     "google-auth<3,>=2",
 ]
 files = [
-    {file = "anthropic-0.44.0-py3-none-any.whl", hash = "sha256:7087ccfc8ed7b164f971e094495cd3aeabac1e435fa393480cc146c87946c21c"},
-    {file = "anthropic-0.44.0.tar.gz", hash = "sha256:dc5c91c8b0463f97513d2e79350511ef295a56910bac4fbbe9491016c71f2ef0"},
+    {file = "anthropic-0.45.0-py3-none-any.whl", hash = "sha256:f36aff71d2c232945e64d1970be68a91b05a2ef5e3afa6c1ff195c3303a95ad3"},
+    {file = "anthropic-0.45.0.tar.gz", hash = "sha256:4e8541dc355332090bfc51b84549c19b649a13a23dbd6bd68e1d012e08551025"},
 ]
 
 [[package]]
@@ -287,23 +287,23 @@ files = [
 
 [[package]]
 name = "boto3"
-version = "1.36.4"
+version = "1.36.5"
 requires_python = ">=3.8"
 summary = "The AWS SDK for Python"
 groups = ["default"]
 dependencies = [
-    "botocore<1.37.0,>=1.36.4",
+    "botocore<1.37.0,>=1.36.5",
     "jmespath<2.0.0,>=0.7.1",
     "s3transfer<0.12.0,>=0.11.0",
 ]
 files = [
-    {file = "boto3-1.36.4-py3-none-any.whl", hash = "sha256:9f8f699e75ec63fcc98c4dd7290997c7c06c68d3ac8161ad4735fe71f5fe945c"},
-    {file = "boto3-1.36.4.tar.gz", hash = "sha256:eeceeb74ef8b65634d358c27aa074917f4449dc828f79301f1075232618eb502"},
+    {file = "boto3-1.36.5-py3-none-any.whl", hash = "sha256:a404ad5ec94ff40c176215a991bf62f0db5514a93a3dd361b7b2ab9660f811f4"},
+    {file = "boto3-1.36.5.tar.gz", hash = "sha256:58a6b7c3d5145b3ac04d4b6caa76223b8ef88004b4237444e553041e29581a11"},
 ]
 
 [[package]]
 name = "botocore"
-version = "1.36.4"
+version = "1.36.5"
 requires_python = ">=3.8"
 summary = "Low-level, data-driven core of boto 3."
 groups = ["default"]
@@ -314,8 +314,8 @@ dependencies = [
     "urllib3<1.27,>=1.25.4; python_version < \"3.10\"",
 ]
 files = [
-    {file = "botocore-1.36.4-py3-none-any.whl", hash = "sha256:3f183aa7bb0c1ba02171143a05f28a4438abdf89dd6b8c0a7727040375a90520"},
-    {file = "botocore-1.36.4.tar.gz", hash = "sha256:ef54f5e3316040b6ff775941e6ed052c3230dda0079d17d9f9e3c757375f2027"},
+    {file = "botocore-1.36.5-py3-none-any.whl", hash = "sha256:6d9f70afa9bf9d21407089dc22b8cc8ec6fa44866d4660858c062c74fc8555eb"},
+    {file = "botocore-1.36.5.tar.gz", hash = "sha256:234ed3d29a8954c37a551c933453bf14c6ae44a69a4f273ffef377a2612ca6a6"},
 ]
 
 [[package]]
@@ -711,7 +711,7 @@ files = [
 
 [[package]]
 name = "google-api-core"
-version = "2.24.1rc0"
+version = "2.24.1rc1"
 requires_python = ">=3.7"
 summary = "Google API client core library"
 groups = ["default"]
@@ -723,27 +723,27 @@ dependencies = [
     "requests<3.0.0.dev0,>=2.18.0",
 ]
 files = [
-    {file = "google_api_core-2.24.1rc0-py3-none-any.whl", hash = "sha256:3eba70aefbc0e87d87dc4602ca2174ab72a112501f1d0d60a9b183b45aa0c86d"},
-    {file = "google_api_core-2.24.1rc0.tar.gz", hash = "sha256:790c89649b86fb79b168b9955c9ed35612fbe966a89994675c193c26599859dc"},
+    {file = "google_api_core-2.24.1rc1-py3-none-any.whl", hash = "sha256:92ee3eed90a397a9f4dd13c034a36cbe7dba2a58e01e5668619847b68a527b73"},
+    {file = "google_api_core-2.24.1rc1.tar.gz", hash = "sha256:d1cf8265c8b0b171a87d84adc8709a5e48147ca529d6f96d6a2be613a195eb78"},
 ]
 
 [[package]]
 name = "google-api-core"
-version = "2.24.1rc0"
+version = "2.24.1rc1"
 extras = ["grpc"]
 requires_python = ">=3.7"
 summary = "Google API client core library"
 groups = ["default"]
 dependencies = [
-    "google-api-core==2.24.1rc0",
+    "google-api-core==2.24.1rc1",
     "grpcio-status<2.0.dev0,>=1.33.2",
     "grpcio-status<2.0.dev0,>=1.49.1; python_version >= \"3.11\"",
     "grpcio<2.0dev,>=1.33.2",
     "grpcio<2.0dev,>=1.49.1; python_version >= \"3.11\"",
 ]
 files = [
-    {file = "google_api_core-2.24.1rc0-py3-none-any.whl", hash = "sha256:3eba70aefbc0e87d87dc4602ca2174ab72a112501f1d0d60a9b183b45aa0c86d"},
-    {file = "google_api_core-2.24.1rc0.tar.gz", hash = "sha256:790c89649b86fb79b168b9955c9ed35612fbe966a89994675c193c26599859dc"},
+    {file = "google_api_core-2.24.1rc1-py3-none-any.whl", hash = "sha256:92ee3eed90a397a9f4dd13c034a36cbe7dba2a58e01e5668619847b68a527b73"},
+    {file = "google_api_core-2.24.1rc1.tar.gz", hash = "sha256:d1cf8265c8b0b171a87d84adc8709a5e48147ca529d6f96d6a2be613a195eb78"},
 ]
 
 [[package]]
@@ -1474,7 +1474,7 @@ files = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.12.12"
+version = "0.12.13"
 requires_python = "<4.0,>=3.9"
 summary = "Interface between LLMs and your data"
 groups = ["default"]
@@ -1504,8 +1504,8 @@ dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "llama_index_core-0.12.12-py3-none-any.whl", hash = "sha256:cea491e87f65e6b775b5aef95720de302b85af1bdc67d779c4b09170a30e5b98"},
-    {file = "llama_index_core-0.12.12.tar.gz", hash = "sha256:068b755bbc681731336e822f5977d7608585e8f759c6293ebd812e2659316a37"},
+    {file = "llama_index_core-0.12.13-py3-none-any.whl", hash = "sha256:9708bb594bbddffd6ff0767242e49d8978d1ba60a2e62e071d9d123ad2f17e6f"},
+    {file = "llama_index_core-0.12.13.tar.gz", hash = "sha256:77af0161246ce1de38efc17cb6438dfff9e9558af00bcfac7dd4d0b7325efa4b"},
 ]
 
 [[package]]
@@ -1785,7 +1785,7 @@ files = [
 
 [[package]]
 name = "llama-index-readers-file"
-version = "0.4.3"
+version = "0.4.4"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index readers file integration"
 groups = ["default"]
@@ -1797,8 +1797,8 @@ dependencies = [
     "striprtf<0.0.27,>=0.0.26",
 ]
 files = [
-    {file = "llama_index_readers_file-0.4.3-py3-none-any.whl", hash = "sha256:c669da967ea534e3af3660f9fd730c71c725288f5c57906bcce338414ebeee5c"},
-    {file = "llama_index_readers_file-0.4.3.tar.gz", hash = "sha256:07514bebed7ce431c1b3ef9279d09aa3d1bba8e342d661860a033355b98fb33a"},
+    {file = "llama_index_readers_file-0.4.4-py3-none-any.whl", hash = "sha256:01589a4895e2d4abad30294c9b0d2813520ee1f5164922ad92f11e64a1d65d6c"},
+    {file = "llama_index_readers_file-0.4.4.tar.gz", hash = "sha256:e076b3fa1e68eea1594d47cec1f64b384fb6067f2697ca8aae22b4a21ad27ca7"},
 ]
 
 [[package]]
@@ -2558,7 +2558,7 @@ files = [
 
 [[package]]
 name = "pydantic"
-version = "2.10.5"
+version = "2.10.6"
 requires_python = ">=3.8"
 summary = "Data validation using Python type hints"
 groups = ["default"]
@@ -2568,8 +2568,8 @@ dependencies = [
     "typing-extensions>=4.12.2",
 ]
 files = [
-    {file = "pydantic-2.10.5-py3-none-any.whl", hash = "sha256:4dd4e322dbe55472cb7ca7e73f4b63574eecccf2835ffa2af9021ce113c83c53"},
-    {file = "pydantic-2.10.5.tar.gz", hash = "sha256:278b38dbbaec562011d659ee05f63346951b3a248a6f3642e1bc68894ea2b4ff"},
+    {file = "pydantic-2.10.6-py3-none-any.whl", hash = "sha256:427d664bf0b8a2b34ff5dd0f5a18df00591adcee7198fbd71981054cef37b584"},
+    {file = "pydantic-2.10.6.tar.gz", hash = "sha256:ca5daa827cce33de7a42be142548b0096bf05a7e7b365aebfa5f8eeec7128236"},
 ]
 
 [[package]]
@@ -3052,7 +3052,7 @@ files = [
 
 [[package]]
 name = "s3transfer"
-version = "0.11.1"
+version = "0.11.2"
 requires_python = ">=3.8"
 summary = "An Amazon S3 Transfer Manager"
 groups = ["default"]
@@ -3060,8 +3060,8 @@ dependencies = [
     "botocore<2.0a.0,>=1.36.0",
 ]
 files = [
-    {file = "s3transfer-0.11.1-py3-none-any.whl", hash = "sha256:8fa0aa48177be1f3425176dfe1ab85dcd3d962df603c3dbfc585e6bf857ef0ff"},
-    {file = "s3transfer-0.11.1.tar.gz", hash = "sha256:3f25c900a367c8b7f7d8f9c34edc87e300bde424f779dc9f0a8ae4f9df9264f6"},
+    {file = "s3transfer-0.11.2-py3-none-any.whl", hash = "sha256:be6ecb39fadd986ef1701097771f87e4d2f821f27f6071c872143884d2950fbc"},
+    {file = "s3transfer-0.11.2.tar.gz", hash = "sha256:3b39185cb72f5acc77db1a58b6e25b977f28d20496b6e58d6813d75f464d632f"},
 ]
 
 [[package]]
@@ -3515,7 +3515,7 @@ files = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.55.0rc2"
+version = "0.56.0rc3"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3554,8 +3554,8 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.55.0rc2-py3-none-any.whl", hash = "sha256:d3cdd3c06f3b773ecf26f2abc0f71f89e5bbc9748b1ddb0ea5a29c4164c28da3"},
-    {file = "unstract_sdk-0.55.0rc2.tar.gz", hash = "sha256:d4cb9a58a7740b01854e372472901761e86e64eca83d6250ff17b047ad25b39c"},
+    {file = "unstract_sdk-0.56.0rc3-py3-none-any.whl", hash = "sha256:abc8ee27b4eaa9694f272460b2696ed2798ff60b9b12539d327cdeaacbb02914"},
+    {file = "unstract_sdk-0.56.0rc3.tar.gz", hash = "sha256:f09db70f91fe5405918a27b91b3807d812b223dae54b9ad1f688f02a88512bb1"},
 ]
 
 [[package]]
