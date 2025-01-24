@@ -15,7 +15,7 @@ dependencies = [
     "flask~=3.0",
     "llama-index==0.12.8",
     "python-dotenv==1.0.0",
-    "unstract-sdk~=0.55.0rc2",
+    "unstract-sdk~=0.56.0rc3",
     "redis>=5.0.3",
     "unstract-core @ file:///${PROJECT_ROOT}/../unstract/core",
     "unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
