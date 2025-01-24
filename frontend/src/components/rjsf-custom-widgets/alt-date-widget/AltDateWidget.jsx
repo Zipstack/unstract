@@ -4,7 +4,8 @@ import PropTypes from "prop-types";
 
 import { RjsfWidgetLayout } from "../../../layouts/rjsf-widget-layout/RjsfWidgetLayout.jsx";
 
-const AltDateWidget = ({ id, value, onChange, label, schema, required }) => {
+const AltDateWidget = (props) => {
+  const { id, value, onChange, label, schema, required, readonly } = props;
   const description = schema?.description || "";
 
   const handleDateChange = (date) => {
@@ -21,6 +22,7 @@ const AltDateWidget = ({ id, value, onChange, label, schema, required }) => {
         id={id}
         value={value ? moment(value) : null}
         onChange={handleDateChange}
+        disabled={readonly}
       />
     </RjsfWidgetLayout>
   );
@@ -33,6 +35,7 @@ AltDateWidget.propTypes = {
   label: PropTypes.string.isRequired,
   schema: PropTypes.object.isRequired,
   required: PropTypes.bool,
+  readonly: PropTypes.bool.isRequired,
 };
 
 export { AltDateWidget };
