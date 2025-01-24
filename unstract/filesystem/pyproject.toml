@@ -18,3 +18,8 @@ readme = "README.md"
 [tool.pdm.build]
 includes = ["src"]
 package-dir = "src"
+
+[tool.pdm.resolution.overrides]
+grpcio = "1.62.3"
+grpcio-tools = "1.62.3"
+grpcio-health-checking = "1.62.3"
