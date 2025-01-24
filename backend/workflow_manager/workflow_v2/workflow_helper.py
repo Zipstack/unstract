@@ -236,7 +236,9 @@ class WorkflowHelper:
         # It should e uuid of workflow_file_execution
         file_execution_id = str(workflow_file_execution.id)
         file_name = source.add_file_to_volume(
-            input_file_path=input_file, workflow_file_execution=workflow_file_execution
+            input_file_path=input_file,
+            workflow_file_execution=workflow_file_execution,
+            tags=execution_service.tags,
         )
         try:
             execution_service.file_execution_id = file_execution_id

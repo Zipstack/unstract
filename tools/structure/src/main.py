@@ -149,6 +149,7 @@ class StructureTool(BaseTool):
                 reindex=True,
                 usage_kwargs=usage_kwargs,
                 process_text=process_text,
+                tags=self.tags,
                 **(
                     {"fs": self.workflow_filestorage}
                     if self.workflow_filestorage is not None
@@ -191,6 +192,7 @@ class StructureTool(BaseTool):
                             reindex=reindex,
                             usage_kwargs=usage_kwargs,
                             process_text=process_text,
+                            tags=self.tags,
                             **(
                                 {"fs": self.workflow_filestorage}
                                 if self.workflow_filestorage is not None
@@ -399,6 +401,7 @@ class StructureTool(BaseTool):
             chunk_size=0,
             chunk_overlap=0,
             usage_kwargs=usage_kwargs,
+            tags=self.tags,
             **(
                 {"fs": self.workflow_filestorage}
                 if self.workflow_filestorage is not None
