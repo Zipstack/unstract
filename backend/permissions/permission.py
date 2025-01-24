@@ -4,6 +4,7 @@ from adapter_processor_v2.models import AdapterInstance
 from rest_framework import permissions
 from rest_framework.request import Request
 from rest_framework.views import APIView
+from utils.user_context import UserContext
 
 
 class IsOwner(permissions.BasePermission):
@@ -12,6 +13,14 @@ class IsOwner(permissions.BasePermission):
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
 
         return True if obj.created_by == request.user else False
+
+
+class IsOrganizationMember(permissions.BasePermission):
+    def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
+        user_organization = UserContext.get_organization()
+        if user_organization is None:
+            return False
+        return True if obj.organization == user_organization else False
 
 
 class IsOwnerOrSharedUser(permissions.BasePermission):

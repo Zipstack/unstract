@@ -59,4 +59,5 @@ urlpatterns = [
         UrlPathConstants.PROMPT_STUDIO,
         include("prompt_studio.prompt_studio_index_manager_v2.urls"),
     ),
+    path("tags/", include("tags.urls")),
 ]

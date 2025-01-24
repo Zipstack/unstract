@@ -213,6 +213,7 @@ SHARED_APPS = (
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.admindocs",
+    "django_filters",
     # Third party apps should go below this line,
     "rest_framework",
     # Connector OAuth
@@ -229,8 +230,6 @@ SHARED_APPS = (
     "commands",
     # health checks
     "health",
-)
-v2_apps = (
     "migrating.v2",
     "connector_auth_v2",
     "tenant_account_v2",
@@ -253,8 +252,8 @@ v2_apps = (
     "prompt_studio.prompt_studio_output_manager_v2",
     "prompt_studio.prompt_studio_document_manager_v2",
     "prompt_studio.prompt_studio_index_manager_v2",
+    "tags",
 )
-SHARED_APPS += v2_apps
 TENANT_APPS = []
 
 INSTALLED_APPS = list(SHARED_APPS) + [
@@ -435,6 +434,10 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [],  # TODO: Update once auth is figured
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
     "EXCEPTION_HANDLER": "middleware.exception.drf_logging_exc_handler",
+    "DEFAULT_FILTER_BACKENDS": [
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.OrderingFilter",
+    ],
 }
 
 # These paths will work without authentication

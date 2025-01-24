@@ -42,7 +42,7 @@ class Usage(DefaultOrganizationMixin, BaseModel):
     adapter_instance_id = models.CharField(
         max_length=255, db_comment="Identifier for the adapter instance"
     )
-    run_id = models.CharField(
+    run_id = models.UUIDField(
         max_length=255, null=True, blank=True, db_comment="Identifier for the run"
     )
     usage_type = models.CharField(

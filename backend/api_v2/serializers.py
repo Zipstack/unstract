@@ -15,6 +15,7 @@ from rest_framework.serializers import (
     Serializer,
     ValidationError,
 )
+from tags.serializers import TagParamsSerializer
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
@@ -99,7 +100,7 @@ class APIKeySerializer(AuditSerializer):
         return representation
 
 
-class ExecutionRequestSerializer(Serializer):
+class ExecutionRequestSerializer(TagParamsSerializer):
     """Execution request serializer.
 
     Attributes:
@@ -110,6 +111,8 @@ class ExecutionRequestSerializer(Serializer):
         use_file_history (bool): Flag to use FileHistory to save and retrieve
             responses quickly. This is undocumented to the user and can be
             helpful for demos.
+        tags (str): Comma-separated List of tags to associate with the execution.
+            e.g:'tag1,tag2-name,tag3_name'
     """
 
     timeout = IntegerField(
