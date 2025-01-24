@@ -218,23 +218,19 @@ const deploymentsStaticContent = {
     title: "Unstructured to Structured ETL Pipelines",
     modalTitle: "Deploy ETL Pipeline",
     addBtn: "ETL Pipeline",
-    isLogsRequired: true,
   },
   task: {
     title: "Unstructured to Structured Task Pipelines",
     modalTitle: "Deploy Task Pipeline",
     addBtn: "Task Pipeline",
-    isLogsRequired: true,
   },
   api: {
     title: "API Deployments",
     addBtn: "API Deployment",
-    isLogsRequired: false,
   },
   app: {
     title: "App Deployments",
     addBtn: "App Deployment",
-    isLogsRequired: false,
   },
 };
 
@@ -565,6 +561,20 @@ const generateCoverageKey = (promptId, profileId) => {
   return `coverage_${promptId}_${profileId}`;
 };
 
+const convertTimestampToHHMMSS = (timestamp) => {
+  // Convert the timestamp to milliseconds
+  const date = new Date(timestamp * 1000);
+
+  // Extract hours, minutes, and seconds
+  const [hours, minutes, seconds] = [
+    date.getUTCHours(),
+    date.getUTCMinutes(),
+    date.getUTCSeconds(),
+  ].map((unit) => unit.toString().padStart(2, "0"));
+  // Return the formatted time string
+  return `${hours}:${minutes}:${seconds}`;
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -616,4 +626,5 @@ export {
   generateApiRunStatusId,
   base64toBlobWithMime,
   generateCoverageKey,
+  convertTimestampToHHMMSS,
 };
