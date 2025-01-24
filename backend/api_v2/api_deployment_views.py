@@ -54,6 +54,7 @@ class DeploymentExecution(views.APIView):
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
         include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
         use_file_history = serializer.validated_data.get(ApiExecution.USE_FILE_HISTORY)
+        tag_names = serializer.validated_data.get(ApiExecution.TAGS)
         if not file_objs or len(file_objs) == 0:
             raise InvalidAPIRequest("File shouldn't be empty")
         response = DeploymentHelper.execute_workflow(
@@ -64,6 +65,7 @@ class DeploymentExecution(views.APIView):
             include_metadata=include_metadata,
             include_metrics=include_metrics,
             use_file_history=use_file_history,
+            tag_names=tag_names,
         )
         if "error" in response and response["error"]:
             return Response(

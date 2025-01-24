@@ -20,7 +20,6 @@ function getSessionData(sessionData) {
     isAdmin: sessionData.isAdmin,
     adapters: sessionData?.adapters,
     logEventsId: sessionData?.logEventsId,
-    remainingTrialDays: sessionData?.remainingTrialDays,
     allOrganization: sessionData?.allOrganization,
     isPlatformAdmin: sessionData?.isPlatformAdmin,
     loginOnboardingMessage: sessionData?.loginOnboardingMessage,
