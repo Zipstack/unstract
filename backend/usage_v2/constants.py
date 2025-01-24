@@ -5,3 +5,22 @@ class UsageKeys:
     COMPLETION_TOKENS = "completion_tokens"
     TOTAL_TOKENS = "total_tokens"
     COST_IN_DOLLARS = "cost_in_dollars"
+    ADAPTER_INSTANCE_ID = "adapter_instance_id"
+    MODEL_NAME = "model_name"
+
+
+class UsageRequestParams:
+    START_DATE = "start_date"
+    END_DATE = "end_date"
+    MODEL_NAME = "model_name"
+    ADAPTER_INSTANCE_ID = "adapter_instance_id"
+    EXECUTION_ID = "execution_id"
+    FILE_EXECUTION_ID = "file_execution_id"
+    EXECUTION_ID = "execution_id"
+    TAG = "tag"
+    TAGS = "tags"
+    RUN_ID = "run_id"
+    LIMIT = "limit"
+    OFFSET = "offset"
+    ORDER_BY = "order_by"
+    ORDER = "order"
