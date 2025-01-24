@@ -152,11 +152,13 @@ class ClassifierHelper:
         try:
             if self.tool.workflow_filestorage:
                 extraction_result: TextExtractionResult = x2text.process(
-                    input_file_path=file, fs=self.tool.workflow_filestorage
+                    input_file_path=file,
+                    fs=self.tool.workflow_filestorage,
+                    tags=self.tool.tags,
                 )
             else:
                 extraction_result: TextExtractionResult = x2text.process(
-                    input_file_path=file
+                    input_file_path=file, tags=self.tool.tags
                 )
             extracted_text: str = extraction_result.extracted_text
             return extracted_text
