@@ -44,7 +44,6 @@ export const LogsHeader = memo(function LogsHeader({
 });
 
 LogsHeader.propTypes = {
-  mode: PropTypes.oneOf(["minimized", "semi", "full", "custom"]).isRequired,
   onSemiExpand: PropTypes.func.isRequired,
   onFullExpand: PropTypes.func.isRequired,
   onMinimize: PropTypes.func.isRequired,

@@ -108,7 +108,7 @@ export function DisplayLogsAndNotifications() {
       className="logs-container"
       style={{ height: contentHeight + 40 }}
     >
-      <div className="logs-handle" onMouseDown={onMouseDown}>
+      <div role="button" className="logs-handle" onMouseDown={onMouseDown}>
         <LogsHeader
           onSemiExpand={semiExpand}
           onFullExpand={fullExpand}
