@@ -266,13 +266,19 @@ const getTimeForLogs = () => {
 };
 
 const getDateTimeString = (timestamp) => {
-  // Convert to milliseconds
+  // Check if the timestamp is a valid number
+  if (typeof timestamp !== "number" || isNaN(timestamp) || timestamp <= 0) {
+    return timestamp;
+  }
+
   const timestampInMilliseconds = timestamp * 1000;
 
-  // Create a new Date object
   const date = new Date(timestampInMilliseconds);
 
-  // Extract date components
+  if (isNaN(date.getTime())) {
+    return timestamp;
+  }
+
   const year = date.getFullYear();
   const month = (date.getMonth() + 1).toString().padStart(2, "0"); // Months are zero-indexed
   const day = date.getDate().toString().padStart(2, "0");

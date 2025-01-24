@@ -1,29 +1,45 @@
 import { useMemo, useEffect, useRef } from "react";
+import PropTypes from "prop-types";
 import { Table } from "antd";
 import { uniqueId } from "lodash";
 import { useSocketLogsStore } from "../../store/socket-logs-store";
 import "./DisplayLogsAndNotifications.css";
 import CustomMarkdown from "../helpers/custom-markdown/CustomMarkdown";
 
-export function LogsAndNotificationsTable() {
+function LogsAndNotificationsTable({ errorCount, setErrorCount, isMinimized }) {
   const tableRef = useRef(null);
   const { logs } = useSocketLogsStore();
 
+  useEffect(() => {
+    if (!isMinimized && errorCount !== 0) {
+      setErrorCount(0);
+    }
+  }, [isMinimized]);
+
   const dataSource = useMemo(() => {
-    return logs.map((log) => ({
-      key: `${log.timestamp}-${uniqueId()}`,
-      time: log?.timestamp,
-      level: log?.level,
-      type: log?.type,
-      stage: log?.stage,
-      step: log?.step,
-      state: log?.state,
-      promptKey: log?.component?.prompt_key,
-      docName: log?.component?.doc_name,
-      message: (
-        <CustomMarkdown text={log?.message} styleClassName="display-logs-md" />
-      ),
-    }));
+    const logMessages = logs.map((log) => {
+      if (log?.level === "ERROR" && log?.type === "LOG" && isMinimized) {
+        setErrorCount((prev) => prev + 1);
+      }
+      return {
+        key: `${log.timestamp}-${uniqueId()}`,
+        time: log?.timestamp,
+        level: log?.level,
+        type: log?.type,
+        stage: log?.stage,
+        step: log?.step,
+        state: log?.state,
+        promptKey: log?.component?.prompt_key,
+        docName: log?.component?.doc_name,
+        message: (
+          <CustomMarkdown
+            text={log?.message}
+            styleClassName="display-logs-md"
+          />
+        ),
+      };
+    });
+    return logMessages;
   }, [logs]);
 
   const columns = useMemo(
@@ -113,3 +129,11 @@ export function LogsAndNotificationsTable() {
     </div>
   );
 }
+
+LogsAndNotificationsTable.propTypes = {
+  errorCount: PropTypes.number.isRequired,
+  setErrorCount: PropTypes.func.isRequired,
+  isMinimized: PropTypes.bool.isRequired,
+};
+
+export { LogsAndNotificationsTable };

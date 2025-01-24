@@ -10,6 +10,7 @@ import { useExceptionHandler } from "../../hooks/useExceptionHandler";
 
 export function DisplayLogsAndNotifications() {
   const [contentHeight, setContentHeight] = useState(0);
+  const [errorCount, setErrorCount] = useState(0);
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
   const { pushLogMessages } = useSocketLogsStore();
@@ -108,15 +109,21 @@ export function DisplayLogsAndNotifications() {
       className="logs-container"
       style={{ height: contentHeight + 40 }}
     >
-      <div role="button" className="logs-handle" onMouseDown={onMouseDown}>
+      <div className="logs-handle" onMouseDown={onMouseDown}>
         <LogsHeader
+          isMinimized={contentHeight === 0}
+          errorCount={errorCount}
           onSemiExpand={semiExpand}
           onFullExpand={fullExpand}
           onMinimize={minimize}
         />
       </div>
       <div className="logs-content">
-        <LogsAndNotificationsTable />
+        <LogsAndNotificationsTable
+          errorCount={errorCount}
+          setErrorCount={setErrorCount}
+          isMinimized={contentHeight === 0}
+        />
       </div>
     </div>
   );

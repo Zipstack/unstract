@@ -5,9 +5,11 @@ import {
   FullscreenOutlined,
   ShrinkOutlined,
 } from "@ant-design/icons";
-import { Button, Space, Typography } from "antd";
+import { Button, Space, Tag, Typography } from "antd";
 
 export const LogsHeader = memo(function LogsHeader({
+  isMinimized,
+  errorCount,
   onSemiExpand,
   onFullExpand,
   onMinimize,
@@ -18,7 +20,10 @@ export const LogsHeader = memo(function LogsHeader({
 
   return (
     <div className="logs-header-container">
-      <Typography.Text>Logs</Typography.Text>
+      <Space>
+        <Typography.Text>Logs</Typography.Text>
+        {isMinimized && errorCount > 0 && <Tag color="red">{errorCount}</Tag>}
+      </Space>
       <Space>
         <Button
           type="text"
@@ -44,6 +49,8 @@ export const LogsHeader = memo(function LogsHeader({
 });
 
 LogsHeader.propTypes = {
+  isMinimized: PropTypes.bool.isRequired,
+  errorCount: PropTypes.number.isRequired,
   onSemiExpand: PropTypes.func.isRequired,
   onFullExpand: PropTypes.func.isRequired,
   onMinimize: PropTypes.func.isRequired,
