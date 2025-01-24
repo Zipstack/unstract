@@ -17,6 +17,7 @@ from django.core.files.uploadedfile import UploadedFile
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
 from rest_framework.utils.serializer_helpers import ReturnDict
+from tags.models import Tag
 from utils.constants import Account, CeleryQueue
 from utils.local_context import StateStore
 from workflow_manager.endpoint_v2.destination import DestinationConnector
@@ -138,6 +139,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         include_metadata: bool = False,
         include_metrics: bool = False,
         use_file_history: bool = False,
+        tag_names: list[str] = [],
     ) -> ReturnDict:
         """Execute workflow by api.
 
@@ -147,16 +149,19 @@ class DeploymentHelper(BaseAPIKeyValidator):
             file_obj (UploadedFile): input file
             use_file_history (bool): Use FileHistory table to return results on already
                 processed files. Defaults to False
+            tag_names (list(str)): list of tag names
 
         Returns:
             ReturnDict: execution status/ result
         """
         workflow_id = api.workflow.id
         pipeline_id = api.id
+        tags = Tag.bulk_get_or_create(tag_names=tag_names)
         workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
             workflow_id=workflow_id,
             pipeline_id=pipeline_id,
             mode=WorkflowExecution.Mode.QUEUE,
+            tags=tags,
         )
         execution_id = workflow_execution.id
 
