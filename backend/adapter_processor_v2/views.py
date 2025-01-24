@@ -169,8 +169,30 @@ class AdapterInstanceViewSet(ModelViewSet):
 
     def create(self, request: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
+
+        use_platform_unstract_key = False
+        adapter_metadata = request.data.get(AdapterKeys.ADAPTER_METADATA)
+        if adapter_metadata and adapter_metadata.get(
+            AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY, False
+        ):
+            use_platform_unstract_key = True
+
         serializer.is_valid(raise_exception=True)
         try:
+            adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+
+            if adapter_type == AdapterKeys.X2TEXT and use_platform_unstract_key:
+                adapter_metadata_b = serializer.validated_data.get(
+                    AdapterKeys.ADAPTER_METADATA_B
+                )
+                adapter_metadata_b = AdapterProcessor.update_adapter_metadata(
+                    adapter_metadata_b
+                )
+                # Update the validated data with the new adapter_metadata
+                serializer.validated_data[AdapterKeys.ADAPTER_METADATA_B] = (
+                    adapter_metadata_b
+                )
+
             instance = serializer.save()
             organization_member = OrganizationMemberService.get_user_by_id(
                 request.user.id
@@ -185,7 +207,6 @@ class AdapterInstanceViewSet(ModelViewSet):
                 organization_member=organization_member
             )
 
-            adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
             if (adapter_type == AdapterKeys.LLM) and (
                 not user_default_adapter.default_llm_adapter
             ):
