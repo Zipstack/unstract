@@ -1,5 +1,6 @@
 import logging
 import os
+import requests
 from collections.abc import Iterator
 from typing import Any, Optional
 
@@ -132,27 +133,50 @@ class Client(ContainerClientInterface):
             return image_name_with_tag
 
         self.logger.info("Pulling the container: %s", image_name_with_tag)
-        resp = self.client.api.pull(
-            repository=self.image_name,
-            tag=self.image_tag,
-            stream=True,
-            decode=True,
-        )
-        counter = 0
-        for line in resp:
-            # The counter is used to print status on every 100th status
-            # Otherwise the output logs will be polluted.
-            if counter < 100:
-                counter += 1
-                continue
-            counter = 0
-            self.logger.info(
-                "CONTAINER PULL STATUS: %s - %s : %s",
-                line.get("status"),
-                line.get("id"),
-                line.get("progress"),
+        try:
+            # Attempt to pull the image
+            resp = self.client.api.pull(
+                repository=self.image_name,
+                tag=self.image_tag,
+                stream=True,
+                decode=True,
             )
-        self.logger.info("Finished pulling the container: %s", image_name_with_tag)
+            counter = 0
+            for line in resp:
+                # Log every 100th line to avoid log pollution
+                if counter < 100:
+                    counter += 1
+                    continue
+                counter = 0
+                self.logger.info(
+                    "CONTAINER PULL STATUS: %s - %s : %s",
+                    line.get("status"),
+                    line.get("id"),
+                    line.get("progress"),
+                )
+            self.logger.info("Finished pulling the container: %s", image_name_with_tag)
+        except requests.exceptions.HTTPError as e:
+            # Handle HTTP errors gracefully
+            if e.response.status_code == 404:
+                error_message = (
+                    f"Failed to pull container image '{image_name_with_tag}': "
+                    "Image not found in the registry. Please check the image name and tag."
+                )
+            else:
+                error_message = (
+                    f"Failed to pull container image '{image_name_with_tag}': "
+                    f"HTTP error {e.response.status_code}: {e.response.reason}"
+                )
+            self.logger.error(error_message)
+            raise RuntimeError(error_message) from e
+        except Exception as e:
+            # Handle any other unexpected errors
+            self.logger.error(
+                "An unexpected error occurred while pulling the container: %s", str(e)
+            )
+            raise RuntimeError(
+                f"Unexpected error while pulling image '{image_name_with_tag}': {str(e)}"
+            ) from e
 
         return image_name_with_tag
 

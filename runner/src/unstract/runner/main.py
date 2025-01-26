@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Optional
 
 from flask import Blueprint, Flask, Response, abort, jsonify, request
@@ -8,6 +9,7 @@ app = Flask(__name__)
 
 log_level = Utils.get_log_level()
 app.logger.setLevel(log_level.value)
+logger = logging.getLogger(__name__)
 
 # Define a Blueprint with a root URL path
 bp = Blueprint("v1", __name__, url_prefix="/v1/api")
@@ -34,16 +36,23 @@ def run_container() -> Optional[Any]:
     messaging_channel = data["messaging_channel"]
 
     runner = UnstractRunner(image_name, image_tag, app)
-    result = runner.run_container(
-        organization_id=organization_id,
-        workflow_id=workflow_id,
-        execution_id=execution_id,
-        run_id=run_id,
-        settings=settings,
-        envs=envs,
-        messaging_channel=messaging_channel,
-    )
-    return result
+    try:
+        result = runner.run_container(
+            organization_id=organization_id,
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            run_id=run_id,
+            settings=settings,
+            envs=envs,
+            messaging_channel=messaging_channel,
+        )
+        return jsonify({"success": True, "result": result}), 200
+    except RuntimeError as e:
+        app.logger.error("RuntimeError occurred: %s", str(e))
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        app.logger.error("Unexpected error occurred: %s", str(e))
+        return jsonify({"success": False, "error": "Internal server error"}), 500
 
 
 @bp.route("container/<command>", methods=["GET"])

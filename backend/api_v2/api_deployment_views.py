@@ -47,6 +47,7 @@ class DeploymentExecution(views.APIView):
     def post(
         self, request: Request, org_name: str, api_name: str, api: APIDeployment
     ) -> Response:
+        HTTP_569_TEST = 569
         file_objs = request.FILES.getlist(ApiExecution.FILES_FORM_DATA)
         serializer = ExecutionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -72,7 +73,7 @@ class DeploymentExecution(views.APIView):
                 {"message": response},
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
-        return Response({"message": response}, status=status.HTTP_200_OK)
+        return Response({"message": response}, status=HTTP_569_TEST)
 
     @DeploymentHelper.validate_api_key
     def get(

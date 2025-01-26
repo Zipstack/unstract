@@ -92,21 +92,25 @@ class ToolSandboxHelper:
             image_tag,
             settings,
         )
-
-        response = requests.post(url, json=data)
-        result: Optional[dict[str, Any]] = None
-        if response.status_code == 200:
-            result = response.json()
-        elif response.status_code == 404:
-            logger.error(
-                f"Error while calling tool {image_name}: "
-                f"for tool instance status code {response.status_code}"
-            )
-        else:
-            logger.error(
-                f"Error while calling tool {image_name} " f" reason: {response.reason}"
-            )
-        return result
+        try:
+            response = requests.post(url, json=data)
+            response.raise_for_status()
+            result: Optional[dict[str, Any]] = response.json()
+            return result
+        except requests.exceptions.HTTPError as http_err:
+            if response.status_code == 404:
+                logger.error(
+                    f"Error while calling tool {image_name}: "
+                    f"for tool instance - status code {response.status_code}"
+                )
+            else:
+                logger.error(
+                    f"Error while calling tool {image_name}: "
+                    f"reason - {response.reason}, status code {response.status_code}"
+                )
+        except requests.exceptions.RequestException as req_err:
+            logger.error(f"An error occurred while calling tool {image_name}: {str(req_err)}")
+        return None 
 
     def create_tool_request_data(
         self,

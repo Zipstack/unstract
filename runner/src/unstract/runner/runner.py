@@ -250,6 +250,9 @@ class UnstractRunner:
                 exc_info=True,
             )
             result = {"type": "RESULT", "result": None, "error": str(te.message)}
+        except RuntimeError as re:
+            self.logger.error(f"Runtime error occurred: {re}", stack_info=True, exc_info=True)
+            result["error"] = str(re)
         except Exception as e:
             self.logger.error(
                 f"Failed to run docker container: {e}", stack_info=True, exc_info=True
