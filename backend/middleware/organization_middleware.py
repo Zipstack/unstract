@@ -16,7 +16,6 @@ class OrganizationMiddleware(MiddlewareMixin):
                 re.match(path, request.path)
                 for path in settings.ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS
             ):
-                request.path_info = "/" + request.path_info
                 return
 
             org_id = match.group("org_id")
