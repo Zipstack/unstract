@@ -1,19 +1,70 @@
 import logging
 
 from django.http import HttpRequest
+from django_filters.rest_framework import DjangoFilterBackend
+from permissions.permission import IsOrganizationMember
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.filters import OrderingFilter
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from usage_v2.filter import UsageFilter
+from usage_v2.utils import DateTimeProcessor
+from utils.pagination import CustomPagination
+from utils.user_context import UserContext
 
 from .constants import UsageKeys
 from .helper import UsageHelper
-from .serializers import GetUsageSerializer
+from .models import Usage
+from .serializers import GetUsageSerializer, UsageSerializer
 
 logger = logging.getLogger(__name__)
 
 
 class UsageView(viewsets.ModelViewSet):
     """Viewset for managing Usage-related operations."""
+
+    permission_classes = [IsAuthenticated, IsOrganizationMember]
+    serializer_class = UsageSerializer
+    pagination_class = CustomPagination
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_class = UsageFilter
+    ordering_fields = ["created_at"]
+
+    def get_queryset(self):
+        """
+        Returns a queryset filtered by the current user's organization.
+        """
+        user_organization = UserContext.get_organization()
+        queryset = Usage.objects.filter(organization=user_organization)
+        return queryset
+
+    @action(detail=True, methods=["get"], url_path="aggregate")
+    def aggregate(self, request: HttpRequest) -> Response:
+        """
+        Custom action to list Usage data for a given Tag, grouped by
+        WorkflowFileExecution.
+        """
+
+        date_range = DateTimeProcessor.process_date_range(
+            start_date_param=request.query_params.get("created_at_gte"),
+            end_date_param=request.query_params.get("created_at_lte"),
+        )
+        date_range_param = request.query_params.get("date_range")
+        if date_range_param:
+            date_range = DateTimeProcessor.filter_date_range(date_range_param)
+        # Get filtered queryset
+        queryset = self.filter_queryset(self.get_queryset()).filter(
+            created_at__range=[date_range.start_date, date_range.end_date]
+        )
+
+        # Aggregate and prepare response
+        aggregated_data = UsageHelper.aggregate_usage_metrics(queryset)
+        response_data = UsageHelper.format_usage_response(
+            aggregated_data, date_range.start_date, date_range.end_date
+        )
+
+        return Response(status=status.HTTP_200_OK, data=response_data)
 
     @action(detail=True, methods=["get"])
     def get_token_usage(self, request: HttpRequest) -> Response:

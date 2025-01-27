@@ -902,6 +902,7 @@ class PromptStudioHelper:
             TSPKeys.FILE_HASH: file_hash,
             TSPKeys.FILE_PATH: doc_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
+            TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
         }
 
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
