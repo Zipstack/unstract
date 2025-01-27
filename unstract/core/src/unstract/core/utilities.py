@@ -29,9 +29,10 @@ class UnstractUtils:
 
     @staticmethod
     def build_tool_container_name(
-        tool_image: str, tool_version: str, run_id: str
+        tool_image: str, tool_version: str, run_id: str, execution_attempt: int
     ) -> str:
-        container_name = f"{tool_image.split('/')[-1]}-{tool_version}-{run_id}"
+        tool_name = tool_image.split("/")[-1]
+        container_name = f"{tool_name}-{tool_version}-{execution_attempt}-{run_id}"
 
         # To support limits of container clients like K8s
         if len(container_name) > 63:

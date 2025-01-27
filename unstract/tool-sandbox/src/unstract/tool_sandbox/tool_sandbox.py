@@ -93,10 +93,20 @@ class ToolSandbox:
         )
         return result
 
-    def run_tool(self, run_id: str) -> Optional[dict[str, Any]]:
+    def run_tool(self, run_id: str, execution_attempt: int) -> Optional[dict[str, Any]]:
+        """Run tool by handler
+
+        Args:
+            run_id (str): Run_id for the execution
+            execution_attempt (int): Current execution attempt
+
+        Returns:
+            Optional[dict[str, Any]]: _description_
+        """
         return self.helper.call_tool_handler(  # type: ignore
             run_id,
             self.image_name,
             self.image_tag,
             self.settings,
+            execution_attempt,
         )

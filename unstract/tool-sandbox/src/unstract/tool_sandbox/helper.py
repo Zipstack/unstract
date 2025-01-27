@@ -73,6 +73,7 @@ class ToolSandboxHelper:
         image_name: str,
         image_tag: str,
         settings: dict[str, Any],
+        execution_attempt: int,
     ) -> Optional[dict[str, Any]]:
         """Calling unstract runner to run the required tool.
 
@@ -91,6 +92,7 @@ class ToolSandboxHelper:
             image_name,
             image_tag,
             settings,
+            execution_attempt,
         )
 
         response = requests.post(url, json=data)
@@ -114,6 +116,7 @@ class ToolSandboxHelper:
         image_name: str,
         image_tag: str,
         settings: dict[str, Any],
+        execution_attempt: int,
     ) -> dict[str, Any]:
         data = {
             "image_name": image_name,
@@ -125,5 +128,6 @@ class ToolSandboxHelper:
             "settings": settings,
             "envs": self.envs,
             "messaging_channel": self.messaging_channel,
+            "execution_attempt": execution_attempt,
         }
         return data

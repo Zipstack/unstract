@@ -165,6 +165,7 @@ class Client(ContainerClientInterface):
         run_id: str,
         envs: Optional[dict[str, Any]] = None,
         auto_remove: bool = False,
+        execution_attempt: int = 1,
     ) -> dict[str, Any]:
         if envs is None:
             envs = {}
@@ -192,7 +193,10 @@ class Client(ContainerClientInterface):
             )
         return {
             "name": UnstractUtils.build_tool_container_name(
-                tool_image=self.image_name, tool_version=self.image_tag, run_id=run_id
+                tool_image=self.image_name,
+                tool_version=self.image_tag,
+                run_id=run_id,
+                execution_attempt=execution_attempt,
             ),
             "image": self.get_image(),
             "command": command,

@@ -175,20 +175,24 @@ class ToolsUtils:
     def run_tool(
         self,
         run_id: str,
+        execution_attempt: int,
         tool_sandbox: ToolSandbox,
     ) -> Any:
-        return self.run_tool_with_retry(run_id, tool_sandbox)
+        return self.run_tool_with_retry(run_id, tool_sandbox, execution_attempt)
 
     def run_tool_with_retry(
         self,
         run_id: str,
         tool_sandbox: ToolSandbox,
+        execution_attempt: int,
         max_retries: int = ToolExecution.MAXIMUM_RETRY,
     ) -> Any:
         error: Optional[dict[str, Any]] = None
         for retry_count in range(max_retries):
             try:
-                response = tool_sandbox.run_tool(run_id)
+                response = tool_sandbox.run_tool(
+                    run_id=run_id, execution_attempt=execution_attempt
+                )
                 if response:
                     return response
                 logger.warning(

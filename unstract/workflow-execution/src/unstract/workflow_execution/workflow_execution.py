@@ -140,7 +140,11 @@ class WorkflowExecutionService:
         logger.info(f"Execution {self.execution_id}: Build completed")
 
     def execute_workflow(
-        self, file_execution_id: str, file_name: str, execution_type: ExecutionType
+        self,
+        file_execution_id: str,
+        file_name: str,
+        execution_type: ExecutionType,
+        execution_attempt: int,
     ) -> None:
         """Executes the complete workflow by running each tools one by one.
         Returns the result from final tool in a dictionary.
@@ -149,6 +153,7 @@ class WorkflowExecutionService:
             file_execution_id (str): UUID for a single run of a file
             file_name (str): Name of the file to process
             execution_type (ExecutionType): STEP or COMPLETE
+            execution_attempt: The current attempt number for this execution
 
         Raises:
             BadRequestException: In case someone tries to execute a workflow
@@ -172,6 +177,7 @@ class WorkflowExecutionService:
                 tool_image=sandbox.image_name,
                 tool_version=sandbox.image_tag,
                 run_id=file_execution_id,
+                execution_attempt=execution_attempt,
             )
             logger.info(
                 f"Running execution: '{self.execution_id}',  "
@@ -179,14 +185,14 @@ class WorkflowExecutionService:
                 f"file '{file_name}', container: '{container_name}'"
             )
             self._execute_step(
-                step=step,
-                sandbox=sandbox,
+                step=step, sandbox=sandbox, execution_attempt=execution_attempt
             )
         self._finalize_execution(execution_type)
 
     def _execute_step(
         self,
         step: int,
+        execution_attempt: int,
         sandbox: ToolSandbox,
     ) -> None:
         """Execution of workflow step.
@@ -195,6 +201,7 @@ class WorkflowExecutionService:
             step (int): workflow step
             sandbox (ToolSandbox): instance of tool sandbox
             execution_type (ExecutionType): step or complete
+            execution_attempt: The current attempt number for this execution
             last_step_output (list[Any]): output of previous step
 
         Raises:
@@ -224,7 +231,9 @@ class WorkflowExecutionService:
                 component=tool_instance_id,
             )
             result = self.tool_utils.run_tool(
-                run_id=self.file_execution_id, tool_sandbox=sandbox
+                run_id=self.file_execution_id,
+                tool_sandbox=sandbox,
+                execution_attempt=execution_attempt,
             )
             if result and result.get("error"):
                 raise ToolOutputNotFoundException(result.get("error"))

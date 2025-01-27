@@ -146,6 +146,7 @@ class UnstractRunner:
             execution_id="",
             run_id="",
             auto_remove=True,
+            execution_attempt=1,
         )
         container = None
 
@@ -172,6 +173,7 @@ class UnstractRunner:
         run_id: str,
         settings: dict[str, Any],
         envs: dict[str, Any],
+        execution_attempt: int,
         messaging_channel: Optional[str] = None,
     ) -> Optional[Any]:
         """RUN container With RUN Command.
@@ -181,6 +183,7 @@ class UnstractRunner:
             params (dict[str, Any]): params to run the tool
             settings (dict[str, Any]): Tool settings
             envs (dict[str, Any]): Tool env
+            execution_attempt (int): The current execution attempt number.
             messaging_channel (Optional[str], optional): socket io channel
 
         Returns:
@@ -214,6 +217,7 @@ class UnstractRunner:
             execution_id=execution_id,
             run_id=run_id,
             envs=envs,
+            execution_attempt=execution_attempt,
         )
         # Add labels to container for logging with Loki.
         # This only required for observability.

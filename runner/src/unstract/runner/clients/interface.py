@@ -68,6 +68,7 @@ class ContainerClientInterface(ABC):
         run_id: str,
         envs: Optional[dict[str, Any]] = None,
         auto_remove: bool = False,
+        execution_attempt: int = 1,
     ) -> dict[str, Any]:
         """Generate the configuration dictionary to run the container.
 

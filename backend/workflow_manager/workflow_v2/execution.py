@@ -104,7 +104,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             f"workflow ID: {self.workflow_id}, execution ID: {self.execution_id}, "
             f"web socket messaging channel ID: {self.execution_log_id}"
         )
-
+        self.execution_attempt = 1
         self.compilation_result = self.compile_workflow(execution_id=self.execution_id)
 
     @classmethod
@@ -166,7 +166,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution.error_message = error[:EXECUTION_ERROR_LENGTH]
         if increment_attempt:
             execution.attempts += 1
-
+            self.execution_attempt = execution.attempts
         execution.save()
 
     def has_successful_compilation(self) -> bool:
@@ -240,6 +240,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                 file_execution_id=file_execution_id,
                 file_name=file_name,
                 execution_type=execution_type,
+                execution_attempt=self.execution_attempt,
             )
             end_time = time.time()
             execution_time = end_time - start_time

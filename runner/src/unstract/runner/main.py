@@ -32,6 +32,7 @@ def run_container() -> Optional[Any]:
     settings = data["settings"]
     envs = data["envs"]
     messaging_channel = data["messaging_channel"]
+    execution_attempt = data.get("execution_attempt", 1)
 
     runner = UnstractRunner(image_name, image_tag, app)
     result = runner.run_container(
@@ -42,6 +43,7 @@ def run_container() -> Optional[Any]:
         settings=settings,
         envs=envs,
         messaging_channel=messaging_channel,
+        execution_attempt=execution_attempt,
     )
     return result
 
