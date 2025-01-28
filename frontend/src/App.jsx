@@ -10,6 +10,7 @@ import PostHogPageviewTracker from "./PostHogPageviewTracker.js";
 import { PageTitle } from "./components/widgets/page-title/PageTitle.jsx";
 import { useEffect } from "react";
 import CustomMarkdown from "./components/helpers/custom-markdown/CustomMarkdown.jsx";
+import { useSocketLogsStore } from "./store/socket-logs-store.js";
 
 let GoogleTagManagerHelper;
 try {
@@ -24,6 +25,7 @@ function App() {
   const { defaultAlgorithm, darkAlgorithm } = theme;
   const { sessionDetails } = useSessionStore();
   const { alertDetails } = useAlertStore();
+  const { pushLogMessages } = useSocketLogsStore();
 
   const btn = (
     <>
@@ -55,6 +57,15 @@ function App() {
       btn,
       key: alertDetails?.key,
     });
+
+    pushLogMessages([
+      {
+        timestamp: Math.floor(Date.now() / 1000),
+        level: alertDetails?.type ? alertDetails?.type.toUpperCase() : "",
+        message: alertDetails.content,
+        type: "NOTIFICATION",
+      },
+    ]);
   }, [alertDetails]);
 
   return (
