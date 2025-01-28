@@ -323,7 +323,7 @@ MIDDLEWARE = [
     "middleware.cache_control.CacheControlMiddleware",
 ]
 
-TENANT_SUBFOLDER_PREFIX = f"/{PATH_PREFIX}/unstract"
+TENANT_SUBFOLDER_PREFIX = f"{PATH_PREFIX}/unstract"
 SHOW_PUBLIC_IF_NO_TENANT_FOUND = True
 
 TEMPLATES = [
@@ -435,6 +435,11 @@ REST_FRAMEWORK = {
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.OrderingFilter",
     ],
+    # For API versioning
+    "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.URLPathVersioning",
+    "DEFAULT_VERSION": "v1",
+    "ALLOWED_VERSIONS": ["v1"],
+    "VERSION_PARAM": "version",
 }
 
 # These paths will work without authentication
