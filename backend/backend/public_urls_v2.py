@@ -20,9 +20,6 @@ from django.conf.urls import *  # noqa: F401, F403
 from django.conf.urls.static import static
 from django.urls import include, path
 
-path_prefix = settings.PATH_PREFIX
-api_path_prefix = settings.API_DEPLOYMENT_PATH_PREFIX
-
 urlpatterns = [
     path("", include("account_v2.urls")),
     # Connector OAuth
