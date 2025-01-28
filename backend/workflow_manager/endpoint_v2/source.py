@@ -244,7 +244,7 @@ class SourceConnector(BaseConnector):
             return None
 
         folders_list = "\n".join(f"- `{folder.strip()}`" for folder in folders)
-        input_log = f"##Folders to process:\n\n{folders_list}\n\n"
+        input_log = f"## Folders to process:\n\n{folders_list}\n\n"
         self.execution_service.publish_update_log(
             state=LogState.INPUT_UPDATE, message=input_log
         )
@@ -256,9 +256,10 @@ class SourceConnector(BaseConnector):
     def publish_input_file_content(self, input_file_path: str, input_text: str) -> None:
         if not self.execution_service:
             return None
-        output_log_message = f"##Input text:\n\n```text\n{input_text}\n```\n\n"
+        output_log_message = f"## Input text:\n\n```text\n{input_text}\n```\n\n"
         input_log_message = (
-            "##Input file:\n\n```text\n" f"{os.path.basename(input_file_path)}\n```\n\n"
+            "## Input file:\n\n```text\n"
+            f"{os.path.basename(input_file_path)}\n```\n\n"
         )
         self.execution_service.publish_update_log(
             state=LogState.INPUT_UPDATE, message=input_log_message
