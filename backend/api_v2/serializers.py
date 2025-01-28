@@ -9,8 +9,10 @@ from pipeline_v2.models import Pipeline
 from rest_framework.serializers import (
     BooleanField,
     CharField,
+    FileField,
     IntegerField,
     JSONField,
+    ListField,
     ModelSerializer,
     Serializer,
     ValidationError,
@@ -115,12 +117,31 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             e.g:'tag1,tag2-name,tag3_name'
     """
 
+    MAX_FILES_ALLOWED = 32
+
     timeout = IntegerField(
         min_value=-1, max_value=ApiExecution.MAXIMUM_TIMEOUT_IN_SEC, default=-1
     )
     include_metadata = BooleanField(default=False)
     include_metrics = BooleanField(default=False)
     use_file_history = BooleanField(default=False)
+    files = ListField(
+        child=FileField(),
+        required=True,
+        allow_empty=False,
+        error_messages={
+            "required": "At least one file must be provided.",
+            "empty": "The file list cannot be empty.",
+        },
+    )
+
+    def validate_files(self, value):
+        """Validate the files field."""
+        if len(value) == 0:
+            raise ValidationError("The file list cannot be empty.")
+        if len(value) > self.MAX_FILES_ALLOWED:
+            raise ValidationError(f"Maximum '{self.MAX_FILES_ALLOWED}' files allowed.")
+        return value
 
 
 class ExecutionQuerySerializer(Serializer):
