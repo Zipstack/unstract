@@ -423,49 +423,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 f"{FileViewTypes.SUMMARIZE.lower()}/"
                 f"{filename_without_extension}.txt"
             )
-
-        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-
-            file_path = file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-                UserSessionUtils.get_organization_id(request),
-                is_create=True,
+        try:
+            contents = PromptStudioFileHelper.fetch_file_contents(
+                file_name=file_name,
+                org_id=UserSessionUtils.get_organization_id(request),
                 user_id=custom_tool.created_by.user_id,
                 tool_id=str(custom_tool.tool_id),
             )
-            file_system = LocalStorageFS(settings={"path": file_path})
-            if not file_path.endswith("/"):
-                file_path += "/"
-            file_path += file_name
-            # Temporary Hack for frictionless onboarding as the user id will be empty
-            try:
-                contents = FileManagerHelper.fetch_file_contents(
-                    file_system, file_path, allowed_content_types
-                )
-            except FileNotFound:
-                file_path = file_path = (
-                    FileManagerHelper.handle_sub_directory_for_tenants(
-                        UserSessionUtils.get_organization_id(request),
-                        is_create=True,
-                        user_id="",
-                        tool_id=str(custom_tool.tool_id),
-                    )
-                )
-                if not file_path.endswith("/"):
-                    file_path += "/"
-                    file_path += file_name
-                contents = FileManagerHelper.fetch_file_contents(
-                    file_system, file_path, allowed_content_types
-                )
-        else:
-            try:
-                contents = PromptStudioFileHelper.fetch_file_contents(
-                    file_name=file_name,
-                    org_id=UserSessionUtils.get_organization_id(request),
-                    user_id=custom_tool.created_by.user_id,
-                    tool_id=str(custom_tool.tool_id),
-                )
-            except FileNotFoundError:
-                raise FileNotFound()
+        except FileNotFoundError:
+            raise FileNotFound()
         return Response({"data": contents}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
@@ -553,28 +519,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             document.delete()
             # Delete the files
             file_name: str = document.document_name
-            if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-                file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-                    org_id=org_id,
-                    is_create=False,
-                    user_id=user_id,
-                    tool_id=str(custom_tool.tool_id),
-                )
-                path = file_path
-                file_system = LocalStorageFS(settings={"path": path})
-                FileManagerHelper.delete_file(file_system, path, file_name)
-                # Directories to delete the text files
-                directories = ["extract/", "extract/metadata/", "summarize/"]
-                FileManagerHelper.delete_related_files(
-                    file_system, path, file_name, directories
-                )
-            else:
-                PromptStudioFileHelper.delete_for_ide(
-                    org_id=org_id,
-                    user_id=user_id,
-                    tool_id=str(custom_tool.tool_id),
-                    file_name=file_name,
-                )
+            PromptStudioFileHelper.delete_for_ide(
+                org_id=org_id,
+                user_id=user_id,
+                tool_id=str(custom_tool.tool_id),
+                file_name=file_name,
+            )
             return Response(
                 {"data": "File deleted succesfully."},
                 status=status.HTTP_200_OK,

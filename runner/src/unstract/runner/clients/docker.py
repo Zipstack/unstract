@@ -9,12 +9,11 @@ from unstract.runner.clients.interface import (
     ContainerClientInterface,
     ContainerInterface,
 )
-from unstract.runner.constants import Env, FeatureFlag
+from unstract.runner.constants import Env
 from unstract.runner.utils import Utils
 
 from docker import DockerClient
 from unstract.core.utilities import UnstractUtils
-from unstract.flags.feature_flag import check_feature_flag_status
 
 
 class DockerContainer(ContainerInterface):
@@ -170,20 +169,6 @@ class Client(ContainerClientInterface):
             envs = {}
         mounts = []
         if organization_id and workflow_id and execution_id:
-            if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-                source_path = os.path.join(
-                    os.getenv(Env.WORKFLOW_DATA_DIR, ""),
-                    organization_id,
-                    workflow_id,
-                    execution_id,
-                )
-                mounts.append(
-                    {
-                        "type": "bind",
-                        "source": source_path,
-                        "target": os.getenv(Env.TOOL_DATA_DIR, "/data"),
-                    }
-                )
             envs[Env.EXECUTION_RUN_DATA_FOLDER] = os.path.join(
                 os.getenv(Env.EXECUTION_RUN_DATA_FOLDER_PREFIX, ""),
                 organization_id,

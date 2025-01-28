@@ -39,11 +39,7 @@ from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelpe
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
-from backend.constants import FeatureFlag
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-    from unstract.filesystem import FileStorageType, FileSystem
+from unstract.filesystem import FileStorageType, FileSystem
 
 logger = logging.getLogger(__name__)
 
@@ -508,17 +504,13 @@ class SourceConnector(BaseConnector):
         )
         self.publish_input_file_content(input_file_path, input_log)
 
-        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
-            file_storage = file_system.get_file_storage()
-            file_storage.write(path=source_file_path, mode="wb", data=file_content)
-            file_storage.write(path=infile_path, mode="wb", data=file_content)
-        else:
-            with fsspec.open(source_file, "wb") as local_file:
-                local_file.write(file_content)
+        file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+        file_storage = file_system.get_file_storage()
+        file_storage.write(path=source_file_path, mode="wb", data=file_content)
+        file_storage.write(path=infile_path, mode="wb", data=file_content)
 
-            # Copy file to infile directory
-            self.copy_file_to_infile_dir(source_file_path, infile_path)
+        # Copy file to infile directory
+        self.copy_file_to_infile_dir(source_file_path, infile_path)
 
         logger.info(f"{input_file_path} is added to execution directory")
         return hash_value_of_file_content
@@ -527,20 +519,17 @@ class SourceConnector(BaseConnector):
         """Add input file to execution directory from api storage."""
         infile_path = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         source_path = os.path.join(self.execution_dir, WorkflowFileType.SOURCE)
-        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            api_file_system = FileSystem(FileStorageType.API_EXECUTION)
-            api_file_storage = api_file_system.get_file_storage()
-            workflow_file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
-            workflow_file_storage = workflow_file_system.get_file_storage()
-            self._copy_file_to_destination(
-                source_storage=api_file_storage,
-                destination_storage=workflow_file_storage,
-                source_path=input_file_path,
-                destination_paths=[infile_path, source_path],
-            )
-        else:
-            shutil.copyfile(input_file_path, infile_path)
-            shutil.copyfile(input_file_path, source_path)
+
+        api_file_system = FileSystem(FileStorageType.API_EXECUTION)
+        api_file_storage = api_file_system.get_file_storage()
+        workflow_file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+        workflow_file_storage = workflow_file_system.get_file_storage()
+        self._copy_file_to_destination(
+            source_storage=api_file_storage,
+            destination_storage=workflow_file_storage,
+            source_path=input_file_path,
+            destination_paths=[infile_path, source_path],
+        )
 
     # TODO: replace it with method from SDK Utils
     def _copy_file_to_destination(
@@ -701,20 +690,13 @@ class SourceConnector(BaseConnector):
         for file in file_objs:
             file_name = file.name
             destination_path = os.path.join(api_storage_dir, file_name)
-            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-                file_system = FileSystem(FileStorageType.API_EXECUTION)
-                file_storage = file_system.get_file_storage()
-                buffer = bytearray()
-                for chunk in file.chunks():
-                    buffer.extend(chunk)
-                    file_storage.write(path=destination_path, mode="wb", data=buffer)
-            else:
-                os.makedirs(os.path.dirname(destination_path), exist_ok=True)
-                with open(destination_path, "wb") as f:
-                    buffer = bytearray()
-                    for chunk in file.chunks():
-                        buffer.extend(chunk)
-                    f.write(buffer)
+
+            file_system = FileSystem(FileStorageType.API_EXECUTION)
+            file_storage = file_system.get_file_storage()
+            buffer = bytearray()
+            for chunk in file.chunks():
+                buffer.extend(chunk)
+                file_storage.write(path=destination_path, mode="wb", data=buffer)
             file_hash = cls.hash_str(buffer)
             connection_type = WorkflowEndpoint.ConnectionType.API
 
