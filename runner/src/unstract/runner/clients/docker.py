@@ -134,7 +134,6 @@ class Client(ContainerClientInterface):
 
         self.logger.info("Pulling the container: %s", image_name_with_tag)
         try:
-            # Attempt to pull the image
             resp = self.client.api.pull(
                 repository=self.image_name,
                 tag=self.image_tag,
@@ -156,7 +155,6 @@ class Client(ContainerClientInterface):
                 )
             self.logger.info("Finished pulling the container: %s", image_name_with_tag)
         except requests.exceptions.HTTPError as e:
-            # Handle HTTP errors gracefully
             if e.response.status_code == 404:
                 error_message = (
                     f"Failed to pull container image '{image_name_with_tag}': "
@@ -170,7 +168,6 @@ class Client(ContainerClientInterface):
             self.logger.error(error_message)
             raise RuntimeError(error_message) from e
         except Exception as e:
-            # Handle any other unexpected errors
             self.logger.error(
                 "An unexpected error occurred while pulling the container: %s", str(e)
             )

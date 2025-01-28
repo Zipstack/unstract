@@ -189,6 +189,9 @@ class ToolsUtils:
         for retry_count in range(max_retries):
             try:
                 response = tool_sandbox.run_tool(run_id)
+                logger.info(
+                    f"{response}"
+                )
                 if response:
                     return response
                 logger.warning(
@@ -204,7 +207,7 @@ class ToolsUtils:
         logger.warning(
             f"Operation failed after {max_retries} " f"retries, error: {error}"
         )
-        return None
+        return response
 
     def get_tool_environment_variables(self) -> dict[str, Any]:
         """Obtain a dictionary of env variables required by a tool.

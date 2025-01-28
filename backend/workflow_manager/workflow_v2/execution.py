@@ -12,7 +12,7 @@ from unstract.workflow_execution import WorkflowExecutionService
 from unstract.workflow_execution.dto import ToolInstance as ToolInstanceDataClass
 from unstract.workflow_execution.dto import WorkflowDto
 from unstract.workflow_execution.enums import ExecutionType, LogComponent, LogState
-from unstract.workflow_execution.exceptions import StopExecution
+from unstract.workflow_execution.exceptions import StopExecution, ToolOutputNotFoundException
 from utils.local_context import StateStore
 from utils.user_context import UserContext
 from workflow_manager.file_execution.models import WorkflowFileExecution
@@ -211,6 +211,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             logger.error(
                 "Errors while compiling workflow "
                 f"{self.compilation_result['problems']}"
+                f"The error is being thrown here at build func"
             )
             self.update_execution(
                 status=ExecutionStatus.ERROR,
@@ -253,15 +254,20 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution_time = end_time - start_time
             logger.info(f"Execution {self.execution_id} stopped")
             raise exception
+        except ToolOutputNotFoundException as tool_error:
+            message = str(tool_error)
+            raise WorkflowExecutionError(message, error_code=409) from tool_error
         except Exception as exception:
             end_time = time.time()
             execution_time = end_time - start_time
             message = str(exception)[:EXECUTION_ERROR_LENGTH]
+            status_code = getattr(exception, "error_code", 500)  # Default to 500 if no error_code
             logger.error(
                 f"Execution {self.execution_id} ran for {execution_time:.4f}s, "
-                f" Error {exception}"
+                f"Error: {exception}. "
+                f"This is the status code: {status_code}"
             )
-            raise WorkflowExecutionError(message) from exception
+            raise WorkflowExecutionError(message, error_code=status_code) from exception
 
     def publish_initial_workflow_logs(self, total_files: int) -> None:
         """Publishes the initial logs for the workflow.

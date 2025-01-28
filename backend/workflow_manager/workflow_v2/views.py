@@ -183,6 +183,9 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK,
             )
         except Exception as exception:
+            logger.info(
+                "This exception is being thrown at execute function"
+            )
             logger.error(f"Error while executing workflow: {exception}")
             if file_objs and execution_id and workflow_id:
                 DestinationConnector.delete_api_storage_dir(

@@ -29,6 +29,7 @@ class ExecutionResponse:
     log_id: Optional[str] = None
     status_api: Optional[str] = None
     error: Optional[str] = None
+    error_status_code: Optional[int] = None
     mode: Optional[str] = None
     result: Optional[Any] = None
     message: Optional[str] = None
@@ -38,6 +39,7 @@ class ExecutionResponse:
         self.log_id = self.log_id or None
         self.mode = self.mode or None
         self.error = self.error or None
+        self.error_status_code = self.error_status_code or None
         self.result = self.result or None
         self.message = self.message or None
         self.status_api = self.status_api or None

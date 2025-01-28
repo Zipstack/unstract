@@ -12,8 +12,10 @@ class WorkflowRegenerationError(APIException):
 
 
 class WorkflowExecutionError(APIException):
-    status_code = 500
-    default_detail = "Error executing workflow."
+    def __init__(self, message: str, error_code: int = 500):
+        self.status_code = error_code
+        detail = f"Error executing workflow: {message}"
+        super().__init__(detail)
 
 
 class WorkflowDoesNotExistError(APIException):

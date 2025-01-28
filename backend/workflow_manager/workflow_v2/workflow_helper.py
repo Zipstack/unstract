@@ -185,6 +185,9 @@ class WorkflowHelper:
                     successful_files += 1
                     workflow_execution_file.update_status(ExecutionStatus.COMPLETED)
             except StopExecution as e:
+                logger.info(
+                f"The error is being thrown in process_input_files StopExecution"
+            )
                 execution_service.update_execution(
                     ExecutionStatus.STOPPED, error=str(e)
                 )
@@ -194,8 +197,15 @@ class WorkflowHelper:
                 break
             except Exception as e:
                 failed_files += 1
+                status_code = getattr(e, "status_code", 500)
+                logger.info(
+                    f"{status_code} is the status code that is being captured"
+                )
                 error_message = f"Error processing file '{file_path}'. {e}"
                 logger.error(error_message, stack_info=True, exc_info=True)
+                logger.info(
+                f"The error message has been updated in the db"
+            )
                 workflow_execution_file.update_status(
                     status=ExecutionStatus.ERROR,
                     execution_error=error_message,
@@ -204,6 +214,9 @@ class WorkflowHelper:
                     message=error_message, level=LogLevel.ERROR
                 )
         if failed_files and failed_files >= total_files:
+            logger.info(
+                f"The error is being thrown in process_input_files"
+            )
             execution_service.update_execution(
                 ExecutionStatus.ERROR, error=error_message
             )
@@ -242,8 +255,14 @@ class WorkflowHelper:
         )
         try:
             execution_service.file_execution_id = file_execution_id
+            logger.info(
+                f"the initial_tool_execution is starting"
+            )
             execution_service.initiate_tool_execution(
                 current_file_idx, total_files, file_name, single_step
+            )
+            logger.info(
+                f"the initial_tool_execution is completed"
             )
             workflow_file_execution.update_status(status=ExecutionStatus.INITIATED)
             if not file_hash.is_executed:
@@ -253,9 +272,19 @@ class WorkflowHelper:
                     single_step=single_step,
                     workflow_file_execution=workflow_file_execution,
                 )
+            logger.info(
+                f"the file_has is executed"
+            )
         except StopExecution:
+            logger.info(
+                "the code has thrown a StopExecution error"
+            )
             raise
         except Exception as e:
+            status_code = getattr(e, "status_code")
+            logger.info(
+                f"the error is being thrown here at _process_file and the error code is {status_code}"
+            )
             error = f"Error processing file '{os.path.basename(input_file)}'. {str(e)}"
             execution_service.publish_log(error, level=LogLevel.ERROR)
         execution_service.publish_update_log(
@@ -360,6 +389,9 @@ class WorkflowHelper:
         except Exception as e:
             logger.error(f"Error executing workflow {workflow}: {e}")
             logger.error(f"Error {traceback.format_exc()}")
+            logger.info(
+                "Error is being thrown in run_workflow"
+            )
             workflow_execution = WorkflowExecutionServiceHelper.update_execution_err(
                 execution_id, str(e)
             )
@@ -542,6 +574,9 @@ class WorkflowHelper:
                 message=WorkflowMessages.CELERY_TIMEOUT_MESSAGE,
             )
         except Exception as error:
+            logger.info(
+                "Error is being thrown in execute_workflow_async"
+            )
             WorkflowExecutionServiceHelper.update_execution_err(
                 execution_id, str(error)
             )
@@ -690,6 +725,9 @@ class WorkflowHelper:
             error_message = traceback.format_exc()
             logger.error(
                 f"Error executing execution {workflow_execution}: {error_message}"
+            )
+            logger.info(
+                "Error is being thrown from execute_workflow"
             )
             WorkflowExecutionServiceHelper.update_execution_err(
                 execution_id, str(error)
