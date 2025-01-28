@@ -6,8 +6,7 @@ from django.utils.deprecation import MiddlewareMixin
 
 class OrganizationMiddleware(MiddlewareMixin):
     def process_request(self, request):
-        tenant_prefix = settings.TENANT_SUBFOLDER_PREFIX.rstrip("/") + "/"
-        pattern = rf"^{tenant_prefix}(?P<org_id>[^/]+)/"
+        pattern = r"^/api/(?P<version>v[12])/unstract/(?P<org_id>[^/]+)/"
 
         # Check if the URL matches the pattern with organization ID
         match = re.match(pattern, request.path)
@@ -17,12 +16,12 @@ class OrganizationMiddleware(MiddlewareMixin):
                 re.match(path, request.path)
                 for path in settings.ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS
             ):
-                request.path_info = "/" + request.path_info
                 return
 
             org_id = match.group("org_id")
+            version = match.group("version")
             request.organization_id = org_id
-            new_path = re.sub(pattern, "/" + tenant_prefix, request.path_info)
+            new_path = re.sub(pattern, f"/api/{version}/unstract/", request.path_info)
             request.path_info = new_path
         else:
             request.organization_id = None
