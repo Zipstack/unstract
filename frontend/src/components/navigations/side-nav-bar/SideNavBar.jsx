@@ -16,7 +16,7 @@ import task from "../../../assets/task.svg";
 import VectorDbIcon from "../../../assets/vector-db.svg";
 import TextExtractorIcon from "../../../assets/text-extractor.svg";
 import { useSessionStore } from "../../../store/session-store";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 let getMenuItem;
 try {
@@ -52,15 +52,17 @@ const SideNavBar = ({ collapsed }) => {
   const { sessionDetails } = useSessionStore();
   const { orgName, flags } = sessionDetails;
 
-  try {
-    if (useUnstractSubscriptionPlanStore) {
-      unstractSubscriptionPlan = useUnstractSubscriptionPlanStore(
-        (state) => state?.unstractSubscriptionPlan
-      );
+  useEffect(() => {
+    try {
+      if (useUnstractSubscriptionPlanStore) {
+        unstractSubscriptionPlan = useUnstractSubscriptionPlanStore(
+          (state) => state?.unstractSubscriptionPlan
+        );
+      }
+    } catch (error) {
+      // Do nothing
     }
-  } catch (error) {
-    // Do nothing
-  }
+  }, [useUnstractSubscriptionPlanStore]);
 
   let menu;
   if (sideMenu) {
