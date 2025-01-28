@@ -31,10 +31,17 @@ try {
   // Plugin unavailable.
 }
 
+let unstractSubscriptionPlan;
+let useUnstractSubscriptionPlanStore;
 let dashboardSideMenuItem;
+let UNSTRACT_SUBSCRIPTION_PLANS;
 try {
-  dashboardSideMenuItem =
-    require("../../../plugins/unstract-subscription/helper/constants").dashboardSideMenuItem;
+  useUnstractSubscriptionPlanStore =
+    require("../../../plugins/store/unstract-subscription-plan-store").useUnstractSubscriptionPlanStore;
+  const unstractSubscriptionConstants = require("../../../plugins/unstract-subscription/helper/constants");
+  dashboardSideMenuItem = unstractSubscriptionConstants?.dashboardSideMenuItem;
+  UNSTRACT_SUBSCRIPTION_PLANS =
+    unstractSubscriptionConstants?.UNSTRACT_SUBSCRIPTION_PLANS;
 } catch (err) {
   // Plugin unavailable.
 }
@@ -43,6 +50,17 @@ const SideNavBar = ({ collapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const { orgName, flags } = sessionDetails;
+
+  try {
+    if (useUnstractSubscriptionPlanStore) {
+      unstractSubscriptionPlan = useUnstractSubscriptionPlanStore(
+        (state) => state?.unstractSubscriptionPlan
+      );
+    }
+  } catch (error) {
+    // Do nothing
+  }
+
   let menu;
   if (sideMenu) {
     menu = sideMenu.useSideMenu();
@@ -170,7 +188,19 @@ const SideNavBar = ({ collapsed }) => {
   const data = menu || unstractMenuItems;
 
   if (getMenuItem && flags?.app_deployment) {
-    data[0]?.subMenu?.splice(1, 0, getMenuItem?.default(orgName));
+    data[0]?.subMenu?.splice(1, 0, getMenuItem.default(orgName));
+  }
+
+  const shouldDisableAll =
+    !unstractSubscriptionPlan?.subscriptionId &&
+    unstractSubscriptionPlan?.planType !== UNSTRACT_SUBSCRIPTION_PLANS?.TRIAL;
+
+  if (shouldDisableAll) {
+    data.forEach((mainMenuItem) => {
+      mainMenuItem.subMenu.forEach((subMenuItem) => {
+        subMenuItem.disable = true;
+      });
+    });
   }
 
   return (
@@ -184,53 +214,51 @@ const SideNavBar = ({ collapsed }) => {
     >
       <div className="main-slider">
         <div className="slider-wrap">
-          {data?.map((item, index) => {
-            return (
-              <div key={item?.id}>
-                {!collapsed && (
-                  <Typography className="sidebar-main-heading">
-                    {item.mainTitle}
-                  </Typography>
-                )}
-                <Space direction="vertical" className="menu-item-body">
-                  {item.subMenu.map((el) => {
-                    return (
-                      <Tooltip key={el.id} title={collapsed ? el.title : ""}>
-                        <Space
-                          className={`space-styles ${
-                            el.active ? "space-styles-active" : ""
-                          } ${el.disable ? "space-styles-disable" : ""}`}
-                          onClick={() => {
-                            !el.disable && navigate(el.path);
-                          }}
-                        >
-                          <Image
-                            src={el.image}
-                            alt="side_icon"
-                            className="menu-item-icon"
-                            preview={false}
-                          />
-                          {!collapsed && (
-                            <div>
-                              <Typography className="sidebar-item-text fs-14">
-                                {el.title}
-                              </Typography>
-                              <Typography className="sidebar-item-text fs-11">
-                                {el.description}
-                              </Typography>
-                            </div>
-                          )}
-                        </Space>
-                      </Tooltip>
-                    );
-                  })}
-                </Space>
-                {index < data.length - 1 && (
-                  <Divider className="sidebar-divider" />
-                )}
-              </div>
-            );
-          })}
+          {data?.map((item, index) => (
+            <div key={item?.id}>
+              {!collapsed && (
+                <Typography className="sidebar-main-heading">
+                  {item.mainTitle}
+                </Typography>
+              )}
+              <Space direction="vertical" className="menu-item-body">
+                {item.subMenu.map((el) => (
+                  <Tooltip key={el.id} title={collapsed ? el.title : ""}>
+                    <Space
+                      className={`space-styles ${
+                        el.active ? "space-styles-active" : ""
+                      } ${el.disable ? "space-styles-disable" : ""}`}
+                      onClick={() => {
+                        if (!el.disable) {
+                          navigate(el.path);
+                        }
+                      }}
+                    >
+                      <Image
+                        src={el.image}
+                        alt="side_icon"
+                        className="menu-item-icon"
+                        preview={false}
+                      />
+                      {!collapsed && (
+                        <div>
+                          <Typography className="sidebar-item-text fs-14">
+                            {el.title}
+                          </Typography>
+                          <Typography className="sidebar-item-text fs-11">
+                            {el.description}
+                          </Typography>
+                        </div>
+                      )}
+                    </Space>
+                  </Tooltip>
+                ))}
+              </Space>
+              {index < data.length - 1 && (
+                <Divider className="sidebar-divider" />
+              )}
+            </div>
+          ))}
         </div>
       </div>
     </Sider>
