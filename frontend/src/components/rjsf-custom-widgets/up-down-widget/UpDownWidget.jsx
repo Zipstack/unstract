@@ -3,7 +3,15 @@ import PropTypes from "prop-types";
 
 import { RjsfWidgetLayout } from "../../../layouts/rjsf-widget-layout/RjsfWidgetLayout.jsx";
 
-const UpDownWidget = ({ id, value, onChange, label, schema, required }) => {
+const UpDownWidget = ({
+  id,
+  value,
+  onChange,
+  label,
+  schema,
+  required,
+  readonly,
+}) => {
   const description = schema?.description || "";
   const handleNumberChange = (numberValue) => {
     onChange(numberValue);
@@ -15,7 +23,12 @@ const UpDownWidget = ({ id, value, onChange, label, schema, required }) => {
       description={description}
       required={required}
     >
-      <InputNumber id={id} value={value} onChange={handleNumberChange} />
+      <InputNumber
+        id={id}
+        value={value}
+        onChange={handleNumberChange}
+        disabled={readonly}
+      />
     </RjsfWidgetLayout>
   );
 };
@@ -27,6 +40,7 @@ UpDownWidget.propTypes = {
   label: PropTypes.string.isRequired,
   schema: PropTypes.object.isRequired,
   required: PropTypes.bool,
+  readonly: PropTypes.bool.isRequired,
 };
 
 export { UpDownWidget };
