@@ -35,9 +35,3 @@ class Env:
     )
     EXECUTION_DATA_DIR = "EXECUTION_DATA_DIR"
     FLIPT_SERVICE_AVAILABLE = "FLIPT_SERVICE_AVAILABLE"
-
-
-class FeatureFlag:
-    """Temporary feature flags."""
-
-    REMOTE_FILE_STORAGE = "remote_file_storage"
