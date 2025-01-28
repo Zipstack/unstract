@@ -34,11 +34,14 @@ try {
 let unstractSubscriptionPlan;
 let useUnstractSubscriptionPlanStore;
 let dashboardSideMenuItem;
+let UNSTRACT_SUBSCRIPTION_PLANS;
 try {
   useUnstractSubscriptionPlanStore =
     require("../../../plugins/store/unstract-subscription-plan-store").useUnstractSubscriptionPlanStore;
-  dashboardSideMenuItem =
-    require("../../../plugins/unstract-subscription/helper/constants").dashboardSideMenuItem;
+  const unstractSubscriptionConstants = require("../../../plugins/unstract-subscription/helper/constants");
+  dashboardSideMenuItem = unstractSubscriptionConstants?.dashboardSideMenuItem;
+  UNSTRACT_SUBSCRIPTION_PLANS =
+    unstractSubscriptionConstants?.UNSTRACT_SUBSCRIPTION_PLANS;
 } catch (err) {
   // Plugin unavailable.
 }
@@ -189,8 +192,8 @@ const SideNavBar = ({ collapsed }) => {
   }
 
   const shouldDisableAll =
-    !unstractSubscriptionPlan.subscriptionId &&
-    unstractSubscriptionPlan.planType !== "TRIAL";
+    !unstractSubscriptionPlan?.subscriptionId &&
+    unstractSubscriptionPlan?.planType !== UNSTRACT_SUBSCRIPTION_PLANS?.TRIAL;
 
   if (shouldDisableAll) {
     data.forEach((mainMenuItem) => {
