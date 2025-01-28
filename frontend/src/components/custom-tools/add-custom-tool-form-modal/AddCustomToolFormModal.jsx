@@ -73,7 +73,9 @@ function AddCustomToolFormModal({
         });
         setOpen(false);
         clearFormDetails();
-        navigate(success?.tool_id);
+        if (!isEdit) {
+          navigate(success?.tool_id);
+        }
       })
       .catch((err) => {
         handleException(err, "", setBackendErrors);

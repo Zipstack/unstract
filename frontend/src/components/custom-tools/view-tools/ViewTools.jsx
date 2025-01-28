@@ -1,44 +1,48 @@
 import PropTypes from "prop-types";
 import { Typography } from "antd";
+import { useCallback } from "react";
 
 import { ListView } from "../../widgets/list-view/ListView";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
+import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import "./ViewTools.css";
-import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
+import { EmptyState } from "../../widgets/empty-state/EmptyState";
 
 function ViewTools({
   isLoading,
   isEmpty,
-  listOfTools,
-  setOpenAddTool,
+  listOfTools = [],
+  setOpenAddTool = () => {},
   handleEdit,
   handleDelete,
   titleProp,
-  descriptionProp,
-  iconProp,
+  descriptionProp = "",
+  iconProp = "",
   idProp,
-  centered,
+  centered = false,
   isClickable = true,
-  handleShare,
-  showOwner,
-  type,
+  handleShare = null,
+  showOwner = false,
+  type = "",
 }) {
+  const handleEmptyStateClick = useCallback(() => {
+    setOpenAddTool(true);
+  }, [setOpenAddTool]);
+
   if (isLoading) {
     return <SpinnerLoader />;
   }
 
   if (isEmpty) {
-    let text = "No tools available";
-    let btnText = "New Tool";
-    if (type) {
-      text = `No ${type.toLowerCase()} available`;
-      btnText = type;
-    }
+    const text = type
+      ? `No ${type.toLowerCase()} available`
+      : "No tools available";
+    const btnText = type || "New Tool";
+
     return (
       <EmptyState
         text={text}
         btnText={btnText}
-        handleClick={() => setOpenAddTool(true)}
+        handleClick={handleEmptyStateClick}
       />
     );
   }
