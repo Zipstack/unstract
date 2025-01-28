@@ -68,6 +68,17 @@ try {
   // Ignore if hook not available
 }
 
+let unstractSubscriptionPlan;
+let unstractSubscriptionPlanStore;
+let UNSTRACT_SUBSCRIPTION_PLANS;
+try {
+  unstractSubscriptionPlanStore = require("../../../plugins/store/unstract-subscription-plan-store");
+  UNSTRACT_SUBSCRIPTION_PLANS =
+    require("../../../plugins/unstract-subscription/helper/constants").UNSTRACT_SUBSCRIPTION_PLANS;
+} catch (err) {
+  // Plugin unavailable.
+}
+
 function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
@@ -88,6 +99,28 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       (state) => state?.selectedProduct
     );
   }
+
+  try {
+    if (unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore) {
+      unstractSubscriptionPlan =
+        unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore(
+          (state) => state?.unstractSubscriptionPlan
+        );
+    }
+  } catch (error) {
+    // Do nothing
+  }
+
+  const shouldDisableRouting = useMemo(() => {
+    if (!unstractSubscriptionPlan || !UNSTRACT_SUBSCRIPTION_PLANS) {
+      return false;
+    }
+
+    return (
+      !unstractSubscriptionPlan?.subscriptionId &&
+      unstractSubscriptionPlan?.planType !== UNSTRACT_SUBSCRIPTION_PLANS?.TRIAL
+    );
+  }, [unstractSubscriptionPlan]);
 
   const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
 
@@ -185,6 +218,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           <Button
             onClick={() => navigate(`/${orgName}/profile`)}
             className="logout-button"
+            disabled={shouldDisableRouting}
           >
             <UserOutlined /> Profile
           </Button>
@@ -223,6 +257,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           <Button
             onClick={() => navigate(`/${orgName}/review`)}
             className="logout-button"
+            disabled={shouldDisableRouting}
           >
             <FileProtectOutlined /> Review
           </Button>
@@ -238,6 +273,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           <Button
             onClick={() => navigate(`/${orgName}/review/approve`)}
             className="logout-button"
+            disabled={shouldDisableRouting}
           >
             <LikeOutlined /> Approve
           </Button>
@@ -250,6 +286,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           <Button
             onClick={() => navigate(`/${orgName}/review/download_and_sync`)}
             className="logout-button"
+            disabled={shouldDisableRouting}
           >
             <DownloadOutlined /> Download and Sync Manager
           </Button>
@@ -277,6 +314,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     cascadeOptions,
     orgName,
     orgId,
+    shouldDisableRouting,
   ]);
 
   // Function to get the initials from the user name
