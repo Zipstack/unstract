@@ -101,17 +101,15 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     );
   }
 
-  useEffect(() => {
-    try {
-      if (useUnstractSubscriptionPlanStore) {
-        unstractSubscriptionPlan = useUnstractSubscriptionPlanStore(
-          (state) => state?.unstractSubscriptionPlan
-        );
-      }
-    } catch (error) {
-      // Do nothing
+  try {
+    if (useUnstractSubscriptionPlanStore) {
+      unstractSubscriptionPlan = useUnstractSubscriptionPlanStore(
+        (state) => state?.unstractSubscriptionPlan
+      );
     }
-  }, [useUnstractSubscriptionPlanStore]);
+  } catch (error) {
+    // Do nothing
+  }
 
   const shouldDisableRouting = useMemo(() => {
     if (!unstractSubscriptionPlan || !UNSTRACT_SUBSCRIPTION_PLANS) {
