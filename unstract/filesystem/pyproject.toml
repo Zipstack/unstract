@@ -10,7 +10,7 @@ authors = [
     {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
 ]
 dependencies = [
-    "unstract-sdk~=0.54.0rc12",
+    "unstract-sdk~=0.56.0rc4",
 ]
 requires-python = ">=3.9,<3.11.1"
 readme = "README.md"
@@ -18,3 +18,8 @@ readme = "README.md"
 [tool.pdm.build]
 includes = ["src"]
 package-dir = "src"
+
+[tool.pdm.resolution.overrides]
+grpcio = "1.62.3"
+grpcio-tools = "1.62.3"
+grpcio-health-checking = "1.62.3"

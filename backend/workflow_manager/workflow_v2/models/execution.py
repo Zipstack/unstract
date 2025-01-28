@@ -1,6 +1,7 @@
 import uuid
 
 from django.db import models
+from tags.models import Tag
 from utils.models.base_model import BaseModel
 
 EXECUTION_ERROR_LENGTH = 256
@@ -61,6 +62,17 @@ class WorkflowExecution(BaseModel):
     execution_time = models.FloatField(
         default=0, db_comment="execution time in seconds"
     )
+    tags = models.ManyToManyField(Tag, related_name="workflow_executions", blank=True)
+
+    class Meta:
+        verbose_name = "Workflow Execution"
+        verbose_name_plural = "Workflow Executions"
+        db_table = "workflow_execution"
+
+    @property
+    def tag_names(self) -> list[str]:
+        """Return a list of tag names associated with the workflow execution."""
+        return list(self.tags.values_list("name", flat=True))
 
     def __str__(self) -> str:
         return (
@@ -71,8 +83,3 @@ class WorkflowExecution(BaseModel):
             f"status: {self.status}, "
             f"error message: {self.error_message})"
         )
-
-    class Meta:
-        verbose_name = "Workflow Execution"
-        verbose_name_plural = "Workflow Executions"
-        db_table = "workflow_execution"

@@ -99,8 +99,8 @@ class AuthenticationMiddleware:
         return organization_uid, organization_identifier
 
     @classmethod
-    def execute_query(cls, query: str) -> Any:
-        cursor = be_db.execute_sql(query)
+    def execute_query(cls, query: str, params: tuple = ()) -> Any:
+        cursor = be_db.execute_sql(query, params)
         result_row = cursor.fetchone()
         cursor.close()
         if not result_row or len(result_row) == 0:
