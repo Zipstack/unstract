@@ -113,7 +113,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
 
   const shouldDisableRouting = useMemo(() => {
     if (!unstractSubscriptionPlan || !UNSTRACT_SUBSCRIPTION_PLANS) {
-      return false;
+      return undefined;
     }
 
     return (
@@ -218,7 +218,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           <Button
             onClick={() => navigate(`/${orgName}/profile`)}
             className="logout-button"
-            disabled={shouldDisableRouting}
+            disabled={shouldDisableRouting === false}
           >
             <UserOutlined /> Profile
           </Button>
@@ -257,7 +257,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           <Button
             onClick={() => navigate(`/${orgName}/review`)}
             className="logout-button"
-            disabled={shouldDisableRouting}
+            disabled={shouldDisableRouting === false}
           >
             <FileProtectOutlined /> Review
           </Button>
@@ -273,7 +273,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           <Button
             onClick={() => navigate(`/${orgName}/review/approve`)}
             className="logout-button"
-            disabled={shouldDisableRouting}
+            disabled={shouldDisableRouting === false}
           >
             <LikeOutlined /> Approve
           </Button>
@@ -286,7 +286,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           <Button
             onClick={() => navigate(`/${orgName}/review/download_and_sync`)}
             className="logout-button"
-            disabled={shouldDisableRouting}
+            disabled={shouldDisableRouting === false}
           >
             <DownloadOutlined /> Download and Sync Manager
           </Button>

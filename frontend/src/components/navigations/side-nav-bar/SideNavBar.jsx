@@ -16,6 +16,7 @@ import task from "../../../assets/task.svg";
 import VectorDbIcon from "../../../assets/vector-db.svg";
 import TextExtractorIcon from "../../../assets/text-extractor.svg";
 import { useSessionStore } from "../../../store/session-store";
+import { useMemo } from "react";
 
 let getMenuItem;
 try {
@@ -191,11 +192,18 @@ const SideNavBar = ({ collapsed }) => {
     data[0]?.subMenu?.splice(1, 0, getMenuItem.default(orgName));
   }
 
-  const shouldDisableAll =
-    !unstractSubscriptionPlan?.subscriptionId &&
-    unstractSubscriptionPlan?.planType !== UNSTRACT_SUBSCRIPTION_PLANS?.TRIAL;
+  const shouldDisableAll = useMemo(() => {
+    if (!unstractSubscriptionPlan || !UNSTRACT_SUBSCRIPTION_PLANS) {
+      return undefined;
+    }
 
-  if (shouldDisableAll) {
+    return (
+      !unstractSubscriptionPlan?.subscriptionId &&
+      unstractSubscriptionPlan?.planType !== UNSTRACT_SUBSCRIPTION_PLANS?.TRIAL
+    );
+  }, [unstractSubscriptionPlan]);
+
+  if (shouldDisableAll === false) {
     data.forEach((mainMenuItem) => {
       mainMenuItem.subMenu.forEach((subMenuItem) => {
         subMenuItem.disable = true;
