@@ -190,7 +190,7 @@ files = [
 
 [[package]]
 name = "anthropic"
-version = "0.45.0"
+version = "0.45.2"
 requires_python = ">=3.8"
 summary = "The official Python library for the anthropic API"
 groups = ["default", "dev"]
@@ -204,26 +204,26 @@ dependencies = [
     "typing-extensions<5,>=4.10",
 ]
 files = [
-    {file = "anthropic-0.45.0-py3-none-any.whl", hash = "sha256:f36aff71d2c232945e64d1970be68a91b05a2ef5e3afa6c1ff195c3303a95ad3"},
-    {file = "anthropic-0.45.0.tar.gz", hash = "sha256:4e8541dc355332090bfc51b84549c19b649a13a23dbd6bd68e1d012e08551025"},
+    {file = "anthropic-0.45.2-py3-none-any.whl", hash = "sha256:ecd746f7274451dfcb7e1180571ead624c7e1195d1d46cb7c70143d2aedb4d35"},
+    {file = "anthropic-0.45.2.tar.gz", hash = "sha256:32a18b9ecd12c91b2be4cae6ca2ab46a06937b5aa01b21308d97a6d29794fb5e"},
 ]
 
 [[package]]
 name = "anthropic"
-version = "0.45.0"
+version = "0.45.2"
 extras = ["bedrock", "vertex"]
 requires_python = ">=3.8"
 summary = "The official Python library for the anthropic API"
 groups = ["default", "dev"]
 dependencies = [
-    "anthropic==0.45.0",
+    "anthropic==0.45.2",
     "boto3>=1.28.57",
     "botocore>=1.31.57",
     "google-auth<3,>=2",
 ]
 files = [
-    {file = "anthropic-0.45.0-py3-none-any.whl", hash = "sha256:f36aff71d2c232945e64d1970be68a91b05a2ef5e3afa6c1ff195c3303a95ad3"},
-    {file = "anthropic-0.45.0.tar.gz", hash = "sha256:4e8541dc355332090bfc51b84549c19b649a13a23dbd6bd68e1d012e08551025"},
+    {file = "anthropic-0.45.2-py3-none-any.whl", hash = "sha256:ecd746f7274451dfcb7e1180571ead624c7e1195d1d46cb7c70143d2aedb4d35"},
+    {file = "anthropic-0.45.2.tar.gz", hash = "sha256:32a18b9ecd12c91b2be4cae6ca2ab46a06937b5aa01b21308d97a6d29794fb5e"},
 ]
 
 [[package]]
@@ -1383,7 +1383,7 @@ files = [
 
 [[package]]
 name = "google-api-core"
-version = "2.24.1rc1"
+version = "2.24.1"
 requires_python = ">=3.7"
 summary = "Google API client core library"
 groups = ["default", "dev"]
@@ -1395,32 +1395,32 @@ dependencies = [
     "requests<3.0.0.dev0,>=2.18.0",
 ]
 files = [
-    {file = "google_api_core-2.24.1rc1-py3-none-any.whl", hash = "sha256:92ee3eed90a397a9f4dd13c034a36cbe7dba2a58e01e5668619847b68a527b73"},
-    {file = "google_api_core-2.24.1rc1.tar.gz", hash = "sha256:d1cf8265c8b0b171a87d84adc8709a5e48147ca529d6f96d6a2be613a195eb78"},
+    {file = "google_api_core-2.24.1-py3-none-any.whl", hash = "sha256:bc78d608f5a5bf853b80bd70a795f703294de656c096c0968320830a4bc280f1"},
+    {file = "google_api_core-2.24.1.tar.gz", hash = "sha256:f8b36f5456ab0dd99a1b693a40a31d1e7757beea380ad1b38faaf8941eae9d8a"},
 ]
 
 [[package]]
 name = "google-api-core"
-version = "2.24.1rc1"
+version = "2.24.1"
 extras = ["grpc"]
 requires_python = ">=3.7"
 summary = "Google API client core library"
 groups = ["default", "dev"]
 dependencies = [
-    "google-api-core==2.24.1rc1",
+    "google-api-core==2.24.1",
     "grpcio-status<2.0.dev0,>=1.33.2",
     "grpcio-status<2.0.dev0,>=1.49.1; python_version >= \"3.11\"",
     "grpcio<2.0dev,>=1.33.2",
     "grpcio<2.0dev,>=1.49.1; python_version >= \"3.11\"",
 ]
 files = [
-    {file = "google_api_core-2.24.1rc1-py3-none-any.whl", hash = "sha256:92ee3eed90a397a9f4dd13c034a36cbe7dba2a58e01e5668619847b68a527b73"},
-    {file = "google_api_core-2.24.1rc1.tar.gz", hash = "sha256:d1cf8265c8b0b171a87d84adc8709a5e48147ca529d6f96d6a2be613a195eb78"},
+    {file = "google_api_core-2.24.1-py3-none-any.whl", hash = "sha256:bc78d608f5a5bf853b80bd70a795f703294de656c096c0968320830a4bc280f1"},
+    {file = "google_api_core-2.24.1.tar.gz", hash = "sha256:f8b36f5456ab0dd99a1b693a40a31d1e7757beea380ad1b38faaf8941eae9d8a"},
 ]
 
 [[package]]
 name = "google-api-python-client"
-version = "2.159.0"
+version = "2.160.0"
 requires_python = ">=3.7"
 summary = "Google API Client Library for Python"
 groups = ["default", "dev"]
@@ -1432,8 +1432,8 @@ dependencies = [
     "uritemplate<5,>=3.0.1",
 ]
 files = [
-    {file = "google_api_python_client-2.159.0-py2.py3-none-any.whl", hash = "sha256:baef0bb631a60a0bd7c0bf12a5499e3a40cd4388484de7ee55c1950bf820a0cf"},
-    {file = "google_api_python_client-2.159.0.tar.gz", hash = "sha256:55197f430f25c907394b44fa078545ffef89d33fd4dca501b7db9f0d8e224bd6"},
+    {file = "google_api_python_client-2.160.0-py2.py3-none-any.whl", hash = "sha256:63d61fb3e4cf3fb31a70a87f45567c22f6dfe87bbfa27252317e3e2c42900db4"},
+    {file = "google_api_python_client-2.160.0.tar.gz", hash = "sha256:a8ccafaecfa42d15d5b5c3134ced8de08380019717fc9fb1ed510ca58eca3b7e"},
 ]
 
 [[package]]
@@ -2199,7 +2199,7 @@ files = [
 
 [[package]]
 name = "llama-cloud"
-version = "0.1.10"
+version = "0.1.11"
 requires_python = "<4,>=3.8"
 summary = ""
 groups = ["default", "dev"]
@@ -2209,8 +2209,8 @@ dependencies = [
     "pydantic>=1.10",
 ]
 files = [
-    {file = "llama_cloud-0.1.10-py3-none-any.whl", hash = "sha256:d91198ad92ea6c3a25757e5d6cb565b4bd6db385dc4fa596a725c0fb81a68f4e"},
-    {file = "llama_cloud-0.1.10.tar.gz", hash = "sha256:56ffe8f2910c2047dd4eb1b13da31ee5f67321a000794eee559e0b56954d2f76"},
+    {file = "llama_cloud-0.1.11-py3-none-any.whl", hash = "sha256:b703765d03783a5a0fc57a52adc9892f8b91b0c19bbecb85a54ad4e813342951"},
+    {file = "llama_cloud-0.1.11.tar.gz", hash = "sha256:d4be5b48659fd9fe1698727be257269a22d7f2733a2ed11bce7065768eb94cbe"},
 ]
 
 [[package]]
@@ -2240,7 +2240,7 @@ files = [
 
 [[package]]
 name = "llama-index-agent-openai"
-version = "0.4.2"
+version = "0.4.3"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index agent openai integration"
 groups = ["default", "dev"]
@@ -2250,8 +2250,8 @@ dependencies = [
     "openai>=1.14.0",
 ]
 files = [
-    {file = "llama_index_agent_openai-0.4.2-py3-none-any.whl", hash = "sha256:e100b8a743b11fef373b5be31be590b929950a4d7fd9d158b5f014dd8fd7976e"},
-    {file = "llama_index_agent_openai-0.4.2.tar.gz", hash = "sha256:0f8aeb091fc834b2667a46ad2417fc8601bf1c08ccfd1a3d15ede90a30eb1a29"},
+    {file = "llama_index_agent_openai-0.4.3-py3-none-any.whl", hash = "sha256:5d1fbb6831113e609296e457b0a4d1c08c9267acca219eb78cb702bd76a0744d"},
+    {file = "llama_index_agent_openai-0.4.3.tar.gz", hash = "sha256:ff1f4a13ba417cb4b9cfbc2ffa9f162bdbdda9b87d6645d512cbde2061f55412"},
 ]
 
 [[package]]
@@ -3009,7 +3009,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.60.1"
+version = "1.60.2"
 requires_python = ">=3.8"
 summary = "The official Python library for the openai API"
 groups = ["default", "dev"]
@@ -3024,8 +3024,8 @@ dependencies = [
     "typing-extensions<5,>=4.11",
 ]
 files = [
-    {file = "openai-1.60.1-py3-none-any.whl", hash = "sha256:714181ec1c452353d456f143c22db892de7b373e3165063d02a2b798ed575ba1"},
-    {file = "openai-1.60.1.tar.gz", hash = "sha256:beb1541dfc38b002bd629ab68b0d6fe35b870c5f4311d9bc4404d85af3214d5e"},
+    {file = "openai-1.60.2-py3-none-any.whl", hash = "sha256:993bd11b96900b9098179c728026f016b4982ded7ee30dfcf4555eab1171fff9"},
+    {file = "openai-1.60.2.tar.gz", hash = "sha256:a8f843e10f2855713007f491d96afb2694b11b5e02cb97c7d01a0be60bc5bb51"},
 ]
 
 [[package]]
@@ -3389,7 +3389,7 @@ files = [
 
 [[package]]
 name = "proto-plus"
-version = "1.26.0rc1"
+version = "1.26.0"
 requires_python = ">=3.7"
 summary = "Beautiful, Pythonic protocol buffers"
 groups = ["default", "dev"]
@@ -3397,8 +3397,8 @@ dependencies = [
     "protobuf<6.0.0dev,>=3.19.0",
 ]
 files = [
-    {file = "proto_plus-1.26.0rc1-py3-none-any.whl", hash = "sha256:a0ad6fbc2e194dbbb813edc22ee2e509a7c38df7ecea2fd2803bce0536eaf0f4"},
-    {file = "proto_plus-1.26.0rc1.tar.gz", hash = "sha256:04eeceecd6a038285e2aa8996b53c045d04a568c5c48b7eaa79c097a4984a4c7"},
+    {file = "proto_plus-1.26.0-py3-none-any.whl", hash = "sha256:bf2dfaa3da281fc3187d12d224c707cb57214fb2c22ba854eb0c105a3fb2d4d7"},
+    {file = "proto_plus-1.26.0.tar.gz", hash = "sha256:6e93d5f5ca267b54300880fff156b6a3386b3fa3f43b1da62e680fc0c586ef22"},
 ]
 
 [[package]]
