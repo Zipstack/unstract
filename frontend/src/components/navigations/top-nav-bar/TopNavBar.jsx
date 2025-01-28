@@ -69,11 +69,10 @@ try {
 }
 
 let unstractSubscriptionPlan;
-let useUnstractSubscriptionPlanStore;
+let unstractSubscriptionPlanStore;
 let UNSTRACT_SUBSCRIPTION_PLANS;
 try {
-  useUnstractSubscriptionPlanStore =
-    require("../../../plugins/store/unstract-subscription-plan-store").useUnstractSubscriptionPlanStore;
+  unstractSubscriptionPlanStore = require("../../../plugins/store/unstract-subscription-plan-store");
   UNSTRACT_SUBSCRIPTION_PLANS =
     require("../../../plugins/unstract-subscription/helper/constants").UNSTRACT_SUBSCRIPTION_PLANS;
 } catch (err) {
@@ -102,10 +101,11 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   }
 
   try {
-    if (useUnstractSubscriptionPlanStore) {
-      unstractSubscriptionPlan = useUnstractSubscriptionPlanStore(
-        (state) => state?.unstractSubscriptionPlan
-      );
+    if (unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore) {
+      unstractSubscriptionPlan =
+        unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore(
+          (state) => state?.unstractSubscriptionPlan
+        );
     }
   } catch (error) {
     // Do nothing
