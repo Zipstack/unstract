@@ -69,10 +69,11 @@ try {
 }
 
 let unstractSubscriptionPlan;
-let unstractSubscriptionPlanStore;
+let useUnstractSubscriptionPlanStore;
 let UNSTRACT_SUBSCRIPTION_PLANS;
 try {
-  unstractSubscriptionPlanStore = require("../../../plugins/store/unstract-subscription-plan-store");
+  useUnstractSubscriptionPlanStore =
+    require("../../../plugins/store/unstract-subscription-plan-store").useUnstractSubscriptionPlanStore;
   UNSTRACT_SUBSCRIPTION_PLANS =
     require("../../../plugins/unstract-subscription/helper/constants").UNSTRACT_SUBSCRIPTION_PLANS;
 } catch (err) {
@@ -101,11 +102,10 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   }
 
   try {
-    if (unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore) {
-      unstractSubscriptionPlan =
-        unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore(
-          (state) => state?.unstractSubscriptionPlan
-        );
+    if (useUnstractSubscriptionPlanStore) {
+      unstractSubscriptionPlan = useUnstractSubscriptionPlanStore(
+        (state) => state?.unstractSubscriptionPlan
+      );
     }
   } catch (error) {
     // Do nothing
@@ -113,7 +113,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
 
   const shouldDisableRouting = useMemo(() => {
     if (!unstractSubscriptionPlan || !UNSTRACT_SUBSCRIPTION_PLANS) {
-      return undefined;
+      return false;
     }
 
     return (
@@ -218,7 +218,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           <Button
             onClick={() => navigate(`/${orgName}/profile`)}
             className="logout-button"
-            disabled={shouldDisableRouting === false}
+            disabled={shouldDisableRouting}
           >
             <UserOutlined /> Profile
           </Button>
@@ -257,7 +257,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           <Button
             onClick={() => navigate(`/${orgName}/review`)}
             className="logout-button"
-            disabled={shouldDisableRouting === false}
+            disabled={shouldDisableRouting}
           >
             <FileProtectOutlined /> Review
           </Button>
@@ -273,7 +273,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           <Button
             onClick={() => navigate(`/${orgName}/review/approve`)}
             className="logout-button"
-            disabled={shouldDisableRouting === false}
+            disabled={shouldDisableRouting}
           >
             <LikeOutlined /> Approve
           </Button>
@@ -286,7 +286,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           <Button
             onClick={() => navigate(`/${orgName}/review/download_and_sync`)}
             className="logout-button"
-            disabled={shouldDisableRouting === false}
+            disabled={shouldDisableRouting}
           >
             <DownloadOutlined /> Download and Sync Manager
           </Button>

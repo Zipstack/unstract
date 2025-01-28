@@ -16,7 +16,7 @@ import task from "../../../assets/task.svg";
 import VectorDbIcon from "../../../assets/vector-db.svg";
 import TextExtractorIcon from "../../../assets/text-extractor.svg";
 import { useSessionStore } from "../../../store/session-store";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 let getMenuItem;
 try {
@@ -194,7 +194,7 @@ const SideNavBar = ({ collapsed }) => {
 
   const shouldDisableAll = useMemo(() => {
     if (!unstractSubscriptionPlan || !UNSTRACT_SUBSCRIPTION_PLANS) {
-      return undefined;
+      return false;
     }
 
     return (
@@ -203,7 +203,7 @@ const SideNavBar = ({ collapsed }) => {
     );
   }, [unstractSubscriptionPlan]);
 
-  if (shouldDisableAll === false) {
+  if (shouldDisableAll) {
     data.forEach((mainMenuItem) => {
       mainMenuItem.subMenu.forEach((subMenuItem) => {
         subMenuItem.disable = true;
