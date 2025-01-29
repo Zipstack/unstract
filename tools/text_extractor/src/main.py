@@ -63,14 +63,9 @@ class TextExtractor(BaseTool):
             usage_kwargs=usage_kwargs,
         )
         self.stream_log("Text extraction adapter has been created successfully.")
-        if self.workflow_filestorage:
-            extraction_result: TextExtractionResult = text_extraction_adapter.process(
-                input_file_path=input_file, fs=self.workflow_filestorage, tags=self.tags
-            )
-        else:
-            extraction_result: TextExtractionResult = text_extraction_adapter.process(
-                input_file_path=input_file, tags=self.tags
-            )
+        extraction_result: TextExtractionResult = text_extraction_adapter.process(
+            input_file_path=input_file, fs=self.workflow_filestorage, tags=self.tags
+        )
         extracted_text = self.convert_to_actual_string(extraction_result.extracted_text)
 
         self.stream_log("Text has been extracted successfully.")
@@ -85,13 +80,9 @@ class TextExtractor(BaseTool):
                 output_path = (
                     Path(output_dir) / f"{Path(self.source_file_name).stem}.txt"
                 )
-                if self.workflow_filestorage:
-                    self.workflow_filestorage.write(
-                        path=output_path, mode="w", data=extracted_text
-                    )
-                else:
-                    with open(output_path, "w", encoding="utf-8") as file:
-                        file.write(extracted_text)
+                self.workflow_filestorage.write(
+                    path=output_path, mode="w", data=extracted_text
+                )
 
                 self.stream_log("Tool output written successfully.")
             else:

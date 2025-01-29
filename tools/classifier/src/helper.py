@@ -1,5 +1,4 @@
 import re
-import shutil
 from pathlib import Path
 from typing import Any, Optional
 
@@ -67,20 +66,13 @@ class ClassifierHelper:
         """
         try:
             output_folder_bin = Path(self.output_dir) / classification
-            if self.tool.workflow_filestorage:
-                output_file = output_folder_bin / source_name
-                self._copy_file(
-                    source_fs=self.tool.workflow_filestorage,
-                    destination_fs=self.tool.workflow_filestorage,
-                    source_path=source_file,
-                    destination_path=str(output_file),
-                )
-            else:
-                if not output_folder_bin.is_dir():
-                    output_folder_bin.mkdir(parents=True, exist_ok=True)
-
-                output_file = output_folder_bin / source_name
-                shutil.copyfile(source_file, output_file)
+            output_file = output_folder_bin / source_name
+            self._copy_file(
+                source_fs=self.tool.workflow_filestorage,
+                destination_fs=self.tool.workflow_filestorage,
+                source_path=source_file,
+                destination_path=str(output_file),
+            )
         except Exception as e:
             self.tool.stream_error_and_exit(f"Error creating output file: {e}")
 
@@ -150,16 +142,11 @@ class ClassifierHelper:
         self.tool.stream_log("Text extraction adapter has been created successfully.")
 
         try:
-            if self.tool.workflow_filestorage:
-                extraction_result: TextExtractionResult = x2text.process(
-                    input_file_path=file,
-                    fs=self.tool.workflow_filestorage,
-                    tags=self.tool.tags,
-                )
-            else:
-                extraction_result: TextExtractionResult = x2text.process(
-                    input_file_path=file, tags=self.tool.tags
-                )
+            extraction_result: TextExtractionResult = x2text.process(
+                input_file_path=file,
+                fs=self.tool.workflow_filestorage,
+                tags=self.tool.tags,
+            )
             extracted_text: str = extraction_result.extracted_text
             return extracted_text
         except Exception as e:
@@ -176,13 +163,9 @@ class ClassifierHelper:
         """
         self.tool.stream_log("Extracting text from file")
         try:
-            if self.tool.workflow_filestorage:
-                text = self.tool.workflow_filestorage.read(path=file, mode="rb").decode(
-                    "utf-8"
-                )
-            else:
-                with open(file, "rb") as f:
-                    text = f.read().decode("utf-8")
+            text = self.tool.workflow_filestorage.read(path=file, mode="rb").decode(
+                "utf-8"
+            )
         except Exception as e:
             self.tool.stream_log(f"File error: {e}")
             return None

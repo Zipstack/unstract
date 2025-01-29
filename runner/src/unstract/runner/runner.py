@@ -11,12 +11,11 @@ from unstract.runner.clients.interface import (
     ContainerClientInterface,
     ContainerInterface,
 )
-from unstract.runner.constants import Env, FeatureFlag, LogLevel, LogType, ToolKey
+from unstract.runner.constants import Env, LogLevel, LogType, ToolKey
 from unstract.runner.exception import ToolRunException
 
 from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
-from unstract.flags.feature_flag import check_feature_flag_status
 
 load_dotenv()
 # Loads the container clinet class.
@@ -186,19 +185,16 @@ class UnstractRunner:
         Returns:
             Optional[Any]: _description_
         """
-        tool_data_dir = os.getenv(Env.TOOL_DATA_DIR, "/data")
-        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            envs[Env.EXECUTION_DATA_DIR] = os.path.join(
-                os.getenv(Env.WORKFLOW_EXECUTION_DIR_PREFIX, ""),
-                organization_id,
-                workflow_id,
-                execution_id,
-            )
-            envs[Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS] = os.getenv(
-                Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS, "{}"
-            )
-        else:
-            envs[Env.TOOL_DATA_DIR] = tool_data_dir
+
+        envs[Env.EXECUTION_DATA_DIR] = os.path.join(
+            os.getenv(Env.WORKFLOW_EXECUTION_DIR_PREFIX, ""),
+            organization_id,
+            workflow_id,
+            execution_id,
+        )
+        envs[Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS] = os.getenv(
+            Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS, "{}"
+        )
 
         container_config = self.client.get_container_run_config(
             command=[

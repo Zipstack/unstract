@@ -3,14 +3,11 @@ import logging
 import re
 from typing import Any, Optional
 
-import yaml
 from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.sdk.file_storage import FileStorage, FileStorageProvider
-from unstract.tool_registry.constants import AdapterPropertyKey, FeatureFlag, Tools
+from unstract.tool_registry.constants import AdapterPropertyKey, Tools
 from unstract.tool_registry.dto import AdapterProperties, Spec, Tool, ToolMeta
 from unstract.tool_registry.exceptions import InvalidToolURLException, RegistryNotFound
-
-from unstract.flags.feature_flag import check_feature_flag_status
 
 logger = logging.getLogger(__name__)
 
@@ -63,22 +60,14 @@ class ToolUtils:
         data: dict[str, Any],
         fs: FileStorage = FileStorage(FileStorageProvider.LOCAL),
     ) -> None:
-        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            fs.json_dump(path=file_path, mode="w", encoding="utf-8", data=data)
-        else:
-            with open(file_path, "w") as json_file:
-                json.dump(data, json_file)
+        fs.json_dump(path=file_path, mode="w", encoding="utf-8", data=data)
 
     @staticmethod
     def get_all_tools_from_disk(
         file_path: str, fs: FileStorage = FileStorage(FileStorageProvider.LOCAL)
     ) -> dict[str, Any]:
         try:
-            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-                data = fs.json_load(file_path)
-            else:
-                with open(file_path) as json_file:
-                    data: dict[str, Any] = json.load(json_file)
+            data = fs.json_load(file_path)
             return data
         except json.JSONDecodeError as e:
             logger.warning(f"Error loading tools from {file_path}: {e}")
@@ -90,11 +79,7 @@ class ToolUtils:
         data: dict[str, Any],
         fs: FileStorage = FileStorage(FileStorageProvider.LOCAL),
     ) -> None:
-        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            fs.yaml_dump(path=file_path, mode="w", encoding="utf-8", data=data)
-        else:
-            with open(file_path, "w") as file:
-                yaml.dump(data, file, default_flow_style=False)
+        fs.yaml_dump(path=file_path, mode="w", encoding="utf-8", data=data)
 
     @staticmethod
     def get_registry(
@@ -114,16 +99,12 @@ class ToolUtils:
         yml_data: dict[str, Any] = {}
         try:
             logger.debug(f"Reading tool registry YAML: {file_path}")
-            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-                yml_data = fs.yaml_load(file_path)
-            else:
-                with open(file_path) as file:
-                    yml_data = yaml.safe_load(file)
+            yml_data = fs.yaml_load(file_path)
+
         except FileNotFoundError:
             logger.warning(f"Could not find tool registry YAML: {str(file_path)}")
             if raise_exc:
                 raise RegistryNotFound()
-            pass
         except Exception as error:
             logger.error(f"Error while loading {str(file_path)}: {error}")
             if raise_exc:

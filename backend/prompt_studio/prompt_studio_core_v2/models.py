@@ -1,5 +1,4 @@
 import logging
-import shutil
 import uuid
 from typing import Any
 
@@ -7,7 +6,6 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from django.db import models
 from django.db.models import QuerySet
-from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.prompt_studio_core_v2.constants import DefaultPrompts
 from unstract.sdk.file_storage.constants import StorageType
 from unstract.sdk.file_storage.env_helper import EnvHelper
@@ -18,9 +16,6 @@ from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
 )
-
-from backend.constants import FeatureFlag
-from unstract.flags.feature_flag import check_feature_flag_status
 
 logger = logging.getLogger(__name__)
 
@@ -140,38 +135,22 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
 
     def delete(self, organization_id=None, *args, **kwargs):
         # Delete the documents associated with the tool
-        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-                organization_id,
-                is_create=False,
-                user_id=self.created_by.user_id,
-                tool_id=str(self.tool_id),
-            )
-            if organization_id:
-                try:
-                    shutil.rmtree(file_path)
-                except FileNotFoundError:
-                    logger.error(f"The folder {file_path} does not exist.")
-                except OSError as e:
-                    logger.error(f"Error: {file_path} : {e.strerror}")
-                    # Continue with the deletion of the tool
-        else:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.PERMANENT,
-                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-            )
-            file_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
-                organization_id,
-                is_create=False,
-                user_id=self.created_by.user_id,
-                tool_id=str(self.tool_id),
-            )
-            try:
-                fs_instance.rm(file_path, True)
-            except FileNotFoundError:
-                # Supressed to handle cases when the remote
-                # file is missing or already deleted
-                pass
+        fs_instance = EnvHelper.get_storage(
+            storage_type=StorageType.PERMANENT,
+            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+        )
+        file_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+            organization_id,
+            is_create=False,
+            user_id=self.created_by.user_id,
+            tool_id=str(self.tool_id),
+        )
+        try:
+            fs_instance.rm(file_path, True)
+        except FileNotFoundError:
+            # Supressed to handle cases when the remote
+            # file is missing or already deleted
+            pass
         super().delete(*args, **kwargs)
 
     class Meta:
