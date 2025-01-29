@@ -16,6 +16,7 @@ import task from "../../../assets/task.svg";
 import VectorDbIcon from "../../../assets/vector-db.svg";
 import TextExtractorIcon from "../../../assets/text-extractor.svg";
 import { useSessionStore } from "../../../store/session-store";
+import { useMemo } from "react";
 
 let getMenuItem;
 try {
@@ -32,12 +33,11 @@ try {
 }
 
 let unstractSubscriptionPlan;
-let useUnstractSubscriptionPlanStore;
+let unstractSubscriptionPlanStore;
 let dashboardSideMenuItem;
 let UNSTRACT_SUBSCRIPTION_PLANS;
 try {
-  useUnstractSubscriptionPlanStore =
-    require("../../../plugins/store/unstract-subscription-plan-store").useUnstractSubscriptionPlanStore;
+  unstractSubscriptionPlanStore = require("../../../plugins/store/unstract-subscription-plan-store");
   const unstractSubscriptionConstants = require("../../../plugins/unstract-subscription/helper/constants");
   dashboardSideMenuItem = unstractSubscriptionConstants?.dashboardSideMenuItem;
   UNSTRACT_SUBSCRIPTION_PLANS =
@@ -52,10 +52,11 @@ const SideNavBar = ({ collapsed }) => {
   const { orgName, flags } = sessionDetails;
 
   try {
-    if (useUnstractSubscriptionPlanStore) {
-      unstractSubscriptionPlan = useUnstractSubscriptionPlanStore(
-        (state) => state?.unstractSubscriptionPlan
-      );
+    if (unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore) {
+      unstractSubscriptionPlan =
+        unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore(
+          (state) => state?.unstractSubscriptionPlan
+        );
     }
   } catch (error) {
     // Do nothing
@@ -191,9 +192,16 @@ const SideNavBar = ({ collapsed }) => {
     data[0]?.subMenu?.splice(1, 0, getMenuItem.default(orgName));
   }
 
-  const shouldDisableAll =
-    !unstractSubscriptionPlan?.subscriptionId &&
-    unstractSubscriptionPlan?.planType !== UNSTRACT_SUBSCRIPTION_PLANS?.TRIAL;
+  const shouldDisableAll = useMemo(() => {
+    if (!unstractSubscriptionPlan || !UNSTRACT_SUBSCRIPTION_PLANS) {
+      return false;
+    }
+
+    return (
+      !unstractSubscriptionPlan?.subscriptionId &&
+      unstractSubscriptionPlan?.planType !== UNSTRACT_SUBSCRIPTION_PLANS?.TRIAL
+    );
+  }, [unstractSubscriptionPlan]);
 
   if (shouldDisableAll) {
     data.forEach((mainMenuItem) => {
