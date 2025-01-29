@@ -250,6 +250,7 @@ SHARED_APPS = (
     "prompt_studio.prompt_studio_document_manager_v2",
     "prompt_studio.prompt_studio_index_manager_v2",
     "tags",
+    "execution",
 )
 TENANT_APPS = []
 

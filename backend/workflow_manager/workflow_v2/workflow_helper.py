@@ -368,6 +368,8 @@ class WorkflowHelper:
             )
             raise
         finally:
+            # TODO: Handle error gracefully during delete
+            # Mark status as an ERROR correctly
             destination.delete_execution_directory()
 
     @staticmethod
