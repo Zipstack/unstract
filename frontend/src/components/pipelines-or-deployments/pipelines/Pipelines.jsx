@@ -111,7 +111,7 @@ function Pipelines({ type }) {
       });
   };
 
-  const handleSync = async (params) => {
+  const handleSync = (params) => {
     const body = { ...params, pipeline_type: type.toUpperCase() };
     const pipelineId = params?.pipeline_id;
     const fieldsToUpdate = {
@@ -119,22 +119,24 @@ function Pipelines({ type }) {
     };
     handleLoaderInTableData(fieldsToUpdate, pipelineId);
 
-    try {
-      const res = await handleSyncApiReq(body);
-      const data = res?.data?.pipeline;
-      fieldsToUpdate.last_run_status = data?.last_run_status;
-      fieldsToUpdate.last_run_time = data?.last_run_time;
-      setAlertDetails({
-        type: "success",
-        content: "Pipeline Sync Initiated",
+    handleSyncApiReq(body)
+      .then((res) => {
+        const data = res?.data?.pipeline;
+        fieldsToUpdate.last_run_status = data?.last_run_status;
+        fieldsToUpdate.last_run_time = data?.last_run_time;
+        setAlertDetails({
+          type: "success",
+          content: "Pipeline Sync Initiated",
+        });
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to sync."));
+        fieldsToUpdate.last_run_status = "FAILURE";
+        fieldsToUpdate.last_run_time = new Date().toISOString();
+      })
+      .finally(() => {
+        handleLoaderInTableData(fieldsToUpdate, pipelineId);
       });
-    } catch (err) {
-      setAlertDetails(handleException(err, "Failed to sync."));
-      fieldsToUpdate.last_run_status = "FAILURE";
-      fieldsToUpdate.last_run_time = new Date().toISOString();
-    } finally {
-      handleLoaderInTableData(fieldsToUpdate, pipelineId);
-    }
   };
 
   const handleStatusRefresh = (pipelineId) => {
