@@ -14,7 +14,7 @@ let transformLlmWhispererJsonSchema;
 let LLMW_V2_ID;
 let PLAN_TYPES;
 let unstractSubscriptionPlanStore;
-let useLlmWhipererAdapterSchema;
+let llmWhipererAdapterSchema;
 try {
   transformLlmWhispererJsonSchema =
     require("../../../plugins/unstract-subscription/helper/transformLlmWhispererJsonSchema").transformLlmWhispererJsonSchema;
@@ -23,8 +23,7 @@ try {
   PLAN_TYPES =
     require("../../../plugins/unstract-subscription/helper/constants").PLAN_TYPES;
   unstractSubscriptionPlanStore = require("../../../plugins/store/unstract-subscription-plan-store");
-  useLlmWhipererAdapterSchema =
-    require("../../../plugins/unstract-subscription/hooks/useLlmWhispererAdapterSchema.js").useLlmWhipererAdapterSchema;
+  llmWhipererAdapterSchema = require("../../../plugins/unstract-subscription/hooks/useLlmWhispererAdapterSchema.js");
 } catch (err) {
   // Ignore if not available
 }
@@ -55,7 +54,8 @@ function AddSource({
   let transformLlmWhispererFormData;
   try {
     transformLlmWhispererFormData =
-      useLlmWhipererAdapterSchema()?.transformLlmWhispererFormData;
+      llmWhipererAdapterSchema?.useLlmWhipererAdapterSchema()
+        ?.transformLlmWhispererFormData;
   } catch {
     // Ignore if not available
   }
