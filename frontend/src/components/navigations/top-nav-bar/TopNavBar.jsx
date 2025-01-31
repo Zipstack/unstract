@@ -71,10 +71,13 @@ try {
 let unstractSubscriptionPlan;
 let unstractSubscriptionPlanStore;
 let UNSTRACT_SUBSCRIPTION_PLANS;
+let UnstractPricingMenuLink;
 try {
   unstractSubscriptionPlanStore = require("../../../plugins/store/unstract-subscription-plan-store");
   UNSTRACT_SUBSCRIPTION_PLANS =
     require("../../../plugins/unstract-subscription/helper/constants").UNSTRACT_SUBSCRIPTION_PLANS;
+  UnstractPricingMenuLink =
+    require("../../../plugins/unstract-subscription/components/UnstractPricingMenuLink.jsx").UnstractPricingMenuLink;
 } catch (err) {
   // Plugin unavailable.
 }
@@ -291,6 +294,13 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             <DownloadOutlined /> Download and Sync Manager
           </Button>
         ),
+      });
+    }
+
+    if (isUnstract && UnstractPricingMenuLink) {
+      menuItems.push({
+        key: "7",
+        label: <UnstractPricingMenuLink orgName={orgName} />,
       });
     }
 
