@@ -57,6 +57,11 @@ jobs:
         with:
           python-version: '3.9'
 
+      - uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: 126
+          install-chromedriver: true
+
       - name: Cache tox environments
         uses: actions/cache@v4
         with:
