@@ -11,11 +11,8 @@ class TestLogin:
     def setup_method(self, method):
         options = Options()
         options.add_argument("--headless=new")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--window-size=1920,1080")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--no-sandbox")
         self.driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
+        self.driver.implicitly_wait(5)
 
     def teardown_method(self, method):
         self.driver.quit()
@@ -31,17 +28,20 @@ class TestLogin:
 
     def test_login(self):
         # Wait for the page to load
-        WebDriverWait(self.driver, timeout=30, poll_frequency=2).until(
+        WebDriverWait(self.driver, timeout=30).until(
             lambda _: self._check_page_load(),
             "Page load failed",
         )
-
+        WebDriverWait(self.driver, timeout=30).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "login-main"))
+        )
+        print(self.driver.find_element(By.CLASS_NAME, "login-main").text)
         # Set the window size
         self.driver.set_window_size(960, 615)
 
         # Explicit wait for the button to be clickable
         WebDriverWait(self.driver, timeout=10).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "button")),
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "span")),
             "Button not clickable.",
         ).click()
 
