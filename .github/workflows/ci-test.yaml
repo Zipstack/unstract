@@ -45,13 +45,6 @@ jobs:
         recreate: true
         path: runner-report.md
 
-    - name: Render the e2e report to the PR
-      uses: marocchino/sticky-pull-request-comment@v2
-      with:
-        header: e2e-test-report
-        recreate: true
-        path: e2e-report.md
-
     - name: Output reports to the job summary when tests fail
       shell: bash
       run: |
@@ -59,7 +52,6 @@ jobs:
           echo "<details><summary>Runner Test Report</summary>" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           cat "runner-report.md" >> $GITHUB_STEP_SUMMARY
-          cat "e2e-report.md" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "</details>" >> $GITHUB_STEP_SUMMARY
         fi
