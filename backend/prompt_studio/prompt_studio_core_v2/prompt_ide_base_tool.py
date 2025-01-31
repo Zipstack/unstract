@@ -6,7 +6,6 @@ from unstract.sdk.constants import LogLevel
 from unstract.sdk.tool.stream import StreamMixin
 
 
-
 class PromptIdeBaseTool(StreamMixin):
     def __init__(self, log_level: LogLevel = LogLevel.INFO, org_id: str = "") -> None:
         """
