@@ -90,3 +90,5 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "</details>" >> $GITHUB_STEP_SUMMARY
           fi
+      - name: Stop any running containers
+        run: docker compose -f docker/docker-compose.yaml down -v
