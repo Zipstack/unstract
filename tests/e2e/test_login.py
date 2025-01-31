@@ -30,7 +30,7 @@ class TestLogin:
         self.driver.implicitly_wait(0.5)
         self.driver.set_window_size(960, 615)
         # 3 | click | css=span |
-        self.driver.find_element(By.CSS_SELECTOR, "span").click()
+        self.driver.find_element(By.CSS_SELECTOR, "button").click()
         # 4 | click | id=username |
         self.driver.find_element(By.ID, "username").click()
         # 5 | type | id=username | unstract
