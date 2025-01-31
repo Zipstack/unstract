@@ -11,7 +11,9 @@ class TestLogin:
     def setup_method(self, method):
         options = Options()
         options.add_argument("--headless=new")
-        self.driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
+        self.driver = webdriver.Chrome(
+            service=ChromeService(ChromeDriverManager().install()), options=options
+        )
         self.driver.implicitly_wait(5)
 
     def teardown_method(self, method):
