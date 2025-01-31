@@ -1,7 +1,7 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
 
 
 class TestLogin:
@@ -29,6 +29,6 @@ class TestLogin:
         self.driver.find_element(By.CSS_SELECTOR, "input:nth-child(11)").click()
         WebDriverWait(self.driver, timeout=5).until(
             lambda _: self.driver.current_url.endswith("/mock_org/onboard"),
-            "Login failed."
+            "Login failed.",
         )
         self.driver.close()
