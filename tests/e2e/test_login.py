@@ -13,8 +13,20 @@ class TestLogin:
     def teardown_method(self, method):
         self.driver.quit()
 
+    def _check_page_load(self):
+        try:
+            self.driver.get("http://frontend.unstract.localhost")
+        except Exception as e:
+            print(f"Page load exception: {e}")
+            return False
+        else:
+            return True
+
     def test_login(self):
-        self.driver.get("http://frontend.unstract.localhost")
+        WebDriverWait(self.driver, timeout=30, poll_frequency=2).until(
+            lambda _: self._check_page_load(),
+            "Page load failed",
+        )
         self.driver.implicitly_wait(0.5)
         self.driver.set_window_size(960, 615)
         # 3 | click | css=span |
