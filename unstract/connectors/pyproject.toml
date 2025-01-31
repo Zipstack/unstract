@@ -14,12 +14,12 @@ dependencies = [
     "google-cloud-secret-manager==2.16.1",
     "google-cloud-storage==2.9.0",
     # Filesystem connectors
-    "s3fs[boto3]", # For Minio
+    "s3fs[boto3]~=2024.10.0", # For Minio
     "PyDrive2[fsspec]==1.15.4", # For GDrive
     "oauth2client==4.1.3", # For GDrive
     "dropboxdrivefs==1.4.1", # For Dropbox
     "boxfs==0.2.1", # For Box
-    "gcsfs", # For GoogleCloudStorage
+    "gcsfs~=2024.10.0", # For GoogleCloudStorage
     "adlfs==2023.8.0", # For AzureCloudStorage
     # Database connectors
     "psycopg2-binary==2.9.9", # For Postgres, Redshift
