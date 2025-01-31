@@ -63,3 +63,4 @@ class WorkflowMessages:
 class ResultKeys:
     METADATA = "metadata"
     CONFIDENCE_DATA = "confidence_data"
+    OUTPUT = "output"
