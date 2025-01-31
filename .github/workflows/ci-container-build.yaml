@@ -49,3 +49,42 @@ jobs:
             exit 1
           fi
           docker compose -f docker/docker-compose.yaml down -v
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.9'
+
+    - name: Cache tox environments
+      uses: actions/cache@v4
+      with:
+        path: .tox/
+        key: ${{ runner.os }}-tox-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
+        restore-keys: |
+          ${{ runner.os }}-tox-
+
+    - name: Install tox
+      run: pip install tox
+
+    - name: Run tox
+      id: tox
+      run: |
+        tox -e e2e
+
+    - name: Render the report to the PR
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: e2e-test-report
+        recreate: true
+        path: e2e-report.md
+
+    - name: Output reports to the job summary when tests fail
+      shell: bash
+      run: |
+        if [ -f "e2e-report.md" ]; then
+          echo "<details><summary>E2E Test Report</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat "e2e-report.md" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+        fi
