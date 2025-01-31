@@ -3,3 +3,4 @@ pytest-mock~=3.0
 pytest-cov~=6.0
 pytest-md-report~=0.6.0
 selenium~=4.28
+webdriver-manager~=4.0
