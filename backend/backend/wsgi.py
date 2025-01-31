@@ -24,9 +24,10 @@ os.environ.setdefault(
     os.environ.get("DJANGO_SETTINGS_MODULE", "backend.settings.dev"),
 )
 
-start_time = time.time()
+wsgi_start_time = time.perf_counter()
 django_app = get_wsgi_application()
-logger.info(f"WSGI application initialized in {(time.time() - start_time):.3f} seconds")
+wsgi_init_elapsed = time.perf_counter() - wsgi_start_time
+logger.info(f"WSGI application initialized in {wsgi_init_elapsed:.3f} seconds")
 
 
 application = start_server(django_app, f"{settings.PATH_PREFIX}/socket")
