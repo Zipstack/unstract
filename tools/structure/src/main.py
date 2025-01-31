@@ -385,7 +385,7 @@ class StructureTool(BaseTool):
         self.stream_log("Indexing summarized context")
         if self.workflow_filestorage:
             summarize_file_hash: str = self.workflow_filestorage.get_hash_from_file(
-                file_path=summarize_file_path
+                path=summarize_file_path
             )
         else:
             summarize_file_hash: str = ToolUtils.get_hash_from_file(

@@ -5,8 +5,15 @@ from typing import Any
 
 from fsspec import AbstractFileSystem
 
+from backend.constants import FeatureFlag
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.enums import ConnectorMode
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+    from unstract.filesystem import FileStorageType, FileSystem
+
+logger = logging.getLogger(__name__)
 
 
 class UnstractFileSystem(UnstractConnector, ABC):
@@ -98,6 +105,12 @@ class UnstractFileSystem(UnstractConnector, ABC):
             uploaded
         """
         normalized_path = os.path.normpath(destination_path)
-        fs = self.get_fsspec_fs()
-        with open(source_path, "rb") as source_file:
-            fs.write_bytes(normalized_path, source_file.read())
+        destination_connector_fs = self.get_fsspec_fs()
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            workflow_fs = file_system.get_file_storage()
+            data = workflow_fs.read(path=source_path, mode="rb")
+        else:
+            with open(source_path, "rb") as source_file:
+                data = source_file.read()
+        destination_connector_fs.write_bytes(normalized_path, data)

@@ -3,6 +3,11 @@
 from django.db import migrations, models
 
 
+def convert_empty_to_null(apps, schema_editor):
+    usage = apps.get_model("usage_v2", "Usage")
+    usage.objects.filter(run_id="").update(run_id=None)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,6 +15,9 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(
+            convert_empty_to_null, reverse_code=migrations.RunPython.noop
+        ),
         migrations.AlterField(
             model_name="usage",
             name="run_id",

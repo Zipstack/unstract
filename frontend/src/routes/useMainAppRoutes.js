@@ -109,7 +109,10 @@ function useMainAppRoutes() {
           <Route path="dashboard" element={<UnstractUsagePage />} />
         )}
         {UnstractSubscriptionPage && (
-          <Route path="subscribe" element={<UnstractSubscriptionPage />} />
+          <Route
+            path="subscription-plans"
+            element={<UnstractSubscriptionPage />}
+          />
         )}
         <Route path="profile" element={<ProfilePage />} />
         <Route
