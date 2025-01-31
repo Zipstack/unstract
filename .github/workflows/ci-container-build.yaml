@@ -26,7 +26,7 @@ jobs:
 
       - name: Container Run
         run: |
-          ./run-platform.sh
+          ./run-platform.sh -b
           sleep 30
           docker compose -f docker/docker-compose.yaml ps -a
           # Get the names of exited containers
@@ -50,7 +50,6 @@ jobs:
             docker compose -f docker/docker-compose.yaml down -v
             exit 1
           fi
-          docker compose -f docker/docker-compose.yaml down -v
           curl -vvv http://frontend.unstract.localhost
 
       - name: Set up Python
