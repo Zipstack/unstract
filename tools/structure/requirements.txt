@@ -3,4 +3,4 @@
 # Required for all unstract tools
 unstract-sdk~=0.56.0rc4
 # Required for remote storage support
-s3fs[boto3]==2024.6.0
+s3fs[boto3]
