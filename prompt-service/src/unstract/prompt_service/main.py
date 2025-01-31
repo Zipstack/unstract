@@ -277,6 +277,7 @@ def prompt_processor() -> Any:
                     metadata=metadata,
                     execution_source=execution_source,
                 )
+                # TODO: Handle metrics for line-item extraction
                 continue
             except APIError as e:
                 app.logger.error(
