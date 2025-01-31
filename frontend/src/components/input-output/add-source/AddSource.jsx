@@ -1,6 +1,6 @@
 import { Typography } from "antd";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { sourceTypes } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -49,7 +49,6 @@ function AddSource({
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
-  const [isLLMWPaidSchema, setIsLLMWPaidSchema] = useState(false);
 
   let transformLlmWhispererFormData;
   try {
@@ -67,13 +66,13 @@ function AddSource({
     );
   }
 
-  useEffect(() => {
-    setIsLLMWPaidSchema(
+  const isLLMWPaidSchema = useMemo(() => {
+    return (
       LLMW_V2_ID &&
-        transformLlmWhispererJsonSchema &&
-        PLAN_TYPES &&
-        selectedSourceId === LLMW_V2_ID &&
-        planType === PLAN_TYPES?.PAID
+      transformLlmWhispererJsonSchema &&
+      PLAN_TYPES &&
+      selectedSourceId === LLMW_V2_ID &&
+      planType === PLAN_TYPES?.PAID
     );
   }, [
     LLMW_V2_ID,
