@@ -59,7 +59,7 @@ jobs:
 
       - uses: browser-actions/setup-chrome@v1
         with:
-          chrome-version: 126
+          chrome-version: latest
           install-chromedriver: true
 
       - name: Cache tox environments
