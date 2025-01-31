@@ -15,7 +15,9 @@ class TestLogin:
         options.add_argument("--window-size=1920,1080")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--no-sandbox")
-        self.driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
+        self.driver = webdriver.Chrome(
+            service=ChromeService(ChromeDriverManager().install()), options=options
+        )
 
     def teardown_method(self, method):
         self.driver.quit()
