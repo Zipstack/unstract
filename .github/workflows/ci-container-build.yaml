@@ -76,7 +76,8 @@ jobs:
       - name: Run tox
         id: tox
         run: |
-          tox -e e2e
+          tox -e e2e &&
+          echo -e "## E2E Tests\n\n$(cat e2e-report.md)" > e2e-report.md
 
       - name: Render the report to the PR
         uses: marocchino/sticky-pull-request-comment@v2
