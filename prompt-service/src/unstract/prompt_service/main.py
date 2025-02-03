@@ -101,6 +101,7 @@ def prompt_processor() -> Any:
     if not payload:
         raise NoPayloadError
     tool_settings = payload.get(PSKeys.TOOL_SETTINGS, {})
+    enable_challenge = tool_settings.get(PSKeys.ENABLE_CHALLENGE, False)
     # TODO: Rename "outputs" to "prompts" in payload
     prompts = payload.get(PSKeys.OUTPUTS, [])
     tool_id: str = payload.get(PSKeys.TOOL_ID, "")
@@ -277,7 +278,6 @@ def prompt_processor() -> Any:
                     metadata=metadata,
                     execution_source=execution_source,
                 )
-                # TODO: Handle metrics for line-item extraction
                 continue
             except APIError as e:
                 app.logger.error(
@@ -512,7 +512,6 @@ def prompt_processor() -> Any:
                     output[PSKeys.NAME]
                 ].rstrip("\n")
 
-            enable_challenge = tool_settings.get(PSKeys.ENABLE_CHALLENGE)
             # Challenge condition
             if enable_challenge:
                 challenge_plugin: dict[str, Any] = plugins.get(PSKeys.CHALLENGE, {})
