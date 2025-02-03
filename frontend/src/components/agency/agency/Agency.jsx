@@ -1,10 +1,5 @@
-import { Button, Collapse, Layout, Modal } from "antd";
-import {
-  FullscreenExitOutlined,
-  FullscreenOutlined,
-  LeftOutlined,
-  RightOutlined,
-} from "@ant-design/icons";
+import { Button, Layout } from "antd";
+import { LeftOutlined, RightOutlined } from "@ant-design/icons";
 import Sider from "antd/es/layout/Sider";
 import { useEffect, useState } from "react";
 
@@ -12,17 +7,13 @@ import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { Actions } from "../actions/Actions";
 import { WorkflowExecution } from "../workflow-execution/WorkflowExecution";
 import "./Agency.css";
-import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
-import { LogsLabel } from "../logs-label/LogsLabel";
 import { SidePanel } from "../side-panel/SidePanel";
-import { DisplayLogs } from "../display-logs/DisplayLogs";
 import { PageTitle } from "../../widgets/page-title/PageTitle";
 
 function Agency() {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [activeKey, setActiveKey] = useState([]);
   const [steps, setSteps] = useState([]);
   const [inputMd, setInputMd] = useState("");
   const [outputMd, setOutputMd] = useState("");
@@ -30,7 +21,6 @@ function Agency() {
   const [sourceMsg, setSourceMsg] = useState("");
   const [destinationMsg, setDestinationMsg] = useState("");
   const { message, setDefault } = useSocketMessagesStore();
-  const { emptyLogs } = useSocketLogsStore();
   const workflowStore = useWorkflowStore();
   const { details, loadingType, projectName } = workflowStore;
   const prompt = details?.prompt_text;
@@ -38,42 +28,6 @@ function Agency() {
   const [prevLoadingType, setPrevLoadingType] = useState("");
   const [isUpdateSteps, setIsUpdateSteps] = useState(false);
   const [stepLoader, setStepLoader] = useState(false);
-  const [showLogsModal, setShowLogsModal] = useState(false);
-
-  const openLogsModal = () => {
-    setShowLogsModal(true);
-  };
-
-  const closeLogsModal = () => {
-    setShowLogsModal(false);
-  };
-
-  const genExtra = () => (
-    <FullscreenOutlined
-      onClick={(event) => {
-        // If you don't want click extra trigger collapse, you can prevent this:
-        openLogsModal();
-        event.stopPropagation();
-      }}
-    />
-  );
-
-  const getItems = () => [
-    {
-      key: "1",
-      label: activeKey?.length > 0 ? <LogsLabel /> : "Logs",
-      children: (
-        <div className="agency-ide-logs">
-          <DisplayLogs />
-        </div>
-      ),
-      extra: genExtra(),
-    },
-  ];
-
-  const handleCollapse = (keys) => {
-    setActiveKey(keys);
-  };
 
   useEffect(() => {
     if (prevLoadingType !== "EXECUTE") {
@@ -103,7 +57,6 @@ function Agency() {
     setOutputMd("");
     setStatusBarMsg("");
     setDefault();
-    emptyLogs();
     setSourceMsg("");
     setDestinationMsg("");
   };
@@ -112,7 +65,6 @@ function Agency() {
     // Clean up function to clear all the socket messages
     return () => {
       setDefault();
-      emptyLogs();
     };
   }, []);
 
@@ -139,7 +91,6 @@ function Agency() {
     }
 
     if (msgComp === "SOURCE" && state === "RUNNING") {
-      setActiveKey("");
       setSourceMsg("");
       setDestinationMsg("");
       const newSteps = [...steps].map((step) => {
@@ -227,31 +178,7 @@ function Agency() {
           stepLoader={stepLoader}
         />
       </div>
-      <div className="agency-footer">
-        <Collapse
-          className="agency-ide-collapse-panel"
-          size="small"
-          activeKey={activeKey}
-          items={getItems()}
-          expandIconPosition="end"
-          onChange={handleCollapse}
-          bordered={false}
-        />
-        <Modal
-          title="Logs"
-          open={showLogsModal}
-          onCancel={closeLogsModal}
-          className="agency-ide-log-modal"
-          footer={null}
-          width={1000}
-          closeIcon={<FullscreenExitOutlined />}
-        >
-          <LogsLabel />
-          <div className="agency-ide-logs">
-            <DisplayLogs />
-          </div>
-        </Modal>
-      </div>
+      <div className="height-20" />
     </div>
   );
 }
