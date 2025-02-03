@@ -494,12 +494,24 @@ def prompt_processor() -> Any:
                             )
                             structured_output[output[PSKeys.NAME]] = json.loads(answer)
                         except JSONDecodeError as e:
-                            app.logger.info(
-                                f"JSON format error : {answer}", LogLevel.ERROR
+                            err_msg = (
+                                f"Error parsing response (to json): {e}\n"
+                                f"Candidate JSON: {answer}"
                             )
-                            app.logger.info(
-                                f"Error parsing response (to json): {e}",
-                                LogLevel.ERROR,
+                            app.logger.info(err_msg, LogLevel.ERROR)
+                            # TODO: Format log message after unifying these types
+                            publish_log(
+                                log_events_id,
+                                {
+                                    "tool_id": tool_id,
+                                    "prompt_key": prompt_name,
+                                    "doc_name": doc_name,
+                                },
+                                LogLevel.INFO,
+                                RunLevel.RUN,
+                                "Unable to parse JSON response from LLM, try using our"
+                                " cloud / enterprise feature of 'line-item', "
+                                "'record' or 'table' type",
                             )
                             structured_output[output[PSKeys.NAME]] = {}
 
