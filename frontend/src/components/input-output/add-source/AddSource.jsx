@@ -1,6 +1,6 @@
 import { Typography } from "antd";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { sourceTypes } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -14,6 +14,7 @@ let transformLlmWhispererJsonSchema;
 let LLMW_V2_ID;
 let PLAN_TYPES;
 let unstractSubscriptionPlanStore;
+let llmWhipererAdapterSchema;
 try {
   transformLlmWhispererJsonSchema =
     require("../../../plugins/unstract-subscription/helper/transformLlmWhispererJsonSchema").transformLlmWhispererJsonSchema;
@@ -22,6 +23,7 @@ try {
   PLAN_TYPES =
     require("../../../plugins/unstract-subscription/helper/constants").PLAN_TYPES;
   unstractSubscriptionPlanStore = require("../../../plugins/store/unstract-subscription-plan-store");
+  llmWhipererAdapterSchema = require("../../../plugins/unstract-subscription/hooks/useLlmWhispererAdapterSchema.js");
 } catch (err) {
   // Ignore if not available
 }
@@ -48,12 +50,47 @@ function AddSource({
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
 
+  let transformLlmWhispererFormData;
+  try {
+    transformLlmWhispererFormData =
+      llmWhipererAdapterSchema?.useLlmWhipererAdapterSchema()
+        ?.transformLlmWhispererFormData;
+  } catch {
+    // Ignore if not available
+  }
+
   let planType;
   if (unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore) {
     planType = unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore(
       (state) => state?.unstractSubscriptionPlan?.planType
     );
   }
+
+  const isLLMWPaidSchema = useMemo(() => {
+    return (
+      LLMW_V2_ID &&
+      transformLlmWhispererJsonSchema &&
+      PLAN_TYPES &&
+      selectedSourceId === LLMW_V2_ID &&
+      planType === PLAN_TYPES?.PAID
+    );
+  }, [
+    LLMW_V2_ID,
+    transformLlmWhispererJsonSchema,
+    PLAN_TYPES,
+    selectedSourceId,
+    planType,
+  ]);
+
+  useEffect(() => {
+    if (!isLLMWPaidSchema || !transformLlmWhispererFormData) return;
+
+    const modifiedFormData = transformLlmWhispererFormData(formData);
+
+    if (JSON.stringify(modifiedFormData) !== JSON.stringify(formData)) {
+      setFormData(modifiedFormData);
+    }
+  }, [isLLMWPaidSchema, formData]);
 
   useEffect(() => {
     if (!selectedSourceId) {
@@ -80,13 +117,7 @@ function AddSource({
         const data = res?.data;
         setFormData(metadata || {});
 
-        if (
-          LLMW_V2_ID &&
-          transformLlmWhispererJsonSchema &&
-          PLAN_TYPES &&
-          selectedSourceId === LLMW_V2_ID &&
-          planType === PLAN_TYPES?.PAID
-        ) {
+        if (isLLMWPaidSchema) {
           setSpec(transformLlmWhispererJsonSchema(data?.json_schema || {}));
         } else {
           setSpec(data?.json_schema || {});
