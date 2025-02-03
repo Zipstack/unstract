@@ -491,16 +491,17 @@ files = [
 
 [[package]]
 name = "beautifulsoup4"
-version = "4.12.3"
+version = "4.13.0"
 requires_python = ">=3.6.0"
 summary = "Screen-scraping library"
 groups = ["default", "dev"]
 dependencies = [
     "soupsieve>1.2",
+    "typing-extensions",
 ]
 files = [
-    {file = "beautifulsoup4-4.12.3-py3-none-any.whl", hash = "sha256:b80878c9f40111313e55da8ba20bdba06d8fa3969fc68304167741bbf9e082ed"},
-    {file = "beautifulsoup4-4.12.3.tar.gz", hash = "sha256:74e3d1928edc070d21748185c46e3fb33490f22f52a3addee9aee0f4f7781051"},
+    {file = "beautifulsoup4-4.13.0-py3-none-any.whl", hash = "sha256:9c4c3dfa67aba55f6cd03769c441b21e6a369797fd6766e4b4c6b3399aae2735"},
+    {file = "beautifulsoup4-4.13.0.tar.gz", hash = "sha256:b6e5afb3a2b1472c8db751a92eabf7834e5c7099f990c5e4b35f1f16b60bae64"},
 ]
 
 [[package]]
@@ -1886,17 +1887,17 @@ files = [
 
 [[package]]
 name = "h2"
-version = "4.1.0"
-requires_python = ">=3.6.1"
-summary = "HTTP/2 State-Machine based protocol implementation"
+version = "4.2.0"
+requires_python = ">=3.9"
+summary = "Pure-Python HTTP/2 protocol implementation"
 groups = ["default", "dev"]
 dependencies = [
-    "hpack<5,>=4.0",
-    "hyperframe<7,>=6.0",
+    "hpack<5,>=4.1",
+    "hyperframe<7,>=6.1",
 ]
 files = [
-    {file = "h2-4.1.0-py3-none-any.whl", hash = "sha256:03a46bcf682256c95b5fd9e9a99c1323584c3eec6440d379b9903d709476bc6d"},
-    {file = "h2-4.1.0.tar.gz", hash = "sha256:a83aca08fbe7aacb79fec788c9c0bac936343560ed9ec18b82a13a12c28d2abb"},
+    {file = "h2-4.2.0-py3-none-any.whl", hash = "sha256:479a53ad425bb29af087f3458a61d30780bc818e4ebcf01f0b536ba916462ed0"},
+    {file = "h2-4.2.0.tar.gz", hash = "sha256:c8a52129695e88b1a0578d8d2cc6842bbd79128ac685463b887ee278126ad01f"},
 ]
 
 [[package]]
@@ -2272,7 +2273,7 @@ files = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.12.14"
+version = "0.12.15"
 requires_python = "<4.0,>=3.9"
 summary = "Interface between LLMs and your data"
 groups = ["default", "dev"]
@@ -2302,8 +2303,8 @@ dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "llama_index_core-0.12.14-py3-none-any.whl", hash = "sha256:6fdb30e3fadf98e7df75f9db5d06f6a7f8503ca545a71e048d786ff88012bd50"},
-    {file = "llama_index_core-0.12.14.tar.gz", hash = "sha256:378bbf5bf4d1a8c692d3a980c1a6ed3be7a9afb676a4960429dea15f62d06cd3"},
+    {file = "llama_index_core-0.12.15-py3-none-any.whl", hash = "sha256:0c65ca72c4fb43a77a2463f2114d6eb570681d729139879ed659179798ecab7f"},
+    {file = "llama_index_core-0.12.15.tar.gz", hash = "sha256:f9aaeef792db24d490b1e3484d2bbd1b3c43e7a24a40fd6dbd1b298efb1f9429"},
 ]
 
 [[package]]
@@ -2536,7 +2537,7 @@ files = [
 
 [[package]]
 name = "llama-index-multi-modal-llms-openai"
-version = "0.4.2"
+version = "0.4.3"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index multi-modal-llms openai integration"
 groups = ["default", "dev"]
@@ -2545,8 +2546,8 @@ dependencies = [
     "llama-index-llms-openai<0.4.0,>=0.3.0",
 ]
 files = [
-    {file = "llama_index_multi_modal_llms_openai-0.4.2-py3-none-any.whl", hash = "sha256:093f60f59fc423abab110810f8f129b96b0212b9737d74480f0e3e1b715e975b"},
-    {file = "llama_index_multi_modal_llms_openai-0.4.2.tar.gz", hash = "sha256:3437a08cec85cebbc212aa73da5c9b8b054b4dc628338568435a7df88489476f"},
+    {file = "llama_index_multi_modal_llms_openai-0.4.3-py3-none-any.whl", hash = "sha256:1ceb42716472ac8bd5130afa29b793869d367946aedd02e48a3b03184e443ad1"},
+    {file = "llama_index_multi_modal_llms_openai-0.4.3.tar.gz", hash = "sha256:5e6ca54069d3d18c2f5f7ca34f3720fba1d1b9126482ad38feb0c858f4feb63b"},
 ]
 
 [[package]]
@@ -3009,7 +3010,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.60.2"
+version = "1.61.0"
 requires_python = ">=3.8"
 summary = "The official Python library for the openai API"
 groups = ["default", "dev"]
@@ -3024,8 +3025,8 @@ dependencies = [
     "typing-extensions<5,>=4.11",
 ]
 files = [
-    {file = "openai-1.60.2-py3-none-any.whl", hash = "sha256:993bd11b96900b9098179c728026f016b4982ded7ee30dfcf4555eab1171fff9"},
-    {file = "openai-1.60.2.tar.gz", hash = "sha256:a8f843e10f2855713007f491d96afb2694b11b5e02cb97c7d01a0be60bc5bb51"},
+    {file = "openai-1.61.0-py3-none-any.whl", hash = "sha256:e8c512c0743accbdbe77f3429a1490d862f8352045de8dc81969301eb4a4f666"},
+    {file = "openai-1.61.0.tar.gz", hash = "sha256:216f325a24ed8578e929b0f1b3fb2052165f3b04b0461818adaa51aa29c71f8a"},
 ]
 
 [[package]]
