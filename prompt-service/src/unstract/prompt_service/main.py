@@ -101,6 +101,7 @@ def prompt_processor() -> Any:
     if not payload:
         raise NoPayloadError
     tool_settings = payload.get(PSKeys.TOOL_SETTINGS, {})
+    enable_challenge = tool_settings.get(PSKeys.ENABLE_CHALLENGE, False)
     # TODO: Rename "outputs" to "prompts" in payload
     prompts = payload.get(PSKeys.OUTPUTS, [])
     tool_id: str = payload.get(PSKeys.TOOL_ID, "")
@@ -277,7 +278,6 @@ def prompt_processor() -> Any:
                     metadata=metadata,
                     execution_source=execution_source,
                 )
-                # TODO: Handle metrics for line-item extraction
                 continue
             except APIError as e:
                 app.logger.error(
@@ -494,12 +494,24 @@ def prompt_processor() -> Any:
                             )
                             structured_output[output[PSKeys.NAME]] = json.loads(answer)
                         except JSONDecodeError as e:
-                            app.logger.info(
-                                f"JSON format error : {answer}", LogLevel.ERROR
+                            err_msg = (
+                                f"Error parsing response (to json): {e}\n"
+                                f"Candidate JSON: {answer}"
                             )
-                            app.logger.info(
-                                f"Error parsing response (to json): {e}",
-                                LogLevel.ERROR,
+                            app.logger.info(err_msg, LogLevel.ERROR)
+                            # TODO: Format log message after unifying these types
+                            publish_log(
+                                log_events_id,
+                                {
+                                    "tool_id": tool_id,
+                                    "prompt_key": prompt_name,
+                                    "doc_name": doc_name,
+                                },
+                                LogLevel.INFO,
+                                RunLevel.RUN,
+                                "Unable to parse JSON response from LLM, try using our"
+                                " cloud / enterprise feature of 'line-item', "
+                                "'record' or 'table' type",
                             )
                             structured_output[output[PSKeys.NAME]] = {}
 
@@ -512,7 +524,6 @@ def prompt_processor() -> Any:
                     output[PSKeys.NAME]
                 ].rstrip("\n")
 
-            enable_challenge = tool_settings.get(PSKeys.ENABLE_CHALLENGE)
             # Challenge condition
             if enable_challenge:
                 challenge_plugin: dict[str, Any] = plugins.get(PSKeys.CHALLENGE, {})
