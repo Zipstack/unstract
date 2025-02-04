@@ -586,6 +586,8 @@ const TRIAL_PLAN = "TRIAL";
 
 const homePagePath = cloudHomePagePath || "tools";
 
+const UNSTRACT_ADMIN = "unstract_admin";
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -639,4 +641,5 @@ export {
   generateCoverageKey,
   TRIAL_PLAN,
   homePagePath,
+  UNSTRACT_ADMIN,
 };
