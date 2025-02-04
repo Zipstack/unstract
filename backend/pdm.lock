@@ -1309,29 +1309,29 @@ files = [
 
 [[package]]
 name = "fsspec"
-version = "2024.6.0"
+version = "2024.6.1"
 requires_python = ">=3.8"
 summary = "File-system specification"
 groups = ["default", "dev"]
 files = [
-    {file = "fsspec-2024.6.0-py3-none-any.whl", hash = "sha256:58d7122eb8a1a46f7f13453187bfea4972d66bf01618d37366521b1998034cee"},
-    {file = "fsspec-2024.6.0.tar.gz", hash = "sha256:f579960a56e6d8038a9efc8f9c77279ec12e6299aa86b0769a7e9c46b94527c2"},
+    {file = "fsspec-2024.6.1-py3-none-any.whl", hash = "sha256:3cb443f8bcd2efb31295a5b9fdb02aee81d8452c80d28f97a6d0959e6cee101e"},
+    {file = "fsspec-2024.6.1.tar.gz", hash = "sha256:fad7d7e209dd4c1208e3bbfda706620e0da5142bebbd9c384afb95b07e798e49"},
 ]
 
 [[package]]
 name = "fsspec"
-version = "2024.6.0"
+version = "2024.6.1"
 extras = ["sftp"]
 requires_python = ">=3.8"
 summary = "File-system specification"
 groups = ["default", "dev"]
 dependencies = [
-    "fsspec==2024.6.0",
+    "fsspec==2024.6.1",
     "paramiko",
 ]
 files = [
-    {file = "fsspec-2024.6.0-py3-none-any.whl", hash = "sha256:58d7122eb8a1a46f7f13453187bfea4972d66bf01618d37366521b1998034cee"},
-    {file = "fsspec-2024.6.0.tar.gz", hash = "sha256:f579960a56e6d8038a9efc8f9c77279ec12e6299aa86b0769a7e9c46b94527c2"},
+    {file = "fsspec-2024.6.1-py3-none-any.whl", hash = "sha256:3cb443f8bcd2efb31295a5b9fdb02aee81d8452c80d28f97a6d0959e6cee101e"},
+    {file = "fsspec-2024.6.1.tar.gz", hash = "sha256:fad7d7e209dd4c1208e3bbfda706620e0da5142bebbd9c384afb95b07e798e49"},
 ]
 
 [[package]]
@@ -1346,22 +1346,22 @@ files = [
 
 [[package]]
 name = "gcsfs"
-version = "2024.6.0"
+version = "2024.6.1"
 requires_python = ">=3.8"
 summary = "Convenient Filesystem interface over GCS"
 groups = ["default", "dev"]
 dependencies = [
     "aiohttp!=4.0.0a0,!=4.0.0a1",
     "decorator>4.1.2",
-    "fsspec==2024.6.0",
+    "fsspec==2024.6.1",
     "google-auth-oauthlib",
     "google-auth>=1.2",
     "google-cloud-storage",
     "requests",
 ]
 files = [
-    {file = "gcsfs-2024.6.0-py2.py3-none-any.whl", hash = "sha256:92c9239167bd1e209b662b6f4ab71974f276118779c55360215cce5e0098ca7f"},
-    {file = "gcsfs-2024.6.0.tar.gz", hash = "sha256:27bd490d7a9dd641d5f6f4ea0b18fabdcfa6129b84ebdb22b23e3460ded1aa8c"},
+    {file = "gcsfs-2024.6.1-py2.py3-none-any.whl", hash = "sha256:13fd18095425e54e248870594fd155812723966b1bda3b102b3a5c44ec436a03"},
+    {file = "gcsfs-2024.6.1.tar.gz", hash = "sha256:e8858c7a893b2265e9bfce2fe270a024a2e348c74c23528801db388fc0224ed7"},
 ]
 
 [[package]]
@@ -4252,34 +4252,34 @@ files = [
 
 [[package]]
 name = "s3fs"
-version = "2024.6.0"
+version = "2024.6.1"
 requires_python = ">=3.8"
 summary = "Convenient Filesystem interface over S3"
 groups = ["default", "dev"]
 dependencies = [
     "aiobotocore<3.0.0,>=2.5.4",
     "aiohttp!=4.0.0a0,!=4.0.0a1",
-    "fsspec==2024.6.0.*",
+    "fsspec==2024.6.1.*",
 ]
 files = [
-    {file = "s3fs-2024.6.0-py3-none-any.whl", hash = "sha256:8d5f591956a61c7d64097eff4847598826f09d60b4ce9a16202565693569f6d4"},
-    {file = "s3fs-2024.6.0.tar.gz", hash = "sha256:a59020ededc61e9666f1e473ce4aa28764e5f7b3c97414beb15cd9be522a87b6"},
+    {file = "s3fs-2024.6.1-py3-none-any.whl", hash = "sha256:ecd20863437409eec1cbfff0b7df5e9772cf7c1926008efab2e17e46f6d52c63"},
+    {file = "s3fs-2024.6.1.tar.gz", hash = "sha256:6c2106d6c34fbfbb88e3d20c6f3572896d5ee3d3512896696301c21a3c541bea"},
 ]
 
 [[package]]
 name = "s3fs"
-version = "2024.6.0"
+version = "2024.6.1"
 extras = ["boto3"]
 requires_python = ">=3.8"
 summary = "Convenient Filesystem interface over S3"
 groups = ["default", "dev"]
 dependencies = [
     "aiobotocore[boto3]<3.0.0,>=2.5.4",
-    "s3fs==2024.6.0",
+    "s3fs==2024.6.1",
 ]
 files = [
-    {file = "s3fs-2024.6.0-py3-none-any.whl", hash = "sha256:8d5f591956a61c7d64097eff4847598826f09d60b4ce9a16202565693569f6d4"},
-    {file = "s3fs-2024.6.0.tar.gz", hash = "sha256:a59020ededc61e9666f1e473ce4aa28764e5f7b3c97414beb15cd9be522a87b6"},
+    {file = "s3fs-2024.6.1-py3-none-any.whl", hash = "sha256:ecd20863437409eec1cbfff0b7df5e9772cf7c1926008efab2e17e46f6d52c63"},
+    {file = "s3fs-2024.6.1.tar.gz", hash = "sha256:6c2106d6c34fbfbb88e3d20c6f3572896d5ee3d3512896696301c21a3c541bea"},
 ]
 
 [[package]]
@@ -4972,7 +4972,7 @@ dependencies = [
     "boxfs==0.2.1",
     "dropboxdrivefs==1.4.1",
     "fsspec[sftp]~=2024.6.0",
-    "gcsfs==2024.6.0",
+    "gcsfs",
     "google-auth==2.20.0",
     "google-cloud-bigquery==3.11.4",
     "google-cloud-secret-manager==2.16.1",
@@ -4981,7 +4981,7 @@ dependencies = [
     "oracledb==2.4.0",
     "psycopg2-binary==2.9.9",
     "pymssql==2.2.8",
-    "s3fs[boto3]==2024.6.0",
+    "s3fs[boto3]",
     "singleton-decorator~=1.0.0",
     "snowflake-connector-python[pandas]~=3.6.0",
 ]
