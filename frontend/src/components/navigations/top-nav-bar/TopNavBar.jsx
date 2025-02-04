@@ -26,6 +26,7 @@ import {
   getBaseUrl,
   homePagePath,
   onboardCompleted,
+  UNSTRACT_ADMIN,
 } from "../../../helpers/GetStaticData.js";
 import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
@@ -132,7 +133,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     const { role } = sessionDetails;
     const isReviewer = role === "unstract_reviewer";
     const isSupervisor = role === "unstract_supervisor";
-    const isAdmin = role === "unstract_admin";
+    const isAdmin = role === UNSTRACT_ADMIN;
 
     setShowOnboardBanner(
       !onboardCompleted(sessionDetails?.adapters) &&
@@ -297,7 +298,11 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       });
     }
 
-    if (isUnstract && UnstractPricingMenuLink) {
+    if (
+      isUnstract &&
+      UnstractPricingMenuLink &&
+      sessionDetails?.role === UNSTRACT_ADMIN
+    ) {
       menuItems.push({
         key: "7",
         label: <UnstractPricingMenuLink orgName={orgName} />,

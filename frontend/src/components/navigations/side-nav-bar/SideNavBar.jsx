@@ -46,6 +46,14 @@ try {
   // Plugin unavailable.
 }
 
+let selectedProductStore;
+let selectedProduct;
+try {
+  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
+} catch {
+  // Ignore if hook not available
+}
+
 const SideNavBar = ({ collapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
@@ -60,6 +68,12 @@ const SideNavBar = ({ collapsed }) => {
     }
   } catch (error) {
     // Do nothing
+  }
+
+  if (selectedProductStore?.useSelectedProductStore) {
+    selectedProduct = selectedProductStore.useSelectedProductStore(
+      (state) => state?.selectedProduct
+    );
   }
 
   let menu;
@@ -193,7 +207,12 @@ const SideNavBar = ({ collapsed }) => {
   }
 
   const shouldDisableAll = useMemo(() => {
-    if (!unstractSubscriptionPlan || !UNSTRACT_SUBSCRIPTION_PLANS) {
+    const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
+    if (
+      !unstractSubscriptionPlan ||
+      !UNSTRACT_SUBSCRIPTION_PLANS ||
+      !isUnstract
+    ) {
       return false;
     }
 
@@ -203,13 +222,11 @@ const SideNavBar = ({ collapsed }) => {
     );
   }, [unstractSubscriptionPlan]);
 
-  if (shouldDisableAll) {
-    data.forEach((mainMenuItem) => {
-      mainMenuItem.subMenu.forEach((subMenuItem) => {
-        subMenuItem.disable = true;
-      });
+  data.forEach((mainMenuItem) => {
+    mainMenuItem.subMenu.forEach((subMenuItem) => {
+      subMenuItem.disable = shouldDisableAll;
     });
-  }
+  });
 
   return (
     <Sider
