@@ -116,7 +116,6 @@ class DateTimeProcessor:
         if not preset:
             return None
         start_date, end_date = preset.get_date_range()
-        print(start_date, end_date)
         return cls._validate_date_range(start_date=start_date, end_date=end_date)
 
     @classmethod

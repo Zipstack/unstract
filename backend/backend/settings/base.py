@@ -236,6 +236,7 @@ SHARED_APPS = (
     "workflow_manager.file_execution",
     "workflow_manager.endpoint_v2",
     "workflow_manager.workflow_v2",
+    "workflow_manager.execution",
     "tool_instance_v2",
     "pipeline_v2",
     "platform_settings_v2",
