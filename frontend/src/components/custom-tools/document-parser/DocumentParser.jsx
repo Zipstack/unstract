@@ -55,7 +55,7 @@ function DocumentParser({
 
     return () => {
       // Set the prompts with updated changes when the component is unmounted
-      const modifiedDetails = useCustomToolStore.getState()?.details;
+      const modifiedDetails = { ...useCustomToolStore.getState()?.details };
       const modifiedPrompts = [...(modifiedDetails?.prompts || [])]?.map(
         (item) => {
           const itemPromptId = item?.prompt_id;
