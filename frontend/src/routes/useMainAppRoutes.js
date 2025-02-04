@@ -19,7 +19,8 @@ import { CustomTools } from "../pages/CustomTools.jsx";
 import { CustomToolsHelper } from "../components/helpers/custom-tools/CustomToolsHelper.js";
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
-import { deploymentTypes } from "../helpers/GetStaticData.js";
+import { deploymentTypes, UNSTRACT_ADMIN } from "../helpers/GetStaticData.js";
+import { useSessionStore } from "../store/session-store.js";
 
 let RequirePlatformAdmin;
 let PlatformAdminPage;
@@ -94,6 +95,8 @@ try {
 }
 
 function useMainAppRoutes() {
+  const { role } = useSessionStore((state) => state?.sessionDetails);
+
   const routes = (
     <>
       <Route path=":orgName" element={<FullPageLayout />}>
@@ -108,8 +111,8 @@ function useMainAppRoutes() {
         {UnstractUsagePage && (
           <Route path="dashboard" element={<UnstractUsagePage />} />
         )}
-        {UnstractSubscriptionPage && (
-          <Route path="subscribe" element={<UnstractSubscriptionPage />} />
+        {UnstractSubscriptionPage && role === UNSTRACT_ADMIN && (
+          <Route path="pricing" element={<UnstractSubscriptionPage />} />
         )}
         <Route path="profile" element={<ProfilePage />} />
         <Route

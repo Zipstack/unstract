@@ -1,4 +1,6 @@
-# Docker Build
+# Docker Commands
+
+## Docker Build
 
 ```bash
 # Build all services
@@ -8,7 +10,7 @@ VERSION=dev docker compose -f docker-compose.build.yaml build
 VERSION=dev docker compose -f docker-compose.build.yaml build frontend
 ```
 
-# Docker Run
+## Docker Run
 
 **NOTE**: First copy `sample.*.env` files to `*.env` and update as required.
 
@@ -22,7 +24,7 @@ VERSION=dev docker compose -f docker-compose.yaml up -d frontend
 
 Now access frontend at http://frontend.unstract.localhost
 
-# Docker Build and Run Optional Services
+## Docker Build and Run Optional Services
 
 Some services are kept optional and will not be built or started by default. Run them as follows.
 
@@ -33,7 +35,27 @@ VERSION=dev docker compose -f docker-compose.build.yaml --profile optional build
 VERSION=dev docker compose -f docker-compose.yaml --profile optional up -d
 ```
 
-# `src` Folder Layout and `gunicorn`
+## Overriding a service's config
+
+By making use of the [merge compose files](https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/) feature its
+possible to override some configuration that's used by the services.
+
+Copy and rename the `sample.compose.override.yaml` to `compose.override.yaml` and update it as necessary.
+
+```bash
+cp sample.compose.override.yaml compose.override.yaml
+
+# Configuration in docker-compose.yaml gets overridden
+VERSION=dev docker compose -f docker-compose.yaml -f compose.override.yaml up -d
+```
+
+This can be useful during development to
+
+- not run some memory intensive services
+- use commands with different arguments to save resources
+- mount additional volumes or define additional env to configure behaviour
+
+## `src` Folder Layout and `gunicorn`
 
 For the following project structure:
 

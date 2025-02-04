@@ -636,6 +636,7 @@ docker/*.env
 !docker/sample*.env
 docker/public_tools.json
 docker/proxy_overrides.yaml
+docker/compose.override.yaml
 docker/workflow_data/
 
 # Tool development
