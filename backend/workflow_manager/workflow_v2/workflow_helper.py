@@ -258,6 +258,11 @@ class WorkflowHelper:
         except Exception as e:
             error = f"Error processing file '{os.path.basename(input_file)}'. {str(e)}"
             execution_service.publish_log(error, level=LogLevel.ERROR)
+            workflow_file_execution.update_status(
+                status=ExecutionStatus.ERROR,
+                execution_error=error,
+            )
+            # Not propagating error here to continue execution for other files
         execution_service.publish_update_log(
             LogState.RUNNING,
             f"Processing output for {file_name}",

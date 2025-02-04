@@ -3,21 +3,21 @@ from typing import Optional
 
 from api_v2.models import APIDeployment
 from django.db.models import Q, QuerySet
-from execution.serializer import ExecutionSerializer
-from permissions.permission import IsOrganizationMember
 from pipeline_v2.models import Pipeline
 from rest_framework import viewsets
 from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import IsAuthenticated
 from utils.date import DateRangeKeys, DateRangeSerializer
 from utils.pagination import CustomPagination
+from workflow_manager.execution.enum import ExecutionEntity
+from workflow_manager.execution.serializer import ExecutionSerializer
 from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
 
 logger = logging.getLogger(__name__)
 
 
-class ExecutionViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, IsOrganizationMember]
+class ExecutionViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated]
     serializer_class = ExecutionSerializer
     pagination_class = CustomPagination
     filter_backends = [OrderingFilter]
@@ -30,23 +30,23 @@ class ExecutionViewSet(viewsets.ModelViewSet):
         queryset = WorkflowExecution.objects.all()
 
         # Filter based on execution entity
-        if execution_entity == "API":
+        if execution_entity == ExecutionEntity.API:
             queryset = queryset.filter(
                 pipeline_id__in=APIDeployment.objects.values_list("id", flat=True)
             )
-        elif execution_entity == "ETL":
+        elif execution_entity == ExecutionEntity.ETL:
             queryset = queryset.filter(
                 pipeline_id__in=Pipeline.objects.filter(
                     pipeline_type=Pipeline.PipelineType.ETL
                 ).values_list("id", flat=True)
             )
-        elif execution_entity == "TASK":
+        elif execution_entity == ExecutionEntity.TASK:
             queryset = queryset.filter(
                 pipeline_id__in=Pipeline.objects.filter(
                     pipeline_type=Pipeline.PipelineType.TASK
                 ).values_list("id", flat=True)
             )
-        elif execution_entity == "WF":
+        elif execution_entity == ExecutionEntity.WORKFLOW:
             queryset = queryset.filter(
                 pipeline_id=None,
                 workflow_id__in=Workflow.objects.values_list("id", flat=True),
