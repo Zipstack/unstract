@@ -78,9 +78,6 @@ function RjsfFormLayout({
   const uiSchema = useMemo(
     () => ({
       "ui:classNames": "my-rjsf-form",
-      mark_horizontal_lines: {
-        "ui:widget": !formData?.mark_vertical_lines ? "hidden" : undefined,
-      },
     }),
     [formData]
   );

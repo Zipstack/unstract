@@ -79,6 +79,8 @@ dev = [
     "-e unstract-tool-sandbox @ file:///${PROJECT_ROOT}/../unstract/tool-sandbox",
     "-e unstract-workflow-execution @ file:///${PROJECT_ROOT}/../unstract/workflow-execution",
     "-e unstract-filesystem @ file:///${PROJECT_ROOT}/../unstract/filesystem",
+    # For file watching
+    "inotify>=0.2.10",
 ]
 
 [tool.pytest.ini_options]

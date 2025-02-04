@@ -39,11 +39,19 @@ pdm install --dev -G lint
 pdm install --prod --no-editable
 ```
 
+#### Running scripts
+
 PDM allows you to run scripts applicable within the service dir.
 
 ```bash
 # List the possible scripts that can be executed
 pdm run -l
+```
+
+For example to run the backend (dev mode is recommended to take advantage of gunicorn's `reload` feature)
+
+```bash
+pdm run backend --dev
 ```
 
 #### Running commands

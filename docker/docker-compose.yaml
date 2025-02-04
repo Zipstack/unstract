@@ -7,7 +7,7 @@ services:
     image: unstract/backend:${VERSION}
     container_name: unstract-backend
     restart: unless-stopped
-    command: migrate
+    command: --migrate
     ports:
       - "8000:8000"
     env_file:
