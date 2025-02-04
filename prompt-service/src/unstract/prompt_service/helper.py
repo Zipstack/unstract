@@ -233,6 +233,7 @@ def construct_and_run_prompt(
     prompt: str,
     metadata: dict[str, Any],
     file_path: str = "",
+    execution_source: Optional[str] = ExecutionSource.IDE.value,
 ) -> str:
     platform_postamble = tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, "")
     summarize_as_source = tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE)
@@ -255,6 +256,7 @@ def construct_and_run_prompt(
         prompt_type=output.get(PSKeys.TYPE, PSKeys.TEXT),
         enable_highlight=enable_highlight,
         file_path=file_path,
+        execution_source=execution_source,
     )
 
 
@@ -312,9 +314,9 @@ def run_completion(
                         storage_type=StorageType.PERMANENT,
                         env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
                     )
-                if execution_source == ExecutionSource.TOOL.value:
+                elif execution_source == ExecutionSource.TOOL.value:
                     fs_instance = EnvHelper.get_storage(
-                        storage_type=StorageType.TEMPORARY,
+                        storage_type=StorageType.SHARED_TEMPORARY,
                         env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
                     )
                 highlight_data = highlight_data_plugin["entrypoint_cls"](

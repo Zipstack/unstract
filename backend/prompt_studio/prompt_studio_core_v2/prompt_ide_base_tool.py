@@ -5,6 +5,14 @@ from prompt_studio.prompt_studio_core_v2.constants import ToolStudioKeys
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.tool.stream import StreamMixin
 
+from backend.constants import FeatureFlag
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+    from unstract.sdk.file_storage.constants import StorageType
+    from unstract.sdk.file_storage.env_helper import EnvHelper
+    from utils.file_storage.constants import FileStorageKeys
+
 
 class PromptIdeBaseTool(StreamMixin):
     def __init__(self, log_level: LogLevel = LogLevel.INFO, org_id: str = "") -> None:
@@ -17,6 +25,12 @@ class PromptIdeBaseTool(StreamMixin):
         self.log_level = log_level
         self.org_id = org_id
         self.workflow_filestorage = None
+        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+
+            self.workflow_filestorage = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
 
         super().__init__(log_level=log_level)
 
