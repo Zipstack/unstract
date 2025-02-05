@@ -52,15 +52,9 @@
 }
 
 .adapter-cover-img .fit-cover {
-  width: 120px;
-  height: 90px;
+  width: 50px;
+  height: 50px;
   object-fit: contain;
-}
-
-.adapters-list-profile-container {
-  align-items: center;
-  display: flex;
-  justify-content: center;
 }
 
 .adapters-list-user-prefix {
