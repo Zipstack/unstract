@@ -160,9 +160,7 @@ def page_usage() -> Any:
         with db.atomic() as transaction:
             db.execute_sql(query, params)
             transaction.commit()
-            app.logger.info(
-                "Page usage recorded with id %s for %s", usage_id, org_id
-            )
+            app.logger.info("Page usage recorded with id %s for %s", usage_id, org_id)
             result["status"] = "OK"
             result["unique_id"] = usage_id
 
@@ -198,12 +196,11 @@ def page_usage() -> Any:
                 ).fetchone()
 
                 if subscription_result:
-                    subscription_id, stripe_subscription_id = (
-                        subscription_result
-                    )
+                    subscription_id, stripe_subscription_id = subscription_result
                     app.logger.info(
                         "Found subscription: id=%s, stripe_subscription_id=%s",
-                        subscription_id, stripe_subscription_id
+                        subscription_id,
+                        stripe_subscription_id,
                     )
 
                     # Insert or update data in the subscription_usage table
@@ -228,21 +225,13 @@ def page_usage() -> Any:
                         current_time,
                         current_time,
                     )
-                    app.logger.info(
-                        "Executing subscription usage insert/update query."
-                    )
+                    app.logger.info("Executing subscription usage insert/update query.")
 
-                    db.execute_sql(
-                        subscription_usage_query,
-                        subscription_usage_params
-                    )
-                    app.logger.info(
-                        "Subscription usage updated for %s", org_id
-                    )
+                    db.execute_sql(subscription_usage_query, subscription_usage_params)
+                    app.logger.info("Subscription usage updated for %s", org_id)
                 else:
                     app.logger.warning(
-                        "No active subscription found for organization %s",
-                        org_id
+                        "No active subscription found for organization %s", org_id
                     )
 
             return make_response(result, 200)
