@@ -159,9 +159,7 @@ def page_usage() -> Any:
     try:
         with db.atomic():
             db.execute_sql(query, params)
-            app.logger.info(
-                "Page usage recorded with id %s for %s", usage_id, org_id
-            )
+            app.logger.info("Page usage recorded with id %s for %s", usage_id, org_id)
             result["status"] = "OK"
             result["unique_id"] = usage_id
 
