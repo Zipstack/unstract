@@ -159,7 +159,6 @@ def page_usage() -> Any:
     try:
         with db.atomic() as transaction:
             db.execute_sql(query, params)
-            transaction.commit()
             app.logger.info(
                 "Page usage recorded with id %s for %s", usage_id, org_id
             )
@@ -188,13 +187,13 @@ def page_usage() -> Any:
                     FROM \"{Env.DB_SCHEMA}\".{DBTable.SUBSCRIPTION}
                     WHERE organization_id = %s AND is_active = TRUE;
                 """
-                subscription_params = (org_id,)
+                subscription_query_params = (org_id,)
                 app.logger.info(
                     "Executing subscription query for organization %s", org_id
                 )
 
                 subscription_result = db.execute_sql(
-                    subscription_query, subscription_params
+                    subscription_query, subscription_query_params
                 ).fetchone()
 
                 if subscription_result:
