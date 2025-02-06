@@ -224,20 +224,12 @@ def page_usage() -> Any:
                         current_time,
                         current_time,
                     )
-                    app.logger.info(
-                        "Executing subscription usage insert/update query."
-                    )
+                    app.logger.info("Executing subscription usage insert/update query.")
 
-                    db.execute_sql(
-                        subscription_usage_query, subscription_usage_params
-                    )
-                    app.logger.info(
-                        "Subscription usage updated for %s", org_id
-                    )
+                    db.execute_sql(subscription_usage_query, subscription_usage_params)
+                    app.logger.info("Subscription usage updated for %s", org_id)
                 else:
-                    app.logger.warning(
-                        "No active subscription found for %s", org_id
-                    )
+                    app.logger.warning("No active subscription found for %s", org_id)
 
             return make_response(result, 200)
     except Exception as e:
