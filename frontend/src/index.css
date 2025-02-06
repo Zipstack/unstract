@@ -15,6 +15,10 @@ body {
   min-width: 1024px;
 }
 
+.page-bg-2 {
+  background-color: var(--page-bg-2);
+}
+
 .center {
   display: grid;
   width: inherit;
@@ -129,6 +133,14 @@ body {
 
 .pad-left-6 {
   padding-left: 6px;
+}
+
+.pad-top-20 {
+  padding-top: 20px;
+}
+
+.pad-bottom-20 {
+  padding-bottom: 20px;
 }
 
 .cur-pointer {

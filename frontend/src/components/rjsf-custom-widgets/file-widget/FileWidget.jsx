@@ -4,7 +4,7 @@ import PropTypes from "prop-types";
 
 import { RjsfWidgetLayout } from "../../../layouts/rjsf-widget-layout/RjsfWidgetLayout.jsx";
 
-const FileWidget = ({ id, onChange, label, schema, required }) => {
+const FileWidget = ({ id, onChange, label, schema, required, readonly }) => {
   const description = schema?.description || "";
   const handleFileChange = (info) => {
     if (info.file.status === "done") {
@@ -19,7 +19,7 @@ const FileWidget = ({ id, onChange, label, schema, required }) => {
       description={description}
       required={required}
     >
-      <Upload id={id} onChange={handleFileChange}>
+      <Upload id={id} onChange={handleFileChange} disabled={readonly}>
         <Button icon={<UploadOutlined />}>Upload File</Button>
       </Upload>
     </RjsfWidgetLayout>
@@ -32,6 +32,7 @@ FileWidget.propTypes = {
   label: PropTypes.string.isRequired,
   schema: PropTypes.object.isRequired,
   required: PropTypes.bool,
+  readonly: PropTypes.bool.isRequired,
 };
 
 export { FileWidget };

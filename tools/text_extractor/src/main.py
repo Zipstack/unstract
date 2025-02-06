@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from unstract.sdk.constants import LogState, MetadataKey
+from unstract.sdk.constants import LogState, UsageKwargs
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
 from unstract.sdk.x2txt import TextExtractionResult, X2Text
@@ -44,27 +44,32 @@ class TextExtractor(BaseTool):
             None
         """
         text_extraction_adapter_id = settings["extractorId"]
-        source_name = self.get_exec_metadata.get(MetadataKey.SOURCE_NAME)
 
         self.stream_log(
             f"Extractor ID: {text_extraction_adapter_id} "
             "has been retrieved from settings."
         )
 
-        input_log = f"Processing file: \n\n`{source_name}`"
+        input_log = f"Processing file: \n\n`{self.source_file_name}`"
         self.stream_update(input_log, state=LogState.INPUT_UPDATE)
 
+        usage_kwargs: dict[Any, Any] = dict()
+        usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
+        usage_kwargs[UsageKwargs.FILE_NAME] = self.source_file_name
+
         text_extraction_adapter = X2Text(
-            tool=self, adapter_instance_id=text_extraction_adapter_id
+            tool=self,
+            adapter_instance_id=text_extraction_adapter_id,
+            usage_kwargs=usage_kwargs,
         )
         self.stream_log("Text extraction adapter has been created successfully.")
         if self.workflow_filestorage:
             extraction_result: TextExtractionResult = text_extraction_adapter.process(
-                input_file_path=input_file, fs=self.workflow_filestorage
+                input_file_path=input_file, fs=self.workflow_filestorage, tags=self.tags
             )
         else:
             extraction_result: TextExtractionResult = text_extraction_adapter.process(
-                input_file_path=input_file
+                input_file_path=input_file, tags=self.tags
             )
         extracted_text = self.convert_to_actual_string(extraction_result.extracted_text)
 
@@ -76,8 +81,10 @@ class TextExtractor(BaseTool):
 
         try:
             self.stream_log("Preparing to write the extracted text.")
-            if source_name:
-                output_path = Path(output_dir) / f"{Path(source_name).stem}.txt"
+            if self.source_file_name:
+                output_path = (
+                    Path(output_dir) / f"{Path(self.source_file_name).stem}.txt"
+                )
                 if self.workflow_filestorage:
                     self.workflow_filestorage.write(
                         path=output_path, mode="w", data=extracted_text
@@ -89,7 +96,7 @@ class TextExtractor(BaseTool):
                 self.stream_log("Tool output written successfully.")
             else:
                 self.stream_error_and_exit(
-                    "Error creating/writing output file: source_name not found"
+                    "Error creating/writing output file: source_file_name not found"
                 )
         except Exception as e:
             self.stream_error_and_exit(f"Error creating/writing output file: {e}")

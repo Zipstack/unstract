@@ -9,12 +9,15 @@ from pipeline_v2.models import Pipeline
 from rest_framework.serializers import (
     BooleanField,
     CharField,
+    FileField,
     IntegerField,
     JSONField,
+    ListField,
     ModelSerializer,
     Serializer,
     ValidationError,
 )
+from tags.serializers import TagParamsSerializer
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
@@ -99,7 +102,7 @@ class APIKeySerializer(AuditSerializer):
         return representation
 
 
-class ExecutionRequestSerializer(Serializer):
+class ExecutionRequestSerializer(TagParamsSerializer):
     """Execution request serializer.
 
     Attributes:
@@ -110,7 +113,11 @@ class ExecutionRequestSerializer(Serializer):
         use_file_history (bool): Flag to use FileHistory to save and retrieve
             responses quickly. This is undocumented to the user and can be
             helpful for demos.
+        tags (str): Comma-separated List of tags to associate with the execution.
+            e.g:'tag1,tag2-name,tag3_name'
     """
+
+    MAX_FILES_ALLOWED = 32
 
     timeout = IntegerField(
         min_value=-1, max_value=ApiExecution.MAXIMUM_TIMEOUT_IN_SEC, default=-1
@@ -118,6 +125,23 @@ class ExecutionRequestSerializer(Serializer):
     include_metadata = BooleanField(default=False)
     include_metrics = BooleanField(default=False)
     use_file_history = BooleanField(default=False)
+    files = ListField(
+        child=FileField(),
+        required=True,
+        allow_empty=False,
+        error_messages={
+            "required": "At least one file must be provided.",
+            "empty": "The file list cannot be empty.",
+        },
+    )
+
+    def validate_files(self, value):
+        """Validate the files field."""
+        if len(value) == 0:
+            raise ValidationError("The file list cannot be empty.")
+        if len(value) > self.MAX_FILES_ALLOWED:
+            raise ValidationError(f"Maximum '{self.MAX_FILES_ALLOWED}' files allowed.")
+        return value
 
 
 class ExecutionQuerySerializer(Serializer):

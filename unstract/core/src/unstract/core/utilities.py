@@ -41,6 +41,7 @@ class UnstractUtils:
         if len(container_name) > 63:
             logger.warning(
                 f"Container name exceeds 63 char limit for '{container_name}', "
-                "truncating to 63 chars. There might be collisions in container names"
+                "truncating to 63 chars. There might be collisions in container names."
+                f"Truncated container name: {container_name[:63]}"
             )
         return container_name[:63]

@@ -7,7 +7,7 @@ import { RjsfWidgetLayout } from "../../../layouts/rjsf-widget-layout/RjsfWidget
 import "./ArrayField.css";
 
 const ArrayField = (props) => {
-  const { schema, formData, onChange, required } = props;
+  const { schema, formData, onChange, required, readonly } = props;
   const [dropdownList, setDropdownList] = useState([]);
   const [options, setOptions] = useState([]);
 
@@ -54,6 +54,7 @@ const ArrayField = (props) => {
         value={formData}
         onChange={handleChange}
         options={options}
+        disabled={readonly}
       />
     </RjsfWidgetLayout>
   );
@@ -65,6 +66,7 @@ ArrayField.propTypes = {
   formData: PropTypes.array,
   onChange: PropTypes.func.isRequired,
   required: PropTypes.bool,
+  readonly: PropTypes.bool.isRequired,
 };
 
 export { ArrayField };

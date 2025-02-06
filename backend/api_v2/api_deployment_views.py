@@ -4,7 +4,7 @@ from typing import Any, Optional
 
 from api_v2.constants import ApiExecution
 from api_v2.deployment_helper import DeploymentHelper
-from api_v2.exceptions import InvalidAPIRequest, NoActiveAPIKeyError
+from api_v2.exceptions import NoActiveAPIKeyError
 from api_v2.models import APIDeployment
 from api_v2.postman_collection.dto import PostmanCollection
 from api_v2.serializers import (
@@ -47,15 +47,14 @@ class DeploymentExecution(views.APIView):
     def post(
         self, request: Request, org_name: str, api_name: str, api: APIDeployment
     ) -> Response:
-        file_objs = request.FILES.getlist(ApiExecution.FILES_FORM_DATA)
         serializer = ExecutionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        file_objs = serializer.validated_data.get(ApiExecution.FILES_FORM_DATA)
         timeout = serializer.validated_data.get(ApiExecution.TIMEOUT_FORM_DATA)
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
         include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
         use_file_history = serializer.validated_data.get(ApiExecution.USE_FILE_HISTORY)
-        if not file_objs or len(file_objs) == 0:
-            raise InvalidAPIRequest("File shouldn't be empty")
+        tag_names = serializer.validated_data.get(ApiExecution.TAGS)
         response = DeploymentHelper.execute_workflow(
             organization_name=org_name,
             api=api,
@@ -64,6 +63,7 @@ class DeploymentExecution(views.APIView):
             include_metadata=include_metadata,
             include_metrics=include_metrics,
             use_file_history=use_file_history,
+            tag_names=tag_names,
         )
         if "error" in response and response["error"]:
             return Response(

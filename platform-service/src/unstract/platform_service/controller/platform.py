@@ -157,12 +157,80 @@ def page_usage() -> Any:
     )
 
     try:
-        with db.atomic() as transaction:
+        with db.atomic():
             db.execute_sql(query, params)
-            transaction.commit()
             app.logger.info("Page usage recorded with id %s for %s", usage_id, org_id)
             result["status"] = "OK"
             result["unique_id"] = usage_id
+
+            # Check if the subscription_usage table exists
+            check_table_query = f"""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = '{Env.DB_SCHEMA}'
+                    AND table_name = '{DBTable.SUBSCRIPTION_USAGE}'
+                );
+            """
+            app.logger.info("Checking if subscription_usage table exists")
+
+            table_exists = db.execute_sql(check_table_query).fetchone()[0]
+
+            if table_exists:
+                app.logger.info("subscription_usage table exists")
+
+                # Query to get subscription_id and stripe_subscription_id
+                #  from Subscription table.
+                subscription_query = f"""
+                    SELECT id, stripe_subscription_id
+                    FROM \"{Env.DB_SCHEMA}\".{DBTable.SUBSCRIPTION}
+                    WHERE organization_id = %s AND is_active = TRUE;
+                """
+                subscription_query_params = (org_id,)
+                app.logger.info(
+                    "Executing subscription query for organization %s", org_id
+                )
+
+                subscription_result = db.execute_sql(
+                    subscription_query, subscription_query_params
+                ).fetchone()
+
+                if subscription_result:
+                    subscription_id, stripe_subscription_id = subscription_result
+                    app.logger.info(
+                        "Found subscription: id=%s, stripe_subscription_id=%s",
+                        subscription_id,
+                        stripe_subscription_id,
+                    )
+
+                    # Insert or update data in the subscription_usage table
+                    subscription_usage_query = f"""
+                        INSERT INTO
+                        \"{Env.DB_SCHEMA}\".{DBTable.SUBSCRIPTION_USAGE} (
+                        subscription_id, stripe_subscription_id,
+                        organization_id, pages_processed, record_date,
+                        created_at, updated_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (subscription_id, record_date) DO UPDATE
+                        SET pages_processed =
+                        {DBTable.SUBSCRIPTION_USAGE}.pages_processed
+                        + EXCLUDED.pages_processed;
+                    """
+                    subscription_usage_params = (
+                        subscription_id,
+                        stripe_subscription_id,
+                        org_id,
+                        page_count,
+                        current_time.date(),
+                        current_time,
+                        current_time,
+                    )
+                    app.logger.info("Executing subscription usage insert/update query.")
+
+                    db.execute_sql(subscription_usage_query, subscription_usage_params)
+                    app.logger.info("Subscription usage updated for %s", org_id)
+                else:
+                    app.logger.warning("No active subscription found for %s", org_id)
+
             return make_response(result, 200)
     except Exception as e:
         app.logger.error(f"Error while creating page usage entry: {e}")
@@ -198,7 +266,7 @@ def usage() -> Any:
     workflow_id = payload.get("workflow_id")
     execution_id = payload.get("execution_id", "")
     adapter_instance_id = payload.get("adapter_instance_id", "")
-    run_id = payload.get("run_id", "")
+    run_id = payload.get("run_id")
     usage_type = payload.get("usage_type", "")
     llm_usage_reason = payload.get("llm_usage_reason", "")
     model_name = payload.get("model_name", "")
