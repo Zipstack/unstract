@@ -329,8 +329,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         if single_step:
             execution_type = ExecutionType.STEP
         self.publish_log(
-            "No entries found in cache, executing the tools"
-            f"running the tool(s) for {file_name}"
+            f"No entries found in cache, executing the tool for '{file_name}'"
         )
         self.publish_update_log(
             state=LogState.SUCCESS,
