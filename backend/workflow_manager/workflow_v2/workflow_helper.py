@@ -149,7 +149,7 @@ class WorkflowHelper:
         if total_files > 0:
             q_file_no_list = WorkflowUtil.get_q_no_list(workflow, total_files)
 
-        for index, (file_path, file_hash) in enumerate(input_files.items()):
+        for index, (file_name, file_hash) in enumerate(input_files.items()):
             # Get workflow execution file
             workflow_execution_file = cls._get_or_create_workflow_execution_file(
                 execution_service=execution_service,
@@ -194,7 +194,7 @@ class WorkflowHelper:
                 break
             except Exception as e:
                 failed_files += 1
-                error_message = f"Error processing file '{file_path}'. {e}"
+                error_message = f"Error processing file '{file_name}'. {e}"
                 logger.error(error_message, stack_info=True, exc_info=True)
                 workflow_execution_file.update_status(
                     status=ExecutionStatus.ERROR,
@@ -203,6 +203,7 @@ class WorkflowHelper:
                 execution_service.publish_log(
                     message=error_message, level=LogLevel.ERROR
                 )
+        # TODO: Review if we need partial success
         if failed_files and failed_files >= total_files:
             execution_service.update_execution(
                 ExecutionStatus.ERROR, error=error_message
