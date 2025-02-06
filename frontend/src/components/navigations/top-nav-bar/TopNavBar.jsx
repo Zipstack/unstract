@@ -298,11 +298,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       });
     }
 
-    if (
-      isUnstract &&
-      UnstractPricingMenuLink &&
-      sessionDetails?.role === UNSTRACT_ADMIN
-    ) {
+    if (isUnstract && UnstractPricingMenuLink && sessionDetails?.isAdmin) {
       menuItems.push({
         key: "7",
         label: <UnstractPricingMenuLink orgName={orgName} />,
