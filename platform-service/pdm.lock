@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:bb50ae63b631b297b27eebfa09469ba641e7c405239a339d52e4cf60cf1ef1bc"
+content_hash = "sha256:f588e9a72e9aa3080a4b4e354f760f779984a97f3e47fddf9f3bfd60ca48c89d"
 
 [[package]]
 name = "aioboto3"
