@@ -73,12 +73,12 @@ class PromptStudioFileHelper:
             )
         )
 
-        if isinstance(file_data, bytes):
-            file_path = str(Path(file_system_path) / file_name)
-            fs_instance.write(path=file_path, mode="wb", data=file_data)
-        else:
-            file_path = str(Path(file_system_path) / file_name)
-            fs_instance.write(path=file_path, mode="wb", data=file_data.read())
+        file_path = str(Path(file_system_path) / file_name)
+        fs_instance.write(
+            path=file_path,
+            mode="wb",
+            data=file_data if isinstance(file_data, bytes) else file_data.read()
+        )
 
     @staticmethod
     def fetch_file_contents(
