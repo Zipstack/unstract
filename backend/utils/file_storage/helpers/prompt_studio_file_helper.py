@@ -77,7 +77,7 @@ class PromptStudioFileHelper:
         fs_instance.write(
             path=file_path,
             mode="wb",
-            data=file_data if isinstance(file_data, bytes) else file_data.read()
+            data=file_data if isinstance(file_data, bytes) else file_data.read(),
         )
 
     @staticmethod
