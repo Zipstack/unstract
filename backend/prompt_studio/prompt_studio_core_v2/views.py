@@ -513,7 +513,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     org_id=UserSessionUtils.get_organization_id(request),
                     user_id=custom_tool.created_by.user_id,
                     tool_id=str(custom_tool.tool_id),
-                    uploaded_file=file_data,
+                    file_name=file_name,
+                    file_data=file_data,
                 )
 
             # Create a record in the db for the file
