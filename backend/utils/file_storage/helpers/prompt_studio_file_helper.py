@@ -49,7 +49,7 @@ class PromptStudioFileHelper:
 
     @staticmethod
     def upload_for_ide(
-        org_id: str, user_id: str, tool_id: str, uploaded_file: Any
+        org_id: str, user_id: str, tool_id: str, file_data: Any, file_name: str
     ) -> None:
         """Uploads the file to a remote storage
 
@@ -57,7 +57,8 @@ class PromptStudioFileHelper:
             org_id (str): Organization ID
             user_id (str): User ID
             tool_id (str): ID of the prompt studio tool
-            uploaded_file : File to upload to remote
+            file_data (Any) : File data
+            file_name (str) : Name of the file to be uploaded
         """
         fs_instance = EnvHelper.get_storage(
             storage_type=StorageType.PERMANENT,
@@ -71,8 +72,13 @@ class PromptStudioFileHelper:
                 tool_id=str(tool_id),
             )
         )
-        file_path = str(Path(file_system_path) / uploaded_file.name)
-        fs_instance.write(path=file_path, mode="wb", data=uploaded_file.read())
+
+        file_path = str(Path(file_system_path) / file_name)
+        fs_instance.write(
+            path=file_path,
+            mode="wb",
+            data=file_data if isinstance(file_data, bytes) else file_data.read(),
+        )
 
     @staticmethod
     def fetch_file_contents(
