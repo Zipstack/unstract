@@ -5,7 +5,7 @@
 groups = ["default"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:f12b478c290faf0c0a7eb5a4647d54b8895b2f1af59efa0a009aacf8d81c62c9"
+content_hash = "sha256:cce60f928862fe79d08d185ae8e18f148dc210ffc9bd6e162d41a78827c11764"
 
 [[package]]
 name = "adlfs"
@@ -783,29 +783,29 @@ files = [
 
 [[package]]
 name = "fsspec"
-version = "2024.6.1"
+version = "2024.10.0"
 requires_python = ">=3.8"
 summary = "File-system specification"
 groups = ["default"]
 files = [
-    {file = "fsspec-2024.6.1-py3-none-any.whl", hash = "sha256:3cb443f8bcd2efb31295a5b9fdb02aee81d8452c80d28f97a6d0959e6cee101e"},
-    {file = "fsspec-2024.6.1.tar.gz", hash = "sha256:fad7d7e209dd4c1208e3bbfda706620e0da5142bebbd9c384afb95b07e798e49"},
+    {file = "fsspec-2024.10.0-py3-none-any.whl", hash = "sha256:03b9a6785766a4de40368b88906366755e2819e758b83705c88cd7cb5fe81871"},
+    {file = "fsspec-2024.10.0.tar.gz", hash = "sha256:eda2d8a4116d4f2429db8550f2457da57279247dd930bb12f821b58391359493"},
 ]
 
 [[package]]
 name = "fsspec"
-version = "2024.6.1"
+version = "2024.10.0"
 extras = ["sftp"]
 requires_python = ">=3.8"
 summary = "File-system specification"
 groups = ["default"]
 dependencies = [
-    "fsspec==2024.6.1",
+    "fsspec==2024.10.0",
     "paramiko",
 ]
 files = [
-    {file = "fsspec-2024.6.1-py3-none-any.whl", hash = "sha256:3cb443f8bcd2efb31295a5b9fdb02aee81d8452c80d28f97a6d0959e6cee101e"},
-    {file = "fsspec-2024.6.1.tar.gz", hash = "sha256:fad7d7e209dd4c1208e3bbfda706620e0da5142bebbd9c384afb95b07e798e49"},
+    {file = "fsspec-2024.10.0-py3-none-any.whl", hash = "sha256:03b9a6785766a4de40368b88906366755e2819e758b83705c88cd7cb5fe81871"},
+    {file = "fsspec-2024.10.0.tar.gz", hash = "sha256:eda2d8a4116d4f2429db8550f2457da57279247dd930bb12f821b58391359493"},
 ]
 
 [[package]]
@@ -820,22 +820,22 @@ files = [
 
 [[package]]
 name = "gcsfs"
-version = "2024.6.1"
+version = "2024.10.0"
 requires_python = ">=3.8"
 summary = "Convenient Filesystem interface over GCS"
 groups = ["default"]
 dependencies = [
     "aiohttp!=4.0.0a0,!=4.0.0a1",
     "decorator>4.1.2",
-    "fsspec==2024.6.1",
+    "fsspec==2024.10.0",
     "google-auth-oauthlib",
     "google-auth>=1.2",
     "google-cloud-storage",
     "requests",
 ]
 files = [
-    {file = "gcsfs-2024.6.1-py2.py3-none-any.whl", hash = "sha256:13fd18095425e54e248870594fd155812723966b1bda3b102b3a5c44ec436a03"},
-    {file = "gcsfs-2024.6.1.tar.gz", hash = "sha256:e8858c7a893b2265e9bfce2fe270a024a2e348c74c23528801db388fc0224ed7"},
+    {file = "gcsfs-2024.10.0-py2.py3-none-any.whl", hash = "sha256:bb2d23547e61203ea2dda5fa6c4b91a0c34b74ebe8bb6ab1926f6c33381bceb2"},
+    {file = "gcsfs-2024.10.0.tar.gz", hash = "sha256:5df54cfe568e8fdeea5aafa7fed695cdc69a9a674e991ca8c1ce634f5df1d314"},
 ]
 
 [[package]]
@@ -2143,34 +2143,34 @@ files = [
 
 [[package]]
 name = "s3fs"
-version = "2024.6.1"
+version = "2024.10.0"
 requires_python = ">=3.8"
 summary = "Convenient Filesystem interface over S3"
 groups = ["default"]
 dependencies = [
     "aiobotocore<3.0.0,>=2.5.4",
     "aiohttp!=4.0.0a0,!=4.0.0a1",
-    "fsspec==2024.6.1.*",
+    "fsspec==2024.10.0.*",
 ]
 files = [
-    {file = "s3fs-2024.6.1-py3-none-any.whl", hash = "sha256:ecd20863437409eec1cbfff0b7df5e9772cf7c1926008efab2e17e46f6d52c63"},
-    {file = "s3fs-2024.6.1.tar.gz", hash = "sha256:6c2106d6c34fbfbb88e3d20c6f3572896d5ee3d3512896696301c21a3c541bea"},
+    {file = "s3fs-2024.10.0-py3-none-any.whl", hash = "sha256:7a2025d60d5b1a6025726b3a5e292a8e5aa713abc3b16fd1f81735181f7bb282"},
+    {file = "s3fs-2024.10.0.tar.gz", hash = "sha256:58b8c3650f8b99dbedf361543da3533aac8707035a104db5d80b094617ad4a3f"},
 ]
 
 [[package]]
 name = "s3fs"
-version = "2024.6.1"
+version = "2024.10.0"
 extras = ["boto3"]
 requires_python = ">=3.8"
 summary = "Convenient Filesystem interface over S3"
 groups = ["default"]
 dependencies = [
     "aiobotocore[boto3]<3.0.0,>=2.5.4",
-    "s3fs==2024.6.1",
+    "s3fs==2024.10.0",
 ]
 files = [
-    {file = "s3fs-2024.6.1-py3-none-any.whl", hash = "sha256:ecd20863437409eec1cbfff0b7df5e9772cf7c1926008efab2e17e46f6d52c63"},
-    {file = "s3fs-2024.6.1.tar.gz", hash = "sha256:6c2106d6c34fbfbb88e3d20c6f3572896d5ee3d3512896696301c21a3c541bea"},
+    {file = "s3fs-2024.10.0-py3-none-any.whl", hash = "sha256:7a2025d60d5b1a6025726b3a5e292a8e5aa713abc3b16fd1f81735181f7bb282"},
+    {file = "s3fs-2024.10.0.tar.gz", hash = "sha256:58b8c3650f8b99dbedf361543da3533aac8707035a104db5d80b094617ad4a3f"},
 ]
 
 [[package]]
