@@ -109,7 +109,9 @@ function useMainAppRoutes() {
           <Route path="dashboard" element={<UnstractUsagePage />} />
         )}
         {UnstractSubscriptionPage && (
-          <Route path="pricing" element={<UnstractSubscriptionPage />} />
+          <Route element={<RequireAdmin />}>
+            <Route path="pricing" element={<UnstractSubscriptionPage />} />
+          </Route>
         )}
         <Route path="profile" element={<ProfilePage />} />
         <Route
