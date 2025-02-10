@@ -1,7 +1,7 @@
 import time
 import traceback
 from json import JSONDecodeError
-from typing import Any
+from typing import Any, Optional
 
 from flask import json, jsonify, request
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
@@ -330,6 +330,7 @@ def prompt_processor() -> Any:
                     prompt="promptx",
                     metadata=metadata,
                     file_path=file_path,
+                    execution_source=execution_source,
                 )
                 metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = get_cleaned_context(
                     context
@@ -360,6 +361,7 @@ def prompt_processor() -> Any:
                         vector_index=vector_index,
                         retrieval_type=retrieval_strategy,
                         metadata=metadata,
+                        execution_source=execution_source,
                     )
                     metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = get_cleaned_context(
                         context
@@ -807,6 +809,7 @@ def run_retrieval(  # type:ignore
     vector_index,
     retrieval_type: str,
     metadata: dict[str, Any],
+    execution_source: Optional[str] = None,
 ) -> tuple[str, set[str]]:
     context: set[str] = set()
     prompt = output[PSKeys.PROMPTX]
@@ -869,6 +872,7 @@ def run_retrieval(  # type:ignore
         context="\n".join(context),
         prompt="promptx",
         metadata=metadata,
+        execution_source=execution_source,
     )
 
     return (answer, context)
