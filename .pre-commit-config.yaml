@@ -1,12 +1,16 @@
 ---
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
-# - Added unstract feature flag auto generated code to flake8 exclude list
-# Force all unspecified python hooks to run python 3.10
+
 default_language_version:
   python: python3.9
 default_stages:
   - pre-commit
+
+ci:
+  skip:
+    - hadolint-docker  # Fails in pre-commit CI
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -102,7 +106,7 @@ repos:
   - repo: https://github.com/hadolint/hadolint
     rev: v2.12.1-beta
     hooks:
-      - id: hadolint
+      - id: hadolint-docker
         args:
           - --ignore=DL3003
           - --ignore=DL3008
