@@ -32,7 +32,9 @@ dependencies = [
     "python-socketio==5.9.0", # For log_events
     "social-auth-app-django==5.3.0", # For OAuth
     "social-auth-core==4.4.2", # For OAuth
-    "unstract-sdk~=0.56.0rc4",
+    "unstract-sdk~=0.57.0rc2",
+    "unstract-sdk[aws]~=0.57.0rc2",
+    "unstract-sdk[gcs]~=0.57.0rc2",
     # ! IMPORTANT!
     # Indirect local dependencies usually need to be added in their own projects
     # as: https://pdm-project.org/latest/usage/dependency/#local-dependencies.

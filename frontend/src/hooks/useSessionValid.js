@@ -59,6 +59,7 @@ function useSessionValid() {
     return false;
   };
   return async () => {
+    let userAndOrgDetails = null;
     try {
       const userSessionData = await userSession();
 
@@ -92,7 +93,6 @@ function useSessionValid() {
         navigate("/setOrg", { state: orgs });
         return;
       }
-      let userAndOrgDetails = null;
       const orgId = signedInOrgId || orgs[0].id;
       const csrfToken = Cookies.get("csrftoken");
 
@@ -161,8 +161,6 @@ function useSessionValid() {
         userAndOrgDetails["isPlatformAdmin"] = await isPlatformAdmin();
       }
       userAndOrgDetails["role"] = userSessionData.role;
-      // Set the session details
-      setSessionDetails(getSessionData(userAndOrgDetails));
     } catch (err) {
       // TODO: Throw popup error message
       // REVIEW: Add condition to check for trial period status
@@ -178,6 +176,9 @@ function useSessionValid() {
         // May be need a logout button there or auto logout
       }
       setAlertDetails(handleException(err));
+    } finally {
+      // Set the session details
+      setSessionDetails(getSessionData(userAndOrgDetails));
     }
   };
 }
