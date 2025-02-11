@@ -203,6 +203,7 @@ class WorkflowHelper:
                 execution_service.publish_log(
                     message=error_message, level=LogLevel.ERROR
                 )
+        # TODO: Store only generic WF errors here (concerning all failed files)
         # TODO: Review if we need partial success
         if failed_files and failed_files >= total_files:
             execution_service.update_execution(

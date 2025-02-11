@@ -3,6 +3,7 @@ import time
 from typing import Optional
 
 from account_v2.constants import Common
+from django.utils import timezone
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
 from tags.models import Tag
 from tool_instance_v2.models import ToolInstance
@@ -154,10 +155,10 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             workflow_execution.tags.set(tags)
         return workflow_execution
 
+    # TODO: Remove execution_time arg if unused
     def update_execution(
         self,
         status: Optional[ExecutionStatus] = None,
-        execution_time: Optional[float] = None,
         error: Optional[str] = None,
         increment_attempt: bool = False,
     ) -> None:
@@ -165,8 +166,19 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
         if status is not None:
             execution.status = status.value
-        if execution_time is not None:
-            execution.execution_time = execution_time
+
+            if (
+                status
+                in [
+                    ExecutionStatus.COMPLETED,
+                    ExecutionStatus.ERROR,
+                    ExecutionStatus.STOPPED,
+                ]
+                and not execution.execution_time
+            ):
+                execution.execution_time = round(
+                    (timezone.now() - execution.created_at).total_seconds(), 3
+                )
         if error:
             execution.error_message = error[:EXECUTION_ERROR_LENGTH]
         if increment_attempt:
