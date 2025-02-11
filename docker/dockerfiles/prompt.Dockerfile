@@ -2,8 +2,10 @@ FROM python:3.9-slim
 
 LABEL maintainer="Zipstack Inc."
 
-# Environment variables
-ENV PYTHONDONTWRITEBYTECODE=1 \
+ENV \
+    # Keeps Python from generating .pyc files in the container
+    PYTHONDONTWRITEBYTECODE=1 \
+    # Set to immediately flush stdout and stderr streams without first buffering
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/unstract \
     BUILD_CONTEXT_PATH=prompt-service \

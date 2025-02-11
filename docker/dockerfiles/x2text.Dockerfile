@@ -2,13 +2,13 @@ FROM python:3.9-slim
 
 LABEL maintainer="Zipstack Inc."
 
-# Keeps Python from generating .pyc files in the container
-ENV PYTHONDONTWRITEBYTECODE 1
-# Set to immediately flush stdout and stderr streams without first buffering
-ENV PYTHONUNBUFFERED 1
-
-ENV BUILD_CONTEXT_PATH x2text-service
-ENV PDM_VERSION 2.16.1
+ENV \
+    # Keeps Python from generating .pyc files in the container
+    PYTHONDONTWRITEBYTECODE=1 \
+    # Set to immediately flush stdout and stderr streams without first buffering
+    PYTHONUNBUFFERED=1 \
+    BUILD_CONTEXT_PATH=x2text-service \
+    PDM_VERSION=2.16.1
 
 RUN pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}; \
     \
@@ -20,25 +20,18 @@ USER unstract
 
 WORKDIR /app
 
-COPY --chown=unstract ${BUILD_CONTEXT_PATH} .
+# Create venv and install gunicorn and other deps in it
+RUN pdm venv create -w virtualenv --with-pip && \
+    . .venv/bin/activate && \
+    pip install --no-cache-dir gunicorn \
+    opentelemetry-distro opentelemetry-exporter-otlp && \
+    opentelemetry-bootstrap -a install
 
-RUN set -e; \
-    \
-    rm -rf .venv .pdm* .python* requirements.txt 2>/dev/null; \
-    \
-    pdm venv create -w virtualenv --with-pip; \
-    # source command may not be availble in sh
-    . .venv/bin/activate; \
-    \
-    # Install opentelemetry for instrumentation.
-    pip install opentelemetry-distro opentelemetry-exporter-otlp; \
-    \
-    opentelemetry-bootstrap -a install; \
-    \
-    pdm sync --prod --no-editable; \
-    \
-    # REF: https://docs.gunicorn.org/en/stable/deploy.html#using-virtualenv
-    pip install --no-cache-dir gunicorn;
+COPY --chmod=755 ${BUILD_CONTEXT_PATH} /app/
+
+# Install dependencies
+RUN . .venv/bin/activate && \
+    pdm sync --prod --no-editable
 
 EXPOSE 3004
 

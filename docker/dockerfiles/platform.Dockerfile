@@ -2,16 +2,17 @@ FROM python:3.9-slim
 
 LABEL maintainer="Zipstack Inc."
 
-# Keeps Python from generating .pyc files in the container
-ENV PYTHONDONTWRITEBYTECODE 1
-# Set to immediately flush stdout and stderr streams without first buffering
-ENV PYTHONUNBUFFERED 1
-ENV PYTHONPATH /unstract
+ENV \
+    # Keeps Python from generating .pyc files in the container
+    PYTHONDONTWRITEBYTECODE=1 \
+    # Set to immediately flush stdout and stderr streams without first buffering
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/unstract \
+    BUILD_CONTEXT_PATH=platform-service \
+    BUILD_PACKAGES_PATH=unstract \
+    PDM_VERSION=2.16.1
 
-ENV BUILD_CONTEXT_PATH platform-service
-ENV BUILD_PACKAGES_PATH unstract
-ENV PDM_VERSION 2.16.1
-
+# Install system dependencies
 RUN apt-get update; \
     apt-get --no-install-recommends install -y  \
     # unstract sdk
@@ -29,27 +30,21 @@ USER unstract
 
 WORKDIR /app
 
-COPY --chown=unstract ${BUILD_CONTEXT_PATH} .
+# Create venv and install gunicorn and other deps in it
+RUN pdm venv create -w virtualenv --with-pip && \
+    . .venv/bin/activate && \
+    pip install --no-cache-dir gunicorn \
+    # Install opentelemetry for instrumentation
+    opentelemetry-distro opentelemetry-exporter-otlp && \
+    opentelemetry-bootstrap -a install
+
+COPY --chmod=755 ${BUILD_CONTEXT_PATH} /app/
 # Copy local dependency packages
 COPY --chown=unstract ${BUILD_PACKAGES_PATH} /unstract
 
-RUN set -e; \
-    \
-    rm -rf .venv .pdm* .python* requirements.txt 2>/dev/null; \
-    \
-    pdm venv create -w virtualenv --with-pip; \
-    # source command may not be availble in sh
-    . .venv/bin/activate; \
-    \
-    # Install opentelemetry for instrumentation.
-    pip install opentelemetry-distro opentelemetry-exporter-otlp; \
-    \
-    opentelemetry-bootstrap -a install; \
-    \
-    pdm sync --prod --no-editable; \
-    \
-    # REF: https://docs.gunicorn.org/en/stable/deploy.html#using-virtualenv
-    pip install --no-cache-dir gunicorn;
+# Install dependencies
+RUN . .venv/bin/activate && \
+    pdm sync --prod --no-editable
 
 EXPOSE 3001
 
