@@ -95,7 +95,7 @@ class StructureTool(BaseTool):
             file_name = SettingsKeys.SUMMARIZE
         tool_data_dir = Path(self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR))
         execution_run_data_folder = Path(
-            self.get_env_or_die(SettingsKeys.EXECUTION_RUN_DATA_FOLDER)
+            self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR)
         )
 
         index = Index(
