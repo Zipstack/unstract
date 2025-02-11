@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:d8d76f7de0ebd2a6eb3b6ecc07779df559bc93b789777a0cbfe00597111e6105"
+content_hash = "sha256:f1527a4d005f7c0ffd16c71947406a1a5ab88eb618c99eb5ddfa8152245b880f"
 
 [[package]]
 name = "aioboto3"
@@ -68,13 +68,13 @@ files = [
 
 [[package]]
 name = "aiohappyeyeballs"
-version = "2.4.4"
-requires_python = ">=3.8"
+version = "2.4.6"
+requires_python = ">=3.9"
 summary = "Happy Eyeballs for asyncio"
 groups = ["default"]
 files = [
-    {file = "aiohappyeyeballs-2.4.4-py3-none-any.whl", hash = "sha256:a980909d50efcd44795c4afeca523296716d50cd756ddca6af8c65b996e27de8"},
-    {file = "aiohappyeyeballs-2.4.4.tar.gz", hash = "sha256:5fdd7d87889c63183afc18ce9271f9b0a7d32c2303e394468dd45d514a757745"},
+    {file = "aiohappyeyeballs-2.4.6-py3-none-any.whl", hash = "sha256:147ec992cf873d74f5062644332c539fcd42956dc69453fe5204195e560517e1"},
+    {file = "aiohappyeyeballs-2.4.6.tar.gz", hash = "sha256:9b05052f9042985d32ecbe4b59a77ae19c006a78f1344d7fdad69d28ded3d0b0"},
 ]
 
 [[package]]
@@ -433,13 +433,13 @@ files = [
 
 [[package]]
 name = "certifi"
-version = "2024.12.14"
+version = "2025.1.31"
 requires_python = ">=3.6"
 summary = "Python package for providing Mozilla's CA Bundle."
 groups = ["default"]
 files = [
-    {file = "certifi-2024.12.14-py3-none-any.whl", hash = "sha256:1275f7a45be9464efc1173084eaa30f866fe2e47d389406136d332ed4967ec56"},
-    {file = "certifi-2024.12.14.tar.gz", hash = "sha256:b650d30f370c2b724812bee08008be0c4163b163ddaec3f2546c1caf65f191db"},
+    {file = "certifi-2025.1.31-py3-none-any.whl", hash = "sha256:ca78db4565a652026a4db2bcdf68f2fb589ea80d0be70e03929ed730746b84fe"},
+    {file = "certifi-2025.1.31.tar.gz", hash = "sha256:3d5da6925056f6f18f119200434a4780a94263f10d1c21d032a6f6b2baa20651"},
 ]
 
 [[package]]
@@ -1641,18 +1641,18 @@ files = [
 
 [[package]]
 name = "llama-cloud"
-version = "0.1.11"
+version = "0.1.12"
 requires_python = "<4,>=3.8"
 summary = ""
 groups = ["default"]
 dependencies = [
-    "certifi<2025.0.0,>=2024.7.4",
+    "certifi>=2024.7.4",
     "httpx>=0.20.0",
     "pydantic>=1.10",
 ]
 files = [
-    {file = "llama_cloud-0.1.11-py3-none-any.whl", hash = "sha256:b703765d03783a5a0fc57a52adc9892f8b91b0c19bbecb85a54ad4e813342951"},
-    {file = "llama_cloud-0.1.11.tar.gz", hash = "sha256:d4be5b48659fd9fe1698727be257269a22d7f2733a2ed11bce7065768eb94cbe"},
+    {file = "llama_cloud-0.1.12-py3-none-any.whl", hash = "sha256:de1b4f89afc3cf3adf86ca9a6eb2b8de3f131b20fd25a5647b5a162e6bf2ed1b"},
+    {file = "llama_cloud-0.1.12.tar.gz", hash = "sha256:d51d26cc4c542398a3490813bc791f7504a40298225e62ed918951bf57266e2a"},
 ]
 
 [[package]]
@@ -1682,7 +1682,7 @@ files = [
 
 [[package]]
 name = "llama-index-agent-openai"
-version = "0.4.3"
+version = "0.4.5"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index agent openai integration"
 groups = ["default"]
@@ -1692,8 +1692,8 @@ dependencies = [
     "openai>=1.14.0",
 ]
 files = [
-    {file = "llama_index_agent_openai-0.4.3-py3-none-any.whl", hash = "sha256:5d1fbb6831113e609296e457b0a4d1c08c9267acca219eb78cb702bd76a0744d"},
-    {file = "llama_index_agent_openai-0.4.3.tar.gz", hash = "sha256:ff1f4a13ba417cb4b9cfbc2ffa9f162bdbdda9b87d6645d512cbde2061f55412"},
+    {file = "llama_index_agent_openai-0.4.5-py3-none-any.whl", hash = "sha256:3fcadce03420a1974e6cf5ecd8e58337652df2f81d5f30033b3b32a576dc790a"},
+    {file = "llama_index_agent_openai-0.4.5.tar.gz", hash = "sha256:c09be43e01b3d5b2d8859814fcdabd000769ab1b54958a7025b3ce391147b005"},
 ]
 
 [[package]]
@@ -1950,7 +1950,7 @@ files = [
 
 [[package]]
 name = "llama-index-llms-openai"
-version = "0.3.12"
+version = "0.3.17"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index llms openai integration"
 groups = ["default"]
@@ -1959,8 +1959,8 @@ dependencies = [
     "openai<2.0.0,>=1.58.1",
 ]
 files = [
-    {file = "llama_index_llms_openai-0.3.12-py3-none-any.whl", hash = "sha256:08be76b9e649f6085e93292504074728a6531eb7f8930eaf40a2fce70a9f59df"},
-    {file = "llama_index_llms_openai-0.3.12.tar.gz", hash = "sha256:1880273a7e409c05f1dbccdbac5ce3c214771901cd3696aeb556a29dfed8477a"},
+    {file = "llama_index_llms_openai-0.3.17-py3-none-any.whl", hash = "sha256:06ae687bfbe17f9eadc09c7167ac2a67d8ff5548164166746be251698f5e7b58"},
+    {file = "llama_index_llms_openai-0.3.17.tar.gz", hash = "sha256:19f478054a017e5e3c16f4335a7e149a1f28cc59871c9873adc49a46b594ac99"},
 ]
 
 [[package]]
@@ -2056,7 +2056,7 @@ files = [
 
 [[package]]
 name = "llama-index-readers-file"
-version = "0.4.4"
+version = "0.4.5"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index readers file integration"
 groups = ["default"]
@@ -2068,8 +2068,8 @@ dependencies = [
     "striprtf<0.0.27,>=0.0.26",
 ]
 files = [
-    {file = "llama_index_readers_file-0.4.4-py3-none-any.whl", hash = "sha256:01589a4895e2d4abad30294c9b0d2813520ee1f5164922ad92f11e64a1d65d6c"},
-    {file = "llama_index_readers_file-0.4.4.tar.gz", hash = "sha256:e076b3fa1e68eea1594d47cec1f64b384fb6067f2697ca8aae22b4a21ad27ca7"},
+    {file = "llama_index_readers_file-0.4.5-py3-none-any.whl", hash = "sha256:704ac6b549f0ec59c0bd796007fceced2fff89a44b03d7ee36bce2d26b39e526"},
+    {file = "llama_index_readers_file-0.4.5.tar.gz", hash = "sha256:3ce5c8ad7f285bb7ff828c5b2e20088856ac65cf96640287eca770b69a21df88"},
 ]
 
 [[package]]
@@ -3035,7 +3035,7 @@ files = [
 
 [[package]]
 name = "pypdf"
-version = "5.2.0"
+version = "5.3.0"
 requires_python = ">=3.8"
 summary = "A pure-python PDF library capable of splitting, merging, cropping, and transforming PDF files"
 groups = ["default"]
@@ -3043,8 +3043,8 @@ dependencies = [
     "typing-extensions>=4.0; python_version < \"3.11\"",
 ]
 files = [
-    {file = "pypdf-5.2.0-py3-none-any.whl", hash = "sha256:d107962ec45e65e3bd10c1d9242bdbbedaa38193c9e3a6617bd6d996e5747b19"},
-    {file = "pypdf-5.2.0.tar.gz", hash = "sha256:7c38e68420f038f2c4998fd9d6717b6db4f6cef1642e9cf384d519c9cf094663"},
+    {file = "pypdf-5.3.0-py3-none-any.whl", hash = "sha256:d7b6db242f5f8fdb4990ae11815c394b8e1b955feda0befcce862efd8559c181"},
+    {file = "pypdf-5.3.0.tar.gz", hash = "sha256:08393660dfea25b27ec6fe863fb2f2248e6270da5103fae49e9dea8178741951"},
 ]
 
 [[package]]
@@ -3922,7 +3922,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.57.0rc2"
+version = "0.57.0rc3"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3942,7 +3942,7 @@ dependencies = [
     "llama-index-llms-bedrock==0.3.3",
     "llama-index-llms-mistralai==0.3.1",
     "llama-index-llms-ollama==0.5.0",
-    "llama-index-llms-openai==0.3.12",
+    "llama-index-llms-openai==0.3.17",
     "llama-index-llms-palm==0.3.0",
     "llama-index-llms-replicate==0.4.0",
     "llama-index-llms-vertex==0.4.2",
@@ -3963,13 +3963,13 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.57.0rc2-py3-none-any.whl", hash = "sha256:0528668fd66b27f2d0626bf9ebcde33e5afd626d5e5621fdc0622b1e7fc122ec"},
-    {file = "unstract_sdk-0.57.0rc2.tar.gz", hash = "sha256:3ecd3a0f30dd9b8298a120a642aa389437f41f9eac4f0ab13ee489ef8fc3318f"},
+    {file = "unstract_sdk-0.57.0rc3-py3-none-any.whl", hash = "sha256:f2f7f5f03dcfde836628444565ac118d31816e3b327c2ce0c241340cb46060bf"},
+    {file = "unstract_sdk-0.57.0rc3.tar.gz", hash = "sha256:f73fb07ce6960ac20c7e8c34e6f706948e348e9abd554a4e768e5a6f22036414"},
 ]
 
 [[package]]
 name = "unstract-sdk"
-version = "0.57.0rc2"
+version = "0.57.0rc3"
 extras = ["aws"]
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
@@ -3977,27 +3977,27 @@ groups = ["default"]
 dependencies = [
     "boto3~=1.34.131",
     "s3fs[boto3]~=2024.10.0",
-    "unstract-sdk==0.57.0rc2",
+    "unstract-sdk==0.57.0rc3",
 ]
 files = [
-    {file = "unstract_sdk-0.57.0rc2-py3-none-any.whl", hash = "sha256:0528668fd66b27f2d0626bf9ebcde33e5afd626d5e5621fdc0622b1e7fc122ec"},
-    {file = "unstract_sdk-0.57.0rc2.tar.gz", hash = "sha256:3ecd3a0f30dd9b8298a120a642aa389437f41f9eac4f0ab13ee489ef8fc3318f"},
+    {file = "unstract_sdk-0.57.0rc3-py3-none-any.whl", hash = "sha256:f2f7f5f03dcfde836628444565ac118d31816e3b327c2ce0c241340cb46060bf"},
+    {file = "unstract_sdk-0.57.0rc3.tar.gz", hash = "sha256:f73fb07ce6960ac20c7e8c34e6f706948e348e9abd554a4e768e5a6f22036414"},
 ]
 
 [[package]]
 name = "unstract-sdk"
-version = "0.57.0rc2"
+version = "0.57.0rc3"
 extras = ["gcs"]
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
 dependencies = [
     "gcsfs~=2024.10.0",
-    "unstract-sdk==0.57.0rc2",
+    "unstract-sdk==0.57.0rc3",
 ]
 files = [
-    {file = "unstract_sdk-0.57.0rc2-py3-none-any.whl", hash = "sha256:0528668fd66b27f2d0626bf9ebcde33e5afd626d5e5621fdc0622b1e7fc122ec"},
-    {file = "unstract_sdk-0.57.0rc2.tar.gz", hash = "sha256:3ecd3a0f30dd9b8298a120a642aa389437f41f9eac4f0ab13ee489ef8fc3318f"},
+    {file = "unstract_sdk-0.57.0rc3-py3-none-any.whl", hash = "sha256:f2f7f5f03dcfde836628444565ac118d31816e3b327c2ce0c241340cb46060bf"},
+    {file = "unstract_sdk-0.57.0rc3.tar.gz", hash = "sha256:f73fb07ce6960ac20c7e8c34e6f706948e348e9abd554a4e768e5a6f22036414"},
 ]
 
 [[package]]
