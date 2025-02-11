@@ -96,11 +96,14 @@ class StructureTool(BaseTool):
             file_name = SettingsKeys.SUMMARIZE
         if self.workflow_filestorage:
             tool_data_dir = Path(self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR))
+            execution_run_data_folder = Path(
+                self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR)
+            )
         else:
             tool_data_dir = Path(self.get_env_or_die(SettingsKeys.TOOL_DATA_DIR))
-        execution_run_data_folder = Path(
-            self.get_env_or_die(SettingsKeys.EXECUTION_RUN_DATA_FOLDER)
-        )
+            execution_run_data_folder = Path(
+                self.get_env_or_die(SettingsKeys.EXECUTION_RUN_DATA_FOLDER)
+            )
 
         index = Index(
             tool=self,
