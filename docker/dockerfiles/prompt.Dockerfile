@@ -35,7 +35,7 @@ WORKDIR /app
 # Create venv and install gunicorn and other deps in it
 RUN pdm venv create -w virtualenv --with-pip && \
     . .venv/bin/activate && \
-    pip install --no-cache-dir gunicorn gevent \
+    pip install --no-cache-dir gevent gunicorn \
     opentelemetry-distro opentelemetry-exporter-otlp && \
     opentelemetry-bootstrap -a install
 
@@ -44,12 +44,9 @@ COPY --chmod=755 ${BUILD_CONTEXT_PATH} /app/
 COPY --chown=unstract ${BUILD_PACKAGES_PATH}/core /unstract/core
 COPY --chown=unstract ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 
-# Install dependencies
+# Install dependencies and plugins (if any)
 RUN . .venv/bin/activate && \
-    pdm sync --prod --no-editable
-
-# Install plugins (if any)
-RUN . .venv/bin/activate && \
+    pdm sync --prod --no-editable && \
     for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
         dirpath=${dir%*/}; \
         if [ "${dirpath##*/}" != "*" ]; then \

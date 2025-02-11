@@ -23,7 +23,7 @@ WORKDIR /app
 # Create venv and install gunicorn and other deps in it
 RUN pdm venv create -w virtualenv --with-pip && \
     . .venv/bin/activate && \
-    pip install --no-cache-dir gunicorn gevent \
+    pip install --no-cache-dir gevent gunicorn \
     opentelemetry-distro opentelemetry-exporter-otlp && \
     opentelemetry-bootstrap -a install
 
