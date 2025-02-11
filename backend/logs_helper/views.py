@@ -42,6 +42,8 @@ class LogsHelperViewSet(viewsets.ModelViewSet):
 
         return Response({"data": sorted_logs}, status=status.HTTP_200_OK)
 
+    # This API will be triggered whenever a notification message
+    # pops up in the UI.
     @action(detail=False, methods=["post"])
     def store_log(self, request: HttpRequest) -> Response:
         """Store log message in Redis."""
