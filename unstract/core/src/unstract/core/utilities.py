@@ -1,5 +1,6 @@
 import logging
 import os
+import uuid
 from typing import Optional
 
 logger = logging.getLogger()
@@ -31,12 +32,16 @@ class UnstractUtils:
     def build_tool_container_name(
         tool_image: str, tool_version: str, run_id: str
     ) -> str:
-        container_name = f"{tool_image.split('/')[-1]}-{tool_version}-{run_id}"
+        tool_name = tool_image.split("/")[-1]
+        # TODO: Add execution attempt to better track instead of uuid
+        short_uuid = uuid.uuid4().hex[:6]  # To avoid duplicate name collision
+        container_name = f"{tool_name}-{tool_version}-{short_uuid}-{run_id}"
 
         # To support limits of container clients like K8s
         if len(container_name) > 63:
             logger.warning(
                 f"Container name exceeds 63 char limit for '{container_name}', "
-                "truncating to 63 chars. There might be collisions in container names"
+                "truncating to 63 chars. There might be collisions in container names."
+                f"Truncated container name: {container_name[:63]}"
             )
         return container_name[:63]
