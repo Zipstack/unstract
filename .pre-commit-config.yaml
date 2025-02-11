@@ -99,17 +99,17 @@ repos:
     rev: v8.18.4
     hooks:
       - id: gitleaks
-  # - repo: https://github.com/hadolint/hadolint
-  #   rev: v2.12.1-beta
-  #   hooks:
-  #     - id: hadolint-docker
-  #       args:
-  #         - --ignore=DL3003
-  #         - --ignore=DL3008
-  #         - --ignore=DL3013
-  #         - --ignore=DL3018
-  #         - --ignore=SC1091
-  #       files: Dockerfile$
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.1-beta
+    hooks:
+      - id: hadolint-docker
+        args:
+          - --ignore=DL3003
+          - --ignore=DL3008
+          - --ignore=DL3013
+          - --ignore=DL3018
+          - --ignore=SC1091
+        files: Dockerfile$
   - repo: https://github.com/asottile/yesqa
     rev: v1.5.0
     hooks:
