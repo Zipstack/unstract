@@ -424,6 +424,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 org_id=UserSessionUtils.get_organization_id(request),
                 user_id=custom_tool.created_by.user_id,
                 tool_id=str(custom_tool.tool_id),
+                allowed_content_types=allowed_content_types,
             )
         except FileNotFoundError:
             raise FileNotFound()

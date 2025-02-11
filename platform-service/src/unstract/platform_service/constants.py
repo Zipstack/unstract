@@ -7,6 +7,8 @@ class DBTable:
     PLATFORM_KEY = "platform_key"
     TOKEN_USAGE = "usage"
     PAGE_USAGE = "page_usage"
+    SUBSCRIPTION_USAGE = "subscription_usage"
+    SUBSCRIPTION = "subscription"
 
 
 class LogLevel:

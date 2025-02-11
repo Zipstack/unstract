@@ -6,6 +6,7 @@ import os
 from typing import Any, Optional, Union
 
 from connector_v2.models import ConnectorInstance
+from rest_framework.exceptions import APIException
 from unstract.sdk.constants import ToolExecKey
 from unstract.sdk.file_storage.constants import FileOperationParams
 from unstract.sdk.tool.mime_types import EXT_MIME_MAP
@@ -432,20 +433,25 @@ class DestinationConnector(BaseConnector):
             )
             if output_type == ToolOutputType.JSON:
                 if file_type != EXT_MIME_MAP[ToolOutputType.JSON.lower()]:
-                    logger.error(f"Output type json mismatched {file_type}")
-                    raise ToolOutputTypeMismatch()
+                    msg = f"Expected tool output type: JSON, got: '{file_type}'"
+                    logger.error(msg)
+                    raise ToolOutputTypeMismatch(detail=msg)
                 file_content = file_storage.read(output_file, mode="r")
                 result = json.loads(file_content)
             elif output_type == ToolOutputType.TXT:
                 if file_type == EXT_MIME_MAP[ToolOutputType.JSON.lower()]:
-                    logger.error(f"Output type txt mismatched {file_type}")
-                    raise ToolOutputTypeMismatch()
+                    msg = f"Expected tool output type: TXT, got: '{file_type}'"
+                    logger.error(msg)
+                    raise ToolOutputTypeMismatch(detail=msg)
                 file_content = file_storage.read(output_file, mode="r")
                 result = file_content.encode("utf-8").decode("unicode-escape")
             else:
                 raise InvalidToolOutputType()
         except (FileNotFoundError, json.JSONDecodeError) as err:
-            logger.error(f"Error while getting result {err}")
+            msg = f"Error while getting result from the tool: {err}"
+            logger.error(msg)
+            raise APIException(detail=msg)
+
         return result
 
     def get_metadata(

@@ -1,0 +1,14 @@
+# Refer https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/
+# This is an example configuration which aims to minimize the number of celery workers
+# It helps reduce memory usage during development
+services:
+  worker:
+    command: "-A backend worker --loglevel=info -Q celery,celery_periodic_logs,celery_log_task_queue,celery_api_deployments --autoscale=${WORKER_AUTOSCALE}"
+
+  worker-logging:
+    profiles:
+      - high_memory
+
+  worker-api-deployment:
+    profiles:
+      - high_memory

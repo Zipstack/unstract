@@ -3,7 +3,10 @@ import os
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
 from prompt_studio.prompt_studio_core_v2.constants import ToolStudioKeys
 from unstract.sdk.constants import LogLevel
+from unstract.sdk.file_storage.constants import StorageType
+from unstract.sdk.file_storage.env_helper import EnvHelper
 from unstract.sdk.tool.stream import StreamMixin
+from utils.file_storage.constants import FileStorageKeys
 
 
 class PromptIdeBaseTool(StreamMixin):
@@ -16,12 +19,10 @@ class PromptIdeBaseTool(StreamMixin):
         """
         self.log_level = log_level
         self.org_id = org_id
-        self.workflow_filestorage = None
-
-        from unstract.filesystem import FileStorageType, FileSystem
-
-        file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
-        self.workflow_filestorage = file_system.get_file_storage()
+        self.workflow_filestorage = EnvHelper.get_storage(
+            storage_type=StorageType.PERMANENT,
+            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+        )
 
         super().__init__(log_level=log_level)
 
