@@ -87,7 +87,7 @@ const SideNavBar = ({ collapsed }) => {
       mainTitle: "MANAGE",
       subMenu: [
         {
-          id: 1.1,
+          id: 1.2,
           title: "API Deployments",
           description: "Unstructured to structured APIs",
           image: apiDeploy,
@@ -197,7 +197,7 @@ const SideNavBar = ({ collapsed }) => {
   ];
 
   if (dashboardSideMenuItem) {
-    unstractMenuItems[2].subMenu.push(dashboardSideMenuItem(orgName));
+    unstractMenuItems[0].subMenu.unshift(dashboardSideMenuItem(orgName));
   }
 
   const data = menu || unstractMenuItems;
@@ -216,10 +216,7 @@ const SideNavBar = ({ collapsed }) => {
       return false;
     }
 
-    return (
-      !unstractSubscriptionPlan?.subscriptionId &&
-      unstractSubscriptionPlan?.planType !== UNSTRACT_SUBSCRIPTION_PLANS?.TRIAL
-    );
+    return unstractSubscriptionPlan?.remainingDays <= 0;
   }, [unstractSubscriptionPlan]);
 
   data.forEach((mainMenuItem) => {
