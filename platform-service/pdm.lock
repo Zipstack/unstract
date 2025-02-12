@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:4403d63d58b687face30565ebbe8d22968fbf824b5846c491731a25c21638554"
+content_hash = "sha256:62486acd5f26c115a1181b38173d2520a6351325b3cb07b8440881501e3b6f7b"
 
 [[package]]
 name = "aioboto3"
@@ -1936,7 +1936,7 @@ files = [
 
 [[package]]
 name = "llama-index-llms-openai"
-version = "0.3.17"
+version = "0.3.12"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index llms openai integration"
 groups = ["default"]
@@ -1945,8 +1945,8 @@ dependencies = [
     "openai<2.0.0,>=1.58.1",
 ]
 files = [
-    {file = "llama_index_llms_openai-0.3.17-py3-none-any.whl", hash = "sha256:06ae687bfbe17f9eadc09c7167ac2a67d8ff5548164166746be251698f5e7b58"},
-    {file = "llama_index_llms_openai-0.3.17.tar.gz", hash = "sha256:19f478054a017e5e3c16f4335a7e149a1f28cc59871c9873adc49a46b594ac99"},
+    {file = "llama_index_llms_openai-0.3.12-py3-none-any.whl", hash = "sha256:08be76b9e649f6085e93292504074728a6531eb7f8930eaf40a2fce70a9f59df"},
+    {file = "llama_index_llms_openai-0.3.12.tar.gz", hash = "sha256:1880273a7e409c05f1dbccdbac5ce3c214771901cd3696aeb556a29dfed8477a"},
 ]
 
 [[package]]
@@ -3931,7 +3931,7 @@ dependencies = [
     "llama-index-llms-bedrock==0.3.3",
     "llama-index-llms-mistralai==0.3.1",
     "llama-index-llms-ollama==0.5.0",
-    "llama-index-llms-openai==0.3.17",
+    "llama-index-llms-openai==0.3.12",
     "llama-index-llms-palm==0.3.0",
     "llama-index-llms-replicate==0.4.0",
     "llama-index-llms-vertex==0.4.2",
