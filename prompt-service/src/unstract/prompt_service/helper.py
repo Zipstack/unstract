@@ -310,7 +310,7 @@ def run_completion(
                 )
             if execution_source == ExecutionSource.TOOL.value:
                 fs_instance = EnvHelper.get_storage(
-                    storage_type=StorageType.TEMPORARY,
+                    storage_type=StorageType.SHARED_TEMPORARY,
                     env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
                 )
             highlight_data = highlight_data_plugin["entrypoint_cls"](
