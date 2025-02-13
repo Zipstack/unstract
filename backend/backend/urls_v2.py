@@ -33,6 +33,7 @@ urlpatterns = [
     path("api/", include("api_v2.urls")),
     path("usage/", include("usage_v2.urls")),
     path("notifications/", include("notification_v2.urls")),
+    path("logs/", include("logs_helper.urls")),
     path(
         UrlPathConstants.PROMPT_STUDIO,
         include("prompt_studio.prompt_profile_manager_v2.urls"),

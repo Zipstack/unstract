@@ -132,6 +132,9 @@ LOG_HISTORY_CONSUMER_INTERVAL = int(
     get_required_setting("LOG_HISTORY_CONSUMER_INTERVAL", "60")
 )
 LOGS_BATCH_LIMIT = int(get_required_setting("LOGS_BATCH_LIMIT", "30"))
+LOGS_EXPIRATION_TIME_IN_SECOND = int(
+    get_required_setting("LOGS_EXPIRATION_TIME_IN_SECOND")
+)
 CELERY_BROKER_URL = get_required_setting(
     "CELERY_BROKER_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}"
 )

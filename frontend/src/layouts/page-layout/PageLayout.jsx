@@ -7,6 +7,7 @@ import "./PageLayout.css";
 
 import SideNavBar from "../../components/navigations/side-nav-bar/SideNavBar.jsx";
 import { TopNavBar } from "../../components/navigations/top-nav-bar/TopNavBar.jsx";
+import { DisplayLogsAndNotifications } from "../../components/logs-and-notifications/DisplayLogsAndNotifications.jsx";
 
 function PageLayout({ sideBarOptions, topNavBarOptions }) {
   const initialCollapsedValue =
@@ -30,6 +31,8 @@ function PageLayout({ sideBarOptions, topNavBarOptions }) {
             className="collapse_btn"
           />
           <Outlet />
+          <div className="height-40" />
+          <DisplayLogsAndNotifications />
         </Layout>
       </Layout>
     </div>
