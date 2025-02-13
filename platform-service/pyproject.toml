@@ -13,7 +13,7 @@ dependencies = [
     "redis~=5.2.1",
     "cryptography>=41.0.7",
     "requests>=2.31.0",
-    "unstract-sdk[gcs]~=0.57.0rc3",
+    "unstract-sdk[gcs]~=0.58.0rc1",
     "unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
 ]
 requires-python = ">=3.9,<3.11.1"
