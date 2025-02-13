@@ -774,7 +774,7 @@ class WorkflowHelper:
             # Normal execution
             workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
             if (
-                workflow_execution.status != ExecutionStatus.PENDING.value
+                workflow_execution.status != ExecutionStatus.PENDING
                 or workflow_execution.execution_type != WorkflowExecution.Type.COMPLETE
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
@@ -837,7 +837,7 @@ class WorkflowHelper:
             except WorkflowExecution.DoesNotExist:
                 raise WorkflowExecutionNotExist(WorkflowErrors.INVALID_EXECUTION_ID)
             if (
-                workflow_execution.status != ExecutionStatus.PENDING.value
+                workflow_execution.status != ExecutionStatus.PENDING
                 or workflow_execution.execution_type != WorkflowExecution.Type.STEP
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
