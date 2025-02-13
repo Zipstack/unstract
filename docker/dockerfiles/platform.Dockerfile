@@ -38,6 +38,8 @@ RUN pdm venv create -w virtualenv --with-pip && \
     opentelemetry-distro opentelemetry-exporter-otlp && \
     opentelemetry-bootstrap -a install
 
+# Read and execute access to non-root user to avoid security hotspot
+# Write access to specific sub-directory need to be explicitly provided if required
 COPY --chmod=755 ${BUILD_CONTEXT_PATH} /app/
 # Copy local dependency packages
 COPY --chown=unstract ${BUILD_PACKAGES_PATH} /unstract
