@@ -1,10 +1,9 @@
-import json
 import logging
 import os
 from typing import Any, Optional
 
 from unstract.sdk.exceptions import FileStorageError
-from unstract.sdk.file_storage import FileStorageProvider, PermanentFileStorage
+from unstract.sdk.file_storage import EnvHelper, FileStorage, StorageType
 from unstract.tool_registry.constants import PropKey, ToolJsonField, ToolKey
 from unstract.tool_registry.dto import Tool
 from unstract.tool_registry.exceptions import InvalidToolURLException
@@ -58,17 +57,12 @@ class ToolRegistry:
             fs=self.fs,
         )
 
-    def _get_storage_credentials(self) -> PermanentFileStorage:
+    def _get_storage_credentials(self) -> FileStorage:
         try:
-            # Not creating constants for now for the keywords below as this
-            # logic ought to change in the near future to maintain unformity
-            # across services
-            file_storage = json.loads(
-                os.environ.get("TOOL_REGISTRY_STORAGE_CREDENTIALS", {})
+            fs = EnvHelper.get_storage(
+                StorageType.PERMANENT, "TOOL_REGISTRY_STORAGE_CREDENTIALS"
             )
-            provider = FileStorageProvider(file_storage["provider"])
-            credentials = file_storage.get("credentials", {})
-            return PermanentFileStorage(provider, **credentials)
+            return fs
         except KeyError as e:
             logger.error(f"Required credentials is missing in the env: {str(e)}")
             raise e
