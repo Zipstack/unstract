@@ -52,6 +52,7 @@
 .pre-commit-config.yaml
 **/tests
 test*.py
+**/*.egg-info
 
 backend
 frontend
