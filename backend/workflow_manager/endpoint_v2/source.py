@@ -509,9 +509,6 @@ class SourceConnector(BaseConnector):
         file_storage.write(path=source_file_path, mode="wb", data=file_content)
         file_storage.write(path=infile_path, mode="wb", data=file_content)
 
-        # Copy file to infile directory
-        self.copy_file_to_infile_dir(source_file_path, infile_path)
-
         logger.info(f"{input_file_path} is added to execution directory")
         return hash_value_of_file_content
 
