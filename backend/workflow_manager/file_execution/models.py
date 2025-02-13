@@ -59,7 +59,8 @@ class WorkflowFileExecution(BaseModel):
         on_delete=models.CASCADE,
         db_index=True,
         editable=False,
-        db_comment="Foreign key from WorkflowExecution   model",
+        db_comment="Foreign key from WorkflowExecution model",
+        related_name="file_executions",
     )
     file_name = models.CharField(
         max_length=FILE_NAME_LENGTH, db_comment="Name of the file"
