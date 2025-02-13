@@ -676,7 +676,8 @@ class WorkflowHelper:
                     pipeline_id=pipeline_id,
                     mode=WorkflowExecution.Mode.QUEUE,
                     execution_id=execution_id,
-                    total_files=len(hash_values) ** kwargs,  # type: ignore
+                    total_files=len(hash_values),
+                    ** kwargs,  # type: ignore
                 )
             )
         except IntegrityError:
