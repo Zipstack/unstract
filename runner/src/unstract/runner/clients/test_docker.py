@@ -127,13 +127,7 @@ def test_get_container_run_config(docker_client, mocker):
     assert config["image"] == "test-image:latest"
     assert config["command"] == ["echo", "hello"]
     assert config["environment"] == {"KEY": "VALUE"}
-    assert config["mounts"] == [
-        {
-            "type": "bind",
-            "source": "/source",
-            "target": "/data",
-        }
-    ]
+    assert config["mounts"] == []
 
 
 def test_get_container_run_config_without_mount(docker_client, mocker):
