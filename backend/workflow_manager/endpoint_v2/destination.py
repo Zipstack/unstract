@@ -8,7 +8,6 @@ from typing import Any, Optional, Union
 from connector_v2.models import ConnectorInstance
 from rest_framework.exceptions import APIException
 from unstract.sdk.constants import ToolExecKey
-from unstract.sdk.file_storage.constants import FileOperationParams
 from unstract.sdk.tool.mime_types import EXT_MIME_MAP
 from unstract.workflow_execution.constants import ToolOutputType
 from utils.user_context import UserContext
@@ -428,9 +427,7 @@ class DestinationConnector(BaseConnector):
         file_storage = file_system.get_file_storage()
         try:
             # TODO: SDK handles validation; consider removing here.
-            file_type = file_storage.mime_type(
-                path=output_file, read_length=FileOperationParams.READ_ENTIRE_LENGTH
-            )
+            file_type = file_storage.mime_type(path=output_file)
             if output_type == ToolOutputType.JSON:
                 if file_type != EXT_MIME_MAP[ToolOutputType.JSON.lower()]:
                     msg = f"Expected tool output type: JSON, got: '{file_type}'"
