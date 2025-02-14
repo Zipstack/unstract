@@ -155,7 +155,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             workflow_execution.tags.set(tags)
         return workflow_execution
 
-    # TODO: Remove execution_time arg if unused
     def update_execution(
         self,
         status: Optional[ExecutionStatus] = None,
