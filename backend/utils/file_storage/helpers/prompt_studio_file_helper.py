@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from file_management.exceptions import InvalidFileType
 from file_management.file_management_helper import FileManagerHelper
 from unstract.sdk.file_storage import FileStorage
 from unstract.sdk.file_storage.constants import StorageType
@@ -82,7 +83,11 @@ class PromptStudioFileHelper:
 
     @staticmethod
     def fetch_file_contents(
-        org_id: str, user_id: str, tool_id: str, file_name: str
+        org_id: str,
+        user_id: str,
+        tool_id: str,
+        file_name: str,
+        allowed_content_types: list[str],
     ) -> dict[str, Any]:
         """Method to fetch file contents from the remote location.
         The path is constructed in runtime based on the args"""
@@ -140,9 +145,14 @@ class PromptStudioFileHelper:
                 legacy_storage_path=legacy_file_path,
                 encoding="utf-8",
             )
-            return {"data": text_content_string, "mime_type": file_content_type}
+        # Check if the file type is in the allowed list
+        elif file_content_type not in allowed_content_types:
+            raise InvalidFileType(f"File type '{file_content_type}' is not allowed.")
+
         else:
-            raise ValueError(f"Unsupported file type: {file_content_type}")
+            logger.warning(f"File type '{file_content_type}' is not handled.")
+
+        return {"data": text_content_string, "mime_type": file_content_type}
 
     @staticmethod
     def delete_for_ide(org_id: str, user_id: str, tool_id: str, file_name: str) -> bool:

@@ -91,12 +91,6 @@ class RunLevel(Enum):
     TABLE_EXTRACTION = "TABLE_EXTRACTION"
 
 
-class FeatureFlag:
-    """Temporary feature flags."""
-
-    REMOTE_FILE_STORAGE = "remote_file_storage"
-
-
 class DBTableV2:
     """Database tables."""
 

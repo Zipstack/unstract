@@ -7,11 +7,11 @@ For example, it can convert PDF to text, image to text, etc.
 ## Required Environment Variables
 
 | Variable                   | Description                                                                |
-| -------------------------- | -------------------------------------------------------------------------- |
+| -------------------------- |----------------------------------------------------------------------------|
 | `PLATFORM_SERVICE_HOST`    | The host where the platform service is running                             |
 | `PLATFORM_SERVICE_PORT`    | The port where the service is listening                                    |
 | `PLATFORM_SERVICE_API_KEY` | The API key for the platform                                               |
-| `TOOL_DATA_DIR`            | The directory in the filesystem which contains contents for tool execution |
+| `EXECUTION_DATA_DIR`       | The directory in the filesystem which contains contents for tool execution |
 | `X2TEXT_HOST`              | The host where the x2text service is running                               |
 | `X2TEXT_PORT`              | The port where the x2text service is listening                             |
 
@@ -42,7 +42,7 @@ source .venv/bin/activate
 Make a copy of the `sample.env` file and name it `.env`. Fill in the required values.
 They get loaded with [python-dotenv](https://pypi.org/project/python-dotenv/) through the SDK.
 
-2. Update the tool's `data_dir` marked by the `TOOL_DATA_DIR` env. This has to be done before each tool execution since the tool updates the `INFILE` and `METADATA.json`.
+2. Update the tool's `data_dir` marked by the `EXECUTION_DATA_DIR` env. This has to be done before each tool execution since the tool updates the `INFILE` and `METADATA.json`.
 
 #### Run SPEC command
 
@@ -94,7 +94,7 @@ Build the tool docker image from the folder containing the `Dockerfile` with
 docker build -t unstract/tool-example:0.0.1 .
 ```
 
-Make sure the directory pointed by `TOOL_DATA_DIR` has the required information for the tool to run and 
+Make sure the directory pointed by `EXECUTION_DATA_DIR` has the required information for the tool to run and 
 necessary services like the `platform-service` is up.
 To test the tool from its docker image, run the following command
 

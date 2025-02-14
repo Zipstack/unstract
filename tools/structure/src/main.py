@@ -11,7 +11,6 @@ from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
-from unstract.sdk.utils import ToolUtils
 from utils import json_to_markdown
 
 logger = logging.getLogger(__name__)
@@ -94,16 +93,10 @@ class StructureTool(BaseTool):
         _, file_name = os.path.split(input_file)
         if summarize_as_source:
             file_name = SettingsKeys.SUMMARIZE
-        if self.workflow_filestorage:
-            tool_data_dir = Path(self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR))
-            execution_run_data_folder = Path(
-                self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR)
-            )
-        else:
-            tool_data_dir = Path(self.get_env_or_die(SettingsKeys.TOOL_DATA_DIR))
-            execution_run_data_folder = Path(
-                self.get_env_or_die(SettingsKeys.EXECUTION_RUN_DATA_FOLDER)
-            )
+        tool_data_dir = Path(self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR))
+        execution_run_data_folder = Path(
+            self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR)
+        )
 
         index = Index(
             tool=self,
@@ -153,11 +146,7 @@ class StructureTool(BaseTool):
                 usage_kwargs=usage_kwargs,
                 process_text=process_text,
                 tags=self.tags,
-                **(
-                    {"fs": self.workflow_filestorage}
-                    if self.workflow_filestorage is not None
-                    else {}
-                ),
+                **({"fs": self.workflow_filestorage}),
             )
             index_metrics = {SettingsKeys.INDEXING: index.get_metrics()}
             if summarize_as_source:
@@ -196,11 +185,7 @@ class StructureTool(BaseTool):
                             usage_kwargs=usage_kwargs,
                             process_text=process_text,
                             tags=self.tags,
-                            **(
-                                {"fs": self.workflow_filestorage}
-                                if self.workflow_filestorage is not None
-                                else {}
-                            ),
+                            **({"fs": self.workflow_filestorage}),
                         )
                         index_metrics[output[SettingsKeys.NAME]] = {
                             SettingsKeys.INDEXING: index.get_metrics()
@@ -289,13 +274,9 @@ class StructureTool(BaseTool):
         try:
             self.stream_log("Writing parsed output...")
             output_path = Path(output_dir) / f"{Path(self.source_file_name).stem}.json"
-            if self.workflow_filestorage:
-                self.workflow_filestorage.json_dump(
-                    path=output_path, data=structured_output_dict
-                )
-            else:
-                with open(output_path, "w", encoding="utf-8") as f:
-                    f.write(structured_output)
+            self.workflow_filestorage.json_dump(
+                path=output_path, data=structured_output_dict
+            )
         except OSError as e:
             self.stream_error_and_exit(f"Error creating output file: {e}")
         except json.JSONDecodeError as e:
@@ -336,23 +317,13 @@ class StructureTool(BaseTool):
         summarize_file_path = tool_data_dir / SettingsKeys.SUMMARIZE
 
         summarized_context = ""
-        if self.workflow_filestorage:
-            if self.workflow_filestorage.exists(summarize_file_path):
-                summarized_context = self.workflow_filestorage.read(
-                    path=summarize_file_path, mode="r"
-                )
-        elif summarize_file_path.exists():
-            with open(summarize_file_path, encoding="utf-8") as f:
-                summarized_context = f.read()
+        if self.workflow_filestorage.exists(summarize_file_path):
+            summarized_context = self.workflow_filestorage.read(
+                path=summarize_file_path, mode="r"
+            )
         if not summarized_context:
             context = ""
-            if self.workflow_filestorage:
-                context = self.workflow_filestorage.read(
-                    path=extract_file_path, mode="r"
-                )
-            else:
-                with open(extract_file_path, encoding="utf-8") as file:
-                    context = file.read()
+            context = self.workflow_filestorage.read(path=extract_file_path, mode="r")
             prompt_keys = []
             for output in outputs:
                 prompt_keys.append(output[SettingsKeys.NAME])
@@ -377,23 +348,14 @@ class StructureTool(BaseTool):
             structure_output = json.loads(response[SettingsKeys.STRUCTURE_OUTPUT])
             summarized_context = structure_output.get(SettingsKeys.DATA, "")
             self.stream_log("Writing summarized context to a file")
-            if self.workflow_filestorage:
-                self.workflow_filestorage.write(
-                    path=summarize_file_path, mode="w", data=summarized_context
-                )
-            else:
-                with open(summarize_file_path, "w", encoding="utf-8") as f:
-                    f.write(summarized_context)
+            self.workflow_filestorage.write(
+                path=summarize_file_path, mode="w", data=summarized_context
+            )
 
         self.stream_log("Indexing summarized context")
-        if self.workflow_filestorage:
-            summarize_file_hash: str = self.workflow_filestorage.get_hash_from_file(
-                path=summarize_file_path
-            )
-        else:
-            summarize_file_hash: str = ToolUtils.get_hash_from_file(
-                file_path=summarize_file_path
-            )
+        summarize_file_hash: str = self.workflow_filestorage.get_hash_from_file(
+            path=summarize_file_path
+        )
         index.index(
             tool_id=tool_id,
             embedding_instance_id=embedding_instance_id,
@@ -405,11 +367,7 @@ class StructureTool(BaseTool):
             chunk_overlap=0,
             usage_kwargs=usage_kwargs,
             tags=self.tags,
-            **(
-                {"fs": self.workflow_filestorage}
-                if self.workflow_filestorage is not None
-                else {}
-            ),
+            **({"fs": self.workflow_filestorage}),
         )
         return summarize_file_hash
 
