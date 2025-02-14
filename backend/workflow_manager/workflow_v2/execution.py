@@ -121,6 +121,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         execution_id: Optional[str] = None,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
         tags: Optional[list[Tag]] = None,
+        total_files: int = 0,
     ) -> WorkflowExecution:
         # Validating with existing execution
         existing_execution = cls.get_execution_instance_by_id(execution_id)
@@ -147,6 +148,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution_type=execution_type,
             status=ExecutionStatus.PENDING.value,
             execution_log_id=execution_log_id,
+            total_files=total_files,
         )
         if execution_id:
             workflow_execution.id = execution_id

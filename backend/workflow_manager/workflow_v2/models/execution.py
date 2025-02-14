@@ -60,7 +60,14 @@ class WorkflowExecution(BaseModel):
     # TODO: Restrict with an enum
     status = models.CharField(default="", db_comment="Current status of execution")
     result_acknowledged = models.BooleanField(
-        default=False, db_comment="Result acknowledged"
+        default=False,
+        db_comment=(
+            "To track if result is acknowledged by user - "
+            "used mainly by API deployments"
+        ),
+    )
+    total_files = models.PositiveIntegerField(
+        default=0, verbose_name="Total files", db_comment="Number of files to process"
     )
     error_message = models.CharField(
         max_length=EXECUTION_ERROR_LENGTH,
@@ -124,7 +131,7 @@ class WorkflowExecution(BaseModel):
             f"Workflow execution: {self.id} ("
             f"pipeline ID: {self.pipeline_id}, "
             f"workflow iD: {self.workflow_id}, "
-            f"execution method: {self.execution_method}, "
             f"status: {self.status}, "
+            f"files: {self.total_files}, "
             f"error message: {self.error_message})"
         )
