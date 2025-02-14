@@ -168,13 +168,6 @@ class Client(ContainerClientInterface):
         if envs is None:
             envs = {}
         mounts = []
-        if organization_id and workflow_id and execution_id:
-            envs[Env.EXECUTION_RUN_DATA_FOLDER] = os.path.join(
-                os.getenv(Env.EXECUTION_RUN_DATA_FOLDER_PREFIX, ""),
-                organization_id,
-                workflow_id,
-                execution_id,
-            )
         return {
             "name": UnstractUtils.build_tool_container_name(
                 tool_image=self.image_name, tool_version=self.image_tag, run_id=run_id

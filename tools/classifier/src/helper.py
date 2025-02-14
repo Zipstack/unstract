@@ -23,7 +23,7 @@ class ClassifierHelper:
 
         Args:
             tool (BaseTool): Base tool instance
-            output_dir (str): Output directory in TOOL_DATA_DIR
+            output_dir (str): Output directory in EXECUTION_DATA_DIR
         """
         self.tool = tool
         self.output_dir = output_dir

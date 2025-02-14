@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from unstract.workflow_execution.constants import (
     MetaDataKey,
@@ -131,35 +131,6 @@ class ExecutionFileHandler:
         logger.info(
             f"metadata for {input_file_path} is " "added in to execution directory"
         )
-
-    @classmethod
-    def create_execution_dir_path(
-        cls,
-        workflow_id: str,
-        execution_id: str,
-        organization_id: str,
-        data_volume: Optional[str] = None,
-    ) -> str:
-        """Create the directory path for storing execution-related files.
-
-        Parameters:
-        - workflow_id (str): Identifier for the workflow.
-        - execution_id (str): Identifier for the execution.
-        - organization_id (Optional[str]):
-            Identifier for the organization (default: None).
-
-        Returns:
-        str: The directory path for the execution.
-        """
-        workflow_data_dir = os.getenv("WORKFLOW_DATA_DIR")
-        data_volume = data_volume if data_volume else workflow_data_dir
-        if not data_volume:
-            raise ValueError("Missed data_volume")
-        execution_dir = Path(
-            data_volume, organization_id, str(workflow_id), str(execution_id)
-        )
-        execution_dir.mkdir(parents=True, exist_ok=True)
-        return str(execution_dir)
 
     @classmethod
     def get_execution_dir(

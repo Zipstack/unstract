@@ -1,5 +1,4 @@
 import json
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -26,7 +25,6 @@ class CostCalculationHelper:
             self.file_storage = EnvHelper.get_storage(
                 StorageType.PERMANENT, "FILE_STORAGE_CREDENTIALS"
             )
-            self.file_path = os.environ.get("REMOTE_MODEL_PRICES_FILE_PATH")
         except KeyError as e:
             app.logger.error(f"Required credentials is missing in the env: {str(e)}")
             raise e
