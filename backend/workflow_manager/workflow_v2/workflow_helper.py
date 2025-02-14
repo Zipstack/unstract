@@ -203,6 +203,7 @@ class WorkflowHelper:
                 execution_service.publish_log(
                     message=error_message, level=LogLevel.ERROR
                 )
+        # TODO: Store only generic WF errors here (concerning all failed files)
         # TODO: Review if we need partial success
         if failed_files and failed_files >= total_files:
             execution_service.update_execution(
@@ -259,11 +260,7 @@ class WorkflowHelper:
         except Exception as e:
             error = f"Error processing file '{os.path.basename(input_file)}'. {str(e)}"
             execution_service.publish_log(error, level=LogLevel.ERROR)
-            workflow_file_execution.update_status(
-                status=ExecutionStatus.ERROR,
-                execution_error=error,
-            )
-            # Not propagating error here to continue execution for other files
+            # Handling error based on destination and continuing for other files
         execution_service.publish_update_log(
             LogState.RUNNING,
             f"Processing output for {file_name}",
