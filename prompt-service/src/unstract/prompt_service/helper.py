@@ -336,8 +336,10 @@ def run_completion(
         answer: str = completion[PSKeys.RESPONSE].text
         highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA, [])
         confidence_data = completion.get(PSKeys.CONFIDENCE_DATA)
+        line_numbers = completion.get(PSKeys.LINE_NUMBERS, [])
         if metadata is not None and prompt_key:
             metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = highlight_data
+            metadata.setdefault(PSKeys.LINE_NUMBERS, {})[prompt_key] = line_numbers
 
             if confidence_data:
                 metadata.setdefault(PSKeys.CONFIDENCE_DATA, {})[
