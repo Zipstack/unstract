@@ -394,6 +394,7 @@ class PromptStudioHelper:
                 run_id=run_id,
                 user_id=user_id,
                 process_text=process_text,
+                enable_highlight=tool.enable_highlight,
             )
         else:
             fs_instance = EnvHelper.get_storage(
@@ -412,6 +413,7 @@ class PromptStudioHelper:
                 user_id=user_id,
                 process_text=process_text,
                 fs=fs_instance,
+                enable_highlight=tool.enable_highlight,
             )
 
         elapsed_time = time.time() - start_time
@@ -800,6 +802,7 @@ class PromptStudioHelper:
                 run_id=run_id,
                 user_id=user_id,
                 process_text=process_text,
+                enable_highlight=tool.enable_highlight,
             )
         else:
             fs_instance = EnvHelper.get_storage(
@@ -817,6 +820,7 @@ class PromptStudioHelper:
                 user_id=user_id,
                 process_text=process_text,
                 fs=fs_instance,
+                enable_highlight=tool.enable_highlight,
             )
         if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
@@ -974,6 +978,7 @@ class PromptStudioHelper:
         run_id: str = None,
         process_text: Optional[Callable[[str], str]] = None,
         fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        enable_highlight: bool = False,
     ) -> Any:
         """Used to index a file based on the passed arguments.
 
@@ -1056,6 +1061,7 @@ class PromptStudioHelper:
                 org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
             )
             if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
+
                 doc_id: str = tool_index.index(
                     tool_id=tool_id,
                     embedding_instance_id=embedding_model,
@@ -1068,6 +1074,7 @@ class PromptStudioHelper:
                     output_file_path=extract_file_path,
                     usage_kwargs=usage_kwargs.copy(),
                     process_text=process_text,
+                    enable_highlight=enable_highlight,
                 )
             else:
                 doc_id: str = tool_index.index(
@@ -1083,6 +1090,7 @@ class PromptStudioHelper:
                     usage_kwargs=usage_kwargs.copy(),
                     process_text=process_text,
                     fs=fs,
+                    enable_highlight=enable_highlight,
                 )
 
             PromptStudioIndexHelper.handle_index_manager(
@@ -1156,6 +1164,7 @@ class PromptStudioHelper:
                 run_id=run_id,
                 user_id=user_id,
                 process_text=process_text,
+                enable_highlight=tool.enable_highlight,
             )
         else:
             fs_instance = EnvHelper.get_storage(
@@ -1173,6 +1182,7 @@ class PromptStudioHelper:
                 user_id=user_id,
                 process_text=process_text,
                 fs=fs_instance,
+                enable_highlight=tool.enable_highlight,
             )
         if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
