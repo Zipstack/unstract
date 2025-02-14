@@ -139,12 +139,7 @@ class UnstractRunner:
         """
         command = command.upper()
         container_config = self.client.get_container_run_config(
-            command=["--command", command],
-            organization_id="",
-            workflow_id="",
-            execution_id="",
-            run_id="",
-            auto_remove=True,
+            command=["--command", command], run_id="", auto_remove=True
         )
         container = None
 
@@ -205,9 +200,6 @@ class UnstractRunner:
                 "--log-level",
                 "DEBUG",
             ],
-            organization_id=organization_id,
-            workflow_id=workflow_id,
-            execution_id=execution_id,
             run_id=run_id,
             envs=envs,
         )

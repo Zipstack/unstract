@@ -158,9 +158,6 @@ class Client(ContainerClientInterface):
     def get_container_run_config(
         self,
         command: list[str],
-        organization_id: str,
-        workflow_id: str,
-        execution_id: str,
         run_id: str,
         envs: Optional[dict[str, Any]] = None,
         auto_remove: bool = False,
