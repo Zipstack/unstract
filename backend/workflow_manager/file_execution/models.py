@@ -81,7 +81,7 @@ class WorkflowFileExecution(BaseModel):
         db_comment="MIME type of the file",
     )
     status = models.TextField(
-        choices=ExecutionStatus.choices(),
+        choices=ExecutionStatus.choices,
         db_comment="Current status of the execution",
     )
     execution_time = models.FloatField(
@@ -117,7 +117,7 @@ class WorkflowFileExecution(BaseModel):
         return:
             The updated `WorkflowExecutionInputFile` object
         """
-        self.status = status.value
+        self.status = status
 
         if (
             status

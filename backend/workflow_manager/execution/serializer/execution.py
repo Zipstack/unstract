@@ -26,10 +26,8 @@ class ExecutionSerializer(serializers.ModelSerializer):
 
     def get_successful_files(self, obj: WorkflowExecution) -> int:
         """Return the count of successfully executed files"""
-        return obj.file_executions.filter(
-            status=ExecutionStatus.COMPLETED.value
-        ).count()
+        return obj.file_executions.filter(status=ExecutionStatus.COMPLETED).count()
 
     def get_failed_files(self, obj: WorkflowExecution) -> int:
         """Return the count of failed executed files"""
-        return obj.file_executions.filter(status=ExecutionStatus.ERROR.value).count()
+        return obj.file_executions.filter(status=ExecutionStatus.ERROR).count()

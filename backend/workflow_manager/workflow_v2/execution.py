@@ -82,7 +82,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                 execution_mode=mode,
                 execution_method=self.execution_method,
                 execution_type=self.execution_type,
-                status=ExecutionStatus.INITIATED.value,
+                status=ExecutionStatus.INITIATED,
                 execution_log_id=self.execution_log_id,
             )
             workflow_execution.save()
@@ -146,7 +146,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution_mode=mode,
             execution_method=execution_method,
             execution_type=execution_type,
-            status=ExecutionStatus.PENDING.value,
+            status=ExecutionStatus.PENDING,
             execution_log_id=execution_log_id,
             total_files=total_files,
         )
@@ -406,7 +406,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     def update_execution_err(execution_id: str, err_msg: str = "") -> WorkflowExecution:
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
-            execution.status = ExecutionStatus.ERROR.value
+            execution.status = ExecutionStatus.ERROR
             execution.error_message = err_msg[:EXECUTION_ERROR_LENGTH]
             execution.save()
             return execution
