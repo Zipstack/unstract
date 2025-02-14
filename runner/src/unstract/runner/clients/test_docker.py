@@ -108,7 +108,6 @@ def test_get_image(docker_client, mocker):
 
 def test_get_container_run_config(docker_client, mocker):
     """Test the get_container_run_config method."""
-    os.environ[Env.EXECUTION_DATA_DIR] = "/app/workflow_data"
     command = ["echo", "hello"]
     run_id = "run123"
 
@@ -127,10 +126,7 @@ def test_get_container_run_config(docker_client, mocker):
     assert config["name"] == "test-image"
     assert config["image"] == "test-image:latest"
     assert config["command"] == ["echo", "hello"]
-    assert config["environment"] == {
-        "KEY": "VALUE",
-        "EXECUTION_DATA_DIR": ("/app/workflow_data"),
-    }
+    assert config["environment"] == {"KEY": "VALUE"}
     assert config["mounts"] == [
         {
             "type": "bind",
