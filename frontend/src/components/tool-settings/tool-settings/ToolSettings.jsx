@@ -1,20 +1,16 @@
 import { PlusOutlined } from "@ant-design/icons";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useState, useCallback, useMemo } from "react";
 
-import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
-import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
-import "../../input-output/data-source-card/DataSourceCard.css";
-import "./ToolSettings.css";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
-import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
-import { ViewTools } from "../../custom-tools/view-tools/ViewTools";
-import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { useListManager } from "../../../hooks/useListManager";
+import { ListView } from "../../view-projects/ListView";
+import ToolSettingsModal from "./ToolSettingsModal";
+import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import { useAlertStore } from "../../../store/alert-store";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 
 const titles = {
   llm: "LLMs",
@@ -33,123 +29,96 @@ const btnText = {
 };
 
 function ToolSettings({ type }) {
-  const [tableRows, setTableRows] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isShareLoading, setIsShareLoading] = useState(false);
+  const { setPostHogCustomEvent, posthogEventText } = usePostHogEvents();
+  const { setAlertDetails } = useAlertStore();
+  const handleException = useExceptionHandler();
+  const axiosPrivate = useAxiosPrivate();
+  const { sessionDetails } = useSessionStore();
+
   const [adapterDetails, setAdapterDetails] = useState(null);
   const [userList, setUserList] = useState([]);
-  const [openAddSourcesModal, setOpenAddSourcesModal] = useState(false);
+  const [isShareLoading, setIsShareLoading] = useState(false);
   const [openSharePermissionModal, setOpenSharePermissionModal] =
     useState(false);
-  const [isPermissonEdit, setIsPermissionEdit] = useState(false);
-  const [editItemId, setEditItemId] = useState(null);
-  const { sessionDetails } = useSessionStore();
-  const { setAlertDetails } = useAlertStore();
-  const axiosPrivate = useAxiosPrivate();
-  const handleException = useExceptionHandler();
-  const { posthogEventText, setPostHogCustomEvent } = usePostHogEvents();
+  const [isPermissionEdit, setIsPermissionEdit] = useState(false);
 
-  useEffect(() => {
-    setTableRows([]);
-    if (!type) {
-      return;
-    }
-    getAdapters();
-  }, [type]);
+  const adapterBaseUrl = `/api/v1/unstract/${sessionDetails?.orgId}/adapter`;
+  const userBaseUrl = `/api/v1/unstract/${sessionDetails?.orgId}/users`;
 
-  const getAdapters = () => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${
-        sessionDetails?.orgId
-      }/adapter?adapter_type=${type.toUpperCase()}`,
-    };
-    setIsLoading(true);
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        setTableRows(res?.data);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
-  };
+  const getListApiCall = useCallback(
+    ({ axiosPrivate, sessionDetails }) => {
+      const requestOptions = {
+        method: "GET",
+        url: `${adapterBaseUrl}?adapter_type=${type.toUpperCase()}`,
+      };
+      return axiosPrivate(requestOptions);
+    },
+    [type, adapterBaseUrl]
+  );
 
-  const addNewItem = (row, isEdit) => {
-    if (isEdit) {
-      const rowsModified = [...tableRows].map((tableRow) => {
-        if (tableRow?.id !== row?.id) {
-          return tableRow;
-        }
-        tableRow["adapter_name"] = row?.adapter_name;
-        return tableRow;
-      });
-      setTableRows(rowsModified);
-    } else {
-      const rowsModified = [...tableRows];
-      rowsModified.push(row);
-      setTableRows(rowsModified);
-    }
-  };
+  const addItemApiCall = useCallback(
+    ({ axiosPrivate, sessionDetails, itemData }) => {
+      const requestOptions = {
+        method: "POST",
+        url: `${adapterBaseUrl}/`,
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: itemData,
+      };
+      return axiosPrivate(requestOptions);
+    },
+    [adapterBaseUrl]
+  );
 
-  const handleDelete = (_event, adapter) => {
-    const requestOptions = {
-      method: "DELETE",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter?.id}/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-    };
+  const editItemApiCall = useCallback(
+    ({ axiosPrivate, sessionDetails, itemData, itemId }) => {
+      const requestOptions = {
+        method: "PATCH",
+        url: `${adapterBaseUrl}/${itemId}/`,
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: itemData,
+      };
+      return axiosPrivate(requestOptions);
+    },
+    [adapterBaseUrl]
+  );
 
-    setIsLoading(true);
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const filteredList = tableRows.filter((row) => row?.id !== adapter?.id);
-        setTableRows(filteredList);
-        setAlertDetails({
-          type: "success",
-          content: "Successfully deleted",
-        });
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
-  };
+  const deleteItemApiCall = useCallback(
+    ({ axiosPrivate, sessionDetails, itemId }) => {
+      const requestOptions = {
+        method: "DELETE",
+        url: `${adapterBaseUrl}/${itemId}/`,
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+        },
+      };
+      return axiosPrivate(requestOptions);
+    },
+    [adapterBaseUrl]
+  );
 
-  const handleShare = (_event, adapter, isEdit) => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/users/${adapter.id}/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-    };
-    setIsShareLoading(true);
-    getAllUsers();
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        setOpenSharePermissionModal(true);
-        setAdapterDetails(res?.data);
-        setIsPermissionEdit(isEdit);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      })
-      .finally(() => {
-        setIsShareLoading(false);
-      });
-  };
+  const useListManagerHook = useListManager({
+    getListApiCall,
+    addItemApiCall,
+    editItemApiCall,
+    deleteItemApiCall,
+    searchProperty: "adapter_name",
+    itemIdProp: "id",
+    itemNameProp: "adapter_name",
+    itemDescriptionProp: "description",
+    itemType: "Adapter",
+  });
 
-  const getAllUsers = () => {
+  const getAllUsers = useCallback(() => {
     setIsShareLoading(true);
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
+      url: `${userBaseUrl}/`,
     };
 
     axiosPrivate(requestOptions)
@@ -157,8 +126,8 @@ function ToolSettings({ type }) {
         const users = response?.data?.members || [];
         setUserList(
           users.map((user) => ({
-            id: user?.id,
-            email: user?.email,
+            id: user.id,
+            email: user.email,
           }))
         );
       })
@@ -168,95 +137,100 @@ function ToolSettings({ type }) {
       .finally(() => {
         setIsShareLoading(false);
       });
-  };
+  }, [userBaseUrl]);
 
-  const onShare = (userIds, adapter) => {
-    const requestOptions = {
-      method: "PATCH",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter?.id}/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-      data: { shared_users: userIds },
-    };
-    axiosPrivate(requestOptions)
-      .then((response) => {
-        setOpenSharePermissionModal(false);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to load"));
-      });
-  };
+  const handleShare = useCallback(
+    (adapter, isEdit) => {
+      const requestOptions = {
+        method: "GET",
+        url: `${adapterBaseUrl}/users/${adapter.id}/`,
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+        },
+      };
+      setIsShareLoading(true);
+      getAllUsers();
+      axiosPrivate(requestOptions)
+        .then((res) => {
+          setOpenSharePermissionModal(true);
+          setAdapterDetails(res.data);
+          setIsPermissionEdit(isEdit);
+        })
+        .catch((err) => {
+          setAlertDetails(handleException(err));
+        })
+        .finally(() => {
+          setIsShareLoading(false);
+        });
+    },
+    [
+      getAllUsers,
+      setOpenSharePermissionModal,
+      setAdapterDetails,
+      setIsPermissionEdit,
+      adapterBaseUrl,
+    ]
+  );
 
-  const handleOpenAddSourceModal = () => {
-    setOpenAddSourcesModal(true);
+  const onShare = useCallback(
+    (userIds, adapter) => {
+      const requestOptions = {
+        method: "PATCH",
+        url: `${adapterBaseUrl}/${adapter.id}/`,
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+        },
+        data: { shared_users: userIds },
+      };
+      axiosPrivate(requestOptions)
+        .then(() => {
+          setOpenSharePermissionModal(false);
+        })
+        .catch((err) => {
+          setAlertDetails(handleException(err, "Failed to load"));
+        });
+    },
+    [setOpenSharePermissionModal, adapterBaseUrl]
+  );
 
-    try {
-      setPostHogCustomEvent(posthogEventText[type], {
-        info: `Clicked on '+ ${btnText[type]}' button`,
-      });
-    } catch (err) {
-      // If an error occurs while setting custom posthog event, ignore it and continue
-    }
-  };
+  const itemProps = useMemo(
+    () => ({
+      titleProp: "adapter_name",
+      descriptionProp: "description",
+      iconProp: "icon",
+      idProp: "id",
+      type: "Adapter",
+      handleShare,
+      showOwner: true,
+      isClickable: false,
+      centered: true,
+    }),
+    [handleShare]
+  );
 
   return (
-    <div className="plt-tool-settings-layout">
-      <ToolNavBar
+    <>
+      <ListView
         title={titles[type]}
-        CustomButtons={() => {
-          return (
-            <CustomButton
-              type="primary"
-              onClick={handleOpenAddSourceModal}
-              icon={<PlusOutlined />}
-            >
-              {btnText[type]}
-            </CustomButton>
-          );
-        }}
-      />
-      <IslandLayout>
-        <div className="plt-tool-settings-layout-2">
-          <div className="plt-tool-settings-body">
-            <ViewTools
-              listOfTools={tableRows}
-              isLoading={isLoading}
-              handleDelete={handleDelete}
-              setOpenAddTool={setOpenAddSourcesModal}
-              handleEdit={(_event, item) => setEditItemId(item?.id)}
-              idProp="id"
-              titleProp="adapter_name"
-              descriptionProp="description"
-              iconProp="icon"
-              isEmpty={!tableRows?.length}
-              centered
-              isClickable={false}
-              handleShare={handleShare}
-              showOwner={true}
-              type="Adapter"
-            />
-          </div>
-        </div>
-      </IslandLayout>
-      <AddSourceModal
-        open={openAddSourcesModal}
-        setOpen={setOpenAddSourcesModal}
+        useListManagerHook={useListManagerHook}
+        CustomModalComponent={ToolSettingsModal}
+        customButtonText={btnText[type]}
+        customButtonIcon={<PlusOutlined />}
+        itemProps={itemProps}
+        setPostHogCustomEvent={setPostHogCustomEvent}
+        newButtonEventName={posthogEventText[type]}
         type={type}
-        addNewItem={addNewItem}
-        editItemId={editItemId}
-        setEditItemId={setEditItemId}
       />
       <SharePermission
         open={openSharePermissionModal}
         setOpen={setOpenSharePermissionModal}
         adapter={adapterDetails}
-        permissionEdit={isPermissonEdit}
+        permissionEdit={isPermissionEdit}
         loading={isShareLoading}
         allUsers={userList}
         onApply={onShare}
       />
-    </div>
+    </>
   );
 }
 
