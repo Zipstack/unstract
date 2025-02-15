@@ -55,9 +55,8 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import 
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import IndexingError, SdkError
-from unstract.sdk.file_storage import FileStorage, FileStorageProvider
+from unstract.sdk.file_storage import EnvHelper, FileStorage, FileStorageProvider
 from unstract.sdk.file_storage.constants import StorageType
-from unstract.sdk.file_storage.env_helper import EnvHelper
 from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.tool_utils import ToolUtils
