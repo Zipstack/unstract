@@ -1700,7 +1700,7 @@ files = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.12.17"
+version = "0.12.18"
 requires_python = "<4.0,>=3.9"
 summary = "Interface between LLMs and your data"
 groups = ["default"]
@@ -1730,8 +1730,8 @@ dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "llama_index_core-0.12.17-py3-none-any.whl", hash = "sha256:867ec650a1f9eba9f6d65005045a68bc13bae8d65763e32029d9610360c03979"},
-    {file = "llama_index_core-0.12.17.tar.gz", hash = "sha256:2e8fb457983978af19db1ceba71d440f6891279525c5e7eb2ec73a6b727be113"},
+    {file = "llama_index_core-0.12.18-py3-none-any.whl", hash = "sha256:c5a467e12bdeb40ba314b52adc16a84ee2f353edcfa255e94ff041d6d7e255a6"},
+    {file = "llama_index_core-0.12.18.tar.gz", hash = "sha256:de80c68d3406d84dc4f0efe65ca586ad31858dc9607d1699bf882bdec5f4aaf4"},
 ]
 
 [[package]]
@@ -1828,7 +1828,7 @@ files = [
 
 [[package]]
 name = "llama-index-indices-managed-llama-cloud"
-version = "0.6.4"
+version = "0.6.6"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index indices llama-cloud integration"
 groups = ["default"]
@@ -1837,8 +1837,8 @@ dependencies = [
     "llama-index-core<0.13.0,>=0.12.0",
 ]
 files = [
-    {file = "llama_index_indices_managed_llama_cloud-0.6.4-py3-none-any.whl", hash = "sha256:d7e85844a2e343dacebdef424decab3f5fd6361e25b3ff2bdcfb18607c1a49c5"},
-    {file = "llama_index_indices_managed_llama_cloud-0.6.4.tar.gz", hash = "sha256:0b45973cb2dc9702122006019bfb556dcabba31b0bdf79afc7b376ca8143df03"},
+    {file = "llama_index_indices_managed_llama_cloud-0.6.6-py3-none-any.whl", hash = "sha256:726ee4d66b0f2f7e102eff0bbcba1cd53ccfb6a92b4b868d2ecd4e7c29680003"},
+    {file = "llama_index_indices_managed_llama_cloud-0.6.6.tar.gz", hash = "sha256:21c390a9c918f7a9d47af4cd35ea2fc315716173b15259a899f2ea0a27490c74"},
 ]
 
 [[package]]
