@@ -1,6 +1,6 @@
 from enum import Enum
 
-from utils.common_utils import ModelEnum
+from django.db.models import TextChoices
 
 
 class WorkflowExecutionMethod(Enum):
@@ -8,7 +8,7 @@ class WorkflowExecutionMethod(Enum):
     QUEUED = "QUEUED"
 
 
-class ExecutionStatus(ModelEnum):
+class ExecutionStatus(TextChoices):
     """An enumeration representing the various statuses of an execution
     process.
 

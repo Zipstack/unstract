@@ -8,6 +8,7 @@ from django.db import models
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
 from utils.models.base_model import BaseModel
+from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow
 
 logger = logging.getLogger(__name__)
@@ -57,8 +58,10 @@ class WorkflowExecution(BaseModel):
     execution_log_id = models.CharField(
         default="", editable=False, db_comment="Execution log events Id"
     )
-    # TODO: Restrict with an enum
-    status = models.CharField(default="", db_comment="Current status of execution")
+    status = models.CharField(
+        choices=ExecutionStatus.choices,
+        db_comment="Current status of the execution",
+    )
     result_acknowledged = models.BooleanField(
         default=False,
         db_comment=(
