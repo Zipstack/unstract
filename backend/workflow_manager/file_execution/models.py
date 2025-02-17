@@ -59,7 +59,8 @@ class WorkflowFileExecution(BaseModel):
         on_delete=models.CASCADE,
         db_index=True,
         editable=False,
-        db_comment="Foreign key from WorkflowExecution   model",
+        db_comment="Foreign key from WorkflowExecution model",
+        related_name="file_executions",
     )
     file_name = models.CharField(
         max_length=FILE_NAME_LENGTH, db_comment="Name of the file"
@@ -80,7 +81,7 @@ class WorkflowFileExecution(BaseModel):
         db_comment="MIME type of the file",
     )
     status = models.TextField(
-        choices=ExecutionStatus.choices(),
+        choices=ExecutionStatus.choices,
         db_comment="Current status of the execution",
     )
     execution_time = models.FloatField(
@@ -116,7 +117,7 @@ class WorkflowFileExecution(BaseModel):
         return:
             The updated `WorkflowExecutionInputFile` object
         """
-        self.status = status.value
+        self.status = status
 
         if (
             status
