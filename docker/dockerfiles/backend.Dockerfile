@@ -36,6 +36,7 @@ RUN pdm venv create -w virtualenv --with-pip && \
     . .venv/bin/activate && \
     pip install --no-cache-dir \
         gunicorn \
+        # Install opentelemetry for instrumentation
         opentelemetry-distro \
         opentelemetry-exporter-otlp && \
     opentelemetry-bootstrap -a install
