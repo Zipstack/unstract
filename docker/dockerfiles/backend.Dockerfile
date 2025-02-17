@@ -11,7 +11,7 @@ ENV PYTHONPATH /unstract
 ENV BUILD_CONTEXT_PATH backend
 ENV BUILD_PACKAGES_PATH unstract
 ENV DJANGO_SETTINGS_MODULE "backend.settings.dev"
-ENV PDM_VERSION 2.16.1
+ENV UV_VERSION 0.6.0
 
 # Disable all telemetry by default
 ENV OTEL_TRACES_EXPORTER none
@@ -27,7 +27,7 @@ RUN apt-get update; \
         git; \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
     \
-    pip install --no-cache-dir -U pip pdm~=${PDM_VERSION};
+    pip install --no-cache-dir -U pip uv~=${UV_VERSION};
 
 WORKDIR /app
 
@@ -39,7 +39,7 @@ RUN set -e; \
     \
     rm -rf .venv .pdm* .python* 2>/dev/null; \
     \
-    pdm venv create -w virtualenv --with-pip; \
+    uv venv; \
     # source command may not be availble in sh
     . .venv/bin/activate; \
     \
@@ -48,11 +48,11 @@ RUN set -e; \
     \
     opentelemetry-bootstrap -a install; \
     \
-    # Applicaiton dependencies.
-    pdm sync --prod --no-editable; \
+    # Application dependencies.
+    uv sync --no-dev --no-editable --locked; \
     \
     # REF: https://docs.gunicorn.org/en/stable/deploy.html#using-virtualenv
-    pip install --no-cache-dir gunicorn;
+    uv pip install --no-cache-dir gunicorn;
 
 EXPOSE 8000
 
