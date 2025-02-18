@@ -55,8 +55,11 @@ services:
       sleep 5;
       mc alias set minio http://unstract-minio:9000 minio minio123;
       mc mb minio/unstract;
+      mc mirror /app/prompt-studio-data minio/unstract/prompt-studio-data;
       exit 0;
       "
+    volumes:
+      - prompt_studio_data:/app/prompt-studio-data
 
   reverse-proxy:
     # The official v2 Traefik docker image
