@@ -32,6 +32,8 @@ import { ReactComponent as RedGradCircle } from "./red-grad-circle.svg";
 import { ReactComponent as YellowGradCircle } from "./yellow-grad-circle.svg";
 import { ReactComponent as ExportToolIcon } from "./export-tool.svg";
 import { ReactComponent as PlaceholderImg } from "./placeholder.svg";
+import { ReactComponent as CustomToolIcon } from "./custom-tools-icon.svg";
+import { ReactComponent as ETLIcon } from "./etl.svg";
 
 export {
   SunIcon,
@@ -68,4 +70,6 @@ export {
   YellowGradCircle,
   ExportToolIcon,
   PlaceholderImg,
+  CustomToolIcon,
+  ETLIcon,
 };

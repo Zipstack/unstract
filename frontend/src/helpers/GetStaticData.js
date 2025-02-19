@@ -582,6 +582,18 @@ const generateCoverageKey = (promptId, profileId) => {
   return `coverage_${promptId}_${profileId}`;
 };
 
+function formatSecondsToHMS(seconds) {
+  if (isNaN(seconds) || seconds < 0) return "00:00:00";
+
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  return [hrs, mins, secs]
+    .map((unit) => String(unit).padStart(2, "0"))
+    .join(":");
+}
+
 const TRIAL_PLAN = "TRIAL";
 
 const homePagePath = cloudHomePagePath || "tools";
@@ -642,4 +654,5 @@ export {
   TRIAL_PLAN,
   homePagePath,
   UNSTRACT_ADMIN,
+  formatSecondsToHMS,
 };

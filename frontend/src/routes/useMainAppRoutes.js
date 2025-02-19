@@ -19,6 +19,7 @@ import { CustomTools } from "../pages/CustomTools.jsx";
 import { CustomToolsHelper } from "../components/helpers/custom-tools/CustomToolsHelper.js";
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
+import { LogsPage } from "../pages/LogsPage.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
 
 let RequirePlatformAdmin;
@@ -141,6 +142,8 @@ function useMainAppRoutes() {
             element={<OutputAnalyzerPage />}
           />
         </Route>
+        <Route path="logs" element={<LogsPage />} />
+        <Route path="logs/:id" element={<LogsPage />} />
         <Route
           path="settings/llms"
           element={<ToolsSettingsPage type="llm" />}

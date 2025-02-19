@@ -1,0 +1,27 @@
+.logs-container {
+  background-color: var(--page-bg-2);
+  height: 100%;
+}
+
+.logs-title {
+  padding: 15px;
+}
+
+.log-tab-icon {
+  width: 15px !important;
+  height: 15px !important;
+  vertical-align: middle;
+}
+
+.active.log-tab-icon > g > path,
+.active.log-tab-icon > path {
+  fill: #1677ff;
+}
+
+.invite-user-search .ant-tabs-nav {
+  margin: 0;
+}
+
+.logs-date-picker {
+  width: 300px;
+}
