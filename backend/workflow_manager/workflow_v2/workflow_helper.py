@@ -92,7 +92,7 @@ class WorkflowHelper:
         single_step: bool,
         scheduled: bool,
         execution_mode: tuple[str, str],
-        workflow_execution: Optional[WorkflowExecution],
+        workflow_execution: WorkflowExecution,
         use_file_history: bool = True,  # Will be False for API deployment alone
     ) -> WorkflowExecutionServiceHelper:
         workflow_execution_service = WorkflowExecutionServiceHelper(
@@ -136,9 +136,9 @@ class WorkflowHelper:
         destination: DestinationConnector,
         execution_service: WorkflowExecutionServiceHelper,
         single_step: bool,
-        hash_values_of_files: dict[str, FileHash] = {},
+        input_files: dict[str, FileHash],
     ) -> WorkflowExecution:
-        input_files, total_files = source.list_files_from_source(hash_values_of_files)
+        total_files = len(input_files)
         error_message = None
         successful_files = 0
         failed_files = 0
@@ -203,6 +203,7 @@ class WorkflowHelper:
                 execution_service.publish_log(
                     message=error_message, level=LogLevel.ERROR
                 )
+        # TODO: Store only generic WF errors here (concerning all failed files)
         # TODO: Review if we need partial success
         if failed_files and failed_files >= total_files:
             execution_service.update_execution(
@@ -259,11 +260,7 @@ class WorkflowHelper:
         except Exception as e:
             error = f"Error processing file '{os.path.basename(input_file)}'. {str(e)}"
             execution_service.publish_log(error, level=LogLevel.ERROR)
-            workflow_file_execution.update_status(
-                status=ExecutionStatus.ERROR,
-                execution_error=error,
-            )
-            # Not propagating error here to continue execution for other files
+            # Handling error based on destination and continuing for other files
         execution_service.publish_update_log(
             LogState.RUNNING,
             f"Processing output for {file_name}",
@@ -298,12 +295,12 @@ class WorkflowHelper:
     @staticmethod
     def run_workflow(
         workflow: Workflow,
+        workflow_execution: WorkflowExecution,
         hash_values_of_files: dict[str, FileHash] = {},
         organization_id: Optional[str] = None,
         pipeline_id: Optional[str] = None,
         scheduled: bool = False,
         single_step: bool = False,
-        workflow_execution: Optional[WorkflowExecution] = None,
         execution_mode: Optional[tuple[str, str]] = None,
         use_file_history: bool = True,
     ) -> ExecutionResponse:
@@ -343,13 +340,18 @@ class WorkflowHelper:
         destination.validate()
         # Execution Process
         try:
+            input_files, total_files = source.list_files_from_source(
+                hash_values_of_files
+            )
+            workflow_execution.total_files = total_files
+            workflow_execution.save()
             workflow_execution = WorkflowHelper.process_input_files(
                 workflow,
                 source,
                 destination,
                 execution_service,
                 single_step=single_step,
-                hash_values_of_files=hash_values_of_files,
+                input_files=input_files,
             )
             WorkflowHelper._update_pipeline_status(
                 pipeline_id=pipeline_id, workflow_execution=workflow_execution
@@ -674,6 +676,7 @@ class WorkflowHelper:
                     pipeline_id=pipeline_id,
                     mode=WorkflowExecution.Mode.QUEUE,
                     execution_id=execution_id,
+                    total_files=len(hash_values),
                     **kwargs,  # type: ignore
                 )
             )
@@ -724,6 +727,7 @@ class WorkflowHelper:
                     single_step=False,
                     pipeline_id=pipeline_id,
                     mode=execution_mode,
+                    total_files=len(hash_values_of_files),
                 )
             )
             execution_id = workflow_execution.id
@@ -770,7 +774,7 @@ class WorkflowHelper:
             # Normal execution
             workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
             if (
-                workflow_execution.status != ExecutionStatus.PENDING.value
+                workflow_execution.status != ExecutionStatus.PENDING
                 or workflow_execution.execution_type != WorkflowExecution.Type.COMPLETE
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
@@ -833,7 +837,7 @@ class WorkflowHelper:
             except WorkflowExecution.DoesNotExist:
                 raise WorkflowExecutionNotExist(WorkflowErrors.INVALID_EXECUTION_ID)
             if (
-                workflow_execution.status != ExecutionStatus.PENDING.value
+                workflow_execution.status != ExecutionStatus.PENDING
                 or workflow_execution.execution_type != WorkflowExecution.Type.STEP
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
