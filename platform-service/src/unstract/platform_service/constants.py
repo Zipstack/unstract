@@ -1,10 +1,3 @@
-class FeatureFlag:
-    """Temporary feature flags."""
-
-    # For enabling remote storage feature
-    REMOTE_FILE_STORAGE = "remote_file_storage"
-
-
 class DBTable:
     """Database tables."""
 

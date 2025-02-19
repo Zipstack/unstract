@@ -108,12 +108,7 @@ def test_get_image(docker_client, mocker):
 
 def test_get_container_run_config(docker_client, mocker):
     """Test the get_container_run_config method."""
-    os.environ[Env.WORKFLOW_DATA_DIR] = "/source"
-    os.environ[Env.EXECUTION_RUN_DATA_FOLDER_PREFIX] = "/app/workflow_data"
     command = ["echo", "hello"]
-    organization_id = "org123"
-    workflow_id = "wf123"
-    execution_id = "ex123"
     run_id = "run123"
 
     mocker.patch.object(docker_client, "_Client__image_exists", return_value=True)
@@ -122,13 +117,7 @@ def test_get_container_run_config(docker_client, mocker):
         return_value="test-image",
     )
     config = docker_client.get_container_run_config(
-        command,
-        organization_id,
-        workflow_id,
-        execution_id,
-        run_id,
-        envs={"KEY": "VALUE"},
-        auto_remove=True,
+        command, run_id, envs={"KEY": "VALUE"}, auto_remove=True
     )
 
     mocker_normalize.assert_called_once_with(
@@ -137,24 +126,14 @@ def test_get_container_run_config(docker_client, mocker):
     assert config["name"] == "test-image"
     assert config["image"] == "test-image:latest"
     assert config["command"] == ["echo", "hello"]
-    assert config["environment"] == {
-        "KEY": "VALUE",
-        "EXECUTION_RUN_DATA_FOLDER": ("/app/workflow_data/org123/wf123/ex123"),
-    }
-    assert config["mounts"] == [
-        {
-            "type": "bind",
-            "source": f"/source/{organization_id}/{workflow_id}/{execution_id}",
-            "target": "/data",
-        }
-    ]
+    assert config["environment"] == {"KEY": "VALUE"}
+    assert config["mounts"] == []
 
 
 def test_get_container_run_config_without_mount(docker_client, mocker):
     """Test the get_container_run_config method."""
-    os.environ[Env.WORKFLOW_DATA_DIR] = "/source"
+    os.environ[Env.EXECUTION_DATA_DIR] = "/source"
     command = ["echo", "hello"]
-    execution_id = "ex123"
     run_id = "run123"
 
     mocker.patch.object(docker_client, "_Client__image_exists", return_value=True)
@@ -162,14 +141,7 @@ def test_get_container_run_config_without_mount(docker_client, mocker):
         "unstract.core.utilities.UnstractUtils.build_tool_container_name",
         return_value="test-image",
     )
-    config = docker_client.get_container_run_config(
-        command,
-        None,
-        None,
-        execution_id,
-        run_id,
-        auto_remove=True,
-    )
+    config = docker_client.get_container_run_config(command, run_id, auto_remove=True)
 
     mocker_normalize.assert_called_once_with(
         tool_image="test-image", tool_version="latest", run_id=run_id

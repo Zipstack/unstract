@@ -1,13 +1,6 @@
 from typing import Any
 
 
-class FeatureFlag:
-    """Temporary feature flags."""
-
-    # For enabling remote storage feature
-    REMOTE_FILE_STORAGE = "remote_file_storage"
-
-
 class Tools:
     TOOLS_DIRECTORY = "tools"
     IMAGE_LATEST_TAG = "latest"
