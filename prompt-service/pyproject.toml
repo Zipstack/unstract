@@ -15,9 +15,11 @@ dependencies = [
     "flask~=3.0",
     "llama-index==0.12.8",
     "python-dotenv==1.0.0",
-    "unstract-sdk~=0.57.0rc2",
-    "unstract-sdk[gcs]~=0.57.0rc2",
-    "unstract-sdk[aws]~=0.57.0rc2",
+    #ToDo: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
+    #to resolve lock file. Will have to be re-looked into
+    "unstract-sdk~=0.57.0rc5",
+    "gcsfs==2024.10.0",
+    "s3fs==2024.10.0",
     "redis>=5.0.3",
     "unstract-core @ file:///${PROJECT_ROOT}/../unstract/core",
     "unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
