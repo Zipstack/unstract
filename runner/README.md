@@ -37,12 +37,11 @@ sudo ln -s "$HOME/.docker/run/docker.sock" /var/run/docker.sock
 
 ## Required Environment Variables
 
-| Variable                   | Description                                                                            |
-| -------------------------- | ---------------------------------------------------------------------------------------|
-| `CELERY_BROKER_URL`        | URL for Celery's message broker, used to queue tasks. Must match backend configuration.|
-| `TOOL_CONTAINER_NETWORK`   | Network used for running tool containers.                                              |
-| `TOOL_CONTAINER_LABELS`    | Labels applied to tool containers for observability [Optional].                        |
-| `WORKFLOW_DATA_DIR`        | Source mount bind directory for tool containers to access input files.                 |
-| `TOOL_DATA_DIR`            | Target mount directory within tool containers. (Default: "/data")                      |
-| `LOG_LEVEL`                | Log level for runner (Options: INFO, WARNING, ERROR, DEBUG, etc.)                      |
+| Variable                   | Description                                                                                   |
+| -------------------------- |-----------------------------------------------------------------------------------------------|
+| `CELERY_BROKER_URL`        | URL for Celery's message broker, used to queue tasks. Must match backend configuration.       |
+| `TOOL_CONTAINER_NETWORK`   | Network used for running tool containers.                                                     |
+| `TOOL_CONTAINER_LABELS`    | Labels applied to tool containers for observability [Optional].                               |
+| `EXECUTION_DATA_DIR`       | Target mount directory within tool containers. (Default: "/data")                             |
+| `LOG_LEVEL`                | Log level for runner (Options: INFO, WARNING, ERROR, DEBUG, etc.)                             |
 | `REMOVE_CONTAINER_ON_EXIT`| Flag to decide whether to clean up/ remove the tool container after execution. (Default: True) |
