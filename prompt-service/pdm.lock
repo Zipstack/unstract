@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:cd68d9c529ac4025f017004d61f63f745ee7d17be2aeaee1358da9af7bea60c3"
+content_hash = "sha256:16208f3ddb7d2965aa9ab1f2fc2c75d0b878cd9a85edde72ce27675531d0084f"
 
 [[package]]
 name = "aioboto3"
@@ -345,7 +345,7 @@ files = [
 
 [[package]]
 name = "azure-identity"
-version = "1.19.0"
+version = "1.20.0"
 requires_python = ">=3.8"
 summary = "Microsoft Azure Identity Library for Python"
 groups = ["default"]
@@ -357,8 +357,8 @@ dependencies = [
     "typing-extensions>=4.0.0",
 ]
 files = [
-    {file = "azure_identity-1.19.0-py3-none-any.whl", hash = "sha256:e3f6558c181692d7509f09de10cca527c7dce426776454fb97df512a46527e81"},
-    {file = "azure_identity-1.19.0.tar.gz", hash = "sha256:500144dc18197d7019b81501165d4fa92225f03778f17d7ca8a2a180129a9c83"},
+    {file = "azure_identity-1.20.0-py3-none-any.whl", hash = "sha256:5f23fc4889a66330e840bd78830287e14f3761820fe3c5f77ac875edcb9ec998"},
+    {file = "azure_identity-1.20.0.tar.gz", hash = "sha256:40597210d56c83e15031b0fe2ea3b26420189e1e7f3e20bdbb292315da1ba014"},
 ]
 
 [[package]]
@@ -900,7 +900,7 @@ files = [
 
 [[package]]
 name = "google-api-python-client"
-version = "2.160.0"
+version = "2.161.0"
 requires_python = ">=3.7"
 summary = "Google API Client Library for Python"
 groups = ["default"]
@@ -912,8 +912,8 @@ dependencies = [
     "uritemplate<5,>=3.0.1",
 ]
 files = [
-    {file = "google_api_python_client-2.160.0-py2.py3-none-any.whl", hash = "sha256:63d61fb3e4cf3fb31a70a87f45567c22f6dfe87bbfa27252317e3e2c42900db4"},
-    {file = "google_api_python_client-2.160.0.tar.gz", hash = "sha256:a8ccafaecfa42d15d5b5c3134ced8de08380019717fc9fb1ed510ca58eca3b7e"},
+    {file = "google_api_python_client-2.161.0-py2.py3-none-any.whl", hash = "sha256:9476a5a4f200bae368140453df40f9cda36be53fa7d0e9a9aac4cdb859a26448"},
+    {file = "google_api_python_client-2.161.0.tar.gz", hash = "sha256:324c0cce73e9ea0a0d2afd5937e01b7c2d6a4d7e2579cdb6c384f9699d6c9f37"},
 ]
 
 [[package]]
@@ -963,7 +963,7 @@ files = [
 
 [[package]]
 name = "google-cloud-aiplatform"
-version = "1.79.0"
+version = "1.80.0"
 requires_python = ">=3.8"
 summary = "Vertex AI API client library"
 groups = ["default"]
@@ -982,8 +982,8 @@ dependencies = [
     "typing-extensions",
 ]
 files = [
-    {file = "google_cloud_aiplatform-1.79.0-py2.py3-none-any.whl", hash = "sha256:e52d518c386ce2b4ce57f1b73b46c57531d9a6ccd70c21a37b349f428bfc1c3f"},
-    {file = "google_cloud_aiplatform-1.79.0.tar.gz", hash = "sha256:362bfd16716dcfb6c131736f25246790002b29c99a246fcf4c08a7c71bd2301f"},
+    {file = "google_cloud_aiplatform-1.80.0-py2.py3-none-any.whl", hash = "sha256:45d2a170f22431dae977551eccb740400bdb899807d0c8d4c16c53b2c1dbc6a5"},
+    {file = "google_cloud_aiplatform-1.80.0.tar.gz", hash = "sha256:bcaa4570a6fb56d3d29cb6b8f92588d4d1a1931de5f90cf07761853dab4c76fd"},
 ]
 
 [[package]]
@@ -1125,7 +1125,7 @@ files = [
 
 [[package]]
 name = "googleapis-common-protos"
-version = "1.67.0rc1"
+version = "1.67.0"
 requires_python = ">=3.7"
 summary = "Common protobufs used in Google APIs"
 groups = ["default"]
@@ -1133,24 +1133,24 @@ dependencies = [
     "protobuf!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<6.0.0.dev0,>=3.20.2",
 ]
 files = [
-    {file = "googleapis_common_protos-1.67.0rc1-py2.py3-none-any.whl", hash = "sha256:c17971fd2b38287b03ea5973d978ec7ae72917568f125ee2b88821f20063bb0b"},
-    {file = "googleapis_common_protos-1.67.0rc1.tar.gz", hash = "sha256:3230f01d80b0e7dc857f981747df92ed69ca04d6de7c93f55ed5151ba65641b8"},
+    {file = "googleapis_common_protos-1.67.0-py2.py3-none-any.whl", hash = "sha256:579de760800d13616f51cf8be00c876f00a9f146d3e6510e19d1f4111758b741"},
+    {file = "googleapis_common_protos-1.67.0.tar.gz", hash = "sha256:21398025365f138be356d5923e9168737d94d46a72aefee4a6110a1f23463c86"},
 ]
 
 [[package]]
 name = "googleapis-common-protos"
-version = "1.67.0rc1"
+version = "1.67.0"
 extras = ["grpc"]
 requires_python = ">=3.7"
 summary = "Common protobufs used in Google APIs"
 groups = ["default"]
 dependencies = [
-    "googleapis-common-protos==1.67.0rc1",
+    "googleapis-common-protos==1.67.0",
     "grpcio<2.0.0.dev0,>=1.44.0",
 ]
 files = [
-    {file = "googleapis_common_protos-1.67.0rc1-py2.py3-none-any.whl", hash = "sha256:c17971fd2b38287b03ea5973d978ec7ae72917568f125ee2b88821f20063bb0b"},
-    {file = "googleapis_common_protos-1.67.0rc1.tar.gz", hash = "sha256:3230f01d80b0e7dc857f981747df92ed69ca04d6de7c93f55ed5151ba65641b8"},
+    {file = "googleapis_common_protos-1.67.0-py2.py3-none-any.whl", hash = "sha256:579de760800d13616f51cf8be00c876f00a9f146d3e6510e19d1f4111758b741"},
+    {file = "googleapis_common_protos-1.67.0.tar.gz", hash = "sha256:21398025365f138be356d5923e9168737d94d46a72aefee4a6110a1f23463c86"},
 ]
 
 [[package]]
@@ -1714,7 +1714,7 @@ files = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.12.16.post1"
+version = "0.12.17"
 requires_python = "<4.0,>=3.9"
 summary = "Interface between LLMs and your data"
 groups = ["default"]
@@ -1744,8 +1744,8 @@ dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "llama_index_core-0.12.16.post1-py3-none-any.whl", hash = "sha256:95904a44f25e122a45963541c56a50c4daf2ffaf062d1a3224c84a6dc9e6801f"},
-    {file = "llama_index_core-0.12.16.post1.tar.gz", hash = "sha256:8fed0554ae71b6c1f80b53164723af28c887951eef7aa1b44ba6c8103c0efb2c"},
+    {file = "llama_index_core-0.12.17-py3-none-any.whl", hash = "sha256:867ec650a1f9eba9f6d65005045a68bc13bae8d65763e32029d9610360c03979"},
+    {file = "llama_index_core-0.12.17.tar.gz", hash = "sha256:2e8fb457983978af19db1ceba71d440f6891279525c5e7eb2ec73a6b727be113"},
 ]
 
 [[package]]
@@ -2498,7 +2498,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.61.1"
+version = "1.63.0"
 requires_python = ">=3.8"
 summary = "The official Python library for the openai API"
 groups = ["default"]
@@ -2513,8 +2513,8 @@ dependencies = [
     "typing-extensions<5,>=4.11",
 ]
 files = [
-    {file = "openai-1.61.1-py3-none-any.whl", hash = "sha256:72b0826240ce26026ac2cd17951691f046e5be82ad122d20a8e1b30ca18bd11e"},
-    {file = "openai-1.61.1.tar.gz", hash = "sha256:ce1851507218209961f89f3520e06726c0aa7d0512386f0f977e3ac3e4f2472e"},
+    {file = "openai-1.63.0-py3-none-any.whl", hash = "sha256:a664dfc78f0a05ca46c3e21f344f840cf6bf7174f13cfa9de214ed28bfca1dda"},
+    {file = "openai-1.63.0.tar.gz", hash = "sha256:597d7a1b35b113e5a09fcb953bdb1eef44f404a39985f3d7573b3ab09221fd66"},
 ]
 
 [[package]]
@@ -3427,22 +3427,6 @@ files = [
 ]
 
 [[package]]
-name = "s3fs"
-version = "2024.10.0"
-extras = ["boto3"]
-requires_python = ">=3.8"
-summary = "Convenient Filesystem interface over S3"
-groups = ["default"]
-dependencies = [
-    "aiobotocore[boto3]<3.0.0,>=2.5.4",
-    "s3fs==2024.10.0",
-]
-files = [
-    {file = "s3fs-2024.10.0-py3-none-any.whl", hash = "sha256:7a2025d60d5b1a6025726b3a5e292a8e5aa713abc3b16fd1f81735181f7bb282"},
-    {file = "s3fs-2024.10.0.tar.gz", hash = "sha256:58b8c3650f8b99dbedf361543da3533aac8707035a104db5d80b094617ad4a3f"},
-]
-
-[[package]]
 name = "s3transfer"
 version = "0.10.4"
 requires_python = ">=3.8"
@@ -3936,7 +3920,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.57.0rc4"
+version = "0.57.0rc5"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3978,26 +3962,8 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.57.0rc4-py3-none-any.whl", hash = "sha256:919813c9cef73bd3883536a62d3a8cebd8fc2028faade1dbb7748d69970c83ed"},
-    {file = "unstract_sdk-0.57.0rc4.tar.gz", hash = "sha256:76fbcf7057d8aecdfc940cdbdd34652e9945b11e0e6c1f970af6d7377e6f8e19"},
-]
-
-[[package]]
-name = "unstract-sdk"
-version = "0.57.0rc4"
-extras = ["aws", "gcs"]
-requires_python = "<3.11.1,>=3.9"
-summary = "A framework for writing Unstract Tools/Apps"
-groups = ["default"]
-dependencies = [
-    "boto3~=1.34.131",
-    "gcsfs~=2024.10.0",
-    "s3fs[boto3]~=2024.10.0",
-    "unstract-sdk==0.57.0rc4",
-]
-files = [
-    {file = "unstract_sdk-0.57.0rc4-py3-none-any.whl", hash = "sha256:919813c9cef73bd3883536a62d3a8cebd8fc2028faade1dbb7748d69970c83ed"},
-    {file = "unstract_sdk-0.57.0rc4.tar.gz", hash = "sha256:76fbcf7057d8aecdfc940cdbdd34652e9945b11e0e6c1f970af6d7377e6f8e19"},
+    {file = "unstract_sdk-0.57.0rc5-py3-none-any.whl", hash = "sha256:adc4251de87158408c6350dc10bc3625a57c8e372d2d49a167f2b129ced722ef"},
+    {file = "unstract_sdk-0.57.0rc5.tar.gz", hash = "sha256:59c1b2ce79dd8bd6c85e6079066d8e7f3262e09079cd8dfc2e17f279478a8b5f"},
 ]
 
 [[package]]
