@@ -12,7 +12,6 @@ from adapter_processor_v2.constants import AdapterKeys
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
 from django.db.models.manager import BaseManager
-from file_management.file_management_helper import FileManagerHelper
 from prompt_studio.modifier_loader import ModifierConfig
 from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
@@ -60,14 +59,11 @@ from unstract.sdk.file_storage.constants import StorageType
 from unstract.sdk.file_storage.env_helper import EnvHelper
 from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
-from unstract.sdk.utils.tool_utils import ToolUtils
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
-from backend.constants import FeatureFlag
 from unstract.core.pubsub_helper import LogPublisher
-from unstract.flags.feature_flag import check_feature_flag_status
 
 CHOICES_JSON = "/static/select_choices.json"
 ERROR_MSG = "User %s doesn't have access to adapter %s"
@@ -343,22 +339,12 @@ class PromptStudioHelper:
             file_path = file_name
         else:
             default_profile = ProfileManager.get_default_llm_profile(tool)
-            if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-                file_path = FileManagerHelper.handle_sub_directory_for_tenants(
-                    org_id,
-                    is_create=False,
-                    user_id=user_id,
-                    tool_id=tool_id,
-                )
-            else:
-                file_path = (
-                    PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
-                        org_id,
-                        is_create=False,
-                        user_id=user_id,
-                        tool_id=tool_id,
-                    )
-                )
+            file_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+                org_id,
+                is_create=False,
+                user_id=user_id,
+                tool_id=tool_id,
+            )
             file_path = str(Path(file_path) / file_name)
 
         if not tool:
@@ -382,39 +368,25 @@ class PromptStudioHelper:
         process_text = None
         if text_processor:
             process_text = text_processor.process
-        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            doc_id = PromptStudioHelper.dynamic_indexer(
-                profile_manager=default_profile,
-                tool_id=tool_id,
-                file_path=file_path,
-                org_id=org_id,
-                document_id=document_id,
-                is_summary=is_summary,
-                reindex=True,
-                run_id=run_id,
-                user_id=user_id,
-                process_text=process_text,
-                enable_highlight=tool.enable_highlight,
-            )
-        else:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.PERMANENT,
-                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-            )
-            doc_id = PromptStudioHelper.dynamic_indexer(
-                profile_manager=default_profile,
-                tool_id=tool_id,
-                file_path=file_path,
-                org_id=org_id,
-                document_id=document_id,
-                is_summary=is_summary,
-                reindex=True,
-                run_id=run_id,
-                user_id=user_id,
-                process_text=process_text,
-                fs=fs_instance,
-                enable_highlight=tool.enable_highlight,
-            )
+
+        fs_instance = EnvHelper.get_storage(
+            storage_type=StorageType.PERMANENT,
+            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+        )
+        doc_id = PromptStudioHelper.dynamic_indexer(
+            profile_manager=default_profile,
+            tool_id=tool_id,
+            file_path=file_path,
+            org_id=org_id,
+            document_id=document_id,
+            is_summary=is_summary,
+            reindex=True,
+            run_id=run_id,
+            user_id=user_id,
+            process_text=process_text,
+            fs=fs_instance,
+            enable_highlight=tool.enable_highlight,
+        )
 
         elapsed_time = time.time() - start_time
         logger.info(
@@ -657,40 +629,24 @@ class PromptStudioHelper:
 
     @staticmethod
     def _get_document_path(org_id, user_id, tool_id, doc_name):
-        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            doc_path = FileManagerHelper.handle_sub_directory_for_tenants(
-                org_id=org_id,
-                user_id=user_id,
-                tool_id=tool_id,
-                is_create=False,
-            )
-        else:
-            doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
-                org_id=org_id,
-                user_id=user_id,
-                tool_id=tool_id,
-                is_create=False,
-            )
+        doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+            org_id=org_id,
+            user_id=user_id,
+            tool_id=tool_id,
+            is_create=False,
+        )
         return str(Path(doc_path) / doc_name)
 
     @staticmethod
     def _get_extract_or_summary_document_path(
         org_id, user_id, tool_id, doc_name, doc_type
     ) -> str:
-        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            doc_path = FileManagerHelper.handle_sub_directory_for_tenants(
-                org_id=org_id,
-                user_id=user_id,
-                tool_id=tool_id,
-                is_create=False,
-            )
-        else:
-            doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
-                org_id=org_id,
-                user_id=user_id,
-                tool_id=tool_id,
-                is_create=False,
-            )
+        doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+            org_id=org_id,
+            user_id=user_id,
+            tool_id=tool_id,
+            is_create=False,
+        )
         extracted_doc_name = Path(doc_name).stem + TSPKeys.TXT_EXTENTION
         return str(Path(doc_path) / doc_type / extracted_doc_name)
 
@@ -791,37 +747,23 @@ class PromptStudioHelper:
         x2text = str(profile_manager.x2text.id)
         if not profile_manager:
             raise DefaultProfileError()
-        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            index_result = PromptStudioHelper.dynamic_indexer(
-                profile_manager=profile_manager,
-                file_path=doc_path,
-                tool_id=str(tool.tool_id),
-                org_id=org_id,
-                document_id=document_id,
-                is_summary=tool.summarize_as_source,
-                run_id=run_id,
-                user_id=user_id,
-                process_text=process_text,
-                enable_highlight=tool.enable_highlight,
-            )
-        else:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.PERMANENT,
-                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-            )
-            index_result = PromptStudioHelper.dynamic_indexer(
-                profile_manager=profile_manager,
-                file_path=doc_path,
-                tool_id=str(tool.tool_id),
-                org_id=org_id,
-                document_id=document_id,
-                is_summary=tool.summarize_as_source,
-                run_id=run_id,
-                user_id=user_id,
-                process_text=process_text,
-                fs=fs_instance,
-                enable_highlight=tool.enable_highlight,
-            )
+        fs_instance = EnvHelper.get_storage(
+            storage_type=StorageType.PERMANENT,
+            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+        )
+        index_result = PromptStudioHelper.dynamic_indexer(
+            profile_manager=profile_manager,
+            file_path=doc_path,
+            tool_id=str(tool.tool_id),
+            org_id=org_id,
+            document_id=document_id,
+            is_summary=tool.summarize_as_source,
+            run_id=run_id,
+            user_id=user_id,
+            process_text=process_text,
+            fs=fs_instance,
+            enable_highlight=tool.enable_highlight,
+        )
         if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
                 "status": IndexingStatus.PENDING_STATUS.value,
@@ -892,10 +834,7 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
             settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
         )
-        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            file_hash = ToolUtils.get_hash_from_file(file_path=doc_path)
-        else:
-            file_hash = fs_instance.get_hash_from_file(path=doc_path)
+        file_hash = fs_instance.get_hash_from_file(path=doc_path)
 
         payload = {
             TSPKeys.TOOL_SETTINGS: tool_settings,
@@ -1017,27 +956,16 @@ class PromptStudioHelper:
             usage_kwargs["file_name"] = filename
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
             tool_index = Index(tool=util)
-            if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-                doc_id_key = tool_index.generate_index_key(
-                    vector_db=vector_db,
-                    embedding=embedding_model,
-                    x2text=x2text_adapter,
-                    chunk_size=str(profile_manager.chunk_size),
-                    chunk_overlap=str(profile_manager.chunk_overlap),
-                    file_path=file_path,
-                    file_hash=None,
-                )
-            else:
-                doc_id_key = tool_index.generate_index_key(
-                    vector_db=vector_db,
-                    embedding=embedding_model,
-                    x2text=x2text_adapter,
-                    chunk_size=str(profile_manager.chunk_size),
-                    chunk_overlap=str(profile_manager.chunk_overlap),
-                    file_path=file_path,
-                    file_hash=None,
-                    fs=fs,
-                )
+            doc_id_key = tool_index.generate_index_key(
+                vector_db=vector_db,
+                embedding=embedding_model,
+                x2text=x2text_adapter,
+                chunk_size=str(profile_manager.chunk_size),
+                chunk_overlap=str(profile_manager.chunk_overlap),
+                file_path=file_path,
+                file_hash=None,
+                fs=fs,
+            )
             if not reindex:
                 indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
                     org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
@@ -1060,38 +988,21 @@ class PromptStudioHelper:
             DocumentIndexingService.set_document_indexing(
                 org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
             )
-            if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-
-                doc_id: str = tool_index.index(
-                    tool_id=tool_id,
-                    embedding_instance_id=embedding_model,
-                    vector_db_instance_id=vector_db,
-                    x2text_instance_id=x2text_adapter,
-                    file_path=file_path,
-                    chunk_size=profile_manager.chunk_size,
-                    chunk_overlap=profile_manager.chunk_overlap,
-                    reindex=reindex,
-                    output_file_path=extract_file_path,
-                    usage_kwargs=usage_kwargs.copy(),
-                    process_text=process_text,
-                    enable_highlight=enable_highlight,
-                )
-            else:
-                doc_id: str = tool_index.index(
-                    tool_id=tool_id,
-                    embedding_instance_id=embedding_model,
-                    vector_db_instance_id=vector_db,
-                    x2text_instance_id=x2text_adapter,
-                    file_path=file_path,
-                    chunk_size=profile_manager.chunk_size,
-                    chunk_overlap=profile_manager.chunk_overlap,
-                    reindex=reindex,
-                    output_file_path=extract_file_path,
-                    usage_kwargs=usage_kwargs.copy(),
-                    process_text=process_text,
-                    fs=fs,
-                    enable_highlight=enable_highlight,
-                )
+            doc_id: str = tool_index.index(
+                tool_id=tool_id,
+                embedding_instance_id=embedding_model,
+                vector_db_instance_id=vector_db,
+                x2text_instance_id=x2text_adapter,
+                file_path=file_path,
+                chunk_size=profile_manager.chunk_size,
+                chunk_overlap=profile_manager.chunk_overlap,
+                reindex=reindex,
+                output_file_path=extract_file_path,
+                usage_kwargs=usage_kwargs.copy(),
+                process_text=process_text,
+                fs=fs,
+                enable_highlight=enable_highlight,
+            )
 
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
@@ -1153,37 +1064,23 @@ class PromptStudioHelper:
         if not default_profile:
             raise DefaultProfileError()
 
-        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            index_result = PromptStudioHelper.dynamic_indexer(
-                profile_manager=default_profile,
-                file_path=file_path,
-                tool_id=tool_id,
-                org_id=org_id,
-                is_summary=tool.summarize_as_source,
-                document_id=document_id,
-                run_id=run_id,
-                user_id=user_id,
-                process_text=process_text,
-                enable_highlight=tool.enable_highlight,
-            )
-        else:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.PERMANENT,
-                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-            )
-            index_result = PromptStudioHelper.dynamic_indexer(
-                profile_manager=default_profile,
-                file_path=file_path,
-                tool_id=tool_id,
-                org_id=org_id,
-                is_summary=tool.summarize_as_source,
-                document_id=document_id,
-                run_id=run_id,
-                user_id=user_id,
-                process_text=process_text,
-                fs=fs_instance,
-                enable_highlight=tool.enable_highlight,
-            )
+        fs_instance = EnvHelper.get_storage(
+            storage_type=StorageType.PERMANENT,
+            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+        )
+        index_result = PromptStudioHelper.dynamic_indexer(
+            profile_manager=default_profile,
+            file_path=file_path,
+            tool_id=tool_id,
+            org_id=org_id,
+            is_summary=tool.summarize_as_source,
+            document_id=document_id,
+            run_id=run_id,
+            user_id=user_id,
+            process_text=process_text,
+            fs=fs_instance,
+            enable_highlight=tool.enable_highlight,
+        )
         if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
                 "status": IndexingStatus.PENDING_STATUS.value,
@@ -1224,10 +1121,7 @@ class PromptStudioHelper:
         if tool.summarize_as_source:
             path = Path(file_path)
             file_path = str(path.parent / TSPKeys.SUMMARIZE / (path.stem + ".txt"))
-        if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            file_hash = ToolUtils.get_hash_from_file(file_path=file_path)
-        else:
-            file_hash = fs_instance.get_hash_from_file(path=file_path)
+        file_hash = fs_instance.get_hash_from_file(path=file_path)
 
         payload = {
             TSPKeys.TOOL_SETTINGS: tool_settings,

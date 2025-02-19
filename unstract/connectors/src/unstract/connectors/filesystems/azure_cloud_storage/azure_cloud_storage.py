@@ -5,13 +5,9 @@ from typing import Any
 import azure.core.exceptions as AzureException
 from adlfs import AzureBlobFileSystem
 
-from backend.constants import FeatureFlag
 from unstract.connectors.exceptions import AzureHttpError, ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-    from unstract.filesystem import FileStorageType, FileSystem
+from unstract.filesystem import FileStorageType, FileSystem
 
 logging.getLogger("azurefs").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
@@ -97,13 +93,9 @@ class AzureCloudStorageFS(UnstractFileSystem):
         normalized_path = os.path.normpath(destination_path)
         destination_connector_fs = self.get_fsspec_fs()
         try:
-            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-                file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
-                workflow_fs = file_system.get_file_storage()
-                data = workflow_fs.read(path=source_path, mode="rb")
-            else:
-                with open(source_path, "rb") as source_file:
-                    data = source_file.read()
+            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            workflow_fs = file_system.get_file_storage()
+            data = workflow_fs.read(path=source_path, mode="rb")
             destination_connector_fs.write_bytes(normalized_path, data)
         except AzureException.HttpResponseError as e:
             self.raise_http_exception(e=e, path=normalized_path)
