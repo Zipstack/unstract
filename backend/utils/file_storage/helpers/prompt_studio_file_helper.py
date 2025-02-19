@@ -115,7 +115,7 @@ class PromptStudioFileHelper:
         )
         # TODO : Handle this with proper fix
         # Temporary Hack for frictionless onboarding as the user id will be empty
-        if not fs_instance.exists(file_system_path):
+        if not user_id and not fs_instance.exists(file_system_path):
             file_system_path = (
                 PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
                     org_id=org_id,
@@ -126,7 +126,9 @@ class PromptStudioFileHelper:
             )
         file_path = str(Path(file_system_path) / file_name)
         legacy_file_path = str(Path(legacy_file_system_path) / file_name)
-        file_content_type = fs_instance.mime_type(file_path)
+        file_content_type = fs_instance.mime_type(
+            path=file_path, legacy_storage_path=legacy_file_path
+        )
         if file_content_type == "application/pdf":
             # Read contents of PDF file into a string
             text_content_bytes: bytes = fs_instance.read(
