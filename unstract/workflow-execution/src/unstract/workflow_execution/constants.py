@@ -55,9 +55,3 @@ class ToolMetadataKey:
 class ToolOutputType:
     TXT = "TXT"
     JSON = "JSON"
-
-
-class FeatureFlag:
-    """Temporary feature flags."""
-
-    REMOTE_FILE_STORAGE = "remote_file_storage"
