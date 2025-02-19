@@ -120,10 +120,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       return false;
     }
 
-    return (
-      !unstractSubscriptionPlan?.subscriptionId &&
-      unstractSubscriptionPlan?.planType !== UNSTRACT_SUBSCRIPTION_PLANS?.TRIAL
-    );
+    return unstractSubscriptionPlan?.remainingDays <= 0;
   }, [unstractSubscriptionPlan]);
 
   const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
