@@ -15,6 +15,7 @@ import PlatformSettingsIcon from "../../../assets/platform-settings.svg";
 import task from "../../../assets/task.svg";
 import VectorDbIcon from "../../../assets/vector-db.svg";
 import TextExtractorIcon from "../../../assets/text-extractor.svg";
+import TerminalIcon from "../../../assets/terminal.svg";
 import { useSessionStore } from "../../../store/session-store";
 import { useMemo } from "react";
 
@@ -132,6 +133,14 @@ const SideNavBar = ({ collapsed }) => {
           image: CustomTools,
           path: `/${orgName}/tools`,
           active: window.location.pathname.startsWith(`/${orgName}/tools`),
+        },
+        {
+          id: 2.3,
+          title: "Logs",
+          description: "Records system events for monitoring and debugging",
+          image: TerminalIcon,
+          path: `/${orgName}/logs`,
+          active: window.location.pathname.startsWith(`/${orgName}/logs`),
         },
       ],
     },
