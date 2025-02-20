@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:16208f3ddb7d2965aa9ab1f2fc2c75d0b878cd9a85edde72ce27675531d0084f"
+content_hash = "sha256:2e5460ace835d53aaf1fd71a4e66728424d094c0f6e4a798d83daa2b11d992b0"
 
 [[package]]
 name = "aioboto3"
@@ -200,7 +200,7 @@ files = [
 
 [[package]]
 name = "anthropic"
-version = "0.45.2"
+version = "0.46.0"
 requires_python = ">=3.8"
 summary = "The official Python library for the anthropic API"
 groups = ["default"]
@@ -214,26 +214,26 @@ dependencies = [
     "typing-extensions<5,>=4.10",
 ]
 files = [
-    {file = "anthropic-0.45.2-py3-none-any.whl", hash = "sha256:ecd746f7274451dfcb7e1180571ead624c7e1195d1d46cb7c70143d2aedb4d35"},
-    {file = "anthropic-0.45.2.tar.gz", hash = "sha256:32a18b9ecd12c91b2be4cae6ca2ab46a06937b5aa01b21308d97a6d29794fb5e"},
+    {file = "anthropic-0.46.0-py3-none-any.whl", hash = "sha256:1445ec9be78d2de7ea51b4d5acd3574e414aea97ef903d0ecbb57bec806aaa49"},
+    {file = "anthropic-0.46.0.tar.gz", hash = "sha256:eac3d43271d02321a57c3ca68aca84c3d58873e8e72d1433288adee2d46b745b"},
 ]
 
 [[package]]
 name = "anthropic"
-version = "0.45.2"
+version = "0.46.0"
 extras = ["bedrock", "vertex"]
 requires_python = ">=3.8"
 summary = "The official Python library for the anthropic API"
 groups = ["default"]
 dependencies = [
-    "anthropic==0.45.2",
+    "anthropic==0.46.0",
     "boto3>=1.28.57",
     "botocore>=1.31.57",
     "google-auth<3,>=2",
 ]
 files = [
-    {file = "anthropic-0.45.2-py3-none-any.whl", hash = "sha256:ecd746f7274451dfcb7e1180571ead624c7e1195d1d46cb7c70143d2aedb4d35"},
-    {file = "anthropic-0.45.2.tar.gz", hash = "sha256:32a18b9ecd12c91b2be4cae6ca2ab46a06937b5aa01b21308d97a6d29794fb5e"},
+    {file = "anthropic-0.46.0-py3-none-any.whl", hash = "sha256:1445ec9be78d2de7ea51b4d5acd3574e414aea97ef903d0ecbb57bec806aaa49"},
+    {file = "anthropic-0.46.0.tar.gz", hash = "sha256:eac3d43271d02321a57c3ca68aca84c3d58873e8e72d1433288adee2d46b745b"},
 ]
 
 [[package]]
@@ -963,7 +963,7 @@ files = [
 
 [[package]]
 name = "google-cloud-aiplatform"
-version = "1.80.0"
+version = "1.81.0"
 requires_python = ">=3.8"
 summary = "Vertex AI API client library"
 groups = ["default"]
@@ -982,8 +982,8 @@ dependencies = [
     "typing-extensions",
 ]
 files = [
-    {file = "google_cloud_aiplatform-1.80.0-py2.py3-none-any.whl", hash = "sha256:45d2a170f22431dae977551eccb740400bdb899807d0c8d4c16c53b2c1dbc6a5"},
-    {file = "google_cloud_aiplatform-1.80.0.tar.gz", hash = "sha256:bcaa4570a6fb56d3d29cb6b8f92588d4d1a1931de5f90cf07761853dab4c76fd"},
+    {file = "google_cloud_aiplatform-1.81.0-py2.py3-none-any.whl", hash = "sha256:e4b6745dfd1f6215d690e9589239d2e7ae2553e39bf9c24c7b7581af0f2f6a68"},
+    {file = "google_cloud_aiplatform-1.81.0.tar.gz", hash = "sha256:1398be33bfc2725dde47555e559b89e8cb3b2d676a47a9802d9f33a89f1630bf"},
 ]
 
 [[package]]
@@ -1008,7 +1008,7 @@ files = [
 
 [[package]]
 name = "google-cloud-core"
-version = "2.4.1"
+version = "2.4.2rc0"
 requires_python = ">=3.7"
 summary = "Google Cloud API client core library"
 groups = ["default"]
@@ -1017,8 +1017,8 @@ dependencies = [
     "google-auth<3.0dev,>=1.25.0",
 ]
 files = [
-    {file = "google-cloud-core-2.4.1.tar.gz", hash = "sha256:9b7749272a812bde58fff28868d0c5e2f585b82f37e09a1f6ed2d4d10f134073"},
-    {file = "google_cloud_core-2.4.1-py2.py3-none-any.whl", hash = "sha256:a9e6a4422b9ac5c29f79a0ede9485473338e2ce78d91f2370c01e730eab22e61"},
+    {file = "google_cloud_core-2.4.2rc0-py2.py3-none-any.whl", hash = "sha256:39bc2222f593fdd677631b37f5cdc12b4a32e037bd870435e711424587f783bc"},
+    {file = "google_cloud_core-2.4.2rc0.tar.gz", hash = "sha256:646cd5cf67fa9dc50c50c81ae984977aedf705d90acb1110ae17dc9221fce6cb"},
 ]
 
 [[package]]
@@ -1682,18 +1682,18 @@ files = [
 
 [[package]]
 name = "llama-index-agent-openai"
-version = "0.4.5"
+version = "0.4.6"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index agent openai integration"
 groups = ["default"]
 dependencies = [
-    "llama-index-core<0.13.0,>=0.12.11",
+    "llama-index-core<0.13.0,>=0.12.18",
     "llama-index-llms-openai<0.4.0,>=0.3.0",
     "openai>=1.14.0",
 ]
 files = [
-    {file = "llama_index_agent_openai-0.4.5-py3-none-any.whl", hash = "sha256:3fcadce03420a1974e6cf5ecd8e58337652df2f81d5f30033b3b32a576dc790a"},
-    {file = "llama_index_agent_openai-0.4.5.tar.gz", hash = "sha256:c09be43e01b3d5b2d8859814fcdabd000769ab1b54958a7025b3ce391147b005"},
+    {file = "llama_index_agent_openai-0.4.6-py3-none-any.whl", hash = "sha256:4103e479c874cb3426aa59a13f91b6e2dc6b350c51457966631f8bdaf9a6a8e8"},
+    {file = "llama_index_agent_openai-0.4.6.tar.gz", hash = "sha256:4f66c1731836ab66c4b441255a95f33a51743e4993b8aa9daf430cb31aa7d48e"},
 ]
 
 [[package]]
@@ -1714,7 +1714,7 @@ files = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.12.17"
+version = "0.12.19"
 requires_python = "<4.0,>=3.9"
 summary = "Interface between LLMs and your data"
 groups = ["default"]
@@ -1744,8 +1744,8 @@ dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "llama_index_core-0.12.17-py3-none-any.whl", hash = "sha256:867ec650a1f9eba9f6d65005045a68bc13bae8d65763e32029d9610360c03979"},
-    {file = "llama_index_core-0.12.17.tar.gz", hash = "sha256:2e8fb457983978af19db1ceba71d440f6891279525c5e7eb2ec73a6b727be113"},
+    {file = "llama_index_core-0.12.19-py3-none-any.whl", hash = "sha256:6dee42a7ed6de8873336f5725ad4e8131fee22c9eb70d98332eb124f5036d754"},
+    {file = "llama_index_core-0.12.19.tar.gz", hash = "sha256:4b5a6b024e7b9ccdfb2bfa471f8b02bef146109600cf5d011669394e97fc028c"},
 ]
 
 [[package]]
@@ -1842,7 +1842,7 @@ files = [
 
 [[package]]
 name = "llama-index-indices-managed-llama-cloud"
-version = "0.6.4"
+version = "0.6.7"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index indices llama-cloud integration"
 groups = ["default"]
@@ -1851,8 +1851,8 @@ dependencies = [
     "llama-index-core<0.13.0,>=0.12.0",
 ]
 files = [
-    {file = "llama_index_indices_managed_llama_cloud-0.6.4-py3-none-any.whl", hash = "sha256:d7e85844a2e343dacebdef424decab3f5fd6361e25b3ff2bdcfb18607c1a49c5"},
-    {file = "llama_index_indices_managed_llama_cloud-0.6.4.tar.gz", hash = "sha256:0b45973cb2dc9702122006019bfb556dcabba31b0bdf79afc7b376ca8143df03"},
+    {file = "llama_index_indices_managed_llama_cloud-0.6.7-py3-none-any.whl", hash = "sha256:7cbe280ab03407f07a9ac034acf3bf2627a95d3868245f07c6242ce7ede264a8"},
+    {file = "llama_index_indices_managed_llama_cloud-0.6.7.tar.gz", hash = "sha256:b2a9020352b08e992327b25a3a9a056cb0d9397bc037aa498e5cfe451a0f07d9"},
 ]
 
 [[package]]
@@ -2184,7 +2184,7 @@ files = [
 
 [[package]]
 name = "llmwhisperer-client"
-version = "2.1.0"
+version = "2.2.1"
 requires_python = ">=3.8.1"
 summary = "Client library for LLM Whisperer"
 groups = ["default"]
@@ -2192,8 +2192,8 @@ dependencies = [
     "requests>=2",
 ]
 files = [
-    {file = "llmwhisperer_client-2.1.0-py3-none-any.whl", hash = "sha256:8d36e77671671dbe36dec49daf0064f4ba508c2e7ca7afd001824b2e3d407ca0"},
-    {file = "llmwhisperer_client-2.1.0.tar.gz", hash = "sha256:901d65a9c5cbcdab8c129115b0a466e2fa77414ca38b6037c0d905e6684e115d"},
+    {file = "llmwhisperer_client-2.2.1-py3-none-any.whl", hash = "sha256:fb93d9a580cf38d2b7deb751b7713b553f492c54e831b2974c2ce5790791efa7"},
+    {file = "llmwhisperer_client-2.2.1.tar.gz", hash = "sha256:85f72f40f136ea07619e07322b5b37197e93d30b57f819cc1e9fdf3bc429e2b5"},
 ]
 
 [[package]]
@@ -2498,7 +2498,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.63.0"
+version = "1.63.2"
 requires_python = ">=3.8"
 summary = "The official Python library for the openai API"
 groups = ["default"]
@@ -2513,8 +2513,8 @@ dependencies = [
     "typing-extensions<5,>=4.11",
 ]
 files = [
-    {file = "openai-1.63.0-py3-none-any.whl", hash = "sha256:a664dfc78f0a05ca46c3e21f344f840cf6bf7174f13cfa9de214ed28bfca1dda"},
-    {file = "openai-1.63.0.tar.gz", hash = "sha256:597d7a1b35b113e5a09fcb953bdb1eef44f404a39985f3d7573b3ab09221fd66"},
+    {file = "openai-1.63.2-py3-none-any.whl", hash = "sha256:1f38b27b5a40814c2b7d8759ec78110df58c4a614c25f182809ca52b080ff4d4"},
+    {file = "openai-1.63.2.tar.gz", hash = "sha256:aeabeec984a7d2957b4928ceaa339e2ead19c61cfcf35ae62b7c363368d26360"},
 ]
 
 [[package]]
@@ -3920,7 +3920,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.57.0rc5"
+version = "0.58.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -3962,8 +3962,8 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.57.0rc5-py3-none-any.whl", hash = "sha256:adc4251de87158408c6350dc10bc3625a57c8e372d2d49a167f2b129ced722ef"},
-    {file = "unstract_sdk-0.57.0rc5.tar.gz", hash = "sha256:59c1b2ce79dd8bd6c85e6079066d8e7f3262e09079cd8dfc2e17f279478a8b5f"},
+    {file = "unstract_sdk-0.58.0-py3-none-any.whl", hash = "sha256:a9cbc4bbcda01bdd5b08796bc298ed178f94af0f0a32961b5eb52173178d4240"},
+    {file = "unstract_sdk-0.58.0.tar.gz", hash = "sha256:97d53e8b3ab96f687bf08925441df1775348c765c119f37024a99c8ae648b6c1"},
 ]
 
 [[package]]

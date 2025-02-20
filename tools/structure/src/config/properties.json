@@ -2,7 +2,7 @@
   "schemaVersion": "0.0.1",
   "displayName": "Structure Tool",
   "functionName": "structure_tool",
-  "toolVersion": "0.0.64",
+  "toolVersion": "0.0.65",
   "description": "This is a template tool which can answer set of input prompts designed in the Prompt Studio",
   "input": {
     "description": "File that needs to be indexed and parsed for answers"
