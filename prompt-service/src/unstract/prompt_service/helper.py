@@ -427,7 +427,7 @@ def extract_line_item(
         raise FileNotFoundError(
             f"The file at path '{extract_file_path}' does not exist."
         )
-    context = fs_instance.read(path=extract_file_path, encoding="utf-8", mode="rb")
+    context = fs_instance.read(path=extract_file_path, encoding="utf-8", mode="r")
 
     prompt = construct_prompt(
         preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
