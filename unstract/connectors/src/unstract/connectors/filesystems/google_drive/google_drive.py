@@ -125,7 +125,7 @@ class GoogleDriveFS(UnstractFileSystem):
 
     # TODO: This should be removed later once the root casue is fixed.
     # This is a bandaid fix to avoid duplicate file upload in google drive.
-    # GDrive allows multiple files with same name in a single folder which is 
+    # GDrive allows multiple files with same name in a single folder which is
     # causing file duplication.
     # Below logic removes the file if already exists to avoid duplication.
     # Since other conenctor behaviour is to replace file sif exists
