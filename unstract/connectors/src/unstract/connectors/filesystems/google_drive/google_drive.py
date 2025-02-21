@@ -123,6 +123,9 @@ class GoogleDriveFS(UnstractFileSystem):
         input_dir = str(Path(root_path, input_dir.lstrip("/")))
         return f"{input_dir.strip('/')}/"
 
+    # TODO: This should be removed later. This is a bandaid fix to avoid duplicate file upload in google drive.
+    # GDrive allows multiple files with same name in a single folder which is causing file duplication. 
+    # Below logic removes the file if already exists to avoid duplication
     def upload_file_to_storage(self, source_path: str, destination_path: str) -> None:
         """Method to upload filepath from tool to destination connector directory.
         If a file already exists at the destination path, it will be deleted first.
