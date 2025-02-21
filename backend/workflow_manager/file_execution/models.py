@@ -2,7 +2,6 @@ import uuid
 from typing import Optional
 
 from django.db import models
-from django.utils import timezone
 from utils.models.base_model import BaseModel
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
@@ -59,8 +58,7 @@ class WorkflowFileExecution(BaseModel):
         on_delete=models.CASCADE,
         db_index=True,
         editable=False,
-        db_comment="Foreign key from WorkflowExecution model",
-        related_name="file_executions",
+        db_comment="Foreign key from WorkflowExecution   model",
     )
     file_name = models.CharField(
         max_length=FILE_NAME_LENGTH, db_comment="Name of the file"
@@ -81,7 +79,7 @@ class WorkflowFileExecution(BaseModel):
         db_comment="MIME type of the file",
     )
     status = models.TextField(
-        choices=ExecutionStatus.choices,
+        choices=ExecutionStatus.choices(),
         db_comment="Current status of the execution",
     )
     execution_time = models.FloatField(
@@ -103,6 +101,7 @@ class WorkflowFileExecution(BaseModel):
     def update_status(
         self,
         status: ExecutionStatus,
+        execution_time: int = 0,
         execution_error: str = None,
     ) -> None:
         """
@@ -118,20 +117,7 @@ class WorkflowFileExecution(BaseModel):
             The updated `WorkflowExecutionInputFile` object
         """
         self.status = status
-
-        if (
-            status
-            in [
-                ExecutionStatus.COMPLETED,
-                ExecutionStatus.ERROR,
-                ExecutionStatus.STOPPED,
-            ]
-            and not self.execution_time
-        ):
-            self.execution_time = round(
-                (timezone.now() - self.created_at).total_seconds(), 3
-            )
-
+        self.execution_time = execution_time
         self.execution_error = execution_error
         self.save()
 

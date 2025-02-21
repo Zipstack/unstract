@@ -3,7 +3,6 @@ import time
 from typing import Optional
 
 from account_v2.constants import Common
-from django.utils import timezone
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
 from tags.models import Tag
 from tool_instance_v2.models import ToolInstance
@@ -82,7 +81,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                 execution_mode=mode,
                 execution_method=self.execution_method,
                 execution_type=self.execution_type,
-                status=ExecutionStatus.INITIATED,
+                status=ExecutionStatus.INITIATED.value,
                 execution_log_id=self.execution_log_id,
             )
             workflow_execution.save()
@@ -121,7 +120,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         execution_id: Optional[str] = None,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
         tags: Optional[list[Tag]] = None,
-        total_files: int = 0,
     ) -> WorkflowExecution:
         # Validating with existing execution
         existing_execution = cls.get_execution_instance_by_id(execution_id)
@@ -146,9 +144,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution_mode=mode,
             execution_method=execution_method,
             execution_type=execution_type,
-            status=ExecutionStatus.PENDING,
+            status=ExecutionStatus.PENDING.value,
             execution_log_id=execution_log_id,
-            total_files=total_files,
         )
         if execution_id:
             workflow_execution.id = execution_id
@@ -160,6 +157,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     def update_execution(
         self,
         status: Optional[ExecutionStatus] = None,
+        execution_time: Optional[float] = None,
         error: Optional[str] = None,
         increment_attempt: bool = False,
     ) -> None:
@@ -167,19 +165,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
         if status is not None:
             execution.status = status.value
-
-            if (
-                status
-                in [
-                    ExecutionStatus.COMPLETED,
-                    ExecutionStatus.ERROR,
-                    ExecutionStatus.STOPPED,
-                ]
-                and not execution.execution_time
-            ):
-                execution.execution_time = round(
-                    (timezone.now() - execution.created_at).total_seconds(), 3
-                )
+        if execution_time is not None:
+            execution.execution_time = execution_time
         if error:
             execution.error_message = error[:EXECUTION_ERROR_LENGTH]
         if increment_attempt:
@@ -405,7 +392,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     def update_execution_err(execution_id: str, err_msg: str = "") -> WorkflowExecution:
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
-            execution.status = ExecutionStatus.ERROR
+            execution.status = ExecutionStatus.ERROR.value
             execution.error_message = err_msg[:EXECUTION_ERROR_LENGTH]
             execution.save()
             return execution

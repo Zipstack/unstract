@@ -15,10 +15,8 @@ class FileCentricExecutionSerializer(serializers.ModelSerializer):
 
     def get_latest_log(self, obj: FileExecution) -> Optional[dict[str, any]]:
         latest_log = (
-            obj.execution_logs.exclude(data__level__in=["DEBUG", "WARN"])
+            obj.execution_logs.exclude(data__log_level__in=["DEBUG", "WARN"])
             .order_by("-event_time")
             .first()
         )
-        return (
-            latest_log.data["log"] if latest_log and "log" in latest_log.data else None
-        )
+        return latest_log.data if latest_log else None

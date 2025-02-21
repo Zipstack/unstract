@@ -1,7 +1,6 @@
 from typing import Optional
 
 from rest_framework import serializers
-from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import WorkflowExecution
 
 
@@ -9,8 +8,6 @@ from workflow_manager.workflow_v2.models import WorkflowExecution
 class ExecutionSerializer(serializers.ModelSerializer):
     workflow_name = serializers.SerializerMethodField()
     pipeline_name = serializers.SerializerMethodField()
-    successful_files = serializers.SerializerMethodField()
-    failed_files = serializers.SerializerMethodField()
 
     class Meta:
         model = WorkflowExecution
@@ -23,11 +20,3 @@ class ExecutionSerializer(serializers.ModelSerializer):
     def get_pipeline_name(self, obj: WorkflowExecution) -> Optional[str]:
         """Fetch the pipeline or API deployment name"""
         return obj.pipeline_name
-
-    def get_successful_files(self, obj: WorkflowExecution) -> int:
-        """Return the count of successfully executed files"""
-        return obj.file_executions.filter(status=ExecutionStatus.COMPLETED).count()
-
-    def get_failed_files(self, obj: WorkflowExecution) -> int:
-        """Return the count of failed executed files"""
-        return obj.file_executions.filter(status=ExecutionStatus.ERROR).count()

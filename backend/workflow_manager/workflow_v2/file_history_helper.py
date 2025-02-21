@@ -59,7 +59,7 @@ class FileHistoryHelper:
             file_history: FileHistory = FileHistory.objects.create(
                 workflow=workflow,
                 cache_key=cache_key,
-                status=status,
+                status=status.value,
                 result=str(result),
                 metadata=str(metadata),
                 error=str(error) if error else "",
