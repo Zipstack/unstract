@@ -1,0 +1,55 @@
+.logs-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #fff;
+  border-top: 1px solid #ccc;
+  box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  z-index: 999;
+  transition: height 0.1s;
+}
+
+.logs-handle {
+  height: 40px;
+  background-color: #eee;
+  border-bottom: 1px solid #ccc;
+  cursor: ns-resize;
+  user-select: none;
+  font-weight: bold;
+}
+
+.logs-header-container {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+}
+
+.logs-content {
+  flex: 1;
+  overflow: auto;
+}
+
+.tool-logs-table .ant-table {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px !important;
+  background-color: #fff;
+}
+
+.tool-logs-table .ant-table-thead > tr > th {
+  background-color: #ffffff;
+  font-weight: 600;
+}
+
+.tool-logs-table .ant-table-tbody > tr.display-logs-error-bg > td {
+  background-color: #fff1f0; /* a light red for error logs */
+}
+
+.display-logs-md {
+  font-size: 12px;
+  padding-left: 5px;
+}

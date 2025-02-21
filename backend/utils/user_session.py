@@ -30,6 +30,10 @@ class UserSessionUtils:
         request.session["role"] = member.role
 
     @staticmethod
+    def get_session_id(request: HttpRequest) -> Optional[str]:
+        return request.session.session_key
+
+    @staticmethod
     def get_organization_member_role(request: HttpRequest) -> Optional[str]:
         return request.session.get("role")
 
