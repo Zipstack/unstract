@@ -8,7 +8,6 @@ from django.db import models
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
 from utils.models.base_model import BaseModel
-from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow
 
 logger = logging.getLogger(__name__)
@@ -58,19 +57,10 @@ class WorkflowExecution(BaseModel):
     execution_log_id = models.CharField(
         default="", editable=False, db_comment="Execution log events Id"
     )
-    status = models.CharField(
-        choices=ExecutionStatus.choices,
-        db_comment="Current status of the execution",
-    )
+    # TODO: Restrict with an enum
+    status = models.CharField(default="", db_comment="Current status of execution")
     result_acknowledged = models.BooleanField(
-        default=False,
-        db_comment=(
-            "To track if result is acknowledged by user - "
-            "used mainly by API deployments"
-        ),
-    )
-    total_files = models.PositiveIntegerField(
-        default=0, verbose_name="Total files", db_comment="Number of files to process"
+        default=False, db_comment="Result acknowledged"
     )
     error_message = models.CharField(
         max_length=EXECUTION_ERROR_LENGTH,
@@ -134,7 +124,7 @@ class WorkflowExecution(BaseModel):
             f"Workflow execution: {self.id} ("
             f"pipeline ID: {self.pipeline_id}, "
             f"workflow iD: {self.workflow_id}, "
+            f"execution method: {self.execution_method}, "
             f"status: {self.status}, "
-            f"files: {self.total_files}, "
             f"error message: {self.error_message})"
         )

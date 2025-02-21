@@ -15,7 +15,9 @@ class FileHistory(BaseModel):
         Returns:
             bool: True if the execution status is completed, False otherwise.
         """
-        return self.status is not None and self.status == ExecutionStatus.COMPLETED
+        return (
+            self.status is not None and self.status == ExecutionStatus.COMPLETED.value
+        )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     cache_key = models.CharField(
@@ -28,7 +30,7 @@ class FileHistory(BaseModel):
         related_name="file_histories",
     )
     status = models.TextField(
-        choices=ExecutionStatus.choices,
+        choices=ExecutionStatus.choices(),
         db_comment="Latest status of execution",
     )
     error = models.TextField(
