@@ -134,10 +134,10 @@ class GoogleDriveFS(UnstractFileSystem):
         """
         normalized_path = os.path.normpath(destination_path)
         destination_connector_fs = self.get_fsspec_fs()
-        
+
         # Check if file exists and delete it
         if destination_connector_fs.exists(normalized_path):
             destination_connector_fs.delete(normalized_path)
-        
+
         # Call parent class's upload method
         super().upload_file_to_storage(source_path, destination_path)
