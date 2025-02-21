@@ -122,3 +122,22 @@ class GoogleDriveFS(UnstractFileSystem):
             raise ValueError("root_path is required to get root_dir for Google Drive")
         input_dir = str(Path(root_path, input_dir.lstrip("/")))
         return f"{input_dir.strip('/')}/"
+
+    def upload_file_to_storage(self, source_path: str, destination_path: str) -> None:
+        """Method to upload filepath from tool to destination connector directory.
+        If a file already exists at the destination path, it will be deleted first.
+
+        Args:
+            source_path (str): local path of file to be uploaded, coming from tool
+            destination_path (str): target path in the storage where the file will be
+            uploaded
+        """
+        normalized_path = os.path.normpath(destination_path)
+        destination_connector_fs = self.get_fsspec_fs()
+        
+        # Check if file exists and delete it
+        if destination_connector_fs.exists(normalized_path):
+            destination_connector_fs.delete(normalized_path)
+        
+        # Call parent class's upload method
+        super().upload_file_to_storage(source_path, destination_path)
