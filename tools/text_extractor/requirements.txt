@@ -1,4 +1,4 @@
 # Add your dependencies here
 
 # Required for all unstract tools
-unstract-sdk[aws]~=0.57.0rc5
+unstract-sdk[aws]~=0.58.0

@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:b2956046b5fb0f62aecc758bf99218513f582ffb36c4e126d3c69e060c58ae42"
+content_hash = "sha256:a925306b5d4f37249570b2a835cbd342b3ab3093c8b1c6d6dc0c8f4ef8788dae"
 
 [[package]]
 name = "adlfs"
@@ -219,7 +219,7 @@ files = [
 
 [[package]]
 name = "anthropic"
-version = "0.45.2"
+version = "0.46.0"
 requires_python = ">=3.8"
 summary = "The official Python library for the anthropic API"
 groups = ["default", "dev"]
@@ -233,26 +233,26 @@ dependencies = [
     "typing-extensions<5,>=4.10",
 ]
 files = [
-    {file = "anthropic-0.45.2-py3-none-any.whl", hash = "sha256:ecd746f7274451dfcb7e1180571ead624c7e1195d1d46cb7c70143d2aedb4d35"},
-    {file = "anthropic-0.45.2.tar.gz", hash = "sha256:32a18b9ecd12c91b2be4cae6ca2ab46a06937b5aa01b21308d97a6d29794fb5e"},
+    {file = "anthropic-0.46.0-py3-none-any.whl", hash = "sha256:1445ec9be78d2de7ea51b4d5acd3574e414aea97ef903d0ecbb57bec806aaa49"},
+    {file = "anthropic-0.46.0.tar.gz", hash = "sha256:eac3d43271d02321a57c3ca68aca84c3d58873e8e72d1433288adee2d46b745b"},
 ]
 
 [[package]]
 name = "anthropic"
-version = "0.45.2"
+version = "0.46.0"
 extras = ["bedrock", "vertex"]
 requires_python = ">=3.8"
 summary = "The official Python library for the anthropic API"
 groups = ["default", "dev"]
 dependencies = [
-    "anthropic==0.45.2",
+    "anthropic==0.46.0",
     "boto3>=1.28.57",
     "botocore>=1.31.57",
     "google-auth<3,>=2",
 ]
 files = [
-    {file = "anthropic-0.45.2-py3-none-any.whl", hash = "sha256:ecd746f7274451dfcb7e1180571ead624c7e1195d1d46cb7c70143d2aedb4d35"},
-    {file = "anthropic-0.45.2.tar.gz", hash = "sha256:32a18b9ecd12c91b2be4cae6ca2ab46a06937b5aa01b21308d97a6d29794fb5e"},
+    {file = "anthropic-0.46.0-py3-none-any.whl", hash = "sha256:1445ec9be78d2de7ea51b4d5acd3574e414aea97ef903d0ecbb57bec806aaa49"},
+    {file = "anthropic-0.46.0.tar.gz", hash = "sha256:eac3d43271d02321a57c3ca68aca84c3d58873e8e72d1433288adee2d46b745b"},
 ]
 
 [[package]]
@@ -1515,7 +1515,7 @@ files = [
 
 [[package]]
 name = "google-cloud-aiplatform"
-version = "1.80.0"
+version = "1.81.0"
 requires_python = ">=3.8"
 summary = "Vertex AI API client library"
 groups = ["default", "dev"]
@@ -1534,8 +1534,8 @@ dependencies = [
     "typing-extensions",
 ]
 files = [
-    {file = "google_cloud_aiplatform-1.80.0-py2.py3-none-any.whl", hash = "sha256:45d2a170f22431dae977551eccb740400bdb899807d0c8d4c16c53b2c1dbc6a5"},
-    {file = "google_cloud_aiplatform-1.80.0.tar.gz", hash = "sha256:bcaa4570a6fb56d3d29cb6b8f92588d4d1a1931de5f90cf07761853dab4c76fd"},
+    {file = "google_cloud_aiplatform-1.81.0-py2.py3-none-any.whl", hash = "sha256:e4b6745dfd1f6215d690e9589239d2e7ae2553e39bf9c24c7b7581af0f2f6a68"},
+    {file = "google_cloud_aiplatform-1.81.0.tar.gz", hash = "sha256:1398be33bfc2725dde47555e559b89e8cb3b2d676a47a9802d9f33a89f1630bf"},
 ]
 
 [[package]]
@@ -1563,7 +1563,7 @@ files = [
 
 [[package]]
 name = "google-cloud-core"
-version = "2.4.1"
+version = "2.4.2rc0"
 requires_python = ">=3.7"
 summary = "Google Cloud API client core library"
 groups = ["default", "dev"]
@@ -1572,8 +1572,8 @@ dependencies = [
     "google-auth<3.0dev,>=1.25.0",
 ]
 files = [
-    {file = "google-cloud-core-2.4.1.tar.gz", hash = "sha256:9b7749272a812bde58fff28868d0c5e2f585b82f37e09a1f6ed2d4d10f134073"},
-    {file = "google_cloud_core-2.4.1-py2.py3-none-any.whl", hash = "sha256:a9e6a4422b9ac5c29f79a0ede9485473338e2ce78d91f2370c01e730eab22e61"},
+    {file = "google_cloud_core-2.4.2rc0-py2.py3-none-any.whl", hash = "sha256:39bc2222f593fdd677631b37f5cdc12b4a32e037bd870435e711424587f783bc"},
+    {file = "google_cloud_core-2.4.2rc0.tar.gz", hash = "sha256:646cd5cf67fa9dc50c50c81ae984977aedf705d90acb1110ae17dc9221fce6cb"},
 ]
 
 [[package]]
@@ -2025,13 +2025,13 @@ files = [
 
 [[package]]
 name = "humanize"
-version = "4.12.0"
+version = "4.12.1"
 requires_python = ">=3.9"
 summary = "Python humanize utilities"
 groups = ["default"]
 files = [
-    {file = "humanize-4.12.0-py3-none-any.whl", hash = "sha256:106a7436a2d545d742c147c469716b3a08424aa143a82103630147c489a89f48"},
-    {file = "humanize-4.12.0.tar.gz", hash = "sha256:87ff7b43591370b12a1d103c9405849d911d4b039ed22d80b718b62c76eec8a3"},
+    {file = "humanize-4.12.1-py3-none-any.whl", hash = "sha256:86014ca5c52675dffa1d404491952f1f5bf03b07c175a51891a343daebf01fea"},
+    {file = "humanize-4.12.1.tar.gz", hash = "sha256:1338ba97415c96556758a6e2f65977ed406dddf4620d4c6db9bbdfd07f0f1232"},
 ]
 
 [[package]]
@@ -2270,18 +2270,18 @@ files = [
 
 [[package]]
 name = "llama-index-agent-openai"
-version = "0.4.5"
+version = "0.4.6"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index agent openai integration"
 groups = ["default", "dev"]
 dependencies = [
-    "llama-index-core<0.13.0,>=0.12.11",
+    "llama-index-core<0.13.0,>=0.12.18",
     "llama-index-llms-openai<0.4.0,>=0.3.0",
     "openai>=1.14.0",
 ]
 files = [
-    {file = "llama_index_agent_openai-0.4.5-py3-none-any.whl", hash = "sha256:3fcadce03420a1974e6cf5ecd8e58337652df2f81d5f30033b3b32a576dc790a"},
-    {file = "llama_index_agent_openai-0.4.5.tar.gz", hash = "sha256:c09be43e01b3d5b2d8859814fcdabd000769ab1b54958a7025b3ce391147b005"},
+    {file = "llama_index_agent_openai-0.4.6-py3-none-any.whl", hash = "sha256:4103e479c874cb3426aa59a13f91b6e2dc6b350c51457966631f8bdaf9a6a8e8"},
+    {file = "llama_index_agent_openai-0.4.6.tar.gz", hash = "sha256:4f66c1731836ab66c4b441255a95f33a51743e4993b8aa9daf430cb31aa7d48e"},
 ]
 
 [[package]]
@@ -2302,7 +2302,7 @@ files = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.12.17"
+version = "0.12.19"
 requires_python = "<4.0,>=3.9"
 summary = "Interface between LLMs and your data"
 groups = ["default", "dev"]
@@ -2332,8 +2332,8 @@ dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "llama_index_core-0.12.17-py3-none-any.whl", hash = "sha256:867ec650a1f9eba9f6d65005045a68bc13bae8d65763e32029d9610360c03979"},
-    {file = "llama_index_core-0.12.17.tar.gz", hash = "sha256:2e8fb457983978af19db1ceba71d440f6891279525c5e7eb2ec73a6b727be113"},
+    {file = "llama_index_core-0.12.19-py3-none-any.whl", hash = "sha256:6dee42a7ed6de8873336f5725ad4e8131fee22c9eb70d98332eb124f5036d754"},
+    {file = "llama_index_core-0.12.19.tar.gz", hash = "sha256:4b5a6b024e7b9ccdfb2bfa471f8b02bef146109600cf5d011669394e97fc028c"},
 ]
 
 [[package]]
@@ -2430,7 +2430,7 @@ files = [
 
 [[package]]
 name = "llama-index-indices-managed-llama-cloud"
-version = "0.6.4"
+version = "0.6.7"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index indices llama-cloud integration"
 groups = ["default", "dev"]
@@ -2439,8 +2439,8 @@ dependencies = [
     "llama-index-core<0.13.0,>=0.12.0",
 ]
 files = [
-    {file = "llama_index_indices_managed_llama_cloud-0.6.4-py3-none-any.whl", hash = "sha256:d7e85844a2e343dacebdef424decab3f5fd6361e25b3ff2bdcfb18607c1a49c5"},
-    {file = "llama_index_indices_managed_llama_cloud-0.6.4.tar.gz", hash = "sha256:0b45973cb2dc9702122006019bfb556dcabba31b0bdf79afc7b376ca8143df03"},
+    {file = "llama_index_indices_managed_llama_cloud-0.6.7-py3-none-any.whl", hash = "sha256:7cbe280ab03407f07a9ac034acf3bf2627a95d3868245f07c6242ce7ede264a8"},
+    {file = "llama_index_indices_managed_llama_cloud-0.6.7.tar.gz", hash = "sha256:b2a9020352b08e992327b25a3a9a056cb0d9397bc037aa498e5cfe451a0f07d9"},
 ]
 
 [[package]]
@@ -2772,7 +2772,7 @@ files = [
 
 [[package]]
 name = "llmwhisperer-client"
-version = "2.1.0"
+version = "2.2.1"
 requires_python = ">=3.8.1"
 summary = "Client library for LLM Whisperer"
 groups = ["default", "dev"]
@@ -2780,8 +2780,8 @@ dependencies = [
     "requests>=2",
 ]
 files = [
-    {file = "llmwhisperer_client-2.1.0-py3-none-any.whl", hash = "sha256:8d36e77671671dbe36dec49daf0064f4ba508c2e7ca7afd001824b2e3d407ca0"},
-    {file = "llmwhisperer_client-2.1.0.tar.gz", hash = "sha256:901d65a9c5cbcdab8c129115b0a466e2fa77414ca38b6037c0d905e6684e115d"},
+    {file = "llmwhisperer_client-2.2.1-py3-none-any.whl", hash = "sha256:fb93d9a580cf38d2b7deb751b7713b553f492c54e831b2974c2ce5790791efa7"},
+    {file = "llmwhisperer_client-2.2.1.tar.gz", hash = "sha256:85f72f40f136ea07619e07322b5b37197e93d30b57f819cc1e9fdf3bc429e2b5"},
 ]
 
 [[package]]
@@ -3084,7 +3084,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.63.0"
+version = "1.63.2"
 requires_python = ">=3.8"
 summary = "The official Python library for the openai API"
 groups = ["default", "dev"]
@@ -3099,8 +3099,8 @@ dependencies = [
     "typing-extensions<5,>=4.11",
 ]
 files = [
-    {file = "openai-1.63.0-py3-none-any.whl", hash = "sha256:a664dfc78f0a05ca46c3e21f344f840cf6bf7174f13cfa9de214ed28bfca1dda"},
-    {file = "openai-1.63.0.tar.gz", hash = "sha256:597d7a1b35b113e5a09fcb953bdb1eef44f404a39985f3d7573b3ab09221fd66"},
+    {file = "openai-1.63.2-py3-none-any.whl", hash = "sha256:1f38b27b5a40814c2b7d8759ec78110df58c4a614c25f182809ca52b080ff4d4"},
+    {file = "openai-1.63.2.tar.gz", hash = "sha256:aeabeec984a7d2957b4928ceaa339e2ead19c61cfcf35ae62b7c363368d26360"},
 ]
 
 [[package]]
@@ -3542,33 +3542,33 @@ files = [
 
 [[package]]
 name = "pyarrow"
-version = "19.0.0"
+version = "19.0.1"
 requires_python = ">=3.9"
 summary = "Python library for Apache Arrow"
 groups = ["default", "dev"]
 files = [
-    {file = "pyarrow-19.0.0-cp310-cp310-macosx_12_0_arm64.whl", hash = "sha256:c318eda14f6627966997a7d8c374a87d084a94e4e38e9abbe97395c215830e0c"},
-    {file = "pyarrow-19.0.0-cp310-cp310-macosx_12_0_x86_64.whl", hash = "sha256:62ef8360ff256e960f57ce0299090fb86423afed5e46f18f1225f960e05aae3d"},
-    {file = "pyarrow-19.0.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:2795064647add0f16563e57e3d294dbfc067b723f0fd82ecd80af56dad15f503"},
-    {file = "pyarrow-19.0.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a218670b26fb1bc74796458d97bcab072765f9b524f95b2fccad70158feb8b17"},
-    {file = "pyarrow-19.0.0-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:66732e39eaa2247996a6b04c8aa33e3503d351831424cdf8d2e9a0582ac54b34"},
-    {file = "pyarrow-19.0.0-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:e675a3ad4732b92d72e4d24009707e923cab76b0d088e5054914f11a797ebe44"},
-    {file = "pyarrow-19.0.0-cp310-cp310-win_amd64.whl", hash = "sha256:f094742275586cdd6b1a03655ccff3b24b2610c3af76f810356c4c71d24a2a6c"},
-    {file = "pyarrow-19.0.0-cp311-cp311-macosx_12_0_arm64.whl", hash = "sha256:8e3a839bf36ec03b4315dc924d36dcde5444a50066f1c10f8290293c0427b46a"},
-    {file = "pyarrow-19.0.0-cp311-cp311-macosx_12_0_x86_64.whl", hash = "sha256:ce42275097512d9e4e4a39aade58ef2b3798a93aa3026566b7892177c266f735"},
-    {file = "pyarrow-19.0.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9348a0137568c45601b031a8d118275069435f151cbb77e6a08a27e8125f59d4"},
-    {file = "pyarrow-19.0.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2a0144a712d990d60f7f42b7a31f0acaccf4c1e43e957f7b1ad58150d6f639c1"},
-    {file = "pyarrow-19.0.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:2a1a109dfda558eb011e5f6385837daffd920d54ca00669f7a11132d0b1e6042"},
-    {file = "pyarrow-19.0.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:be686bf625aa7b9bada18defb3a3ea3981c1099697239788ff111d87f04cd263"},
-    {file = "pyarrow-19.0.0-cp311-cp311-win_amd64.whl", hash = "sha256:239ca66d9a05844bdf5af128861af525e14df3c9591bcc05bac25918e650d3a2"},
-    {file = "pyarrow-19.0.0-cp39-cp39-macosx_12_0_arm64.whl", hash = "sha256:c0423393e4a07ff6fea08feb44153302dd261d0551cc3b538ea7a5dc853af43a"},
-    {file = "pyarrow-19.0.0-cp39-cp39-macosx_12_0_x86_64.whl", hash = "sha256:718947fb6d82409013a74b176bf93e0f49ef952d8a2ecd068fecd192a97885b7"},
-    {file = "pyarrow-19.0.0-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3c1c162c4660e0978411a4761f91113dde8da3433683efa473501254563dcbe8"},
-    {file = "pyarrow-19.0.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c73268cf557e688efb60f1ccbc7376f7e18cd8e2acae9e663e98b194c40c1a2d"},
-    {file = "pyarrow-19.0.0-cp39-cp39-manylinux_2_28_aarch64.whl", hash = "sha256:edfe6d3916e915ada9acc4e48f6dafca7efdbad2e6283db6fd9385a1b23055f1"},
-    {file = "pyarrow-19.0.0-cp39-cp39-manylinux_2_28_x86_64.whl", hash = "sha256:da410b70a7ab8eb524112f037a7a35da7128b33d484f7671a264a4c224ac131d"},
-    {file = "pyarrow-19.0.0-cp39-cp39-win_amd64.whl", hash = "sha256:597360ffc71fc8cceea1aec1fb60cb510571a744fffc87db33d551d5de919bec"},
-    {file = "pyarrow-19.0.0.tar.gz", hash = "sha256:8d47c691765cf497aaeed4954d226568563f1b3b74ff61139f2d77876717084b"},
+    {file = "pyarrow-19.0.1-cp310-cp310-macosx_12_0_arm64.whl", hash = "sha256:fc28912a2dc924dddc2087679cc8b7263accc71b9ff025a1362b004711661a69"},
+    {file = "pyarrow-19.0.1-cp310-cp310-macosx_12_0_x86_64.whl", hash = "sha256:fca15aabbe9b8355800d923cc2e82c8ef514af321e18b437c3d782aa884eaeec"},
+    {file = "pyarrow-19.0.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ad76aef7f5f7e4a757fddcdcf010a8290958f09e3470ea458c80d26f4316ae89"},
+    {file = "pyarrow-19.0.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d03c9d6f2a3dffbd62671ca070f13fc527bb1867b4ec2b98c7eeed381d4f389a"},
+    {file = "pyarrow-19.0.1-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:65cf9feebab489b19cdfcfe4aa82f62147218558d8d3f0fc1e9dea0ab8e7905a"},
+    {file = "pyarrow-19.0.1-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:41f9706fbe505e0abc10e84bf3a906a1338905cbbcf1177b71486b03e6ea6608"},
+    {file = "pyarrow-19.0.1-cp310-cp310-win_amd64.whl", hash = "sha256:c6cb2335a411b713fdf1e82a752162f72d4a7b5dbc588e32aa18383318b05866"},
+    {file = "pyarrow-19.0.1-cp311-cp311-macosx_12_0_arm64.whl", hash = "sha256:cc55d71898ea30dc95900297d191377caba257612f384207fe9f8293b5850f90"},
+    {file = "pyarrow-19.0.1-cp311-cp311-macosx_12_0_x86_64.whl", hash = "sha256:7a544ec12de66769612b2d6988c36adc96fb9767ecc8ee0a4d270b10b1c51e00"},
+    {file = "pyarrow-19.0.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0148bb4fc158bfbc3d6dfe5001d93ebeed253793fff4435167f6ce1dc4bddeae"},
+    {file = "pyarrow-19.0.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f24faab6ed18f216a37870d8c5623f9c044566d75ec586ef884e13a02a9d62c5"},
+    {file = "pyarrow-19.0.1-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:4982f8e2b7afd6dae8608d70ba5bd91699077323f812a0448d8b7abdff6cb5d3"},
+    {file = "pyarrow-19.0.1-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:49a3aecb62c1be1d822f8bf629226d4a96418228a42f5b40835c1f10d42e4db6"},
+    {file = "pyarrow-19.0.1-cp311-cp311-win_amd64.whl", hash = "sha256:008a4009efdb4ea3d2e18f05cd31f9d43c388aad29c636112c2966605ba33466"},
+    {file = "pyarrow-19.0.1-cp39-cp39-macosx_12_0_arm64.whl", hash = "sha256:b9766a47a9cb56fefe95cb27f535038b5a195707a08bf61b180e642324963b46"},
+    {file = "pyarrow-19.0.1-cp39-cp39-macosx_12_0_x86_64.whl", hash = "sha256:6c5941c1aac89a6c2f2b16cd64fe76bcdb94b2b1e99ca6459de4e6f07638d755"},
+    {file = "pyarrow-19.0.1-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:fd44d66093a239358d07c42a91eebf5015aa54fccba959db899f932218ac9cc8"},
+    {file = "pyarrow-19.0.1-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:335d170e050bcc7da867a1ed8ffb8b44c57aaa6e0843b156a501298657b1e972"},
+    {file = "pyarrow-19.0.1-cp39-cp39-manylinux_2_28_aarch64.whl", hash = "sha256:1c7556165bd38cf0cd992df2636f8bcdd2d4b26916c6b7e646101aff3c16f76f"},
+    {file = "pyarrow-19.0.1-cp39-cp39-manylinux_2_28_x86_64.whl", hash = "sha256:699799f9c80bebcf1da0983ba86d7f289c5a2a5c04b945e2f2bcf7e874a91911"},
+    {file = "pyarrow-19.0.1-cp39-cp39-win_amd64.whl", hash = "sha256:8464c9fbe6d94a7fe1599e7e8965f350fd233532868232ab2596a71586c5a429"},
+    {file = "pyarrow-19.0.1.tar.gz", hash = "sha256:3bf266b485df66a400f282ac0b6d1b500b9d2ae73314a153dbe97d6d5cc8a99e"},
 ]
 
 [[package]]
@@ -5088,7 +5088,7 @@ path = "../unstract/filesystem"
 summary = "Unstract filesystem package"
 groups = ["default", "dev"]
 dependencies = [
-    "unstract-sdk~=0.57.0rc5",
+    "unstract-sdk~=0.58.0",
 ]
 
 [[package]]
@@ -5106,7 +5106,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.57.0rc5"
+version = "0.58.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default", "dev"]
@@ -5148,8 +5148,8 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.57.0rc5-py3-none-any.whl", hash = "sha256:adc4251de87158408c6350dc10bc3625a57c8e372d2d49a167f2b129ced722ef"},
-    {file = "unstract_sdk-0.57.0rc5.tar.gz", hash = "sha256:59c1b2ce79dd8bd6c85e6079066d8e7f3262e09079cd8dfc2e17f279478a8b5f"},
+    {file = "unstract_sdk-0.58.0-py3-none-any.whl", hash = "sha256:a9cbc4bbcda01bdd5b08796bc298ed178f94af0f0a32961b5eb52173178d4240"},
+    {file = "unstract_sdk-0.58.0.tar.gz", hash = "sha256:97d53e8b3ab96f687bf08925441df1775348c765c119f37024a99c8ae648b6c1"},
 ]
 
 [[package]]
@@ -5165,7 +5165,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
     "unstract-flags",
-    "unstract-sdk~=0.57.0rc5",
+    "unstract-sdk~=0.58.0",
     "unstract-tool-sandbox",
 ]
 
