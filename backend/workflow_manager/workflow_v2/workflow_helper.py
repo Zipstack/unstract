@@ -535,6 +535,8 @@ class WorkflowHelper:
             task = AsyncResultData(async_result=async_execution)
             celery_result = task.to_dict()
             task_result = celery_result.get("result")
+            # Fetch the object agian to get the latest status.
+            workflow_execution = WorkflowExecution.objects.get(id=execution_id)
             execution_response = ExecutionResponse(
                 workflow_id,
                 execution_id,
