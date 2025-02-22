@@ -752,18 +752,21 @@ class WorkflowHelper:
                 )
                 return response
             else:
-                execution_result = WorkflowHelper.execute_bin(
-                    schema_name=org_schema,
+                task_id = current_task.request.id
+                # TODO: Remove this if scheduled runs work
+                StateStore.set(Account.ORGANIZATION_ID, org_schema)
+                execution_result = WorkflowHelper.execute_workflow(
+                    organization_id=org_schema,
+                    task_id=task_id,
                     workflow_id=workflow.id,
                     execution_id=workflow_execution.id,
                     hash_values_of_files=hash_values_of_files,
                     scheduled=True,
                     execution_mode=execution_mode,
                     pipeline_id=pipeline_id,
-                    log_events_id=log_events_id,
                     use_file_history=use_file_history,
+                    log_events_id=log_events_id,
                 )
-
             updated_execution = WorkflowExecution.objects.get(id=execution_id)
             execution_response = ExecutionResponse(
                 workflow.id,
