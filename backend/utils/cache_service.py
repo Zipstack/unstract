@@ -29,6 +29,12 @@ class CacheService:
         )
 
     @staticmethod
+    def get_all_keys(key_pattern: str) -> Any:
+        keys = redis_cache.keys(key_pattern)
+        # Ensure all keys are strings
+        return [key.decode("utf-8") if isinstance(key, bytes) else key for key in keys]
+
+    @staticmethod
     def clear_cache(key_pattern: str) -> Any:
         """Delete keys in bulk based on the key pattern."""
         cache.delete_pattern(key_pattern)
