@@ -117,8 +117,6 @@ X2TEXT_PORT = os.environ.get("X2TEXT_PORT", 3004)
 STRUCTURE_TOOL_IMAGE_URL = get_required_setting("STRUCTURE_TOOL_IMAGE_URL")
 STRUCTURE_TOOL_IMAGE_NAME = get_required_setting("STRUCTURE_TOOL_IMAGE_NAME")
 STRUCTURE_TOOL_IMAGE_TAG = get_required_setting("STRUCTURE_TOOL_IMAGE_TAG")
-WORKFLOW_DATA_DIR = os.environ.get("WORKFLOW_DATA_DIR")
-API_STORAGE_DIR = os.environ.get("API_STORAGE_DIR")
 CACHE_TTL_SEC = os.environ.get("CACHE_TTL_SEC", 10800)
 
 DEFAULT_AUTH_USERNAME = os.environ.get("DEFAULT_AUTH_USERNAME", "unstract")
@@ -236,6 +234,7 @@ SHARED_APPS = (
     "workflow_manager.file_execution",
     "workflow_manager.endpoint_v2",
     "workflow_manager.workflow_v2",
+    "workflow_manager.execution",
     "tool_instance_v2",
     "pipeline_v2",
     "platform_settings_v2",

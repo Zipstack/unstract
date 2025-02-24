@@ -73,14 +73,18 @@ class OrganizationIdNotFound(APIException):
 
 class InvalidToolOutputType(APIException):
     status_code = 500
-    default_detail = "Invalid output type is returned from tool"
+    default_detail = "Unsupported output type is returned from tool"
 
 
 class ToolOutputTypeMismatch(APIException):
-    status_code = 400
-    default_detail = (
-        "The data type of the tool's output does not match the expected type."
-    )
+    status_code = 500
+    default_detail = "The tool's output type does not match the expected type"
+
+    def __init__(self, detail: Optional[str] = None, code: Optional[str] = None):
+        detail += (
+            ". Please report this error to the administrator for further assistance."
+        )
+        super().__init__(detail, code)
 
 
 class BigQueryTableNotFound(APIException):

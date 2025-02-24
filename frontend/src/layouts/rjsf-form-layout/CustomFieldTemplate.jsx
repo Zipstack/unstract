@@ -1,3 +1,4 @@
+import { Typography } from "antd";
 import PropTypes from "prop-types";
 
 const CustomFieldTemplate = (props) => {
@@ -5,7 +6,7 @@ const CustomFieldTemplate = (props) => {
   return (
     <div className={classNames}>
       {children}
-      {errors}
+      <Typography.Text type="danger">{errors}</Typography.Text>
       {help}
     </div>
   );

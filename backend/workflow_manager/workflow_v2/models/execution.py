@@ -1,8 +1,18 @@
+import logging
 import uuid
+from typing import Optional
 
+from api_v2.models import APIDeployment
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
+from pipeline_v2.models import Pipeline
 from tags.models import Tag
 from utils.models.base_model import BaseModel
+from workflow_manager.workflow_v2.enums import ExecutionStatus
+from workflow_manager.workflow_v2.models import Workflow
+
+logger = logging.getLogger(__name__)
+
 
 EXECUTION_ERROR_LENGTH = 256
 
@@ -32,6 +42,7 @@ class WorkflowExecution(BaseModel):
         null=True,
         db_comment="task id of asynchronous execution",
     )
+    # TODO: Make as foreign key to access the instance directly
     workflow_id = models.UUIDField(
         editable=False, db_comment="Id of workflow to be executed"
     )
@@ -47,10 +58,19 @@ class WorkflowExecution(BaseModel):
     execution_log_id = models.CharField(
         default="", editable=False, db_comment="Execution log events Id"
     )
-    # TODO: Restrict with an enum
-    status = models.CharField(default="", db_comment="Current status of execution")
+    status = models.CharField(
+        choices=ExecutionStatus.choices,
+        db_comment="Current status of the execution",
+    )
     result_acknowledged = models.BooleanField(
-        default=False, db_comment="Result acknowledged"
+        default=False,
+        db_comment=(
+            "To track if result is acknowledged by user - "
+            "used mainly by API deployments"
+        ),
+    )
+    total_files = models.PositiveIntegerField(
+        default=0, verbose_name="Total files", db_comment="Number of files to process"
     )
     error_message = models.CharField(
         max_length=EXECUTION_ERROR_LENGTH,
@@ -68,18 +88,53 @@ class WorkflowExecution(BaseModel):
         verbose_name = "Workflow Execution"
         verbose_name_plural = "Workflow Executions"
         db_table = "workflow_execution"
+        indexes = [
+            models.Index(fields=["workflow_id", "-created_at"]),
+            models.Index(fields=["pipeline_id", "-created_at"]),
+        ]
 
     @property
     def tag_names(self) -> list[str]:
         """Return a list of tag names associated with the workflow execution."""
         return list(self.tags.values_list("name", flat=True))
 
+    @property
+    def workflow_name(self) -> Optional[str]:
+        """Obtains the workflow's name associated to this execution."""
+        try:
+            return Workflow.objects.get(id=self.workflow_id).workflow_name
+        except ObjectDoesNotExist:
+            logger.warning(
+                f"Expected workflow ID '{self.workflow_id}' to exist but missing"
+            )
+            return None
+
+    @property
+    def pipeline_name(self) -> Optional[str]:
+        """Obtains the pipeline's name associated to this execution.
+        It could be ETL / TASK / API pipeline, None returned if there's no such pipeline
+        """
+        if not self.pipeline_id:
+            return None
+
+        try:
+            return APIDeployment.objects.get(id=self.pipeline_id).display_name
+        except ObjectDoesNotExist:
+            pass
+
+        try:
+            return Pipeline.objects.get(id=self.pipeline_id).pipeline_name
+        except ObjectDoesNotExist:
+            pass
+
+        return None
+
     def __str__(self) -> str:
         return (
             f"Workflow execution: {self.id} ("
             f"pipeline ID: {self.pipeline_id}, "
             f"workflow iD: {self.workflow_id}, "
-            f"execution method: {self.execution_method}, "
             f"status: {self.status}, "
+            f"files: {self.total_files}, "
             f"error message: {self.error_message})"
         )

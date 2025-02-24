@@ -10,7 +10,6 @@ from unstract.prompt_service.config import db
 from unstract.prompt_service.constants import (
     DBTableV2,
     ExecutionSource,
-    FeatureFlag,
     FileStorageKeys,
 )
 from unstract.prompt_service.constants import PromptServiceContants as PSKeys
@@ -19,14 +18,10 @@ from unstract.prompt_service.env_manager import EnvLoader
 from unstract.prompt_service.exceptions import APIError, RateLimitError
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
 from unstract.sdk.exceptions import SdkError
+from unstract.sdk.file_storage import FileStorage, FileStorageProvider
+from unstract.sdk.file_storage.constants import StorageType
+from unstract.sdk.file_storage.env_helper import EnvHelper
 from unstract.sdk.llm import LLM
-
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-    from unstract.sdk.file_storage import FileStorage, FileStorageProvider
-    from unstract.sdk.file_storage.constants import StorageType
-    from unstract.sdk.file_storage.env_helper import EnvHelper
 
 PAID_FEATURE_MSG = (
     "It is a cloud / enterprise feature. If you have purchased a plan and still "
@@ -233,6 +228,7 @@ def construct_and_run_prompt(
     prompt: str,
     metadata: dict[str, Any],
     file_path: str = "",
+    execution_source: Optional[str] = ExecutionSource.IDE.value,
 ) -> str:
     platform_postamble = tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, "")
     summarize_as_source = tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE)
@@ -255,6 +251,7 @@ def construct_and_run_prompt(
         prompt_type=output.get(PSKeys.TYPE, PSKeys.TEXT),
         enable_highlight=enable_highlight,
         file_path=file_path,
+        execution_source=execution_source,
     )
 
 
@@ -305,27 +302,23 @@ def run_completion(
         )
         highlight_data = None
         if highlight_data_plugin and enable_highlight:
-            if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-                fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
-                if execution_source == ExecutionSource.IDE.value:
-                    fs_instance = EnvHelper.get_storage(
-                        storage_type=StorageType.PERMANENT,
-                        env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-                    )
-                if execution_source == ExecutionSource.TOOL.value:
-                    fs_instance = EnvHelper.get_storage(
-                        storage_type=StorageType.TEMPORARY,
-                        env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
-                    )
-                highlight_data = highlight_data_plugin["entrypoint_cls"](
-                    logger=current_app.logger,
-                    file_path=file_path,
-                    fs_instance=fs_instance,
-                ).run
-            else:
-                highlight_data = highlight_data_plugin["entrypoint_cls"](
-                    logger=current_app.logger, file_path=file_path
-                ).run
+            fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
+            if execution_source == ExecutionSource.IDE.value:
+                fs_instance = EnvHelper.get_storage(
+                    storage_type=StorageType.PERMANENT,
+                    env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+                )
+            if execution_source == ExecutionSource.TOOL.value:
+                fs_instance = EnvHelper.get_storage(
+                    storage_type=StorageType.SHARED_TEMPORARY,
+                    env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
+                )
+            highlight_data = highlight_data_plugin["entrypoint_cls"](
+                logger=current_app.logger,
+                file_path=file_path,
+                fs_instance=fs_instance,
+            ).run
+
         completion = llm.complete(
             prompt=prompt,
             process_text=highlight_data,
@@ -366,32 +359,24 @@ def extract_table(
             "Unable to extract table details. "
             "Please contact admin to resolve this issue."
         )
-    if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-        fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
-        if execution_source == ExecutionSource.IDE.value:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.PERMANENT,
-                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-            )
-        if execution_source == ExecutionSource.TOOL.value:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.TEMPORARY,
-                env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
-            )
+    fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
+    if execution_source == ExecutionSource.IDE.value:
+        fs_instance = EnvHelper.get_storage(
+            storage_type=StorageType.PERMANENT,
+            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+        )
+    if execution_source == ExecutionSource.TOOL.value:
+        fs_instance = EnvHelper.get_storage(
+            storage_type=StorageType.TEMPORARY,
+            env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
+        )
     try:
-        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            answer = table_extractor["entrypoint_cls"].extract_large_table(
-                llm=llm,
-                table_settings=table_settings,
-                enforce_type=enforce_type,
-                fs_instance=fs_instance,
-            )
-        else:
-            answer = table_extractor["entrypoint_cls"].extract_large_table(
-                llm=llm,
-                table_settings=table_settings,
-                enforce_type=enforce_type,
-            )
+        answer = table_extractor["entrypoint_cls"].extract_large_table(
+            llm=llm,
+            table_settings=table_settings,
+            enforce_type=enforce_type,
+            fs_instance=fs_instance,
+        )
         structured_output[output[PSKeys.NAME]] = answer
         # We do not support summary and eval for table.
         # Hence returning the result
@@ -426,32 +411,23 @@ def extract_line_item(
         )
 
     # Read file content into context
-    if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-        fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
-        if execution_source == ExecutionSource.IDE.value:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.PERMANENT,
-                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-            )
-        if execution_source == ExecutionSource.TOOL.value:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.TEMPORARY,
-                env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
-            )
+    fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
+    if execution_source == ExecutionSource.IDE.value:
+        fs_instance = EnvHelper.get_storage(
+            storage_type=StorageType.PERMANENT,
+            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+        )
+    if execution_source == ExecutionSource.TOOL.value:
+        fs_instance = EnvHelper.get_storage(
+            storage_type=StorageType.SHARED_TEMPORARY,
+            env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
+        )
 
-        if not fs_instance.exists(extract_file_path):
-            raise FileNotFoundError(
-                f"The file at path '{extract_file_path}' does not exist."
-            )
-        context = fs_instance.read(path=extract_file_path, encoding="utf-8", mode="rb")
-    else:
-        if not os.path.exists(extract_file_path):
-            raise FileNotFoundError(
-                f"The file at path '{extract_file_path}' does not exist."
-            )
-
-        with open(extract_file_path, encoding="utf-8") as file:
-            context = file.read()
+    if not fs_instance.exists(extract_file_path):
+        raise FileNotFoundError(
+            f"The file at path '{extract_file_path}' does not exist."
+        )
+    context = fs_instance.read(path=extract_file_path, encoding="utf-8", mode="r")
 
     prompt = construct_prompt(
         preamble=tool_settings.get(PSKeys.PREAMBLE, ""),

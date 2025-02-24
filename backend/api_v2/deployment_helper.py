@@ -162,6 +162,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             pipeline_id=pipeline_id,
             mode=WorkflowExecution.Mode.QUEUE,
             tags=tags,
+            total_files=len(file_objs),
         )
         execution_id = workflow_execution.id
 

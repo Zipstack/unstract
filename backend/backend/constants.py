@@ -34,4 +34,3 @@ class FeatureFlag:
     """Temporary feature flags."""
 
     APP_DEPLOYMENT = "app_deployment"
-    REMOTE_FILE_STORAGE = "remote_file_storage"

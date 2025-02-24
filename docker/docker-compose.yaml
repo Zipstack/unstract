@@ -7,7 +7,7 @@ services:
     image: unstract/backend:${VERSION}
     container_name: unstract-backend
     restart: unless-stopped
-    command: migrate
+    command: --migrate
     ports:
       - "8000:8000"
     env_file:
@@ -17,6 +17,7 @@ services:
       - redis
       - reverse-proxy
       - minio
+      - createbuckets
       - platform-service
       - prompt-service
       - x2text-service
@@ -171,6 +172,8 @@ services:
     restart: unless-stopped
     depends_on:
       - db
+      - minio
+      - createbuckets
     ports:
       - "3003:3003"
     env_file:

@@ -2,23 +2,23 @@ FROM python:3.9-slim
 
 LABEL maintainer="Zipstack Inc."
 
-# Keeps Python from generating .pyc files in the container
-ENV PYTHONDONTWRITEBYTECODE 1
-# Set to immediately flush stdout and stderr streams without first buffering
-ENV PYTHONUNBUFFERED 1
-ENV PYTHONPATH /unstract
+ENV \
+    # Keeps Python from generating .pyc files in the container
+    PYTHONDONTWRITEBYTECODE=1 \
+    # Set to immediately flush stdout and stderr streams without first buffering
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/unstract \
+    BUILD_CONTEXT_PATH=backend \
+    BUILD_PACKAGES_PATH=unstract \
+    DJANGO_SETTINGS_MODULE="backend.settings.dev" \
+    PDM_VERSION=2.16.1 \
+    # Disable all telemetry by default
+    OTEL_TRACES_EXPORTER=none \
+    OTEL_TRACES_EXPORTER=none \
+    OTEL_LOGS_EXPORTER=none \
+    OTEL_SERVICE_NAME=unstract_backend
 
-ENV BUILD_CONTEXT_PATH backend
-ENV BUILD_PACKAGES_PATH unstract
-ENV DJANGO_SETTINGS_MODULE "backend.settings.dev"
-ENV PDM_VERSION 2.16.1
-
-# Disable all telemetry by default
-ENV OTEL_TRACES_EXPORTER none
-ENV OTEL_METRICS_EXPORTER none
-ENV OTEL_LOGS_EXPORTER none
-ENV OTEL_SERVICE_NAME unstract_backend
-
+# Install system dependencies
 RUN apt-get update; \
     apt-get --no-install-recommends install -y \
         # unstract sdk
@@ -31,28 +31,23 @@ RUN apt-get update; \
 
 WORKDIR /app
 
-COPY ${BUILD_CONTEXT_PATH}/ .
+# Create venv and install gunicorn and other deps in it
+RUN pdm venv create -w virtualenv --with-pip && \
+    . .venv/bin/activate && \
+    pip install --no-cache-dir \
+        gunicorn \
+        # Install opentelemetry for instrumentation
+        opentelemetry-distro \
+        opentelemetry-exporter-otlp && \
+    opentelemetry-bootstrap -a install
+
+COPY ${BUILD_CONTEXT_PATH}/ /app/
 # Copy local dependency packages
 COPY ${BUILD_PACKAGES_PATH}/ /unstract
 
-RUN set -e; \
-    \
-    rm -rf .venv .pdm* .python* 2>/dev/null; \
-    \
-    pdm venv create -w virtualenv --with-pip; \
-    # source command may not be availble in sh
-    . .venv/bin/activate; \
-    \
-    # Install opentelemetry for instrumentation.
-    pip install opentelemetry-distro opentelemetry-exporter-otlp; \
-    \
-    opentelemetry-bootstrap -a install; \
-    \
-    # Applicaiton dependencies.
-    pdm sync --prod --no-editable; \
-    \
-    # REF: https://docs.gunicorn.org/en/stable/deploy.html#using-virtualenv
-    pip install --no-cache-dir gunicorn;
+# Install dependencies
+RUN . .venv/bin/activate && \
+    pdm sync --prod --no-editable
 
 EXPOSE 8000
 

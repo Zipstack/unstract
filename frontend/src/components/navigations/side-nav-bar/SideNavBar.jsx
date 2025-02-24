@@ -46,6 +46,14 @@ try {
   // Plugin unavailable.
 }
 
+let selectedProductStore;
+let selectedProduct;
+try {
+  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
+} catch {
+  // Ignore if hook not available
+}
+
 const SideNavBar = ({ collapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
@@ -62,6 +70,12 @@ const SideNavBar = ({ collapsed }) => {
     // Do nothing
   }
 
+  if (selectedProductStore?.useSelectedProductStore) {
+    selectedProduct = selectedProductStore.useSelectedProductStore(
+      (state) => state?.selectedProduct
+    );
+  }
+
   let menu;
   if (sideMenu) {
     menu = sideMenu.useSideMenu();
@@ -73,7 +87,7 @@ const SideNavBar = ({ collapsed }) => {
       mainTitle: "MANAGE",
       subMenu: [
         {
-          id: 1.1,
+          id: 1.2,
           title: "API Deployments",
           description: "Unstructured to structured APIs",
           image: apiDeploy,
@@ -183,7 +197,7 @@ const SideNavBar = ({ collapsed }) => {
   ];
 
   if (dashboardSideMenuItem) {
-    unstractMenuItems[2].subMenu.push(dashboardSideMenuItem(orgName));
+    unstractMenuItems[0].subMenu.unshift(dashboardSideMenuItem(orgName));
   }
 
   const data = menu || unstractMenuItems;
@@ -193,23 +207,23 @@ const SideNavBar = ({ collapsed }) => {
   }
 
   const shouldDisableAll = useMemo(() => {
-    if (!unstractSubscriptionPlan || !UNSTRACT_SUBSCRIPTION_PLANS) {
+    const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
+    if (
+      !unstractSubscriptionPlan ||
+      !UNSTRACT_SUBSCRIPTION_PLANS ||
+      !isUnstract
+    ) {
       return false;
     }
 
-    return (
-      !unstractSubscriptionPlan?.subscriptionId &&
-      unstractSubscriptionPlan?.planType !== UNSTRACT_SUBSCRIPTION_PLANS?.TRIAL
-    );
+    return unstractSubscriptionPlan?.remainingDays <= 0;
   }, [unstractSubscriptionPlan]);
 
-  if (shouldDisableAll) {
-    data.forEach((mainMenuItem) => {
-      mainMenuItem.subMenu.forEach((subMenuItem) => {
-        subMenuItem.disable = true;
-      });
+  data.forEach((mainMenuItem) => {
+    mainMenuItem.subMenu.forEach((subMenuItem) => {
+      subMenuItem.disable = shouldDisableAll;
     });
-  }
+  });
 
   return (
     <Sider
