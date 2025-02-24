@@ -5,7 +5,7 @@
 groups = ["default", "hook-check-django-migrations", "lint"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:de6a595091f941f6feffeb116ffd71faad617c6b8963957282e225f3cf2354be"
+content_hash = "sha256:cea34dc34037fdd2a25b328a2f482a36118f216829f095a0e8d0688a49dd3b5c"
 
 [[package]]
 name = "adlfs"
@@ -1548,7 +1548,7 @@ files = [
 
 [[package]]
 name = "google-cloud-core"
-version = "2.4.2"
+version = "2.4.2rc0"
 requires_python = ">=3.7"
 summary = "Google Cloud API client core library"
 groups = ["hook-check-django-migrations"]
@@ -1557,8 +1557,8 @@ dependencies = [
     "google-auth<3.0dev,>=1.25.0",
 ]
 files = [
-    {file = "google_cloud_core-2.4.2-py2.py3-none-any.whl", hash = "sha256:7459c3e83de7cb8b9ecfec9babc910efb4314030c56dd798eaad12c426f7d180"},
-    {file = "google_cloud_core-2.4.2.tar.gz", hash = "sha256:a4fcb0e2fcfd4bfe963837fad6d10943754fd79c1a50097d68540b6eb3d67f35"},
+    {file = "google_cloud_core-2.4.2rc0-py2.py3-none-any.whl", hash = "sha256:39bc2222f593fdd677631b37f5cdc12b4a32e037bd870435e711424587f783bc"},
+    {file = "google_cloud_core-2.4.2rc0.tar.gz", hash = "sha256:646cd5cf67fa9dc50c50c81ae984977aedf705d90acb1110ae17dc9221fce6cb"},
 ]
 
 [[package]]
@@ -2389,7 +2389,7 @@ files = [
 
 [[package]]
 name = "llama-index-indices-managed-llama-cloud"
-version = "0.6.8"
+version = "0.6.7"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index indices llama-cloud integration"
 groups = ["hook-check-django-migrations"]
@@ -2398,8 +2398,8 @@ dependencies = [
     "llama-index-core<0.13.0,>=0.12.0",
 ]
 files = [
-    {file = "llama_index_indices_managed_llama_cloud-0.6.8-py3-none-any.whl", hash = "sha256:b741fa3c286fb91600d8e54a4c62084b5e230ea624c2a778a202ed4abf6a8e9b"},
-    {file = "llama_index_indices_managed_llama_cloud-0.6.8.tar.gz", hash = "sha256:6581a1a4e966c80d108706880dc39a12e38634eddff9e859f2cc0d4bb11c6483"},
+    {file = "llama_index_indices_managed_llama_cloud-0.6.7-py3-none-any.whl", hash = "sha256:7cbe280ab03407f07a9ac034acf3bf2627a95d3868245f07c6242ce7ede264a8"},
+    {file = "llama_index_indices_managed_llama_cloud-0.6.7.tar.gz", hash = "sha256:b2a9020352b08e992327b25a3a9a056cb0d9397bc037aa498e5cfe451a0f07d9"},
 ]
 
 [[package]]
@@ -3068,7 +3068,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.64.0"
+version = "1.63.2"
 requires_python = ">=3.8"
 summary = "The official Python library for the openai API"
 groups = ["hook-check-django-migrations"]
@@ -3083,8 +3083,8 @@ dependencies = [
     "typing-extensions<5,>=4.11",
 ]
 files = [
-    {file = "openai-1.64.0-py3-none-any.whl", hash = "sha256:20f85cde9e95e9fbb416e3cb5a6d3119c0b28308afd6e3cc47bf100623dac623"},
-    {file = "openai-1.64.0.tar.gz", hash = "sha256:2861053538704d61340da56e2f176853d19f1dc5704bc306b7597155f850d57a"},
+    {file = "openai-1.63.2-py3-none-any.whl", hash = "sha256:1f38b27b5a40814c2b7d8759ec78110df58c4a614c25f182809ca52b080ff4d4"},
+    {file = "openai-1.63.2.tar.gz", hash = "sha256:aeabeec984a7d2957b4928ceaa339e2ead19c61cfcf35ae62b7c363368d26360"},
 ]
 
 [[package]]
@@ -5131,7 +5131,7 @@ path = "./unstract/filesystem"
 summary = "Unstract filesystem package"
 groups = ["hook-check-django-migrations"]
 dependencies = [
-    "unstract-sdk~=0.57.0rc5",
+    "unstract-sdk~=0.58.0",
 ]
 
 [[package]]
@@ -5149,7 +5149,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.57.0rc5"
+version = "0.58.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["hook-check-django-migrations"]
@@ -5191,8 +5191,8 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.57.0rc5-py3-none-any.whl", hash = "sha256:adc4251de87158408c6350dc10bc3625a57c8e372d2d49a167f2b129ced722ef"},
-    {file = "unstract_sdk-0.57.0rc5.tar.gz", hash = "sha256:59c1b2ce79dd8bd6c85e6079066d8e7f3262e09079cd8dfc2e17f279478a8b5f"},
+    {file = "unstract_sdk-0.58.0-py3-none-any.whl", hash = "sha256:a9cbc4bbcda01bdd5b08796bc298ed178f94af0f0a32961b5eb52173178d4240"},
+    {file = "unstract_sdk-0.58.0.tar.gz", hash = "sha256:97d53e8b3ab96f687bf08925441df1775348c765c119f37024a99c8ae648b6c1"},
 ]
 
 [[package]]
@@ -5208,7 +5208,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
     "unstract-flags",
-    "unstract-sdk~=0.57.0rc5",
+    "unstract-sdk~=0.58.0",
     "unstract-tool-sandbox",
 ]
 

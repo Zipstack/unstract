@@ -46,6 +46,21 @@ services:
       - traefik.http.routers.minio.rule=Host(`minio.unstract.localhost`)
       - traefik.http.services.minio.loadbalancer.server.port=9001
 
+  createbuckets:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set minio http://unstract-minio:9000 minio minio123;
+      mc mb minio/unstract;
+      mc mirror /app/prompt-studio-data minio/unstract/prompt-studio-data;
+      exit 0;
+      "
+    volumes:
+      - prompt_studio_data:/app/prompt-studio-data
+
   reverse-proxy:
     # The official v2 Traefik docker image
     image: traefik:v2.10
