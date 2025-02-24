@@ -77,6 +77,16 @@ class PromptServiceContants:
     EXECUTION_SOURCE = "execution_source"
     METRICS = "metrics"
     LINE_ITEM = "line-item"
+    PAID_FEATURE_MSG = (
+        "It is a cloud / enterprise feature. If you have purchased a plan and still "
+        "face this issue, please contact support"
+    )
+    NO_CONTEXT_ERROR = (
+        "Couldn't fetch context from vector DB. "
+        "This happens usually due to a delay by the Vector DB "
+        "provider to confirm writes to DB. "
+        "Please try again after some time"
+    )
 
 
 class RunLevel(Enum):
@@ -89,12 +99,6 @@ class RunLevel(Enum):
     EVAL = "EVAL"
     CHALLENGE = "CHALLENGE"
     TABLE_EXTRACTION = "TABLE_EXTRACTION"
-
-
-class FeatureFlag:
-    """Temporary feature flags."""
-
-    REMOTE_FILE_STORAGE = "remote_file_storage"
 
 
 class DBTableV2:

@@ -9,25 +9,21 @@ from typing import Any
 from flask import Blueprint
 from flask import current_app as app
 from flask import request
+from flask_restful import reqparse
 from unstract.prompt_service_v2.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service_v2.constants import RunLevel
 from unstract.prompt_service_v2.exceptions import APIError, NoPayloadError
 from unstract.prompt_service_v2.helper.auth_helper import AuthHelper
 from unstract.prompt_service_v2.helper.plugin_helper import PluginManager
 from unstract.prompt_service_v2.helper.prompt_ide_base_tool import PromptServiceBaseTool
-from unstract.prompt_service_v2.helpers import (
-    construct_and_run_prompt,
-    extract_line_item,
-    extract_table,
-    extract_variable,
-    fetch_context_from_vector_db,
-    get_cleaned_context,
-    query_usage_metadata,
-    run_completion,
-    run_retrieval,
+from unstract.prompt_service_v2.helper.usage_helper import UsageHelper
+from unstract.prompt_service_v2.services.answer_prompt_service import (
+    AnswerPromptService,
+)
+from unstract.prompt_service_v2.services.variable_replacement_service import (
+    VariableReplacementService,
 )
 from unstract.prompt_service_v2.utils.log import publish_log
-from unstract.prompt_service_v2.variable_extractor.base import VariableExtractor
 from unstract.sdk.adapters.llm.no_op.src.no_op_custom_llm import NoOpCustomLLM
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import Embedding
@@ -37,6 +33,67 @@ from unstract.sdk.llm import LLM
 from unstract.sdk.vector_db import VectorDB
 
 answer_prompt_bp = Blueprint("answer-prompt", __name__)
+
+PUBLISHED_API_NOT_FOUND = "Published API with unique name '{}' does not exist"
+published_api_parser = reqparse.RequestParser()
+published_api_parser.add_argument(
+    "name", type=str, required=True, help="Name cannot be blank", location="form"
+)
+published_api_parser.add_argument(
+    "emoji", type=str, required=True, help="Emoji cannot be blank", location="form"
+)
+published_api_parser.add_argument(
+    "unique_name",
+    type=str,
+    required=True,
+    help="Unique name cannot be blank",
+    location="form",
+)
+published_api_parser.add_argument(
+    "seo_title",
+    type=str,
+    required=True,
+    help="SEO title cannot be blank",
+    location="form",
+)
+published_api_parser.add_argument(
+    "description",
+    type=str,
+    required=True,
+    help="Description cannot be blank",
+    location="form",
+)
+published_api_parser.add_argument(
+    "endpoint",
+    type=str,
+    required=True,
+    help="Endpoint cannot be blank",
+    location="form",
+)
+published_api_parser.add_argument(
+    "key", type=str, required=True, help="Key cannot be blank", location="form"
+)
+published_api_parser.add_argument(
+    "cost_per_call",
+    type=float,
+    required=True,
+    help="Cost per call cannot be blank",
+    location="form",
+)
+published_api_parser.add_argument(
+    "public_endpoint_path",
+    type=str,
+    required=True,
+    help="Public endpoint path postfix cannot be blank",
+    location="form",
+)
+published_api_parser.add_argument(
+    "is_public",
+    type=str,
+    required=True,
+    help="Public endpoint path postfix cannot be blank",
+    location="form",
+)
 
 
 @AuthHelper.auth_required
@@ -87,8 +144,8 @@ def prompt_processor() -> Any:
         chunk_size = output[PSKeys.CHUNK_SIZE]
         util = PromptServiceBaseTool(platform_key=platform_key)
         index = Index(tool=util, run_id=run_id, capture_metrics=True)
-        if VariableExtractor.is_variables_present(prompt_text=prompt_text):
-            prompt_text = VariableExtractor.replace_variables_in_prompt(
+        if VariableReplacementService.is_variables_present(prompt_text=prompt_text):
+            prompt_text = VariableReplacementService.replace_variables_in_prompt(
                 prompt=output,
                 structured_output=structured_output,
                 log_events_id=log_events_id,
@@ -113,7 +170,7 @@ def prompt_processor() -> Any:
         # Finding and replacing the variables in the prompt
         # The variables are in the form %variable_name%
 
-        output[PSKeys.PROMPTX] = extract_variable(
+        output[PSKeys.PROMPTX] = AnswerPromptService.extract_variable(
             structured_output, variable_names, output, prompt_text
         )
 
@@ -179,14 +236,16 @@ def prompt_processor() -> Any:
 
         if output[PSKeys.TYPE] == PSKeys.TABLE or output[PSKeys.TYPE] == PSKeys.RECORD:
             try:
-                structured_output = extract_table(
+                structured_output = AnswerPromptService.extract_table(
                     output=output,
                     structured_output=structured_output,
                     llm=llm,
                     enforce_type=output[PSKeys.TYPE],
                     execution_source=execution_source,
                 )
-                metadata = query_usage_metadata(token=platform_key, metadata=metadata)
+                metadata = UsageHelper.query_usage_metadata(
+                    token=platform_key, metadata=metadata
+                )
                 response = {
                     PSKeys.METADATA: metadata,
                     PSKeys.OUTPUT: structured_output,
@@ -213,7 +272,7 @@ def prompt_processor() -> Any:
                 raise api_error
         elif output[PSKeys.TYPE] == PSKeys.LINE_ITEM:
             try:
-                structured_output = extract_line_item(
+                structured_output = AnswerPromptService.extract_line_item(
                     tool_settings=tool_settings,
                     output=output,
                     structured_output=structured_output,
@@ -245,7 +304,7 @@ def prompt_processor() -> Any:
         try:
             if chunk_size == 0:
                 # We can do this only for chunkless indexes
-                context: set[str] = fetch_context_from_vector_db(
+                context: set[str] = AnswerPromptService.fetch_context_from_vector_db(
                     index=index,
                     output=output,
                     doc_id=doc_id,
@@ -266,7 +325,7 @@ def prompt_processor() -> Any:
                     RunLevel.RUN,
                     "Retrieving answer from LLM",
                 )
-                answer = construct_and_run_prompt(
+                answer = AnswerPromptService.construct_and_run_prompt(
                     tool_settings=tool_settings,
                     output=output,
                     llm=llm,
@@ -276,8 +335,8 @@ def prompt_processor() -> Any:
                     file_path=file_path,
                     execution_source=execution_source,
                 )
-                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = get_cleaned_context(
-                    context
+                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = (
+                    AnswerPromptService.get_cleaned_context(context)
                 )
             else:
                 answer = "NA"
@@ -297,7 +356,7 @@ def prompt_processor() -> Any:
 
                 if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
                     vector_index = vector_db.get_vector_store_index()
-                    answer, context = run_retrieval(
+                    answer, context = AnswerPromptService.run_retrieval(
                         tool_settings=tool_settings,
                         output=output,
                         doc_id=doc_id,
@@ -307,8 +366,8 @@ def prompt_processor() -> Any:
                         metadata=metadata,
                         execution_source=execution_source,
                     )
-                    metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = get_cleaned_context(
-                        context
+                    metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = (
+                        AnswerPromptService.get_cleaned_context(context)
                     )
                 else:
                     app.logger.info(
@@ -355,7 +414,7 @@ def prompt_processor() -> Any:
                         percentages or other grouping \
                         characters. No explanation is required.\
                         If you cannot extract the number, output 0."
-                    answer = run_completion(
+                    answer = AnswerPromptService.run_completion(
                         llm=llm,
                         prompt=prompt,
                     )
@@ -385,7 +444,7 @@ def prompt_processor() -> Any:
                     prompt = f'Extract the email from the following text:\n{answer}\n\nOutput just the email. \
                         The email should be directly assignable to a string variable. \
                             No explanation is required. If you cannot extract the email, output "NA".'  # noqa
-                    answer = run_completion(
+                    answer = AnswerPromptService.run_completion(
                         llm=llm,
                         prompt=prompt,
                     )
@@ -398,7 +457,7 @@ def prompt_processor() -> Any:
                           The date should be in ISO date time format. No explanation is required. \
                             The date should be directly assignable to a date variable. \
                                 If you cannot convert the string into a date, output "NA".'  # noqa
-                    answer = run_completion(
+                    answer = AnswerPromptService.run_completion(
                         llm=llm,
                         prompt=prompt,
                     )
@@ -412,7 +471,7 @@ def prompt_processor() -> Any:
                         Output in single word.\
                         If the context is trying to convey that the answer is true, \
                         then return "yes", else return "no".'
-                    answer = run_completion(
+                    answer = AnswerPromptService.run_completion(
                         llm=llm,
                         prompt=prompt,
                     )
@@ -433,7 +492,7 @@ def prompt_processor() -> Any:
                             Output just the JSON string. No explanation is required. \
                             If you cannot extract the JSON string, output {{}}"
                         try:
-                            answer = run_completion(
+                            answer = AnswerPromptService.run_completion(
                                 llm=llm,
                                 prompt=prompt,
                                 prompt_type=PSKeys.JSON,
@@ -642,7 +701,7 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         "Execution complete",
     )
-    metadata = query_usage_metadata(token=platform_key, metadata=metadata)
+    metadata = UsageHelper.query_usage_metadata(token=platform_key, metadata=metadata)
     response = {
         PSKeys.METADATA: metadata,
         PSKeys.OUTPUT: structured_output,

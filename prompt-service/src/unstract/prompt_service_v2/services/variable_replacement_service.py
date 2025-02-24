@@ -4,36 +4,13 @@ from flask import current_app as app
 from unstract.prompt_service.utils.log import publish_log
 from unstract.prompt_service_v2.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service_v2.constants import RunLevel, VariableType
+from unstract.prompt_service_v2.helper.variable_replacement_helper import (
+    VariableReplacementHelper,
+)
 from unstract.sdk.constants import LogLevel
 
-from .prompt_variable_service import VariableService
 
-
-class VariableExtractor:
-
-    @staticmethod
-    def execute_variable_replacement(
-        prompt_text: str, variable_map: dict[str, Any]
-    ) -> str:
-        variables: list[str] = VariableService.extract_variables_from_prompt(
-            prompt_text=prompt_text
-        )
-        for variable in variables:
-            variable_type = VariableService.identify_variable_type(variable=variable)
-            if variable_type == VariableType.STATIC:
-                prompt_text = VariableService.replace_static_variable(
-                    prompt=prompt_text,
-                    structured_output=variable_map,
-                    variable=variable,
-                )
-
-            if variable_type == VariableType.DYNAMIC:
-                prompt_text = VariableService.replace_dynamic_variable(
-                    prompt=prompt_text,
-                    variable=variable,
-                    structured_output=variable_map,
-                )
-        return prompt_text
+class VariableReplacementService:
 
     @staticmethod
     def is_variables_present(prompt_text: str) -> bool:
@@ -45,7 +22,9 @@ class VariableExtractor:
         Returns:
             bool: True if variables are present else False
         """
-        return bool(len(VariableService.extract_variables_from_prompt(prompt_text)))
+        return bool(
+            len(VariableReplacementHelper.extract_variables_from_prompt(prompt_text))
+        )
 
     @staticmethod
     def replace_variables_in_prompt(
@@ -86,13 +65,13 @@ class VariableExtractor:
         prompt_text = prompt[PSKeys.PROMPT]
         try:
             variable_map = prompt[PSKeys.VARIABLE_MAP]
-            prompt_text = VariableExtractor.execute_variable_replacement(
+            prompt_text = VariableReplacementService._execute_variable_replacement(
                 prompt_text=prompt[PSKeys.PROMPT], variable_map=variable_map
             )
         except KeyError:
             # Executed incase of structured tool and
             # APIs where we do not set the variable map
-            prompt_text = VariableExtractor.execute_variable_replacement(
+            prompt_text = VariableReplacementService._execute_variable_replacement(
                 prompt_text=prompt_text, variable_map=structured_output
             )
         finally:
@@ -110,4 +89,30 @@ class VariableExtractor:
                 RunLevel.RUN,
                 f"Prompt after variable replacement:{prompt_text} ",
             )
+        return prompt_text
+
+    @staticmethod
+    def _execute_variable_replacement(
+        prompt_text: str, variable_map: dict[str, Any]
+    ) -> str:
+        variables: list[str] = VariableReplacementHelper.extract_variables_from_prompt(
+            prompt_text=prompt_text
+        )
+        for variable in variables:
+            variable_type = VariableReplacementHelper.identify_variable_type(
+                variable=variable
+            )
+            if variable_type == VariableType.STATIC:
+                prompt_text = VariableReplacementHelper.replace_static_variable(
+                    prompt=prompt_text,
+                    structured_output=variable_map,
+                    variable=variable,
+                )
+
+            if variable_type == VariableType.DYNAMIC:
+                prompt_text = VariableReplacementHelper.replace_dynamic_variable(
+                    prompt=prompt_text,
+                    variable=variable,
+                    structured_output=variable_map,
+                )
         return prompt_text
