@@ -77,6 +77,7 @@ class PromptServiceContants:
     EXECUTION_SOURCE = "execution_source"
     METRICS = "metrics"
     LINE_ITEM = "line-item"
+    LINE_NUMBERS = "line_numbers"
 
 
 class RunLevel(Enum):
