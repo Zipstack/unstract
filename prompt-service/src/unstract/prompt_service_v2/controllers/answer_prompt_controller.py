@@ -9,7 +9,6 @@ from typing import Any
 from flask import Blueprint
 from flask import current_app as app
 from flask import request
-from flask_restful import reqparse
 from unstract.prompt_service_v2.constants import PromptServiceContants as PSKeys
 from unstract.prompt_service_v2.constants import RunLevel
 from unstract.prompt_service_v2.exceptions import APIError, NoPayloadError
@@ -33,67 +32,6 @@ from unstract.sdk.llm import LLM
 from unstract.sdk.vector_db import VectorDB
 
 answer_prompt_bp = Blueprint("answer-prompt", __name__)
-
-PUBLISHED_API_NOT_FOUND = "Published API with unique name '{}' does not exist"
-published_api_parser = reqparse.RequestParser()
-published_api_parser.add_argument(
-    "name", type=str, required=True, help="Name cannot be blank", location="form"
-)
-published_api_parser.add_argument(
-    "emoji", type=str, required=True, help="Emoji cannot be blank", location="form"
-)
-published_api_parser.add_argument(
-    "unique_name",
-    type=str,
-    required=True,
-    help="Unique name cannot be blank",
-    location="form",
-)
-published_api_parser.add_argument(
-    "seo_title",
-    type=str,
-    required=True,
-    help="SEO title cannot be blank",
-    location="form",
-)
-published_api_parser.add_argument(
-    "description",
-    type=str,
-    required=True,
-    help="Description cannot be blank",
-    location="form",
-)
-published_api_parser.add_argument(
-    "endpoint",
-    type=str,
-    required=True,
-    help="Endpoint cannot be blank",
-    location="form",
-)
-published_api_parser.add_argument(
-    "key", type=str, required=True, help="Key cannot be blank", location="form"
-)
-published_api_parser.add_argument(
-    "cost_per_call",
-    type=float,
-    required=True,
-    help="Cost per call cannot be blank",
-    location="form",
-)
-published_api_parser.add_argument(
-    "public_endpoint_path",
-    type=str,
-    required=True,
-    help="Public endpoint path postfix cannot be blank",
-    location="form",
-)
-published_api_parser.add_argument(
-    "is_public",
-    type=str,
-    required=True,
-    help="Public endpoint path postfix cannot be blank",
-    location="form",
-)
 
 
 @AuthHelper.auth_required
