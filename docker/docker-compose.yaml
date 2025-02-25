@@ -17,6 +17,7 @@ services:
       - redis
       - reverse-proxy
       - minio
+      - createbuckets
       - platform-service
       - prompt-service
       - x2text-service
@@ -171,6 +172,8 @@ services:
     restart: unless-stopped
     depends_on:
       - db
+      - minio
+      - createbuckets
     ports:
       - "3003:3003"
     env_file:
