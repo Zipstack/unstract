@@ -95,8 +95,6 @@ class FilePattern:
         "*.tar.bz2",
         "*.tgz",
         "*.tbz2",
-        # Data/Config formats
-        "*.json",
     ]
 
 
