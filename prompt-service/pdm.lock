@@ -210,7 +210,7 @@ files = [
 
 [[package]]
 name = "anthropic"
-version = "0.47.0"
+version = "0.47.1"
 requires_python = ">=3.8"
 summary = "The official Python library for the anthropic API"
 groups = ["default"]
@@ -224,26 +224,26 @@ dependencies = [
     "typing-extensions<5,>=4.10",
 ]
 files = [
-    {file = "anthropic-0.47.0-py3-none-any.whl", hash = "sha256:294b10e9ca800f57949f635be7b611e8ecfe8f9f2a56a2c165200841a61bddb0"},
-    {file = "anthropic-0.47.0.tar.gz", hash = "sha256:6e19994d3a9fc7527c8505b62b1494ca3f39d6bb993a4885014575c09905ebfc"},
+    {file = "anthropic-0.47.1-py3-none-any.whl", hash = "sha256:a822e8731613026410f7819604c58ccab50416158ccdda3b96a3abaf3a061453"},
+    {file = "anthropic-0.47.1.tar.gz", hash = "sha256:032e900a650077677c2970c1bffd54b2c274907fab7e226ec0e6a8540d422e97"},
 ]
 
 [[package]]
 name = "anthropic"
-version = "0.47.0"
+version = "0.47.1"
 extras = ["bedrock", "vertex"]
 requires_python = ">=3.8"
 summary = "The official Python library for the anthropic API"
 groups = ["default"]
 dependencies = [
-    "anthropic==0.47.0",
+    "anthropic==0.47.1",
     "boto3>=1.28.57",
     "botocore>=1.31.57",
     "google-auth<3,>=2",
 ]
 files = [
-    {file = "anthropic-0.47.0-py3-none-any.whl", hash = "sha256:294b10e9ca800f57949f635be7b611e8ecfe8f9f2a56a2c165200841a61bddb0"},
-    {file = "anthropic-0.47.0.tar.gz", hash = "sha256:6e19994d3a9fc7527c8505b62b1494ca3f39d6bb993a4885014575c09905ebfc"},
+    {file = "anthropic-0.47.1-py3-none-any.whl", hash = "sha256:a822e8731613026410f7819604c58ccab50416158ccdda3b96a3abaf3a061453"},
+    {file = "anthropic-0.47.1.tar.gz", hash = "sha256:032e900a650077677c2970c1bffd54b2c274907fab7e226ec0e6a8540d422e97"},
 ]
 
 [[package]]
