@@ -1,7 +1,7 @@
 from typing import Any, Optional
 
-from unstract.prompt_service_v2.config import db
 from unstract.prompt_service_v2.constants import DBTableV2
+from unstract.prompt_service_v2.extensions import db
 from unstract.prompt_service_v2.utils.env_loader import get_env_or_die
 
 DB_SCHEMA = get_env_or_die("DB_SCHEMA", "unstract")

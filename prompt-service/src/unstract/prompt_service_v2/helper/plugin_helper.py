@@ -14,17 +14,20 @@ class PluginManager:
         if cls._instance is None:
             # Only create the instance if it doesn't already exist
             cls._instance = super().__new__(cls)
-            cls._instance.app = app
             cls._instance.plugins = {}
             cls._instance.plugins_dir = (
                 Path(
                     # Temporary change for v2 and will be removed once tested
-                    os.path.dirname(__file__)
-                    # .replace('prompt_service_v2', 'prompt_service')
+                    os.path.dirname(__file__).replace(
+                        "prompt_service_v2", "prompt_service"
+                    )
                 ).parent
                 / "plugins"
             )
-            cls._instance.plugins_pkg = "unstract.prompt_service_v2.plugins"
+            cls._instance.plugins_pkg = "unstract.prompt_service.plugins"
+            # Always update `app` if provided
+            if app:
+                cls._instance.app = app
         return cls._instance
 
     def load_plugins(self) -> None:

@@ -1,8 +1,8 @@
 from typing import Any, Optional
 
 from flask import Request, current_app, request
-from unstract.prompt_service_v2.config import db
 from unstract.prompt_service_v2.constants import DBTableV2
+from unstract.prompt_service_v2.extensions import db
 from unstract.prompt_service_v2.utils.db_utils import DBUtils
 from unstract.prompt_service_v2.utils.env_loader import get_env_or_die
 
@@ -84,6 +84,7 @@ class AuthHelper:
             # Check if bearer token exists and validate it
             if not token or not AuthHelper.validate_bearer_token(token):
                 return "Unauthorized", 401
+            request.token = token
             return func(*args, **kwargs)
 
         return wrapper
