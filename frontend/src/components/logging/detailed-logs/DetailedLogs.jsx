@@ -6,7 +6,7 @@ import {
   EyeOutlined,
   FileTextOutlined,
 } from "@ant-design/icons";
-import { Button, Card, Flex, Table, Typography } from "antd";
+import { Button, Card, Flex, Table, Tooltip, Typography } from "antd";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
@@ -16,6 +16,7 @@ import "./DetailedLogs.css";
 import {
   formatSecondsToHMS,
   formattedDateTime,
+  formattedDateTimeWithSeconds,
 } from "../../../helpers/GetStaticData";
 import { LogModal } from "../log-modal/LogModal";
 
@@ -36,12 +37,13 @@ const DetailedLogs = () => {
   });
   const [logDescModalOpen, setLogDescModalOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [ordering, setOrdering] = useState(null);
 
   const fetchExecutionDetails = async (id) => {
     try {
-      const url = `/api/v1/unstract/${sessionDetails?.orgId}/execution/${id}`;
+      const url = `/api/v1/unstract/${sessionDetails?.orgId}/executionss/${id}`;
       const response = await axiosPrivate.get(url);
-      const item = response?.data?.results[0];
+      const item = response?.data;
       const total = item?.total_files || 0;
       const processed =
         (item?.successful_files || 0) + (item?.failed_files || 0);
@@ -55,6 +57,7 @@ const DetailedLogs = () => {
         status: item?.status,
         executionName: item?.workflow_name,
         ranFor: formatSecondsToHMS(item?.execution_time),
+        executedAtWithSeconds: formattedDateTimeWithSeconds(item?.created_at),
       };
 
       setExecutionDetails(formattedData);
@@ -72,6 +75,7 @@ const DetailedLogs = () => {
         params: {
           page_size: pagination.pageSize,
           page,
+          ordering,
         },
       });
       // Replace with your actual API URL
@@ -90,6 +94,7 @@ const DetailedLogs = () => {
           executedAt: formattedDateTime(item?.created_at),
           executionTime: item?.execution_time,
           executionId: item?.id,
+          executedAtWithSeconds: formattedDateTimeWithSeconds(item?.created_at),
         };
       });
 
@@ -131,19 +136,41 @@ const DetailedLogs = () => {
       title: "Executed At",
       dataIndex: "executedAt",
       key: "executedAt",
+      sorter: true,
+      render: (_, record) => (
+        <Tooltip title={record.executedAtWithSeconds}>
+          {record.executedAt}
+        </Tooltip>
+      ),
     },
     {
       title: "Action",
       dataIndex: "action",
       key: "action",
       render: (_, record) => (
-        <Button
-          icon={<EyeOutlined />}
-          onClick={() => handleLogsModalOpen(record)}
-        ></Button>
+        <Tooltip title="View logs">
+          <Button
+            icon={<EyeOutlined />}
+            onClick={() => handleLogsModalOpen(record)}
+          ></Button>
+        </Tooltip>
       ),
     },
   ];
+
+  const handleTableChange = (pagination, filters, sorter) => {
+    setPagination((prev) => {
+      return { ...prev, ...pagination };
+    });
+
+    if (sorter.order) {
+      // Determine ascending or descending order
+      const order = sorter.order === "ascend" ? "created_at" : "-created_at";
+      setOrdering(order);
+    } else {
+      setOrdering(null); // Default ordering if sorting is cleared
+    }
+  };
 
   const handleLogsModalOpen = (record) => {
     setLogDescModalOpen(true);
@@ -153,7 +180,7 @@ const DetailedLogs = () => {
   useEffect(() => {
     fetchExecutionDetails(id);
     fetchExecutionFiles(id, pagination.current);
-  }, [pagination.current]);
+  }, [pagination.current, ordering]);
 
   return (
     <>
@@ -166,7 +193,9 @@ const DetailedLogs = () => {
             <CalendarOutlined className="logging-card-icons" />
             <div>
               <Typography className="logging-card-title">Started</Typography>
-              <Typography>{executionDetails?.executedAt}</Typography>
+              <Tooltip title={executionDetails?.executedAtWithSeconds}>
+                <Typography>{executionDetails?.executedAt}</Typography>
+              </Tooltip>
             </div>
           </Flex>
         </Card>
@@ -198,8 +227,9 @@ const DetailedLogs = () => {
         <Table
           dataSource={executionFiles}
           columns={columnsDetailedTable}
-          pagination={pagination}
+          pagination={{ ...pagination }}
           loading={loading}
+          onChange={handleTableChange}
         />
       </div>
       <LogModal

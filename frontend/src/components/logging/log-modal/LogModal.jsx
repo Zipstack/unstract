@@ -1,12 +1,17 @@
-import { Modal, Table } from "antd";
+import { Button, Modal, Radio, Space, Table, Tooltip } from "antd";
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
+import { FilterOutlined } from "@ant-design/icons";
 
+import "./LogModal.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { formattedDateTime } from "../../../helpers/GetStaticData";
+import {
+  formattedDateTime,
+  formattedDateTimeWithSeconds,
+} from "../../../helpers/GetStaticData";
 
 function LogModal({
   executionId,
@@ -21,6 +26,8 @@ function LogModal({
 
   const [executionLogs, setExecutionLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [selectedLogLevel, setSelectedLogLevel] = useState(null);
+  const [ordering, setOrdering] = useState(null);
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -35,6 +42,8 @@ function LogModal({
           page_size: pagination.pageSize,
           page,
           file_execution_id: fileId,
+          log_level: selectedLogLevel,
+          ordering,
         },
       });
       // Replace with your actual API URL
@@ -50,6 +59,7 @@ function LogModal({
           eventStage: item.data?.stage,
           logLevel: item.data?.level,
           log: item?.data?.log,
+          executedAtWithSeconds: formattedDateTimeWithSeconds(item?.created_at),
         };
       });
 
@@ -72,7 +82,13 @@ function LogModal({
       title: "Event Time",
       dataIndex: "eventTime",
       key: "eventTime",
+      sorter: true,
       width: 200,
+      render: (_, record) => (
+        <Tooltip title={record.executedAtWithSeconds}>
+          {record.eventTime}
+        </Tooltip>
+      ),
     },
     {
       title: "Event Stage",
@@ -83,6 +99,41 @@ function LogModal({
       title: "Log Level",
       dataIndex: "logLevel",
       key: "level",
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm }) => (
+        <div style={{ padding: 8 }}>
+          <Radio.Group
+            onChange={(e) => {
+              setSelectedKeys(e.target.value ? [e.target.value] : []);
+              confirm();
+            }}
+            value={selectedKeys[0] || null}
+          >
+            <Space direction="vertical">
+              <Radio value="INFO">INFO</Radio>
+              <Radio value="WARN">WARN</Radio>
+              <Radio value="DEBUG">DEBUG</Radio>
+              <Radio value="ERROR">ERROR</Radio>
+            </Space>
+          </Radio.Group>
+          <br />
+          <Button
+            className="clear-button"
+            type="primary"
+            size="small"
+            onClick={() => handleClearFilter(confirm)}
+          >
+            clear
+          </Button>
+        </div>
+      ),
+      filteredValue: selectedLogLevel ? [selectedLogLevel] : [],
+      filterIcon: (filtered) => (
+        <FilterOutlined
+          style={{
+            color: filtered ? "#1677ff" : undefined,
+          }}
+        />
+      ),
       render: (level) => <span className={level?.toLowerCase()}>{level}</span>,
     },
     {
@@ -92,11 +143,31 @@ function LogModal({
     },
   ];
 
+  const handleClearFilter = (confirm) => {
+    setSelectedLogLevel(null);
+    confirm();
+  };
+
+  const handleTableChange = (pagination, filters, sorter) => {
+    setPagination((prev) => {
+      return { ...prev, ...pagination };
+    });
+
+    if (sorter.order) {
+      // Determine ascending or descending order
+      const order = sorter.order === "ascend" ? "created_at" : "-created_at";
+      setOrdering(order);
+    } else {
+      setOrdering(null);
+    }
+    setSelectedLogLevel(filters.level[0]);
+  };
+
   useEffect(() => {
     if (logDescModalOpen) {
       fetchExecutionFileLogs(executionId, fileId, pagination.current);
     }
-  }, [logDescModalOpen, pagination.current]);
+  }, [logDescModalOpen, pagination.current, selectedLogLevel, ordering]);
   return (
     <Modal
       title={`Execution Log Details - ${fileId}`}
@@ -115,13 +186,9 @@ function LogModal({
         align="left"
         pagination={{
           ...pagination,
-          onChange: (page) => {
-            setPagination((prev) => {
-              return { ...prev, current: page };
-            });
-          },
         }}
         loading={loading}
+        onChange={handleTableChange}
       />
     </Modal>
   );

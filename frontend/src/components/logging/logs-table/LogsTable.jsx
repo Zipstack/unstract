@@ -1,15 +1,28 @@
-import { Table, Tooltip } from "antd";
+import { Table, Tooltip, Typography } from "antd";
 import "./LogsTable.css";
 import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
 
-const LogsTable = ({ tableData, loading, pagination, setPagination }) => {
+const LogsTable = ({
+  tableData,
+  loading,
+  pagination,
+  setPagination,
+  setOrdering,
+}) => {
   const navigate = useNavigate();
   const columns = [
     {
       title: "Executed At",
       dataIndex: "executedAt",
       key: "executedAt",
+      showSorterTooltip: { target: "full-header" },
+      sorter: true,
+      render: (_, record) => (
+        <Tooltip title={record.executedAtWithSeconds}>
+          {record.executedAt}
+        </Tooltip>
+      ),
     },
     {
       title: "Execution ID",
@@ -26,8 +39,17 @@ const LogsTable = ({ tableData, loading, pagination, setPagination }) => {
     },
     {
       title: "Execution Name",
-      dataIndex: "executionName",
+      dataIndex: "pipelineName",
       key: "executionName",
+      render: (_, record) => (
+        <>
+          <Typography.Text strong>{record?.pipelineName}</Typography.Text>
+          <br />
+          <Typography.Text type="secondary" className="p-or-d-typography">
+            from {record?.workflowName}
+          </Typography.Text>
+        </>
+      ),
     },
     {
       title: "Status",
@@ -57,21 +79,29 @@ const LogsTable = ({ tableData, loading, pagination, setPagination }) => {
     },
   ];
 
+  const handleTableChange = (pagination, filters, sorter) => {
+    setPagination((prev) => {
+      return { ...prev, ...pagination };
+    });
+
+    if (sorter.order) {
+      // Determine ascending or descending order
+      const order = sorter.order === "ascend" ? "created_at" : "-created_at";
+      setOrdering(order);
+    } else {
+      setOrdering(null); // Default ordering if sorting is cleared
+    }
+  };
+
   return (
     <Table
       columns={columns}
       dataSource={tableData}
-      pagination={{
-        ...pagination,
-        onChange: (page) => {
-          setPagination((prev) => {
-            return { ...prev, current: page };
-          });
-        },
-      }}
+      pagination={pagination}
       bordered
       size="small"
       loading={loading}
+      onChange={handleTableChange}
     />
   );
 };
@@ -81,6 +111,7 @@ LogsTable.propTypes = {
   loading: PropTypes.bool,
   pagination: PropTypes.object,
   setPagination: PropTypes.func,
+  setOrdering: PropTypes.func,
 };
 
 export { LogsTable };

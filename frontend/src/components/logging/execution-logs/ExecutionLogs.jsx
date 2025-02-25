@@ -12,7 +12,10 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
 import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { formattedDateTime } from "../../../helpers/GetStaticData";
+import {
+  formattedDateTime,
+  formattedDateTimeWithSeconds,
+} from "../../../helpers/GetStaticData";
 
 function ExecutionLogs() {
   const { RangePicker } = DatePicker;
@@ -31,6 +34,7 @@ function ExecutionLogs() {
     total: 0,
   });
   const [selectedDateRange, setSelectedDateRange] = useState([]);
+  const [ordering, setOrdering] = useState(null);
   const currentPath = location.pathname !== `/${sessionDetails?.orgName}/logs`;
   const items = [
     {
@@ -74,8 +78,11 @@ function ExecutionLogs() {
     setActiveTab(key); // Update the active tab state
   };
   const onOk = (value) => {
-    if (value && value.length === 2 && value[0] && value[1]) {
-      setSelectedDateRange([value[0]?.toISOString(), value[1]?.toISOString()]);
+    if (value && value.length === 2 && value[0]) {
+      setSelectedDateRange([
+        value[0]?.toISOString(),
+        value[1] ? value[1].toISOString() : new Date().toISOString(),
+      ]);
     }
   };
 
@@ -89,6 +96,7 @@ function ExecutionLogs() {
           page,
           start_date: selectedDateRange[0] || null,
           end_date: selectedDateRange[1] || null,
+          ordering,
         },
       }); // Replace with your actual API URL
       setPagination({
@@ -104,18 +112,19 @@ function ExecutionLogs() {
         return {
           key: item?.id,
           executedAt: formattedDateTime(item?.created_at),
+          executedAtWithSeconds: formattedDateTimeWithSeconds(item?.created_at),
           executionId: item?.id,
           progress,
           processed,
           total,
           success: item?.status === "COMPLETED",
           isError: item?.status === "ERROR",
-          executionName: item?.workflow_name,
+          workflowName: item?.workflow_name,
+          pipelineName: item?.pipeline_name,
           successfulFiles: item?.successful_files,
           failedFiles: item?.failed_files,
         };
       });
-
       setDataList(formattedData);
     } catch (err) {
       setAlertDetails(handleException(err));
@@ -126,7 +135,7 @@ function ExecutionLogs() {
 
   useEffect(() => {
     fetchLogs(pagination.current);
-  }, [activeTab, pagination.current, selectedDateRange]);
+  }, [activeTab, pagination.current, selectedDateRange, ordering]);
 
   return (
     <>
@@ -159,6 +168,7 @@ function ExecutionLogs() {
                   loading={loading}
                   pagination={pagination}
                   setPagination={setPagination}
+                  setOrdering={setOrdering}
                 />
               </div>
             </>
