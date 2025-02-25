@@ -29,12 +29,12 @@ const LogsTable = ({
       dataIndex: "executionId",
       key: "executionId",
       render: (text) => (
-        <a
-          style={{ wordBreak: "break-all" }}
+        <Typography.Link
+          className="title-name-redirect"
           onClick={() => navigate(`${text}`)}
         >
           {text}
-        </a>
+        </Typography.Link>
       ),
     },
     {

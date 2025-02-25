@@ -2,3 +2,7 @@
   width: 100% !important;
   height: auto !important;
 }
+
+.title-name-redirect{
+  word-break: break-all;
+}

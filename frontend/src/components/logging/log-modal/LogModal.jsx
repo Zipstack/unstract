@@ -99,41 +99,11 @@ function LogModal({
       title: "Log Level",
       dataIndex: "logLevel",
       key: "level",
-      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm }) => (
-        <div style={{ padding: 8 }}>
-          <Radio.Group
-            onChange={(e) => {
-              setSelectedKeys(e.target.value ? [e.target.value] : []);
-              confirm();
-            }}
-            value={selectedKeys[0] || null}
-          >
-            <Space direction="vertical">
-              <Radio value="INFO">INFO</Radio>
-              <Radio value="WARN">WARN</Radio>
-              <Radio value="DEBUG">DEBUG</Radio>
-              <Radio value="ERROR">ERROR</Radio>
-            </Space>
-          </Radio.Group>
-          <br />
-          <Button
-            className="clear-button"
-            type="primary"
-            size="small"
-            onClick={() => handleClearFilter(confirm)}
-          >
-            clear
-          </Button>
-        </div>
+      filterDropdown: (props) => (
+        <FilterDropdown {...props} handleClearFilter={handleClearFilter} />
       ),
       filteredValue: selectedLogLevel ? [selectedLogLevel] : [],
-      filterIcon: (filtered) => (
-        <FilterOutlined
-          style={{
-            color: filtered ? "#1677ff" : undefined,
-          }}
-        />
-      ),
+      filterIcon: (filtered) => <FilterIcon filtered={filtered} />,
       render: (level) => <span className={level?.toLowerCase()}>{level}</span>,
     },
     {
@@ -194,6 +164,53 @@ function LogModal({
   );
 }
 
+const FilterIcon = ({ filtered }) => (
+  <FilterOutlined style={{ color: filtered ? "#1677ff" : undefined }} />
+);
+
+const FilterDropdown = ({
+  setSelectedKeys,
+  selectedKeys,
+  confirm,
+  handleClearFilter,
+}) => (
+  <div style={{ padding: 8 }}>
+    <Radio.Group
+      onChange={(e) => {
+        setSelectedKeys(e.target.value ? [e.target.value] : []);
+        confirm();
+      }}
+      value={selectedKeys[0] || null}
+    >
+      <Space direction="vertical">
+        <Radio value="INFO">INFO</Radio>
+        <Radio value="WARN">WARN</Radio>
+        <Radio value="DEBUG">DEBUG</Radio>
+        <Radio value="ERROR">ERROR</Radio>
+      </Space>
+    </Radio.Group>
+    <br />
+    <Button
+      className="clear-button"
+      type="primary"
+      size="small"
+      onClick={() => handleClearFilter(confirm)}
+    >
+      Clear
+    </Button>
+  </div>
+);
+
+FilterIcon.propTypes = {
+  filtered: PropTypes.bool,
+};
+
+FilterDropdown.propTypes = {
+  setSelectedKeys: PropTypes.func,
+  selectedKeys: PropTypes.any,
+  confirm: PropTypes.func,
+  handleClearFilter: PropTypes.func,
+};
 LogModal.propTypes = {
   executionId: PropTypes.string,
   fileId: PropTypes.string,

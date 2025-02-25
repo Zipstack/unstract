@@ -78,11 +78,8 @@ function ExecutionLogs() {
     setActiveTab(key); // Update the active tab state
   };
   const onOk = (value) => {
-    if (value && value.length === 2 && value[0]) {
-      setSelectedDateRange([
-        value[0]?.toISOString(),
-        value[1] ? value[1].toISOString() : new Date().toISOString(),
-      ]);
+    if (value && value.length === 2 && value[0] && value[1]) {
+      setSelectedDateRange([value[0]?.toISOString(), value[1]?.toISOString()]);
     }
   };
 
