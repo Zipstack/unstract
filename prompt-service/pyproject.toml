@@ -15,7 +15,6 @@ dependencies = [
     "flask~=3.0",
     "llama-index==0.12.8",
     "python-dotenv==1.0.0",
-    "flask-restful>=0.3.10",
     #ToDo: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
     #to resolve lock file. Will have to be re-looked into
     "unstract-sdk~=0.58.0",
@@ -43,6 +42,3 @@ deploy = [
 prompt_service.cmd = "flask --app src/unstract/prompt_service/main.py run --port 3003"
 prompt_service.env_file = ".env"
 prompt_service.help = "Runs the Unstract prompt service"
-prompt_service_v2.cmd = "flask --app src/unstract/prompt_service_v2/run.py run --port 3003"
-prompt_service_v2.env_file = ".env"
-prompt_service_v2.help = "Runs the Unstract prompt service v2"
