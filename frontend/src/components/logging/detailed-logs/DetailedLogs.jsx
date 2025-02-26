@@ -41,7 +41,7 @@ const DetailedLogs = () => {
 
   const fetchExecutionDetails = async (id) => {
     try {
-      const url = `/api/v1/unstract/${sessionDetails?.orgId}/executionss/${id}`;
+      const url = `/api/v1/unstract/${sessionDetails?.orgId}/execution/${id}`;
       const response = await axiosPrivate.get(url);
       const item = response?.data;
       const total = item?.total_files || 0;
