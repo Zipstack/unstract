@@ -91,6 +91,11 @@ dev = [
 env_files = "test.env" # Load env from particular env file
 addopts = "-s"
 
+[tool.pdm.resolution.overrides]
+aioboto3 = "13.1.1"
+aiobotocore = "2.13.1"
+boto3 = "1.34.131"
+
 [tool.pdm.scripts]
 # Commands for backend
 backend.cmd = "./entrypoint.sh"
