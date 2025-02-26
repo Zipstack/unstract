@@ -37,6 +37,11 @@ deploy = [
     "gunicorn>=21.2.0",
 ]
 
+[tool.pdm.resolution.overrides]
+aioboto3 = "13.1.1"
+aiobotocore = "2.13.1"
+boto3 = "1.34.131"
+
 [tool.pdm.scripts]
 platform_service.cmd = "./entrypoint.sh"
 platform_service.env_file = ".env"
