@@ -78,6 +78,7 @@ class PromptServiceContants:
     METRICS = "metrics"
     LINE_ITEM = "line-item"
     LINE_NUMBERS = "line_numbers"
+    WHISPER_HASH = "whisper_hash"
 
 
 class RunLevel(Enum):
