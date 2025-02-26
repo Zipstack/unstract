@@ -11,6 +11,10 @@ class CeleryConfig:
     Refer https://docs.celeryq.dev/en/stable/userguide/configuration.html
     """
 
+    # Envs defined for configuration with Unstract
+    CELERY_BROKER_URL = "CELERY_BROKER_URL"
+    CELERY_BROKER_VISIBILITY_TIMEOUT = "CELERY_BROKER_VISIBILITY_TIMEOUT"
+
     # Result backend configuration
     result_backend = (
         f"db+postgresql://{settings.DB_USER}:{quote_plus(settings.DB_PASSWORD)}"
@@ -19,7 +23,7 @@ class CeleryConfig:
 
     # Broker URL configuration
     broker_url = UnstractUtils.get_env(
-        "CELERY_BROKER_URL",
+        CELERY_BROKER_URL,
         f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}",
         raise_err=True,
     )
@@ -37,4 +41,8 @@ class CeleryConfig:
     beat_scheduler = "django_celery_beat.schedulers:DatabaseScheduler"
 
     # Large timeout avoids worker to pick up same unacknowledged task again
-    broker_transport_options = {"visibility_timeout": 7200}  # 2 hours
+    broker_transport_options = {
+        "visibility_timeout": UnstractUtils.get_env(
+            CELERY_BROKER_VISIBILITY_TIMEOUT, "7200"
+        )
+    }

@@ -31,8 +31,8 @@ TaskRegistry()
 app.config_from_object("backend.celery_config.CeleryConfig")
 app.autodiscover_tasks()
 
-logger.info(
-    f"\nCelery Configuration:\n" f"{pformat(app.conf.table(with_defaults=True))}"
+logger.debug(
+    f"Celery Configuration:\n" f"{pformat(app.conf.table(with_defaults=False))}"
 )
 
 # Define the queues to purge when the Celery broker is restarted.
