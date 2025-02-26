@@ -575,7 +575,6 @@ class WorkflowHelper:
     @staticmethod
     @shared_task(
         name="async_execute_bin",
-        acks_late=True,
         autoretry_for=(Exception,),
         max_retries=1,
         retry_backoff=True,
