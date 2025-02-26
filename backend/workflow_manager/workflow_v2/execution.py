@@ -415,7 +415,13 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     @staticmethod
     def update_execution_task(execution_id: str, task_id: str) -> None:
         try:
+            if not task_id:
+                logger.warning(
+                    f"task_id: '{task_id}' is NULL / empty for "
+                    f"execution_id: {execution_id}, expected to have a UUID"
+                )
             execution = WorkflowExecution.objects.get(pk=execution_id)
+            # TODO: Review if status should be updated to EXECUTING
             execution.task_id = task_id
             execution.save()
         except WorkflowExecution.DoesNotExist:

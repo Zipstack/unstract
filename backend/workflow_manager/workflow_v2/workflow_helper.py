@@ -521,9 +521,12 @@ class WorkflowHelper:
                 queue=queue,
             )
             logger.info(
-                f"Job '{async_execution}' has been enqueued for "
-                f"execution_id '{execution_id}'"
+                f"[{org_schema}] Job '{async_execution}' has been enqueued for "
+                f"execution_id '{execution_id}', '{len(hash_values_of_files)}' files"
             )
+            workflow_execution = WorkflowExecution.objects.get(id=execution_id)
+            workflow_execution.task_id = async_execution.id
+            workflow_execution.save()
             if timeout > -1:
                 async_execution.wait(
                     timeout=timeout,
@@ -532,6 +535,7 @@ class WorkflowHelper:
             task = AsyncResultData(async_result=async_execution)
             celery_result = task.to_dict()
             task_result = celery_result.get("result")
+            # Fetch the object agian to get the latest status.
             workflow_execution = WorkflowExecution.objects.get(id=execution_id)
             execution_response = ExecutionResponse(
                 workflow_id,
@@ -663,11 +667,17 @@ class WorkflowHelper:
             dict[str, list[Any]]: Returns a dict with result from
                 workflow execution
         """
+        logger.info(
+            f"Executing for execution_id: {execution_id}, task_id: {task_id}, "
+            f"org: {organization_id}, workflow_id: {workflow_id}, "
+            f"files: {len(hash_values_of_files)}"
+        )
         hash_values = {
             key: FileHash.from_json(value)
             for key, value in hash_values_of_files.items()
         }
         workflow = Workflow.objects.get(id=workflow_id)
+        # TODO: Make use of WorkflowExecution.get_or_create()
         try:
             workflow_execution = (
                 WorkflowExecutionServiceHelper.create_workflow_execution(
@@ -744,18 +754,21 @@ class WorkflowHelper:
                 )
                 return response
             else:
-                execution_result = WorkflowHelper.execute_bin(
-                    schema_name=org_schema,
+                task_id = current_task.request.id
+                # TODO: Remove this if scheduled runs work
+                StateStore.set(Account.ORGANIZATION_ID, org_schema)
+                execution_result = WorkflowHelper.execute_workflow(
+                    organization_id=org_schema,
+                    task_id=task_id,
                     workflow_id=workflow.id,
                     execution_id=workflow_execution.id,
                     hash_values_of_files=hash_values_of_files,
                     scheduled=True,
                     execution_mode=execution_mode,
                     pipeline_id=pipeline_id,
-                    log_events_id=log_events_id,
                     use_file_history=use_file_history,
+                    log_events_id=log_events_id,
                 )
-
             updated_execution = WorkflowExecution.objects.get(id=execution_id)
             execution_response = ExecutionResponse(
                 workflow.id,
