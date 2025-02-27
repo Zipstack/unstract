@@ -31,6 +31,25 @@ class CommonUtils:
             return False
         return True
 
+    # TODO: Use from SDK
+    @staticmethod
+    def pretty_file_size(num: float, suffix: str = "B") -> str:
+        """Gets the human readable size for a file,
+
+        Args:
+            num (int): Size in bytes to parse
+            suffix (str, optional): _description_. Defaults to "B".
+
+        Returns:
+            str: Human readable size
+        """
+        for unit in ("", "K", "M", "G", "T"):
+            if abs(num) < 1024.0:
+                # return f"{num:3.1f} {unit}{suffix}"
+                return f"{num:.2f} {unit}{suffix}"
+            num /= 1024.0
+        return f"{num:.2f} {suffix}"
+
 
 class ModelEnum(Enum):
     @classmethod
