@@ -1,5 +1,6 @@
 import logging
 import uuid
+from datetime import timedelta
 from typing import Optional
 
 from api_v2.models import APIDeployment
@@ -128,6 +129,15 @@ class WorkflowExecution(BaseModel):
             pass
 
         return None
+
+    @property
+    def pretty_execution_time(self) -> str:
+        """Convert execution_time from seconds to HH:MM:SS format
+
+        Returns:
+            str: Time in HH:MM:SS format
+        """
+        return str(timedelta(seconds=self.execution_time)).split(".")[0]
 
     def __str__(self) -> str:
         return (

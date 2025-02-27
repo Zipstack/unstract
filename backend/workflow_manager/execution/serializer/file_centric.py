@@ -1,8 +1,6 @@
-from datetime import timedelta
 from typing import Optional
 
 from rest_framework import serializers
-from utils.common_utils import CommonUtils
 from workflow_manager.file_execution.models import (
     WorkflowFileExecution as FileExecution,
 )
@@ -37,15 +35,8 @@ class FileCentricExecutionSerializer(serializers.ModelSerializer):
             else DEFAULT_STATUS_MSG
         )
 
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-
-        # Convert file_size from bytes to human-readable format
-        data["file_size"] = CommonUtils.pretty_file_size(instance.file_size)
-
-        # Convert execution_time from seconds to HH:MM:SS format
-        data["execution_time"] = str(timedelta(seconds=instance.execution_time)).split(
-            "."
-        )[0]
-
+    def to_representation(self, obj: FileExecution):
+        data = super().to_representation(obj)
+        data["file_size"] = obj.pretty_file_size
+        data["execution_time"] = obj.pretty_execution_time
         return data

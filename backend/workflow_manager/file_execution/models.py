@@ -1,8 +1,10 @@
 import uuid
+from datetime import timedelta
 from typing import Optional
 
 from django.db import models
 from django.utils import timezone
+from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
@@ -134,6 +136,24 @@ class WorkflowFileExecution(BaseModel):
 
         self.execution_error = execution_error
         self.save()
+
+    @property
+    def pretty_file_size(self) -> str:
+        """Convert file_size from bytes to human-readable format
+
+        Returns:
+            str: File size with a precision of 2 decimals
+        """
+        return CommonUtils.pretty_file_size(self.file_size)
+
+    @property
+    def pretty_execution_time(self) -> str:
+        """Convert execution_time from seconds to HH:MM:SS format
+
+        Returns:
+            str: Time in HH:MM:SS format
+        """
+        return str(timedelta(seconds=self.execution_time)).split(".")[0]
 
     class Meta:
         verbose_name = "Workflow File Execution"
