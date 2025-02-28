@@ -44,6 +44,6 @@ class CeleryConfig:
     # Large timeout avoids worker to pick up same unacknowledged task again
     broker_transport_options = {
         "visibility_timeout": float(
-            UnstractUtils.get_env(CELERY_BROKER_VISIBILITY_TIMEOUT, 3600)
+            UnstractUtils.get_env(CELERY_BROKER_VISIBILITY_TIMEOUT, 7200)
         )
     }
