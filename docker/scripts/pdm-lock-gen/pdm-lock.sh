@@ -79,7 +79,6 @@ directories=(
     "platform-service"
     "x2text-service"
     "unstract/connectors"
-    "unstract/tool-sandbox"
 )
 
 # If directories are passed as arguments, override the default
