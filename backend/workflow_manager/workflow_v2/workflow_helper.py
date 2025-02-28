@@ -576,7 +576,7 @@ class WorkflowHelper:
     @shared_task(
         name="async_execute_bin",
         autoretry_for=(Exception,),
-        max_retries=1,
+        max_retries=0,
         retry_backoff=True,
         retry_backoff_max=500,
         retry_jitter=True,
