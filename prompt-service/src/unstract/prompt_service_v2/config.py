@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from flask import Flask
 from unstract.prompt_service_v2.controllers import api
 from unstract.prompt_service_v2.extensions import db
+from unstract.prompt_service_v2.helper.lifecycle_helper import register_lifecycle_hooks
 from unstract.prompt_service_v2.helper.plugin_helper import plugin_loader
 from unstract.prompt_service_v2.utils.env_loader import get_env_or_die
 from unstract.sdk.constants import LogLevel
@@ -62,6 +63,6 @@ def create_app() -> Flask:
 
     # Load plugins
     plugin_loader(app)
-    # Register blueprint
+    register_lifecycle_hooks(app)
     app.register_blueprint(api)
     return app
