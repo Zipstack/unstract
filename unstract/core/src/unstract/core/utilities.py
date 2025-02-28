@@ -30,12 +30,16 @@ class UnstractUtils:
 
     @staticmethod
     def build_tool_container_name(
-        tool_image: str, tool_version: str, run_id: str
+        tool_image: str,
+        tool_version: str,
+        file_execution_id: str,
+        retry_count: Optional[int] = None,
     ) -> str:
         tool_name = tool_image.split("/")[-1]
-        # TODO: Add execution attempt to better track instead of uuid
-        short_uuid = uuid.uuid4().hex[:6]  # To avoid duplicate name collision
-        container_name = f"{tool_name}-{tool_version}-{short_uuid}-{run_id}"
+        # To avoid duplicate name collision
+        if not retry_count:
+            retry_count = uuid.uuid4().hex[:6]
+        container_name = f"{tool_name}-{tool_version}-{retry_count}-{file_execution_id}"
 
         # To support limits of container clients like K8s
         if len(container_name) > 63:
