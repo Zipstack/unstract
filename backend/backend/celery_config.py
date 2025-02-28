@@ -40,6 +40,7 @@ class CeleryConfig:
 
     beat_scheduler = "django_celery_beat.schedulers:DatabaseScheduler"
 
+    task_acks_late = True
     # Large timeout avoids worker to pick up same unacknowledged task again
     broker_transport_options = {
         "visibility_timeout": float(
