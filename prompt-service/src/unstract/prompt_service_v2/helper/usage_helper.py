@@ -46,7 +46,7 @@ class UsageHelper:
                     # Append the item to the list associated with the key
                     metadata[key].append(item)
         except Exception as e:
-            logger.error(f"Error executing querying usage metadata: {e}")
+            logger.error(f"Error while querying usage metadata: {e}")
         return metadata
 
     @staticmethod
