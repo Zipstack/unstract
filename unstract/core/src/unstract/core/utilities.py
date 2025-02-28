@@ -37,9 +37,14 @@ class UnstractUtils:
     ) -> str:
         tool_name = tool_image.split("/")[-1]
         # To avoid duplicate name collision
-        if not retry_count:
-            retry_count = uuid.uuid4().hex[:6]
-        container_name = f"{tool_name}-{tool_version}-{retry_count}-{file_execution_id}"
+        if retry_count:
+            unique_suffix = retry_count
+        else:
+            unique_suffix = uuid.uuid4().hex[:6]
+
+        container_name = (
+            f"{tool_name}-{tool_version}-{unique_suffix}-{file_execution_id}"
+        )
 
         # To support limits of container clients like K8s
         if len(container_name) > 63:
