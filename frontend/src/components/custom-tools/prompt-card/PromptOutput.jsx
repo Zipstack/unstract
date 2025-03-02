@@ -144,16 +144,58 @@ function PromptOutput({
 
     const promptOutput = promptOutputs[promptOutputKey]?.output;
 
+    let promptOutputData = {};
+    if (promptOutputs && Object.keys(promptOutputs)) {
+      const promptOutputKey = generatePromptOutputKey(
+        promptId,
+        docId,
+        defaultLlmProfile,
+        singlePassExtractMode,
+        true
+      );
+      if (promptOutputs[promptOutputKey] !== undefined) {
+        promptOutputData = promptOutputs[promptOutputKey];
+      }
+    }
+
     return (
       <>
         <Divider className="prompt-card-divider" />
-        <div className="prompt-card-result prompt-card-div">
-          <DisplayPromptResult output={promptOutput} />
+        <div
+          className={`prompt-card-result prompt-card-div ${
+            details?.enable_highlight &&
+            noHighlightEnforceType &&
+            selectedHighlight?.highlightedPrompt === promptId &&
+            selectedHighlight?.highlightedProfile === defaultLlmProfile &&
+            "highlighted-prompt-cell"
+          }`}
+          onClick={() => {
+            enforceType !== "json" &&
+              handleSelectHighlight(
+                promptOutputData?.highlightData?.[promptDetails.prompt_key],
+                promptId,
+                defaultLlmProfile
+              );
+          }}
+        >
+          <DisplayPromptResult
+            output={promptOutput}
+            highlightData={
+              promptOutputData?.highlightData?.[promptDetails.prompt_key]
+            }
+            handleSelectHighlight={handleSelectHighlight}
+          />
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
               isDisabled={isTableExtraction}
               copyToClipboard={() =>
-                copyOutputToClipboard(displayPromptResult(promptOutput, true))
+                copyOutputToClipboard(
+                  displayPromptResult(
+                    promptOutput,
+                    true,
+                    promptDetails?.enable_highlight
+                  )
+                )
               }
             />
             <PromptOutputExpandBtn
@@ -230,11 +272,12 @@ function PromptOutput({
                     direction="vertical"
                     className="prompt-card-llm-layout"
                     onClick={() => {
-                      handleSelectHighlight(
-                        promptOutputData?.highlightData,
-                        promptId,
-                        profileId
-                      );
+                      enforceType !== "json" &&
+                        handleSelectHighlight(
+                          promptOutputData?.highlightData,
+                          promptId,
+                          profileId
+                        );
                     }}
                   >
                     <div className="llm-info">
@@ -396,6 +439,9 @@ function PromptOutput({
                             profileId={profileId}
                             docId={selectedDoc?.document_id}
                             promptRunStatus={promptRunStatus}
+                            handleSelectHighlight={handleSelectHighlight}
+                            highlightData={promptOutputData?.highlightData}
+                            promptDetails={promptDetails}
                           />
                           <div className="prompt-profile-run">
                             <CopyPromptOutputBtn
