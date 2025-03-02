@@ -210,7 +210,9 @@ def page_usage() -> Any:
                         organization_id, pages_processed, record_date,
                         created_at, updated_at
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (subscription_id, record_date) DO UPDATE
+                        ON CONFLICT (
+                        subscription_id, stripe_subscription_id, record_date
+                        ) DO UPDATE
                         SET pages_processed =
                         {DBTable.SUBSCRIPTION_USAGE}.pages_processed
                         + EXCLUDED.pages_processed;

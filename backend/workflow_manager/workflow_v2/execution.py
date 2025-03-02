@@ -3,6 +3,7 @@ import time
 from typing import Optional
 
 from account_v2.constants import Common
+from django.utils import timezone
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
 from tags.models import Tag
 from tool_instance_v2.models import ToolInstance
@@ -81,7 +82,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                 execution_mode=mode,
                 execution_method=self.execution_method,
                 execution_type=self.execution_type,
-                status=ExecutionStatus.INITIATED.value,
+                status=ExecutionStatus.INITIATED,
                 execution_log_id=self.execution_log_id,
             )
             workflow_execution.save()
@@ -120,6 +121,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         execution_id: Optional[str] = None,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
         tags: Optional[list[Tag]] = None,
+        total_files: int = 0,
     ) -> WorkflowExecution:
         # Validating with existing execution
         existing_execution = cls.get_execution_instance_by_id(execution_id)
@@ -144,8 +146,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution_mode=mode,
             execution_method=execution_method,
             execution_type=execution_type,
-            status=ExecutionStatus.PENDING.value,
+            status=ExecutionStatus.PENDING,
             execution_log_id=execution_log_id,
+            total_files=total_files,
         )
         if execution_id:
             workflow_execution.id = execution_id
@@ -157,7 +160,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     def update_execution(
         self,
         status: Optional[ExecutionStatus] = None,
-        execution_time: Optional[float] = None,
         error: Optional[str] = None,
         increment_attempt: bool = False,
     ) -> None:
@@ -165,8 +167,19 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
         if status is not None:
             execution.status = status.value
-        if execution_time is not None:
-            execution.execution_time = execution_time
+
+            if (
+                status
+                in [
+                    ExecutionStatus.COMPLETED,
+                    ExecutionStatus.ERROR,
+                    ExecutionStatus.STOPPED,
+                ]
+                and not execution.execution_time
+            ):
+                execution.execution_time = round(
+                    (timezone.now() - execution.created_at).total_seconds(), 3
+                )
         if error:
             execution.error_message = error[:EXECUTION_ERROR_LENGTH]
         if increment_attempt:
@@ -218,9 +231,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             )
             raise WorkflowExecutionError(self.compilation_result["problems"][0])
 
-    def execute(
-        self, file_execution_id: str, file_name: str, single_step: bool = False
-    ) -> None:
+    def execute(self, file_execution_id: str, single_step: bool = False) -> None:
         execution_type = ExecutionType.COMPLETE
         if single_step:
             execution_type = ExecutionType.STEP
@@ -243,7 +254,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         try:
             self.execute_workflow(
                 file_execution_id=file_execution_id,
-                file_name=file_name,
                 execution_type=execution_type,
             )
             end_time = time.time()
@@ -343,7 +353,13 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         )
         workflow_file_execution.update_status(ExecutionStatus.EXECUTING)
 
-        self.execute(file_execution_id, file_name, single_step)
+        logger.info(
+            f"Running execution: '{self.execution_id}',  "
+            f"file_execution_id: '{file_execution_id}', "
+            f"file '{file_name}'"
+        )
+
+        self.execute(file_execution_id, single_step)
         self.publish_log(f"Tool executed successfully for '{file_name}'")
         self._handle_execution_type(execution_type)
 
@@ -392,7 +408,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     def update_execution_err(execution_id: str, err_msg: str = "") -> WorkflowExecution:
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
-            execution.status = ExecutionStatus.ERROR.value
+            execution.status = ExecutionStatus.ERROR
             execution.error_message = err_msg[:EXECUTION_ERROR_LENGTH]
             execution.save()
             return execution
@@ -402,7 +418,13 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     @staticmethod
     def update_execution_task(execution_id: str, task_id: str) -> None:
         try:
+            if not task_id:
+                logger.warning(
+                    f"task_id: '{task_id}' is NULL / empty for "
+                    f"execution_id: {execution_id}, expected to have a UUID"
+                )
             execution = WorkflowExecution.objects.get(pk=execution_id)
+            # TODO: Review if status should be updated to EXECUTING
             execution.task_id = task_id
             execution.save()
         except WorkflowExecution.DoesNotExist:

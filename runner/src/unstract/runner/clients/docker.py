@@ -9,12 +9,11 @@ from unstract.runner.clients.interface import (
     ContainerClientInterface,
     ContainerInterface,
 )
-from unstract.runner.constants import Env, FeatureFlag
+from unstract.runner.constants import Env
 from unstract.runner.utils import Utils
 
 from docker import DockerClient
 from unstract.core.utilities import UnstractUtils
-from unstract.flags.feature_flag import check_feature_flag_status
 
 
 class DockerContainer(ContainerInterface):
@@ -159,41 +158,24 @@ class Client(ContainerClientInterface):
     def get_container_run_config(
         self,
         command: list[str],
-        organization_id: str,
-        workflow_id: str,
-        execution_id: str,
-        run_id: str,
+        file_execution_id: str,
+        container_name: Optional[str] = None,
         envs: Optional[dict[str, Any]] = None,
         auto_remove: bool = False,
     ) -> dict[str, Any]:
         if envs is None:
             envs = {}
         mounts = []
-        if organization_id and workflow_id and execution_id:
-            if not check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-                source_path = os.path.join(
-                    os.getenv(Env.WORKFLOW_DATA_DIR, ""),
-                    organization_id,
-                    workflow_id,
-                    execution_id,
-                )
-                mounts.append(
-                    {
-                        "type": "bind",
-                        "source": source_path,
-                        "target": os.getenv(Env.TOOL_DATA_DIR, "/data"),
-                    }
-                )
-            envs[Env.EXECUTION_RUN_DATA_FOLDER] = os.path.join(
-                os.getenv(Env.EXECUTION_RUN_DATA_FOLDER_PREFIX, ""),
-                organization_id,
-                workflow_id,
-                execution_id,
+
+        if not container_name:
+            container_name = UnstractUtils.build_tool_container_name(
+                tool_image=self.image_name,
+                tool_version=self.image_tag,
+                file_execution_id=file_execution_id,
             )
+
         return {
-            "name": UnstractUtils.build_tool_container_name(
-                tool_image=self.image_name, tool_version=self.image_tag, run_id=run_id
-            ),
+            "name": container_name,
             "image": self.get_image(),
             "command": command,
             "detach": True,

@@ -24,7 +24,6 @@ from unstract.workflow_execution.execution_file_handler import ExecutionFileHand
 from unstract.workflow_execution.tools_utils import ToolsUtils
 
 from unstract.core.pubsub_helper import LogPublisher
-from unstract.core.utilities import UnstractUtils
 
 logger = logging.getLogger(__name__)
 
@@ -140,14 +139,13 @@ class WorkflowExecutionService:
         logger.info(f"Execution {self.execution_id}: Build completed")
 
     def execute_workflow(
-        self, file_execution_id: str, file_name: str, execution_type: ExecutionType
+        self, file_execution_id: str, execution_type: ExecutionType
     ) -> None:
         """Executes the complete workflow by running each tools one by one.
         Returns the result from final tool in a dictionary.
 
         Args:
             file_execution_id (str): UUID for a single run of a file
-            file_name (str): Name of the file to process
             execution_type (ExecutionType): STEP or COMPLETE
 
         Raises:
@@ -168,16 +166,6 @@ class WorkflowExecutionService:
         # only. While supporting more tools in a workflow, correct the tool container
         # name to avoid conflicts.
         for step, sandbox in enumerate(self.tool_sandboxes):
-            container_name = UnstractUtils.build_tool_container_name(
-                tool_image=sandbox.image_name,
-                tool_version=sandbox.image_tag,
-                run_id=file_execution_id,
-            )
-            logger.info(
-                f"Running execution: '{self.execution_id}',  "
-                f"tool: '{sandbox.image_name}:{sandbox.image_tag}', "
-                f"file '{file_name}', container: '{container_name}'"
-            )
             self._execute_step(
                 step=step,
                 sandbox=sandbox,
@@ -224,7 +212,7 @@ class WorkflowExecutionService:
                 component=tool_instance_id,
             )
             result = self.tool_utils.run_tool(
-                run_id=self.file_execution_id, tool_sandbox=sandbox
+                file_execution_id=self.file_execution_id, tool_sandbox=sandbox
             )
             if result and result.get("error"):
                 raise ToolOutputNotFoundException(result.get("error"))

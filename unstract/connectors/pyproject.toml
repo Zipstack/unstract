@@ -20,7 +20,7 @@ dependencies = [
     "dropboxdrivefs==1.4.1", # For Dropbox
     "boxfs==0.2.1", # For Box
     "gcsfs==2024.10.0", # For GoogleCloudStorage
-    "adlfs==2023.8.0", # For AzureCloudStorage
+    "adlfs~=2024.7.0", # For AzureCloudStorage
     # Database connectors
     "psycopg2-binary==2.9.9", # For Postgres, Redshift
     "snowflake-connector-python[pandas]~=3.6.0", # For Snowflake

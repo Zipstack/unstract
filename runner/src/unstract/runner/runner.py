@@ -11,12 +11,11 @@ from unstract.runner.clients.interface import (
     ContainerClientInterface,
     ContainerInterface,
 )
-from unstract.runner.constants import Env, FeatureFlag, LogLevel, LogType, ToolKey
+from unstract.runner.constants import Env, LogLevel, LogType, ToolKey
 from unstract.runner.exception import ToolRunException
 
 from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
-from unstract.flags.feature_flag import check_feature_flag_status
 
 load_dotenv()
 # Loads the container clinet class.
@@ -40,7 +39,7 @@ class UnstractRunner:
         tool_instance_id: str,
         execution_id: str,
         organization_id: str,
-        run_id: str,
+        file_execution_id: str,
         channel: Optional[str] = None,
     ) -> None:
         for line in container.logs(follow=True):
@@ -52,7 +51,7 @@ class UnstractRunner:
                 channel=channel,
                 execution_id=execution_id,
                 organization_id=organization_id,
-                run_id=run_id,
+                file_execution_id=file_execution_id,
             )
 
     def get_valid_log_message(self, log_message: str) -> Optional[dict[str, Any]]:
@@ -77,7 +76,7 @@ class UnstractRunner:
         tool_instance_id: str,
         execution_id: str,
         organization_id: str,
-        run_id: str,
+        file_execution_id: str,
         channel: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         log_dict = self.get_valid_log_message(log_message)
@@ -100,7 +99,7 @@ class UnstractRunner:
             log_dict[LogFieldName.EXECUTION_ID] = execution_id
             log_dict[LogFieldName.ORGANIZATION_ID] = organization_id
             log_dict[LogFieldName.TIMESTAMP] = datetime.now(timezone.utc).timestamp()
-            log_dict[LogFieldName.FILE_EXECUTION_ID] = run_id
+            log_dict[LogFieldName.FILE_EXECUTION_ID] = file_execution_id
 
             # Publish to channel of socket io
             LogPublisher.publish(channel, log_dict)
@@ -140,12 +139,7 @@ class UnstractRunner:
         """
         command = command.upper()
         container_config = self.client.get_container_run_config(
-            command=["--command", command],
-            organization_id="",
-            workflow_id="",
-            execution_id="",
-            run_id="",
-            auto_remove=True,
+            command=["--command", command], file_execution_id="", auto_remove=True
         )
         container = None
 
@@ -169,10 +163,11 @@ class UnstractRunner:
         organization_id: str,
         workflow_id: str,
         execution_id: str,
-        run_id: str,
+        file_execution_id: str,
         settings: dict[str, Any],
         envs: dict[str, Any],
         messaging_channel: Optional[str] = None,
+        container_name: Optional[str] = None,
     ) -> Optional[Any]:
         """RUN container With RUN Command.
 
@@ -186,19 +181,16 @@ class UnstractRunner:
         Returns:
             Optional[Any]: _description_
         """
-        tool_data_dir = os.getenv(Env.TOOL_DATA_DIR, "/data")
-        if check_feature_flag_status(FeatureFlag.REMOTE_FILE_STORAGE):
-            envs[Env.EXECUTION_DATA_DIR] = os.path.join(
-                os.getenv(Env.WORKFLOW_EXECUTION_DIR_PREFIX, ""),
-                organization_id,
-                workflow_id,
-                execution_id,
-            )
-            envs[Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS] = os.getenv(
-                Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS, "{}"
-            )
-        else:
-            envs[Env.TOOL_DATA_DIR] = tool_data_dir
+
+        envs[Env.EXECUTION_DATA_DIR] = os.path.join(
+            os.getenv(Env.WORKFLOW_EXECUTION_DIR_PREFIX, ""),
+            organization_id,
+            workflow_id,
+            execution_id,
+        )
+        envs[Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS] = os.getenv(
+            Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS, "{}"
+        )
 
         container_config = self.client.get_container_run_config(
             command=[
@@ -209,10 +201,8 @@ class UnstractRunner:
                 "--log-level",
                 "DEBUG",
             ],
-            organization_id=organization_id,
-            workflow_id=workflow_id,
-            execution_id=execution_id,
-            run_id=run_id,
+            file_execution_id=file_execution_id,
+            container_name=container_name,
             envs=envs,
         )
         # Add labels to container for logging with Loki.
@@ -229,7 +219,7 @@ class UnstractRunner:
         try:
             self.logger.info(
                 f"Execution ID: {execution_id}, running docker "
-                f"container: {container_config.get('name')}"
+                f"container: {container_name}"
             )
             container: ContainerInterface = self.client.run_container(container_config)
             tool_instance_id = str(settings.get(ToolKey.TOOL_INSTANCE_ID))
@@ -240,7 +230,7 @@ class UnstractRunner:
                 channel=messaging_channel,
                 execution_id=execution_id,
                 organization_id=organization_id,
-                run_id=run_id,
+                file_execution_id=file_execution_id,
             )
         except ToolRunException as te:
             self.logger.error(
