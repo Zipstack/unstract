@@ -11,6 +11,7 @@ class ExecutionSerializer(serializers.ModelSerializer):
     pipeline_name = serializers.SerializerMethodField()
     successful_files = serializers.SerializerMethodField()
     failed_files = serializers.SerializerMethodField()
+    execution_time = serializers.ReadOnlyField(source="pretty_execution_time")
 
     class Meta:
         model = WorkflowExecution
@@ -31,8 +32,3 @@ class ExecutionSerializer(serializers.ModelSerializer):
     def get_failed_files(self, obj: WorkflowExecution) -> int:
         """Return the count of failed executed files"""
         return obj.file_executions.filter(status=ExecutionStatus.ERROR).count()
-
-    def to_representation(self, obj: WorkflowExecution):
-        data = super().to_representation(obj)
-        data["execution_time"] = obj.pretty_execution_time
-        return data

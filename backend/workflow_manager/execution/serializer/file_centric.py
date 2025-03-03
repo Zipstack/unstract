@@ -15,6 +15,8 @@ DEFAULT_STATUS_MSG = (
 
 class FileCentricExecutionSerializer(serializers.ModelSerializer):
     status_msg = serializers.SerializerMethodField()
+    file_size = serializers.ReadOnlyField(source="pretty_file_size")
+    execution_time = serializers.ReadOnlyField(source="pretty_execution_time")
 
     class Meta:
         model = FileExecution
@@ -34,9 +36,3 @@ class FileCentricExecutionSerializer(serializers.ModelSerializer):
             if latest_log and "log" in latest_log.data
             else DEFAULT_STATUS_MSG
         )
-
-    def to_representation(self, obj: FileExecution):
-        data = super().to_representation(obj)
-        data["file_size"] = obj.pretty_file_size
-        data["execution_time"] = obj.pretty_execution_time
-        return data
