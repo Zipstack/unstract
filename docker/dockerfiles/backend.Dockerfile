@@ -16,7 +16,8 @@ ENV \
     OTEL_TRACES_EXPORTER=none \
     OTEL_TRACES_EXPORTER=none \
     OTEL_LOGS_EXPORTER=none \
-    OTEL_SERVICE_NAME=unstract_backend
+    OTEL_SERVICE_NAME=unstract_backend \
+    TARGET_PLUGINS_PATH="plugins pluggable_apps"
 
 # Install system dependencies
 RUN apt-get update; \
