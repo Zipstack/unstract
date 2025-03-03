@@ -1,14 +1,15 @@
 """This module contains the Celery configuration for the backend project."""
 
 import logging
+import logging.config
 import os
 from pprint import pformat
 
-import django
 from celery import Celery
 from utils.constants import ExecutionLogConstants
 
 from backend.celery_task import TaskRegistry
+from backend.settings.base import LOGGING
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,8 @@ os.environ.setdefault(
     os.environ.get("DJANGO_SETTINGS_MODULE", "backend.settings.dev"),
 )
 
-# Helps configure Django's logger for celery workers
-django.setup()
+# Configure logging for celery worker using same config as Django
+logging.config.dictConfig(LOGGING)
 
 # Create a Celery instance. Default time zone is UTC.
 app = Celery("backend")
