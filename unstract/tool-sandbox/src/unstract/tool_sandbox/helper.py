@@ -6,6 +6,8 @@ from typing import Any, Optional, Union
 import requests
 from unstract.tool_sandbox.constants import UnstractRunner
 
+from unstract.core.utilities import UnstractUtils
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,10 +71,11 @@ class ToolSandboxHelper:
 
     def call_tool_handler(
         self,
-        run_id: str,
+        file_execution_id: str,
         image_name: str,
         image_tag: str,
         settings: dict[str, Any],
+        retry_count: Optional[int] = None,
     ) -> Optional[dict[str, Any]]:
         """Calling unstract runner to run the required tool.
 
@@ -87,10 +90,7 @@ class ToolSandboxHelper:
         """
         url = f"{self.base_url}{UnstractRunner.RUN_API_ENDPOINT}"
         data = self.create_tool_request_data(
-            run_id,
-            image_name,
-            image_tag,
-            settings,
+            file_execution_id, image_name, image_tag, settings, retry_count
         )
 
         response = requests.post(url, json=data)
@@ -110,18 +110,26 @@ class ToolSandboxHelper:
 
     def create_tool_request_data(
         self,
-        run_id: str,
+        file_execution_id: str,
         image_name: str,
         image_tag: str,
         settings: dict[str, Any],
+        retry_count: Optional[int] = None,
     ) -> dict[str, Any]:
+        container_name = UnstractUtils.build_tool_container_name(
+            tool_image=image_name,
+            tool_version=image_tag,
+            file_execution_id=file_execution_id,
+            retry_count=retry_count,
+        )
         data = {
             "image_name": image_name,
             "image_tag": image_tag,
             "organization_id": self.organization_id,
             "workflow_id": self.workflow_id,
             "execution_id": self.execution_id,
-            "run_id": run_id,
+            "file_execution_id": file_execution_id,
+            "container_name": container_name,
             "settings": settings,
             "envs": self.envs,
             "messaging_channel": self.messaging_channel,

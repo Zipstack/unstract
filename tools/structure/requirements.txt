@@ -1,4 +1,6 @@
 # Add your dependencies here
 
 # Required for all unstract tools
-unstract-sdk[aws]~=0.58.0
+# aws alone is needed here
+# because tools use transient temporary storage.
+unstract-sdk[aws]~=0.59.0
