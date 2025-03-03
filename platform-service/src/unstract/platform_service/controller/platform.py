@@ -203,8 +203,7 @@ def page_usage() -> Any:
                     )
 
                     stripe_subscription_id = (
-                        stripe_subscription_id if stripe_subscription_id
-                        else "trial"
+                        stripe_subscription_id if stripe_subscription_id else "trial"
                     )
 
                     # Insert or update data in the subscription_usage table
