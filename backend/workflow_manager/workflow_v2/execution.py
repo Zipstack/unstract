@@ -231,9 +231,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             )
             raise WorkflowExecutionError(self.compilation_result["problems"][0])
 
-    def execute(
-        self, file_execution_id: str, file_name: str, single_step: bool = False
-    ) -> None:
+    def execute(self, file_execution_id: str, single_step: bool = False) -> None:
         execution_type = ExecutionType.COMPLETE
         if single_step:
             execution_type = ExecutionType.STEP
@@ -256,7 +254,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         try:
             self.execute_workflow(
                 file_execution_id=file_execution_id,
-                file_name=file_name,
                 execution_type=execution_type,
             )
             end_time = time.time()
@@ -359,7 +356,13 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         )
         workflow_file_execution.update_status(ExecutionStatus.EXECUTING)
 
-        self.execute(file_execution_id, file_name, single_step)
+        logger.info(
+            f"Running execution: '{self.execution_id}',  "
+            f"file_execution_id: '{file_execution_id}', "
+            f"file '{file_name}'"
+        )
+
+        self.execute(file_execution_id, single_step)
         self.publish_log(f"Tool executed successfully for '{file_name}'")
         self._handle_execution_type(execution_type)
 
