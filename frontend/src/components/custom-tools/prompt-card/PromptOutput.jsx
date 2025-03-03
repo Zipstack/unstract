@@ -161,7 +161,8 @@ function PromptOutput({
     return (
       <>
         <Divider className="prompt-card-divider" />
-        <div
+        <Space
+          wrap
           className={`prompt-card-result prompt-card-div ${
             details?.enable_highlight &&
             noHighlightEnforceType &&
@@ -207,7 +208,7 @@ function PromptOutput({
               promptRunStatus={promptRunStatus}
             />
           </div>
-        </div>
+        </Space>
       </>
     );
   }

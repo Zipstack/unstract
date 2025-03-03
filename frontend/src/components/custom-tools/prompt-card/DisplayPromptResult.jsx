@@ -1,4 +1,4 @@
-import { Spin, Typography } from "antd";
+import { Space, Spin, Typography } from "antd";
 import PropTypes from "prop-types";
 import { InfoCircleFilled } from "@ant-design/icons";
 import { useEffect, useState } from "react";
@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   displayPromptResult,
   generateApiRunStatusId,
+  generateUUID,
   PROMPT_RUN_API_STATUSES,
 } from "../../../helpers/GetStaticData";
 import "./PromptCard.css";
@@ -23,6 +24,7 @@ function DisplayPromptResult({
 }) {
   const [isLoading, setIsLoading] = useState(false);
   const [parsedOutput, setParsedOutput] = useState(null);
+  const [selectedKey, setSelectedKey] = useState(null);
   const { singlePassExtractMode, isSinglePassExtractLoading, details } =
     useCustomToolStore();
 
@@ -42,7 +44,12 @@ function DisplayPromptResult({
     setParsedOutput(
       displayPromptResult(output, true, details?.enable_highlight)
     );
-  }, [promptRunStatus, isSinglePassExtractLoading, details?.enable_highlight]);
+  }, [
+    promptRunStatus,
+    isSinglePassExtractLoading,
+    details?.enable_highlight,
+    output,
+  ]);
 
   if (isLoading) {
     return <Spin indicator={<SpinnerLoader size="small" />} />;
@@ -59,20 +66,21 @@ function DisplayPromptResult({
     );
   }
 
-  const handleClick = (highlightData, key) => {
-    if (highlightData && highlightData[key]) {
+  const handleClick = (highlightData, key, keyPath) => {
+    if (highlightData?.[key]) {
       handleSelectHighlight(
         highlightData[key],
         promptDetails?.prompt_id,
         profileId
       );
+      setSelectedKey(keyPath);
     }
   };
 
   const isObject = (value) =>
     typeof value === "object" && value !== null && !Array.isArray(value);
 
-  const renderJson = (data, highlightData, indent = 0) => {
+  const renderJson = (data, highlightData, indent = 0, path = "") => {
     console.log(data);
     if (typeof data === "object" && !details?.enable_highlight) {
       return JSON.stringify(data, null, 4);
@@ -92,8 +100,13 @@ function DisplayPromptResult({
           {"["}
           <div style={{ paddingLeft: "20px" }}>
             {data.map((item, index) => (
-              <div key={index}>
-                {renderJson(item, highlightData[index], indent + 1)}
+              <div key={generateUUID()}>
+                {renderJson(
+                  item,
+                  highlightData[index],
+                  indent + 1,
+                  `${path}[${index}]`
+                )}
                 {index < data.length - 1 ? "," : ""}
               </div>
             ))}
@@ -110,14 +123,19 @@ function DisplayPromptResult({
           <div style={{ paddingLeft: "20px" }}>
             {Object.entries(data).map(([key, value], index, array) => {
               const isClickable = !isObject(value) && !Array.isArray(value); // Only primitive values should be clickable
-
+              const newPath = path ? `${path}.${key}` : key;
+              const isSelected = selectedKey === newPath;
               return (
                 <div key={key}>
-                  <span
+                  <Space
+                    wrap
                     className="json-key"
                     style={{
-                      color:
-                        isClickable && highlightData?.[key] ? "blue" : "black",
+                      color: isSelected
+                        ? "red"
+                        : isClickable && highlightData?.[key]
+                        ? "blue"
+                        : "black",
                       cursor:
                         isClickable && highlightData?.[key]
                           ? "pointer"
@@ -125,14 +143,14 @@ function DisplayPromptResult({
                     }}
                     onClick={() => {
                       if (isClickable && highlightData?.[key]) {
-                        handleClick(highlightData, key);
+                        handleClick(highlightData, key, newPath);
                       }
                     }}
                   >
                     {key}
-                  </span>
+                  </Space>
                   {": "}
-                  {renderJson(value, highlightData?.[key], indent + 1)}
+                  {renderJson(value, highlightData?.[key], indent + 1, newPath)}
                   {index < array.length - 1 ? "," : ""}
                 </div>
               );
@@ -151,7 +169,7 @@ function DisplayPromptResult({
       {parsedOutput && typeof parsedOutput === "object" ? (
         renderJson(parsedOutput, highlightData, 0)
       ) : (
-        <div>{parsedOutput && parsedOutput}</div>
+        <div>{parsedOutput}</div>
       )}
     </Typography.Paragraph>
   );
