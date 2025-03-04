@@ -185,6 +185,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id
             )
+            result.remove_result_metadata_keys(["highlight_data"])
             if not include_metadata:
                 result.remove_result_metadata_keys()
             if not include_metrics:
