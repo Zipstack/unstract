@@ -1,5 +1,4 @@
-import { FullscreenExitOutlined, FullscreenOutlined } from "@ant-design/icons";
-import { Col, Collapse, Modal, Row } from "antd";
+import { Col, Row } from "antd";
 import { useState, useEffect } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -7,10 +6,8 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import { DisplayLogs } from "../display-logs/DisplayLogs";
 import { DocumentManager } from "../document-manager/DocumentManager";
 import { Header } from "../header/Header";
-import { LogsLabel } from "../logs-label/LogsLabel";
 import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
@@ -49,8 +46,6 @@ try {
   // Do nothing if plugins are not loaded.
 }
 function ToolIde() {
-  const [showLogsModal, setShowLogsModal] = useState(false);
-  const [activeKey, setActiveKey] = useState([]);
   const [openSettings, setOpenSettings] = useState(false);
   const {
     details,
@@ -75,13 +70,6 @@ function ToolIde() {
   const [openShareModal, setOpenShareModal] = useState(false);
   const [openCloneModal, setOpenCloneModal] = useState(false);
 
-  const openLogsModal = () => {
-    setShowLogsModal(true);
-  };
-
-  const closeLogsModal = () => {
-    setShowLogsModal(false);
-  };
   useEffect(() => {
     if (openShareModal) {
       if (shareId) {
@@ -100,32 +88,6 @@ function ToolIde() {
       setOpenShareLink(false);
     }
   }, [openShareModal]);
-
-  const genExtra = () => (
-    <FullscreenOutlined
-      onClick={(event) => {
-        openLogsModal();
-        event.stopPropagation();
-      }}
-    />
-  );
-
-  const getItems = () => [
-    {
-      key: "1",
-      label: activeKey?.length > 0 ? <LogsLabel /> : "Logs",
-      children: (
-        <div className="tool-ide-logs">
-          <DisplayLogs />
-        </div>
-      ),
-      extra: genExtra(),
-    },
-  ];
-
-  const handleCollapse = (keys) => {
-    setActiveKey(keys);
-  };
 
   const generateIndex = async (doc) => {
     const docId = doc?.document_id;
@@ -264,31 +226,9 @@ function ToolIde() {
               </div>
             </Col>
           </Row>
-          <div className="tool-ide-footer">
-            <Collapse
-              className="tool-ide-collapse-panel"
-              size="small"
-              activeKey={activeKey}
-              items={getItems()}
-              expandIconPosition="end"
-              onChange={handleCollapse}
-            />
-          </div>
-          <Modal
-            title={<LogsLabel />}
-            open={showLogsModal}
-            onCancel={closeLogsModal}
-            className="agency-ide-log-modal"
-            footer={null}
-            width={1400}
-            closeIcon={<FullscreenExitOutlined />}
-          >
-            <div className="agency-ide-logs">
-              <DisplayLogs />
-            </div>
-          </Modal>
         </div>
       </div>
+      <div className="height-50" />
       <SettingsModal
         open={openSettings}
         setOpen={setOpenSettings}
