@@ -235,23 +235,19 @@ const deploymentsStaticContent = {
     title: "Unstructured to Structured ETL Pipelines",
     modalTitle: "Deploy ETL Pipeline",
     addBtn: "ETL Pipeline",
-    isLogsRequired: true,
   },
   task: {
     title: "Unstructured to Structured Task Pipelines",
     modalTitle: "Deploy Task Pipeline",
     addBtn: "Task Pipeline",
-    isLogsRequired: true,
   },
   api: {
     title: "API Deployments",
     addBtn: "API Deployment",
-    isLogsRequired: false,
   },
   app: {
     title: "App Deployments",
     addBtn: "App Deployment",
-    isLogsRequired: false,
   },
 };
 
@@ -279,13 +275,19 @@ const getTimeForLogs = () => {
 };
 
 const getDateTimeString = (timestamp) => {
-  // Convert to milliseconds
+  // Check if the timestamp is a valid number
+  if (typeof timestamp !== "number" || isNaN(timestamp) || timestamp <= 0) {
+    return timestamp;
+  }
+
   const timestampInMilliseconds = timestamp * 1000;
 
-  // Create a new Date object
   const date = new Date(timestampInMilliseconds);
 
-  // Extract date components
+  if (isNaN(date.getTime())) {
+    return timestamp;
+  }
+
   const year = date.getFullYear();
   const month = (date.getMonth() + 1).toString().padStart(2, "0"); // Months are zero-indexed
   const day = date.getDate().toString().padStart(2, "0");
@@ -586,6 +588,20 @@ const TRIAL_PLAN = "TRIAL";
 
 const homePagePath = cloudHomePagePath || "tools";
 
+const convertTimestampToHHMMSS = (timestamp) => {
+  // Convert the timestamp to milliseconds
+  const date = new Date(timestamp * 1000);
+
+  // Extract hours, minutes, and seconds
+  const [hours, minutes, seconds] = [
+    date.getUTCHours(),
+    date.getUTCMinutes(),
+    date.getUTCSeconds(),
+  ].map((unit) => unit.toString().padStart(2, "0"));
+  // Return the formatted time string
+  return `${hours}:${minutes}:${seconds}`;
+};
+
 const UNSTRACT_ADMIN = "unstract_admin";
 
 export {
@@ -641,5 +657,6 @@ export {
   generateCoverageKey,
   TRIAL_PLAN,
   homePagePath,
+  convertTimestampToHHMMSS,
   UNSTRACT_ADMIN,
 };
