@@ -62,7 +62,8 @@ class ContainerClientInterface(ABC):
     def get_container_run_config(
         self,
         command: list[str],
-        run_id: str,
+        file_execution_id: str,
+        container_name: Optional[str] = None,
         envs: Optional[dict[str, Any]] = None,
         auto_remove: bool = False,
     ) -> dict[str, Any]:
