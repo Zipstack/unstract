@@ -25,6 +25,8 @@ class FileCentricExecutionSerializer(serializers.ModelSerializer):
     def get_status_msg(self, obj: FileExecution) -> Optional[dict[str, any]]:
         if obj.status in [ExecutionStatus.PENDING, ExecutionStatus.QUEUED]:
             return INIT_STATUS_MSG
+        elif obj.status == ExecutionStatus.ERROR:
+            return obj.execution_error
 
         latest_log = (
             obj.execution_logs.exclude(data__level__in=["DEBUG", "WARN"])
