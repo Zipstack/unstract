@@ -27,7 +27,7 @@ package-dir = "src"
 
 [tool.pdm.dev-dependencies]
 deploy = [
-    "gunicorn>=21.2.0",
+    "gunicorn[gevent]>=21.2.0",
 ]
 
 dev = [
@@ -37,11 +37,16 @@ dev = [
     "pytest-md-report>=0.6.2",
 ]
 
+
 [tool.pdm.scripts]
-# Runs the flask service
-runner.cmd = "flask --app src/unstract/runner/main.py run --port 5002"
+# Runs the service with gunicorn
+runner.cmd = "./entrypoint.sh"
 runner.env_file = ".env"
-runner.help = "Runs the Unstract tool runner"
+runner.help = "Runs the Unstract tool runner (Gunicorn)"
+# Runs the service with flask
+runner-flask.cmd = "flask --app src/unstract/runner/main.py run --port 5002"
+runner-flask.env_file = ".env"
+runner-flask.help = "Runs the Unstract tool runner (Flask)"
 # Run tests for this service
 test.cmd = "pytest -s -v"
 test.env_file = "tests/.env"
