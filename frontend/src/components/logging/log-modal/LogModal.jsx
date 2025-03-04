@@ -1,7 +1,6 @@
-import { Button, Modal, Radio, Space, Table, Tooltip } from "antd";
+import { Modal, Table, Tooltip } from "antd";
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
-import { FilterOutlined } from "@ant-design/icons";
 
 import "./LogModal.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -12,6 +11,7 @@ import {
   formattedDateTime,
   formattedDateTimeWithSeconds,
 } from "../../../helpers/GetStaticData";
+import { FilterDropdown, FilterIcon } from "../filter-dropdown/FilterDropdown";
 
 function LogModal({
   executionId,
@@ -33,6 +33,7 @@ function LogModal({
     pageSize: 10,
     total: 0,
   });
+  const filterOptions = ["INFO", "WARN", "DEBUG", "ERROR"];
 
   const fetchExecutionFileLogs = async (executionId, fileId, page) => {
     try {
@@ -100,7 +101,11 @@ function LogModal({
       dataIndex: "logLevel",
       key: "level",
       filterDropdown: (props) => (
-        <FilterDropdown {...props} handleClearFilter={handleClearFilter} />
+        <FilterDropdown
+          {...props}
+          handleClearFilter={handleClearFilter}
+          filterOptions={filterOptions}
+        />
       ),
       filteredValue: selectedLogLevel ? [selectedLogLevel] : [],
       filterIcon: (filtered) => <FilterIcon filtered={filtered} />,
@@ -163,54 +168,6 @@ function LogModal({
     </Modal>
   );
 }
-
-const FilterIcon = ({ filtered }) => (
-  <FilterOutlined style={{ color: filtered ? "#1677ff" : undefined }} />
-);
-
-const FilterDropdown = ({
-  setSelectedKeys,
-  selectedKeys,
-  confirm,
-  handleClearFilter,
-}) => (
-  <div style={{ padding: 8 }}>
-    <Radio.Group
-      onChange={(e) => {
-        setSelectedKeys(e.target.value ? [e.target.value] : []);
-        confirm();
-      }}
-      value={selectedKeys[0] || null}
-    >
-      <Space direction="vertical">
-        <Radio value="INFO">INFO</Radio>
-        <Radio value="WARN">WARN</Radio>
-        <Radio value="DEBUG">DEBUG</Radio>
-        <Radio value="ERROR">ERROR</Radio>
-      </Space>
-    </Radio.Group>
-    <br />
-    <Button
-      className="clear-button"
-      type="primary"
-      size="small"
-      onClick={() => handleClearFilter(confirm)}
-    >
-      Clear
-    </Button>
-  </div>
-);
-
-FilterIcon.propTypes = {
-  filtered: PropTypes.bool,
-};
-
-FilterDropdown.propTypes = {
-  setSelectedKeys: PropTypes.func,
-  selectedKeys: PropTypes.any,
-  confirm: PropTypes.func,
-  handleClearFilter: PropTypes.func,
-};
 LogModal.propTypes = {
   executionId: PropTypes.string,
   fileId: PropTypes.string,

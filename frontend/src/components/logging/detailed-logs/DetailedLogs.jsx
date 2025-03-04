@@ -6,7 +6,6 @@ import {
   DownOutlined,
   EyeOutlined,
   FileTextOutlined,
-  FilterOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -14,13 +13,10 @@ import {
   Checkbox,
   Dropdown,
   Flex,
-  Radio,
-  Space,
   Table,
   Tooltip,
   Typography,
 } from "antd";
-import PropTypes from "prop-types";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
@@ -33,6 +29,7 @@ import {
   formattedDateTimeWithSeconds,
 } from "../../../helpers/GetStaticData";
 import { LogModal } from "../log-modal/LogModal";
+import { FilterDropdown, FilterIcon } from "../filter-dropdown/FilterDropdown";
 
 const DetailedLogs = () => {
   const { id, type } = useParams(); // Get the ID from the URL
@@ -54,6 +51,15 @@ const DetailedLogs = () => {
   const [ordering, setOrdering] = useState(null);
   const [columnsVisibility, setColumnsVisibility] = useState({});
   const [statusFilter, setStatusFilter] = useState(null);
+  const filterOptions = [
+    "COMPLETED",
+    "PENDING",
+    "ERROR",
+    "QUEUED",
+    "INITIATED",
+    "EXECUTING",
+    "STOPPED",
+  ];
 
   const fetchExecutionDetails = async (id) => {
     try {
@@ -144,7 +150,11 @@ const DetailedLogs = () => {
       dataIndex: "status",
       key: "status",
       filterDropdown: (props) => (
-        <FilterDropdown {...props} handleClearFilter={handleClearFilter} />
+        <FilterDropdown
+          {...props}
+          handleClearFilter={handleClearFilter}
+          filterOptions={filterOptions}
+        />
       ),
       filteredValue: statusFilter ? [statusFilter] : [],
       filterIcon: (filtered) => <FilterIcon filtered={filtered} />,
@@ -319,56 +329,4 @@ const DetailedLogs = () => {
     </>
   );
 };
-
-const FilterIcon = ({ filtered }) => (
-  <FilterOutlined style={{ color: filtered ? "#1677ff" : undefined }} />
-);
-
-const FilterDropdown = ({
-  setSelectedKeys,
-  selectedKeys,
-  confirm,
-  handleClearFilter,
-}) => (
-  <div style={{ padding: 8 }}>
-    <Radio.Group
-      onChange={(e) => {
-        setSelectedKeys(e.target.value ? [e.target.value] : []);
-        confirm();
-      }}
-      value={selectedKeys[0] || null}
-    >
-      <Space direction="vertical">
-        <Radio value="COMPLETED">COMPLETED</Radio>
-        <Radio value="PENDING">PENDING</Radio>
-        <Radio value="ERROR">ERROR</Radio>
-        <Radio value="QUEUED">QUEUED</Radio>
-        <Radio value="INITIATED">INITIATED</Radio>
-        <Radio value="EXECUTING">EXECUTING</Radio>
-        <Radio value="STOPPED">STOPPED</Radio>
-      </Space>
-    </Radio.Group>
-    <br />
-    <Button
-      className="clear-button"
-      type="primary"
-      size="small"
-      onClick={() => handleClearFilter(confirm)}
-    >
-      Clear
-    </Button>
-  </div>
-);
-
-FilterIcon.propTypes = {
-  filtered: PropTypes.bool,
-};
-
-FilterDropdown.propTypes = {
-  setSelectedKeys: PropTypes.func,
-  selectedKeys: PropTypes.any,
-  confirm: PropTypes.func,
-  handleClearFilter: PropTypes.func,
-};
-
 export { DetailedLogs };
