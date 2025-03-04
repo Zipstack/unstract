@@ -129,6 +129,9 @@ LOG_HISTORY_CONSUMER_INTERVAL = int(
     get_required_setting("LOG_HISTORY_CONSUMER_INTERVAL", "60")
 )
 LOGS_BATCH_LIMIT = int(get_required_setting("LOGS_BATCH_LIMIT", "30"))
+LOGS_EXPIRATION_TIME_IN_SECOND = int(
+    get_required_setting("LOGS_EXPIRATION_TIME_IN_SECOND")
+)
 
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
 NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))
