@@ -41,7 +41,7 @@ function LogModal({
         params: {
           page_size: pagination.pageSize,
           page,
-          file_execution_id: fileId,
+          file_execution_id: fileId || "null",
           log_level: selectedLogLevel,
           ordering,
         },
@@ -140,7 +140,7 @@ function LogModal({
   }, [logDescModalOpen, pagination.current, selectedLogLevel, ordering]);
   return (
     <Modal
-      title={`Execution Log Details - ${fileId}`}
+      title={`Execution Log Details - ${fileId || executionId}`}
       centered
       open={logDescModalOpen}
       onCancel={handleClose}

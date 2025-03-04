@@ -143,7 +143,7 @@ function useMainAppRoutes() {
           />
         </Route>
         <Route path="logs" element={<LogsPage />} />
-        <Route path="logs/:id" element={<LogsPage />} />
+        <Route path="logs/:type/:id/" element={<LogsPage />} />
         <Route
           path="settings/llms"
           element={<ToolsSettingsPage type="llm" />}

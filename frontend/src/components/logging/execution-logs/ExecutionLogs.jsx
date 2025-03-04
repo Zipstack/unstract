@@ -85,6 +85,7 @@ function ExecutionLogs() {
 
   const fetchLogs = async (page) => {
     try {
+      setLoading(true);
       const url = `/api/v1/unstract/${sessionDetails?.orgId}/execution/`;
       const response = await axiosPrivate.get(url, {
         params: {
@@ -117,7 +118,7 @@ function ExecutionLogs() {
           success: item?.status === "COMPLETED",
           isError: item?.status === "ERROR",
           workflowName: item?.workflow_name,
-          pipelineName: item?.pipeline_name,
+          pipelineName: item?.pipeline_name || "Pipeline name not found",
           successfulFiles: item?.successful_files,
           failedFiles: item?.failed_files,
         };
@@ -166,6 +167,7 @@ function ExecutionLogs() {
                   pagination={pagination}
                   setPagination={setPagination}
                   setOrdering={setOrdering}
+                  activeTab={activeTab}
                 />
               </div>
             </>

@@ -9,6 +9,7 @@ const LogsTable = ({
   pagination,
   setPagination,
   setOrdering,
+  activeTab,
 }) => {
   const navigate = useNavigate();
   const columns = [
@@ -31,7 +32,7 @@ const LogsTable = ({
       render: (text) => (
         <Typography.Link
           className="title-name-redirect"
-          onClick={() => navigate(`${text}`)}
+          onClick={() => navigate(`${activeTab}/${text}`)}
         >
           {text}
         </Typography.Link>
@@ -112,6 +113,7 @@ LogsTable.propTypes = {
   pagination: PropTypes.object,
   setPagination: PropTypes.func,
   setOrdering: PropTypes.func,
+  activeTab: PropTypes.string,
 };
 
 export { LogsTable };
