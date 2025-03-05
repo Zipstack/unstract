@@ -64,7 +64,7 @@ class UsageHelper:
             # Handle any other exceptions that might occur during the execution
             logger.error(f"An unexpected error occurred for run_id {run_id}: {str(e)}")
             raise APIException("Error while aggregating token counts")
-        
+
     @staticmethod
     def get_aggregated_cost(execution_id: str) -> Optional[float]:
         """Retrieve aggregated cost for the given execution_id.
@@ -84,17 +84,23 @@ class UsageHelper:
                 cost_in_dollars=Sum(UsageKeys.COST_IN_DOLLARS)
             )[UsageKeys.COST_IN_DOLLARS]
 
-            logger.debug(f"Cost aggregated successfully for execution_id: {execution_id}")
+            logger.debug(
+                f"Cost aggregated successfully for execution_id: {execution_id}"
+            )
 
             return total_cost
-        
+
         except Usage.DoesNotExist:
             # Handle the case where no usage data is found for the given execution_id
-            logger.warning(f"Usage data not found for the specified execution_id: {execution_id}")
+            logger.warning(
+                f"Usage data not found for the specified execution_id: {execution_id}"
+            )
             return None
         except Exception as e:
             # Handle any other exceptions that might occur during the execution
-            logger.error(f"An unexpected error occurred for execution_id {execution_id}: {str(e)}")
+            logger.error(
+                f"An unexpected error occurred for execution_id {execution_id}: {str(e)}"
+            )
             raise APIException("Error while aggregating cost")
 
     @staticmethod

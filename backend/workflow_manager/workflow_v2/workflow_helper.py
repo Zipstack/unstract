@@ -213,7 +213,9 @@ class WorkflowHelper:
             execution_service.update_execution(ExecutionStatus.COMPLETED)
 
         workflow_execution = execution_service.get_execution_instance()
-        execution_service.publish_average_cost_log(execution_id=workflow_execution.id, total_files=successful_files)
+        execution_service.publish_average_cost_log(
+            execution_id=workflow_execution.id, total_files=successful_files
+        )
 
         execution_service.publish_final_workflow_logs(
             total_files=total_files,
@@ -279,7 +281,9 @@ class WorkflowHelper:
             use_file_history=execution_service.use_file_history,
         )
 
-        execution_service.log_total_cost_per_file(run_id=file_execution_id, file_name=file_name)
+        execution_service.log_total_cost_per_file(
+            run_id=file_execution_id, file_name=file_name
+        )
 
         execution_service.publish_update_log(
             LogState.SUCCESS,
