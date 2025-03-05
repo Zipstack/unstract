@@ -24,7 +24,6 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import "./DetailedLogs.css";
 import {
-  formatSecondsToHMS,
   formattedDateTime,
   formattedDateTimeWithSeconds,
 } from "../../../helpers/GetStaticData";
@@ -78,7 +77,7 @@ const DetailedLogs = () => {
         total,
         status: item?.status,
         executionName: item?.workflow_name,
-        ranFor: formatSecondsToHMS(item?.execution_time),
+        ranFor: item?.execution_time,
         executedAtWithSeconds: formattedDateTimeWithSeconds(item?.created_at),
       };
 
@@ -136,6 +135,17 @@ const DetailedLogs = () => {
 
   const columnsDetailedTable = [
     {
+      title: "Executed At",
+      dataIndex: "executedAt",
+      key: "executedAt",
+      sorter: true,
+      render: (_, record) => (
+        <Tooltip title={record.executedAtWithSeconds}>
+          {record.executedAt}
+        </Tooltip>
+      ),
+    },
+    {
       title: "File Name",
       dataIndex: "fileName",
       key: "fileName",
@@ -169,17 +179,7 @@ const DetailedLogs = () => {
       dataIndex: "executionTime",
       key: "executionTime",
     },
-    {
-      title: "Executed At",
-      dataIndex: "executedAt",
-      key: "executedAt",
-      sorter: true,
-      render: (_, record) => (
-        <Tooltip title={record.executedAtWithSeconds}>
-          {record.executedAt}
-        </Tooltip>
-      ),
-    },
+
     {
       title: "File Path",
       dataIndex: "filePath",
@@ -318,6 +318,9 @@ const DetailedLogs = () => {
           pagination={{ ...pagination }}
           loading={loading}
           onChange={handleTableChange}
+          scroll={{
+            y: 55 * 10,
+          }}
         />
       </div>
       <LogModal

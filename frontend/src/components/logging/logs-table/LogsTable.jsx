@@ -103,6 +103,9 @@ const LogsTable = ({
       size="small"
       loading={loading}
       onChange={handleTableChange}
+      scroll={{
+        y: 55 * 10,
+      }}
     />
   );
 };

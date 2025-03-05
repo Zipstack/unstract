@@ -1,5 +1,5 @@
 import { DatePicker, Tabs, Typography } from "antd";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
@@ -25,6 +25,7 @@ function ExecutionLogs() {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
+  const navigate = useNavigate();
 
   const [dataList, setDataList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +76,8 @@ function ExecutionLogs() {
     },
   ];
   const onChange = (key) => {
-    setActiveTab(key); // Update the active tab state
+    navigate(`/${sessionDetails?.orgName}/logs`);
+    setActiveTab(key);
   };
   const onOk = (value) => {
     if (value && value.length === 2 && value[0] && value[1]) {
@@ -96,7 +98,7 @@ function ExecutionLogs() {
           end_date: selectedDateRange[1] || null,
           ordering,
         },
-      }); // Replace with your actual API URL
+      });
       setPagination({
         current: page,
         pageSize: pagination?.pageSize,
@@ -136,7 +138,7 @@ function ExecutionLogs() {
   }, [activeTab, pagination.current, selectedDateRange, ordering]);
 
   return (
-    <>
+    <div className="file-logs-container">
       <TopBar enableSearch={false} title="Logs">
         <Tabs activeKey={activeTab} items={items} onChange={onChange} />
         <RangePicker
@@ -151,30 +153,28 @@ function ExecutionLogs() {
           disabled={currentPath}
         />
       </TopBar>
-      <div className="logs-container">
-        <IslandLayout>
-          {id ? (
-            <DetailedLogs />
-          ) : (
-            <>
-              <Typography.Title className="logs-title" level={4}>
-                Execution Logs
-              </Typography.Title>
-              <div className="settings-layout">
-                <LogsTable
-                  tableData={dataList}
-                  loading={loading}
-                  pagination={pagination}
-                  setPagination={setPagination}
-                  setOrdering={setOrdering}
-                  activeTab={activeTab}
-                />
-              </div>
-            </>
-          )}
-        </IslandLayout>
-      </div>
-    </>
+      <IslandLayout>
+        {id ? (
+          <DetailedLogs />
+        ) : (
+          <>
+            <Typography.Title className="logs-title" level={4}>
+              Execution Logs
+            </Typography.Title>
+            <div className="settings-layout">
+              <LogsTable
+                tableData={dataList}
+                loading={loading}
+                pagination={pagination}
+                setPagination={setPagination}
+                setOrdering={setOrdering}
+                activeTab={activeTab}
+              />
+            </div>
+          </>
+        )}
+      </IslandLayout>
+    </div>
   );
 }
 
