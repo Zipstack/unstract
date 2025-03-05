@@ -87,6 +87,7 @@ class UsageHelper:
 
             logger.debug(
                 f"Cost aggregated successfully for execution_id: {execution_id}"
+                f", Total cost: {total_cost}"
             )
 
             return total_cost
