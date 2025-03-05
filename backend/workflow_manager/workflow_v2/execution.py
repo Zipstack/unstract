@@ -312,8 +312,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         average_cost = total_cost / total_files
         self.publish_log(
             message=(
-                f"The average cost per file for execution {execution_id} "
-                f"is ${average_cost}"
+                f"The average cost per file for execution '{execution_id}' "
+                f"is '${average_cost}'"
             )
         )
 
