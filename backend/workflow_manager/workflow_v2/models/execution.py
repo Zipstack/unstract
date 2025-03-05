@@ -99,6 +99,17 @@ class WorkflowExecution(BaseModel):
         return list(self.tags.values_list("name", flat=True))
 
     @property
+    def workflow(self) -> Optional[str]:
+        """Obtains the workflow associated to this execution."""
+        try:
+            return Workflow.objects.get(id=self.workflow_id)
+        except ObjectDoesNotExist:
+            logger.warning(
+                f"Expected workflow '{self.workflow_id}' to exist but missing"
+            )
+            return None
+
+    @property
     def workflow_name(self) -> Optional[str]:
         """Obtains the workflow's name associated to this execution."""
         try:

@@ -597,6 +597,7 @@ class DestinationConnector(BaseConnector):
                 workflow_id=str(self.workflow_id),
                 file_content=file_content_base64,
                 whisper_hash=whisper_hash,
+                execution_id=self.execution_id,
             ).to_dict()
             # Convert the result dictionary to a JSON string
             queue_result_json = json.dumps(queue_result)
