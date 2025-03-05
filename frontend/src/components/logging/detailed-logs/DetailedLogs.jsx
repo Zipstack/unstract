@@ -136,6 +136,17 @@ const DetailedLogs = () => {
 
   const columnsDetailedTable = [
     {
+      title: "Executed At",
+      dataIndex: "executedAt",
+      key: "executedAt",
+      sorter: true,
+      render: (_, record) => (
+        <Tooltip title={record.executedAtWithSeconds}>
+          {record.executedAt}
+        </Tooltip>
+      ),
+    },
+    {
       title: "File Name",
       dataIndex: "fileName",
       key: "fileName",
@@ -168,17 +179,6 @@ const DetailedLogs = () => {
       title: "Execution Time",
       dataIndex: "executionTime",
       key: "executionTime",
-    },
-    {
-      title: "Executed At",
-      dataIndex: "executedAt",
-      key: "executedAt",
-      sorter: true,
-      render: (_, record) => (
-        <Tooltip title={record.executedAtWithSeconds}>
-          {record.executedAt}
-        </Tooltip>
-      ),
     },
     {
       title: "File Path",

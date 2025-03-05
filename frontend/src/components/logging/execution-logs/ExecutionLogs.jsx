@@ -92,8 +92,8 @@ function ExecutionLogs() {
           execution_entity: activeTab,
           page_size: pagination.pageSize,
           page,
-          start_date: selectedDateRange[0] || null,
-          end_date: selectedDateRange[1] || null,
+          created_at_after: selectedDateRange[0] || null,
+          created_at_before: selectedDateRange[1] || null,
           ordering,
         },
       }); // Replace with your actual API URL
