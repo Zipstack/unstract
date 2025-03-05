@@ -158,11 +158,6 @@ class WorkflowFileExecution(BaseModel):
         )
         return str(timedelta(seconds=time_in_secs)).split(".")[0]
 
-    # def _time_since_created_at(self):
-    #     return round(
-    #         (timezone.now() - self.created_at).total_seconds(), 3
-    #     )
-
     class Meta:
         verbose_name = "Workflow File Execution"
         verbose_name_plural = "Workflow File Executions"
