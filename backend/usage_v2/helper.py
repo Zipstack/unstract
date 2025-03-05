@@ -70,7 +70,7 @@ class UsageHelper:
         """Retrieve aggregated cost for the given execution_id.
 
         Args:
-            execution_id (str): The identifier for the 
+            execution_id (str): The identifier for the
             total cost of a particular execution.
 
         Returns:
