@@ -70,7 +70,8 @@ class UsageHelper:
         """Retrieve aggregated cost for the given execution_id.
 
         Args:
-            execution_id (str): The identifier for the total cost of a particular execution.
+            execution_id (str): The identifier for the 
+            total cost of a particular execution.
 
         Returns:
         Optional[float]: The total cost in dollars if available, else None.
@@ -99,7 +100,7 @@ class UsageHelper:
         except Exception as e:
             # Handle any other exceptions that might occur during the execution
             logger.error(
-                f"An unexpected error occurred for execution_id {execution_id}: {str(e)}"
+                f"An unexpected error occurred for execution {execution_id}: {str(e)}"
             )
             raise APIException("Error while aggregating cost")
 
