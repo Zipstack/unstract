@@ -8,6 +8,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
+from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow
@@ -137,7 +138,13 @@ class WorkflowExecution(BaseModel):
         Returns:
             str: Time in HH:MM:SS format
         """
-        return str(timedelta(seconds=self.execution_time)).split(".")[0]
+        # Compute execution time for a run that's in progress
+        time_in_secs = (
+            self.execution_time
+            if self.execution_time
+            else CommonUtils.time_since(self.created_at)
+        )
+        return str(timedelta(seconds=time_in_secs)).split(".")[0]
 
     def __str__(self) -> str:
         return (

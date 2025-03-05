@@ -3,7 +3,6 @@ from datetime import timedelta
 from typing import Optional
 
 from django.db import models
-from django.utils import timezone
 from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -130,9 +129,7 @@ class WorkflowFileExecution(BaseModel):
             ]
             and not self.execution_time
         ):
-            self.execution_time = round(
-                (timezone.now() - self.created_at).total_seconds(), 3
-            )
+            self.execution_time = CommonUtils.time_since(self.created_at)
 
         self.execution_error = execution_error
         self.save()
@@ -153,7 +150,18 @@ class WorkflowFileExecution(BaseModel):
         Returns:
             str: Time in HH:MM:SS format
         """
-        return str(timedelta(seconds=self.execution_time)).split(".")[0]
+        # Compute execution time for a run that's in progress
+        time_in_secs = (
+            self.execution_time
+            if self.execution_time
+            else CommonUtils.time_since(self.created_at)
+        )
+        return str(timedelta(seconds=time_in_secs)).split(".")[0]
+
+    # def _time_since_created_at(self):
+    #     return round(
+    #         (timezone.now() - self.created_at).total_seconds(), 3
+    #     )
 
     class Meta:
         verbose_name = "Workflow File Execution"
