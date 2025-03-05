@@ -179,7 +179,6 @@ const DetailedLogs = () => {
       dataIndex: "executionTime",
       key: "executionTime",
     },
-
     {
       title: "File Path",
       dataIndex: "filePath",
