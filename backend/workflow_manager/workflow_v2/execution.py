@@ -308,14 +308,22 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
     def publish_average_cost_log(self, execution_id, total_files):
 
-        total_cost = round(UsageHelper.get_aggregated_cost(execution_id), 5)
-        average_cost = total_cost / total_files
-        self.publish_log(
-            message=(
-                f"The average cost per file for execution '{execution_id}' "
-                f"is '${average_cost}'"
+        try:
+            total_cost = UsageHelper.get_aggregated_cost(execution_id)
+            average_cost = round(total_cost / total_files, 5)
+            self.publish_log(
+                message=(
+                    f"The average cost per file for execution '{execution_id}' "
+                    f"is '${average_cost:}'. Total cost: '${total_cost:}'"
+                )
             )
-        )
+        except (TypeError, ZeroDivisionError) as e:
+            self.publish_log(
+                message=(
+                    f"Error calculating cost for execution '{execution_id}': "
+                    f"{str(e)}. Total cost: {total_cost}, Total files: {total_files}"
+                )
+            )
 
     def log_total_cost_per_file(self, run_id, file_name):
         cost_dict = UsageHelper.get_aggregated_token_count(run_id=run_id)
