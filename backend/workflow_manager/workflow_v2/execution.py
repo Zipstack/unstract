@@ -322,7 +322,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         cost = round(cost_dict.get("cost_in_dollars", 0), 5)
 
         # Log the total cost for a particular file executed in the workflow
-        self.publish_log(message=f"Total cost for file {file_name} is ${cost}")
+        self.publish_log(message=f"Total cost for file '{file_name}' is '${cost}'")
 
     def publish_initial_tool_execution_logs(
         self, current_file_idx: int, total_files: int, file_name: str
