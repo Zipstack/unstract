@@ -38,6 +38,7 @@ from django.contrib.auth import logout as django_logout
 from django.db.utils import IntegrityError
 from django.middleware import csrf
 from django.shortcuts import redirect
+from logs_helper.log_service import LogService
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -268,6 +269,8 @@ class AuthenticationController:
         return self.auth_service.make_user_organization_display_name(user_name)
 
     def user_logout(self, request: Request) -> Response:
+        session_id: str = UserSessionUtils.get_session_id(request=request)
+        LogService.remove_logs_on_logout(session_id=session_id)
         response = self.auth_service.user_logout(request=request)
         organization_id = UserSessionUtils.get_organization_id(request)
         user_id = UserSessionUtils.get_user_id(request)

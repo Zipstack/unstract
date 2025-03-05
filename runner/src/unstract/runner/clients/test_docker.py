@@ -109,7 +109,7 @@ def test_get_image(docker_client, mocker):
 def test_get_container_run_config(docker_client, mocker):
     """Test the get_container_run_config method."""
     command = ["echo", "hello"]
-    run_id = "run123"
+    file_execution_id = "run123"
 
     mocker.patch.object(docker_client, "_Client__image_exists", return_value=True)
     mocker_normalize = mocker.patch(
@@ -117,11 +117,13 @@ def test_get_container_run_config(docker_client, mocker):
         return_value="test-image",
     )
     config = docker_client.get_container_run_config(
-        command, run_id, envs={"KEY": "VALUE"}, auto_remove=True
+        command, file_execution_id, envs={"KEY": "VALUE"}, auto_remove=True
     )
 
     mocker_normalize.assert_called_once_with(
-        tool_image="test-image", tool_version="latest", run_id=run_id
+        tool_image="test-image",
+        tool_version="latest",
+        file_execution_id=file_execution_id,
     )
     assert config["name"] == "test-image"
     assert config["image"] == "test-image:latest"
@@ -134,17 +136,21 @@ def test_get_container_run_config_without_mount(docker_client, mocker):
     """Test the get_container_run_config method."""
     os.environ[Env.EXECUTION_DATA_DIR] = "/source"
     command = ["echo", "hello"]
-    run_id = "run123"
+    file_execution_id = "run123"
 
     mocker.patch.object(docker_client, "_Client__image_exists", return_value=True)
     mocker_normalize = mocker.patch(
         "unstract.core.utilities.UnstractUtils.build_tool_container_name",
         return_value="test-image",
     )
-    config = docker_client.get_container_run_config(command, run_id, auto_remove=True)
+    config = docker_client.get_container_run_config(
+        command, file_execution_id, auto_remove=True
+    )
 
     mocker_normalize.assert_called_once_with(
-        tool_image="test-image", tool_version="latest", run_id=run_id
+        tool_image="test-image",
+        tool_version="latest",
+        file_execution_id=file_execution_id,
     )
     assert config["name"] == "test-image"
     assert config["image"] == "test-image:latest"
