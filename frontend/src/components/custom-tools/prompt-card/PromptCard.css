@@ -331,3 +331,7 @@
 .json-value.selected {
   color: #5A8300;
 }
+
+.prompt-output-result{
+  font-size: 12px;
+}

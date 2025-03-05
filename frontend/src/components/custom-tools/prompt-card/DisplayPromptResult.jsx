@@ -134,8 +134,8 @@ function DisplayPromptResult({
                     {key}
                   </Space>
                   {": "}
-                  <span
-                    className={`json-value ${
+                  <Typography.Text
+                    className={`prompt-output-result json-value ${
                       isClickable && highlightData?.[key] ? "clickable" : ""
                     } ${isSelected ? "selected" : ""}`}
                     onClick={() => {
@@ -150,7 +150,7 @@ function DisplayPromptResult({
                       indent + 1,
                       newPath
                     )}
-                  </span>
+                  </Typography.Text>
                   {index < array.length - 1 ? "," : ""}
                 </div>
               );
@@ -164,29 +164,38 @@ function DisplayPromptResult({
     return String(data);
   };
 
+  const TextResult = () => {
+    return details?.enable_highlight ? (
+      <Typography.Text
+        wrap
+        onClick={() =>
+          handleSelectHighlight(
+            highlightData,
+            promptDetails?.prompt_id,
+            profileId
+          )
+        }
+        className={`prompt-output-result json-value ${
+          highlightData ? "clickable" : ""
+        } ${
+          selectedHighlight?.highlightedPrompt === promptDetails?.prompt_id
+            ? "selected"
+            : ""
+        }`}
+      >
+        {parsedOutput}
+      </Typography.Text>
+    ) : (
+      <div>{parsedOutput}</div>
+    );
+  };
+
   return (
     <Typography.Paragraph className="prompt-card-display-output font-size-12">
       {parsedOutput && typeof parsedOutput === "object" ? (
         renderJson(parsedOutput, highlightData, 0)
-      ) : details?.enable_highlight ? (
-        <div
-          onClick={() =>
-            handleSelectHighlight(
-              highlightData,
-              promptDetails?.prompt_id,
-              profileId
-            )
-          }
-          className={`json-value ${highlightData ? "clickable" : ""} ${
-            selectedHighlight?.highlightedPrompt === promptDetails?.prompt_id
-              ? "selected"
-              : ""
-          }`}
-        >
-          {parsedOutput}
-        </div>
       ) : (
-        <div>{parsedOutput}</div>
+        <TextResult />
       )}
     </Typography.Paragraph>
   );
