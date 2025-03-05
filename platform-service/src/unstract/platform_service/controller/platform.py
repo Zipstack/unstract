@@ -202,6 +202,10 @@ def page_usage() -> Any:
                         stripe_subscription_id,
                     )
 
+                    stripe_subscription_id = (
+                        stripe_subscription_id if stripe_subscription_id else "trial"
+                    )
+
                     # Insert or update data in the subscription_usage table
                     subscription_usage_query = f"""
                         INSERT INTO
@@ -210,7 +214,9 @@ def page_usage() -> Any:
                         organization_id, pages_processed, record_date,
                         created_at, updated_at
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (subscription_id, record_date) DO UPDATE
+                        ON CONFLICT (
+                        subscription_id, stripe_subscription_id, record_date
+                        ) DO UPDATE
                         SET pages_processed =
                         {DBTable.SUBSCRIPTION_USAGE}.pages_processed
                         + EXCLUDED.pages_processed;
