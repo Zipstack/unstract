@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from django.db.models import QuerySet, Sum
 from rest_framework.exceptions import APIException
@@ -64,6 +64,38 @@ class UsageHelper:
             # Handle any other exceptions that might occur during the execution
             logger.error(f"An unexpected error occurred for run_id {run_id}: {str(e)}")
             raise APIException("Error while aggregating token counts")
+        
+    @staticmethod
+    def get_aggregated_cost(execution_id: str) -> Optional[float]:
+        """Retrieve aggregated cost for the given execution_id.
+
+        Args:
+            execution_id (str): The identifier for the total cost of a particular execution.
+
+        Returns:
+        Optional[float]: The total cost in dollars if available, else None.
+
+        Raises:
+            APIException: For unexpected errors during database operations.
+        """
+        try:
+            # Aggregate the cost for the given execution_id
+            total_cost = Usage.objects.filter(execution_id=execution_id).aggregate(
+                cost_in_dollars=Sum(UsageKeys.COST_IN_DOLLARS)
+            )[UsageKeys.COST_IN_DOLLARS]
+
+            logger.debug(f"Cost aggregated successfully for execution_id: {execution_id}")
+
+            return total_cost
+        
+        except Usage.DoesNotExist:
+            # Handle the case where no usage data is found for the given execution_id
+            logger.warning(f"Usage data not found for the specified execution_id: {execution_id}")
+            return None
+        except Exception as e:
+            # Handle any other exceptions that might occur during the execution
+            logger.error(f"An unexpected error occurred for execution_id {execution_id}: {str(e)}")
+            raise APIException("Error while aggregating cost")
 
     @staticmethod
     def aggregate_usage_metrics(queryset: QuerySet) -> dict[str, Any]:

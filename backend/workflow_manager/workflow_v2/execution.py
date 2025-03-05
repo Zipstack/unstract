@@ -14,6 +14,7 @@ from unstract.workflow_execution.dto import ToolInstance as ToolInstanceDataClas
 from unstract.workflow_execution.dto import WorkflowDto
 from unstract.workflow_execution.enums import ExecutionType, LogComponent, LogState
 from unstract.workflow_execution.exceptions import StopExecution
+from usage_v2.helper import UsageHelper
 from utils.local_context import StateStore
 from utils.user_context import UserContext
 from workflow_manager.file_execution.models import WorkflowFileExecution
@@ -303,6 +304,23 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.publish_log(
             f"Total files: {total_files}, "
             f"{successful_files} successfully executed and {failed_files} error(s)"
+        )
+
+    def publish_average_cost_log(self, execution_id, total_files):
+
+        total_cost = round(UsageHelper.get_aggregated_cost(execution_id), 5)
+        average_cost = total_cost/total_files
+        self.publish_log(      
+            message=f"The average cost per file for execution {execution_id} is {average_cost}"
+        )
+
+    def log_total_cost_per_file(self, run_id, file_name):
+        cost_dict = UsageHelper.get_aggregated_token_count(run_id=run_id)        
+        cost = round(cost_dict.get("cost_in_dollars", 0), 5)
+
+        # Log the total cost for a particular file executed in the workflow
+        self.publish_log(
+            message=f"Total cost for file {file_name} is ${cost}"
         )
 
     def publish_initial_tool_execution_logs(
