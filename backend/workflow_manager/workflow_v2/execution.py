@@ -311,8 +311,10 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         total_cost = round(UsageHelper.get_aggregated_cost(execution_id), 5)
         average_cost = total_cost / total_files
         self.publish_log(
-            message=f"The average cost per file for execution
-                {execution_id} is {average_cost}"
+            message=(
+                f"The average cost per file for execution {execution_id} "
+                f"is ${average_cost}"
+            )
         )
 
     def log_total_cost_per_file(self, run_id, file_name):
