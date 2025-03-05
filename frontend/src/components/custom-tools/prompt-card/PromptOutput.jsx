@@ -84,9 +84,7 @@ function PromptOutput({
   const { generatePromptOutputKey } = usePromptOutput();
   const isTableExtraction =
     enforceType === TABLE_ENFORCE_TYPE || enforceType === RECORD_ENFORCE_TYPE;
-  const noHighlightEnforceType = !["json", "table", "record"].includes(
-    enforceType
-  );
+  const noHighlightEnforceType = !["table", "record"].includes(enforceType);
   const tooltipContent = (adapterConf) => (
     <div>
       {Object.entries(adapterConf)?.map(([key, value]) => (
@@ -170,14 +168,6 @@ function PromptOutput({
             selectedHighlight?.highlightedProfile === defaultLlmProfile &&
             "highlighted-prompt-cell"
           }`}
-          onClick={() => {
-            enforceType !== "json" &&
-              handleSelectHighlight(
-                promptOutputData?.highlightData?.[promptDetails.prompt_key],
-                promptId,
-                defaultLlmProfile
-              );
-          }}
         >
           <DisplayPromptResult
             output={promptOutput}

@@ -25,8 +25,12 @@ function DisplayPromptResult({
   const [isLoading, setIsLoading] = useState(false);
   const [parsedOutput, setParsedOutput] = useState(null);
   const [selectedKey, setSelectedKey] = useState(null);
-  const { singlePassExtractMode, isSinglePassExtractLoading, details } =
-    useCustomToolStore();
+  const {
+    singlePassExtractMode,
+    isSinglePassExtractLoading,
+    details,
+    selectedHighlight,
+  } = useCustomToolStore();
 
   useEffect(() => {
     if (singlePassExtractMode && isSinglePassExtractLoading) {
@@ -81,7 +85,6 @@ function DisplayPromptResult({
     typeof value === "object" && value !== null && !Array.isArray(value);
 
   const renderJson = (data, highlightData, indent = 0, path = "") => {
-    console.log(data);
     if (typeof data === "object" && !details?.enable_highlight) {
       return JSON.stringify(data, null, 4);
     }
@@ -127,30 +130,27 @@ function DisplayPromptResult({
               const isSelected = selectedKey === newPath;
               return (
                 <div key={key}>
-                  <Space
-                    wrap
-                    className="json-key"
-                    style={{
-                      color: isSelected
-                        ? "red"
-                        : isClickable && highlightData?.[key]
-                        ? "blue"
-                        : "black",
-                      cursor:
-                        isClickable && highlightData?.[key]
-                          ? "pointer"
-                          : "default",
-                    }}
+                  <Space wrap className="json-key">
+                    {key}
+                  </Space>
+                  {": "}
+                  <span
+                    className={`json-value ${
+                      isClickable && highlightData?.[key] ? "clickable" : ""
+                    } ${isSelected ? "selected" : ""}`}
                     onClick={() => {
                       if (isClickable && highlightData?.[key]) {
                         handleClick(highlightData, key, newPath);
                       }
                     }}
                   >
-                    {key}
-                  </Space>
-                  {": "}
-                  {renderJson(value, highlightData?.[key], indent + 1, newPath)}
+                    {renderJson(
+                      value,
+                      highlightData?.[key],
+                      indent + 1,
+                      newPath
+                    )}
+                  </span>
                   {index < array.length - 1 ? "," : ""}
                 </div>
               );
@@ -168,6 +168,23 @@ function DisplayPromptResult({
     <Typography.Paragraph className="prompt-card-display-output font-size-12">
       {parsedOutput && typeof parsedOutput === "object" ? (
         renderJson(parsedOutput, highlightData, 0)
+      ) : details?.enable_highlight ? (
+        <div
+          onClick={() =>
+            handleSelectHighlight(
+              highlightData,
+              promptDetails?.prompt_id,
+              profileId
+            )
+          }
+          className={`json-value ${highlightData ? "clickable" : ""} ${
+            selectedHighlight?.highlightedPrompt === promptDetails?.prompt_id
+              ? "selected"
+              : ""
+          }`}
+        >
+          {parsedOutput}
+        </div>
       ) : (
         <div>{parsedOutput}</div>
       )}
