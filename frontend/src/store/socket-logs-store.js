@@ -2,7 +2,6 @@ import { create } from "zustand";
 
 import { useSessionStore } from "./session-store";
 import axios from "axios";
-import { getDateTimeString } from "../helpers/GetStaticData";
 
 const STORE_VARIABLES = {
   logs: [],
@@ -16,7 +15,7 @@ const useSocketLogsStore = create((setState, getState) => ({
     let logsData = [...(existingState?.logs || [])];
 
     const newLogs = messages.map((msg, index) => ({
-      timestamp: getDateTimeString(msg?.timestamp),
+      timestamp: msg?.timestamp,
       key: logsData?.length + index + 1,
       level: msg?.level,
       stage: msg?.stage,

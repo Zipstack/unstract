@@ -5,6 +5,7 @@ import { uniqueId } from "lodash";
 import { useSocketLogsStore } from "../../store/socket-logs-store";
 import "./DisplayLogsAndNotifications.css";
 import CustomMarkdown from "../helpers/custom-markdown/CustomMarkdown";
+import { getDateTimeString } from "../../helpers/GetStaticData";
 
 function LogsAndNotificationsTable({ errorCount, setErrorCount, isMinimized }) {
   const tableRef = useRef(null);
@@ -23,7 +24,7 @@ function LogsAndNotificationsTable({ errorCount, setErrorCount, isMinimized }) {
       }
       return {
         key: `${log.timestamp}-${uniqueId()}`,
-        time: log?.timestamp,
+        time: getDateTimeString(log?.timestamp),
         level: log?.level,
         type: log?.type,
         stage: log?.stage,
