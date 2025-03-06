@@ -317,7 +317,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                     f"is '${average_cost:}'. Total cost: '${total_cost:}'"
                 )
             )
-        except (TypeError, ZeroDivisionError) as e:
+        except (TypeError) as e:
             self.publish_log(
                 message=(
                     f"Error calculating cost for execution '{execution_id}': "
