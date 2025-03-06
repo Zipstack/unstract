@@ -320,9 +320,14 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         except (TypeError) as e:
             self.publish_log(
                 message=(
-                    f"Error calculating cost for execution '{execution_id}': "
-                    f"{str(e)}. Total cost: {total_cost}, Total files: {total_files}"
+                    f"Unable to calculate cost for execution '{execution_id}'. "
+                    f"Cost data may be unavailable or incomplete."
                 )
+            )
+            
+            logger.error(
+                f"Error calculating cost for execution '{execution_id}': "
+                f"{str(e)}. Total cost: {total_cost}, Total files: {total_files}"
             )
 
     def log_total_cost_per_file(self, run_id, file_name):
