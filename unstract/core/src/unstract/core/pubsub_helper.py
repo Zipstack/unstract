@@ -150,17 +150,12 @@ class LogPublisher:
             log_data = json.dumps(payload)
             # Check if the payload type is "LOG"
             if payload["type"] == "LOG":
-                logs_expiration = os.environ.get("LOGS_EXPIRATION_TIME_IN_SECOND")
-
-                # Extract timestamp from payload
+                logs_expiration = os.environ.get(
+                    "LOGS_EXPIRATION_TIME_IN_SECOND", 86400
+                )  # Defaults to 1 day
                 timestamp = payload["timestamp"]
-
-                # Construct Redis key using channel and timestamp
                 redis_key = f"{channel}:{timestamp}"
-
-                # Store logs in Redis with expiration of 1 hour
                 cls.r.setex(redis_key, logs_expiration, log_data)
-
         except Exception as e:
             logging.error(f"Failed to publish '{channel_id}' <= {payload}: {e}")
             return False
