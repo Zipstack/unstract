@@ -1,15 +1,29 @@
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional, Union
 
 from dateutil.parser import parse
 from django.utils import timezone
 from isodate import parse_datetime
-from usage_v2.dto import DateRange
-from usage_v2.enums import DateRangePresets
-from usage_v2.exceptions import InvalidDatetime
+from utils.date.enums import DateRangePresets
+from utils.date.exceptions import InvalidDatetime
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DateRange:
+    """
+    Represents a validated date range with start and end dates.
+
+    Attributes:
+        start_date: Beginning of the date range
+        end_date: End of the date range
+    """
+
+    start_date: datetime
+    end_date: datetime
 
 
 class DateTimeProcessor:

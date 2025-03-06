@@ -2,10 +2,17 @@ from datetime import timedelta
 from enum import Enum
 
 from django.utils import timezone
-from usage_v2.exceptions import InvalidDateRange
+from utils.date.exceptions import InvalidDateRange
 
 
 class DateRangePresets(Enum):
+    """Represents relative time presets.
+
+    Can be used for filtering entities
+    """
+
+    TODAY = ("today", 0, "Today")
+    YESTERDAY = ("yesterday", 1, "Yesterday")
     LAST_7_DAYS = ("last_7_days", 7, "Last 7 Days")
     LAST_30_DAYS = ("last_30_days", 30, "Last 30 Days")
 
@@ -33,3 +40,7 @@ class DateRangePresets(Enum):
                 f"Invalid date range value: '{value}'. "
                 f"Valid values are: {', '.join(valid_values)}"
             )
+
+    @classmethod
+    def choices(cls):
+        return [(preset.key, preset.display_name) for preset in cls]
