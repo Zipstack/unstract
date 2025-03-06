@@ -317,14 +317,14 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                     f"is '${average_cost:}'. Total cost: '${total_cost:}'"
                 )
             )
-        except (TypeError) as e:
+        except TypeError as e:
             self.publish_log(
                 message=(
                     f"Unable to calculate cost for execution '{execution_id}'. "
                     f"Cost data may be unavailable or incomplete."
                 )
             )
-            
+
             logger.error(
                 f"Error calculating cost for execution '{execution_id}': "
                 f"{str(e)}. Total cost: {total_cost}, Total files: {total_files}"
