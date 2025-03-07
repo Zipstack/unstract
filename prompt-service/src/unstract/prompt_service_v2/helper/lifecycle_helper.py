@@ -1,6 +1,7 @@
+import uuid
 from typing import Any
 
-from flask import Flask, request
+from flask import Flask, g, request
 from unstract.prompt_service_v2.extensions import db
 
 
@@ -10,17 +11,14 @@ def register_lifecycle_hooks(app: Flask):
         """Ensure the DB connection is open before handling the request."""
         if db.is_closed():
             db.connect(reuse_if_open=True)
+        g.request_id = request.headers.get("X-Request-ID", uuid.uuid4().hex)
+        app.logger.info(f"Request Path: {request.path} | Method: {request.method}")
 
     @app.teardown_request
-    def after_request(exception: Any) -> None:
+    def teardown_request(exception: Any) -> None:
         """Close the DB connection after the request is handled."""
         if not db.is_closed():
             db.close()
-
-    @app.before_request
-    def log_request_info():
-        """Log request details."""
-        app.logger.info(f"Request Path: {request.path} | Method: {request.method}")
 
     @app.after_request
     def log_response_info(response):

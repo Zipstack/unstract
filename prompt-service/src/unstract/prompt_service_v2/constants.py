@@ -1,7 +1,7 @@
 from enum import Enum
 
 
-class PromptServiceContants:
+class PromptServiceConstants:
     WORD = "word"
     SYNONYMS = "synonyms"
     OUTPUTS = "outputs"

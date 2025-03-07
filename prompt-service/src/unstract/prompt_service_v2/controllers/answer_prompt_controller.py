@@ -9,7 +9,7 @@ from typing import Any
 from flask import Blueprint
 from flask import current_app as app
 from flask import request
-from unstract.prompt_service_v2.constants import PromptServiceContants as PSKeys
+from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service_v2.constants import RunLevel
 from unstract.prompt_service_v2.exceptions import APIError, NoPayloadError
 from unstract.prompt_service_v2.helper.auth_helper import AuthHelper
