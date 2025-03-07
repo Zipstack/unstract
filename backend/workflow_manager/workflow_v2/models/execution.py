@@ -1,5 +1,6 @@
 import logging
 import uuid
+from datetime import timedelta
 from typing import Optional
 
 from api_v2.models import APIDeployment
@@ -7,6 +8,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
+from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow
@@ -128,6 +130,21 @@ class WorkflowExecution(BaseModel):
             pass
 
         return None
+
+    @property
+    def pretty_execution_time(self) -> str:
+        """Convert execution_time from seconds to HH:MM:SS format
+
+        Returns:
+            str: Time in HH:MM:SS format
+        """
+        # Compute execution time for a run that's in progress
+        time_in_secs = (
+            self.execution_time
+            if self.execution_time
+            else CommonUtils.time_since(self.created_at)
+        )
+        return str(timedelta(seconds=time_in_secs)).split(".")[0]
 
     def __str__(self) -> str:
         return (

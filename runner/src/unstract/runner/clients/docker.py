@@ -158,17 +158,24 @@ class Client(ContainerClientInterface):
     def get_container_run_config(
         self,
         command: list[str],
-        run_id: str,
+        file_execution_id: str,
+        container_name: Optional[str] = None,
         envs: Optional[dict[str, Any]] = None,
         auto_remove: bool = False,
     ) -> dict[str, Any]:
         if envs is None:
             envs = {}
         mounts = []
+
+        if not container_name:
+            container_name = UnstractUtils.build_tool_container_name(
+                tool_image=self.image_name,
+                tool_version=self.image_tag,
+                file_execution_id=file_execution_id,
+            )
+
         return {
-            "name": UnstractUtils.build_tool_container_name(
-                tool_image=self.image_name, tool_version=self.image_tag, run_id=run_id
-            ),
+            "name": container_name,
             "image": self.get_image(),
             "command": command,
             "detach": True,
