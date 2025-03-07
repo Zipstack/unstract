@@ -99,11 +99,10 @@ class UsageHelper:
             )
             return None
         except Exception as e:
-            # Handle any other exceptions that might occur during the execution
-            logger.error(
+            logger.warning(
                 f"An unexpected error occurred for execution {execution_id}: {str(e)}"
             )
-            raise APIException("Error while aggregating cost")
+            return None
 
     @staticmethod
     def aggregate_usage_metrics(queryset: QuerySet) -> dict[str, Any]:
