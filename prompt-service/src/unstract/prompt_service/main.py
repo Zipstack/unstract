@@ -106,6 +106,7 @@ def prompt_processor() -> Any:
     prompts = payload.get(PSKeys.OUTPUTS, [])
     tool_id: str = payload.get(PSKeys.TOOL_ID, "")
     run_id: str = payload.get(PSKeys.RUN_ID, "")
+    execution_id: str = payload.get(PSKeys.EXECUTION_ID, "")
     file_hash = payload.get(PSKeys.FILE_HASH)
     file_path = payload.get(PSKeys.FILE_PATH)
     doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
@@ -192,7 +193,7 @@ def prompt_processor() -> Any:
         )
 
         try:
-            usage_kwargs = {"run_id": run_id}
+            usage_kwargs = {"run_id": run_id, "execution_id": execution_id}
             adapter_instance_id = output[PSKeys.LLM]
             llm = LLM(
                 tool=util,
