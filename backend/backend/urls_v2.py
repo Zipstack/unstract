@@ -61,4 +61,5 @@ urlpatterns = [
     ),
     path("tags/", include("tags.urls")),
     path("execution/", include("workflow_manager.execution.urls")),
+    path("execution/", include("workflow_manager.file_execution.urls")),
 ]
