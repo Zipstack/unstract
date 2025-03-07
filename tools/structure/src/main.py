@@ -146,6 +146,7 @@ class StructureTool(BaseTool):
                 usage_kwargs=usage_kwargs,
                 process_text=process_text,
                 tags=self.tags,
+                enable_highlight=enable_highlight,
                 **({"fs": self.workflow_filestorage}),
             )
             index_metrics = {SettingsKeys.INDEXING: index.get_metrics()}
@@ -185,6 +186,7 @@ class StructureTool(BaseTool):
                             usage_kwargs=usage_kwargs,
                             process_text=process_text,
                             tags=self.tags,
+                            enable_highlight=enable_highlight,
                             **({"fs": self.workflow_filestorage}),
                         )
                         index_metrics[output[SettingsKeys.NAME]] = {
