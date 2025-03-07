@@ -14,24 +14,6 @@ from unstract.prompt_service_v2.utils.request_id_filter import RequestIDFilter
 from unstract.sdk.constants import LogLevel
 
 load_dotenv()
-dictConfig(
-    {
-        "version": 1,
-        "formatters": {
-            "default": {
-                "format": "[%(asctime)s] %(levelname)s in %(module)s: %(message)s",
-            }
-        },
-        "handlers": {
-            "wsgi": {
-                "class": "logging.StreamHandler",
-                "stream": "ext://flask.logging.wsgi_errors_stream",
-                "formatter": "default",
-            }
-        },
-        "root": {"level": "INFO", "handlers": ["wsgi"]},
-    }
-)
 
 
 def setup_logging(log_level):
