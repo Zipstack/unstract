@@ -131,9 +131,10 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         setOptions({});
       } else {
         // Filter options based on source connection type
-        const filteredOptions = ["API"].includes(source?.connection_type)
-          ? inputOptions.filter((option) => option.value === "API")
-          : inputOptions.filter((option) => option.value !== "API");
+        const isAPI = source?.connection_type === "API";
+        const filteredOptions = inputOptions.filter((option) =>
+          isAPI ? option.value === "API" : option.value !== "API"
+        );
 
         setOptions(filteredOptions);
       }
