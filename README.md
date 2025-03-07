@@ -3,9 +3,7 @@
 
 # Unstract
 
-## Intelligent Document Processing 2.0 (IDP 2.0) Platform Powered by Large Language Models
-
-#### No-code LLM Platform to launch APIs and ETL Pipelines to structure unstructured documents
+## No-code LLM Platform to launch APIs and ETL Pipelines to structure unstructured documents
 
 ## 
 

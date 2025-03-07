@@ -1,16 +1,23 @@
+import json
 import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+import redis
 from kombu import Connection
 
 from unstract.core.constants import LogEventArgument, LogProcessingTask
 
 
 class LogPublisher:
-
     kombu_conn = Connection(os.environ.get("CELERY_BROKER_URL"))
+    r = redis.Redis(
+        host=os.environ.get("REDIS_HOST"),
+        port=os.environ.get("REDIS_PORT"),
+        username=os.environ.get("REDIS_USER"),
+        password=os.environ.get("REDIS_PASSWORD"),
+    )
 
     @staticmethod
     def log_usage(
@@ -118,8 +125,10 @@ class LogPublisher:
 
     @classmethod
     def publish(cls, channel_id: str, payload: dict[str, Any]) -> bool:
+        channel = f"logs:{channel_id}"
         """Publish a message to the queue."""
         try:
+
             with cls.kombu_conn.Producer(serializer="json") as producer:
                 event = f"logs:{channel_id}"
                 task_message = cls._get_task_message(
@@ -138,6 +147,15 @@ class LogPublisher:
                     retry=True,
                 )
                 logging.debug(f"Published '{channel_id}' <= {payload}")
+            log_data = json.dumps(payload)
+            # Check if the payload type is "LOG"
+            if payload["type"] == "LOG":
+                logs_expiration = os.environ.get(
+                    "LOGS_EXPIRATION_TIME_IN_SECOND", 86400
+                )  # Defaults to 1 day
+                timestamp = payload["timestamp"]
+                redis_key = f"{channel}:{timestamp}"
+                cls.r.setex(redis_key, logs_expiration, log_data)
         except Exception as e:
             logging.error(f"Failed to publish '{channel_id}' <= {payload}: {e}")
             return False

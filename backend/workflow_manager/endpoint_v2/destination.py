@@ -6,6 +6,7 @@ import os
 from typing import Any, Optional, Union
 
 from connector_v2.models import ConnectorInstance
+from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework.exceptions import APIException
 from unstract.sdk.constants import ToolExecKey
 from unstract.sdk.tool.mime_types import EXT_MIME_MAP
@@ -34,7 +35,6 @@ from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelpe
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
-from workflow_manager.workflow_v2.utils import WorkflowUtil
 
 from backend.exceptions import UnstractFSException
 from unstract.connectors.exceptions import ConnectorError
