@@ -16,15 +16,9 @@ class PluginManager:
             cls._instance = super().__new__(cls)
             cls._instance.plugins = {}
             cls._instance.plugins_dir = (
-                Path(
-                    # Temporary change for v2 and will be removed once tested
-                    os.path.dirname(__file__).replace(
-                        "prompt_service_v2", "prompt_service"
-                    )
-                ).parent
-                / "plugins"
+                Path(os.path.dirname(__file__)).parent / "plugins"
             )
-            cls._instance.plugins_pkg = "unstract.prompt_service.plugins"
+            cls._instance.plugins_pkg = "unstract.prompt_service_v2.plugins"
         # Always update `app` if provided
         if app:
             cls._instance.app = app
