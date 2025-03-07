@@ -11,7 +11,7 @@ def register_lifecycle_hooks(app: Flask):
         """Ensure the DB connection is open before handling the request."""
         if db.is_closed():
             db.connect(reuse_if_open=True)
-        g.request_id = request.headers.get("X-Request-ID", uuid.uuid4().hex)
+        g.request_id = request.headers.get("X-Request-ID", uuid.uuid4())
         app.logger.info(f"Request Path: {request.path} | Method: {request.method}")
 
     @app.teardown_request
