@@ -17,7 +17,7 @@ class ExecutionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ExecutionSerializer
     pagination_class = CustomPagination
     filter_backends = [DjangoFilterBackend, OrderingFilter]
-    ordering_fields = ["created_at"]
+    ordering_fields = ["created_at", "execution_time"]
     ordering = ["-created_at"]
     filterset_class = ExecutionFilter
     queryset = WorkflowExecution.objects.all()
