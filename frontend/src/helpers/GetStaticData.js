@@ -1,5 +1,7 @@
 import moment from "moment";
 import momentTz from "moment-timezone";
+import { format, parseISO } from "date-fns";
+import { fromZonedTime } from "date-fns-tz";
 import { v4 as uuidv4 } from "uuid";
 
 let cloudHomePagePath;
@@ -584,6 +586,29 @@ const generateCoverageKey = (promptId, profileId) => {
   return `coverage_${promptId}_${profileId}`;
 };
 
+function formatSecondsToHMS(seconds) {
+  if (isNaN(seconds) || seconds < 0) return "00:00:00";
+
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  return [hrs, mins, secs]
+    .map((unit) => String(unit).padStart(2, "0"))
+    .join(":");
+}
+
+const formattedDateTimeWithSeconds = (ISOdateTime) => {
+  if (ISOdateTime) {
+    // eslint-disable-next-line new-cap
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const zonedDate = fromZonedTime(parseISO(ISOdateTime), zone);
+    return format(zonedDate, "MMM d, yyyy h:mm:ss a zzz", { timeZone: zone });
+  } else {
+    return "";
+  }
+};
+
 const TRIAL_PLAN = "TRIAL";
 
 const homePagePath = cloudHomePagePath || "tools";
@@ -659,4 +684,6 @@ export {
   homePagePath,
   convertTimestampToHHMMSS,
   UNSTRACT_ADMIN,
+  formatSecondsToHMS,
+  formattedDateTimeWithSeconds,
 };
