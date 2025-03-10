@@ -88,12 +88,10 @@ export function DisplayLogsAndNotifications() {
 
     if (isCurrentlyFull) {
       semiExpand();
+    } else if (contentHeight < semiHeight) {
+      semiExpand();
     } else {
-      if (contentHeight < semiHeight) {
-        semiExpand();
-      } else {
-        fullExpand();
-      }
+      fullExpand();
     }
   }, [contentHeight, getParentHeight, semiExpand, fullExpand]);
 
