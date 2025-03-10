@@ -61,6 +61,7 @@ class OutputManagerHelper:
             context: str,
             challenge_data: Optional[dict[str, Any]],
             highlight_data: Optional[dict[str, Any]],
+            confidence_data: Optional[dict[str, Any]],
         ) -> PromptStudioOutputManager:
             """Handles creating or updating a single prompt output and returns
             the instance."""
@@ -78,6 +79,7 @@ class OutputManagerHelper:
                             "context": context,
                             "challenge_data": challenge_data,
                             "highlight_data": highlight_data,
+                            "confidence_data": confidence_data,
                         },
                     )
                 )
@@ -100,6 +102,7 @@ class OutputManagerHelper:
                     "context": context,
                     "challenge_data": challenge_data,
                     "highlight_data": highlight_data,
+                    "confidence_data": confidence_data,
                 }
                 PromptStudioOutputManager.objects.filter(
                     document_manager=document_manager,
@@ -122,6 +125,7 @@ class OutputManagerHelper:
         context = metadata.get("context")
         challenge_data = metadata.get("challenge_data")
         highlight_data = metadata.get("highlight_data")
+        confidence_data = metadata.get("confidence_data")
 
         if not prompts:
             return serialized_data
@@ -140,6 +144,8 @@ class OutputManagerHelper:
                 context = context.get(prompt.prompt_key)
                 if highlight_data:
                     highlight_data = highlight_data.get(prompt.prompt_key)
+                if confidence_data:
+                    confidence_data = confidence_data.get(prompt.prompt_key)
                 if challenge_data:
                     challenge_data = challenge_data.get(prompt.prompt_key)
 
@@ -163,6 +169,7 @@ class OutputManagerHelper:
                 context=json.dumps(context),
                 challenge_data=challenge_data,
                 highlight_data=highlight_data,
+                confidence_data=confidence_data,
             )
 
             # Serialize the instance

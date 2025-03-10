@@ -254,7 +254,7 @@ function PromptCardItems({
                     </Space>
                     <Space>
                       {details?.enable_highlight &&
-                        ["json", "table", "record"].includes(enforceType) && (
+                        ["table", "record"].includes(enforceType) && (
                           <Tag
                             color="red"
                             style={{
