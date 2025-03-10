@@ -267,7 +267,8 @@ function PromptOutput({
                         handleSelectHighlight(
                           promptOutputData?.highlightData,
                           promptId,
-                          profileId
+                          profileId,
+                          promptOutputData?.confidenceData
                         );
                     }}
                   >
@@ -432,6 +433,7 @@ function PromptOutput({
                             promptRunStatus={promptRunStatus}
                             handleSelectHighlight={handleSelectHighlight}
                             highlightData={promptOutputData?.highlightData}
+                            confidenceData={promptOutputData?.confidenceData}
                             promptDetails={promptDetails}
                           />
                           <div className="prompt-profile-run">

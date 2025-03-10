@@ -21,6 +21,7 @@ function DisplayPromptResult({
   handleSelectHighlight,
   highlightData,
   promptDetails,
+  confidenceData,
 }) {
   const [isLoading, setIsLoading] = useState(false);
   const [parsedOutput, setParsedOutput] = useState(null);
@@ -70,12 +71,13 @@ function DisplayPromptResult({
     );
   }
 
-  const handleClick = (highlightData, key, keyPath) => {
+  const handleClick = (highlightData, confidenceData, key, keyPath) => {
     if (highlightData?.[key]) {
       handleSelectHighlight(
         highlightData[key],
         promptDetails?.prompt_id,
-        profileId
+        profileId,
+        confidenceData?.[key]
       );
       setSelectedKey(keyPath);
     }
@@ -84,7 +86,13 @@ function DisplayPromptResult({
   const isObject = (value) =>
     typeof value === "object" && value !== null && !Array.isArray(value);
 
-  const renderJson = (data, highlightData, indent = 0, path = "") => {
+  const renderJson = (
+    data,
+    highlightData,
+    confidenceData,
+    indent = 0,
+    path = ""
+  ) => {
     if (typeof data === "object" && !details?.enable_highlight) {
       return JSON.stringify(data, null, 4);
     }
@@ -107,6 +115,7 @@ function DisplayPromptResult({
                 {renderJson(
                   item,
                   highlightData[index],
+                  confidenceData?.[index],
                   indent + 1,
                   `${path}[${index}]`
                 )}
@@ -140,13 +149,19 @@ function DisplayPromptResult({
                     } ${isSelected ? "selected" : ""}`}
                     onClick={() => {
                       if (isClickable && highlightData?.[key]) {
-                        handleClick(highlightData, key, newPath);
+                        handleClick(
+                          highlightData,
+                          confidenceData,
+                          key,
+                          newPath
+                        );
                       }
                     }}
                   >
                     {renderJson(
                       value,
                       highlightData?.[key],
+                      confidenceData?.[key],
                       indent + 1,
                       newPath
                     )}
@@ -172,7 +187,8 @@ function DisplayPromptResult({
           handleSelectHighlight(
             highlightData,
             promptDetails?.prompt_id,
-            profileId
+            profileId,
+            confidenceData
           )
         }
         className={`prompt-output-result json-value ${
@@ -193,7 +209,7 @@ function DisplayPromptResult({
   return (
     <Typography.Paragraph className="prompt-card-display-output font-size-12">
       {parsedOutput && typeof parsedOutput === "object" ? (
-        renderJson(parsedOutput, highlightData, 0)
+        renderJson(parsedOutput, highlightData, confidenceData, 0)
       ) : (
         <TextResult />
       )}
@@ -209,6 +225,7 @@ DisplayPromptResult.propTypes = {
   handleSelectHighlight: PropTypes.func,
   highlightData: PropTypes.object,
   promptDetails: PropTypes.object,
+  confidenceData: PropTypes.object,
 };
 
 export { DisplayPromptResult };

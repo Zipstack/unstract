@@ -169,7 +169,8 @@ const PromptCard = memo(
     const handleSelectHighlight = (
       highlightData,
       highlightedPrompt,
-      highlightedProfile
+      highlightedProfile,
+      confidenceData
     ) => {
       if (details?.enable_highlight) {
         updateCustomTool({
@@ -177,6 +178,7 @@ const PromptCard = memo(
             highlight: highlightData,
             highlightedPrompt: highlightedPrompt,
             highlightedProfile: highlightedProfile,
+            confidence: confidenceData,
           },
         });
       }
