@@ -1,13 +1,11 @@
 import json
-import logging
 import re
 from functools import lru_cache
 from typing import Any
 
+from flask import current_app as app
 from unstract.prompt_service_v2.constants import VariableConstants, VariableType
 from unstract.prompt_service_v2.utils.request import HTTPMethod, make_http_request
-
-logger = logging.getLogger(__name__)
 
 
 class VariableReplacementHelper:
@@ -37,7 +35,7 @@ class VariableReplacementHelper:
         try:
             output = structure_output[variable]
         except KeyError:
-            logger.warning(
+            app.logger.warning(
                 f"Prompt with {variable} is not executed yet."
                 " Unable to replace the variable"
             )
