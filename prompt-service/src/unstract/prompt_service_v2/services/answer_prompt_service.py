@@ -486,7 +486,6 @@ class AnswerPromptService:
                 output=output,
                 prompt=prompt,
                 structured_output=structured_output,
-                logger=app.logger,
             )
             answer = line_item_extraction.run()
             structured_output[output[PSKeys.NAME]] = answer
