@@ -175,6 +175,9 @@ function PromptOutput({
               promptOutputData?.highlightData?.[promptDetails.prompt_key]
             }
             handleSelectHighlight={handleSelectHighlight}
+            confidenceData={
+              promptOutputData?.confidenceData?.[promptDetails.prompt_key]
+            }
           />
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn

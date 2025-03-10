@@ -179,44 +179,63 @@ function DisplayPromptResult({
     return String(data);
   };
 
-  const TextResult = () => {
-    return details?.enable_highlight ? (
-      <Typography.Text
-        wrap
-        onClick={() =>
-          handleSelectHighlight(
-            highlightData,
-            promptDetails?.prompt_id,
-            profileId,
-            confidenceData
-          )
-        }
-        className={`prompt-output-result json-value ${
-          highlightData ? "clickable" : ""
-        } ${
-          selectedHighlight?.highlightedPrompt === promptDetails?.prompt_id
-            ? "selected"
-            : ""
-        }`}
-      >
-        {parsedOutput}
-      </Typography.Text>
-    ) : (
-      <div>{parsedOutput}</div>
-    );
-  };
-
   return (
     <Typography.Paragraph className="prompt-card-display-output font-size-12">
       {parsedOutput && typeof parsedOutput === "object" ? (
         renderJson(parsedOutput, highlightData, confidenceData, 0)
       ) : (
-        <TextResult />
+        <TextResult
+          enableHighlight={details?.enable_highlight}
+          highlightData={highlightData}
+          promptId={promptDetails?.prompt_id}
+          profileId={profileId}
+          confidenceData={confidenceData}
+          selectedHighlight={selectedHighlight}
+          parsedOutput={parsedOutput}
+          onSelectHighlight={handleSelectHighlight}
+        />
       )}
     </Typography.Paragraph>
   );
 }
 
+const TextResult = ({
+  enableHighlight,
+  highlightData,
+  promptId,
+  profileId,
+  confidenceData,
+  selectedHighlight,
+  parsedOutput,
+  onSelectHighlight,
+}) => {
+  return enableHighlight ? (
+    <Typography.Text
+      wrap
+      onClick={() =>
+        onSelectHighlight(highlightData, promptId, profileId, confidenceData)
+      }
+      className={`prompt-output-result json-value ${
+        highlightData ? "clickable" : ""
+      } ${selectedHighlight?.highlightedPrompt === promptId ? "selected" : ""}`}
+    >
+      {parsedOutput}
+    </Typography.Text>
+  ) : (
+    <div>{parsedOutput}</div>
+  );
+};
+
+TextResult.propTypes = {
+  enableHighlight: PropTypes.bool,
+  highlightData: PropTypes.any,
+  promptId: PropTypes.string,
+  profileId: PropTypes.string,
+  confidenceData: PropTypes.any,
+  selectedHighlight: PropTypes.object,
+  parsedOutput: PropTypes.any,
+  onSelectHighlight: PropTypes.func.isRequired,
+};
 DisplayPromptResult.propTypes = {
   output: PropTypes.any,
   profileId: PropTypes.string,
